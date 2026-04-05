@@ -1,0 +1,54 @@
+# Session Notes — 2026-04-05 (ASCENT Repository Creation)
+
+### Read These Files First (in order)
+
+1. `CLAUDE.md` — Master directive: 6 absolute directives, course structure, module-framework mapping
+2. `workspaces/curriculum/briefs/course-brief.md` — THE authoritative curriculum: 6 modules, 7h each, lecture+lab+assessment, professional-grade depth
+3. `workspaces/decks/briefs/deck-brief.md` — Deck specs: Reveal.js 5.1.0, dual-track 3-layer architecture (🟢 foundations → 🔵 theory → 🟣 advanced), 80-100 slides/module
+4. `workspaces/ascent01/briefs/module-brief.md` through `ascent06` — Detailed module briefs with lecture topics, exercises, datasets, quiz topics, Kailash engine mapping
+5. `workspaces/datasets/briefs/dataset-brief.md` — Dataset curation plan: what exists, what to source, what to create
+6. `workspaces/assessment/briefs/module-brief.md` — Assessment: 20% quizzes / 35% portfolio / 35% capstone / 10% peer review
+7. `workspaces/curriculum/04-validate/` — 7 validation reports from 3 rounds of red-team review
+8. `.claude/commands/start.md` — /start command explaining all workflows for instructors/devs
+9. `shared/data_loader.py` — ASCENTDataLoader: gdown (local/Jupyter) vs Drive mount (Colab), folder ID `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`
+
+## Accomplished
+
+- **Created ascent repo** at `~/repos/training/ascent/` (49 files, git initialized, Apache 2.0 Terrene Foundation)
+- **Professional-grade curriculum**: 6 modules covering Bayesian estimation through governed AI deployment. Stanford CS229 depth: bias-variance derivation, EM algorithm, XGBoost 2nd-order Taylor, DPO from Bradley-Terry, Shapley axioms, PPO clipped objective, Flash Attention, GQA, RoPE derivation
+- **Kailash from Lesson 1**: ConnectionManager + DataExplorer.profile() in M1-Ex1, interop module taught, FeatureSchema previewed, governance thread woven through all 6 modules (CARE M1 → EATP M2-M3 → CO M5 → PACT M6)
+- **Dual-audience decks**: 3-layer architecture for zero-background through masters-level, 80-100 slides/module
+- **4 expert panel red-team**: statistics professor, ML grandmaster, LLM researcher, Kailash SDK architect — all MUST findings integrated
+- **All SDK paths verified** against actual kailash-py source (64 checks, 4 failures fixed: ModelSpec import, test_size param, GovernanceContext frozen semantics, exercise ordering)
+
+## Outstanding
+
+- [ ] `/sync` COC artifacts from kailash-coc-claude-py (verified: .claude/settings.json ABSENT, .claude/skills/ has 0 files, .claude/agents/frameworks/ empty)
+- [ ] Write solutions for all 34 exercises across 6 modules (modules/ascentN/solutions/ all empty — this is the bulk implementation work)
+- [ ] Generate exercises from solutions using exercise-designer agent (modules/ascentN/local|notebooks|colab/ all empty)
+- [ ] Create synthetic datasets: Singapore credit scoring (100K), e-commerce (200K), healthcare ICU (60K) — upload to ascent_data Drive
+- [ ] Source public datasets: data.gov.sg (HDB expanded, taxi, weather), Kaggle (fraud 284K), ChestX-ray14 subset, Singapore news corpus
+- [ ] Build Reveal.js decks (decks/ascentN/deck.html) per deck-brief.md spec — 80-100 slides each, dual-track architecture
+- [ ] Write quizzes (modules/ascentN/quiz/) — 15 questions each, Kailash pattern focused
+- [ ] Run `uv lock` and commit lockfile (verified: uv.lock ABSENT)
+- [ ] Initial git commit (verified: 14 untracked items, 0 commits)
+- [ ] Create GitHub repo at terrene-foundation/ascent and push
+
+### Oversight — Verify Before Starting
+
+- [ ] All 49 files exist: `find . -not -path './.git/*' -type f | wc -l` should return 49
+- [ ] Module briefs have governance thread: `grep -ci governance workspaces/ascent*/briefs/module-brief.md` — all should be >0
+- [ ] No pandas: `grep -r "import pandas" --include="*.py" . | grep -v ".git"` should return 0 matches
+- [ ] Drive folder ID consistent: `grep -r "16c3RkGmiwMWbjD7cJKbJx" --include="*.py" --include="*.md" .` should return 3+ matches
+
+### Oversight — Verify After Completing
+
+- [ ] All solutions run: `uv run pytest tests/ -v` passes
+- [ ] 3-format consistency: `/validate-notebooks` passes
+- [ ] No hardcoded API keys: `grep -rn "sk-\|gsk_\|hf_" --include="*.py" .` returns 0
+
+## Blockers
+
+- Need Google Drive access to upload new synthetic datasets to ascent_data shared folder
+- Need terrene-foundation GitHub org access to create the public repo
+- Kailash SDK packages must be published to PyPI before `uv sync` works (verify: kailash-ml 0.4.0, kailash-kaizen 2.5.0 etc. are on PyPI)

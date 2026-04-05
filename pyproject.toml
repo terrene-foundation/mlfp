@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ascent"
+version = "0.1.0"
+description = "Practical Course in Machine Learning — powered by the Kailash Python SDK"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    { name = "Terrene Foundation" },
+]
+readme = "README.md"
+keywords = ["machine-learning", "kailash", "course", "training", "polars"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Education",
+]
+dependencies = [
+    # Kailash platform
+    "kailash>=1.0",
+    "kailash-ml>=0.4.0",
+    "kailash-dataflow>=1.7.0",
+    "kailash-nexus>=1.9.0",
+    "kailash-kaizen>=2.5.0",
+    "kaizen-agents>=0.6.0",
+    "kailash-pact>=0.7.2",
+    "kailash-align>=0.2.1",
+    # Data
+    "polars>=1.0",
+    "pyarrow>=14.0",
+    # Visualization
+    "plotly>=5.18",
+    # Data loading from Google Drive
+    "gdown>=5.0",
+    # Environment
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "jupyter>=1.0",
+    "nbformat>=5.9",
+    "ipywidgets>=8.0",
+]
+dl = [
+    "kailash-ml[dl]",
+]
+rl = [
+    "kailash-ml[rl]",
+]
+agents = [
+    "kailash-ml[agents]",
+]
+full = [
+    "kailash-ml[full]",
+    "jupyter>=1.0",
+    "nbformat>=5.9",
+    "ipywidgets>=8.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "nbval>=0.11",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

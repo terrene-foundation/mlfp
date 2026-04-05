@@ -21,16 +21,16 @@
 
 _Zero to productive. Learn Python by exploring real Singapore data._
 
-| #   | Lesson                              | Python Concepts                                                | Kailash / Tools                                                                                | Exercise                                                        |
-| --- | ----------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 1.1 | **Your First Data Exploration**     | Variables, strings, numbers, `print()`, f-strings, assignment  | `polars`: `pl.read_csv()`, `df.shape`, `df.columns`, `df.head()`, `df.describe()`              | NEW: Load small Singapore weather CSV, inspect, print summaries |
-| 1.2 | **Filtering and Transforming Data** | Comparison operators, booleans, method chaining, lists         | `pl.col()`, `filter()`, `select()`, `sort()`, `with_columns()`                                 | NEW: Filter HDB resale by town/price/date                       |
-| 1.3 | **Functions and Aggregation**       | `def`, `for`, `if/else`, dicts, return values                  | `group_by()`, `agg()`, `pl.mean()`, `pl.count()`, writing helper functions                     | NEW: Functions for district statistics                          |
-| 1.4 | **Joins, Windows, and Real Scale**  | Method chaining, complex expressions, imports, packages        | `join()`, `over()`, `rolling_mean()`, lazy frames, `collect()` — 15M-row HDB data              | Adapted from M1 ex_1: HDB + MRT + schools                       |
-| 1.5 | **Data Visualization**              | Plotly API, figure objects, HTML export                        | `ModelVisualizer` (histogram, scatter, bar, heatmap, line — EDA charts only)                   | NEW: Visualize HDB trends interactively                         |
-| 1.6 | **Automated Data Profiling**        | Classes as users (not authors), async provided as scaffolding  | `DataExplorer`, `AlertConfig`, 8 alert types, `DataProfile`, correlation matrices, `compare()` | Adapted from M1 ex_3: Profile dirty economic data               |
-| 1.7 | **Data Cleaning Pipeline**          | `try/except` basics, None/null, error messages                 | `PreprocessingPipeline` (auto-detect, encode, scale, impute), `SetupResult`                    | Adapted from M1 ex_5: Clean messy taxi data                     |
-| 1.8 | **End-to-End Project**              | Project structure, imports, modules, review of all M1 concepts | Full pipeline: load → profile → clean → visualize → report                                     | NEW: Complete EDA on new Singapore dataset                      |
+| #   | Lesson                                   | Python Concepts                                                                                                                | Kailash / Tools                                                                                                          | Exercise                                                      |
+| --- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 1.1 | **Your First Data Exploration**          | First 90min: variables, strings, numbers, `print()`, f-strings in REPL. Second 90min: `pl.read_csv()`, `df.shape`, `df.head()` | `polars`: `pl.read_csv()`, `df.shape`, `df.columns`, `df.head()`, `df.describe()`                                        | NEW: Python basics then load Singapore weather CSV            |
+| 1.2 | **Filtering and Transforming Data**      | Booleans (concrete examples first), comparison operators, method chaining. Lists deferred to 1.3                               | `pl.col()`, `filter()`, `select()`, `sort()`, `with_columns()`                                                           | NEW: Filter HDB resale by town/price/date                     |
+| 1.3 | **Functions and Aggregation**            | `def`, parameters, `return`, `for` loops, lists. Dicts and `if/else` deferred to 1.4                                           | `group_by()`, `agg()`, `pl.mean()`, writing helper functions                                                             | NEW: Functions for district statistics                        |
+| 1.4 | **Joins and Multi-Table Data**           | Dicts, `if/else`, imports, packages. Join concepts (left, inner)                                                               | `join()`, multi-table operations — HDB + MRT + schools on 15M rows                                                       | Adapted from M1 ex_1 (joins portion)                          |
+| 1.5 | **Window Functions and Trends**          | `over()`, `rolling_mean()`, `shift()`, lazy frames, `collect()`. Method chaining at scale                                      | Window functions, rolling aggregations, YoY calculations on HDB time series                                              | Adapted from M1 ex_1 (windows portion)                        |
+| 1.6 | **Data Visualization**                   | Plotly API, figure objects, HTML export                                                                                        | `ModelVisualizer` (histogram, scatter, bar, heatmap, line — EDA charts only)                                             | NEW: Visualize HDB trends interactively                       |
+| 1.7 | **Automated Data Profiling**             | Classes as users (not authors). Async hidden behind `shared.run_profile()` sync wrapper. `try/except` basics                   | `DataExplorer`, `AlertConfig`, 8 alert types, `DataProfile`, correlation matrices, `compare()`                           | Adapted from M1 ex_3: Profile dirty economic data             |
+| 1.8 | **Data Cleaning and End-to-End Project** | None/null handling, project structure, imports, putting it all together                                                        | `PreprocessingPipeline` (auto-detect, encode, scale, impute). Full pipeline: load → profile → clean → visualize → report | Adapted from M1 ex_5: Clean messy taxi data → full EDA report |
 
 **Datasets**: Singapore weather (small ~1K for 1.1-1.3), HDB Resale (15M for 1.4+), economic indicators, taxi trips
 **Scaffolding**: ~80% for 1.1-1.3 (near-complete code with blanks for key values), ~70% for 1.4-1.8
@@ -42,16 +42,16 @@ _Zero to productive. Learn Python by exploring real Singapore data._
 
 _Statistical foundations taught through experiment tracking and feature engineering._
 
-| #   | Lesson                                    | Theory                                                                                                                     | Kailash SDK                                                                            | Exercise                                         |
-| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| 2.1 | **Probability and Bayesian Thinking**     | Concrete distributions (Normal, Beta, Poisson) first, then conjugate priors (Normal-Normal, Beta-Binomial), Bayes' theorem | `ModelVisualizer` for posterior plots                                                  | FROM M1 ex_2: Bayesian estimation on HDB prices  |
-| 2.2 | **Estimation and Inference**              | MLE derivation, MAP, Fisher information, Cramér-Rao, when MLE fails                                                        | Workflow: optimization → visualization                                                 | NEW: MLE for Singapore economic parameters       |
-| 2.3 | **Hypothesis Testing**                    | Neyman-Pearson, power analysis, MDE, Bonferroni/BH-FDR, permutation tests                                                  | `ExperimentTracker` (create_experiment, context manager, log_param, log_metric)        | FROM M1 ex_4: A/B test with multiple corrections |
-| 2.4 | **Bootstrap and Resampling**              | BCa intervals, parametric vs non-parametric, distribution-free methods                                                     | `ExperimentTracker.compare_runs()`, `ModelVisualizer`                                  | NEW: Bootstrap analysis on experiment data       |
-| 2.5 | **A/B Testing at Scale**                  | SRM, CUPED (derive Var(Y_adj) = Var(Y)(1-ρ²)), sequential testing, Bayesian A/B                                            | `ExperimentTracker` full lifecycle                                                     | Existing M2 ex_3: CUPED + Bayesian               |
-| 2.6 | **Causal Inference**                      | DiD (derive ATT), propensity matching, parallel trends, placebo tests                                                      | `ExperimentTracker` for causal logging                                                 | Existing M2 ex_4: DiD on cooling measures        |
-| 2.7 | **Feature Engineering and Feature Store** | Temporal features, point-in-time correctness, data lineage, leakage detection                                              | `FeatureStore`, `FeatureSchema`, `FeatureField`, `FeatureEngineer` (generate + select) | Existing M2 ex_1 + ex_2 combined                 |
-| 2.8 | **Experiment-Driven Project**             | Full lifecycle: design → execute → analyze → report (students choose from 3-4 options)                                     | `ExperimentTracker` + `FeatureStore` + `ModelVisualizer`                               | Existing M2 ex_5                                 |
+| #   | Lesson                                    | Theory                                                                                                                                                                     | Kailash SDK                                                                            | Exercise                                         |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 2.1 | **Probability and Bayesian Thinking**     | 60min warm-up: mean, variance, what is a distribution, coin-flip probability. Then: Normal, Beta, Poisson, conjugate priors (Normal-Normal, Beta-Binomial), Bayes' theorem | `ModelVisualizer` for posterior plots                                                  | FROM M1 ex_2: Bayesian estimation on HDB prices  |
+| 2.2 | **Estimation and Inference**              | MLE derivation, MAP, Fisher information, Cramér-Rao, when MLE fails                                                                                                        | Workflow: optimization → visualization                                                 | NEW: MLE for Singapore economic parameters       |
+| 2.3 | **Hypothesis Testing**                    | Neyman-Pearson, power analysis, MDE, Bonferroni/BH-FDR, permutation tests                                                                                                  | `ExperimentTracker` (create_experiment, context manager, log_param, log_metric)        | FROM M1 ex_4: A/B test with multiple corrections |
+| 2.4 | **Bootstrap and Resampling**              | BCa intervals, parametric vs non-parametric, distribution-free methods                                                                                                     | `ExperimentTracker.compare_runs()`, `ModelVisualizer`                                  | NEW: Bootstrap analysis on experiment data       |
+| 2.5 | **A/B Testing at Scale**                  | SRM, CUPED (derive Var(Y_adj) = Var(Y)(1-ρ²)), sequential testing, Bayesian A/B                                                                                            | `ExperimentTracker` full lifecycle                                                     | Existing M2 ex_3: CUPED + Bayesian               |
+| 2.6 | **Causal Inference**                      | DiD (derive ATT), propensity matching, parallel trends, placebo tests                                                                                                      | `ExperimentTracker` for causal logging                                                 | Existing M2 ex_4: DiD on cooling measures        |
+| 2.7 | **Feature Engineering and Feature Store** | Temporal features, point-in-time correctness, data lineage, leakage detection                                                                                              | `FeatureStore`, `FeatureSchema`, `FeatureField`, `FeatureEngineer` (generate + select) | Existing M2 ex_1 + ex_2 combined                 |
+| 2.8 | **Experiment-Driven Project**             | Full lifecycle: design → execute → analyze → report (students choose from 3-4 options)                                                                                     | `ExperimentTracker` + `FeatureStore` + `ModelVisualizer`                               | Existing M2 ex_5                                 |
 
 **Scaffolding**: ~65% (arguments + some method calls stripped)
 **New exercises**: 2.2, 2.4 (2 new + 2 moved from M1 + 4 existing)
@@ -79,24 +79,31 @@ _From theory to production — workflow orchestration, model registry, governed 
 
 ---
 
-## Module 4: Unsupervised ML, NLP, and Deep Learning
+## Module 4: Advanced ML — Unsupervised Methods and Deep Learning
 
 _Pattern discovery, text analysis, neural networks, and production monitoring._
 
-| #   | Lesson                              | Theory                                                                                                                             | Kailash SDK                                                                                      | Exercise                                                     |
-| --- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| 4.1 | **Clustering**                      | K-means, spectral, HDBSCAN, gap statistic, validation metrics                                                                      | `AutoMLEngine`, `AutoMLConfig` (agent double opt-in, `LLMCostTracker`)                           | Existing M4 ex_1                                             |
-| 4.2 | **EM Algorithm and GMMs**           | Full E-step/M-step derivation, ELBO convergence, EM as template algorithm                                                          | `AutoMLEngine` comparison                                                                        | NEW: Implement EM from scratch, compare with sklearn         |
-| 4.3 | **Dimensionality Reduction**        | PCA (explicit SVD connection, reconstruction error), UMAP, t-SNE                                                                   | `ModelVisualizer` for embeddings                                                                 | NEW: PCA reconstruction + UMAP/t-SNE comparison              |
-| 4.4 | **Anomaly Detection and Ensembles** | Isolation Forest, LOF, score blending                                                                                              | `EnsembleEngine` (`blend()`, `stack()`, `bag()`, `boost()`) — use actual SDK calls               | Existing M4 ex_2 (upgraded: use EnsembleEngine.blend())      |
-| 4.5 | **NLP: Text to Topics**             | TF-IDF (derive), BM25, Word2Vec, BERTopic, NPMI coherence                                                                          | `ModelVisualizer` for topics                                                                     | Existing M4 ex_3 (add TF-IDF warmup)                         |
-| 4.6 | **Drift Monitoring**                | PSI, KS test, performance degradation, monitoring as governance obligation                                                         | `DriftMonitor` (set_reference, check_drift, check_performance, schedule_monitoring), `DriftSpec` | Existing M4 ex_4                                             |
-| 4.7 | **Deep Learning Foundations**       | Backprop chain rule, gradient flow, CNN architecture, ResNet skip connections, training dynamics (LR scheduling, BatchNorm, AdamW) | PyTorch + `ModelVisualizer.training_history()` + `OnnxBridge` (export, validate)                 | Existing M4 ex_5 (with structured synthetic data, not noise) |
-| 4.8 | **Model Serving**                   | ONNX format, inference patterns, InferenceServer                                                                                   | `InferenceServer` (predict, predict_batch, warm_cache, register_endpoints), `PredictionResult`   | Existing M4 ex_6 (fix import, add ModelSignature validation) |
+### Part A: Unsupervised Learning and Production Monitoring (4.1-4.6)
+
+| #   | Lesson                              | Theory                                                                                                                                                                   | Kailash SDK                                                                                      | Exercise                                                            |
+| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| 4.1 | **Clustering**                      | K-means, spectral, HDBSCAN, gap statistic, validation metrics                                                                                                            | `AutoMLEngine`, `AutoMLConfig` (agent double opt-in, `LLMCostTracker`)                           | Existing M4 ex_1                                                    |
+| 4.2 | **EM Algorithm and GMMs**           | E-step/M-step derivation (intuition + 20-line implementation), soft assignment, EM as template. ELBO to further reading                                                  | `AutoMLEngine` comparison                                                                        | NEW: Implement EM on 2D data, compare with sklearn GMM on real data |
+| 4.3 | **Dimensionality Reduction**        | PCA deep (60%): SVD connection, reconstruction error, scree plot, loadings. UMAP/t-SNE (40%): use and interpret, hyperparameter tuning. KL derivation to further reading | `ModelVisualizer` for embeddings                                                                 | NEW: PCA reconstruction + UMAP/t-SNE comparison on e-commerce data  |
+| 4.4 | **Anomaly Detection and Ensembles** | Isolation Forest, LOF, score blending                                                                                                                                    | `EnsembleEngine` (`blend()`, `stack()`, `bag()`, `boost()`) — use actual SDK calls               | Existing M4 ex_2 (upgraded: use EnsembleEngine.blend())             |
+| 4.5 | **NLP: Text to Topics**             | TF-IDF (10min warmup derivation), BM25, Word2Vec, BERTopic, NPMI coherence                                                                                               | `ModelVisualizer` for topics                                                                     | Existing M4 ex_3 (add TF-IDF warmup)                                |
+| 4.6 | **Drift Monitoring**                | PSI, KS test, performance degradation, monitoring as governance obligation                                                                                               | `DriftMonitor` (set_reference, check_drift, check_performance, schedule_monitoring), `DriftSpec` | Existing M4 ex_4                                                    |
+
+### Part B: Deep Learning Foundations (4.7-4.8)
+
+| #   | Lesson                                      | Theory                                                                                                                                         | Kailash SDK                                                                              | Exercise                                                                                                      |
+| --- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 4.7 | **Deep Learning Foundations**               | 30min PyTorch primer (tensors, autograd, nn.Module). Then: backprop, gradient flow, simple CNN → add ResBlock. LR scheduling, BatchNorm, AdamW | PyTorch + `ModelVisualizer.training_history()` + `OnnxBridge` (export, validate)         | Existing M4 ex_5 (adapt: start simple CNN, add ResBlock as enhancement; use Fashion-MNIST or structured data) |
+| 4.8 | **M4 Capstone: Unsupervised + DL Pipeline** | Combine unsupervised preprocessing with neural network: PCA → model → ONNX → serve                                                             | `OnnxBridge`, `InferenceServer` (predict, predict_batch, warm_cache), `PredictionResult` | Existing M4 ex_6 (adapt: strip Nexus, focus on InferenceServer standalone)                                    |
 
 **Scaffolding**: ~40% (setup + calls + logic stripped)
 **New exercises**: 4.2, 4.3 (2 new)
-**Key change from v3**: Nexus deployment moved OUT to M5. M4 ends with InferenceServer (single-channel), M5 adds Nexus (multi-channel).
+**Key changes from v3**: Renamed module. Part A/B headers. ELBO removed from required theory. PyTorch primer added. M4.8 becomes capstone. Nexus moved entirely to M5. InferenceServer standalone in M4.8.
 
 ---
 
@@ -149,17 +156,18 @@ _Fine-tuning, governance, RL, and the capstone. Masters-level content, coherentl
 
 ## Exercise Inventory
 
-| Module    | Keep as-is | Adapt | Move in   | New    | Rewrite | Total  |
-| --------- | ---------- | ----- | --------- | ------ | ------- | ------ |
-| M1        | 0          | 3     | 0         | 5      | 0       | 8      |
-| M2        | 4          | 0     | 2 from M1 | 2      | 0       | 8      |
-| M3        | 5          | 1     | 0         | 1      | 0       | 7+1    |
-| M4        | 4          | 2     | 0         | 2      | 0       | 8      |
-| M5        | 4          | 1     | 0         | 2      | 1       | 8      |
-| M6        | 4          | 1     | 0         | 2      | 0       | 7+1    |
-| **Total** | **21**     | **8** | **2**     | **14** | **1**   | **48** |
+| Module    | Keep as-is | Adapt | Move in   | New                                  | Rewrite | Total        |
+| --------- | ---------- | ----- | --------- | ------------------------------------ | ------- | ------------ |
+| M1        | 0          | 3     | 0         | 5                                    | 0       | 8            |
+| M2        | 4          | 0     | 2 from M1 | 2                                    | 0       | 8            |
+| M3        | 4          | 1     | 0         | 2 (3.1 bias-variance + 3.6 DataFlow) | 0       | 7+1 split    |
+| M4        | 4          | 2     | 0         | 2                                    | 0       | 8            |
+| M5        | 4          | 1     | 0         | 2                                    | 1       | 8            |
+| M6        | 4          | 1     | 0         | 2                                    | 0       | 7+1 renumber |
+| **Total** | **20**     | **8** | **2**     | **15**                               | **1**   | **48**       |
 
-**Net new to write**: 14 exercises + 1 rewrite = 15 implementation tasks
+**Net new to write**: 15 exercises + 1 rewrite = 16 implementation tasks
+**Note**: M3.1 needs a dedicated bias-variance exercise (M3-M4 panel confirmed ex_1 is gradient boosting, not bias-variance)
 
 ---
 

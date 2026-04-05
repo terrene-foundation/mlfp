@@ -391,7 +391,12 @@ fn main() {
         .unwrap_err();
 
     // The runtime wraps node errors in RuntimeError::NodeFailed.
-    assert!(format!("{err}").contains("invalid input"));
+    // Use Debug format to see the full error chain (Display only shows the outer message).
+    let err_debug = format!("{err:?}");
+    assert!(
+        err_debug.contains("invalid input") || err_debug.contains("InvalidInput"),
+        "unexpected error: {err_debug}"
+    );
 
     // ── Object Safety ──
     // Box<dyn Node> is valid -- the trait is object-safe.

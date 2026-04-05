@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 1: Delegate + SimpleQAAgent
+# ASCENT5 — Exercise 1: LLM Fundamentals and Kaizen
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Use Delegate for autonomous data analysis Q&A and build a
 #   SimpleQAAgent with custom Signature for structured answers. Set

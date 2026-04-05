@@ -2,28 +2,35 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT3 — Exercise 3: SHAP Interpretability
+# ASCENT3 — Exercise 3: Class Imbalance and Calibration
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Full SHAP analysis on the credit scoring model — summary,
-#   dependence, interaction plots. Frame as governance question: which
-#   features drive approval/rejection? Are protected attributes influential?
+# OBJECTIVE: Compare SMOTE, cost-sensitive learning, Focal Loss, and
+#   threshold optimisation for handling class imbalance. Calibrate after.
 #
 # TASKS:
-#   1. Compute TreeSHAP values for the best gradient boosting model
-#   2. Global interpretation: summary plot and feature importance
-#   3. Dependence plots: how individual features affect predictions
-#   4. Interaction effects: which feature pairs jointly influence outcomes
-#   5. Local interpretation: explain individual predictions
-#   6. Fairness audit: check SHAP values across protected attributes
+#   1. Establish baseline (no imbalance handling)
+#   2. SMOTE oversampling — why it often fails in practice
+#   3. Cost-sensitive learning (sample weights)
+#   4. Focal Loss (derive γ parameter effect)
+#   5. Threshold optimisation from cost matrix
+#   6. Post-hoc calibration (Platt scaling, isotonic regression)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 import polars as pl
-import shap
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    average_precision_score,
+    roc_auc_score,
+    f1_score,
+    precision_recall_curve,
+    classification_report,
+    brier_score_loss,
+)
+from sklearn.calibration import CalibratedClassifierCV
 import lightgbm as lgb
-from sklearn.metrics import roc_auc_score
 
 from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
@@ -31,7 +38,7 @@ from kailash_ml.interop import to_sklearn_input
 from shared import ASCENTDataLoader
 
 
-# ── Data Loading & Model Training ─────────────────────────────────────
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
@@ -51,196 +58,274 @@ X_test, y_test, _ = to_sklearn_input(
     feature_columns=[c for c in result.test_data.columns if c != "default"],
     target_column="default",
 )
-feature_names = col_info["feature_columns"]
 
-# Train best model from Exercise 1
-model = lgb.LGBMClassifier(
-    n_estimators=500,
-    learning_rate=0.1,
-    max_depth=6,
-    scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
-    random_state=42,
-    verbose=-1,
-)
-model.fit(X_train, y_train)
-
-y_proba = model.predict_proba(X_test)[:, 1]
-print(f"Model AUC-ROC: {roc_auc_score(y_test, y_proba):.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Compute TreeSHAP values
-# ══════════════════════════════════════════════════════════════════════
-# TreeSHAP computes exact Shapley values in polynomial time (O(TLD²))
-# vs exponential time for exact Shapley.
-# Key insight: tree structure allows efficient path-based computation.
-
-# TODO: Create a shap.TreeExplainer wrapping the trained model
-explainer = ____  # Hint: shap.TreeExplainer(model)
-
-# TODO: Compute SHAP values for the entire X_test set
-shap_values = ____  # Hint: explainer.shap_values(X_test)
-
-# For binary classification, shap_values may be a list [class_0, class_1]
-if isinstance(shap_values, list):
-    shap_vals = shap_values[1]  # Use positive class (default)
-else:
-    shap_vals = shap_values
-
-print(f"\n=== SHAP Values ===")
-print(f"Shape: {shap_vals.shape} (samples × features)")
-print(f"Expected value (base rate): {explainer.expected_value}")
-
-# Verify additivity: sum of SHAP values + expected = model output
-sample_idx = 0
-shap_sum = shap_vals[sample_idx].sum() + (
-    explainer.expected_value[1]
-    if isinstance(explainer.expected_value, list)
-    else explainer.expected_value
-)
-model_output = model.predict_proba(X_test[sample_idx : sample_idx + 1])[:, 1][0]
-print(f"Sample 0: SHAP sum = {shap_sum:.4f}, model output = {model_output:.4f}")
+pos_rate = y_train.mean()
 print(
-    f"  Additivity check: {'PASS' if abs(shap_sum - model_output) < 0.01 else 'FAIL'}"
+    f"Default rate: {pos_rate:.2%} (imbalance ratio: {(1 - pos_rate) / pos_rate:.0f}:1)"
 )
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Global interpretation — feature importance ranking
+# TASK 1: Baseline — no imbalance handling
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Compute mean absolute SHAP values across all samples (axis=0)
-mean_abs_shap = ____  # Hint: np.abs(shap_vals).mean(axis=0)
-# TODO: Sort (feature_name, importance) pairs descending by importance
-importance_ranking = ____  # Hint: sorted(zip(feature_names, mean_abs_shap), key=lambda x: x[1], reverse=True)
+# TODO: Create and fit a baseline LGBMClassifier with n_estimators=300
+baseline = (
+    ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+)
+baseline.fit(X_train, y_train)
 
-print(f"\n=== Global Feature Importance (SHAP) ===")
-for name, imp in importance_ranking[:15]:
-    bar = "█" * int(imp * 200)
-    print(f"  {name:<30} {imp:.4f} {bar}")
+# TODO: Get predicted probabilities for the positive class
+y_proba_base = ____  # Hint: baseline.predict_proba(X_test)[:, 1]
 
-# Visualise with ModelVisualizer
+print(f"\n=== Baseline (no correction) ===")
+print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_base):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_proba_base):.4f}")
+print(f"Brier:   {brier_score_loss(y_test, y_proba_base):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: SMOTE — and why it often fails
+# ══════════════════════════════════════════════════════════════════════
+# SMOTE creates synthetic minority examples by interpolating between
+# nearest neighbours. Problems:
+# 1. Lipschitz violation: interpolation assumes smooth decision boundary
+# 2. Noisy minority: amplifies noise in the minority class
+# 3. High-dimensional collapse: in high dimensions, nearest neighbours
+#    are nearly equidistant, making interpolation meaningless
+
+from imblearn.over_sampling import SMOTE
+
+# TODO: Create a SMOTE instance and resample the training data
+smote = ____  # Hint: SMOTE(random_state=42)
+X_smote, y_smote = smote.fit_resample(X_train, y_train)
+
+print(f"\n=== SMOTE ===")
+print(f"Before SMOTE: {len(y_train):,} (pos={y_train.sum():.0f})")
+print(f"After SMOTE:  {len(y_smote):,} (pos={y_smote.sum():.0f})")
+
+smote_model = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+smote_model.fit(X_smote, y_smote)
+
+# TODO: Get predicted probabilities from the SMOTE-trained model
+y_proba_smote = ____  # Hint: smote_model.predict_proba(X_test)[:, 1]
+
+print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_smote):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_proba_smote):.4f}")
+print(f"Brier:   {brier_score_loss(y_test, y_proba_smote):.4f}")
+
+print("\nSMOTE Failure Taxonomy:")
+print("  1. Lipschitz: interpolated samples may cross decision boundary")
+print("  2. Noise: noisy minority examples get amplified")
+print("  3. Dimensionality: with 45 features, NN distances converge")
+print(f"  → 92% citation rate in papers, ~6% production deployment")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Cost-sensitive learning (sample weights)
+# ══════════════════════════════════════════════════════════════════════
+# Weight minority class higher in the loss function.
+# LightGBM supports scale_pos_weight and sample_weight.
+
+# Method A: scale_pos_weight
+# TODO: Compute scale_pos_weight as ratio of negative to positive rate
+scale_weight = ____  # Hint: (1 - pos_rate) / pos_rate
+
+# TODO: Create LGBMClassifier with scale_pos_weight set
+cost_model_a = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, scale_pos_weight=scale_weight, random_state=42, verbose=-1)
+cost_model_a.fit(X_train, y_train)
+y_proba_cost_a = cost_model_a.predict_proba(X_test)[:, 1]
+
+# Method B: custom sample weights (from cost matrix)
+# Cost matrix: FP costs $100 (wasted investigation), FN costs $10,000 (undetected default)
+cost_fn = 10_000
+cost_fp = 100
+
+# TODO: Create sample_weights array: cost_fn for positives, cost_fp for negatives
+sample_weights = ____  # Hint: np.where(y_train == 1, cost_fn, cost_fp)
+
+cost_model_b = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+
+# TODO: Fit cost_model_b with the sample_weight argument
+cost_model_b.fit(
+    X_train, y_train, sample_weight=____
+)  # Hint: sample_weight=sample_weights
+y_proba_cost_b = cost_model_b.predict_proba(X_test)[:, 1]
+
+print(f"\n=== Cost-Sensitive Learning ===")
+print(f"Method A (scale_pos_weight={scale_weight:.1f}):")
+print(f"  AUC-ROC: {roc_auc_score(y_test, y_proba_cost_a):.4f}")
+print(f"  AUC-PR:  {average_precision_score(y_test, y_proba_cost_a):.4f}")
+print(f"Method B (cost matrix: FN=${cost_fn:,}, FP=${cost_fp:,}):")
+print(f"  AUC-ROC: {roc_auc_score(y_test, y_proba_cost_b):.4f}")
+print(f"  AUC-PR:  {average_precision_score(y_test, y_proba_cost_b):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Focal Loss
+# ══════════════════════════════════════════════════════════════════════
+# Focal Loss: FL(p) = -α(1-p)^γ log(p)
+# γ > 0 down-weights easy examples (well-classified)
+# γ = 0 reduces to standard cross-entropy
+# γ = 2 is the original setting (Lin et al., 2017)
+
+
+def focal_loss_lgb(y_true, y_pred, gamma=2.0, alpha=0.25):
+    """Custom focal loss for LightGBM."""
+    p = 1.0 / (1.0 + np.exp(-y_pred))  # sigmoid
+    grad = alpha * (
+        -((1 - p) ** gamma)
+        * (gamma * p * np.log(np.clip(p, 1e-8, 1)) + (1 - p))
+        * y_true
+        + p**gamma
+        * (gamma * (1 - p) * np.log(np.clip(1 - p, 1e-8, 1)) + p)
+        * (1 - y_true)
+    )
+    hess = np.abs(grad) * (1 - np.abs(grad))
+    hess = np.clip(hess, 1e-8, None)
+    return grad, hess
+
+
+# TODO: Create LGBMClassifier with a custom focal loss objective (gamma=2.0)
+#       Pass objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0)
+focal_model = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1, objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0))
+focal_model.fit(X_train, y_train)
+y_raw_focal = focal_model.predict_proba(X_test)[:, 1]
+
+# Note: custom objective outputs are not calibrated probabilities
+# Need post-hoc calibration
+print(f"\n=== Focal Loss (γ=2.0) ===")
+print(f"AUC-ROC: {roc_auc_score(y_test, y_raw_focal):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_raw_focal):.4f}")
+print(
+    f"Brier:   {brier_score_loss(y_test, y_raw_focal):.4f} (uncalibrated — expected to be poor)"
+)
+
+# Compare γ values
+for gamma in [0.0, 0.5, 1.0, 2.0, 5.0]:
+    m = lgb.LGBMClassifier(
+        n_estimators=300,
+        random_state=42,
+        verbose=-1,
+        objective=lambda y_true, y_pred, g=gamma: focal_loss_lgb(
+            y_true, y_pred, gamma=g
+        ),
+    )
+    m.fit(X_train, y_train)
+    y_p = m.predict_proba(X_test)[:, 1]
+    print(f"  γ={gamma:.1f}: AUC-PR={average_precision_score(y_test, y_p):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Threshold optimisation from cost matrix
+# ══════════════════════════════════════════════════════════════════════
+# Optimal threshold: t* = cost_FP / (cost_FP + cost_FN)
+# This minimises expected total cost
+
+# Use best model so far
+best_proba = y_proba_cost_a
+
+# TODO: Derive the optimal threshold from the cost matrix
+optimal_threshold = ____  # Hint: cost_fp / (cost_fp + cost_fn)
+print(f"\n=== Threshold Optimisation ===")
+print(f"Cost matrix: FP=${cost_fp:,}, FN=${cost_fn:,}")
+print(f"Optimal threshold: {optimal_threshold:.4f}")
+print(f"Default threshold (0.5) would miss many defaults!")
+
+# Evaluate at different thresholds
+thresholds = np.arange(0.01, 0.50, 0.01)
+best_cost = float("inf")
+best_t = 0.5
+
+for t in thresholds:
+    y_pred_t = (best_proba >= t).astype(int)
+    fp = ((y_pred_t == 1) & (y_test == 0)).sum()
+    fn = ((y_pred_t == 0) & (y_test == 1)).sum()
+    total_cost = fp * cost_fp + fn * cost_fn
+    if total_cost < best_cost:
+        best_cost = total_cost
+        best_t = t
+
+print(f"Empirically optimal threshold: {best_t:.3f}")
+print(f"Minimum total cost: ${best_cost:,.0f}")
+
+# Compare with default threshold
+y_pred_default = (best_proba >= 0.5).astype(int)
+fp_d = ((y_pred_default == 1) & (y_test == 0)).sum()
+fn_d = ((y_pred_default == 0) & (y_test == 1)).sum()
+cost_default = fp_d * cost_fp + fn_d * cost_fn
+print(f"Cost at threshold=0.5: ${cost_default:,.0f}")
+print(
+    f"Savings from optimisation: ${cost_default - best_cost:,.0f} ({(cost_default - best_cost) / cost_default:.1%})"
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Post-hoc calibration
+# ══════════════════════════════════════════════════════════════════════
+
+# TODO: Create a Platt-scaled (sigmoid) calibrated version of cost_model_a using cv=5
+platt_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="sigmoid", cv=5)
+platt_model.fit(X_train, y_train)
+y_proba_platt = platt_model.predict_proba(X_test)[:, 1]
+
+# TODO: Create an isotonic regression calibrated version of cost_model_a using cv=5
+iso_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="isotonic", cv=5)
+iso_model.fit(X_train, y_train)
+y_proba_iso = iso_model.predict_proba(X_test)[:, 1]
+
+print(f"\n=== Calibration Comparison ===")
+print(f"{'Method':<20} {'Brier':>8} {'AUC-PR':>8}")
+print("─" * 40)
+print(
+    f"{'Uncalibrated':<20} {brier_score_loss(y_test, y_proba_cost_a):>8.4f} {average_precision_score(y_test, y_proba_cost_a):>8.4f}"
+)
+print(
+    f"{'Platt Scaling':<20} {brier_score_loss(y_test, y_proba_platt):>8.4f} {average_precision_score(y_test, y_proba_platt):>8.4f}"
+)
+print(
+    f"{'Isotonic':<20} {brier_score_loss(y_test, y_proba_iso):>8.4f} {average_precision_score(y_test, y_proba_iso):>8.4f}"
+)
+
+# Visualise calibration curves
 viz = ModelVisualizer()
-fig = viz.feature_importance(model, feature_names, top_n=15)
-fig.update_layout(title="SHAP Feature Importance: Credit Default Prediction")
-fig.write_html("ex3_shap_importance.html")
-print("Saved: ex3_shap_importance.html")
 
+for name, proba in [
+    ("Uncalibrated", y_proba_cost_a),
+    ("Platt", y_proba_platt),
+    ("Isotonic", y_proba_iso),
+]:
+    fig = viz.calibration_curve(y_test, proba)
+    fig.update_layout(title=f"Calibration: {name}")
+    fig.write_html(f"ex2_calibration_{name.lower()}.html")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Dependence plots — individual feature effects
-# ══════════════════════════════════════════════════════════════════════
+# Final comparison
+all_results = {
+    "Baseline": {
+        "AUC_PR": average_precision_score(y_test, y_proba_base),
+        "Brier": brier_score_loss(y_test, y_proba_base),
+    },
+    "SMOTE": {
+        "AUC_PR": average_precision_score(y_test, y_proba_smote),
+        "Brier": brier_score_loss(y_test, y_proba_smote),
+    },
+    "Cost-Sensitive": {
+        "AUC_PR": average_precision_score(y_test, y_proba_cost_a),
+        "Brier": brier_score_loss(y_test, y_proba_cost_a),
+    },
+    "Focal(γ=2)": {
+        "AUC_PR": average_precision_score(y_test, y_raw_focal),
+        "Brier": brier_score_loss(y_test, y_raw_focal),
+    },
+    "Cost+Platt": {
+        "AUC_PR": average_precision_score(y_test, y_proba_platt),
+        "Brier": brier_score_loss(y_test, y_proba_platt),
+    },
+}
 
-# Top 5 features — how does each influence default probability?
-top_features = [name for name, _ in importance_ranking[:5]]
+fig = viz.metric_comparison(all_results)
+fig.update_layout(title="Class Imbalance Methods Comparison")
+fig.write_html("ex2_imbalance_comparison.html")
+print("\nSaved: ex2_imbalance_comparison.html")
 
-print(f"\n=== Dependence Analysis ===")
-for feat in top_features:
-    feat_idx = feature_names.index(feat)
-    feat_vals = X_test[:, feat_idx]
-    feat_shap = shap_vals[:, feat_idx]
-
-    # Correlation between feature value and SHAP value
-    corr = np.corrcoef(
-        feat_vals[~np.isnan(feat_vals)], feat_shap[~np.isnan(feat_vals)]
-    )[0, 1]
-    direction = "↑ increases default risk" if corr > 0 else "↑ decreases default risk"
-    print(f"  {feat}: correlation = {corr:.3f} ({direction})")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Interaction effects
-# ══════════════════════════════════════════════════════════════════════
-
-# SHAP interaction values (O(TL²D²) — more expensive)
-# For efficiency, use a sample
-sample_size = min(1000, X_test.shape[0])
-X_sample = X_test[:sample_size]
-
-# TODO: Compute SHAP interaction values using explainer.shap_interaction_values()
-shap_interaction = ____  # Hint: explainer.shap_interaction_values(X_sample)
-if isinstance(shap_interaction, list):
-    shap_interaction = shap_interaction[1]
-
-# Find strongest interactions
-n_features = len(feature_names)
-interaction_strengths = []
-# TODO: Loop over all unique feature pairs (i, j) where j > i,
-#       compute mean absolute interaction strength, append (name_i, name_j, strength)
-for i in range(n_features):
-    for j in range(i + 1, n_features):
-        # TODO: Compute mean absolute interaction for pair (i, j)
-        strength = ____  # Hint: np.abs(shap_interaction[:, i, j]).mean()
-        interaction_strengths.append((feature_names[i], feature_names[j], strength))
-
-# TODO: Sort interaction_strengths descending by the third element (strength)
-interaction_strengths.sort(____)  # Hint: key=lambda x: x[2], reverse=True
-
-print(f"\n=== Top Feature Interactions ===")
-for f1, f2, strength in interaction_strengths[:10]:
-    print(f"  {f1} × {f2}: {strength:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Local interpretation — explain individual predictions
-# ══════════════════════════════════════════════════════════════════════
-
-# Explain the highest-risk and lowest-risk predictions
-risk_order = np.argsort(y_proba)
-
-high_risk_idx = risk_order[-1]
-low_risk_idx = risk_order[0]
-
-for label, idx in [("Highest Risk", high_risk_idx), ("Lowest Risk", low_risk_idx)]:
-    print(f"\n=== {label} (predicted P(default) = {y_proba[idx]:.4f}) ===")
-    sample_shap = shap_vals[idx]
-    # TODO: Sort (feature_name, shap_value, feature_value) triples by |shap_val| descending
-    sorted_contrib = ____  # Hint: sorted(zip(feature_names, sample_shap, X_test[idx]), key=lambda x: abs(x[1]), reverse=True)
-    for name, shap_val, feat_val in sorted_contrib[:8]:
-        direction = "↑risk" if shap_val > 0 else "↓risk"
-        print(f"  {name} = {feat_val:.2f} → SHAP = {shap_val:+.4f} ({direction})")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Fairness audit — SHAP across protected attributes
-# ══════════════════════════════════════════════════════════════════════
-# Governance question: does the model treat protected groups fairly?
-
-# Check if protected attributes are in the features
-protected_candidates = ["age", "gender", "ethnicity", "marital_status"]
-protected_in_model = [f for f in protected_candidates if f in feature_names]
-
-if protected_in_model:
-    print(f"\n=== Fairness Audit ===")
-    print(f"Protected attributes in model: {protected_in_model}")
-    print("These features may encode bias. Check SHAP contributions:")
-
-    for attr in protected_in_model:
-        attr_idx = feature_names.index(attr)
-        # TODO: Extract the SHAP column for this protected attribute
-        attr_shap = ____  # Hint: shap_vals[:, attr_idx]
-        print(f"\n  {attr}:")
-        print(f"    Mean |SHAP|: {np.abs(attr_shap).mean():.4f}")
-        # TODO: Find the rank of this attribute in importance_ranking
-        print(
-            f"    Rank: #{[n for n, _ in importance_ranking].index(attr) + 1} / {len(feature_names)}"
-        )
-
-        # Distribution of SHAP values by feature value
-        attr_vals = X_test[:, attr_idx]
-        unique_vals = np.unique(attr_vals[~np.isnan(attr_vals)])
-        if len(unique_vals) <= 10:
-            for val in sorted(unique_vals):
-                mask = attr_vals == val
-                # TODO: Compute mean SHAP value for samples where attr_vals == val
-                mean_shap = ____  # Hint: attr_shap[mask].mean()
-                print(
-                    f"    Value={val:.0f}: mean SHAP = {mean_shap:+.4f} (n={mask.sum()})"
-                )
-
-    print("\n  Recommendation: if protected attributes rank in top 10,")
-    print("  consider disparate impact testing before deployment.")
-else:
-    print("\n✓ No protected attributes found in feature set")
-
-print("\n✓ Exercise 3 complete — SHAP interpretability + fairness audit")
+print("\n✓ Exercise 3 complete — class imbalance handling + calibration")

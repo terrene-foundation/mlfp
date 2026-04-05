@@ -2,387 +2,395 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT2 — Exercise 2: FeatureStore Lifecycle & Data Lineage
+# ASCENT2 — Exercise 2: Estimation and Inference
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use FeatureStore to persist, version, and retrieve features
-#   with point-in-time correctness. Demonstrate data lineage — "if a
-#   regulator asks what data trained this model, you can answer."
+# OBJECTIVE: Derive maximum likelihood estimates for economic parameters,
+#   compare MLE vs MAP estimation, and diagnose when MLE fails.
+#   Optimize log-likelihoods with scipy and visualize with ModelVisualizer.
 #
 # TASKS:
-#   1. Connect to FeatureStore (shared DB with ExperimentTracker)
-#   2. Define FeatureSchema with typed fields and versioning
-#   3. Compute and store features
-#   4. Retrieve features at different points in time (leakage prevention)
-#   5. Version the schema and store updated features
-#   6. Demonstrate data lineage: query which features trained which model
+#   1. Load Singapore economic indicators and profile the data
+#   2. Derive and optimize the log-likelihood for GDP growth rate
+#   3. Add a prior (MAP estimation) and compare to MLE
+#   4. Diagnose MLE failure cases: small n, multimodal, misspecification
+#   5. Visualise likelihood surfaces and posterior contours
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timedelta
-
+import numpy as np
 import polars as pl
-from kailash.db.connection import ConnectionManager
-from kailash_ml import FeatureStore, DataExplorer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
-from kailash_ml.types import FeatureSchema, FeatureField
+from kailash_ml import ModelVisualizer
+from scipy import stats
+from scipy.optimize import minimize
 
 from shared import ASCENTDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
-hdb = loader.load("ascent01", "hdb_resale.parquet")
+econ = loader.load("ascent02", "economic_indicators.csv")
 
-# Focus on recent data for feature engineering
-hdb = hdb.with_columns(pl.col("month").str.to_date("%Y-%m").alias("transaction_date"))
+print("=== Singapore Economic Indicators ===")
+print(f"Shape: {econ.shape}")
+print(f"Columns: {econ.columns}")
+print(econ.head(8))
 
+gdp_growth = econ["gdp_growth_pct"].drop_nulls().to_numpy().astype(np.float64)
+inflation = econ["inflation_cpi_pct"].drop_nulls().to_numpy().astype(np.float64)
+unemployment = econ["unemployment_rate_pct"].drop_nulls().to_numpy().astype(np.float64)
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Connect to FeatureStore (shared DB)
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup():
-    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
-    await conn.initialize()
-
-    # TODO: initialise FeatureStore with the connection and a table prefix
-    fs = FeatureStore(
-        ____, table_prefix=____
-    )  # Hint: pass conn, then table_prefix="kml_feat_"
-    await fs.initialize()
-
-    tracker = ExperimentTracker(conn)
-    await tracker.initialize()
-
-    return conn, fs, tracker
+n_gdp = len(gdp_growth)
+print(f"\nGDP growth observations: {n_gdp}")
+print(f"GDP growth range: {gdp_growth.min():.2f}% to {gdp_growth.max():.2f}%")
+print(f"Sample mean: {gdp_growth.mean():.3f}%")
+print(f"Sample std:  {gdp_growth.std():.3f}%")
 
 
-conn, fs, tracker = asyncio.run(setup())
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1: Understanding the data — model selection
+# ════════════════════════════════════════════════════════════════════════
+# Normality test (Shapiro-Wilk)
+shapiro_stat, shapiro_p = stats.shapiro(gdp_growth)
+print(f"\n=== Normality Check (Shapiro-Wilk) ===")
+print(f"Test statistic: {shapiro_stat:.4f}")
+print(f"p-value: {shapiro_p:.4f}")
+if shapiro_p > 0.05:
+    print("Cannot reject normality — Normal likelihood is plausible")
+else:
+    print("Normality rejected — consider heavier-tailed distributions (t, skew-Normal)")
+
+skew = stats.skew(gdp_growth)
+kurt = stats.kurtosis(gdp_growth)
+print(f"Skewness: {skew:.3f} (|skew|>1 suggests non-Normal)")
+print(f"Excess kurtosis: {kurt:.3f} (>0 → heavier tails than Normal)")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Define FeatureSchema with typed fields
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2: MLE via log-likelihood optimization
+# ════════════════════════════════════════════════════════════════════════
+# For X ~ N(μ, σ²):
+#   ℓ(μ, σ | x) = -n/2 * log(2π) - n * log(σ) - Σ(xᵢ - μ)² / (2σ²)
+# Reparameterise: use log_sigma to enforce sigma > 0.
 
-# Version 1: Basic property features
-# TODO: build the v1 FeatureSchema with four fields and version=1
-property_schema_v1 = FeatureSchema(
-    name="hdb_property_features",
-    features=[
-        # TODO: define floor_area_sqm field
-        FeatureField(
-            name=____,  # Hint: "floor_area_sqm"
-            dtype="float64",
-            nullable=False,
-            description="Floor area in square metres",
-        ),
-        # TODO: define remaining_lease_years field
-        FeatureField(
-            name=____,  # Hint: "remaining_lease_years"
-            dtype="float64",
-            nullable=False,
-            description="Remaining lease in years",
-        ),
-        FeatureField(
-            name="storey_midpoint",
-            dtype="float64",
-            nullable=False,
-            description="Midpoint of storey range",
-        ),
-        FeatureField(
-            name="price_per_sqm",
-            dtype="float64",
-            nullable=False,
-            description="Transaction price per square metre",
-        ),
-    ],
-    entity_id_column="transaction_id",
-    timestamp_column="transaction_date",
-    version=1,
+
+def neg_log_likelihood_normal(params: np.ndarray, x: np.ndarray) -> float:
+    """Negative log-likelihood for N(mu, sigma²) — minimized by scipy."""
+    mu, log_sigma = params
+    sigma = np.exp(log_sigma)  # Reparameterize to enforce sigma > 0
+    if sigma <= 0:
+        return np.inf
+    # TODO: Return the negative sum of log-pdf values
+    return ____  # Hint: -np.sum(stats.norm.logpdf(x, loc=mu, scale=sigma))
+
+
+# Analytical MLE (reference)
+mle_mu_analytic = gdp_growth.mean()
+mle_sigma_analytic = gdp_growth.std(ddof=0)
+
+# TODO: Set initial parameter guess [mean, log(std)]
+x0 = ____  # Hint: np.array([gdp_growth.mean(), np.log(gdp_growth.std())])
+
+# TODO: Call scipy minimize with L-BFGS-B on neg_log_likelihood_normal
+result_mle = minimize(
+    ____,  # Hint: neg_log_likelihood_normal
+    x0,
+    args=(gdp_growth,),
+    method="L-BFGS-B",
+    options={"maxiter": 1000, "ftol": 1e-12},
 )
 
-print("=== FeatureSchema v1 ===")
-print(f"Name: {property_schema_v1.name}")
-print(f"Version: {property_schema_v1.version}")
-for f in property_schema_v1.features:
-    print(f"  {f.name}: {f.dtype} — {f.description}")
+mle_mu_numeric = result_mle.x[0]
+mle_sigma_numeric = np.exp(result_mle.x[1])
+
+print(f"\n=== MLE Results: GDP Growth Rate ===")
+print(f"Analytical MLE:  μ = {mle_mu_analytic:.4f}%, σ = {mle_sigma_analytic:.4f}%")
+print(f"Numerical MLE:   μ = {mle_mu_numeric:.4f}%, σ = {mle_sigma_numeric:.4f}%")
+print(f"Optimizer converged: {result_mle.success} (message: {result_mle.message})")
+print(f"Log-likelihood at MLE: {-result_mle.fun:.4f}")
+
+mle_mu_se = mle_sigma_numeric / np.sqrt(n_gdp)
+mle_sigma_se = mle_sigma_numeric / np.sqrt(2 * n_gdp)
+
+print(f"\nStandard errors (asymptotic):")
+print(f"  SE(μ̂) = {mle_mu_se:.4f}%")
+print(f"  SE(σ̂) = {mle_sigma_se:.4f}%")
+
+mle_mu_ci = (mle_mu_numeric - 1.96 * mle_mu_se, mle_mu_numeric + 1.96 * mle_mu_se)
+print(f"\n95% CI for μ: [{mle_mu_ci[0]:.3f}%, {mle_mu_ci[1]:.3f}%]")
+
+# Profile likelihood interval
+lr_threshold = stats.chi2.ppf(0.95, df=1) / 2
+profile_loglik = lambda mu: -neg_log_likelihood_normal(
+    [mu, np.log(mle_sigma_numeric)], gdp_growth
+)
+loglik_at_mle = -result_mle.fun
+
+mu_grid = np.linspace(
+    mle_mu_numeric - 4 * mle_mu_se, mle_mu_numeric + 4 * mle_mu_se, 500
+)
+lr_values = np.array([loglik_at_mle - profile_loglik(mu) for mu in mu_grid])
+lr_ci_mask = lr_values <= lr_threshold
+lr_ci = (mu_grid[lr_ci_mask][0], mu_grid[lr_ci_mask][-1])
+print(f"Profile LR 95% CI for μ: [{lr_ci[0]:.3f}%, {lr_ci[1]:.3f}%]")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Compute and store features
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3: MAP estimation — MLE with a prior
+# ════════════════════════════════════════════════════════════════════════
+# MAP = argmax p(θ | x) = argmax [ℓ(θ | x) + log p(θ)]
+# Prior: μ ~ N(μ₀=3.5%, σ₀=1.5%)
+
+mu_prior_mean = 3.5  # % — prior belief on Singapore growth
+mu_prior_std = 1.5  # % — prior uncertainty
 
 
-# Compute features from raw data
-def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
-    """Compute version 1 property features."""
-    return df.with_columns(
-        # TODO: parse storey range to midpoint — extract lower and upper bounds, average them
-        (
-            (
-                ____  # Hint: pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
-                + ____  # Hint: pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64)
-            )
-            / 2
-        ).alias("storey_midpoint"),
-        # TODO: compute price per square metre
-        (____).alias(
-            "price_per_sqm"
-        ),  # Hint: pl.col("resale_price") / pl.col("floor_area_sqm")
-        # TODO: compute remaining lease years from lease_commence_date
-        (
-            ____.cast(  # Hint: (99 - (pl.col("transaction_date").dt.year() - pl.col("lease_commence_date")))
-                pl.Float64
-            ).alias(
-                "remaining_lease_years"
-            )
-        ),
-    ).with_row_index("transaction_id")
-
-
-features_v1 = compute_v1_features(hdb)
-print(f"\nComputed v1 features: {features_v1.shape}")
-
-
-async def store_features():
-    """Register schema and store features."""
-    # TODO: register the schema with FeatureStore
-    await fs.register_features(____)  # Hint: pass property_schema_v1
-    print(f"Registered schema: {property_schema_v1.name} v{property_schema_v1.version}")
-
-    # TODO: store the computed features — FeatureStore handles point-in-time indexing
-    row_count = await fs.store(
-        ____, ____
-    )  # Hint: pass features_v1, then property_schema_v1
-    print(f"Stored {row_count:,} feature rows")
-
-    return row_count
-
-
-row_count = asyncio.run(store_features())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Retrieve features at different points in time
-# ══════════════════════════════════════════════════════════════════════
-# This is the KEY concept: point-in-time retrieval prevents leakage.
-# If training a model to predict prices at time T, you must only use
-# features computed from data BEFORE time T.
-
-
-async def demonstrate_pit_retrieval():
-    """Show point-in-time feature retrieval."""
-
-    # TODO: retrieve features as of Jan 2023 using get_training_set()
-    cutoff_date = datetime(2023, 1, 1)
-    features_jan_2023 = await fs.get_training_set(
-        schema=____,  # Hint: property_schema_v1
-        start=datetime(2000, 1, 1),
-        end=____,  # Hint: cutoff_date
+def neg_map_objective(params: np.ndarray, x: np.ndarray) -> float:
+    """Negative MAP objective = NLL + negative log-prior."""
+    mu, log_sigma = params
+    sigma = np.exp(log_sigma)
+    if sigma <= 0:
+        return np.inf
+    # Negative log-likelihood
+    nll = -np.sum(stats.norm.logpdf(x, loc=mu, scale=sigma))
+    # TODO: Compute the negative log-prior for mu (Normal prior)
+    neg_log_prior = (
+        ____  # Hint: -stats.norm.logpdf(mu, loc=mu_prior_mean, scale=mu_prior_std)
     )
-    print(f"\n=== Point-in-Time Retrieval ===")
-    print(f"Features as of 2023-01-01: {features_jan_2023.height:,} rows")
-
-    # TODO: retrieve features as of Jan 2024 to compare
-    features_jan_2024 = await fs.get_training_set(
-        schema=property_schema_v1,
-        start=datetime(2000, 1, 1),
-        end=____,  # Hint: datetime(2024, 1, 1)
-    )
-    print(f"Features as of 2024-01-01: {features_jan_2024.height:,} rows")
-
-    # The 2024 retrieval has MORE rows (additional year of transactions)
-    delta = features_jan_2024.height - features_jan_2023.height
-    print(f"Additional transactions in 2023: {delta:,}")
-
-    # LEAKAGE DEMO: if you used features_jan_2024 to train a model
-    # predicting Jan 2023 prices, you'd be using future data!
-    print("\n--- Leakage Prevention ---")
-    print("To predict prices at T=2023-01-01:")
-    print("  ✓ Use features retrieved as_of=2023-01-01")
-    print("  ✗ Using features as_of=2024-01-01 would include future transactions")
-
-    return features_jan_2023, features_jan_2024
+    return nll + neg_log_prior
 
 
-features_2023, features_2024 = asyncio.run(demonstrate_pit_retrieval())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Version the schema — add market context features
-# ══════════════════════════════════════════════════════════════════════
-
-# Version 2 adds neighbourhood market features
-# TODO: define v2 schema — extend v1 features with three new market-context fields
-property_schema_v2 = FeatureSchema(
-    name="hdb_property_features",
-    features=[
-        *property_schema_v1.features,  # inherit all v1 fields
-        # TODO: add town_median_price field (trailing 6-month median, nullable)
-        FeatureField(
-            name=____,  # Hint: "town_median_price"
-            dtype="float64",
-            nullable=____,  # Hint: True — not all towns have trailing data
-            description="Median price in the same town (trailing 6 months)",
-        ),
-        FeatureField(
-            name="town_transaction_volume",
-            dtype="int64",
-            nullable=True,
-            description="Number of transactions in town (trailing 6 months)",
-        ),
-        # TODO: add town_price_trend field (6-month % change, nullable)
-        FeatureField(
-            name=____,  # Hint: "town_price_trend"
-            dtype="float64",
-            nullable=True,
-            description="6-month price change % in town",
-        ),
-    ],
-    entity_id_column="transaction_id",
-    timestamp_column="transaction_date",
-    version=____,  # Hint: 2
+# TODO: Run scipy minimize with neg_map_objective
+result_map = minimize(
+    ____,  # Hint: neg_map_objective
+    x0,
+    args=(gdp_growth,),
+    method="L-BFGS-B",
+    options={"maxiter": 1000, "ftol": 1e-12},
 )
 
+map_mu = result_map.x[0]
+map_sigma = np.exp(result_map.x[1])
 
-def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
-    """Compute v2 features including market context."""
-    # Start with v1 features
-    result = compute_v1_features(df)
+print(f"\n=== MAP vs MLE Comparison ===")
+print(f"Prior: μ ~ N({mu_prior_mean}, {mu_prior_std}²)")
+print(f"n = {n_gdp} observations")
+print(f"")
+print(f"MLE: μ̂ = {mle_mu_numeric:.4f}%, σ̂ = {mle_sigma_numeric:.4f}%")
+print(f"MAP: μ̂ = {map_mu:.4f}%, σ̂ = {map_sigma:.4f}%")
+print(f"")
+print(f"MAP shrinkage toward prior: {map_mu - mle_mu_numeric:+.4f}%")
+print(
+    f"Prior-to-posterior pull: {abs(map_mu - mle_mu_numeric) / abs(mu_prior_mean - mle_mu_numeric):.2%}"
+)
+print(
+    f"  → With n={n_gdp}, data {'dominates' if n_gdp > 20 else 'is balanced with'} the prior"
+)
 
-    # Compute trailing 6-month town-level statistics
-    # Group by town and 6-month windows
-    town_stats = (
-        result.group_by_dynamic("transaction_date", every="1mo", group_by="town")
-        .agg(
-            pl.col("resale_price").median().alias("monthly_median"),
-            pl.col("resale_price").count().alias("monthly_volume"),
-        )
-        .sort("town", "transaction_date")
+# Small-n effect demonstration
+rng = np.random.default_rng(seed=42)
+for n_small in [5, 10, 20]:
+    small_sample = rng.choice(gdp_growth, size=n_small, replace=False)
+
+    res_mle_s = minimize(
+        neg_log_likelihood_normal,
+        [small_sample.mean(), np.log(small_sample.std() + 1e-6)],
+        args=(small_sample,),
+        method="L-BFGS-B",
     )
-
-    # 6-month rolling stats per town
-    town_stats = town_stats.with_columns(
-        pl.col("monthly_median")
-        .rolling_mean(window_size=6)
-        .over("town")
-        .alias("town_median_price"),
-        pl.col("monthly_volume")
-        .rolling_sum(window_size=6)
-        .over("town")
-        .alias("town_transaction_volume"),
-        (
-            (pl.col("monthly_median") - pl.col("monthly_median").shift(6).over("town"))
-            / pl.col("monthly_median").shift(6).over("town")
-            * 100
-        ).alias("town_price_trend"),
+    res_map_s = minimize(
+        neg_map_objective,
+        [small_sample.mean(), np.log(small_sample.std() + 1e-6)],
+        args=(small_sample,),
+        method="L-BFGS-B",
     )
-
-    # Join back to transactions
-    result = result.join(
-        town_stats.select(
-            "town",
-            "transaction_date",
-            "town_median_price",
-            "town_transaction_volume",
-            "town_price_trend",
-        ),
-        on=["town", "transaction_date"],
-        how="left",
-    )
-
-    return result
-
-
-features_v2 = compute_v2_features(hdb)
-
-
-async def store_v2():
-    # TODO: register the v2 schema and store the v2 features
-    await fs.register_features(____)  # Hint: property_schema_v2
+    mle_s = res_mle_s.x[0]
+    map_s = res_map_s.x[0]
     print(
-        f"\nRegistered schema: {property_schema_v2.name} v{property_schema_v2.version}"
+        f"n={n_small:>3}: MLE={mle_s:>6.3f}%, MAP={map_s:>6.3f}%, prior={mu_prior_mean:.1f}% | shrinkage={map_s-mle_s:+.3f}%"
     )
 
-    row_count = await fs.store(____, ____)  # Hint: features_v2, then property_schema_v2
-    print(f"Stored {row_count:,} v2 feature rows")
 
-    # List all schema versions
-    versions = await fs.list_versions(____)  # Hint: "hdb_property_features"
-    print(f"Available versions: {versions}")
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4: MLE failure cases — diagnostics and remedies
+# ════════════════════════════════════════════════════════════════════════
 
+print(f"\n=== MLE Failure Case 1: Small n ===")
+small_n = 3
+samples_3 = gdp_growth[:small_n]
+mle_mu_3 = samples_3.mean()
+mle_sigma_3 = samples_3.std(ddof=0)
+unbiased_sigma_3 = samples_3.std(ddof=1)
+print(f"n=3 sample: {samples_3}")
+print(f"MLE σ (ddof=0): {mle_sigma_3:.4f}% (biased)")
+print(f"Unbiased σ (ddof=1): {unbiased_sigma_3:.4f}%")
+print(f"Bias = {mle_sigma_3 - gdp_growth.std():.4f}%")
+print(f"Remedy: Use MAP (Bayesian shrinkage) or unbiased estimator for small n")
 
-asyncio.run(store_v2())
+print(f"\n=== MLE Failure Case 2: Multimodal Data ===")
+rng = np.random.default_rng(seed=99)
+pre_covid = rng.normal(loc=4.0, scale=1.2, size=30)
+covid_shock = rng.normal(loc=-5.0, scale=3.0, size=10)
+bimodal_data = np.concatenate([pre_covid, covid_shock])
 
+bimodal_mle_mu = bimodal_data.mean()
+bimodal_mle_sigma = bimodal_data.std(ddof=0)
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Data lineage — what data trained this model?
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def demonstrate_lineage():
-    """Show data lineage tracking: model → features → source data."""
-
-    # Log a simulated model training run that uses our features
-    experiment_id = await tracker.create_experiment(
-        name="ascent02_feature_store_lifecycle",
-        description="FeatureStore lifecycle demonstration",
-        tags=["ascent02", "feature-store", "lineage"],
+bimodality_coeff = (stats.skew(bimodal_data) ** 2 + 1) / (
+    stats.kurtosis(bimodal_data, fisher=True)
+    + 3
+    * (
+        (len(bimodal_data) - 1) ** 2
+        / ((len(bimodal_data) - 2) * (len(bimodal_data) - 3))
     )
+)
 
-    # TODO: log a model training run using the ExperimentTracker context manager
-    # Record feature_schema, feature_version, as_of_date, train_rows, model_type as params
-    # Record rmse, r2, mae as metrics
-    async with tracker.run(
-        ____, run_name=____
-    ) as run:  # Hint: experiment_id, "hdb_price_model_v1"
-        await run.log_params(
-            {
-                "feature_schema": "hdb_property_features",
-                "feature_version": "2",
-                "as_of_date": "2023-06-01",
-                "train_rows": str(features_2023.height),
-                "model_type": "LightGBM",
-            }
+print(f"Bimodal data: {len(bimodal_data)} observations (two economic regimes)")
+print(f"MLE Normal fit: μ={bimodal_mle_mu:.2f}%, σ={bimodal_mle_sigma:.2f}%")
+print(f"Bimodality coefficient: {bimodality_coeff:.3f} (>0.555 → bimodal)")
+print(f"Problem: MLE estimate {bimodal_mle_mu:.2f}% lies BETWEEN the two modes!")
+print(f"Remedy: Gaussian mixture model or regime-switching model")
+
+print(f"\n=== MLE Failure Case 3: Misspecified likelihood ===")
+rng_t = np.random.default_rng(seed=77)
+shock_data = rng_t.standard_t(df=3, size=100) * 2.0 + 2.5
+
+normal_mle_mu = shock_data.mean()
+normal_mle_sigma = shock_data.std(ddof=0)
+
+
+def neg_ll_t(params: np.ndarray, x: np.ndarray) -> float:
+    df, mu, scale = params
+    if df <= 0 or scale <= 0:
+        return np.inf
+    return -np.sum(stats.t.logpdf(x, df=df, loc=mu, scale=scale))
+
+
+result_t = minimize(
+    neg_ll_t,
+    [5.0, shock_data.mean(), shock_data.std()],
+    args=(shock_data,),
+    method="Nelder-Mead",
+)
+t_df, t_mu, t_scale = result_t.x
+
+normal_99 = stats.norm.ppf(0.99, loc=normal_mle_mu, scale=normal_mle_sigma)
+t_99 = stats.t.ppf(0.99, df=t_df, loc=t_mu, scale=t_scale)
+actual_99 = np.percentile(shock_data, 99)
+
+print(
+    f"Simulated shock data: mean={shock_data.mean():.2f}%, std={shock_data.std():.2f}%"
+)
+print(f"Normal MLE 99th pct: {normal_99:.2f}% (underestimates tail risk)")
+print(f"t-dist MLE 99th pct: {t_99:.2f}% (better tail estimate)")
+print(f"Empirical 99th pct:  {actual_99:.2f}%")
+print(f"t-distribution df = {t_df:.1f} (lower → heavier tails)")
+print(f"Remedy: Likelihood ratio test to select between Normal and t")
+
+ll_normal = np.sum(stats.norm.logpdf(shock_data, normal_mle_mu, normal_mle_sigma))
+ll_t = -result_t.fun
+aic_normal = 2 * 2 - 2 * ll_normal
+aic_t = 2 * 3 - 2 * ll_t
+print(f"AIC (Normal): {aic_normal:.2f}")
+print(f"AIC (t-dist): {aic_t:.2f}")
+print(
+    f"Better fit: {'t-distribution' if aic_t < aic_normal else 'Normal'} (lower AIC wins)"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5: Visualise with ModelVisualizer
+# ════════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+# Profile log-likelihood plot
+ll_values = np.array(
+    [
+        -neg_log_likelihood_normal([mu, np.log(mle_sigma_numeric)], gdp_growth)
+        for mu in mu_grid
+    ]
+)
+
+ll_profile = {"Profile log-likelihood": ll_values.tolist()}
+# TODO: Call viz.training_history to plot the profile log-likelihood
+fig_ll = ____  # Hint: viz.training_history(ll_profile, x_label="mu (GDP growth %)")
+fig_ll.update_layout(title="Profile Log-Likelihood: GDP Growth Rate")
+fig_ll.write_html("ex2_profile_loglikelihood.html")
+print("\nSaved: ex2_profile_loglikelihood.html")
+
+# MLE vs MAP comparison plot
+sample_sizes = [3, 5, 10, 15, 20, 30, 50, n_gdp]
+mle_estimates = []
+map_estimates = []
+
+for n_s in sample_sizes:
+    sample = gdp_growth[:n_s]
+    if len(sample) < 2:
+        mle_estimates.append(sample.mean())
+        map_estimates.append(
+            (
+                mu_prior_mean / mu_prior_std**2
+                + n_s * sample.mean() / sample.std(ddof=0) ** 2
+            )
+            / (1 / mu_prior_std**2 + n_s / sample.std(ddof=0) ** 2)
         )
-        await run.log_metrics(
-            {
-                "rmse": 45_000.0,
-                "r2": 0.87,
-                "mae": 32_000.0,
-            }
-        )
-        await run.set_tag("purpose", "lineage-demo")
-        run_id = run.id if hasattr(run, "id") else "logged"
+        continue
 
-    print(f"\n=== Data Lineage ===")
-    print(f"Model run: {run_id}")
-    print(f"  → Uses feature schema: hdb_property_features v2")
-    print(f"  → Features as_of: 2023-06-01")
-    print(f"  → Training rows: {features_2023.height:,}")
-    print(f"  → Source: HDB resale data (data.gov.sg)")
-    print()
-    print("If a regulator asks 'what data trained this model?', you can answer:")
-    print(f"  1. Model ID: {run_id}")
-    print(f"  2. Feature schema: hdb_property_features v2 (7 features)")
-    print(f"  3. Point-in-time cutoff: 2023-06-01 (no future leakage)")
-    print(f"  4. Training data: {features_2023.height:,} HDB transactions")
-    print(f"  5. Source: data.gov.sg resale flat prices")
+    r_mle = minimize(
+        neg_log_likelihood_normal,
+        [sample.mean(), np.log(sample.std() + 1e-6)],
+        args=(sample,),
+        method="L-BFGS-B",
+    )
+    r_map = minimize(
+        neg_map_objective,
+        [sample.mean(), np.log(sample.std() + 1e-6)],
+        args=(sample,),
+        method="L-BFGS-B",
+    )
+    mle_estimates.append(r_mle.x[0])
+    map_estimates.append(r_map.x[0])
 
-    return experiment_id, run_id
+comparison_metrics = {
+    "MLE": {"mu_estimate": mle_estimates[-1], "converges_to_truth": mle_mu_analytic},
+    "MAP": {"mu_estimate": map_estimates[-1], "converges_to_truth": map_mu},
+    "Prior": {"mu_estimate": mu_prior_mean, "converges_to_truth": mu_prior_mean},
+}
+# TODO: Call viz.metric_comparison with comparison_metrics
+fig_compare = ____  # Hint: viz.metric_comparison(comparison_metrics)
+fig_compare.update_layout(title="MLE vs MAP Estimation: GDP Growth Rate")
+fig_compare.write_html("ex2_mle_vs_map.html")
+print("Saved: ex2_mle_vs_map.html")
 
+# AIC comparison
+r_t_full = minimize(
+    neg_ll_t,
+    [5.0, gdp_growth.mean(), gdp_growth.std()],
+    args=(gdp_growth,),
+    method="Nelder-Mead",
+)
+t_df_full, t_mu_full, t_scale_full = r_t_full.x
+ll_t_full = -r_t_full.fun
+ll_norm_full = -result_mle.fun
 
-exp_id, run_id = asyncio.run(demonstrate_lineage())
+distribution_fits = {}
+distribution_fits["Normal"] = {
+    "AIC": 2 * 2 - 2 * ll_norm_full,
+    "log_likelihood": ll_norm_full,
+}
+distribution_fits["Student-t"] = {
+    "AIC": 2 * 3 - 2 * ll_t_full,
+    "log_likelihood": ll_t_full,
+}
 
-# Clean up
-asyncio.run(conn.close())
+fig_dist = viz.metric_comparison(distribution_fits)
+fig_dist.update_layout(title="Distribution Fit Comparison (AIC and Log-Likelihood)")
+fig_dist.write_html("ex2_distribution_comparison.html")
+print("Saved: ex2_distribution_comparison.html")
 
-print("\n✓ Exercise 2 complete — FeatureStore lifecycle with data lineage")
-print("  Key concepts: point-in-time retrieval, schema versioning, audit trail")
+print(f"\n✓ Exercise 2 complete — MLE and MAP estimation for economic parameters")
+print(
+    f"  Key concepts: log-likelihood, scipy.optimize, MAP as MLE-with-prior, failure cases"
+)

@@ -2,260 +2,190 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT1 — Exercise 1: Polars + Kailash First Contact
+# ASCENT1 — Exercise 1: Your First Data Exploration
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Master Polars fundamentals on real-world data, then use
-#   DataExplorer for automated profiling — your first Kailash engine call.
+# OBJECTIVE: Learn Python's core building blocks — variables, strings,
+#   numbers, and print() — then apply them immediately to real Singapore
+#   weather data using Polars, the data library we use throughout the course.
 #
 # TASKS:
-#   1. Load HDB resale data and auxiliary datasets (MRT stations, schools)
-#   2. Join datasets to enrich HDB transactions with proximity data
-#   3. Use window functions to compute rolling district price trends
-#   4. Group and aggregate to build a district-level summary
-#   5. Profile the enriched dataset with DataExplorer
+#   1. Store data in variables (strings, numbers, f-strings)
+#   2. Load the dataset and read its shape, columns, and first rows
+#   3. Use describe() to get summary statistics
+#   4. Find the hottest, coldest, and wettest months
+#   5. Print a formatted summary report
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-
 import polars as pl
-from kailash_ml import DataExplorer
-from kailash_ml.engines.data_explorer import AlertConfig
 
 from shared import ASCENTDataLoader
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
-
-# HDB resale transactions — 15M+ rows, 2000–present
-hdb = loader.load("ascent01", "hdb_resale.parquet")
-
-# Auxiliary datasets for spatial enrichment
-mrt_stations = loader.load("ascent_assessment", "mrt_stations.parquet")
-schools = loader.load("ascent_assessment", "schools.parquet")
+df = loader.load("ascent01", "sg_weather.csv")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Inspect and understand the data
+# TASK 1: Python basics — variables, strings, numbers, f-strings
 # ══════════════════════════════════════════════════════════════════════
 
-print("=== HDB Resale Data ===")
-print(f"Shape: {hdb.shape}")
-print(f"Columns: {hdb.columns}")
-print(hdb.head(5))
+# A variable stores a value. The name on the left, value on the right.
+# Python figures out the type automatically — no need to declare it.
 
-print("\n=== MRT Stations ===")
-print(f"Shape: {mrt_stations.shape}")
-print(mrt_stations.head(5))
+# TODO: Create a string variable for the city name
+city = ____  # Hint: str value, e.g. "Singapore"
+country = "Singapore"  # another string
+# TODO: Create an integer variable for years of data (use 30)
+years_of_data = ____  # Hint: int, whole number
+latitude = 1.35  # float: a decimal number
 
-print("\n=== Schools ===")
-print(f"Shape: {schools.shape}")
-print(schools.head(5))
+# f-strings let you embed variables directly in text.
+# Put the variable name inside curly braces {}  within an f"..." string.
+# TODO: Complete the f-string — embed city and country variables
+print(f"Dataset: Weather data for {____}, {____}")  # Hint: use city, country
+print(f"Coverage: {years_of_data} years of records")
+print(f"Latitude: {latitude} degrees north")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Enrich HDB data with spatial joins
-# ══════════════════════════════════════════════════════════════════════
-
-# Join with nearest MRT station (pre-computed in assessment dataset)
-# The MRT dataset has columns: town, nearest_mrt, distance_to_mrt_km
-# TODO: Join hdb with mrt_stations on the "town" column (left join)
-# Hint: use .join() with on= and how= parameters
-hdb_enriched = hdb.join(
-    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
-    on=____,  # Hint: which column is shared between both tables?
-    how=____,  # Hint: "left" keeps all HDB rows even without MRT match
-)
-
-# TODO: Count schools per town using group_by + agg
-# Hint: schools.group_by("town").agg(pl.col("school_name").count().alias(...))
-school_counts = ____
-
-hdb_enriched = hdb_enriched.join(
-    school_counts,
-    on="town",
-    how="left",
-)
-
-# Fill missing school counts (towns with no schools in dataset)
-hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(0))
-
-print(f"\nEnriched dataset shape: {hdb_enriched.shape}")
-print(f"New columns: {[c for c in hdb_enriched.columns if c not in hdb.columns]}")
+# You can do arithmetic directly in f-strings
+celsius_avg = 27.5
+# TODO: Compute fahrenheit from celsius using the formula: C * 9/5 + 32
+fahrenheit_avg = ____  # Hint: celsius_avg * 9 / 5 + 32
+# TODO: Complete the f-string — embed both temperature values
+print(f"Average temperature: {____}°C / {____:.1f}°F")
+# The :.1f means "show 1 decimal place" — we'll see more formatting later
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Window functions — rolling district price trends
+# TASK 2: Load data and inspect its shape and structure
 # ══════════════════════════════════════════════════════════════════════
 
-# Parse month column to date for time-series operations
-hdb_enriched = hdb_enriched.with_columns(
-    pl.col("month").str.to_date("%Y-%m").alias("transaction_date")
-)
+# .shape returns a tuple: (number_of_rows, number_of_columns)
+# A tuple is like a list but cannot be changed — (rows, cols)
+# TODO: Unpack df.shape into two variables: rows and cols
+rows, cols = ____  # Hint: df.shape returns (n_rows, n_cols)
+print(f"\n=== Dataset Overview ===")
+print(f"Rows: {rows:,}")  # :, adds comma thousands separator
+print(f"Columns: {cols}")
 
-# TODO: Compute price per square metre
-# Hint: resale_price / floor_area_sqm
-hdb_enriched = hdb_enriched.with_columns((____).alias("price_per_sqm"))
+# .columns returns a list of the column names
+print(f"\nColumn names:")
+for col_name in df.columns:
+    # This is a for loop — it runs the indented block once per item
+    print(f"  - {col_name}")
 
-# Monthly median price per town
-monthly_town_prices = (
-    hdb_enriched.group_by("town", "transaction_date")
-    .agg(
-        pl.col("price_per_sqm").median().alias("median_price_sqm"),
-        pl.col("resale_price").median().alias("median_resale_price"),
-        pl.col("resale_price").count().alias("transaction_count"),
-    )
-    .sort("town", "transaction_date")
-)
+# .dtypes returns the data type of each column
+# Polars uses its own type system: Utf8=text, Float64=decimal, Int64=integer
+print(f"\nData types:")
+for col_name, dtype in zip(df.columns, df.dtypes):
+    # zip() pairs two lists together: [(col1, dtype1), (col2, dtype2), ...]
+    print(f"  {col_name}: {dtype}")
 
-# TODO: 12-month rolling average price per town
-# Hint: use .rolling_mean(window_size=12).over("town")
-monthly_town_prices = monthly_town_prices.with_columns(
-    pl.col("median_price_sqm")
-    .rolling_mean(window_size=____)  # Hint: 12 months
-    .over(____)  # Hint: partition by town
-    .alias("rolling_12m_price_sqm")
-)
-
-# TODO: Year-over-year price change (%)
-# Hint: (current - shifted_by_12) / shifted_by_12 * 100, use .shift(12).over("town")
-monthly_town_prices = monthly_town_prices.with_columns(
-    (
-        (pl.col("median_price_sqm") - ____)  # Hint: pl.col(...).shift(12).over("town")
-        / ____
-        * 100
-    ).alias("yoy_price_change_pct")
-)
-
-print("\n=== Monthly Town Prices (sample) ===")
-print(monthly_town_prices.filter(pl.col("town") == "ANG MO KIO").tail(12))
+# .head(n) shows the first n rows — always look at raw data before analysis
+print(f"\nFirst 5 rows:")
+# TODO: Print the first 5 rows of df
+print(____)  # Hint: df.head(5)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: District-level aggregation summary
+# TASK 3: Summary statistics with describe()
 # ══════════════════════════════════════════════════════════════════════
 
-# Summary statistics by town across all time
-district_summary = (
-    hdb_enriched.group_by("town")
-    .agg(
-        # Price statistics
-        pl.col("resale_price").median().alias("median_price"),
-        pl.col("resale_price").mean().alias("mean_price"),
-        pl.col("resale_price").std().alias("std_price"),
-        pl.col("resale_price").quantile(0.25).alias("q25_price"),
-        pl.col("resale_price").quantile(0.75).alias("q75_price"),
-        # Size statistics
-        pl.col("floor_area_sqm").median().alias("median_area_sqm"),
-        # Volume
-        pl.col("resale_price").count().alias("total_transactions"),
-        # Price per sqm
-        pl.col("price_per_sqm").median().alias("median_price_per_sqm"),
-        # Proximity features
-        pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
-        pl.col("school_count").first().alias("school_count"),
-    )
-    .sort("median_price", descending=True)
-)
+# .describe() computes count, mean, std, min, max for every numeric column.
+# This single call replaces writing 5 separate functions — that's the
+# point of a data library: common operations should take one line.
+print(f"\n=== Summary Statistics ===")
+# TODO: Print the summary statistics for df
+print(____)  # Hint: df.describe()
 
-# TODO: Add IQR (q75 - q25) and coefficient of variation (std/mean * 100)
-# Hint: use .with_columns() with two new expressions
-district_summary = district_summary.with_columns(
-    (____).alias("iqr_price"),  # Hint: q75_price - q25_price
-    (____).alias("cv_price_pct"),  # Hint: std_price / mean_price * 100
-)
+# You can access a single column with df["column_name"]
+# Then call aggregation methods directly on that column
+# TODO: Compute the mean of mean_temperature_c
+mean_temp = ____  # Hint: df["mean_temperature_c"].mean()
+min_temp = df["mean_temperature_c"].min()
+max_temp = df["mean_temperature_c"].max()
+std_temp = df["mean_temperature_c"].std()
 
-print("\n=== District Summary (Top 10 by median price) ===")
-print(district_summary.head(10))
+print(f"\nTemperature details:")
+print(f"  Average:  {mean_temp:.2f}°C")
+print(f"  Minimum:  {min_temp:.2f}°C")
+print(f"  Maximum:  {max_temp:.2f}°C")
+print(f"  Std dev:  {std_temp:.2f}°C")
+# std dev measures spread — a small std dev means values cluster around the mean
+
+mean_rain = df["total_rainfall_mm"].mean()
+max_rain = df["total_rainfall_mm"].max()
+print(f"\nRainfall details:")
+print(f"  Average:  {mean_rain:.1f} mm/month")
+print(f"  Maximum:  {max_rain:.1f} mm/month")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: DataExplorer profiling — first Kailash engine call
+# TASK 4: Find extremes — hottest, coldest, and wettest months
 # ══════════════════════════════════════════════════════════════════════
 
+# .filter() keeps rows where a condition is True
+# pl.col("column_name") refers to a column inside a Polars expression
+# .max() returns the single highest value in a column
 
-async def profile_with_data_explorer():
-    """Use DataExplorer to auto-profile the district summary."""
+# The hottest month: filter where temperature equals the maximum temperature
+# TODO: Filter df to rows where mean_temperature_c equals its maximum value
+hottest_row = df.filter(pl.col("mean_temperature_c") == ____)
+# Hint: df["mean_temperature_c"].max()
 
-    # TODO: Configure AlertConfig with custom thresholds
-    # Hint: AlertConfig(high_correlation_threshold=0.85, high_null_pct_threshold=0.05, ...)
-    alert_config = AlertConfig(
-        high_correlation_threshold=____,  # Hint: 0.85
-        high_null_pct_threshold=____,  # Hint: 0.05
-        skewness_threshold=____,  # Hint: 2.0
-        high_cardinality_ratio=____,  # Hint: 0.9
-    )
+# TODO: Filter df to rows where mean_temperature_c equals its minimum value
+coldest_row = df.filter(pl.col("mean_temperature_c") == ____)
+# Hint: df["mean_temperature_c"].min()
 
-    # TODO: Create DataExplorer with the alert_config
-    # Hint: DataExplorer(alert_config=alert_config)
-    explorer = ____
+# TODO: Filter df to rows where total_rainfall_mm equals its maximum value
+wettest_row = df.filter(pl.col("total_rainfall_mm") == ____)
+# Hint: df["total_rainfall_mm"].max()
 
-    # TODO: Profile the district_summary DataFrame (async call)
-    # Hint: await explorer.profile(district_summary)
-    print("\n=== DataExplorer Profile: District Summary ===")
-    profile = ____
+# .item() extracts a single value from a one-cell DataFrame
+hottest_month = hottest_row["month"][0]  # [0] gets the first (only) element
+hottest_temp = hottest_row["mean_temperature_c"][0]
 
-    print(f"Rows: {profile.n_rows}, Columns: {profile.n_columns}")
-    print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
-    print(f"Type summary: {profile.type_summary}")
+coldest_month = coldest_row["month"][0]
+coldest_temp = coldest_row["mean_temperature_c"][0]
 
-    # Display alerts
-    print(f"\n--- Data Quality Alerts ({len(profile.alerts)}) ---")
-    for alert in profile.alerts:
-        print(
-            f"  [{alert['severity'].upper()}] {alert['type']}: "
-            f"{alert.get('column', 'N/A')} = {alert.get('value', 'N/A')}"
-        )
+wettest_month = wettest_row["month"][0]
+wettest_rain = wettest_row["total_rainfall_mm"][0]
 
-    # Column-level statistics
-    print("\n--- Column Profiles ---")
-    for col in profile.columns:
-        if col.inferred_type == "numeric":
-            print(
-                f"  {col.name}: {col.inferred_type} | "
-                f"mean={col.mean:.2f}, std={col.std:.2f}, "
-                f"nulls={col.null_pct:.1%}, skew={col.skewness:.2f}"
-            )
-        else:
-            print(
-                f"  {col.name}: {col.inferred_type} | "
-                f"unique={col.unique_count}, nulls={col.null_pct:.1%}"
-            )
-
-    # Correlation matrix
-    if profile.correlation_matrix:
-        print("\n--- Top Correlations (Pearson) ---")
-        seen = set()
-        correlations = []
-        for col_a, row in profile.correlation_matrix.items():
-            for col_b, corr in row.items():
-                if col_a != col_b and (col_b, col_a) not in seen:
-                    seen.add((col_a, col_b))
-                    correlations.append((col_a, col_b, corr))
-
-        correlations.sort(key=lambda x: abs(x[2]), reverse=True)
-        for col_a, col_b, corr in correlations[:10]:
-            print(f"  {col_a} <-> {col_b}: {corr:.3f}")
-
-    # Also profile the full enriched dataset (sample for speed)
-    print("\n\n=== DataExplorer Profile: Full HDB Data (sampled) ===")
-    hdb_sample = hdb_enriched.sample(n=min(100_000, hdb_enriched.height), seed=42)
-    profile_full = await explorer.profile(hdb_sample)
-
-    print(f"Rows: {profile_full.n_rows}, Columns: {profile_full.n_columns}")
-    print(f"Alerts: {len(profile_full.alerts)}")
-    for alert in profile_full.alerts:
-        print(
-            f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}"
-        )
-
-    return profile, profile_full
+print(f"\n=== Extreme Months ===")
+print(f"Hottest:  {hottest_month} at {hottest_temp:.1f}°C")
+print(f"Coldest:  {coldest_month} at {coldest_temp:.1f}°C")
+print(f"Wettest:  {wettest_month} with {wettest_rain:.1f} mm")
 
 
-# Run the async profiling
-profile_district, profile_full = asyncio.run(profile_with_data_explorer())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Formatted summary report
+# ══════════════════════════════════════════════════════════════════════
 
-print("\n✓ Exercise 1 complete — Polars operations + DataExplorer profiling")
+# Let's put it all together in a readable report
+# "=" * 50 creates a string of 50 "=" characters — a simple separator
+# TODO: Create a separator string of 50 "=" characters
+separator = ____  # Hint: "=" * 50
+
+print(f"\n{separator}")
+print(f"  SINGAPORE WEATHER SUMMARY")
+print(f"{separator}")
+print(f"  Total records:   {rows:>6,}")
+print(f"  Date columns:    {cols:>6}")
+print(f"")
+print(f"  Temperature (°C)")
+print(f"    Mean: {mean_temp:>8.2f}")
+# TODO: Complete the Min line — embed min_temp and coldest_month
+print(f"    Min:  {____:>8.2f}  ({____})")  # Hint: min_temp, coldest_month
+print(f"    Max:  {max_temp:>8.2f}  ({hottest_month})")
+print(f"")
+print(f"  Rainfall (mm/month)")
+print(f"    Mean: {mean_rain:>8.1f}")
+print(f"    Max:  {max_rain:>8.1f}  ({wettest_month})")
+print(f"{separator}")
+
+# The :>8 in format strings means "right-align in a field 8 chars wide"
+# This keeps your numbers lined up in neat columns
+
+print("\n✓ Exercise 1 complete — Python basics + first data exploration")

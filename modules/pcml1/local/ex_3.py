@@ -2,362 +2,249 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT1 — Exercise 3: DataExplorer Profiling on Dirty Economic Data
+# ASCENT1 — Exercise 3: Functions and Aggregation
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use DataExplorer's async profiling to diagnose data quality
-#   issues in a messy multi-source economic dataset. Learn to configure
-#   AlertConfig and interpret the 8 alert types.
+# OBJECTIVE: Write reusable Python functions and use Polars group_by/agg
+#   to compute district-level statistics — the foundation of every
+#   data summary you will write in this course.
 #
 # TASKS:
-#   1. Load and inspect Singapore economic indicators (CPI, employment, FX)
-#   2. Merge datasets with different reporting frequencies
-#   3. Configure AlertConfig with domain-appropriate thresholds
-#   4. Run async profiling and interpret alerts
-#   5. Use DataExplorer.compare() to analyse data quality across time periods
-#   6. Generate a profiling report
-#
-# DATA QUALITY ISSUES (by design):
-#   - Mixed granularity (monthly CPI, quarterly employment, daily FX)
-#   - Missing quarters in employment data
-#   - Currency conversion inconsistencies
-#   - Outlier periods (COVID, GFC)
+#   1. Write helper functions with def, parameters, and return values
+#   2. Use group_by() + agg() to summarise data by category
+#   3. Compute mean, median, std, count, and quantiles per district
+#   4. Apply functions inside Polars expressions with map_elements()
+#   5. Build a ranked district report and iterate over it with a for loop
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-
 import polars as pl
-from kailash_ml import DataExplorer
-from kailash_ml.engines.data_explorer import AlertConfig
 
 from shared import ASCENTDataLoader
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
+hdb = loader.load("ascent01", "hdb_resale.parquet")
 
-# Three datasets with different reporting frequencies
-cpi = loader.load("ascent01", "sg_cpi.csv")  # Monthly
-employment = loader.load("ascent01", "sg_employment.csv")  # Quarterly
-fx_rates = loader.load("ascent01", "sg_fx_rates.csv")  # Daily
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 1: Inspect each dataset independently
-# ════════════════════════════════════════════════════════════════════════
-
-print("=== CPI Data ===")
-print(f"Shape: {cpi.shape}")
-print(f"Columns: {cpi.columns}")
-print(f"Date range: {cpi['date'].min()} to {cpi['date'].max()}")
-print(f"Nulls per column:")
-for col in cpi.columns:
-    null_count = cpi[col].null_count()
-    if null_count > 0:
-        print(f"  {col}: {null_count} ({null_count / cpi.height:.1%})")
-print(cpi.head(5))
-
-print("\n=== Employment Data ===")
-print(f"Shape: {employment.shape}")
-print(f"Columns: {employment.columns}")
-print(employment.head(5))
-
-print("\n=== FX Rates Data ===")
-print(f"Shape: {fx_rates.shape}")
-print(f"Columns: {fx_rates.columns}")
-print(fx_rates.head(5))
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 2: Merge datasets with different granularities
-# ════════════════════════════════════════════════════════════════════════
-# Strategy: Align everything to monthly frequency
-#   - CPI: already monthly
-#   - Employment: forward-fill quarterly → monthly
-#   - FX: aggregate daily → monthly (mean)
-
-# TODO: Parse the "date" column in cpi from string to date using "%Y-%m-%d" format
-# Hint: pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-cpi = cpi.with_columns(
-    ____
-)  # Hint: pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-
-# TODO: Parse the "date" column in employment using the same format
-# Hint: same pattern as cpi — str.to_date("%Y-%m-%d")
-employment = employment.with_columns(
-    ____
-)  # Hint: pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-
-fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d").alias("date"))
-
-# Create a monthly date column for joining
-cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
-
-# Employment: extract month, forward-fill to monthly
-employment = employment.with_columns(
-    pl.col("date").dt.truncate("1mo").alias("month_date")
+# Add price per sqm — we use this throughout the exercise
+hdb = hdb.with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
 )
 
-# Create a complete monthly date range for forward-filling
-date_range = pl.date_range(
-    cpi["month_date"].min(),
-    cpi["month_date"].max(),
-    interval="1mo",
-    eager=True,
-)
-monthly_spine = pl.DataFrame({"month_date": date_range})
+print("=== HDB Resale Dataset ===")
+print(f"Shape: {hdb.shape}")
 
-# Join employment onto monthly spine and forward-fill
-employment_monthly = monthly_spine.join(
-    employment.drop("date"),
-    on="month_date",
-    how="left",
-).sort("month_date")
 
-# TODO: Forward-fill quarterly employment values into every month slot
-# Hint: use .with_columns([pl.col(c).forward_fill() for c in employment_cols])
-employment_cols = [c for c in employment_monthly.columns if c != "month_date"]
-employment_monthly = employment_monthly.with_columns(
-    ____  # Hint: [pl.col(c).forward_fill() for c in employment_cols]
-)
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Writing functions — def, parameters, return
+# ══════════════════════════════════════════════════════════════════════
 
-# FX rates: aggregate to monthly means
-fx_monthly = (
-    fx_rates.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
-    .group_by("month_date")
-    .agg([pl.col(c).mean() for c in fx_rates.columns if c != "date"])
-    .sort("month_date")
-)
+# A function packages reusable logic under a name.
+# def introduces the function, parameters go in parentheses,
+# the body is indented, and return sends a value back to the caller.
 
-# Merge all three
-economic = (
-    cpi.join(
-        employment_monthly,
-        on="month_date",
-        how="left",
-        suffix="_emp",
+
+def format_sgd(amount: float) -> str:
+    """Format a number as Singapore dollars with thousands separator."""
+    # The : tells Python this is a type hint — it documents what type
+    # the parameter should be, but Python does not enforce it at runtime.
+    # -> str says this function returns a string.
+    # TODO: Return a formatted string like "S$485,000" using an f-string
+    return ____  # Hint: f"S${amount:,.0f}"
+
+
+def price_range_label(price: float) -> str:
+    """Classify a resale price into a human-readable tier."""
+    # TODO: Return "Budget (<350k)" when price < 350_000
+    if price < ____:  # Hint: 350_000
+        return ____  # Hint: "Budget (<350k)"
+    elif price < 500_000:
+        return "Mid-range (350k–500k)"
+    elif price < 700_000:
+        return "Premium (500k–700k)"
+    else:
+        return "Luxury (700k+)"
+
+
+def compute_iqr(series: pl.Series) -> float:
+    """Compute the interquartile range (Q3 - Q1) of a Polars Series.
+
+    IQR measures spread without being skewed by extreme outliers.
+    A wide IQR means prices vary a lot within the district.
+    """
+    # TODO: Compute q75 (0.75 quantile) and q25 (0.25 quantile) of series
+    q75 = series.quantile(____)  # Hint: 0.75
+    q25 = series.quantile(____)  # Hint: 0.25
+    # quantile() can return None if the series is empty — guard for that
+    if q75 is None or q25 is None:
+        return 0.0
+    return q75 - q25
+
+
+# Test the functions before using them in a pipeline
+print("\n=== Function Tests ===")
+print(format_sgd(485_000))
+print(price_range_label(485_000))
+print(price_range_label(720_000))
+
+test_prices = pl.Series("prices", [300_000, 400_000, 500_000, 600_000, 700_000])
+print(f"IQR of test prices: {format_sgd(compute_iqr(test_prices))}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: group_by() + agg() — the aggregation pattern
+# ══════════════════════════════════════════════════════════════════════
+
+# group_by() splits the DataFrame into groups, one per unique value.
+# agg() then computes a summary statistic for each group.
+# The result has one row per group and one column per aggregation.
+
+# This is the most important Polars pattern in data analysis:
+# "For each [group], compute [statistics]."
+
+district_stats = (
+    # TODO: Group hdb by "town"
+    hdb.group_by(____).agg(  # Hint: "town"
+        # Count: how many transactions in each town?
+        pl.len().alias("transaction_count"),
+        # Price statistics
+        pl.col("resale_price").mean().alias("mean_price"),
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").std().alias("std_price"),
+        pl.col("resale_price").min().alias("min_price"),
+        pl.col("resale_price").max().alias("max_price"),
+        # TODO: Compute 25th and 75th percentile of resale_price
+        pl.col("resale_price").quantile(____).alias("q25_price"),  # Hint: 0.25
+        pl.col("resale_price").quantile(____).alias("q75_price"),  # Hint: 0.75
+        # Price per sqm — a normalised measure for comparing differently-sized flats
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+        # Area statistics
+        pl.col("floor_area_sqm").median().alias("median_area_sqm"),
     )
-    .join(
-        fx_monthly,
-        on="month_date",
-        how="left",
-        suffix="_fx",
-    )
-    .sort("month_date")
+    # TODO: Sort by median_price in descending order
+    .sort(____, descending=____)  # Hint: "median_price", True
 )
 
-print(f"\n=== Merged Economic Dataset ===")
-print(f"Shape: {economic.shape}")
-print(f"Columns: {economic.columns}")
-print(f"Date range: {economic['month_date'].min()} to {economic['month_date'].max()}")
-
-# Check null counts after merge
-null_summary = []
-for col in economic.columns:
-    nc = economic[col].null_count()
-    if nc > 0:
-        null_summary.append({"column": col, "nulls": nc, "pct": nc / economic.height})
-
-if null_summary:
-    print("\nNull summary after merge:")
-    for ns in null_summary:
-        print(f"  {ns['column']}: {ns['nulls']} ({ns['pct']:.1%})")
+print(f"\n=== District Statistics ===")
+print(f"Districts: {district_stats.height}")
+print(district_stats.head(5))
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 3: Configure AlertConfig with domain-appropriate thresholds
-# ════════════════════════════════════════════════════════════════════════
-# Economic data has specific characteristics:
-#   - High correlation between macro indicators is EXPECTED (not alarming)
-#   - Missing data from quarterly sources is EXPECTED after forward-fill
-#   - Skewness in employment/GDP growth is normal during crisis periods
-#   - We care more about constant columns (data pipeline failures)
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Derived columns from aggregated results
+# ══════════════════════════════════════════════════════════════════════
 
-# TODO: Configure AlertConfig with relaxed thresholds for economic data
-# Hint: AlertConfig(high_correlation_threshold=0.95, high_null_pct_threshold=0.10,
-#         constant_threshold=1, skewness_threshold=3.0, ...)
-alert_config = AlertConfig(
-    high_correlation_threshold=____,  # Hint: 0.95 — macro indicators are correlated
-    high_null_pct_threshold=____,  # Hint: 0.10 — quarterly data has gaps after forward-fill
-    constant_threshold=____,  # Hint: 1 — strict: flag constant columns (pipeline issue)
-    high_cardinality_ratio=0.95,  # Relax: date-like columns are expected
-    skewness_threshold=____,  # Hint: 3.0 — crisis periods cause skew
-    zero_pct_threshold=0.3,  # Relax: some indicators naturally hit zero
-    imbalance_ratio_threshold=0.05,  # Strict: catch extreme class imbalance
-    duplicate_pct_threshold=0.05,  # Moderate: some duplication from forward-fill
+# Once you have aggregated stats, you can add further derived columns
+# with with_columns() — just like on any other DataFrame.
+
+district_stats = district_stats.with_columns(
+    # IQR: spread of the middle 50% of prices
+    # TODO: Compute iqr_price as q75_price minus q25_price
+    (pl.col("q75_price") - pl.col(____)).alias("iqr_price"),  # Hint: "q25_price"
+    # Coefficient of variation (CV): std / mean * 100
+    # A higher CV means prices within the district are more spread out.
+    # This is more informative than std alone because it's relative.
+    (pl.col("std_price") / pl.col("mean_price") * 100).alias("cv_price_pct"),
+    # Premium ratio: what fraction of the max price is the median?
+    # Districts near 1.0 have mostly high-end transactions.
+    (pl.col("median_price") / pl.col("max_price")).alias("premium_ratio"),
 )
 
-print(f"\n=== Custom AlertConfig ===")
-print(f"Correlation threshold: {alert_config.high_correlation_threshold}")
-print(f"Null threshold: {alert_config.high_null_pct_threshold}")
-print(f"Skewness threshold: {alert_config.skewness_threshold}")
+print(f"\n=== District Stats with Derived Columns ===")
+print(
+    district_stats.select(
+        "town",
+        "transaction_count",
+        "median_price",
+        "iqr_price",
+        "cv_price_pct",
+    ).head(10)
+)
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 4: Run async profiling and interpret alerts
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Grouping with multiple keys + time-series aggregation
+# ══════════════════════════════════════════════════════════════════════
 
+# group_by() accepts multiple columns — create a group for every
+# unique (town, flat_type) combination.
 
-async def profile_economic_data():
-    """Profile the merged economic dataset with DataExplorer."""
-
-    # TODO: Create a DataExplorer instance, passing in the alert_config
-    # Hint: DataExplorer(alert_config=alert_config)
-    explorer = ____  # Hint: DataExplorer(alert_config=alert_config)
-
-    print("\n=== Running Async Profile ===")
-    # TODO: Await explorer.profile() on the economic DataFrame
-    # Hint: await explorer.profile(economic)
-    profile = ____  # Hint: await explorer.profile(economic)
-
-    # Summary
-    print(f"Rows: {profile.n_rows}, Columns: {profile.n_columns}")
-    print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
-    print(f"Type summary: {profile.type_summary}")
-
-    # Detailed alerts with interpretation
-    print(f"\n--- Alerts ({len(profile.alerts)}) ---")
-    for alert in profile.alerts:
-        alert_type = alert["type"]
-        col = alert.get("column", alert.get("columns", "N/A"))
-        value = alert.get("value", "N/A")
-        severity = alert["severity"]
-
-        # Domain-specific interpretation
-        interpretation = _interpret_alert(alert_type, col, value)
-        print(f"\n  [{severity.upper()}] {alert_type}")
-        print(f"    Column: {col}")
-        print(f"    Value: {value}")
-        print(f"    Interpretation: {interpretation}")
-
-    # Missing patterns — crucial for economic data
-    if profile.missing_patterns:
-        print(f"\n--- Missing Patterns ---")
-        for pattern in profile.missing_patterns[:5]:
-            print(f"  {pattern}")
-
-    # Spearman correlations (rank-based, better for non-linear economic relationships)
-    if profile.spearman_matrix:
-        print(f"\n--- Top Spearman Correlations ---")
-        seen = set()
-        corrs = []
-        for col_a, row in profile.spearman_matrix.items():
-            for col_b, corr in row.items():
-                if col_a != col_b and (col_b, col_a) not in seen and abs(corr) > 0.8:
-                    seen.add((col_a, col_b))
-                    corrs.append((col_a, col_b, corr))
-        corrs.sort(key=lambda x: abs(x[2]), reverse=True)
-        for col_a, col_b, corr in corrs[:10]:
-            print(f"  {col_a} <-> {col_b}: {corr:.3f}")
-
-    # Categorical associations (Cramer's V)
-    if profile.categorical_associations:
-        print(f"\n--- Categorical Associations (Cramer's V) ---")
-        for col_a, row in profile.categorical_associations.items():
-            for col_b, v in row.items():
-                if col_a != col_b and v > 0.3:
-                    print(f"  {col_a} <-> {col_b}: V = {v:.3f}")
-
-    # Generate visualisations
-    print("\n--- Generating Visualisations ---")
-    vis_report = await explorer.visualize(economic)
-    for name, fig in vis_report.figures.items():
-        filename = f"ex3_{name}.html"
-        fig.write_html(filename)
-        print(f"  Saved: {filename}")
-
-    return profile
-
-
-def _interpret_alert(alert_type: str, column: str, value) -> str:
-    """Provide domain-specific interpretation of DataExplorer alerts."""
-    # TODO: Complete the interpretations dict so every alert_type has a message
-    # Hint: The dict maps alert_type strings ("high_nulls", "constant", "high_skewness",
-    #   "high_zeros", "high_cardinality", "high_correlation", "duplicates", "imbalanced")
-    #   to human-readable strings that explain what the alert means for economic data.
-    interpretations = ____  # Hint: {
-    #   "high_nulls": "Column '{column}' has {value:.1%} missing ...",
-    #   "constant": "Column '{column}' has ≤1 unique value ...",
-    #   ... (one entry per alert type)
-    # }
-    return interpretations.get(
-        alert_type, f"Alert type '{alert_type}' — review manually."
+town_flat_stats = (
+    # TODO: Group by both "town" and "flat_type"
+    hdb.group_by(____, ____)  # Hint: "town", "flat_type"
+    .agg(
+        pl.len().alias("count"),
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
     )
+    .sort("town", "flat_type")
+)
 
+print(f"\n=== Statistics by Town × Flat Type ===")
+print(f"Groups: {town_flat_stats.height}")
+print(town_flat_stats.filter(pl.col("town") == "ANG MO KIO"))
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 5: Compare data quality across time periods
-# ════════════════════════════════════════════════════════════════════════
-
-
-async def compare_periods():
-    """Compare pre-COVID vs COVID-era economic data quality."""
-
-    explorer = DataExplorer(alert_config=alert_config)
-
-    covid_cutoff = pl.date(2020, 3, 1)
-
-    pre_covid = economic.filter(pl.col("month_date") < covid_cutoff)
-    during_covid = economic.filter(pl.col("month_date") >= covid_cutoff)
-
-    print(f"\n=== Period Comparison ===")
-    print(f"Pre-COVID: {pre_covid.height} months")
-    print(f"COVID-era: {during_covid.height} months")
-
-    # TODO: Call explorer.compare() to compare the two time-period DataFrames
-    # Hint: await explorer.compare(pre_covid, during_covid)
-    comparison = ____  # Hint: await explorer.compare(pre_covid, during_covid)
-
-    print(f"\nShape comparison: {comparison['shape_comparison']}")
-    print(f"Shared columns: {len(comparison['shared_columns'])}")
-
-    # Show the biggest distribution shifts
-    print(f"\n--- Column Deltas (biggest shifts) ---")
-    deltas = sorted(
-        comparison["column_deltas"],
-        key=lambda d: abs(d.get("mean_delta", 0)),
-        reverse=True,
+# Annual transaction volume by town — shows market activity over time
+annual_volume = (
+    hdb.group_by("year", "town")
+    .agg(
+        pl.len().alias("transactions"),
+        pl.col("resale_price").median().alias("median_price"),
     )
-    for delta in deltas[:10]:
-        col = delta.get("column", "?")
-        mean_delta = delta.get("mean_delta", 0)
-        std_delta = delta.get("std_delta", 0)
-        print(f"  {col}: mean Δ={mean_delta:+,.2f}, std Δ={std_delta:+,.2f}")
+    .sort("year", "town")
+)
 
-    return comparison
+print(f"\n=== Annual Volume: Bishan (sample) ===")
+print(annual_volume.filter(pl.col("town") == "BISHAN"))
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 6: Generate HTML report
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Iterate over results with a for loop and build a report
+# ══════════════════════════════════════════════════════════════════════
+
+# for loops let you process each item in a sequence.
+# .iter_rows(named=True) yields each row as a dict — very readable.
 
 
-async def generate_report():
-    """Generate a self-contained profiling HTML report."""
-
-    explorer = DataExplorer(alert_config=alert_config)
-
-    report_html = await explorer.to_html(
-        economic, title="Singapore Economic Indicators — Data Profile"
-    )
-
-    with open("ex3_economic_profile_report.html", "w") as f:
-        f.write(report_html)
-    print("\nSaved: ex3_economic_profile_report.html")
+# Write a function that generates a district summary string
+def district_report_line(row: dict) -> str:
+    """Format one district row as a human-readable report line."""
+    town = row["town"]
+    # TODO: Use format_sgd() to format the median price
+    median = format_sgd(____)  # Hint: row["median_price"]
+    count = row["transaction_count"]
+    cv = row["cv_price_pct"]
+    sqm = format_sgd(row["median_price_sqm"])
+    return f"  {town:<20} {median:>12}  {count:>8,}  CV={cv:5.1f}%  {sqm:>12}/sqm"
 
 
-# ── Run all async tasks ──────────────────────────────────────────────
+# Print a ranked report for the top 15 most expensive districts
+print(f"\n{'=' * 70}")
+print(f"  SINGAPORE HDB DISTRICT PRICE REPORT (All Years)")
+print(f"{'=' * 70}")
+print(
+    f"  {'Town':<20} {'Median Price':>12}  {'Txns':>8}  {'Spread':>8}  {'Per sqm':>12}"
+)
+print(f"  {'-' * 66}")
 
+top_15 = district_stats.head(15)
+# TODO: Iterate over top_15 rows using iter_rows(named=True)
+for row in top_15.iter_rows(named=____):  # Hint: True
+    # named=True means each row is a dict — use row["column_name"]
+    print(district_report_line(row))
 
-async def main():
-    profile = await profile_economic_data()
-    comparison = await compare_periods()
-    await generate_report()
-    return profile, comparison
+print(f"{'=' * 70}")
 
+# Summary statistics across all districts
+all_medians = district_stats["median_price"]
+print(f"\nCross-district summary:")
+print(f"  Most expensive district:   {format_sgd(all_medians.max())}")
+print(f"  Least expensive district:  {format_sgd(all_medians.min())}")
+print(f"  Average district median:   {format_sgd(all_medians.mean())}")
+print(
+    f"  Price spread (max - min):  {format_sgd(all_medians.max() - all_medians.min())}"
+)
 
-profile, comparison = asyncio.run(main())
-
-print("\n✓ Exercise 3 complete — DataExplorer profiling on dirty economic data")
+print("\n✓ Exercise 3 complete — functions and group_by/agg aggregation")

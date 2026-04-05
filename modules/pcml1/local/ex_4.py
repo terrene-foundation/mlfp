@@ -2,399 +2,207 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT1 — Exercise 4: Hypothesis Testing with Multiple Testing Correction
+# ASCENT1 — Exercise 4: Joins and Multi-Table Data
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Analyse an A/B test with proper statistical rigour — power
-#   analysis, sample ratio mismatch detection, multiple metric testing
-#   with Bonferroni and Benjamini-Hochberg corrections.
+# OBJECTIVE: Combine data from multiple tables using Polars joins, then
+#   aggregate the enriched dataset to produce a district-level summary
+#   that incorporates spatial context (MRT proximity, school density).
 #
 # TASKS:
-#   1. Load e-commerce A/B test data and perform sanity checks (SRM)
-#   2. Compute power analysis — what MDE can we detect?
-#   3. Run hypothesis tests for conversion rate (proportions z-test)
-#   4. Test multiple metrics simultaneously (conversion, revenue, AOV)
-#   5. Apply multiple testing corrections (Bonferroni, BH-FDR)
-#   6. Implement a permutation test as distribution-free alternative
-#
-# THEORY:
-#   - Neyman-Pearson: H₀ vs H₁, Type I (α) vs Type II (β) errors
-#   - Power = 1 - β = P(reject H₀ | H₁ true)
-#   - SRM: χ² test on observed vs expected sample sizes
-#   - Bonferroni: α_adj = α/m (controls FWER)
-#   - BH-FDR: rank p-values, reject if p(k) ≤ (k/m)α (controls FDR)
+#   1. Inspect HDB, MRT, and school datasets independently
+#   2. Enrich HDB transactions with spatial joins (left join on town)
+#   3. Build a comprehensive district-level summary with group_by/agg
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import numpy as np
 import polars as pl
-from scipy import stats
-from kailash_ml import ModelVisualizer
 
 from shared import ASCENTDataLoader
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
-ab_data = loader.load("ascent01", "ecommerce_ab_test.csv")
 
-print("=== A/B Test Data ===")
-print(f"Shape: {ab_data.shape}")
-print(f"Columns: {ab_data.columns}")
-print(ab_data.head(5))
+# Primary dataset: HDB resale transactions
+hdb = loader.load("ascent01", "hdb_resale.parquet")
 
-# Separate groups
-control = ab_data.filter(pl.col("group") == "control")
-treatment = ab_data.filter(pl.col("group") == "treatment")
-
-n_control = control.height
-n_treatment = treatment.height
-n_total = ab_data.height
-
-print(f"\nControl:   n = {n_control:,}")
-print(f"Treatment: n = {n_treatment:,}")
-print(f"Total:     n = {n_total:,}")
+# Auxiliary datasets for spatial enrichment
+# These contain pre-computed proximity data keyed on town name
+mrt_stations = loader.load("ascent_assessment", "mrt_stations.parquet")
+schools = loader.load("ascent_assessment", "schools.parquet")
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 1: Sanity checks — Sample Ratio Mismatch (SRM)
-# ════════════════════════════════════════════════════════════════════════
-# SRM test: if the experiment was 50/50, do observed counts match?
-# Uses χ² goodness-of-fit test.
-# SRM indicates randomisation bugs, bot traffic, or data pipeline issues.
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Inspect each dataset independently
+# ══════════════════════════════════════════════════════════════════════
 
-expected_ratio = 0.5
-expected_control = n_total * expected_ratio
-expected_treatment = n_total * (1 - expected_ratio)
+# Before joining, always understand each table on its own:
+# - What is the grain? (one row = one what?)
+# - What are the key columns used for joining?
+# - Are there nulls in the join keys?
 
-observed = np.array([n_control, n_treatment])
-expected = np.array([expected_control, expected_treatment])
+print("=== HDB Resale Data ===")
+print(f"Shape: {hdb.shape}")
+print(f"Columns: {hdb.columns}")
+print(hdb.head(5))
 
-# TODO: Run a chi-squared goodness-of-fit test to detect sample ratio mismatch
-# Hint: stats.chisquare(observed, f_exp=expected) returns (chi2_stat, p_value)
-chi2_stat, srm_p_value = ____  # Hint: stats.chisquare(observed, f_exp=expected)
+print("\n=== MRT Stations ===")
+print(f"Shape: {mrt_stations.shape}")
+print(f"Columns: {mrt_stations.columns}")
+print(mrt_stations.head(5))
 
-print(f"\n=== Sample Ratio Mismatch Check ===")
-print(f"Expected ratio: {expected_ratio:.0%} / {1 - expected_ratio:.0%}")
-print(f"Observed ratio: {n_control / n_total:.4f} / {n_treatment / n_total:.4f}")
-print(f"χ² statistic: {chi2_stat:.4f}")
-print(f"p-value: {srm_p_value:.6f}")
+print("\n=== Schools ===")
+print(f"Shape: {schools.shape}")
+print(f"Columns: {schools.columns}")
+print(schools.head(5))
 
-if srm_p_value < 0.01:
-    print("WARNING: SRM DETECTED — investigate randomisation before trusting results!")
-else:
-    print("No SRM detected — sample split is consistent with 50/50")
+# Check join key overlap — how many HDB towns have MRT data?
+hdb_towns = set(hdb["town"].unique().to_list())
+mrt_towns = set(mrt_stations["town"].unique().to_list())
+matched = hdb_towns & mrt_towns
+unmatched = hdb_towns - mrt_towns
+
+print(f"\nJoin key check (town):")
+print(f"  HDB towns:              {len(hdb_towns)}")
+print(f"  MRT towns:              {len(mrt_towns)}")
+print(f"  Matched (will join):    {len(matched)}")
+print(f"  Unmatched (will be NULL after left join): {len(unmatched)}")
+if unmatched:
+    print(f"  Unmatched towns: {sorted(unmatched)}")
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 2: Power analysis — minimum detectable effect (MDE)
-# ════════════════════════════════════════════════════════════════════════
-# Given our sample size, what's the smallest effect we can detect
-# at α=0.05 with 80% power?
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Enrich HDB data with spatial joins
+# ══════════════════════════════════════════════════════════════════════
+
+# A left join keeps ALL rows from the left table (hdb) and adds
+# matching columns from the right table (mrt_stations).
+# Rows in hdb with no match in mrt_stations get NULL for the new columns.
 #
-# For proportions: MDE ≈ (z_{α/2} + z_β) * √(p(1-p)(1/n₁ + 1/n₂))
-# where p = baseline conversion rate
+# how="left"  → keep all HDB rows regardless of match
+# on="town"   → match rows where hdb.town == mrt_stations.town
+#
+# .select() on the right table prevents duplicate columns and limits
+# which columns are brought across.
 
-# Baseline conversion rate (control group)
-p_control = control["converted"].mean()
-print(f"\n=== Power Analysis ===")
-print(f"Baseline conversion rate: {p_control:.4f} ({p_control:.2%})")
-
-alpha = 0.05
-power_target = 0.80
-z_alpha_half = stats.norm.ppf(1 - alpha / 2)
-z_beta = stats.norm.ppf(power_target)
-
-# TODO: Compute the pooled standard error for the two-proportion MDE formula
-# Hint: np.sqrt(p_control * (1 - p_control) * (1/n_control + 1/n_treatment))
-pooled_se = (
-    ____  # Hint: np.sqrt(p_control * (1 - p_control) * (1/n_control + 1/n_treatment))
+# TODO: Join hdb with mrt_stations (select "town", "nearest_mrt", "distance_to_mrt_km")
+hdb_enriched = hdb.join(
+    mrt_stations.select(____),  # Hint: "town", "nearest_mrt", "distance_to_mrt_km"
+    on=____,  # Hint: "town"
+    how=____,  # Hint: "left"
 )
 
-# TODO: Compute the minimum detectable effect using the formula above
-# Hint: MDE = (z_alpha_half + z_beta) * pooled_se
-mde = ____  # Hint: (z_alpha_half + z_beta) * pooled_se
-
-print(f"α = {alpha}, Power = {power_target:.0%}")
-print(f"z_{{α/2}} = {z_alpha_half:.3f}, z_β = {z_beta:.3f}")
-print(f"Minimum Detectable Effect (MDE): {mde:.6f} ({mde:.4%} absolute)")
-print(f"Relative MDE: {mde / p_control:.2%} of baseline")
-
-# Power curve: what power do we achieve at different effect sizes?
-effect_sizes = np.linspace(0, mde * 3, 100)
-powers = []
-for delta in effect_sizes:
-    # Non-centrality parameter
-    ncp = delta / pooled_se
-    power_val = (
-        1 - stats.norm.cdf(z_alpha_half - ncp) + stats.norm.cdf(-z_alpha_half - ncp)
-    )
-    powers.append(power_val)
-
-print(f"\nPower at selected effect sizes:")
-for es_mult in [0.5, 1.0, 1.5, 2.0]:
-    idx = int(es_mult / 3 * 99)
-    print(f"  Effect = {effect_sizes[idx]:.4%}: Power = {powers[idx]:.1%}")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 3: Primary test — conversion rate (two-proportion z-test)
-# ════════════════════════════════════════════════════════════════════════
-
-p_treatment = treatment["converted"].mean()
-p_pooled = ab_data["converted"].mean()
-
-# TODO: Compute the standard error for the difference in proportions
-# Hint: np.sqrt(p_pooled * (1 - p_pooled) * (1/n_control + 1/n_treatment))
-se_diff = (
-    ____  # Hint: np.sqrt(p_pooled * (1 - p_pooled) * (1/n_control + 1/n_treatment))
+# Aggregate school data to town level before joining
+# (schools table has one row per school; we want a count per town)
+# TODO: Count schools per town using group_by + agg
+school_counts = schools.group_by(____).agg(  # Hint: "town"
+    pl.col("school_name").count().alias(____)  # Hint: "school_count"
 )
 
-# TODO: Compute the z-statistic for the two-proportion z-test
-# Hint: (p_treatment - p_control) / se_diff
-z_stat = ____  # Hint: (p_treatment - p_control) / se_diff
+# TODO: Join hdb_enriched with school_counts on "town" (left join)
+hdb_enriched = hdb_enriched.join(
+    school_counts,
+    on=____,  # Hint: "town"
+    how=____,  # Hint: "left"
+)
 
-p_value_conversion = 2 * (1 - stats.norm.cdf(abs(z_stat)))  # Two-tailed
+# After a left join, unmatched rows have NULL school_count — fill with 0
+hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(0))
 
-# Effect size (Cohen's h for proportions)
-cohens_h = 2 * (np.arcsin(np.sqrt(p_treatment)) - np.arcsin(np.sqrt(p_control)))
+# Add a price per sqm column — used in the district summary below
+hdb_enriched = hdb_enriched.with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm")
+)
 
-print(f"\n=== Primary Metric: Conversion Rate ===")
-print(f"Control conversion:   {p_control:.4f} ({p_control:.2%})")
-print(f"Treatment conversion: {p_treatment:.4f} ({p_treatment:.2%})")
+print(f"\n=== After Enrichment ===")
+print(f"Shape: {hdb_enriched.shape}")
+print(f"New columns: {[c for c in hdb_enriched.columns if c not in hdb.columns]}")
 print(
-    f"Absolute lift: {p_treatment - p_control:+.4f} ({(p_treatment - p_control):.4%})"
+    hdb_enriched.select(
+        "town", "nearest_mrt", "distance_to_mrt_km", "school_count"
+    ).head(5)
 )
-print(f"Relative lift: {(p_treatment - p_control) / p_control:+.2%}")
-print(f"z-statistic: {z_stat:.4f}")
-print(f"p-value: {p_value_conversion:.6f}")
-print(f"Cohen's h: {cohens_h:.4f}")
+
+# Sanity check: null counts for the joined columns
+for col in ("nearest_mrt", "distance_to_mrt_km", "school_count"):
+    nc = hdb_enriched[col].null_count()
+    pct = nc / hdb_enriched.height
+    print(f"  {col} nulls: {nc:,} ({pct:.1%})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: District-level summary with group_by/agg
+# ══════════════════════════════════════════════════════════════════════
+
+# Now that each transaction row carries spatial context, we can produce
+# a district summary that mixes price statistics with location features.
+#
+# Key insight: spatial columns like distance_to_mrt_km are the same for
+# every transaction in a town (they were joined from a town-level table),
+# so .first() is the right aggregation — we just want one copy of the value.
+
+district_summary = (
+    hdb_enriched.group_by("town")
+    .agg(
+        # Volume
+        pl.len().alias("total_transactions"),
+        # Price statistics — use both mean and median
+        # Mean is sensitive to outliers; median is more robust for skewed data
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").mean().alias("mean_price"),
+        pl.col("resale_price").std().alias("std_price"),
+        pl.col("resale_price").quantile(0.25).alias("q25_price"),
+        pl.col("resale_price").quantile(0.75).alias("q75_price"),
+        # Price per sqm — normalised comparison across flat sizes
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+        # Flat size
+        pl.col("floor_area_sqm").median().alias("median_area_sqm"),
+        # Spatial features — same value for every row in a town, so use .first()
+        # TODO: Aggregate nearest_mrt using .first() to get one value per town
+        pl.col("nearest_mrt").first().alias(____),  # Hint: "nearest_mrt"
+        pl.col("distance_to_mrt_km").first().alias(____),  # Hint: "distance_to_mrt_km"
+        pl.col("school_count").first().alias(____),  # Hint: "school_count"
+    )
+    .sort("median_price", descending=True)
+)
+
+# Derived spread metrics
+district_summary = district_summary.with_columns(
+    (pl.col("q75_price") - pl.col("q25_price")).alias("iqr_price"),
+    (pl.col("std_price") / pl.col("mean_price") * 100).alias("cv_price_pct"),
+)
+
+print(f"\n=== District Summary (Top 10 by Median Price) ===")
 print(
-    f"{'SIGNIFICANT' if p_value_conversion < alpha else 'NOT significant'} at α={alpha}"
+    district_summary.select(
+        "town",
+        "total_transactions",
+        "median_price",
+        "median_price_sqm",
+        "distance_to_mrt_km",
+        "school_count",
+    ).head(10)
 )
 
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 4: Multiple metrics — conversion, revenue, average order value
-# ════════════════════════════════════════════════════════════════════════
-# Testing multiple metrics simultaneously inflates Type I error.
-# With m tests at α=0.05 each, P(at least one false positive) = 1-(1-α)^m
-
-metrics_results = {}
-
-# Metric 1: Conversion rate (already computed)
-metrics_results["conversion_rate"] = {
-    "control": p_control,
-    "treatment": p_treatment,
-    "stat": z_stat,
-    "p_value": p_value_conversion,
-    "test": "two-proportion z-test",
-}
-
-# Metric 2: Revenue per user (includes zeros for non-converters)
-rev_control = control["revenue"].to_numpy().astype(np.float64)
-rev_treatment = treatment["revenue"].to_numpy().astype(np.float64)
-
-# Mann-Whitney U test (revenue is heavily right-skewed, non-normal)
-u_stat, p_value_revenue = stats.mannwhitneyu(
-    rev_treatment, rev_control, alternative="two-sided"
-)
-
-metrics_results["revenue_per_user"] = {
-    "control": rev_control.mean(),
-    "treatment": rev_treatment.mean(),
-    "stat": u_stat,
-    "p_value": p_value_revenue,
-    "test": "Mann-Whitney U",
-}
-
-# Metric 3: Average order value (only among converters)
-aov_control = (
-    control.filter(pl.col("converted") == 1)["revenue"].to_numpy().astype(np.float64)
-)
-aov_treatment = (
-    treatment.filter(pl.col("converted") == 1)["revenue"].to_numpy().astype(np.float64)
-)
-
-# Welch's t-test (AOV among converters is closer to normal)
-t_stat, p_value_aov = stats.ttest_ind(aov_treatment, aov_control, equal_var=False)
-
-metrics_results["avg_order_value"] = {
-    "control": aov_control.mean(),
-    "treatment": aov_treatment.mean(),
-    "stat": t_stat,
-    "p_value": p_value_aov,
-    "test": "Welch's t-test",
-}
-
-# Metric 4: Pages viewed (engagement proxy)
-if "pages_viewed" in ab_data.columns:
-    pages_control = control["pages_viewed"].to_numpy().astype(np.float64)
-    pages_treatment = treatment["pages_viewed"].to_numpy().astype(np.float64)
-    t_pages, p_value_pages = stats.ttest_ind(
-        pages_treatment, pages_control, equal_var=False
-    )
-    metrics_results["pages_viewed"] = {
-        "control": pages_control.mean(),
-        "treatment": pages_treatment.mean(),
-        "stat": t_pages,
-        "p_value": p_value_pages,
-        "test": "Welch's t-test",
-    }
-
-print(f"\n=== Multiple Metric Results (unadjusted) ===")
-print(f"{'Metric':<20} {'Control':>12} {'Treatment':>12} {'p-value':>10} {'Test':<20}")
-print("─" * 80)
-for name, r in metrics_results.items():
-    sig = (
-        "***"
-        if r["p_value"] < 0.001
-        else "**" if r["p_value"] < 0.01 else "*" if r["p_value"] < 0.05 else "ns"
-    )
-    print(
-        f"{name:<20} {r['control']:>12.4f} {r['treatment']:>12.4f} "
-        f"{r['p_value']:>10.6f} {r['test']:<20} {sig}"
-    )
-
-# Family-wise error rate without correction
-m = len(metrics_results)
-fwer = 1 - (1 - alpha) ** m
-print(f"\nNumber of tests (m): {m}")
-print(f"Family-wise error rate (uncorrected): {fwer:.4f} ({fwer:.1%})")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 5: Multiple testing corrections
-# ════════════════════════════════════════════════════════════════════════
-
-p_values = np.array([r["p_value"] for r in metrics_results.values()])
-metric_names = list(metrics_results.keys())
-
-# --- Bonferroni correction ---
-# Most conservative: α_adj = α/m
-# Controls FWER (probability of ANY false positive)
-# TODO: Compute the Bonferroni-adjusted significance threshold
-# Hint: alpha / m  (divide alpha by the number of tests)
-bonferroni_alpha = ____  # Hint: alpha / m
-bonferroni_significant = p_values < bonferroni_alpha
-
-print(f"\n=== Bonferroni Correction (FWER control) ===")
-print(f"Adjusted α = {alpha}/{m} = {bonferroni_alpha:.4f}")
-for i, name in enumerate(metric_names):
-    sig = "SIGNIFICANT" if bonferroni_significant[i] else "not significant"
-    print(f"  {name}: p={p_values[i]:.6f} → {sig}")
-
-# --- Benjamini-Hochberg (BH-FDR) correction ---
-# Less conservative: controls False Discovery Rate
-# Procedure: sort p-values, find largest k where p(k) ≤ (k/m)α
-sorted_indices = np.argsort(p_values)
-sorted_p = p_values[sorted_indices]
-
-# TODO: Compute the BH thresholds — (k+1)/m * alpha for each rank k
-# Hint: np.array([(k + 1) / m * alpha for k in range(m)])
-bh_thresholds = ____  # Hint: np.array([(k + 1) / m * alpha for k in range(m)])
-
-# Find the largest k where p(k) ≤ threshold
-bh_significant_mask = np.zeros(m, dtype=bool)
-max_k = -1
-for k in range(m):
-    if sorted_p[k] <= bh_thresholds[k]:
-        max_k = k
-
-# All tests with rank ≤ max_k are significant
-if max_k >= 0:
-    bh_significant_mask[sorted_indices[: max_k + 1]] = True
-
-# Also compute adjusted p-values (q-values)
-q_values = np.zeros(m)
-sorted_q = np.zeros(m)
-sorted_q[m - 1] = sorted_p[m - 1]
-for k in range(m - 2, -1, -1):
-    sorted_q[k] = min(sorted_p[k] * m / (k + 1), sorted_q[k + 1])
-q_values[sorted_indices] = sorted_q
-
-print(f"\n=== Benjamini-Hochberg Correction (FDR control) ===")
-print(f"Target FDR: {alpha}")
-for i, name in enumerate(metric_names):
-    sig = "SIGNIFICANT" if bh_significant_mask[i] else "not significant"
-    print(f"  {name}: p={p_values[i]:.6f}, q={q_values[i]:.6f} → {sig}")
-
-# Summary comparison
-print(f"\n=== Correction Comparison ===")
-print(f"{'Metric':<20} {'Raw p':>10} {'Bonferroni':>12} {'BH-FDR':>12}")
-print("─" * 60)
-for i, name in enumerate(metric_names):
-    bonf = "sig" if bonferroni_significant[i] else "ns"
-    bh = "sig" if bh_significant_mask[i] else "ns"
-    print(f"{name:<20} {p_values[i]:>10.6f} {bonf:>12} {bh:>12}")
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 6: Permutation test for conversion rate
-# ════════════════════════════════════════════════════════════════════════
-# Distribution-free alternative to parametric z-test.
-# Algorithm:
-#   1. Pool all observations
-#   2. Randomly assign to "control" and "treatment" (preserving sizes)
-#   3. Compute test statistic on permuted data
-#   4. Repeat 10K times → null distribution
-#   5. p-value = proportion of permuted statistics ≥ observed
-
-rng = np.random.default_rng(seed=42)
-n_permutations = 10_000
-
-# Observed test statistic (difference in conversion rates)
-observed_diff = p_treatment - p_control
-
-# Pool all conversion labels
-all_converted = ab_data["converted"].to_numpy()
-
-# TODO: Fill in the permutation loop body
-# Hint: for each iteration, use rng.permutation(all_converted) to shuffle,
-#   then compute (perm[:n_control].mean() - perm[n_control:].mean())
-perm_diffs = np.zeros(n_permutations)
-for i in range(n_permutations):
-    perm = ____  # Hint: rng.permutation(all_converted)
-    perm_control_rate = ____  # Hint: perm[:n_control].mean()
-    perm_treatment_rate = ____  # Hint: perm[n_control:].mean()
-    perm_diffs[i] = perm_treatment_rate - perm_control_rate
-
-# Two-tailed p-value
-perm_p_value = np.mean(np.abs(perm_diffs) >= np.abs(observed_diff))
-
-print(f"\n=== Permutation Test (conversion rate) ===")
-print(f"Observed difference: {observed_diff:+.6f}")
-print(f"Permutation p-value: {perm_p_value:.6f}")
-print(f"Parametric p-value:  {p_value_conversion:.6f}")
+# Which towns are closest to an MRT station?
+print(f"\n=== Towns Closest to MRT ===")
 print(
-    f"Agreement: {'YES' if (perm_p_value < alpha) == (p_value_conversion < alpha) else 'NO'}"
+    district_summary.sort("distance_to_mrt_km")
+    .select("town", "nearest_mrt", "distance_to_mrt_km", "median_price")
+    .head(10)
 )
 
+# Does MRT proximity correlate with price?
+# TODO: Compute Pearson correlation between distance_to_mrt_km and median_price
+corr_mrt_price = district_summary["distance_to_mrt_km"].pearson_corr(
+    district_summary[____]  # Hint: "median_price"
+)
+corr_school_price = district_summary["school_count"].pearson_corr(
+    district_summary["median_price"]
+)
+print(f"\nCorrelation: MRT distance ↔ median price: {corr_mrt_price:.3f}")
+print(f"Correlation: school count ↔ median price:  {corr_school_price:.3f}")
+print("(Positive = more schools / closer MRT → higher price)")
 
-# ════════════════════════════════════════════════════════════════════════
-# Visualise results with ModelVisualizer
-# ════════════════════════════════════════════════════════════════════════
-
-viz = ModelVisualizer()
-
-# Compare all metrics across groups
-comparison_data = {
-    "Control": {name: r["control"] for name, r in metrics_results.items()},
-    "Treatment": {name: r["treatment"] for name, r in metrics_results.items()},
-}
-fig_comparison = viz.metric_comparison(comparison_data)
-fig_comparison.update_layout(title="A/B Test: Control vs Treatment Across Metrics")
-fig_comparison.write_html("ex4_ab_test_comparison.html")
-print(f"\nSaved: ex4_ab_test_comparison.html")
-
-# Power curve
-power_metrics = {
-    "Power": powers,
-}
-fig_power = viz.training_history(power_metrics, x_label="Effect Size Index")
-fig_power.update_layout(title="Statistical Power vs Effect Size")
-fig_power.write_html("ex4_power_curve.html")
-print("Saved: ex4_power_curve.html")
-
-print("\n✓ Exercise 4 complete — hypothesis testing with multiple testing correction")
+print("\n✓ Exercise 4 complete — joins and multi-table aggregation")

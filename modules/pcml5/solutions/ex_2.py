@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 2: ChainOfThoughtAgent
+# ASCENT5 — Exercise 2: Chain-of-Thought Reasoning
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Build a ChainOfThoughtAgent that reasons step-by-step about
 #   Module 4 clustering results. Compare CoT vs direct answering.

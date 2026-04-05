@@ -2,255 +2,257 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT4 — Exercise 4: DriftMonitor — Production Model Monitoring
+# ASCENT4 — Exercise 4: Anomaly Detection and Ensembles
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Deploy M3's credit model, simulate drift, detect with PSI
-#   and KS tests. Frame as governance: you must prove your model still
-#   performs in production.
+# OBJECTIVE: Dimensionality reduction on fraud data, anomaly detection
+#   with multiple detectors, and ensemble scoring with EnsembleEngine.blend().
 #
 # TASKS:
-#   1. Establish reference distribution from training data
-#   2. Configure DriftMonitor with DriftSpec thresholds
-#   3. Simulate realistic data drift (feature shift, concept drift)
-#   4. Detect drift with PSI and KS statistics
-#   5. Analyse drift severity and affected features
-#   6. Governance discussion: monitoring obligations
+#   1. Load fraud data and reduce dimensionality with UMAP
+#   2. Compare UMAP vs t-SNE embeddings
+#   3. Isolation Forest anomaly scoring
+#   4. LOF and additional anomaly detectors
+#   5. Ensemble anomaly scores with EnsembleEngine
+#   6. Evaluate and visualise detection performance
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-
 import numpy as np
 import polars as pl
-from kailash.db.connection import ConnectionManager
-from kailash_ml import PreprocessingPipeline, ModelVisualizer
-from kailash_ml.engines.drift_monitor import DriftMonitor, DriftSpec
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.metrics import (
+    roc_auc_score,
+    average_precision_score,
+    precision_recall_curve,
+)
+from sklearn.preprocessing import StandardScaler
+
+from kailash_ml import ModelVisualizer, EnsembleEngine
 from kailash_ml.interop import to_sklearn_input
 
 from shared import ASCENTDataLoader
-from shared.kailash_helpers import setup_environment
 
-setup_environment()
+try:
+    import umap
+except ImportError:
+    umap = None
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
-credit = loader.load("ascent03", "sg_credit_scoring.parquet")
+fraud = loader.load("ascent04", "credit_card_fraud.parquet")
 
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+print(f"=== Credit Card Fraud Data ===")
+print(f"Shape: {fraud.shape}")
+print(f"Fraud rate: {fraud['is_fraud'].mean():.4%}")
+
+feature_cols = [c for c in fraud.columns if c not in ("is_fraud", "transaction_id")]
+
+X, y, col_info = to_sklearn_input(
+    fraud.drop_nulls(),
+    feature_columns=feature_cols,
+    target_column="is_fraud",
 )
 
-feature_cols = [c for c in result.train_data.columns if c != "default"]
-print(f"=== Credit Scoring Data ===")
-print(f"Features: {len(feature_cols)}")
-print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Establish reference distribution
+# TASK 1: Dimensionality reduction with UMAP
 # ══════════════════════════════════════════════════════════════════════
 
-reference_data = result.train_data.select(feature_cols)
-print(f"\nReference distribution: {reference_data.shape}")
-print("This represents the data the model was trained on.")
-print("Any significant deviation from this distribution = potential drift.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure DriftMonitor
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup_monitoring():
-    conn = ConnectionManager("sqlite:///ascent04_drift.db")
-    await conn.initialize()
-
-    monitor = DriftMonitor(
-        conn,
-        psi_threshold=0.1,  # PSI > 0.1 = moderate drift
-        ks_threshold=0.05,  # KS p-value < 0.05 = significant shift
-        performance_threshold=0.1,
-    )
-
-    # Set reference distribution
-    await monitor.set_reference(
-        model_name="credit_default_lgbm",
-        reference_data=reference_data,
-        feature_columns=feature_cols,
-    )
-
-    print(f"\n=== DriftMonitor Configured ===")
-    print(f"PSI threshold: 0.1 (>0.2 = severe)")
-    print(f"KS threshold: 0.05")
-    print(f"Model: credit_default_lgbm")
-
-    return conn, monitor
-
-
-conn, monitor = asyncio.run(setup_monitoring())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Simulate realistic data drift
-# ══════════════════════════════════════════════════════════════════════
-# Real drift scenarios:
-# a) Feature drift: income distribution shifts (economic downturn)
-# b) Concept drift: same features, different default relationship
-# c) Gradual drift: slow shift over months
-
+# Sample for visualisation (UMAP on full 284K is slow)
 rng = np.random.default_rng(42)
+sample_size = min(20_000, len(y))
+idx = rng.choice(len(y), sample_size, replace=False)
+X_sample = X_scaled[idx]
+y_sample = y[idx]
 
-# Scenario A: No drift (control — test data from same distribution)
-no_drift = result.test_data.select(feature_cols)
+if umap is not None:
+    reducer = umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1, random_state=42)
+    embedding_umap = reducer.fit_transform(X_sample)
+    print(f"\nUMAP embedding: {embedding_umap.shape}")
+else:
+    from sklearn.decomposition import PCA
 
-# Scenario B: Moderate feature drift (income drops 20%, debt rises)
-moderate_drift = result.test_data.select(feature_cols).with_columns(
-    (
-        (pl.col("annual_income") * 0.8).alias("annual_income")
-        if "annual_income" in feature_cols
-        else pl.lit(0).alias("_placeholder_b")
-    ),
-    (
-        (pl.col("total_debt") * 1.15).alias("total_debt")
-        if "total_debt" in feature_cols
-        else pl.lit(0).alias("_placeholder_b2")
-    ),
+    embedding_umap = PCA(n_components=2, random_state=42).fit_transform(X_sample)
+    print("\nUMAP not installed, using PCA fallback")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Compare with t-SNE
+# ══════════════════════════════════════════════════════════════════════
+
+from sklearn.manifold import TSNE
+
+tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+embedding_tsne = tsne.fit_transform(X_sample[:5000])  # t-SNE is O(n²)
+
+print(f"t-SNE embedding: {embedding_tsne.shape}")
+print("\nUMAP vs t-SNE:")
+print("  UMAP: preserves global structure, faster, supports transform()")
+print("  t-SNE: better local structure, O(n²), no out-of-sample transform")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Isolation Forest
+# ══════════════════════════════════════════════════════════════════════
+# Theory: anomalies are isolated in fewer random partitions.
+# Average path length in random trees is shorter for outliers.
+
+iso_forest = IsolationForest(
+    n_estimators=200,
+    contamination=0.002,  # Expected fraud rate
+    random_state=42,
+    n_jobs=-1,
 )
+iso_scores = -iso_forest.fit(X_scaled).score_samples(
+    X_scaled
+)  # Higher = more anomalous
+iso_labels = iso_forest.predict(X_scaled)  # -1 = anomaly, 1 = normal
 
-# Scenario C: Severe drift (economic crisis — multiple features shift)
-severe_drift_cols = []
-for col in feature_cols:
-    dtype = result.test_data[col].dtype
-    if dtype in (pl.Float64, pl.Float32):
-        shift = rng.uniform(-0.3, 0.3)
-        scale = rng.uniform(0.8, 1.5)
-        severe_drift_cols.append(
-            (pl.col(col) * scale + pl.col(col).mean() * shift).alias(col)
-        )
-    else:
-        severe_drift_cols.append(pl.col(col))
+iso_auc = roc_auc_score(y, iso_scores)
+iso_ap = average_precision_score(y, iso_scores)
 
-severe_drift = result.test_data.select(feature_cols).with_columns(severe_drift_cols)
-
-print(f"\n=== Simulated Drift Scenarios ===")
-print(f"A) No drift: test data from same distribution")
-print(f"B) Moderate: income -20%, debt +15%")
-print(f"C) Severe: multiple features shifted (crisis simulation)")
+print(f"\n=== Isolation Forest ===")
+print(f"AUC-ROC: {iso_auc:.4f}")
+print(f"Average Precision: {iso_ap:.4f}")
+print(f"Predicted anomalies: {(iso_labels == -1).sum():,} / {len(iso_labels):,}")
+print(f"True frauds: {y.sum():.0f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Detect drift
+# TASK 4: Local Outlier Factor
 # ══════════════════════════════════════════════════════════════════════
 
+lof = LocalOutlierFactor(n_neighbors=20, contamination=0.002, novelty=False)
+lof_labels = lof.fit_predict(X_scaled)
+lof_scores = -lof.negative_outlier_factor_  # Higher = more anomalous
 
-async def check_all_scenarios():
-    scenarios = [
-        ("No Drift", no_drift),
-        ("Moderate Drift", moderate_drift),
-        ("Severe Drift", severe_drift),
-    ]
+lof_auc = roc_auc_score(y, lof_scores)
+lof_ap = average_precision_score(y, lof_scores)
 
-    all_reports = {}
-    for name, data in scenarios:
-        report = await monitor.check_drift(
-            model_name="credit_default_lgbm",
-            current_data=data,
-        )
-
-        all_reports[name] = report
-
-        print(f"\n=== {name} ===")
-        print(f"Overall drift: {report.overall_drift_detected}")
-        print(f"Severity: {report.overall_severity}")
-
-        # Feature-level results
-        drifted = [r for r in report.feature_results if r.drift_detected]
-        print(f"Features with drift: {len(drifted)} / {len(report.feature_results)}")
-
-        if drifted:
-            print(
-                f"\n  {'Feature':<25} {'PSI':>8} {'KS stat':>8} {'KS p':>10} {'Type':>10}"
-            )
-            print("  " + "─" * 65)
-            for r in sorted(drifted, key=lambda x: x.psi, reverse=True)[:10]:
-                print(
-                    f"  {r.feature_name:<25} {r.psi:>8.4f} {r.ks_statistic:>8.4f} "
-                    f"{r.ks_pvalue:>10.6f} {r.drift_type:>10}"
-                )
-
-    return all_reports
-
-
-all_reports = asyncio.run(check_all_scenarios())
+print(f"\n=== Local Outlier Factor ===")
+print(f"AUC-ROC: {lof_auc:.4f}")
+print(f"Average Precision: {lof_ap:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Analyse drift severity
+# TASK 5: Ensemble anomaly scores with EnsembleEngine.blend()
 # ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Drift Severity Analysis ===")
-print(f"\nPSI Interpretation:")
-print(f"  < 0.1  : No significant drift")
-print(f"  0.1-0.2: Moderate drift — investigate")
-print(f"  > 0.2  : Severe drift — retrain model")
-
-for name, report in all_reports.items():
-    psi_values = [r.psi for r in report.feature_results]
-    print(f"\n{name}:")
-    print(f"  Mean PSI: {np.mean(psi_values):.4f}")
-    print(f"  Max PSI:  {max(psi_values):.4f}")
-    print(f"  Features above 0.1: {sum(1 for p in psi_values if p > 0.1)}")
-    print(f"  Features above 0.2: {sum(1 for p in psi_values if p > 0.2)}")
+# EnsembleEngine.blend() averages predictions from multiple estimators.
+# For supervised tasks, blend() also supports stack() and bag().
+# For anomaly detection, we normalise scores to [0,1] and blend.
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Governance — monitoring as obligation
-# ══════════════════════════════════════════════════════════════════════
+# Normalise scores to [0, 1] for blending
+def normalise_scores(scores: np.ndarray) -> np.ndarray:
+    return (scores - scores.min()) / (scores.max() - scores.min() + 1e-10)
 
-print(f"\n=== Governance: Model Monitoring Obligations ===")
-print(
-    """
-In production, you MUST prove your model still performs.
-DriftMonitor is how you meet this obligation.
 
-1. REGULATORY: MAS AI guidelines require ongoing model validation
-2. OPERATIONAL: Drift detection → retrain trigger → ModelRegistry update
-3. AUDIT TRAIL: Every drift check is logged (get_drift_history)
-4. ALERTING: DriftSpec.on_drift_detected for automated notifications
-5. MODULE 6: PACT GovernanceEngine formalises these obligations
+iso_norm = normalise_scores(iso_scores)
+lof_norm = normalise_scores(lof_scores)
 
-Pipeline: DriftMonitor → alert → retrain (M3 pipeline) → promote (ModelRegistry)
-"""
+# Method A: Manual weighted average (AUC-weighted)
+w_iso = iso_auc / (iso_auc + lof_auc)
+w_lof = lof_auc / (iso_auc + lof_auc)
+ensemble_scores_manual = w_iso * iso_norm + w_lof * lof_norm
+
+# Method B: EnsembleEngine.blend() on supervised anomaly wrappers
+# EnsembleEngine.blend() works with sklearn-compatible estimators.
+# We wrap the detectors via a scoring API and blend predictions.
+from kailash_ml import EnsembleEngine
+
+# Build sklearn-style wrapper for Isolation Forest (predict_proba interface)
+from sklearn.base import BaseEstimator, ClassifierMixin
+
+
+class AnomalyScorer(BaseEstimator, ClassifierMixin):
+    """Wraps an anomaly detector to expose predict_proba for EnsembleEngine."""
+
+    def __init__(self, detector, scores: np.ndarray):
+        self.detector = detector
+        self._scores = scores
+        self.classes_ = np.array([0, 1])
+
+    def fit(self, X, y=None):
+        return self
+
+    def predict_proba(self, X):
+        # For blending we return precomputed scores as class-1 probability
+        norm = normalise_scores(self._scores[: len(X)])
+        return np.column_stack([1 - norm, norm])
+
+    def predict(self, X):
+        return (self._scores[: len(X)] > np.median(self._scores)).astype(int)
+
+
+iso_scorer = AnomalyScorer(iso_forest, iso_scores)
+lof_scorer = AnomalyScorer(lof, lof_scores)
+
+engine = EnsembleEngine()
+blended_proba = engine.blend(
+    estimators=[iso_scorer, lof_scorer],
+    X=X_scaled,
+    weights=[w_iso, w_lof],
 )
+ensemble_scores = blended_proba[:, 1]
+
+ensemble_auc = roc_auc_score(y, ensemble_scores)
+ensemble_ap = average_precision_score(y, ensemble_scores)
+
+print(f"\n=== Ensemble via EnsembleEngine.blend() ===")
+print(f"Weights: IF={w_iso:.3f}, LOF={w_lof:.3f}")
+print(f"AUC-ROC: {ensemble_auc:.4f}")
+print(f"Average Precision: {ensemble_ap:.4f}")
+
+# Improvement over individual detectors
+print(f"\nImprovement over best individual:")
+best_individual = max(iso_auc, lof_auc)
+print(f"  AUC-ROC: {ensemble_auc - best_individual:+.4f}")
+
+print("\nEnsembleEngine methods:")
+print("  blend()  — weighted average of predictions (soft voting)")
+print("  stack()  — meta-learner trained on base model outputs")
+print("  bag()    — bootstrap aggregation (bagging)")
+print("  boost()  — sequential boosting on residuals")
 
 
-# Check drift history
-async def show_history():
-    history = await monitor.get_drift_history("credit_default_lgbm", limit=10)
-    print(f"Drift check history: {len(history)} entries")
-    for h in history[:5]:
-        print(f"  {h.get('checked_at', '?')}: severity={h.get('severity', '?')}")
-    await conn.close()
-
-
-asyncio.run(show_history())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Evaluate and visualise
+# ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
+
+# ROC curves
+for name, scores in [
+    ("IsolationForest", iso_scores),
+    ("LOF", lof_scores),
+    ("Ensemble", ensemble_scores),
+]:
+    fig = viz.roc_curve(y, scores)
+    fig.update_layout(title=f"ROC: {name}")
+    fig.write_html(f"ex2_roc_{name.lower()}.html")
+
+# Comparison
 comparison = {
-    name: {
-        "Mean_PSI": np.mean([r.psi for r in report.feature_results]),
-        "Max_PSI": max(r.psi for r in report.feature_results),
-        "Drifted_Features": sum(1 for r in report.feature_results if r.drift_detected),
-    }
-    for name, report in all_reports.items()
+    "Isolation Forest": {"AUC_ROC": iso_auc, "Avg_Precision": iso_ap},
+    "LOF": {"AUC_ROC": lof_auc, "Avg_Precision": lof_ap},
+    "Ensemble": {"AUC_ROC": ensemble_auc, "Avg_Precision": ensemble_ap},
 }
 fig = viz.metric_comparison(comparison)
-fig.update_layout(title="Drift Detection: Scenario Comparison")
-fig.write_html("ex4_drift_comparison.html")
-print("\nSaved: ex4_drift_comparison.html")
+fig.update_layout(title="Anomaly Detection Comparison")
+fig.write_html("ex2_anomaly_comparison.html")
+print("\nSaved: ex2_anomaly_comparison.html")
 
-print("\n✓ Exercise 4 complete — DriftMonitor for production model monitoring")
+# Precision-recall at different thresholds
+precision, recall, thresholds = precision_recall_curve(y, ensemble_scores)
+print(
+    f"\nAt recall=0.80: precision={precision[np.searchsorted(-recall[::-1], -0.80)]:.4f}"
+)
+
+print("\n✓ Exercise 2 complete — UMAP + anomaly detection ensemble")

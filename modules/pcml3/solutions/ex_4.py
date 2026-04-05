@@ -2,168 +2,39 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT3 — Exercise 4: Workflow Orchestration with Kailash Core SDK
+# ASCENT3 — Exercise 4: SHAP, LIME, and Fairness
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build an ML pipeline using Kailash WorkflowBuilder — load,
-#   preprocess, train, evaluate, persist to DataFlow. Learn the
-#   runtime.execute(workflow.build()) pattern.
+# OBJECTIVE: Full SHAP and LIME analysis on the credit scoring model —
+#   global and local interpretability, interaction effects, and fairness
+#   audit across protected attributes.
 #
 # TASKS:
-#   1. Build a Kailash workflow for the ML pipeline
-#   2. Define @db.model for evaluation results (DataFlow)
-#   3. Execute the workflow with LocalRuntime
-#   4. Persist results with db.express
-#   5. Define ModelSignature (input/output schema for trained models)
-#   6. Query persisted results
+#   1. Compute TreeSHAP values for the best gradient boosting model
+#   2. Global interpretation: summary plot and feature importance
+#   3. Dependence plots: how individual features affect predictions
+#   4. LIME: model-agnostic local linear approximations
+#   5. Local interpretation: explain individual predictions
+#   6. Fairness audit: check SHAP values across protected attributes
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import os
-
+import numpy as np
 import polars as pl
-from dotenv import load_dotenv
+import shap
+import lightgbm as lgb
+from sklearn.metrics import roc_auc_score
 
-from kailash.workflow.builder import WorkflowBuilder
-from kailash.runtime import LocalRuntime
-from kailash_dataflow import DataFlow, field
 from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
-from kailash_ml.engines.training_pipeline import TrainingPipeline, ModelSpec, EvalSpec
 
 from shared import ASCENTDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
 
 
-# ── Data Loading ──────────────────────────────────────────────────────
+# ── Data Loading & Model Training ─────────────────────────────────────
 
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Build a Kailash ML workflow
-# ══════════════════════════════════════════════════════════════════════
-# WorkflowBuilder: nodes, connections, runtime.execute(workflow.build())
-# This is the Kailash Core SDK pattern for orchestrating multi-step operations.
-
-workflow = WorkflowBuilder("credit_scoring_pipeline")
-
-# Node 1: Data loading and preprocessing
-workflow.add_node(
-    "DataPreprocessNode",
-    "preprocess",
-    {
-        "data_source": "sg_credit_scoring",
-        "target": "default",
-        "train_size": 0.8,
-        "seed": 42,
-        "normalize": False,
-        "categorical_encoding": "ordinal",
-        "imputation_strategy": "median",
-    },
-)
-
-# Node 2: Model training
-workflow.add_node(
-    "ModelTrainNode",
-    "train",
-    {
-        "model_class": "lightgbm.LGBMClassifier",
-        "hyperparameters": {
-            "n_estimators": 500,
-            "learning_rate": 0.1,
-            "max_depth": 6,
-            "scale_pos_weight": 7.3,
-        },
-    },
-    connections=["preprocess"],
-)
-
-# Node 3: Model evaluation
-workflow.add_node(
-    "ModelEvalNode",
-    "evaluate",
-    {
-        "metrics": ["accuracy", "f1", "auc_roc", "auc_pr", "log_loss"],
-    },
-    connections=["train"],
-)
-
-# Node 4: Persist results
-workflow.add_node(
-    "PersistNode",
-    "persist",
-    {
-        "storage": "sqlite:///ascent03_models.db",
-    },
-    connections=["evaluate"],
-)
-
-# Build and execute
-runtime = LocalRuntime()
-print("=== Executing Workflow ===")
-results, run_id = runtime.execute(workflow.build())  # MUST use .build()
-
-print(f"Run ID: {run_id}")
-print(f"Node results: {list(results.keys())}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Define @db.model for evaluation results
-# ══════════════════════════════════════════════════════════════════════
-# DataFlow lets us persist structured data to a database using
-# declarative models. This is how ML artifacts get stored.
-
-db = DataFlow("sqlite:///ascent03_models.db")
-
-
-@db.model
-class ModelEvaluation:
-    """Stores evaluation results for trained models."""
-
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    dataset: str = field()
-    accuracy: float = field()
-    f1_score: float = field()
-    auc_roc: float = field()
-    auc_pr: float = field()
-    log_loss: float = field()
-    train_size: int = field()
-    test_size: int = field()
-    feature_count: int = field()
-
-
-@db.model
-class ModelArtifact:
-    """Stores model metadata and serialisation path."""
-
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    version: int = field()
-    artifact_path: str = field()
-    is_production: bool = field(default=False)
-    created_by: str = field(default="ascent03")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train and evaluate manually (parallel to workflow)
-# ══════════════════════════════════════════════════════════════════════
-# The workflow orchestrates the pipeline. Here we also do it manually
-# to understand what each node does internally.
-
-import lightgbm as lgb
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    roc_auc_score,
-    average_precision_score,
-    log_loss,
-)
 
 pipeline = PreprocessingPipeline()
 result = pipeline.setup(
@@ -180,7 +51,9 @@ X_test, y_test, _ = to_sklearn_input(
     feature_columns=[c for c in result.test_data.columns if c != "default"],
     target_column="default",
 )
+feature_names = col_info["feature_columns"]
 
+# Train best model from Exercise 1
 model = lgb.LGBMClassifier(
     n_estimators=500,
     learning_rate=0.1,
@@ -190,123 +63,240 @@ model = lgb.LGBMClassifier(
     verbose=-1,
 )
 model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
+
 y_proba = model.predict_proba(X_test)[:, 1]
-
-eval_metrics = {
-    "accuracy": accuracy_score(y_test, y_pred),
-    "f1": f1_score(y_test, y_pred),
-    "auc_roc": roc_auc_score(y_test, y_proba),
-    "auc_pr": average_precision_score(y_test, y_proba),
-    "log_loss": log_loss(y_test, y_proba),
-}
-
-print(f"\n=== Manual Evaluation ===")
-for metric, value in eval_metrics.items():
-    print(f"  {metric}: {value:.4f}")
+print(f"Model AUC-ROC: {roc_auc_score(y_test, y_proba):.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Persist results with db.express
+# TASK 1: Compute TreeSHAP values
 # ══════════════════════════════════════════════════════════════════════
+# TreeSHAP computes exact Shapley values in polynomial time (O(TLD²))
+# vs exponential time for exact Shapley.
+# Key insight: tree structure allows efficient path-based computation.
 
+explainer = shap.TreeExplainer(model)
 
-async def persist_results():
-    """Store evaluation results and model metadata in DataFlow."""
-    await db.initialize()
+# SHAP values for test set
+shap_values = explainer.shap_values(X_test)
 
-    # Store evaluation
-    eval_record = await db.express.create(
-        "ModelEvaluation",
-        {
-            "model_name": "lgbm_credit_v1",
-            "dataset": "sg_credit_scoring",
-            "accuracy": eval_metrics["accuracy"],
-            "f1_score": eval_metrics["f1"],
-            "auc_roc": eval_metrics["auc_roc"],
-            "auc_pr": eval_metrics["auc_pr"],
-            "log_loss": eval_metrics["log_loss"],
-            "train_size": X_train.shape[0],
-            "test_size": X_test.shape[0],
-            "feature_count": X_train.shape[1],
-        },
-    )
-    print(f"\nPersisted evaluation: ID={eval_record['id']}")
+# For binary classification, shap_values may be a list [class_0, class_1]
+if isinstance(shap_values, list):
+    shap_vals = shap_values[1]  # Use positive class (default)
+else:
+    shap_vals = shap_values
 
-    # Store model artifact metadata
-    artifact_record = await db.express.create(
-        "ModelArtifact",
-        {
-            "model_name": "lgbm_credit_v1",
-            "version": 1,
-            "artifact_path": "models/lgbm_credit_v1.pkl",
-            "is_production": False,
-            "created_by": "ascent03_ex4",
-        },
-    )
-    print(f"Persisted artifact: ID={artifact_record['id']}")
+print(f"\n=== SHAP Values ===")
+print(f"Shape: {shap_vals.shape} (samples × features)")
+print(f"Expected value (base rate): {explainer.expected_value}")
 
-    return eval_record, artifact_record
-
-
-eval_record, artifact_record = asyncio.run(persist_results())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Define ModelSignature
-# ══════════════════════════════════════════════════════════════════════
-# ModelSignature is the input/output contract for a trained model.
-# It specifies what features are required and what outputs are produced.
-
-from kailash_ml.types import ModelSignature, FeatureSchema, FeatureField
-
-input_schema = FeatureSchema(
-    name="credit_model_input",
-    features=[
-        FeatureField(name=f, dtype="float64") for f in col_info["feature_columns"]
-    ],
-    entity_id_column="application_id",
+# Verify additivity: sum of SHAP values + expected = model output
+sample_idx = 0
+shap_sum = shap_vals[sample_idx].sum() + (
+    explainer.expected_value[1]
+    if isinstance(explainer.expected_value, list)
+    else explainer.expected_value
+)
+model_output = model.predict_proba(X_test[sample_idx : sample_idx + 1])[:, 1][0]
+print(f"Sample 0: SHAP sum = {shap_sum:.4f}, model output = {model_output:.4f}")
+print(
+    f"  Additivity check: {'✓ PASS' if abs(shap_sum - model_output) < 0.01 else '✗ FAIL'}"
 )
 
-signature = ModelSignature(
-    input_schema=input_schema,
-    output_columns=["default_probability", "default_label"],
-    output_dtypes=["float64", "int64"],
-    model_type="classifier",
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Global interpretation — feature importance ranking
+# ══════════════════════════════════════════════════════════════════════
+
+# Mean absolute SHAP values = global feature importance
+mean_abs_shap = np.abs(shap_vals).mean(axis=0)
+importance_ranking = sorted(
+    zip(feature_names, mean_abs_shap),
+    key=lambda x: x[1],
+    reverse=True,
 )
 
-print(f"\n=== ModelSignature ===")
-print(f"Input features: {len(signature.input_schema.features)}")
-print(f"Output: {signature.output_columns}")
-print(f"Model type: {signature.model_type}")
-print(f"\nModelSignature is the contract between model and deployment.")
-print("InferenceServer (M4) validates inputs against this signature.")
+print(f"\n=== Global Feature Importance (SHAP) ===")
+for name, imp in importance_ranking[:15]:
+    bar = "█" * int(imp * 200)
+    print(f"  {name:<30} {imp:.4f} {bar}")
+
+# Visualise with ModelVisualizer
+viz = ModelVisualizer()
+fig = viz.feature_importance(model, feature_names, top_n=15)
+fig.update_layout(title="SHAP Feature Importance: Credit Default Prediction")
+fig.write_html("ex3_shap_importance.html")
+print("Saved: ex3_shap_importance.html")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Query persisted results
+# TASK 3: Dependence plots — individual feature effects
 # ══════════════════════════════════════════════════════════════════════
 
+# Top 5 features — how does each influence default probability?
+top_features = [name for name, _ in importance_ranking[:5]]
 
-async def query_results():
-    """Query stored evaluations to compare models."""
-    evals = await db.express.list("ModelEvaluation")
-    print(f"\n=== Persisted Evaluations ({len(evals)}) ===")
-    for e in evals:
+print(f"\n=== Dependence Analysis ===")
+for feat in top_features:
+    feat_idx = feature_names.index(feat)
+    feat_vals = X_test[:, feat_idx]
+    feat_shap = shap_vals[:, feat_idx]
+
+    # Correlation between feature value and SHAP value
+    corr = np.corrcoef(
+        feat_vals[~np.isnan(feat_vals)], feat_shap[~np.isnan(feat_vals)]
+    )[0, 1]
+    direction = "↑ increases default risk" if corr > 0 else "↑ decreases default risk"
+    print(f"  {feat}: correlation = {corr:.3f} ({direction})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Interaction effects
+# ══════════════════════════════════════════════════════════════════════
+
+# SHAP interaction values (O(TL²D²) — more expensive)
+# For efficiency, use a sample
+sample_size = min(1000, X_test.shape[0])
+X_sample = X_test[:sample_size]
+
+shap_interaction = explainer.shap_interaction_values(X_sample)
+if isinstance(shap_interaction, list):
+    shap_interaction = shap_interaction[1]
+
+# Find strongest interactions
+n_features = len(feature_names)
+interaction_strengths = []
+for i in range(n_features):
+    for j in range(i + 1, n_features):
+        strength = np.abs(shap_interaction[:, i, j]).mean()
+        interaction_strengths.append((feature_names[i], feature_names[j], strength))
+
+interaction_strengths.sort(key=lambda x: x[2], reverse=True)
+
+print(f"\n=== Top Feature Interactions ===")
+for f1, f2, strength in interaction_strengths[:10]:
+    print(f"  {f1} × {f2}: {strength:.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4 (LIME): Model-agnostic local linear approximations
+# ══════════════════════════════════════════════════════════════════════
+# LIME (Local Interpretable Model-agnostic Explanations):
+# For a single prediction x, LIME:
+#   1. Generates perturbed samples around x
+#   2. Weights them by proximity to x (exponential kernel)
+#   3. Fits a sparse linear model on the weighted samples
+# The linear model coefficients are the local feature importances.
+#
+# Key difference from SHAP:
+#   SHAP = global consistency via Shapley values (game theory)
+#   LIME = local fidelity only; explanations may vary across calls
+
+try:
+    from lime.lime_tabular import LimeTabularExplainer  # type: ignore
+
+    lime_explainer = LimeTabularExplainer(
+        training_data=X_train,
+        feature_names=feature_names,
+        class_names=["no_default", "default"],
+        mode="classification",
+        discretize_continuous=True,
+        random_state=42,
+    )
+
+    # Explain the highest-risk prediction with LIME
+    risk_order_lime = np.argsort(y_proba)
+    high_risk_idx_lime = risk_order_lime[-1]
+
+    lime_exp = lime_explainer.explain_instance(
+        X_test[high_risk_idx_lime],
+        model.predict_proba,
+        num_features=10,
+        top_labels=1,
+    )
+
+    print(f"\n=== LIME Explanation (highest-risk sample) ===")
+    print(f"P(default) = {y_proba[high_risk_idx_lime]:.4f}")
+    print(f"\nLIME local feature importances:")
+    for feat_desc, weight in lime_exp.as_list():
+        direction = "↑risk" if weight > 0 else "↓risk"
+        print(f"  {feat_desc:<45} {weight:+.4f} ({direction})")
+
+    print("\nLIME vs SHAP:")
+    print("  LIME: fast, model-agnostic, but can be unstable (different perturbations)")
+    print("  SHAP: theoretically grounded (Shapley values), exact for trees")
+    print(
+        "  Production recommendation: use TreeSHAP for tree models; LIME for black-boxes"
+    )
+
+except ImportError:
+    print("\n=== LIME (lime not installed) ===")
+    print("Install with: pip install lime")
+    print("LIME: generates perturbed samples near x, fits sparse local linear model")
+    print("Coefficient of the local model = feature importance for that prediction")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Local interpretation — explain individual predictions
+# ══════════════════════════════════════════════════════════════════════
+
+# Explain the highest-risk and lowest-risk predictions
+risk_order = np.argsort(y_proba)
+
+high_risk_idx = risk_order[-1]
+low_risk_idx = risk_order[0]
+
+for label, idx in [("Highest Risk", high_risk_idx), ("Lowest Risk", low_risk_idx)]:
+    print(f"\n=== {label} (predicted P(default) = {y_proba[idx]:.4f}) ===")
+    # Top contributing features for this prediction
+    sample_shap = shap_vals[idx]
+    sorted_contrib = sorted(
+        zip(feature_names, sample_shap, X_test[idx]),
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )
+    for name, shap_val, feat_val in sorted_contrib[:8]:
+        direction = "↑risk" if shap_val > 0 else "↓risk"
+        print(f"  {name} = {feat_val:.2f} → SHAP = {shap_val:+.4f} ({direction})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Fairness audit — SHAP across protected attributes
+# ══════════════════════════════════════════════════════════════════════
+# Governance question: does the model treat protected groups fairly?
+
+# Check if protected attributes are in the features
+protected_candidates = ["age", "gender", "ethnicity", "marital_status"]
+protected_in_model = [f for f in protected_candidates if f in feature_names]
+
+if protected_in_model:
+    print(f"\n=== Fairness Audit ===")
+    print(f"Protected attributes in model: {protected_in_model}")
+    print("⚠ These features may encode bias. Check SHAP contributions:")
+
+    for attr in protected_in_model:
+        attr_idx = feature_names.index(attr)
+        attr_shap = shap_vals[:, attr_idx]
+        print(f"\n  {attr}:")
+        print(f"    Mean |SHAP|: {np.abs(attr_shap).mean():.4f}")
         print(
-            f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}"
+            f"    Rank: #{[n for n, _ in importance_ranking].index(attr) + 1} / {len(feature_names)}"
         )
 
-    artifacts = await db.express.list("ModelArtifact")
-    print(f"\nModel Artifacts ({len(artifacts)}):")
-    for a in artifacts:
-        status = "🟢 PRODUCTION" if a["is_production"] else "staging"
-        print(f"  {a['model_name']} v{a['version']}: {status}")
+        # Distribution of SHAP values by feature value
+        attr_vals = X_test[:, attr_idx]
+        unique_vals = np.unique(attr_vals[~np.isnan(attr_vals)])
+        if len(unique_vals) <= 10:
+            for val in sorted(unique_vals):
+                mask = attr_vals == val
+                mean_shap = attr_shap[mask].mean()
+                print(
+                    f"    Value={val:.0f}: mean SHAP = {mean_shap:+.4f} (n={mask.sum()})"
+                )
 
-    await db.close()
+    print("\n  Recommendation: if protected attributes rank in top 10,")
+    print("  consider disparate impact testing before deployment.")
+else:
+    print("\n✓ No protected attributes found in feature set")
 
-
-asyncio.run(query_results())
-
-print("\n✓ Exercise 4 complete — Kailash workflow orchestration + DataFlow persistence")
-print("  Pattern: WorkflowBuilder → runtime.execute(workflow.build()) → db.express")
+print("\n✓ Exercise 3 complete — SHAP interpretability + fairness audit")

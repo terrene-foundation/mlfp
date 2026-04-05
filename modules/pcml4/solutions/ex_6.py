@@ -2,291 +2,255 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT4 — Exercise 6: InferenceServer + Nexus Deployment
+# ASCENT4 — Exercise 6: Drift Monitoring
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Deploy the ONNX model from Exercise 5 via InferenceServer,
-#   expose through Nexus (API + CLI + MCP simultaneously). Use
-#   ModelSignature for input validation.
+# OBJECTIVE: Deploy M3's credit model, simulate drift, detect with PSI
+#   and KS tests. Frame as governance: you must prove your model still
+#   performs in production.
 #
 # TASKS:
-#   1. Register ONNX model in ModelRegistry
-#   2. Configure InferenceServer with ModelSignature
-#   3. Test inference through InferenceServer
-#   4. Register with Nexus for multi-channel deployment
-#   5. Test predictions through Nexus session
-#   6. Access control discussion (primes PACT in M6)
+#   1. Establish reference distribution from training data
+#   2. Configure DriftMonitor with DriftSpec thresholds
+#   3. Simulate realistic data drift (feature shift, concept drift)
+#   4. Detect drift with PSI and KS statistics
+#   5. Analyse drift severity and affected features
+#   6. Governance discussion: monitoring obligations
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import numpy as np
 import polars as pl
 from kailash.db.connection import ConnectionManager
-from kailash_ml.engines.model_registry import ModelRegistry
-from kailash_ml.engines.inference_server import InferenceServer
-from kailash_ml.types import FeatureSchema, FeatureField, ModelSignature
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
+from kailash_ml.engines.drift_monitor import DriftMonitor, DriftSpec
+from kailash_ml.interop import to_sklearn_input
 
+from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
 
+# ── Data Loading ──────────────────────────────────────────────────────
+
+loader = ASCENTDataLoader()
+credit = loader.load("ascent03", "sg_credit_scoring.parquet")
+
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
+
+feature_cols = [c for c in result.train_data.columns if c != "default"]
+print(f"=== Credit Scoring Data ===")
+print(f"Features: {len(feature_cols)}")
+print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
+
+
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Register ONNX model in ModelRegistry
+# TASK 1: Establish reference distribution
+# ══════════════════════════════════════════════════════════════════════
+
+reference_data = result.train_data.select(feature_cols)
+print(f"\nReference distribution: {reference_data.shape}")
+print("This represents the data the model was trained on.")
+print("Any significant deviation from this distribution = potential drift.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Configure DriftMonitor
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def register_onnx_model():
-    conn = ConnectionManager("sqlite:///ascent04_deployment.db")
+async def setup_monitoring():
+    conn = ConnectionManager("sqlite:///ascent04_drift.db")
     await conn.initialize()
 
-    registry = ModelRegistry(conn)
-    await registry.initialize()
+    monitor = DriftMonitor(
+        conn,
+        psi_threshold=0.1,  # PSI > 0.1 = moderate drift
+        ks_threshold=0.05,  # KS p-value < 0.05 = significant shift
+        performance_threshold=0.1,
+    )
 
-    # Load ONNX model bytes
-    onnx_path = Path("medical_cnn.onnx")
-    if onnx_path.exists():
-        model_bytes = onnx_path.read_bytes()
+    # Set reference distribution
+    await monitor.set_reference(
+        model_name="credit_default_lgbm",
+        reference_data=reference_data,
+        feature_columns=feature_cols,
+    )
+
+    print(f"\n=== DriftMonitor Configured ===")
+    print(f"PSI threshold: 0.1 (>0.2 = severe)")
+    print(f"KS threshold: 0.05")
+    print(f"Model: credit_default_lgbm")
+
+    return conn, monitor
+
+
+conn, monitor = asyncio.run(setup_monitoring())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Simulate realistic data drift
+# ══════════════════════════════════════════════════════════════════════
+# Real drift scenarios:
+# a) Feature drift: income distribution shifts (economic downturn)
+# b) Concept drift: same features, different default relationship
+# c) Gradual drift: slow shift over months
+
+rng = np.random.default_rng(42)
+
+# Scenario A: No drift (control — test data from same distribution)
+no_drift = result.test_data.select(feature_cols)
+
+# Scenario B: Moderate feature drift (income drops 20%, debt rises)
+moderate_drift = result.test_data.select(feature_cols).with_columns(
+    (
+        (pl.col("annual_income") * 0.8).alias("annual_income")
+        if "annual_income" in feature_cols
+        else pl.lit(0).alias("_placeholder_b")
+    ),
+    (
+        (pl.col("total_debt") * 1.15).alias("total_debt")
+        if "total_debt" in feature_cols
+        else pl.lit(0).alias("_placeholder_b2")
+    ),
+)
+
+# Scenario C: Severe drift (economic crisis — multiple features shift)
+severe_drift_cols = []
+for col in feature_cols:
+    dtype = result.test_data[col].dtype
+    if dtype in (pl.Float64, pl.Float32):
+        shift = rng.uniform(-0.3, 0.3)
+        scale = rng.uniform(0.8, 1.5)
+        severe_drift_cols.append(
+            (pl.col(col) * scale + pl.col(col).mean() * shift).alias(col)
+        )
     else:
-        # Create a placeholder for environments without the trained model
-        model_bytes = b"placeholder_onnx_model"
-        print("⚠ ONNX model not found — using placeholder. Run Exercise 5 first.")
+        severe_drift_cols.append(pl.col(col))
 
-    # Define model signature
-    signature = ModelSignature(
-        input_schema=FeatureSchema(
-            name="medical_image_input",
-            features=[
-                FeatureField(
-                    name="image",
-                    dtype="float32",
-                    description="Grayscale image tensor (1, 64, 64)",
-                ),
-            ],
-            entity_id_column="patient_id",
-        ),
-        output_columns=[
-            "condition_a",
-            "condition_b",
-            "condition_c",
-            "condition_d",
-            "condition_e",
-        ],
-        output_dtypes=["float32"] * 5,
-        model_type="classifier",
-    )
+severe_drift = result.test_data.select(feature_cols).with_columns(severe_drift_cols)
 
-    # Register
-    from kailash_ml.types import MetricSpec
-
-    model_version = await registry.register_model(
-        name="medical_cnn_v1",
-        artifact=model_bytes,
-        metrics=[
-            MetricSpec(name="auc_condition_a", value=0.75),
-            MetricSpec(name="auc_condition_b", value=0.72),
-        ],
-        signature=signature,
-    )
-
-    print(f"=== Model Registered ===")
-    print(f"Name: {model_version.name}")
-    print(f"Version: {model_version.version}")
-    print(f"Stage: {model_version.stage}")
-    print(f"ONNX status: {model_version.onnx_status}")
-
-    # Promote to production
-    model_version = await registry.promote_model(
-        name="medical_cnn_v1",
-        version=model_version.version,
-        target_stage="production",
-        reason="Passed quality gates for ASCENT4 deployment exercise",
-    )
-    print(f"Promoted to: {model_version.stage}")
-
-    return conn, registry, signature
-
-
-conn, registry, signature = asyncio.run(register_onnx_model())
+print(f"\n=== Simulated Drift Scenarios ===")
+print(f"A) No drift: test data from same distribution")
+print(f"B) Moderate: income -20%, debt +15%")
+print(f"C) Severe: multiple features shifted (crisis simulation)")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure InferenceServer
+# TASK 4: Detect drift
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def setup_inference():
-    server = InferenceServer(registry, cache_size=5)
-
-    # Warm the cache with our model
-    await server.warm_cache(["medical_cnn_v1"])
-
-    # Check model info
-    info = await server.get_model_info("medical_cnn_v1")
-    print(f"\n=== InferenceServer ===")
-    print(f"Model info: {info}")
-
-    return server
-
-
-server = asyncio.run(setup_inference())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Test inference
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_inference():
-    # Single prediction
-    rng = np.random.default_rng(42)
-    sample_features = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_001",
-    }
-
-    result = await server.predict(
-        model_name="medical_cnn_v1",
-        features=sample_features,
-    )
-
-    print(f"\n=== Single Prediction ===")
-    print(f"Prediction: {result.prediction}")
-    print(f"Probabilities: {result.probabilities}")
-    print(f"Model: {result.model_name} v{result.model_version}")
-    print(f"Inference time: {result.inference_time_ms:.2f}ms")
-    print(f"Inference path: {result.inference_path}")
-
-    # Batch prediction
-    batch = [
-        {
-            "image": rng.standard_normal((1, 64, 64)).tolist(),
-            "patient_id": f"patient_{i:03d}",
-        }
-        for i in range(10)
+async def check_all_scenarios():
+    scenarios = [
+        ("No Drift", no_drift),
+        ("Moderate Drift", moderate_drift),
+        ("Severe Drift", severe_drift),
     ]
 
-    batch_results = await server.predict_batch(
-        model_name="medical_cnn_v1",
-        records=batch,
-    )
+    all_reports = {}
+    for name, data in scenarios:
+        report = await monitor.check_drift(
+            model_name="credit_default_lgbm",
+            current_data=data,
+        )
 
-    print(f"\n=== Batch Prediction ({len(batch_results)} samples) ===")
-    avg_time = np.mean([r.inference_time_ms for r in batch_results])
-    print(f"Average inference time: {avg_time:.2f}ms")
+        all_reports[name] = report
 
-    return result, batch_results
+        print(f"\n=== {name} ===")
+        print(f"Overall drift: {report.overall_drift_detected}")
+        print(f"Severity: {report.overall_severity}")
 
+        # Feature-level results
+        drifted = [r for r in report.feature_results if r.drift_detected]
+        print(f"Features with drift: {len(drifted)} / {len(report.feature_results)}")
 
-single_result, batch_results = asyncio.run(test_inference())
+        if drifted:
+            print(
+                f"\n  {'Feature':<25} {'PSI':>8} {'KS stat':>8} {'KS p':>10} {'Type':>10}"
+            )
+            print("  " + "─" * 65)
+            for r in sorted(drifted, key=lambda x: x.psi, reverse=True)[:10]:
+                print(
+                    f"  {r.feature_name:<25} {r.psi:>8.4f} {r.ks_statistic:>8.4f} "
+                    f"{r.ks_pvalue:>10.6f} {r.drift_type:>10}"
+                )
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Register with Nexus for multi-channel deployment
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def deploy_nexus():
-    """Deploy via Nexus — API + CLI + MCP from a single registration."""
-    from nexus import Nexus
-
-    app = Nexus()
-
-    # Register inference endpoints with Nexus
-    server.register_endpoints(app)
-
-    print(f"\n=== Nexus Multi-Channel Deployment ===")
-    print("Registered channels:")
-    print("  • REST API:  POST /predict/medical_cnn_v1")
-    print("  • CLI:       nexus predict medical_cnn_v1 --input data.json")
-    print("  • MCP Tool:  predict_medical_cnn_v1(features)")
-    print()
-    print("All three channels share:")
-    print("  - Same InferenceServer (model loaded once)")
-    print("  - Same ModelSignature (input validation)")
-    print("  - Same caching and batching")
-
-    # Create session for stateful interaction
-    session = app.create_session()
-    print(f"\nNexus session created: {session}")
-
-    return app, session
+    return all_reports
 
 
-app, session = asyncio.run(deploy_nexus())
+all_reports = asyncio.run(check_all_scenarios())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Test through Nexus session
+# TASK 5: Analyse drift severity
 # ══════════════════════════════════════════════════════════════════════
 
+print(f"\n=== Drift Severity Analysis ===")
+print(f"\nPSI Interpretation:")
+print(f"  < 0.1  : No significant drift")
+print(f"  0.1-0.2: Moderate drift — investigate")
+print(f"  > 0.2  : Severe drift — retrain model")
 
-async def test_nexus_prediction():
-    """Test prediction through Nexus unified session."""
-    rng = np.random.default_rng(99)
-    test_input = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_nexus_test",
-    }
-
-    # Through InferenceServer (same result regardless of channel)
-    result = await server.predict("medical_cnn_v1", test_input)
-
-    print(f"\n=== Nexus Prediction Test ===")
-    print(f"Input: patient_nexus_test")
-    print(f"Output: {result.prediction}")
-    print(f"Inference path: {result.inference_path}")
-
-    # Performance metrics
-    metrics = await server.get_metrics("medical_cnn_v1")
-    print(f"\nServer metrics: {metrics}")
-
-    return result
-
-
-nexus_result = asyncio.run(test_nexus_prediction())
+for name, report in all_reports.items():
+    psi_values = [r.psi for r in report.feature_results]
+    print(f"\n{name}:")
+    print(f"  Mean PSI: {np.mean(psi_values):.4f}")
+    print(f"  Max PSI:  {max(psi_values):.4f}")
+    print(f"  Features above 0.1: {sum(1 for p in psi_values if p > 0.1)}")
+    print(f"  Features above 0.2: {sum(1 for p in psi_values if p > 0.2)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Access control discussion (primes PACT in M6)
+# TASK 6: Governance — monitoring as obligation
 # ══════════════════════════════════════════════════════════════════════
 
+print(f"\n=== Governance: Model Monitoring Obligations ===")
 print(
-    f"""
-=== Access Control: Who Can Access This API? ===
+    """
+In production, you MUST prove your model still performs.
+DriftMonitor is how you meet this obligation.
 
-Current state: NO access control. Anyone who can reach the server
-can call predict(). For a medical diagnosis model, this is dangerous.
+1. REGULATORY: MAS AI guidelines require ongoing model validation
+2. OPERATIONAL: Drift detection → retrain trigger → ModelRegistry update
+3. AUDIT TRAIL: Every drift check is logged (get_drift_history)
+4. ALERTING: DriftSpec.on_drift_detected for automated notifications
+5. MODULE 6: PACT GovernanceEngine formalises these obligations
 
-Questions to consider:
-1. Who should be able to request predictions? (doctors? nurses? billing?)
-2. What data classification level are medical images? (likely: Restricted)
-3. Should predictions be logged for audit? (yes — regulatory requirement)
-4. What happens if the model is wrong? (liability, appeal mechanism)
-
-In Module 6, you'll wrap this with PACT GovernanceEngine:
-  - PactGovernedAgent: agents receive frozen GovernanceContext
-  - Operating envelopes: cost budgets, tool restrictions, data access
-  - D/T/R addressing: Department/Team/Role-based access control
-  - AuditChain: tamper-evident logging of every prediction
-
-The pattern:
-  from pact import GovernanceEngine, PactGovernedAgent
-  governed = PactGovernedAgent(agent, governance_context)
-  # Agent can predict, but governance limits what data it accesses
-
-This is NOT a compliance checkbox. This is competitive advantage:
-companies that can PROVE their AI is governed win regulated markets.
+Pipeline: DriftMonitor → alert → retrain (M3 pipeline) → promote (ModelRegistry)
 """
 )
 
-# Clean up
-asyncio.run(conn.close())
 
-print("✓ Exercise 6 complete — InferenceServer + Nexus multi-channel deployment")
-print(
-    "  Module 4 complete: 6 exercises covering unsupervised ML, NLP, DL, and deployment"
-)
+# Check drift history
+async def show_history():
+    history = await monitor.get_drift_history("credit_default_lgbm", limit=10)
+    print(f"Drift check history: {len(history)} entries")
+    for h in history[:5]:
+        print(f"  {h.get('checked_at', '?')}: severity={h.get('severity', '?')}")
+    await conn.close()
+
+
+asyncio.run(show_history())
+
+viz = ModelVisualizer()
+comparison = {
+    name: {
+        "Mean_PSI": np.mean([r.psi for r in report.feature_results]),
+        "Max_PSI": max(r.psi for r in report.feature_results),
+        "Drifted_Features": sum(1 for r in report.feature_results if r.drift_detected),
+    }
+    for name, report in all_reports.items()
+}
+fig = viz.metric_comparison(comparison)
+fig.update_layout(title="Drift Detection: Scenario Comparison")
+fig.write_html("ex4_drift_comparison.html")
+print("\nSaved: ex4_drift_comparison.html")
+
+print("\n✓ Exercise 4 complete — DriftMonitor for production model monitoring")

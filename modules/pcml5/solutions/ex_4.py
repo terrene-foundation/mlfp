@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 4: RAGResearchAgent
+# ASCENT5 — Exercise 4: RAG Systems
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build RAGResearchAgent over Kailash SDK documentation and
-#   Singapore regulatory docs. Evaluate retrieval quality.
+# OBJECTIVE: Build a RAGResearchAgent over Kailash SDK documentation and
+#   Singapore regulatory docs. Load real documents from the ascent05 dataset,
+#   evaluate retrieval quality, and compare dense vs hybrid retrieval.
 #
 # TASKS:
-#   1. Prepare document corpus (SDK docs + regulatory)
+#   1. Load real document corpus from ASCENTDataLoader (SDK docs + regulatory)
 #   2. Build RAGResearchAgent with document retrieval
 #   3. Evaluate retrieval quality (faithfulness, relevance)
 #   4. Compare dense vs hybrid retrieval

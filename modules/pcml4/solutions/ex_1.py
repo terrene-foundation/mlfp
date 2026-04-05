@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT4 — Exercise 1: Clustering Comparison with AutoMLEngine
+# ASCENT4 — Exercise 1: Clustering
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Compare K-means, spectral clustering, HDBSCAN, and GMM on
 #   e-commerce customer data. Use AutoMLEngine for automated comparison.

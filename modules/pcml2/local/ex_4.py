@@ -2,25 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT2 — Exercise 4: Causal Inference — Difference-in-Differences
+# ASCENT2 — Exercise 4: Bootstrap and Resampling
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Estimate the causal effect of Singapore's property cooling
-#   measures on HDB resale prices using difference-in-differences (DiD).
-#   Track the analysis as an experiment run.
+# OBJECTIVE: Master bootstrap resampling methods — BCa intervals,
+#   parametric vs non-parametric approaches, and distribution-free
+#   inference. Compare bootstrap runs with ExperimentTracker.
 #
 # TASKS:
-#   1. Load HDB prices + cooling measure dates
-#   2. Define treatment and control groups (affected vs unaffected towns)
-#   3. Verify the parallel trends assumption (pre-treatment)
-#   4. Estimate DiD treatment effect
-#   5. Robustness checks (placebo test, event study)
-#   6. Log causal inference results to ExperimentTracker
-#
-# THEORY (DiD):
-#   ATT = E[Y(1) - Y(0) | D=1]
-#       = (E[Y|D=1,T=1] - E[Y|D=1,T=0]) - (E[Y|D=0,T=1] - E[Y|D=0,T=0])
-#   Key assumption: parallel trends (absent treatment, groups would have
-#   moved in parallel). Testable pre-treatment, untestable post.
+#   1. Load experiment data and compute basic sample statistics
+#   2. Implement percentile, basic, and BCa bootstrap intervals
+#   3. Parametric bootstrap — simulate from fitted distribution
+#   4. Distribution-free methods: sign test, Wilcoxon signed-rank
+#   5. Compare bootstrap run configurations with ExperimentTracker
+#   6. Visualise bootstrap distributions with ModelVisualizer
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -29,10 +23,9 @@ import asyncio
 
 import numpy as np
 import polars as pl
-from scipy import stats
-from kailash.db.connection import ConnectionManager
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
 from kailash_ml import ModelVisualizer
+from kailash_ml import ExperimentTracker
+from scipy import stats
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -43,377 +36,430 @@ setup_environment()
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
-hdb = loader.load("ascent01", "hdb_resale.parquet")
-cooling_measures = loader.load("ascent02", "sg_cooling_measures.csv")
+exp_data = loader.load("ascent02", "experiment_data.parquet")
 
-# Parse dates
-hdb = hdb.with_columns(pl.col("month").str.to_date("%Y-%m").alias("transaction_date"))
+print("=== Experiment Data ===")
+print(f"Shape: {exp_data.shape}")
+print(f"Columns: {exp_data.columns}")
+print(exp_data.head(8))
 
-print("=== Cooling Measures ===")
-print(cooling_measures)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define the natural experiment
-# ══════════════════════════════════════════════════════════════════════
-# Cooling measure: Additional Buyer's Stamp Duty (ABSD) increase
-# Treatment: towns with high proportion of investment purchases
-# Control: towns with predominantly owner-occupied purchases
-# The ABSD disproportionately affects investment-heavy towns.
-
-# Select a specific cooling measure event
-event_date = pl.date(2022, 9, 30)  # Sep 2022 ABSD increase
-
-# Treatment towns (high investment proportion — CBD-adjacent, premium)
-treatment_towns = ["BUKIT TIMAH", "QUEENSTOWN", "BISHAN", "TOA PAYOH", "CENTRAL AREA"]
-# Control towns (predominantly owner-occupied, suburban)
-control_towns = ["WOODLANDS", "JURONG WEST", "YISHUN", "PUNGGOL", "SENGKANG"]
-
-# Window: 12 months before and after
-window_start = event_date - pl.duration(days=365)
-window_end = event_date + pl.duration(days=365)
-
-# TODO: filter hdb to the event window and selected towns, then tag each row
-# with treated=1/0 (treatment vs control towns) and post=1/0 (after vs before event_date)
-did_data = hdb.filter(
-    (pl.col("transaction_date") >= window_start)
-    & (pl.col("transaction_date") <= window_end)
-    & (pl.col("town").is_in(treatment_towns + control_towns))
-).with_columns(
-    # TODO: create treated indicator — 1 if town is in treatment_towns, else 0
-    pl.when(pl.col("town").is_in(____))  # Hint: treatment_towns
-    .then(pl.lit(1))
-    .otherwise(pl.lit(0))
-    .alias("treated"),
-    # TODO: create post indicator — 1 if transaction_date >= event_date, else 0
-    pl.when(pl.col("transaction_date") >= ____)  # Hint: event_date
-    .then(pl.lit(1))
-    .otherwise(pl.lit(0))
-    .alias("post"),
-    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+control_revenue = (
+    exp_data.filter(pl.col("group") == "control")["revenue"]
+    .to_numpy()
+    .astype(np.float64)
 )
-
-# TODO: add the DiD interaction term — treated * post
-did_data = did_data.with_columns(
-    (____).alias("did_interaction")  # Hint: pl.col("treated") * pl.col("post")
+treatment_revenue = (
+    exp_data.filter(pl.col("group") == "treatment")["revenue"]
+    .to_numpy()
+    .astype(np.float64)
 )
+lift = treatment_revenue - control_revenue.mean()
 
-print(f"\nDiD sample: {did_data.height:,} transactions")
+n_control = len(control_revenue)
+n_treatment = len(treatment_revenue)
+
 print(
-    f"Treatment (high-investment towns): {did_data.filter(pl.col('treated') == 1).height:,}"
+    f"\nControl:   n={n_control:,}, mean=${control_revenue.mean():.2f}, std=${control_revenue.std():.2f}"
 )
 print(
-    f"Control (owner-occupied towns):    {did_data.filter(pl.col('treated') == 0).height:,}"
+    f"Treatment: n={n_treatment:,}, mean=${treatment_revenue.mean():.2f}, std=${treatment_revenue.std():.2f}"
+)
+print(f"Observed lift: ${treatment_revenue.mean() - control_revenue.mean():.2f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1: Why bootstrap? — when theory fails
+# ════════════════════════════════════════════════════════════════════════
+
+sample_median = np.median(treatment_revenue)
+normal_se_median = (
+    np.sqrt(np.pi / (2 * n_treatment)) * treatment_revenue.std() / np.sqrt(n_treatment)
+)
+normal_ci_median = (
+    sample_median - 1.96 * normal_se_median,
+    sample_median + 1.96 * normal_se_median,
 )
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Verify parallel trends assumption
-# ══════════════════════════════════════════════════════════════════════
-
-# Monthly price trends by group (pre-treatment period only)
-# TODO: filter to pre-treatment period only (post == 0)
-pre_treatment = did_data.filter(pl.col("post") == ____)  # Hint: 0
-
-monthly_trends = (
-    pre_treatment.group_by("transaction_date", "treated")
-    .agg(
-        pl.col("price_per_sqm").median().alias("median_price_sqm"),
-        pl.col("price_per_sqm").count().alias("n_transactions"),
-    )
-    .sort("transaction_date", "treated")
-)
-
-# Compute growth rates for each group
-for group in [0, 1]:
-    group_data = monthly_trends.filter(pl.col("treated") == group).sort(
-        "transaction_date"
-    )
-    prices = group_data["median_price_sqm"].to_numpy()
-    if len(prices) > 1:
-        growth = (prices[-1] - prices[0]) / prices[0] * 100
-        monthly_growth = growth / len(prices)
-        group_name = "Treatment" if group == 1 else "Control"
-        print(
-            f"\n{group_name} pre-trend: {growth:.1f}% total, {monthly_growth:.2f}%/month"
-        )
-
-# Formal test: interaction of group × time should be non-significant pre-treatment
-# Using monthly dummies
-pre_months = pre_treatment.with_columns(
-    pl.col("transaction_date").dt.month().alias("month_num")
-)
-
-# Simple linear trend comparison
-from numpy.polynomial import polynomial as P
-
-for group, name in [(0, "Control"), (1, "Treatment")]:
-    group_monthly = (
-        pre_months.filter(pl.col("treated") == group)
-        .group_by("transaction_date")
-        .agg(pl.col("price_per_sqm").median())
-        .sort("transaction_date")
-    )
-    x = np.arange(group_monthly.height)
-    y = group_monthly["price_per_sqm"].to_numpy()
-    coeffs = P.polyfit(x, y, deg=1)
-    print(f"{name} linear trend: slope = {coeffs[1]:.2f} $/sqm per month")
-
-print("\n→ Parallel trends: visually inspect and compare slopes above.")
-print("  If slopes are similar, the assumption is plausible.")
+print(f"\n=== Why Bootstrap? ===")
+print(f"Sample median: ${sample_median:.2f}")
+print(f"Normal-theory 95% CI: [${normal_ci_median[0]:.2f}, ${normal_ci_median[1]:.2f}]")
+print(f"(Valid only if distribution is symmetric and n is large)")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Estimate DiD treatment effect
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2: Three bootstrap interval methods
+# ════════════════════════════════════════════════════════════════════════
 
-# Simple 2×2 DiD (means comparison)
-# TODO: compute the group means for the four cells: (treated, post) in {0,1} x {0,1}
-means = {}
-for treated in [0, 1]:
-    for post in [0, 1]:
-        # TODO: filter did_data to the correct treated/post cell and compute price_per_sqm mean
-        subset = did_data.filter(
-            (pl.col("treated") == ____)
-            & (pl.col("post") == ____)  # Hint: treated, post
-        )
-        means[(treated, post)] = subset["price_per_sqm"].mean()
+rng = np.random.default_rng(seed=42)
+n_resamples = 10_000
+alpha = 0.05
 
-# TODO: compute the DiD estimate using the 2x2 formula
-# ATT = (Treatment post - Treatment pre) - (Control post - Control pre)
-did_estimate = (means[(1, 1)] - means[(1, 0)]) - (  # Treatment group change
-    ____  # Hint: means[(0, 1)] - means[(0, 0)]
-)  # Control group change
+# ─────── Percentile bootstrap ────────────────────────────────────────
+# Resample with replacement, compute median, take quantiles
 
-print(f"\n=== DiD Estimation ===")
-print(
-    f"Treatment group: pre=${means[(1,0)]:,.0f} → post=${means[(1,1)]:,.0f} (Δ={means[(1,1)]-means[(1,0)]:+,.0f})"
-)
-print(
-    f"Control group:   pre=${means[(0,0)]:,.0f} → post=${means[(0,1)]:,.0f} (Δ={means[(0,1)]-means[(0,0)]:+,.0f})"
-)
-print(f"DiD estimate (ATT): ${did_estimate:+,.0f} per sqm")
-
-# Regression-based DiD with standard errors
-# Y = β₀ + β₁(treated) + β₂(post) + β₃(treated×post) + ε
-# β₃ is the DiD estimate
-from numpy.linalg import lstsq
-
-y = did_data["price_per_sqm"].to_numpy()
-X = np.column_stack(
+# TODO: Compute bootstrap distribution of the median
+boot_medians = np.array(
     [
-        np.ones(len(y)),
-        did_data["treated"].to_numpy(),
-        did_data["post"].to_numpy(),
-        did_data["did_interaction"].to_numpy(),
+        ____  # Hint: np.median(rng.choice(treatment_revenue, size=n_treatment, replace=True))
+        for _ in range(n_resamples)
     ]
 )
 
-beta, residuals, rank, sv = lstsq(X, y, rcond=None)
-y_hat = X @ beta
-resid = y - y_hat
-n = len(y)
-k = X.shape[1]
-mse = np.sum(resid**2) / (n - k)
-var_beta = mse * np.linalg.inv(X.T @ X)
-se_beta = np.sqrt(np.diag(var_beta))
+# TODO: Compute percentile CI from bootstrap distribution
+pct_ci = (
+    ____,  # Hint: np.percentile(boot_medians, 100 * alpha / 2)
+    ____,  # Hint: np.percentile(boot_medians, 100 * (1 - alpha / 2))
+)
 
-# TODO: extract the DiD coefficient (β₃) and its standard error from beta and se_beta
-# Hint: β₃ is the 4th element (index 3) of beta
-did_coef = ____  # Hint: beta[3]
-did_se = ____  # Hint: se_beta[3]
-did_t = did_coef / did_se
-did_p = 2 * (1 - stats.t.cdf(abs(did_t), df=n - k))
-did_ci = (did_coef - 1.96 * did_se, did_coef + 1.96 * did_se)
-
-print(f"\n=== Regression DiD ===")
-print(f"DiD coefficient (β₃): ${did_coef:+,.2f}")
-print(f"Standard error: ${did_se:,.2f}")
-print(f"t-statistic: {did_t:.3f}")
-print(f"p-value: {did_p:.6f}")
-print(f"95% CI: [${did_ci[0]:,.2f}, ${did_ci[1]:,.2f}]")
+print(f"\n=== Bootstrap CI Methods for Median ===")
 print(
-    f"Interpretation: Cooling measure {'reduced' if did_coef < 0 else 'increased'} "
-    f"prices by ${abs(did_coef):,.0f}/sqm in investment-heavy towns"
+    f"Percentile CI:    [${pct_ci[0]:.2f}, ${pct_ci[1]:.2f}]  width=${pct_ci[1]-pct_ci[0]:.2f}"
+)
+
+# ─────── Basic (pivot) bootstrap ─────────────────────────────────────
+# Uses the pivot: θ̂ - θ as the quantity being bootstrapped.
+# CI: [2θ̂ - Q_{1-α/2}, 2θ̂ - Q_{α/2}]
+
+# TODO: Compute the basic (pivot) CI using sample_median and boot_medians
+basic_ci = (
+    ____,  # Hint: 2 * sample_median - np.percentile(boot_medians, 100 * (1 - alpha / 2))
+    ____,  # Hint: 2 * sample_median - np.percentile(boot_medians, 100 * alpha / 2)
+)
+print(
+    f"Basic (pivot) CI: [${basic_ci[0]:.2f}, ${basic_ci[1]:.2f}]  width=${basic_ci[1]-basic_ci[0]:.2f}"
+)
+
+# ─────── BCa (Bias-Corrected and accelerated) bootstrap ──────────────
+# Gold standard: corrects for bias (z₀) and acceleration (a).
+
+# TODO: Use scipy.stats.bootstrap to compute the BCa interval
+bca_result = stats.bootstrap(
+    ____,  # Hint: (treatment_revenue,)
+    statistic=np.median,
+    n_resamples=n_resamples,
+    confidence_level=1 - alpha,
+    method="BCa",
+    random_state=42,
+)
+bca_ci = (bca_result.confidence_interval.low, bca_result.confidence_interval.high)
+print(
+    f"BCa CI:           [${bca_ci[0]:.2f}, ${bca_ci[1]:.2f}]  width=${bca_ci[1]-bca_ci[0]:.2f}"
 )
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Robustness — placebo test
-# ══════════════════════════════════════════════════════════════════════
-# If our DiD is valid, running it at a FAKE event date (before actual event)
-# should show NO effect.
+def bca_manual(data: np.ndarray, statistic, n_boot: int = 5000, alpha: float = 0.05):
+    """Manual BCa interval — shows z0 and acceleration computation."""
+    n = len(data)
+    theta_hat = statistic(data)
 
-placebo_date = event_date - pl.duration(days=365)  # 1 year before actual event
-placebo_window_start = placebo_date - pl.duration(days=365)
+    boot_stats = np.array(
+        [statistic(rng.choice(data, size=n, replace=True)) for _ in range(n_boot)]
+    )
 
-placebo_data = (
-    hdb.filter(
-        (pl.col("transaction_date") >= placebo_window_start)
-        & (pl.col("transaction_date") <= placebo_date + pl.duration(days=365))
-        & (pl.col("town").is_in(treatment_towns + control_towns))
-        & (pl.col("transaction_date") < event_date)  # Strictly before actual event
-    )
-    .with_columns(
-        pl.when(pl.col("town").is_in(treatment_towns))
-        .then(pl.lit(1))
-        .otherwise(pl.lit(0))
-        .alias("treated"),
-        pl.when(pl.col("transaction_date") >= placebo_date)
-        .then(pl.lit(1))
-        .otherwise(pl.lit(0))
-        .alias("post"),
-        (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
-    )
-    .with_columns((pl.col("treated") * pl.col("post")).alias("did_interaction"))
+    z0 = stats.norm.ppf(np.mean(boot_stats < theta_hat))
+
+    jackknife_stats = np.array([statistic(np.delete(data, i)) for i in range(n)])
+    jack_mean = jackknife_stats.mean()
+    numerator = np.sum((jack_mean - jackknife_stats) ** 3)
+    denominator = 6 * (np.sum((jack_mean - jackknife_stats) ** 2) ** 1.5)
+    a = numerator / denominator if denominator != 0 else 0.0
+
+    z_alpha_lo = stats.norm.ppf(alpha / 2)
+    z_alpha_hi = stats.norm.ppf(1 - alpha / 2)
+
+    alpha_lo = stats.norm.cdf(z0 + (z0 + z_alpha_lo) / (1 - a * (z0 + z_alpha_lo)))
+    alpha_hi = stats.norm.cdf(z0 + (z0 + z_alpha_hi) / (1 - a * (z0 + z_alpha_hi)))
+
+    ci_lo = np.percentile(boot_stats, 100 * alpha_lo)
+    ci_hi = np.percentile(boot_stats, 100 * alpha_hi)
+
+    return ci_lo, ci_hi, z0, a, boot_stats
+
+
+bca_lo, bca_hi, z0_manual, a_manual, boot_manual = bca_manual(
+    treatment_revenue, np.median, n_boot=5000, alpha=alpha
 )
+print(f"\nManual BCa: z0={z0_manual:.4f}, a={a_manual:.4f}")
+print(f"  z0 > 0 → bootstrap distribution is biased above true median (upward skew)")
+print(f"  a ≠ 0 → SE changes with location (acceleration)")
+print(f"Manual BCa CI: [${bca_lo:.2f}, ${bca_hi:.2f}]")
 
-# TODO: run the placebo regression with the same structure as the main DiD
-# Use lstsq on [1, treated, post, did_interaction] to get beta_p
-y_p = placebo_data["price_per_sqm"].to_numpy()
-X_p = np.column_stack(
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3: Parametric bootstrap
+# ════════════════════════════════════════════════════════════════════════
+
+norm_mu, norm_sigma = treatment_revenue.mean(), treatment_revenue.std(ddof=1)
+
+# TODO: Compute parametric bootstrap by sampling from fitted Normal
+param_boot_medians = np.array(
     [
-        np.ones(len(y_p)),
-        placebo_data["treated"].to_numpy(),
-        placebo_data["post"].to_numpy(),
-        placebo_data["did_interaction"].to_numpy(),
+        ____  # Hint: np.median(rng.normal(loc=norm_mu, scale=norm_sigma, size=n_treatment))
+        for _ in range(n_resamples)
     ]
 )
 
-# TODO: fit the placebo regression and extract the DiD coefficient and SE
-beta_p, _, _, _ = lstsq(____, ____, rcond=None)  # Hint: X_p, y_p
-resid_p = y_p - X_p @ beta_p
-mse_p = np.sum(resid_p**2) / (len(y_p) - 4)
-se_p = np.sqrt(mse_p * np.linalg.inv(X_p.T @ X_p)[3, 3])
-t_p = beta_p[3] / se_p
-p_placebo = 2 * (1 - stats.t.cdf(abs(t_p), df=len(y_p) - 4))
+param_pct_ci = (
+    np.percentile(param_boot_medians, 100 * alpha / 2),
+    np.percentile(param_boot_medians, 100 * (1 - alpha / 2)),
+)
 
-print(f"\n=== Placebo Test (fake event 1 year earlier) ===")
-print(f"Placebo DiD: ${beta_p[3]:+,.2f} (SE=${se_p:,.2f})")
-print(f"p-value: {p_placebo:.4f}")
-if p_placebo > 0.05:
-    print("✓ Placebo is non-significant — supports causal interpretation")
+ks_stat, ks_p = stats.kstest(treatment_revenue, "norm", args=(norm_mu, norm_sigma))
+
+print(f"\n=== Parametric Bootstrap ===")
+print(f"Fitted Normal: μ={norm_mu:.2f}, σ={norm_sigma:.2f}")
+print(f"KS test (Normal fit): D={ks_stat:.4f}, p={ks_p:.4f}")
+if ks_p > 0.05:
+    print("Cannot reject Normal fit — parametric bootstrap is appropriate")
 else:
-    print("⚠ Placebo is significant — parallel trends assumption may be violated")
+    print("Normal fit rejected — non-parametric bootstrap is safer")
+print(f"Parametric boot CI: [${param_pct_ci[0]:.2f}, ${param_pct_ci[1]:.2f}]")
+print(f"Non-parametric BCa: [${bca_ci[0]:.2f}, ${bca_ci[1]:.2f}]")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Event study — dynamic treatment effects
-# ══════════════════════════════════════════════════════════════════════
-# Estimate treatment effect for each month relative to the event
-# This shows both pre-trends (should be flat) and post-treatment dynamics
-
-# Create relative month variable
-did_data_event = did_data.with_columns(
-    ((pl.col("transaction_date") - event_date).dt.total_days() / 30)
-    .cast(pl.Int32)
-    .alias("rel_month")
+np_boot_var = np.var(boot_medians)
+param_boot_var = np.var(param_boot_medians)
+print(f"\nBootstrap variance (non-param): {np_boot_var:.4f}")
+print(f"Bootstrap variance (parametric): {param_boot_var:.4f}")
+print(
+    f"Parametric is {'more' if param_boot_var < np_boot_var else 'less'} efficient (lower variance)"
 )
 
-# TODO: loop over each relative month and estimate treatment vs control mean difference
-# For each rel_month, filter the data, split into treat/ctrl, compute diff and SE
-event_study = []
-for rel_m in range(-12, 13):
-    month_data = did_data_event.filter(pl.col("rel_month") == rel_m)
-    if month_data.height < 50:
-        continue
 
-    # TODO: extract price_per_sqm arrays for treatment and control groups
-    treat_prices = month_data.filter(pl.col("treated") == ____)[  # Hint: 1
-        "price_per_sqm"
-    ].to_numpy()
-    ctrl_prices = month_data.filter(pl.col("treated") == ____)[  # Hint: 0
-        "price_per_sqm"
-    ].to_numpy()
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4: Distribution-free tests
+# ════════════════════════════════════════════════════════════════════════
 
-    if len(treat_prices) > 10 and len(ctrl_prices) > 10:
-        # TODO: compute the mean difference and its standard error
-        diff = ____  # Hint: treat_prices.mean() - ctrl_prices.mean()
-        se = np.sqrt(
-            treat_prices.var(ddof=1) / len(treat_prices)
-            + ctrl_prices.var(ddof=1) / len(ctrl_prices)
-        )
-        event_study.append(
-            {
-                "rel_month": rel_m,
-                "diff": diff,
-                "se": se,
-                "ci_lower": diff - 1.96 * se,
-                "ci_upper": diff + 1.96 * se,
-            }
-        )
+# Sign test: count how many lift values are positive
+k_positive = np.sum(lift > 0)
+n_nonzero = np.sum(lift != 0)
+sign_p = 2 * min(
+    stats.binom.cdf(k_positive, n_nonzero, 0.5),
+    1 - stats.binom.cdf(k_positive - 1, n_nonzero, 0.5),
+)
 
-print(f"\n=== Event Study ===")
-print(f"{'Month':>6} {'Diff':>10} {'95% CI':>24}")
-print("─" * 44)
-for e in event_study:
-    marker = " ←event" if e["rel_month"] == 0 else ""
-    print(
-        f"  t{e['rel_month']:+3d}  ${e['diff']:>8,.0f}  [${e['ci_lower']:>8,.0f}, ${e['ci_upper']:>8,.0f}]{marker}"
-    )
+print(f"\n=== Distribution-Free Tests ===")
+print(f"Sign test (H0: median lift = 0):")
+print(f"  Positive lifts: {k_positive}/{n_nonzero}")
+print(f"  p-value: {sign_p:.6f}")
+
+# TODO: Run Wilcoxon signed-rank test on lift (two-sided)
+wsr_stat, wsr_p = ____  # Hint: stats.wilcoxon(lift, alternative="two-sided")
+
+print(f"\nWilcoxon signed-rank test (H0: symmetric around 0):")
+print(f"  W-statistic: {wsr_stat:.1f}")
+print(f"  p-value: {wsr_p:.6f}")
+
+# TODO: Run Mann-Whitney U test between treatment and control revenue (two-sided)
+mw_stat, mw_p = (
+    ____  # Hint: stats.mannwhitneyu(treatment_revenue, control_revenue, alternative="two-sided")
+)
+auc = mw_stat / (n_treatment * n_control)
+
+print(f"\nMann-Whitney U test (treatment vs control):")
+print(f"  U-statistic: {mw_stat:.1f}")
+print(f"  p-value: {mw_p:.6f}")
+print(f"  P(treatment > control) = {auc:.4f}")
+
+print(f"\n=== Test Summary ===")
+t_stat, t_p = stats.ttest_ind(treatment_revenue, control_revenue, equal_var=False)
+print(f"{'Test':<25} {'p-value':>10} {'Decision':>15}")
+print("─" * 55)
+for test_name, p_val in [
+    ("Welch's t-test", t_p),
+    ("Mann-Whitney U", mw_p),
+    ("Sign test", sign_p),
+    ("Wilcoxon signed-rank", wsr_p),
+]:
+    decision = "SIGNIFICANT" if p_val < 0.05 else "not significant"
+    print(f"{test_name:<25} {p_val:>10.6f} {decision:>15}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Log to ExperimentTracker
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5: Compare bootstrap configurations with ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
 
 
-async def log_did_analysis():
-    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
-    await conn.initialize()
-    tracker = ExperimentTracker(conn)
+async def compare_bootstrap_runs():
+    """Log and compare different bootstrap configurations as experiment runs."""
+    # TODO: Instantiate ExperimentTracker and initialize it
+    tracker = ____  # Hint: ExperimentTracker()
     await tracker.initialize()
 
+    # TODO: Create an experiment for bootstrap comparison
     exp_id = await tracker.create_experiment(
-        name="ascent02_causal_inference",
-        description="Causal inference on Singapore housing cooling measures",
-        tags=["ascent02", "causal", "did"],
+        name="ascent02_bootstrap_comparison",
+        description="Bootstrap CI methods comparison — percentile, basic, BCa, parametric",
+        tags=____,  # Hint: ["ascent02", "bootstrap", "inference"]
     )
 
-    # TODO: log the DiD run with params (method, event_date, treatment_towns,
-    # control_towns, window_months) and metrics (did_estimate, did_se, did_p_value,
-    # placebo_p_value, n_treatment, n_control)
-    async with tracker.run(
-        ____, run_name=____
-    ) as run:  # Hint: exp_id, "did_cooling_measure_absd_2022"
+    # Run 1: Non-parametric percentile bootstrap
+    async with tracker.run(exp_id, run_name="nonparam_percentile") as run:
         await run.log_params(
             {
-                "method": "Difference-in-Differences",
-                "event_date": "2022-09-30",
-                "treatment_towns": ",".join(treatment_towns),
-                "control_towns": ",".join(control_towns),
-                "window_months": "12",
+                "method": "percentile",
+                "parametric": "False",
+                "n_resamples": str(n_resamples),
+                "statistic": "median",
+                "random_seed": "42",
             }
         )
         await run.log_metrics(
             {
-                "did_estimate": float(did_coef),
-                "did_se": float(did_se),
-                "did_p_value": ____,  # Hint: float(did_p)
-                "placebo_p_value": ____,  # Hint: float(p_placebo)
-                "n_treatment": float(did_data.filter(pl.col("treated") == 1).height),
-                "n_control": float(did_data.filter(pl.col("treated") == 0).height),
+                "ci_lower": float(pct_ci[0]),
+                "ci_upper": float(pct_ci[1]),
+                "ci_width": float(pct_ci[1] - pct_ci[0]),
+                "boot_std": float(np.std(boot_medians)),
+                "point_estimate": float(sample_median),
             }
         )
-        await run.set_tag("method", "did")
-    print(f"\nLogged DiD run")
-    await conn.close()
+        await run.set_tag("method_type", "nonparametric")
+
+    # Run 2: BCa bootstrap
+    async with tracker.run(exp_id, run_name="nonparam_bca") as run:
+        await run.log_params(
+            {
+                "method": "BCa",
+                "parametric": "False",
+                "n_resamples": str(n_resamples),
+                "statistic": "median",
+                "bias_correction_z0": str(float(z0_manual)),
+                "acceleration_a": str(float(a_manual)),
+            }
+        )
+        await run.log_metrics(
+            {
+                "ci_lower": float(bca_ci[0]),
+                "ci_upper": float(bca_ci[1]),
+                "ci_width": float(bca_ci[1] - bca_ci[0]),
+                "boot_std": float(np.std(boot_manual)),
+                "point_estimate": float(sample_median),
+                "bias_z0": float(z0_manual),
+                "acceleration_a": float(a_manual),
+            }
+        )
+        await run.set_tag("method_type", "nonparametric")
+
+    # Run 3: Parametric bootstrap
+    async with tracker.run(exp_id, run_name="parametric_normal") as run:
+        await run.log_params(
+            {
+                "method": "percentile",
+                "parametric": "True",
+                "distribution": "Normal",
+                "n_resamples": str(n_resamples),
+                "statistic": "median",
+                "fitted_mu": str(float(norm_mu)),
+                "fitted_sigma": str(float(norm_sigma)),
+            }
+        )
+        await run.log_metrics(
+            {
+                "ci_lower": float(param_pct_ci[0]),
+                "ci_upper": float(param_pct_ci[1]),
+                "ci_width": float(param_pct_ci[1] - param_pct_ci[0]),
+                "boot_std": float(np.std(param_boot_medians)),
+                "point_estimate": float(sample_median),
+                "ks_stat": float(ks_stat),
+                "ks_pvalue": float(ks_p),
+            }
+        )
+        await run.set_tag("method_type", "parametric")
+
+    # TODO: Compare all runs in the experiment
+    comparison = await tracker.compare_runs(exp_id)
+    print(f"\n=== ExperimentTracker: Bootstrap Run Comparison ===")
+    if comparison:
+        for run_info in comparison:
+            run_name = run_info.get("name", "unknown")
+            metrics = run_info.get("metrics", {})
+            ci_width = metrics.get("ci_width", "N/A")
+            print(f"  {run_name:<25}: CI width = {ci_width}")
+    else:
+        print(f"  Logged 3 runs to experiment '{exp_id}'")
+        print(f"  Methods: percentile, BCa, parametric-Normal")
+
+    return exp_id
 
 
-asyncio.run(log_did_analysis())
+exp_id = asyncio.run(compare_bootstrap_runs())
 
-# Visualise
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 6: Visualise bootstrap distributions with ModelVisualizer
+# ════════════════════════════════════════════════════════════════════════
+
 viz = ModelVisualizer()
-fig = viz.metric_comparison(
-    {
-        "Treatment (pre)": {"price_sqm": means[(1, 0)]},
-        "Treatment (post)": {"price_sqm": means[(1, 1)]},
-        "Control (pre)": {"price_sqm": means[(0, 0)]},
-        "Control (post)": {"price_sqm": means[(0, 1)]},
-    }
-)
-fig.update_layout(title="DiD: Treatment vs Control, Pre vs Post Cooling Measure")
-fig.write_html("ex4_did_comparison.html")
-print("Saved: ex4_did_comparison.html")
 
-print("\n✓ Exercise 4 complete — causal inference with difference-in-differences")
+convergence_sizes = [100, 500, 1000, 2000, 5000, n_resamples]
+convergence_results = {}
+
+rng2 = np.random.default_rng(seed=42)
+all_boot = np.array(
+    [
+        np.median(rng2.choice(treatment_revenue, size=n_treatment, replace=True))
+        for _ in range(n_resamples)
+    ]
+)
+
+for size in convergence_sizes:
+    subset = all_boot[:size]
+    convergence_results[f"n={size}"] = {
+        "boot_mean": float(subset.mean()),
+        "ci_width": float(np.percentile(subset, 97.5) - np.percentile(subset, 2.5)),
+        "boot_std": float(subset.std()),
+    }
+
+fig_convergence = viz.metric_comparison(convergence_results)
+fig_convergence.update_layout(
+    title="Bootstrap Estimate Convergence vs Number of Resamples"
+)
+fig_convergence.write_html("ex4_bootstrap_convergence.html")
+print("\nSaved: ex4_bootstrap_convergence.html")
+
+method_metrics = {
+    "Percentile": {
+        "ci_lower": float(pct_ci[0]),
+        "ci_upper": float(pct_ci[1]),
+        "ci_width": float(pct_ci[1] - pct_ci[0]),
+    },
+    "Basic": {
+        "ci_lower": float(basic_ci[0]),
+        "ci_upper": float(basic_ci[1]),
+        "ci_width": float(basic_ci[1] - basic_ci[0]),
+    },
+    "BCa": {
+        "ci_lower": float(bca_ci[0]),
+        "ci_upper": float(bca_ci[1]),
+        "ci_width": float(bca_ci[1] - bca_ci[0]),
+    },
+    "Parametric": {
+        "ci_lower": float(param_pct_ci[0]),
+        "ci_upper": float(param_pct_ci[1]),
+        "ci_width": float(param_pct_ci[1] - param_pct_ci[0]),
+    },
+}
+
+fig_methods = viz.metric_comparison(method_metrics)
+fig_methods.update_layout(title="Bootstrap CI Methods: Median Revenue")
+fig_methods.write_html("ex4_bootstrap_methods.html")
+print("Saved: ex4_bootstrap_methods.html")
+
+running_ci_widths = []
+step = max(1, n_resamples // 200)
+for i in range(step, n_resamples + 1, step):
+    subset = all_boot[:i]
+    width = np.percentile(subset, 97.5) - np.percentile(subset, 2.5)
+    running_ci_widths.append(float(width))
+
+history_metrics = {"CI Width (95%)": running_ci_widths}
+fig_history = viz.training_history(
+    history_metrics, x_label=f"Bootstrap Resamples (×{step})"
+)
+fig_history.update_layout(title="Bootstrap CI Width Convergence")
+fig_history.write_html("ex4_bootstrap_history.html")
+print("Saved: ex4_bootstrap_history.html")
+
+print(f"\n✓ Exercise 4 complete — bootstrap and distribution-free inference")
+print(
+    f"  Key concepts: BCa intervals, parametric vs non-parametric, ExperimentTracker comparison"
+)

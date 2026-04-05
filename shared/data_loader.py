@@ -17,8 +17,14 @@ _DRIVE_FOLDER_ID = "16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws"
 
 # Module subfolders on the shared Drive
 _MODULES = {
-    "ascent01", "ascent02", "ascent03", "ascent04", "ascent05",
-    "ascent06", "ascent06-dl", "ascent_assessment",
+    "ascent01",
+    "ascent02",
+    "ascent03",
+    "ascent04",
+    "ascent05",
+    "ascent06",
+    "ascent06-dl",
+    "ascent_assessment",
 }
 
 
@@ -26,6 +32,7 @@ def _is_colab() -> bool:
     """Detect if running inside Google Colab."""
     try:
         import google.colab  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -96,6 +103,7 @@ def _read_file(path: Path) -> pl.DataFrame:
         return pl.read_json(path)
     elif suffix in (".p", ".pickle", ".pkl"):
         import pickle
+
         with open(path, "rb") as f:
             obj = pickle.load(f)  # noqa: S301
         if isinstance(obj, pl.DataFrame):
@@ -105,15 +113,27 @@ def _read_file(path: Path) -> pl.DataFrame:
             f"Convert the pickle to parquet upstream: pl.from_pandas(obj).write_parquet('out.parquet')"
         )
     else:
-        raise ValueError(f"Unsupported file format: {suffix}. Use .csv, .parquet, or .json")
+        raise ValueError(
+            f"Unsupported file format: {suffix}. Use .csv, .parquet, or .json"
+        )
+
+
+def _repo_data_dir() -> Path | None:
+    """Find the repo-local data/ directory by walking up from cwd."""
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        candidate = parent / "data"
+        if candidate.is_dir() and (parent / "pyproject.toml").exists():
+            return candidate
+    return None
 
 
 class ASCENTDataLoader:
-    """Load ASCENT course datasets from Google Drive.
+    """Load ASCENT course datasets with automatic source resolution.
 
-    Auto-detects environment:
-    - Colab: reads from Drive mount at /content/drive/MyDrive/ascent_data/
-    - Local/Jupyter: downloads via gdown and caches in .data_cache/
+    Resolution order:
+    1. Colab: Drive mount at /content/drive/MyDrive/ascent_data/
+    2. Local repo data/ directory (committed datasets)
+    3. Google Drive download via gdown (cached in .data_cache/)
 
     Usage:
         loader = ASCENTDataLoader()
@@ -128,6 +148,7 @@ class ASCENTDataLoader:
         if self._colab:
             self._root = _colab_data_root()
         else:
+            self._local_data = _repo_data_dir()
             self._cache = Path(cache_dir) if cache_dir else _local_cache_dir()
 
     def load(self, module: str, filename: str) -> pl.DataFrame:
@@ -153,6 +174,15 @@ class ASCENTDataLoader:
                     f"Ensure ascent_data is accessible in your Google Drive."
                 )
         else:
+            # Check repo-local data/ first, then fall back to Drive download
+            if self._local_data:
+                local_path = self._local_data / module / filename
+                if local_path.exists():
+                    path = local_path
+                    logger.info(
+                        "Loading %s/%s from local data/ (%s)", module, filename, path
+                    )
+                    return _read_file(path)
             path = _download_from_drive(module, filename, self._cache)
 
         logger.info("Loading %s/%s (%s)", module, filename, path)

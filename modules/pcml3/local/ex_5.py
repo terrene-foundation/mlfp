@@ -2,37 +2,35 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT3 — Exercise 5: HyperparameterSearch + ModelRegistry
+# ASCENT3 — Exercise 5: Workflow Orchestration and Custom Nodes
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use HyperparameterSearch for Bayesian optimization, then
-#   register the best model in ModelRegistry with staging → production
-#   promotion as a governance gate.
+# OBJECTIVE: Build an ML pipeline using Kailash WorkflowBuilder — load,
+#   preprocess, train, evaluate, persist to DataFlow. Learn the
+#   runtime.execute(workflow.build()) pattern.
 #
 # TASKS:
-#   1. Define search space with SearchSpace and ParamDistribution
-#   2. Run HyperparameterSearch with Bayesian optimization
-#   3. Analyse search results and convergence
-#   4. Register best model in ModelRegistry
-#   5. Promote from staging to production (governance gate)
-#   6. Retrieve and compare model versions
+#   1. Build a Kailash workflow for the ML pipeline
+#   2. Define @db.model for evaluation results (DataFlow)
+#   3. Execute the workflow with LocalRuntime
+#   4. Persist results with db.express
+#   5. Define ModelSignature (input/output schema for trained models)
+#   6. Query persisted results
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
+import os
 
-import numpy as np
 import polars as pl
-from kailash.db.connection import ConnectionManager
+from dotenv import load_dotenv
+
+from kailash.workflow.builder import WorkflowBuilder
+from kailash.runtime import LocalRuntime
+from kailash_dataflow import DataFlow, field
 from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
-from kailash_ml.engines.hyperparameter_search import (
-    HyperparameterSearch,
-    SearchSpace,
-    SearchConfig,
-    ParamDistribution,
-)
-from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml.engines.training_pipeline import TrainingPipeline, ModelSpec, EvalSpec
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -44,6 +42,136 @@ setup_environment()
 
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Build a Kailash ML workflow
+# ══════════════════════════════════════════════════════════════════════
+# WorkflowBuilder: nodes, connections, runtime.execute(workflow.build())
+# This is the Kailash Core SDK pattern for orchestrating multi-step operations.
+
+# TODO: Create a WorkflowBuilder with name "credit_scoring_pipeline"
+workflow = ____  # Hint: WorkflowBuilder("credit_scoring_pipeline")
+
+# TODO: Add a DataPreprocessNode named "preprocess" with the config below
+workflow.add_node(
+    ____,  # Hint: "DataPreprocessNode"
+    "preprocess",
+    {
+        "data_source": "sg_credit_scoring",
+        "target": "default",
+        "train_size": 0.8,
+        "seed": 42,
+        "normalize": False,
+        "categorical_encoding": "ordinal",
+        "imputation_strategy": "median",
+    },
+)
+
+# TODO: Add a ModelTrainNode named "train" connected to "preprocess"
+workflow.add_node(
+    ____,  # Hint: "ModelTrainNode"
+    "train",
+    {
+        "model_class": "lightgbm.LGBMClassifier",
+        "hyperparameters": {
+            "n_estimators": 500,
+            "learning_rate": 0.1,
+            "max_depth": 6,
+            "scale_pos_weight": 7.3,
+        },
+    },
+    connections=____,  # Hint: ["preprocess"]
+)
+
+# TODO: Add a ModelEvalNode named "evaluate" connected to "train"
+workflow.add_node(
+    ____,  # Hint: "ModelEvalNode"
+    "evaluate",
+    {
+        "metrics": ["accuracy", "f1", "auc_roc", "auc_pr", "log_loss"],
+    },
+    connections=____,  # Hint: ["train"]
+)
+
+# TODO: Add a PersistNode named "persist" connected to "evaluate"
+workflow.add_node(
+    ____,  # Hint: "PersistNode"
+    "persist",
+    {
+        "storage": "sqlite:///ascent03_models.db",
+    },
+    connections=____,  # Hint: ["evaluate"]
+)
+
+# TODO: Create a LocalRuntime and execute the built workflow
+#       MUST call workflow.build() — never pass the builder directly
+runtime = ____  # Hint: LocalRuntime()
+print("=== Executing Workflow ===")
+
+# TODO: Execute the workflow; unpack into (results, run_id)
+results, run_id = ____  # Hint: runtime.execute(workflow.build())
+
+print(f"Run ID: {run_id}")
+print(f"Node results: {list(results.keys())}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Define @db.model for evaluation results
+# ══════════════════════════════════════════════════════════════════════
+# DataFlow uses declarative models — define once, get CRUD for free.
+# The @db.model decorator registers the class with the DataFlow engine.
+
+db = DataFlow("sqlite:///ascent03_models.db")
+
+
+# TODO: Decorate with @db.model
+____
+
+
+class ModelEvaluation:
+    """Stores evaluation results for trained models."""
+
+    id: int = field(primary_key=True)
+    model_name: str = field()
+    dataset: str = field()
+    accuracy: float = field()
+    f1_score: float = field()
+    auc_roc: float = field()
+    auc_pr: float = field()
+    log_loss: float = field()
+    train_size: int = field()
+    test_size: int = field()
+    feature_count: int = field()
+
+
+# TODO: Decorate with @db.model
+____
+
+
+class ModelArtifact:
+    """Stores model metadata and serialisation path."""
+
+    id: int = field(primary_key=True)
+    model_name: str = field()
+    version: int = field()
+    artifact_path: str = field()
+    is_production: bool = field(default=False)
+    created_by: str = field(default="ascent03")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Train and evaluate manually (parallel to workflow)
+# ══════════════════════════════════════════════════════════════════════
+
+import lightgbm as lgb
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    average_precision_score,
+    log_loss,
+)
 
 pipeline = PreprocessingPipeline()
 result = pipeline.setup(
@@ -60,226 +188,125 @@ X_test, y_test, _ = to_sklearn_input(
     feature_columns=[c for c in result.test_data.columns if c != "default"],
     target_column="default",
 )
-feature_names = col_info["feature_columns"]
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define search space
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Create a SearchSpace containing ParamDistribution entries for each hyperparameter.
-#       Each ParamDistribution takes: name, distribution, low, high.
-#       Distributions: "int_uniform" for integers, "log_uniform" for log-scale floats,
-#       "uniform" for linear-scale floats.
-search_space = SearchSpace(
-    params=[
-        # TODO: n_estimators — int_uniform from 100 to 1000
-        ____,  # Hint: ParamDistribution(name="n_estimators", distribution="int_uniform", low=100, high=1000)
-        # TODO: learning_rate — log_uniform from 0.01 to 0.5
-        ____,  # Hint: ParamDistribution(name="learning_rate", distribution="log_uniform", low=0.01, high=0.5)
-        # TODO: max_depth — int_uniform from 3 to 10
-        ____,  # Hint: ParamDistribution(name="max_depth", distribution="int_uniform", low=3, high=10)
-        # TODO: num_leaves — int_uniform from 15 to 127
-        ____,  # Hint: ParamDistribution(name="num_leaves", distribution="int_uniform", low=15, high=127)
-        # TODO: min_child_samples — int_uniform from 5 to 100
-        ____,  # Hint: ParamDistribution(name="min_child_samples", distribution="int_uniform", low=5, high=100)
-        # TODO: subsample — uniform from 0.5 to 1.0
-        ____,  # Hint: ParamDistribution(name="subsample", distribution="uniform", low=0.5, high=1.0)
-        # TODO: colsample_bytree — uniform from 0.5 to 1.0
-        ____,  # Hint: ParamDistribution(name="colsample_bytree", distribution="uniform", low=0.5, high=1.0)
-        # TODO: reg_alpha — log_uniform from 1e-8 to 10.0
-        ____,  # Hint: ParamDistribution(name="reg_alpha", distribution="log_uniform", low=1e-8, high=10.0)
-        # TODO: reg_lambda — log_uniform from 1e-8 to 10.0
-        ____,  # Hint: ParamDistribution(name="reg_lambda", distribution="log_uniform", low=1e-8, high=10.0)
-    ]
+model = lgb.LGBMClassifier(
+    n_estimators=500,
+    learning_rate=0.1,
+    max_depth=6,
+    scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
+    random_state=42,
+    verbose=-1,
 )
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+y_proba = model.predict_proba(X_test)[:, 1]
 
-print("=== Search Space ===")
-for p in search_space.params:
-    print(f"  {p.name}: {p.distribution} [{p.low}, {p.high}]")
+eval_metrics = {
+    "accuracy": accuracy_score(y_test, y_pred),
+    "f1": f1_score(y_test, y_pred),
+    "auc_roc": roc_auc_score(y_test, y_proba),
+    "auc_pr": average_precision_score(y_test, y_proba),
+    "log_loss": log_loss(y_test, y_proba),
+}
+
+print(f"\n=== Manual Evaluation ===")
+for metric, value in eval_metrics.items():
+    print(f"  {metric}: {value:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Run HyperparameterSearch
+# TASK 4: Persist results with db.express
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create a SearchConfig specifying model_class, metric, direction,
-#       n_trials, cv_folds, seed, early_stopping_rounds, timeout_seconds
-config = SearchConfig(
-    model_class=____,  # Hint: "lightgbm.LGBMClassifier"
-    metric=____,  # Hint: "average_precision" (AUC-PR, better for imbalanced data)
-    direction=____,  # Hint: "maximize"
-    n_trials=____,  # Hint: 50
-    cv_folds=____,  # Hint: 5
-    seed=42,
-    early_stopping_rounds=10,
-    timeout_seconds=300,
-)
+
+async def persist_results():
+    """Store evaluation results and model metadata in DataFlow."""
+    await db.initialize()
+
+    # TODO: Create a ModelEvaluation record using db.express.create
+    eval_record = await db.express.create(
+        ____,  # Hint: "ModelEvaluation"
+        {
+            "model_name": "lgbm_credit_v1",
+            "dataset": "sg_credit_scoring",
+            "accuracy": eval_metrics["accuracy"],
+            "f1_score": eval_metrics["f1"],
+            "auc_roc": eval_metrics["auc_roc"],
+            "auc_pr": eval_metrics["auc_pr"],
+            "log_loss": eval_metrics["log_loss"],
+            "train_size": X_train.shape[0],
+            "test_size": X_test.shape[0],
+            "feature_count": X_train.shape[1],
+        },
+    )
+    print(f"\nPersisted evaluation: ID={eval_record['id']}")
+
+    # TODO: Create a ModelArtifact record using db.express.create
+    artifact_record = await db.express.create(
+        ____,  # Hint: "ModelArtifact"
+        {
+            "model_name": "lgbm_credit_v1",
+            "version": 1,
+            "artifact_path": "models/lgbm_credit_v1.pkl",
+            "is_production": False,
+            "created_by": "ascent03_ex4",
+        },
+    )
+    print(f"Persisted artifact: ID={artifact_record['id']}")
+
+    return eval_record, artifact_record
 
 
-async def run_search():
-    # TODO: Create a HyperparameterSearch instance
-    search = ____  # Hint: HyperparameterSearch()
+eval_record, artifact_record = asyncio.run(persist_results())
 
-    # TODO: Call search.run() passing X=X_train, y=y_train, search_space, config
-    search_result = (
-        await ____
-    )  # Hint: search.run(X=X_train, y=y_train, search_space=search_space, config=config)
 
-    print(f"\n=== Search Results ===")
-    print(f"Best score (AUC-PR): {search_result.best_score:.4f}")
-    print(f"Best params:")
-    for k, v in search_result.best_params.items():
-        print(f"  {k}: {v}")
-    print(f"Total trials: {search_result.n_trials}")
-    print(f"Time: {search_result.elapsed_seconds:.1f}s")
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Define ModelSignature
+# ══════════════════════════════════════════════════════════════════════
+# ModelSignature is the input/output contract for a trained model.
 
-    # Trial history
-    print(f"\nTop 5 trials:")
-    sorted_trials = sorted(search_result.trials, key=lambda t: t["score"], reverse=True)
-    for i, trial in enumerate(sorted_trials[:5]):
+from kailash_ml.types import ModelSignature, FeatureSchema, FeatureField
+
+# TODO: Create a FeatureSchema with all training features as float64
+input_schema = ____  # Hint: FeatureSchema(name="credit_model_input", features=[FeatureField(name=f, dtype="float64") for f in col_info["feature_columns"]], entity_id_column="application_id")
+
+# TODO: Create a ModelSignature with the input schema and output columns
+signature = ____  # Hint: ModelSignature(input_schema=input_schema, output_columns=["default_probability", "default_label"], output_dtypes=["float64", "int64"], model_type="classifier")
+
+print(f"\n=== ModelSignature ===")
+print(f"Input features: {len(signature.input_schema.features)}")
+print(f"Output: {signature.output_columns}")
+print(f"Model type: {signature.model_type}")
+print(f"\nModelSignature is the contract between model and deployment.")
+print("InferenceServer (M4) validates inputs against this signature.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Query persisted results
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def query_results():
+    """Query stored evaluations to compare models."""
+    # TODO: List all ModelEvaluation records using db.express.list
+    evals = await db.express.list(____)  # Hint: "ModelEvaluation"
+    print(f"\n=== Persisted Evaluations ({len(evals)}) ===")
+    for e in evals:
         print(
-            f"  #{i+1}: score={trial['score']:.4f}, "
-            f"lr={trial['params'].get('learning_rate', '?'):.4f}, "
-            f"depth={trial['params'].get('max_depth', '?')}"
+            f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}"
         )
 
-    return search_result
+    # TODO: List all ModelArtifact records using db.express.list
+    artifacts = await db.express.list(____)  # Hint: "ModelArtifact"
+    print(f"\nModel Artifacts ({len(artifacts)}):")
+    for a in artifacts:
+        status = "PRODUCTION" if a["is_production"] else "staging"
+        print(f"  {a['model_name']} v{a['version']}: {status}")
+
+    await db.close()
 
 
-search_result = asyncio.run(run_search())
+asyncio.run(query_results())
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Analyse convergence
-# ══════════════════════════════════════════════════════════════════════
-
-# Plot optimisation convergence
-scores = [t["score"] for t in search_result.trials]
-best_so_far = np.maximum.accumulate(scores)
-
-viz = ModelVisualizer()
-fig = viz.training_history(
-    {"Best Score": best_so_far.tolist()},
-    x_label="Trial",
-)
-fig.update_layout(title="Hyperparameter Search Convergence")
-fig.write_html("ex5_search_convergence.html")
-print("\nSaved: ex5_search_convergence.html")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Register best model in ModelRegistry
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def register_model():
-    conn = ConnectionManager("sqlite:///ascent03_models.db")
-    await conn.initialize()
-
-    registry = ModelRegistry(conn)
-    await registry.initialize()
-
-    # TODO: Train a LGBMClassifier using search_result.best_params,
-    #       with random_state=42 and verbose=-1, then fit on X_train, y_train
-    import lightgbm as lgb
-
-    best_model = ____  # Hint: lgb.LGBMClassifier(**search_result.best_params, random_state=42, verbose=-1)
-    ____  # Hint: best_model.fit(X_train, y_train)
-
-    # Register in ModelRegistry (serialize model to bytes)
-    import pickle
-    from kailash_ml.types import MetricSpec
-
-    model_bytes = pickle.dumps(best_model)
-    # TODO: Call registry.register_model() with name, artifact=model_bytes,
-    #       and metrics=[MetricSpec(name="auc_pr", value=search_result.best_score)]
-    model_version = (
-        await ____
-    )  # Hint: registry.register_model(name="credit_default_lgbm", artifact=model_bytes, metrics=[MetricSpec(name="auc_pr", value=search_result.best_score)])
-    model_id = model_version.version
-
-    print(f"\n=== Model Registered ===")
-    print(f"Model ID: {model_id}")
-    print(f"Status: staging (not yet production)")
-
-    return conn, registry, model_id, best_model
-
-
-conn, registry, model_id, best_model = asyncio.run(register_model())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Promote staging → production (governance gate)
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def promote_model():
-    """
-    Promotion is a governance gate:
-    - A model cannot reach production without explicit promotion
-    - This creates an audit trail: who promoted, when, why
-    - EATP concept: model provenance chain
-    """
-
-    # Verify model quality before promotion
-    from sklearn.metrics import roc_auc_score, average_precision_score
-
-    y_proba = best_model.predict_proba(X_test)[:, 1]
-    auc_pr = average_precision_score(y_test, y_proba)
-    auc_roc = roc_auc_score(y_test, y_proba)
-
-    print(f"\n=== Pre-Promotion Validation ===")
-    print(f"Test AUC-PR:  {auc_pr:.4f}")
-    print(f"Test AUC-ROC: {auc_roc:.4f}")
-
-    # Quality gate: must exceed thresholds
-    min_auc_pr = 0.30  # Reasonable for 12% default rate
-    if auc_pr >= min_auc_pr:
-        # TODO: Call registry.promote_model() with name, version=model_id,
-        #       target_stage="production", and a reason string
-        await ____  # Hint: registry.promote_model(name="credit_default_lgbm", version=model_id, target_stage="production", reason=f"Passed quality gate: AUC-PR={auc_pr:.4f} >= {min_auc_pr}")
-        print(f"✓ Model promoted to PRODUCTION")
-        print(f"  Reason: AUC-PR={auc_pr:.4f} >= {min_auc_pr} threshold")
-    else:
-        print(f"✗ Model REJECTED: AUC-PR={auc_pr:.4f} < {min_auc_pr} threshold")
-
-    return auc_pr, auc_roc
-
-
-auc_pr, auc_roc = asyncio.run(promote_model())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Query and compare model versions
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def compare_versions():
-    """List all registered models and their stages."""
-    models = await registry.list_models()
-    print(f"\n=== Model Registry ===")
-    for m in models:
-        print(
-            f"  {m.get('name', '?')} (v{m.get('version', '?')}): "
-            f"stage={m.get('stage', '?')}, "
-            f"AUC-PR={m.get('metrics', {}).get('auc_pr', '?')}"
-        )
-
-    # Get production model
-    prod_model = await registry.get_production("credit_default_lgbm")
-    if prod_model:
-        print(
-            f"\nProduction model: {prod_model.get('name')} v{prod_model.get('version')}"
-        )
-        print(f"  Params: {prod_model.get('params', {})}")
-    else:
-        print("\nNo production model found")
-
-    await conn.close()
-
-
-asyncio.run(compare_versions())
-
-print("\n✓ Exercise 5 complete — HyperparameterSearch + ModelRegistry promotion")
-print("  Key concept: staging → production promotion as governance gate")
+print("\n✓ Exercise 5 complete — Kailash workflow orchestration + DataFlow persistence")
+print("  Pattern: WorkflowBuilder → runtime.execute(workflow.build()) → db.express")

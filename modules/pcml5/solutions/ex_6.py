@@ -2,19 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 6: Multi-Agent A2A Coordination
+# ASCENT5 — Exercise 5: ML Agent Pipeline (All 6 ML Agents)
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Full multi-agent orchestration using A2A protocol: research
-#   → analyze → engineer → review agents. End-to-end autonomous ML
-#   pipeline driven by agent coordination.
+# OBJECTIVE: Chain all 6 kailash-ml agents in a full ML pipeline:
+#   DataScientist → FeatureEngineer → ModelSelector → ExperimentInterpreter
+#   → DriftAnalyst → RetrainingDecision. Demonstrate the double opt-in
+#   pattern (AgentInfusionProtocol).
 #
 # TASKS:
-#   1. Define agent roles and A2A message protocol
-#   2. Build research agent (data discovery)
-#   3. Build analysis agent (EDA + profiling)
-#   4. Build engineering agent (feature + model)
-#   5. Build review agent (quality gate)
-#   6. Orchestrate full pipeline with GovernedSupervisor preview
+#   1. Set up the 6 ML agents with cost budgets
+#   2. DataScientistAgent: initial data analysis
+#   3. FeatureEngineerAgent: suggest features
+#   4. ModelSelectorAgent: recommend model architecture
+#   5. ExperimentInterpreterAgent: interpret results
+#   6. DriftAnalyst + RetrainingDecision: production monitoring
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -25,9 +26,12 @@ import os
 import polars as pl
 from dotenv import load_dotenv
 
-from kaizen import Signature, InputField, OutputField
-from kaizen.core.base_agent import BaseAgent
-from kaizen_agents import Delegate
+from kailash_ml.agents.data_scientist import DataScientistAgent
+from kailash_ml.agents.model_selector import ModelSelectorAgent
+from kailash_ml.agents.feature_engineer import FeatureEngineerAgent
+from kailash_ml.agents.experiment_interpreter import ExperimentInterpreterAgent
+from kailash_ml.agents.drift_analyst import DriftAnalystAgent
+from kailash_ml.agents.retraining_decision import RetrainingDecisionAgent
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -42,182 +46,226 @@ model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
+data_context = {
+    "dataset": "Singapore Credit Scoring",
+    "rows": credit.height,
+    "columns": credit.columns,
+    "target": "default",
+    "default_rate": float(credit["default"].mean()),
+    "features": len(credit.columns) - 1,
+}
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define agent roles and message protocol
-# ══════════════════════════════════════════════════════════════════════
-
-# A2A (Agent-to-Agent) protocol: agents communicate via structured messages
-
-
-class ResearchOutput(Signature):
-    """Research agent output: dataset discovery and assessment."""
-
-    task: str = InputField(description="Research task")
-    dataset_summary: str = OutputField(description="Summary of available data")
-    quality_issues: list[str] = OutputField(description="Data quality issues found")
-    feasibility: str = OutputField(description="Assessment of ML feasibility")
-
-
-class AnalysisOutput(Signature):
-    """Analysis agent output: EDA results and recommendations."""
-
-    research_context: str = InputField(description="Research findings to build on")
-    eda_findings: list[str] = OutputField(description="Key EDA findings")
-    feature_recommendations: list[str] = OutputField(description="Recommended features")
-    modeling_approach: str = OutputField(description="Suggested modeling approach")
-
-
-class EngineeringOutput(Signature):
-    """Engineering agent output: model design and implementation plan."""
-
-    analysis_context: str = InputField(description="Analysis findings")
-    model_architecture: str = OutputField(description="Chosen model architecture")
-    preprocessing_steps: list[str] = OutputField(
-        description="Data preprocessing pipeline"
-    )
-    expected_performance: str = OutputField(description="Expected model performance")
-
-
-class ReviewOutput(Signature):
-    """Review agent output: quality gate decision."""
-
-    pipeline_context: str = InputField(description="Full pipeline description")
-    approved: bool = OutputField(description="Whether the pipeline passes quality gate")
-    issues: list[str] = OutputField(description="Issues found during review")
-    improvements: list[str] = OutputField(description="Suggested improvements")
+print(f"=== ML Agent Pipeline ===")
+print(f"Dataset: {data_context['dataset']}")
+print(f"Shape: {data_context['rows']:,} × {data_context['features']} features")
+print(f"Default rate: {data_context['default_rate']:.2%}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2-5: Build specialized agents
+# TASK 1: DataScientistAgent — initial analysis
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def run_pipeline():
-    """Run the full multi-agent pipeline."""
-
-    data_summary = (
-        f"Singapore Credit Scoring: {credit.height:,} rows, "
-        f"{len(credit.columns)} cols, target=default ({credit['default'].mean():.1%}), "
-        f"columns: {', '.join(credit.columns[:10])}..."
+async def step_1_data_scientist():
+    agent = DataScientistAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
     )
 
-    # Step 1: Research Agent
-    print("=== Agent 1: Research ===")
-    research_agent = Delegate(model=model, max_llm_cost_usd=1.0)
-    research_prompt = (
-        f"You are a data research agent. Assess this dataset for ML feasibility:\n"
-        f"{data_summary}\n"
-        f"Provide: dataset summary, quality issues, ML feasibility assessment."
+    result = await agent.analyze(
+        data=credit,
+        target="default",
+        context="Singapore credit scoring for a bank. 12% default rate. Need production model.",
     )
-    research_text = ""
-    async for event in research_agent.run(research_prompt):
-        if hasattr(event, "text"):
-            research_text += event.text
-    print(f"Research: {research_text[:200]}...")
 
-    # Step 2: Analysis Agent (receives research context via A2A)
-    print("\n=== Agent 2: Analysis ===")
-    analysis_agent = Delegate(model=model, max_llm_cost_usd=1.0)
-    analysis_prompt = (
-        f"You are a data analysis agent. Based on research findings:\n"
-        f"{research_text[:500]}\n\n"
-        f"Provide: EDA findings, feature recommendations, modeling approach."
-    )
-    analysis_text = ""
-    async for event in analysis_agent.run(analysis_prompt):
-        if hasattr(event, "text"):
-            analysis_text += event.text
-    print(f"Analysis: {analysis_text[:200]}...")
+    print(f"\n=== Step 1: DataScientistAgent ===")
+    print(f"Data quality assessment: {result.quality_summary}")
+    print(f"Key issues: {result.issues}")
+    print(f"Recommendations: {result.recommendations}")
 
-    # Step 3: Engineering Agent
-    print("\n=== Agent 3: Engineering ===")
-    engineering_agent = Delegate(model=model, max_llm_cost_usd=1.0)
-    engineering_prompt = (
-        f"You are an ML engineering agent. Based on analysis:\n"
-        f"{analysis_text[:500]}\n\n"
-        f"Provide: model architecture choice, preprocessing pipeline, expected performance."
-    )
-    engineering_text = ""
-    async for event in engineering_agent.run(engineering_prompt):
-        if hasattr(event, "text"):
-            engineering_text += event.text
-    print(f"Engineering: {engineering_text[:200]}...")
-
-    # Step 4: Review Agent (quality gate)
-    print("\n=== Agent 4: Review (Quality Gate) ===")
-    review_agent = Delegate(model=model, max_llm_cost_usd=1.0)
-    review_prompt = (
-        f"You are an ML review agent. Review this pipeline:\n"
-        f"Research: {research_text[:300]}\n"
-        f"Analysis: {analysis_text[:300]}\n"
-        f"Engineering: {engineering_text[:300]}\n\n"
-        f"Approve or reject. List issues and improvements."
-    )
-    review_text = ""
-    async for event in review_agent.run(review_prompt):
-        if hasattr(event, "text"):
-            review_text += event.text
-    print(f"Review: {review_text[:200]}...")
-
-    return {
-        "research": research_text,
-        "analysis": analysis_text,
-        "engineering": engineering_text,
-        "review": review_text,
-    }
+    return result
 
 
-pipeline_results = asyncio.run(run_pipeline())
+ds_result = asyncio.run(step_1_data_scientist())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: GovernedSupervisor preview (seeds Module 6)
+# TASK 2: FeatureEngineerAgent — suggest features
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== GovernedSupervisor Preview ===")
+
+async def step_2_feature_engineer():
+    agent = FeatureEngineerAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
+    )
+
+    result = await agent.suggest(
+        data=credit,
+        target="default",
+        existing_features=credit.columns,
+        domain="credit_scoring",
+    )
+
+    print(f"\n=== Step 2: FeatureEngineerAgent ===")
+    print(f"Suggested features: {result.suggested_features}")
+    print(f"Transformation recommendations: {result.transformations}")
+    print(f"Features to drop: {result.drop_candidates}")
+
+    return result
+
+
+fe_result = asyncio.run(step_2_feature_engineer())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: ModelSelectorAgent — recommend model
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def step_3_model_selector():
+    agent = ModelSelectorAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
+    )
+
+    result = await agent.recommend(
+        task_type="binary_classification",
+        dataset_size=credit.height,
+        n_features=len(credit.columns) - 1,
+        target_metric="auc_pr",
+        constraints={"interpretability": "high", "latency_ms": 50},
+    )
+
+    print(f"\n=== Step 3: ModelSelectorAgent ===")
+    print(f"Recommended model: {result.recommended_model}")
+    print(f"Alternatives: {result.alternatives}")
+    print(f"Reasoning: {result.reasoning}")
+    print(f"Hyperparameter suggestions: {result.hyperparameters}")
+
+    return result
+
+
+ms_result = asyncio.run(step_3_model_selector())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: ExperimentInterpreterAgent — interpret M3 results
+# ══════════════════════════════════════════════════════════════════════
+
+# Simulated experiment results from Module 3
+experiment_results = {
+    "LightGBM": {"auc_roc": 0.89, "auc_pr": 0.62, "brier": 0.08, "log_loss": 0.31},
+    "XGBoost": {"auc_roc": 0.88, "auc_pr": 0.60, "brier": 0.09, "log_loss": 0.33},
+    "CatBoost": {"auc_roc": 0.87, "auc_pr": 0.58, "brier": 0.10, "log_loss": 0.35},
+}
+
+
+async def step_4_experiment_interpreter():
+    agent = ExperimentInterpreterAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
+    )
+
+    result = await agent.interpret(
+        experiment_results=experiment_results,
+        target_metric="auc_pr",
+        context="Credit scoring model comparison for Singapore bank",
+    )
+
+    print(f"\n=== Step 4: ExperimentInterpreterAgent ===")
+    print(f"Winner: {result.best_model}")
+    print(f"Interpretation: {result.interpretation}")
+    print(f"Production readiness: {result.production_ready}")
+    print(f"Remaining concerns: {result.concerns}")
+
+    return result
+
+
+ei_result = asyncio.run(step_4_experiment_interpreter())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: DriftAnalyst + RetrainingDecision
+# ══════════════════════════════════════════════════════════════════════
+
+# Simulated drift report from Module 4
+drift_report = {
+    "model": "credit_default_lgbm",
+    "overall_severity": "moderate",
+    "features_drifted": 3,
+    "max_psi": 0.18,
+    "drifted_features": ["annual_income", "total_debt", "credit_utilisation"],
+    "current_auc_pr": 0.55,
+    "baseline_auc_pr": 0.62,
+}
+
+
+async def step_5_drift_and_retrain():
+    drift_agent = DriftAnalystAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
+    )
+
+    drift_analysis = await drift_agent.analyze(
+        drift_report=drift_report,
+        context="Credit model in production for 6 months, economic downturn in Singapore",
+    )
+
+    print(f"\n=== Step 5a: DriftAnalystAgent ===")
+    print(f"Root cause: {drift_analysis.root_cause}")
+    print(f"Severity assessment: {drift_analysis.severity}")
+    print(f"Affected segments: {drift_analysis.affected_segments}")
+
+    retrain_agent = RetrainingDecisionAgent(
+        model=model,
+        max_llm_cost_usd=1.0,
+    )
+
+    retrain_decision = await retrain_agent.decide(
+        drift_analysis=drift_analysis,
+        performance_degradation=drift_report["baseline_auc_pr"]
+        - drift_report["current_auc_pr"],
+        model_age_days=180,
+        retraining_cost_estimate=500.0,
+    )
+
+    print(f"\n=== Step 5b: RetrainingDecisionAgent ===")
+    print(f"Decision: {retrain_decision.decision}")
+    print(f"Urgency: {retrain_decision.urgency}")
+    print(f"Reasoning: {retrain_decision.reasoning}")
+    print(f"Recommended actions: {retrain_decision.actions}")
+
+    return drift_analysis, retrain_decision
+
+
+drift_analysis, retrain_decision = asyncio.run(step_5_drift_and_retrain())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Summary: Full ML Agent Pipeline
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Full Pipeline Summary ===")
 print(
     """
-In Module 6, this multi-agent pipeline gets wrapped with PACT governance:
+DataScientistAgent → FeatureEngineerAgent → ModelSelectorAgent
+       ↓                    ↓                      ↓
+  Data quality         Feature ideas          Model choice
+       ↓                    ↓                      ↓
+       └──────────→ Train + Evaluate ←─────────────┘
+                         ↓
+              ExperimentInterpreterAgent
+                         ↓
+                   Deploy to production
+                         ↓
+                 DriftAnalystAgent (monitor)
+                         ↓
+              RetrainingDecisionAgent (trigger)
 
-  from pact import GovernanceEngine, PactGovernedAgent
-
-  # Each agent gets a frozen GovernanceContext
-  governed_research = PactGovernedAgent(
-      agent=research_agent,
-      governance_context=GovernanceContext(
-          cost_budget_usd=1.0,
-          data_access=["ascent03/*"],  # Can only access credit data
-          tools_allowed=["profile_data", "describe_column"],
-      )
-  )
-
-  # GovernedSupervisor orchestrates with oversight
-  supervisor = GovernedSupervisor(
-      agents=[governed_research, governed_analysis, governed_engineering, governed_review],
-      governance_engine=governance_engine,
-  )
-
-Key governance properties:
-  1. Monotonic tightening: child agents cannot exceed parent permissions
-  2. GovernanceContext is FROZEN: agents cannot modify their own governance
-  3. AuditChain: every agent action logged with tamper-evident chain
-  4. Fail-closed: if governance check fails, access is DENIED (not allowed)
-
-This is NOT optional. In regulated industries (banking, healthcare),
-ungoverned AI agents are a liability.
+Each agent has max_llm_cost_usd — governance at every step.
+The double opt-in pattern: agent=True in config + kailash-ml[agents] installed.
 """
 )
 
-# Compare autonomous vs manual
-print(f"=== Autonomous vs Manual Pipeline ===")
-print(f"Manual (Modules 2-4): You wrote every step, chose every parameter")
-print(f"Autonomous (Module 5): Agents suggested, reasoned, decided")
-print(f"Governed (Module 6): Same autonomy, but with formal accountability")
-print(f"\nThe progression: manual → autonomous → governed autonomous")
-print(f"This IS the future of production ML.")
-
-print("\n✓ Exercise 6 complete — multi-agent A2A coordination")
-print(
-    "  Module 5 complete: 6 exercises covering LLMs, agents, RAG, and multi-agent systems"
-)
+print("✓ Exercise 5 complete — full ML agent pipeline with 6 agents")

@@ -2,19 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT2 — Exercise 5: FeatureEngineer + ExperimentTracker Review
+# ASCENT2 — Exercise 5: CUPED and Variance Reduction
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use FeatureEngineer for automated feature generation
-#   (interactions, polynomial, binning), then review the full experiment
-#   history from all M2 exercises.
+# OBJECTIVE: Reduce A/B test variance using CUPED and pre-experiment
+#   covariates, apply Bayesian A/B testing, and use sequential testing
+#   to safely monitor experiments without inflating Type I error.
 #
 # TASKS:
-#   1. Load Singapore credit data and engineer baseline features
-#   2. Use FeatureEngineer for automated feature generation
-#   3. Compare manual vs automated features with DataExplorer
-#   4. Evaluate feature importance with mutual information
-#   5. Review full M2 experiment history in ExperimentTracker
-#   6. Generate experiment comparison report
+#   1. Load experiment data with pre-experiment covariates
+#   2. SRM check and power analysis (recap from Exercise 3, deeper)
+#   3. CUPED variance reduction — derive and apply
+#   4. Bayesian A/B testing — posterior probability of improvement
+#   5. Sequential testing with always-valid p-values
+#   6. Log experiment analysis to ExperimentTracker
+#
+# THEORY (CUPED):
+#   Y_adj = Y - θ(X - E[X])  where θ = Cov(Y,X)/Var(X)
+#   Var(Y_adj) = Var(Y)(1 - ρ²)  where ρ = Cor(Y,X)
+#   → If ρ=0.5, CI width reduces by 1 - √(1-0.25) = 13.4%
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -23,8 +28,8 @@ import asyncio
 
 import numpy as np
 import polars as pl
+from scipy import stats
 from kailash.db.connection import ConnectionManager
-from kailash_ml import FeatureEngineer, DataExplorer
 from kailash_ml.engines.experiment_tracker import ExperimentTracker
 from kailash_ml import ModelVisualizer
 
@@ -37,278 +42,308 @@ setup_environment()
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
-credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
-print("=== Singapore Credit Scoring Data ===")
-print(f"Shape: {credit.shape}")
-print(f"Columns: {credit.columns}")
-print(f"Default rate: {credit['default'].mean():.2%}")
+# Experiment data with pre-experiment covariates
+experiment = loader.load("ascent02", "ecommerce_experiment.parquet")
+
+print("=== E-commerce Experiment Data ===")
+print(f"Shape: {experiment.shape}")
+print(f"Columns: {experiment.columns}")
+print(experiment.head(5))
+
+# Separate groups
+control = experiment.filter(pl.col("group") == "control")
+treatment = experiment.filter(pl.col("group") == "treatment")
+
+n_c, n_t = control.height, treatment.height
+print(f"\nControl: {n_c:,} | Treatment: {n_t:,}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Manual feature engineering (baseline)
+# TASK 1: SRM check (recap, faster this time)
 # ══════════════════════════════════════════════════════════════════════
 
-credit_manual = credit.with_columns(
-    # Debt-to-income ratio
-    (pl.col("total_debt") / pl.col("annual_income").clip(lower_bound=1)).alias(
-        "debt_to_income"
-    ),
-    # Credit utilisation
-    (pl.col("credit_used") / pl.col("credit_limit").clip(lower_bound=1)).alias(
-        "credit_utilisation"
-    ),
-    # Payment behaviour
-    (
-        pl.col("late_payments_12m") / pl.col("total_payments_12m").clip(lower_bound=1)
-    ).alias("late_payment_ratio"),
-    # Account age features
-    (pl.col("account_age_months") / 12).alias("account_age_years"),
-    # Income stability (std of monthly income / mean)
-    (pl.col("income_std") / pl.col("annual_income").clip(lower_bound=1) * 12).alias(
-        "income_cv"
-    ),
-    # Log-transformed skewed features
-    pl.col("annual_income").log1p().alias("log_income"),
-    pl.col("total_debt").log1p().alias("log_debt"),
+expected = np.array([n_c + n_t] * 2) / 2
+observed = np.array([n_c, n_t])
+_, srm_p = stats.chisquare(observed, f_exp=expected)
+print(f"\nSRM check: p={srm_p:.6f} — {'✓ OK' if srm_p > 0.01 else '⚠ SRM DETECTED'}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Standard analysis (before CUPED)
+# ══════════════════════════════════════════════════════════════════════
+
+# Primary metric: revenue per user
+y_c = control["revenue"].to_numpy().astype(np.float64)
+y_t = treatment["revenue"].to_numpy().astype(np.float64)
+
+mean_c, mean_t = y_c.mean(), y_t.mean()
+lift = mean_t - mean_c
+se_naive = np.sqrt(y_c.var(ddof=1) / n_c + y_t.var(ddof=1) / n_t)
+ci_naive = (lift - 1.96 * se_naive, lift + 1.96 * se_naive)
+z_naive = lift / se_naive
+p_naive = 2 * (1 - stats.norm.cdf(abs(z_naive)))
+
+print(f"\n=== Standard Analysis (no CUPED) ===")
+print(f"Control mean: ${mean_c:.2f}")
+print(f"Treatment mean: ${mean_t:.2f}")
+print(f"Lift: ${lift:.2f} ({lift / mean_c:.2%} relative)")
+print(f"SE: ${se_naive:.2f}")
+print(f"95% CI: [${ci_naive[0]:.2f}, ${ci_naive[1]:.2f}]")
+print(f"p-value: {p_naive:.6f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: CUPED variance reduction
+# ══════════════════════════════════════════════════════════════════════
+# CUPED (Controlled-experiment Using Pre-Experiment Data)
+# Key insight: subtract a correlated pre-experiment covariate to reduce variance
+#
+# Y_adj = Y - θ * (X - E[X])
+# where X = pre-experiment metric (e.g., revenue in prior period)
+# θ = Cov(Y, X) / Var(X) = optimal coefficient
+# Var(Y_adj) = Var(Y) * (1 - ρ²)
+
+# Pre-experiment covariate: revenue in the 30 days before experiment
+x_c = control["pre_revenue"].to_numpy().astype(np.float64)
+x_t = treatment["pre_revenue"].to_numpy().astype(np.float64)
+
+# Compute CUPED adjustment
+x_all = np.concatenate([x_c, x_t])
+y_all = np.concatenate([y_c, y_t])
+
+# θ = Cov(Y, X) / Var(X)
+theta = np.cov(y_all, x_all)[0, 1] / np.var(x_all, ddof=1)
+
+# Correlation between pre and post metrics
+rho = np.corrcoef(y_all, x_all)[0, 1]
+
+# Adjusted values
+x_mean = x_all.mean()
+y_c_adj = y_c - theta * (x_c - x_mean)
+y_t_adj = y_t - theta * (x_t - x_mean)
+
+# CUPED analysis
+mean_c_adj = y_c_adj.mean()
+mean_t_adj = y_t_adj.mean()
+lift_adj = mean_t_adj - mean_c_adj
+se_cuped = np.sqrt(y_c_adj.var(ddof=1) / n_c + y_t_adj.var(ddof=1) / n_t)
+ci_cuped = (lift_adj - 1.96 * se_cuped, lift_adj + 1.96 * se_cuped)
+z_cuped = lift_adj / se_cuped
+p_cuped = 2 * (1 - stats.norm.cdf(abs(z_cuped)))
+
+# Variance reduction
+var_reduction = 1 - se_cuped**2 / se_naive**2
+ci_width_reduction = 1 - se_cuped / se_naive
+
+print(f"\n=== CUPED Analysis ===")
+print(f"Correlation (pre ↔ post revenue): ρ = {rho:.3f}")
+print(f"θ (optimal coefficient): {theta:.4f}")
+print(f"Theoretical variance reduction: {rho**2:.1%}")
+print(f"Actual variance reduction: {var_reduction:.1%}")
+print(f"CI width reduction: {ci_width_reduction:.1%}")
+print(f"\nCUPED-adjusted lift: ${lift_adj:.2f}")
+print(f"SE (CUPED): ${se_cuped:.2f} (was ${se_naive:.2f})")
+print(f"95% CI: [${ci_cuped[0]:.2f}, ${ci_cuped[1]:.2f}]")
+print(f"p-value: {p_cuped:.6f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Bayesian A/B testing
+# ══════════════════════════════════════════════════════════════════════
+# Instead of p-values, compute:
+#   - P(treatment > control | data)
+#   - Expected loss from choosing treatment
+#   - Credible interval for the lift
+
+# Use Normal approximation for posterior
+# Posterior for treatment mean: N(mean_t_adj, se_t²)
+# Posterior for control mean: N(mean_c_adj, se_c²)
+se_c_post = y_c_adj.std(ddof=1) / np.sqrt(n_c)
+se_t_post = y_t_adj.std(ddof=1) / np.sqrt(n_t)
+
+# P(treatment > control) = P(lift > 0)
+# lift ~ N(lift_adj, se_c² + se_t²)
+se_lift = np.sqrt(se_c_post**2 + se_t_post**2)
+prob_treatment_better = 1 - stats.norm.cdf(0, loc=lift_adj, scale=se_lift)
+
+# Expected loss: E[max(control - treatment, 0)]
+# For Normal: E[max(-Z, 0)] where Z ~ N(lift_adj, se_lift²)
+# = se_lift * φ(-lift_adj/se_lift) - lift_adj * Φ(-lift_adj/se_lift)
+z_ratio = -lift_adj / se_lift
+expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(
+    z_ratio
+)
+expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(
+    -z_ratio
 )
 
-manual_features = [c for c in credit_manual.columns if c not in credit.columns]
-print(f"\nManual features ({len(manual_features)}): {manual_features}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Automated feature engineering with FeatureEngineer
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def automated_features():
-    """Use FeatureEngineer for automated feature generation."""
-
-    engineer = FeatureEngineer(max_features=30)
-
-    # Define schema for the features to engineer
-    from kailash_ml.types import FeatureSchema, FeatureField
-
-    numeric_cols = [
-        "annual_income",
-        "total_debt",
-        "credit_limit",
-        "credit_used",
-        "account_age_months",
-        "late_payments_12m",
-    ]
-    eng_schema = FeatureSchema(
-        name="credit_features",
-        features=[FeatureField(name=c, dtype="float64") for c in numeric_cols],
-        entity_id_column="application_id",
-    )
-
-    # Automated feature generation using FeatureSchema
-    generated = engineer.generate(
-        data=credit,
-        schema=eng_schema,
-        strategies=["interactions", "polynomial", "binning", "ratios"],
-    )
-
-    # Select best features by importance
-    result = engineer.select(
-        data=generated.data,
-        candidates=generated,
-        target="default",
-        method="importance",
-        top_k=30,
-    )
-
-    print(f"\n=== FeatureEngineer Results ===")
-    print(f"Original features: {len(numeric_cols)}")
-    print(f"Generated candidates: {generated.total_candidates}")
-    print(f"Selected features: {result.n_selected}")
-    print(f"\nTop selected features:")
-    for rank in result.rankings[:15]:
-        print(f"  {rank.column_name}: score={rank.score:.4f}")
-    if result.n_selected > 15:
-        print(f"  ... and {result.n_selected - 15} more")
-
-    # Feature importance from rankings
-    if result.rankings:
-        print(f"\nTop 10 by importance:")
-        for rank in result.rankings[:10]:
-            print(f"  {rank.column_name}: {rank.score:.4f}")
-
-    return result
-
-
-engineer_result = asyncio.run(automated_features())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Compare manual vs automated features
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def compare_features():
-    """Compare manual and automated feature sets with DataExplorer."""
-
-    explorer = DataExplorer()
-
-    # Profile manual features
-    manual_df = credit_manual.select(manual_features + ["default"])
-    profile_manual = await explorer.profile(manual_df)
-
-    # Profile automated features
-    auto_df = engineer_result.data.select(
-        engineer_result.selected_columns + ["default"]
-    )
-    profile_auto = await explorer.profile(auto_df)
-
-    print(f"\n=== Feature Set Comparison ===")
-    print(f"{'Metric':<25} {'Manual':>10} {'Automated':>12}")
-    print("─" * 50)
-    print(
-        f"{'Feature count':<25} {len(manual_features):>10} {len(engineer_result.selected_columns):>12}"
-    )
-    print(
-        f"{'Alerts':<25} {len(profile_manual.alerts):>10} {len(profile_auto.alerts):>12}"
-    )
-    print(
-        f"{'Avg null %':<25} "
-        f"{np.mean([c.null_pct for c in profile_manual.columns]):>10.2%} "
-        f"{np.mean([c.null_pct for c in profile_auto.columns]):>12.2%}"
-    )
-
-    return profile_manual, profile_auto
-
-
-profile_manual, profile_auto = asyncio.run(compare_features())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Feature importance with mutual information
-# ══════════════════════════════════════════════════════════════════════
-
-from sklearn.feature_selection import mutual_info_classif
-from kailash_ml.interop import to_sklearn_input
-
-# Combine all features
-all_feature_cols = manual_features + [
-    f for f in engineer_result.selected_columns if f not in manual_features
-]
-
-# Prepare combined dataset
-combined = credit_manual.join(
-    engineer_result.data.select(
-        ["default"]
-        + [
-            f
-            for f in engineer_result.selected_columns
-            if f not in credit_manual.columns
-        ]
-    ),
-    on="default",
-    how="cross",
+# 95% credible interval for lift
+bayesian_ci = (
+    lift_adj - 1.96 * se_lift,
+    lift_adj + 1.96 * se_lift,
 )
 
-# Use manual features for MI analysis (cleaner)
-mi_df = credit_manual.select(manual_features + ["default"]).drop_nulls()
-X, y, col_info = to_sklearn_input(
-    mi_df,
-    feature_columns=manual_features,
-    target_column="default",
+print(f"\n=== Bayesian A/B Test ===")
+print(
+    f"P(treatment > control): {prob_treatment_better:.4f} ({prob_treatment_better:.1%})"
+)
+print(f"Expected loss (choose treatment): ${expected_loss_treatment:.2f}/user")
+print(f"Expected loss (choose control):   ${expected_loss_control:.2f}/user")
+print(f"95% credible interval for lift: [${bayesian_ci[0]:.2f}, ${bayesian_ci[1]:.2f}]")
+print(f"\nDecision recommendation:")
+if prob_treatment_better > 0.95 and expected_loss_treatment < 0.50:
+    print("  → SHIP: High confidence + low expected loss")
+elif prob_treatment_better > 0.80:
+    print("  → CONTINUE: Promising but need more data")
+else:
+    print("  → HOLD: Insufficient evidence for treatment superiority")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Sequential testing — always-valid p-values
+# ══════════════════════════════════════════════════════════════════════
+# Problem: peeking at results before full sample inflates Type I error.
+# Solution: always-valid p-values that maintain coverage at any stopping time.
+# Method: mixture sequential probability ratio test (mSPRT)
+
+# Simulate sequential analysis (process data in daily batches)
+experiment_with_day = experiment.with_columns(
+    pl.col("signup_date").str.to_date("%Y-%m-%d").alias("day")
 )
 
-# Mutual information
-mi_scores = mutual_info_classif(X, y, random_state=42)
-mi_ranking = sorted(zip(manual_features, mi_scores), key=lambda x: x[1], reverse=True)
+days = sorted(experiment_with_day["day"].unique().to_list())
+sequential_results = []
 
-print(f"\n=== Mutual Information Ranking ===")
-for name, score in mi_ranking:
-    bar = "█" * int(score * 100)
-    print(f"  {name:<25} {score:.4f} {bar}")
+for i, day in enumerate(days):
+    if i < 3:  # Need minimum 3 days
+        continue
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Review full M2 experiment history
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def review_experiments():
-    """Review all experiments from Module 2 exercises."""
-
-    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
-    await conn.initialize()
-    tracker = ExperimentTracker(conn)
-    await tracker.initialize()
-
-    # Log this exercise's feature engineering run
-    exp_id = await tracker.create_experiment(
-        name="ascent02_feature_engineering",
-        description="Automated feature engineering comparison",
-        tags=["ascent02", "feature-engineering", "automated"],
+    # Cumulative data up to this day
+    cumulative = experiment_with_day.filter(pl.col("day") <= day)
+    c = (
+        cumulative.filter(pl.col("group") == "control")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
+    )
+    t = (
+        cumulative.filter(pl.col("group") == "treatment")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
     )
 
-    async with tracker.run(exp_id, run_name="manual_vs_automated_features") as run:
+    if len(c) < 100 or len(t) < 100:
+        continue
+
+    # Standard z-test (WRONG for sequential — inflated α)
+    diff = t.mean() - c.mean()
+    se = np.sqrt(c.var(ddof=1) / len(c) + t.var(ddof=1) / len(t))
+    z = diff / se if se > 0 else 0
+    p_fixed = 2 * (1 - stats.norm.cdf(abs(z)))
+
+    # mSPRT always-valid p-value (simplified)
+    # Uses a mixture of likelihood ratios with a normal mixing distribution
+    n_curr = len(c) + len(t)
+    n_max = n_c + n_t
+    # Variance of the mixing distribution (tuning parameter)
+    tau_sq = se_naive**2  # Use naive SE as scale
+    v_n = se**2  # Current variance of the test statistic
+    # mSPRT statistic
+    lambda_n = np.sqrt(v_n / (v_n + tau_sq)) * np.exp(
+        tau_sq * z**2 / (2 * (v_n + tau_sq))
+    )
+    p_sequential = min(1.0, 1.0 / lambda_n) if lambda_n > 0 else 1.0
+
+    sequential_results.append(
+        {
+            "day": i + 1,
+            "n": n_curr,
+            "lift": diff,
+            "p_fixed": p_fixed,
+            "p_sequential": p_sequential,
+        }
+    )
+
+print(f"\n=== Sequential Testing ===")
+print(f"{'Day':>4} {'n':>8} {'Lift':>10} {'p (fixed)':>12} {'p (mSPRT)':>12}")
+print("─" * 52)
+for r in sequential_results[:: max(1, len(sequential_results) // 10)]:
+    print(
+        f"{r['day']:>4} {r['n']:>8,} ${r['lift']:>8.2f} {r['p_fixed']:>12.6f} {r['p_sequential']:>12.6f}"
+    )
+
+# Show the danger of peeking
+early_sig = sum(1 for r in sequential_results if r["p_fixed"] < 0.05)
+early_sig_seq = sum(1 for r in sequential_results if r["p_sequential"] < 0.05)
+print(f"\nDays with p < 0.05 (fixed):      {early_sig}/{len(sequential_results)}")
+print(f"Days with p < 0.05 (sequential): {early_sig_seq}/{len(sequential_results)}")
+print("→ Fixed p-values cross significance more often (inflated Type I error)")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Log to ExperimentTracker
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def log_ab_analysis():
+    experiments = await tracker.list_experiments()
+    # Find the M2 experiment or create new
+    exp_id = None
+    for exp in experiments:
+        if exp.get("name") == "ascent02_healthcare_features":
+            exp_id = exp["id"]
+            break
+    if not exp_id:
+        exp_id = await tracker.create_experiment(
+            name="ascent02_ab_test_analysis",
+            description="A/B test analysis with CUPED and Bayesian methods",
+            tags=["ascent02", "ab-test", "cuped", "bayesian"],
+        )
+
+    async with tracker.run(exp_id, run_name="ecommerce_ab_cuped_bayesian") as run:
         await run.log_params(
             {
-                "manual_features": ",".join(manual_features),
-                "auto_strategies": "interactions,polynomial,binning,ratios",
-                "max_features": "30",
+                "method": "CUPED + Bayesian",
+                "pre_covariate": "pre_revenue",
+                "cuped_theta": str(float(theta)),
+                "cuped_rho": str(float(rho)),
+                "sequential_method": "mSPRT",
             }
         )
         await run.log_metrics(
             {
-                "n_manual_features": float(len(manual_features)),
-                "n_auto_features": float(len(engineer_result.selected_columns)),
-                "top_mi_score": float(mi_ranking[0][1]),
+                "lift_naive": float(lift),
+                "lift_cuped": float(lift_adj),
+                "se_naive": float(se_naive),
+                "se_cuped": float(se_cuped),
+                "p_naive": float(p_naive),
+                "p_cuped": float(p_cuped),
+                "variance_reduction": float(var_reduction),
+                "prob_treatment_better": float(prob_treatment_better),
+                "expected_loss": float(expected_loss_treatment),
             }
         )
-        await run.set_tag("type", "feature-engineering")
-
-    # List ALL experiments from M2
-    experiments = await tracker.list_experiments()
-    print(f"\n=== Module 2 Experiment History ===")
-    print(f"Total experiments: {len(experiments)}")
-    for exp in experiments:
-        print(f"\n  Experiment: {exp.get('name', 'unnamed')}")
-        print(f"  Tags: {exp.get('tags', [])}")
-        runs = await tracker.list_runs(exp["id"])
-        print(f"  Runs: {len(runs)}")
-        for run in runs:
-            print(
-                f"    - {run.get('name', 'unnamed')}: "
-                f"metrics={list(run.get('metrics', {}).keys())}"
-            )
-
-    # Compare experiments
-    print(f"\n=== Cross-Experiment Summary ===")
-    print("This module tracked:")
-    print("  Ex 1: Healthcare feature engineering (clinical features)")
-    print("  Ex 2: FeatureStore lifecycle (schema versioning, lineage)")
-    print("  Ex 3: A/B test with CUPED + Bayesian analysis")
-    print("  Ex 4: Causal inference (DiD on cooling measures)")
-    print("  Ex 5: Automated vs manual feature engineering")
-    print("\nEvery analysis is auditable. Every feature is versioned.")
-    print("This is production-grade experiment management.")
-
-    await conn.close()
-    return experiments
+        await run.set_tag("method", "cuped-bayesian-sequential")
+    print(f"\nLogged run")
 
 
-experiments = asyncio.run(review_experiments())
+asyncio.run(log_ab_analysis())
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Visualise experiment comparison
-# ══════════════════════════════════════════════════════════════════════
-
+# Visualize comparison
 viz = ModelVisualizer()
+fig = viz.metric_comparison(
+    {
+        "Standard": {"SE": se_naive, "CI_Width": ci_naive[1] - ci_naive[0]},
+        "CUPED": {"SE": se_cuped, "CI_Width": ci_cuped[1] - ci_cuped[0]},
+    }
+)
+fig.update_layout(title="Standard vs CUPED: Variance Reduction")
+fig.write_html("ex5_cuped_comparison.html")
+print("Saved: ex5_cuped_comparison.html")
 
-# Compare manual feature importance
-mi_data = {f: {"MI_Score": score} for f, score in mi_ranking[:8]}
-fig = viz.metric_comparison(mi_data)
-fig.update_layout(title="Feature Importance (Mutual Information)")
-fig.write_html("ex5_feature_importance.html")
-print("\nSaved: ex5_feature_importance.html")
+asyncio.run(conn.close())
 
-print("\n✓ Exercise 5 complete — automated feature engineering + experiment review")
-print("  Module 2 complete: 5 exercises tracked in ExperimentTracker")
+print(
+    "\n✓ Exercise 5 complete — A/B testing with CUPED + Bayesian + sequential testing"
+)

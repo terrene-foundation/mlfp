@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 3: ReActAgent with Tools
+# ASCENT5 — Exercise 3: ReAct Agents with Tools
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Build a ReActAgent with custom tools for autonomous data
 #   exploration. Observe reasoning-action traces and tool selection.

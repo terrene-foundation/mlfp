@@ -1,4 +1,4 @@
-# Session Notes — 2026-04-05 (Sessions 1-2)
+# Session Notes — 2026-04-05 (Sessions 1-3)
 
 ### Read These Files First (in order)
 
@@ -6,50 +6,56 @@
 2. `workspaces/curriculum/briefs/course-brief.md` — THE authoritative curriculum: 6 modules, 7h each
 3. `workspaces/ascent01/briefs/module-brief.md` through `ascent06` — Detailed module briefs
 4. `workspaces/datasets/briefs/dataset-brief.md` — Dataset curation plan
-5. `workspaces/curriculum/04-validate/` — 7 validation reports from 3 rounds of red-team review
 
-## Session 1 Accomplished
+## Session 1 — Repo creation
 
-- **Created ascent repo** at `~/repos/training/ascent/` (49 files, git initialized, Apache 2.0 Terrene Foundation)
-- **Professional-grade curriculum**: 6 modules covering Bayesian estimation through governed AI deployment
-- **4 expert panel red-team**: statistics professor, ML grandmaster, LLM researcher, Kailash SDK architect
-- **All SDK paths verified** against actual kailash-py source (64 checks, 4 failures fixed)
+- Created ascent repo (49 files), professional-grade curriculum, 4-expert red-team validation
+- All SDK paths verified against kailash-py source (64 checks)
 
-## Session 2 Accomplished
+## Session 2 — Solutions
 
-- **Initial commit** (`b7c3091`): 50 files, 7,793 lines of scaffolding
-- **COC sync** (`1dfb914`): 615 files from kailash-coc-claude-py v2.6.0
-  - 26 commands (now have /analyze, /todos, /implement, /redteam, /codify, /ws, /wrapup)
-  - 445 skills, 32 agents, 31 rules, 33 guides, 54 scripts
-  - Custom ascent artifacts preserved (education agents, exercise rules, /start)
-- **All 34 solutions written** across 6 modules:
-  - M1: 5 exercises, 1,768 lines (statistics, polars, DataExplorer)
-  - M2: 5 exercises, 1,609 lines (feature engineering, FeatureStore, CUPED, DiD)
-  - M3: 6 exercises, 1,663 lines (gradient boosting, SHAP, workflow, ModelRegistry)
-  - M4: 6 exercises, 1,637 lines (clustering, UMAP, BERTopic, DriftMonitor, CNN+ONNX, Nexus)
-  - M5: 6 exercises, 1,326 lines (Delegate, CoT, ReAct, RAG, ML agents, A2A)
-  - M6: 6 exercises, 1,595 lines (SFT/DPO/QLoRA, PACT governance, RL, capstone)
-  - **Total: 34 exercises, 9,598 lines of solution code**
+- Initial commit + COC sync (615 files from v2.6.0, 26 commands, 445 skills)
+- All 34 solutions written (9,598 lines across 6 modules)
+- Red team review: 8 critical SDK API issues found and fixed
+
+## Session 3 — Exercises + Red team
+
+- **Red team review completed** (3 parallel reviewers):
+  - SDK paths: 8 critical fixed (ExperimentTracker, FeatureStore, ModelRegistry, FeatureEngineer APIs)
+  - Rule compliance: clean (no pandas, polars-native, framework-first, no hardcoded keys)
+  - Exercise standards: clean (all headers, TASKS, no placeholders in solutions)
+- **All 34 exercises generated in 3 formats** (102 files total):
+  - 34 local .py files with progressive scaffolding (70% M1 → 20% M6)
+  - 34 Jupyter .ipynb (auto-converted: %pip install, top-level await)
+  - 34 Colab .ipynb (auto-converted: !pip install, Drive mount)
+- **Notebook converter utility**: `scripts/py_to_notebook.py` (--all, --module, single file)
+
+## File Counts
+
+| Content | Files | Lines |
+|---------|-------|-------|
+| Solutions | 34 | ~9,600 |
+| Local exercises | 34 | ~7,000 |
+| Jupyter notebooks | 34 | ~14,000 |
+| Colab notebooks | 34 | ~14,000 |
+| COC artifacts | 615 | ~111,000 |
+| Scaffolding | 50 | ~7,800 |
+| **Total** | **~800** | **~163,000** |
 
 ## Outstanding
 
-- [ ] Generate exercises from solutions using exercise-designer agent (strip solutions → fill-in-blank, 3 formats each)
-- [ ] Create synthetic datasets: Singapore credit scoring (100K), e-commerce (200K), healthcare ICU (60K) — upload to ascent_data Drive
-- [ ] Source public datasets: data.gov.sg (HDB expanded, taxi, weather), Kaggle (fraud 284K), ChestX-ray14 subset, Singapore news corpus
-- [ ] Build Reveal.js decks (decks/ascentN/deck.html) per deck-brief.md spec — 80-100 slides each
+- [ ] Create synthetic datasets: Singapore credit scoring (100K), e-commerce (200K), healthcare ICU (60K)
+- [ ] Source public datasets: data.gov.sg (HDB, taxi, weather), Kaggle (fraud 284K), ChestX-ray14 subset
+- [ ] Upload datasets to ascent_data shared Google Drive folder
+- [ ] Build Reveal.js decks (decks/ascentN/deck.html) — 80-100 slides each
 - [ ] Write quizzes (modules/ascentN/quiz/) — 15 questions each, Kailash pattern focused
 - [ ] Run `uv lock` and commit lockfile
 - [ ] Create GitHub repo at terrene-foundation/ascent and push
-- [ ] Validate all solutions actually run end-to-end (need kailash packages installed)
-
-### Priority for Next Session
-
-1. **Generate exercises** from solutions (most impactful — unlocks the 3-format deliverables)
-2. **Create datasets** (solutions reference these; exercises can't be tested without them)
-3. **Validate solutions** with actual kailash packages installed
+- [ ] Validate solutions end-to-end (need kailash packages + datasets)
+- [ ] Validate notebook consistency across 3 formats
 
 ## Blockers
 
-- Need Google Drive access to upload new synthetic datasets to ascent_data shared folder
-- Need terrene-foundation GitHub org access to create the public repo
-- Kailash SDK packages must be published to PyPI before `uv sync` works
+- Need Google Drive access for dataset upload
+- Need terrene-foundation GitHub org access for public repo
+- Kailash SDK packages must be on PyPI for uv sync

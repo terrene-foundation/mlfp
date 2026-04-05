@@ -1,6 +1,6 @@
 # ASCENT — Professional Certificate in Machine Learning
 
-A rigorous, production-grade machine learning curriculum for working professionals. 34 hands-on exercises across 6 modules, delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py).
+The official Terrene Open Academy machine learning programme. 6 modules × 8 lessons = 48 lessons, from zero Python to masters-level ML engineering. 34 hands-on exercises (15 more in development), delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). Includes a supplementary [SDK textbook](textbook/) with 96 tutorials covering every Kailash engine in both Python and Rust.
 
 **License**: Apache 2.0 | **Python**: 3.10+ | **Data**: [Polars](https://pola.rs)-native | **New to Polars?** See the [cheatsheet](docs/polars-cheatsheet.md)
 
@@ -10,15 +10,15 @@ A rigorous, production-grade machine learning curriculum for working professiona
 
 ## Who This Is For
 
-Working professionals targeting senior data scientist or ML engineer roles. You should have:
+Working professionals at any level — from complete beginners to experienced practitioners. **No prerequisites.** The programme starts from zero Python and progresses to masters-level content:
 
-- **Python fluency** — comfortable writing functions, classes, async/await
-- **Basic statistics** — mean, variance, probability distributions, hypothesis testing concepts
-- **Some ML exposure** — have used sklearn or similar; understand train/test splits, overfitting
+- **Module 1** teaches Python from scratch through real data exploration (variables, functions, loops — learned by using Polars and Kailash engines, not abstract exercises)
+- **Modules 2-4** build statistical and ML foundations to production-grade supervised/unsupervised systems
+- **Modules 5-6** cover LLM agents, alignment, governance, and RL at an advanced level
 
-You do **not** need prior experience with Polars, Kailash, or production ML systems. The course teaches these from the ground up.
+You do **not** need prior experience with Python, statistics, Polars, Kailash, or ML. The course teaches everything from the ground up and ends at a masters-and-above level.
 
-**What you get at the end**: A portfolio of 34 completed exercises spanning statistics through governed AI deployment, plus the architectural patterns to build ML systems that survive production. The exercises themselves — running on real data with proper governance — are the portfolio.
+**What you get at the end**: A portfolio of 48 completed exercises spanning Python basics through governed AI deployment, plus the architectural patterns to build ML systems that survive production.
 
 ---
 
@@ -33,16 +33,16 @@ Every module has two layers:
 
 ## What You Learn
 
-| Module | Topic                             | Theory Depth                                                                   | Production Practice                              |
-| ------ | --------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------ |
-| **1**  | Statistics & Data Fluency         | Bayesian estimation, MLE, BCa bootstrap, permutation tests                     | DataExplorer, PreprocessingPipeline              |
-| **2**  | Feature Engineering & Experiments | Causal inference (DiD, CUPED), A/B testing, point-in-time correctness          | FeatureStore, FeatureEngineer, ExperimentTracker |
-| **3**  | Supervised ML to Production       | Bias-variance, XGBoost internals, SHAP/LIME, calibration, conformal prediction | TrainingPipeline, ModelRegistry, WorkflowBuilder |
-| **4**  | Unsupervised, NLP & Deep Learning | EM/GMM, spectral clustering, attention derivation, BERTopic                    | AutoMLEngine, DriftMonitor, InferenceServer      |
-| **5**  | LLMs, AI Agents & RAG             | Transformer internals, RAG evaluation (RAGAS), agent safety                    | Kaizen Delegate, ReActAgent, 6 ML agents         |
-| **6**  | Alignment, Governance & RL        | LoRA/DPO/GRPO, EU AI Act, PACT D/T/R, PPO, Bellman equations                   | AlignmentPipeline, GovernanceEngine, Nexus       |
+| Module | Topic                                        | Theory Depth                                                                   | Production Practice                                  |
+| ------ | -------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| **1**  | Data Pipelines & Visualisation with Python   | Python from scratch, Polars, joins, windows, data profiling                    | DataExplorer, PreprocessingPipeline, ModelVisualizer |
+| **2**  | Statistical Mastery for ML                   | Bayesian estimation, MLE, CUPED, DiD, bootstrap, causal inference              | ExperimentTracker, FeatureStore, FeatureEngineer     |
+| **3**  | Supervised ML — Theory to Production         | Bias-variance, XGBoost internals, SHAP/LIME, calibration, conformal prediction | TrainingPipeline, ModelRegistry, WorkflowBuilder     |
+| **4**  | Advanced ML ��� Unsupervised & Deep Learning | EM/GMM, PCA, spectral clustering, BERTopic, CNN/ResNet, ONNX                   | AutoMLEngine, DriftMonitor, InferenceServer          |
+| **5**  | LLMs, AI Agents & Production Deployment      | Tokenization, scaling laws, RAG evaluation, MCP protocol, multi-agent A2A      | Kaizen Delegate, ReActAgent, 6 ML agents, Nexus      |
+| **6**  | Alignment, Governance & Organisational AI    | LoRA/DPO/GRPO, EU AI Act, PACT D/T/R, PPO, Bellman equations                   | AlignmentPipeline, GovernanceEngine, RLTrainer       |
 
-Each module is designed for 7 hours (3h lecture + 3h lab + 1h assessment). Total: 42 hours of structured learning. Modules 4-6 are denser — some exercises may extend beyond class time as take-home practice.
+Each module has 8 lessons of ~4 hours each (lecture + lab). Total: ~192 contact hours. Foundation Certificate (M1-M4, 128h) + Advanced Certificate (M5-M6, 64h).
 
 ### After completing this course, you will be able to:
 
@@ -124,13 +124,18 @@ See [docs/setup-guide.md](docs/setup-guide.md) for detailed installation instruc
 
 ```
 modules/
-  ascent01/          Module 1: Statistics & Data Fluency
+  ascent01/          Module 1: Data Pipelines & Visualisation with Python
     solutions/    Complete, runnable solutions (instructor reference)
     local/        Python exercises (fill-in-the-blank)
     notebooks/    Jupyter notebooks (same exercises, notebook format)
     colab/        Colab notebooks (Drive mount, pip install)
     quiz/         Assessment questions
   ascent02-6/        Modules 2-6 (same structure)
+
+textbook/         Supplementary SDK textbook (96 tutorials)
+  python/         83 Python tutorials (all 8 packages, basic→advanced)
+  rust/           13 Rust tutorials (core complete, parity testing)
+  PARITY.md       Cross-language parity matrix (20 known divergences)
 
 shared/           Data loader, Kailash helpers (used by all exercises)
 docs/             Course outline, setup guide, Polars cheatsheet
@@ -155,16 +160,19 @@ Singapore-focused datasets (HDB prices, taxi trips, economic indicators) combine
 
 ## Status
 
-| Component                | Status      | Details                                            |
-| ------------------------ | ----------- | -------------------------------------------------- |
-| Solutions (34)           | Complete    | All modules, red-team reviewed for SDK correctness |
-| Exercises — local (34)   | Complete    | Progressive scaffolding: 70% (M1) to 20% (M6)      |
-| Exercises — Jupyter (34) | Complete    | Auto-generated from local sources                  |
-| Exercises — Colab (34)   | Complete    | Auto-generated with Drive mount + pip install      |
-| Datasets                 | In progress | Synthetic + public datasets being prepared         |
-| Lecture slides           | Planned     | Reveal.js decks per module                         |
-| Quizzes                  | Planned     | 15 Kailash-pattern questions per module            |
-| CI/Testing               | Planned     | Needs Kailash packages on PyPI                     |
+| Component                | Status      | Details                                          |
+| ------------------------ | ----------- | ------------------------------------------------ |
+| Curriculum (48 lessons)  | Complete    | 6 modules × 8 lessons, red-team reviewed (v4)    |
+| Solutions (34/49)        | In progress | 34 complete, 15 new exercises from v4 curriculum |
+| Exercises — local (34)   | Complete    | Progressive scaffolding: 80% (M1) to 20% (M6)    |
+| Exercises — Jupyter (34) | Complete    | Auto-generated from local sources                |
+| Exercises — Colab (34)   | Complete    | Auto-generated with Drive mount + pip install    |
+| SDK Textbook — Python    | Complete    | 83 tutorials across all 8 packages               |
+| SDK Textbook — Rust      | In progress | 7/44 tutorials (core complete, parity testing)   |
+| Datasets                 | In progress | Synthetic + public datasets being prepared       |
+| Lecture slides           | Planned     | Reveal.js decks per module                       |
+| Quizzes                  | Planned     | 15 Kailash-pattern questions per module          |
+| CI/Testing               | Planned     | Needs Kailash packages on PyPI                   |
 
 ---
 

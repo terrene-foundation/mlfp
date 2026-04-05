@@ -1,6 +1,6 @@
-# ASCENT — Practical Course in Machine Learning
+# ASCENT — Professional Certificate in Machine Learning
 
-Training repository for the Kailash Python SDK, maintained by the Terrene Foundation. Open-source course materials for working professionals learning machine learning.
+Official Terrene Open Academy programme powered by the Kailash Python SDK, maintained by the Terrene Foundation. Open-source course materials from zero Python to masters-level ML engineering.
 
 ## Absolute Directives
 
@@ -20,11 +20,11 @@ No pandas in any exercise. kailash-ml is polars-native — students learn polars
 
 Every exercise must exist in three formats:
 
-| Format  | Location                          | Data Loading          |
-| ------- | --------------------------------- | --------------------- |
-| Local   | `modules/ascentN/local/ex_N.py`    | `shared.data_loader`  |
+| Format  | Location                             | Data Loading         |
+| ------- | ------------------------------------ | -------------------- |
+| Local   | `modules/ascentN/local/ex_N.py`        | `shared.data_loader` |
 | Jupyter | `modules/ascentN/notebooks/ex_N.ipynb` | `shared.data_loader` |
-| Colab   | `modules/ascentN/colab/ex_N.ipynb` | Drive mount + gdown   |
+| Colab   | `modules/ascentN/colab/ex_N.ipynb`     | Drive mount + gdown  |
 
 Data loading via `shared/data_loader.py`. Setup differs by format; exercise code is identical.
 
@@ -47,49 +47,49 @@ Each module reduces hand-holding. By M6, students write most code from documenta
 
 ## Course Structure
 
-| Module | Title                                    | Kailash Frameworks                                              |
-| ------ | ---------------------------------------- | --------------------------------------------------------------- |
-| ASCENT1  | Statistics, Probability & Data Fluency   | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer |
-| ASCENT2  | Feature Engineering & Experiment Design  | kailash-ml: FeatureStore, FeatureEngineer, ExperimentTracker     |
-| ASCENT3  | Supervised ML — Theory to Production     | Core SDK, DataFlow, kailash-ml: TrainingPipeline, ModelRegistry  |
-| ASCENT4  | Unsupervised ML, NLP & Deep Learning     | kailash-ml: AutoMLEngine, DriftMonitor, InferenceServer + Nexus  |
-| ASCENT5  | LLMs, AI Agents & RAG Systems            | Kaizen: Delegate, ReActAgent, RAGResearchAgent + ML agents       |
-| ASCENT6  | Alignment, Governance, RL & Deployment   | Align + PACT + kailash-ml RL + Nexus                             |
+| Module | Title                                   | Kailash Frameworks                                               |
+| ------ | --------------------------------------- | ---------------------------------------------------------------- |
+| ASCENT1  | Statistics, Probability & Data Fluency  | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer |
+| ASCENT2  | Feature Engineering & Experiment Design | kailash-ml: FeatureStore, FeatureEngineer, ExperimentTracker     |
+| ASCENT3  | Supervised ML — Theory to Production    | Core SDK, DataFlow, kailash-ml: TrainingPipeline, ModelRegistry  |
+| ASCENT4  | Unsupervised ML, NLP & Deep Learning    | kailash-ml: AutoMLEngine, DriftMonitor, InferenceServer + Nexus  |
+| ASCENT5  | LLMs, AI Agents & RAG Systems           | Kaizen: Delegate, ReActAgent, RAGResearchAgent + ML agents       |
+| ASCENT6  | Alignment, Governance, RL & Deployment  | Align + PACT + kailash-ml RL + Nexus                             |
 
 ## Kailash Platform
 
-| Framework    | Purpose                                | Install                        |
-| ------------ | -------------------------------------- | ------------------------------ |
-| Core SDK     | Workflow orchestration, 140+ nodes     | `pip install kailash`          |
-| DataFlow     | Zero-config database operations        | `pip install kailash-dataflow` |
-| Nexus        | Multi-channel deployment (API+CLI+MCP) | `pip install kailash-nexus`    |
-| Kaizen       | AI agent framework                     | `pip install kailash-kaizen`   |
-| PACT         | Organizational governance (D/T/R)      | `pip install kailash-pact`     |
-| ML           | ML lifecycle (13 engines, polars)      | `pip install kailash-ml`       |
-| Align        | LLM fine-tuning & serving              | `pip install kailash-align`    |
+| Framework | Purpose                                | Install                        |
+| --------- | -------------------------------------- | ------------------------------ |
+| Core SDK  | Workflow orchestration, 140+ nodes     | `pip install kailash`          |
+| DataFlow  | Zero-config database operations        | `pip install kailash-dataflow` |
+| Nexus     | Multi-channel deployment (API+CLI+MCP) | `pip install kailash-nexus`    |
+| Kaizen    | AI agent framework                     | `pip install kailash-kaizen`   |
+| PACT      | Organizational governance (D/T/R)      | `pip install kailash-pact`     |
+| ML        | ML lifecycle (13 engines, polars)      | `pip install kailash-ml`       |
+| Align     | LLM fine-tuning & serving              | `pip install kailash-align`    |
 
 ## Workspace Commands
 
-| Command              | Purpose                                                     |
-| -------------------- | ----------------------------------------------------------- |
-| `/analyze`           | Load analysis phase for current workspace                   |
-| `/todos`             | Load todos phase; stops for human approval                  |
-| `/implement`         | Load implementation phase; repeat until todos done          |
-| `/redteam`           | Load validation phase; red team exercises                   |
-| `/codify`            | Load codification phase; update agents & skills             |
-| `/ws`                | Read-only workspace status dashboard                        |
-| `/wrapup`            | Write session notes before ending                           |
-| `/build-module`      | Scaffold a new module (solutions, exercises, notebooks)     |
-| `/build-exercise`    | Create a single exercise across all three formats           |
-| `/validate-notebooks`| Run all notebooks and verify outputs                        |
+| Command               | Purpose                                                 |
+| --------------------- | ------------------------------------------------------- |
+| `/analyze`            | Load analysis phase for current workspace               |
+| `/todos`              | Load todos phase; stops for human approval              |
+| `/implement`          | Load implementation phase; repeat until todos done      |
+| `/redteam`            | Load validation phase; red team exercises               |
+| `/codify`             | Load codification phase; update agents & skills         |
+| `/ws`                 | Read-only workspace status dashboard                    |
+| `/wrapup`             | Write session notes before ending                       |
+| `/build-module`       | Scaffold a new module (solutions, exercises, notebooks) |
+| `/build-exercise`     | Create a single exercise across all three formats       |
+| `/validate-notebooks` | Run all notebooks and verify outputs                    |
 
 ## Rules Index
 
-| Concern                       | Rule File                      |
-| ----------------------------- | ------------------------------ |
-| Exercise authoring standards  | `rules/exercise-standards.md`  |
-| Three-format consistency      | `rules/three-format.md`        |
-| Assessment integrity          | `rules/domain-integrity.md`    |
+| Concern                      | Rule File                     |
+| ---------------------------- | ----------------------------- |
+| Exercise authoring standards | `rules/exercise-standards.md` |
+| Three-format consistency     | `rules/three-format.md`       |
+| Assessment integrity         | `rules/domain-integrity.md`   |
 
 ## Agents
 

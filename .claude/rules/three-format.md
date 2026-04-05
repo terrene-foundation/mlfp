@@ -4,12 +4,12 @@ Every exercise MUST exist in three formats with identical learning content.
 
 ## Format Differences (ONLY these may differ)
 
-| Aspect | Local (.py) | Jupyter (.ipynb) | Colab (.ipynb) |
-|--------|------------|------------------|----------------|
-| Setup | None (uv sync) | `%pip install` cell | `!pip install` + Drive mount cell |
-| Data loading | gdown + `.data_cache/` | gdown + `.data_cache/` | Drive mount path |
-| Async | `asyncio.run(main())` | Top-level `await` | Top-level `await` |
-| Visualization | `fig.write_html()` | Inline display | Inline display |
+| Aspect        | Local (.py)            | Jupyter (.ipynb)       | Colab (.ipynb)                    |
+| ------------- | ---------------------- | ---------------------- | --------------------------------- |
+| Setup         | None (uv sync)         | `%pip install` cell    | `!pip install` + Drive mount cell |
+| Data loading  | gdown + `.data_cache/` | gdown + `.data_cache/` | Drive mount path                  |
+| Async         | `asyncio.run(main())`  | Top-level `await`      | Top-level `await`                 |
+| Visualization | `fig.write_html()`     | Inline display         | Inline display                    |
 
 ## Exercise Code MUST Be Identical
 
@@ -25,6 +25,23 @@ df = loader.load("ascent01", "hdbprices.csv")
 ```
 
 The loader auto-detects Colab vs local and uses the appropriate backend.
+
+## Canonical Conversion Tool
+
+Local `.py` is the source of truth. Notebooks are generated, never hand-written.
+
+```bash
+# Convert a single exercise
+python scripts/py_to_notebook.py modules/ascent01/local/ex_1.py
+
+# Convert an entire module
+python scripts/py_to_notebook.py --module ascent01
+
+# Convert all modules
+python scripts/py_to_notebook.py --all
+```
+
+The converter handles: `asyncio.run()` → `await`, setup cell injection, copyright stripping, TASK headers → markdown cells.
 
 ## MUST NOT
 

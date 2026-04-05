@@ -19,6 +19,10 @@ import asyncio
 import math
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kaizen_agents import GovernedSupervisor, SupervisorResult
 from kaizen_agents.supervisor import HoldRecord
 from kailash.trust import ConfidentialityLevel

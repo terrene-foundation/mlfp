@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kailash_align import AlignmentConfig
 from kailash_align.config import LoRAConfig, SFTConfig, DPOConfig
 from kailash_align.method_registry import METHOD_REGISTRY

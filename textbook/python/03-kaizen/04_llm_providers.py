@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ── 1. Model configuration via environment ──────────────────────────
 # Kaizen NEVER hardcodes model names. They come from env vars:
 #   DEFAULT_LLM_MODEL — primary model for all agents

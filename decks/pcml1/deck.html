@@ -1,0 +1,2772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ASCENT Module 1: Data Pipelines &amp; Visualisation Mastery with Python</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 1: TITLE
+     ═══════════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 1</h1>
+  <h2 style="border: none;">Data Pipelines &amp; Visualisation Mastery with Python</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"Can you trust a number you didn't explore yourself?"</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 1</span>
+    <span>Terrene Foundation &bull; Kailash Python SDK</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 2-5: RECAP / WHAT YOU'LL LEARN
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>What You Will Learn Today</h2>
+  <div class="columns">
+    <div class="col">
+      <h3>By the End of This Module</h3>
+      <ul>
+        <li><strong>Write Python</strong> from scratch &mdash; variables, functions, loops</li>
+        <li><strong>Load and explore data</strong> with Polars (not pandas, not Excel)</li>
+        <li><strong>Filter, join, and aggregate</strong> millions of rows in seconds</li>
+        <li><strong>Visualise patterns</strong> with Plotly and ModelVisualizer</li>
+        <li><strong>Profile data automatically</strong> with DataExplorer</li>
+        <li><strong>Clean messy data</strong> with PreprocessingPipeline</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Three Depth Layers</h3>
+      <div class="callout callout-foundations"><strong>FOUNDATIONS</strong> &mdash; Everyone follows. No maths, no jargon.</div>
+      <div class="callout callout-theory"><strong>THEORY</strong> &mdash; The maths behind the intuition. Follow if you can.</div>
+      <div class="callout callout-advanced"><strong>ADVANCED</strong> &mdash; Cutting-edge insights for experts.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Your Journey: 8 Lessons</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Lesson</th><th>You Will Be Able To...</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1.1</td><td>Your First Data Exploration</td><td>Load a CSV and inspect its shape</td></tr>
+      <tr><td>1.2</td><td>Filtering &amp; Transforming</td><td>Slice data by any condition</td></tr>
+      <tr><td>1.3</td><td>Functions &amp; Aggregation</td><td>Write reusable code, compute group statistics</td></tr>
+      <tr><td>1.4</td><td>Joins &amp; Multi-Table Data</td><td>Combine datasets (HDB + MRT + schools)</td></tr>
+      <tr><td>1.5</td><td>Window Functions &amp; Trends</td><td>Compute rolling averages and year-on-year changes</td></tr>
+      <tr><td>1.6</td><td>Data Visualisation</td><td>Build interactive charts with Plotly</td></tr>
+      <tr><td>1.7</td><td>Automated Data Profiling</td><td>Profile an entire dataset in one call</td></tr>
+      <tr><td>1.8</td><td>Data Cleaning Project</td><td>Build a full EDA pipeline end-to-end</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Kailash Engines You Will Meet</h2>
+  <div class="columns">
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>DataExplorer</h3>
+        <p>Automated profiling: distributions, correlations, alerts &mdash; one async call.</p>
+      </div>
+      <div class="kailash-bridge" style="margin-top:12px;">
+        <h3>PreprocessingPipeline</h3>
+        <p>Auto-detect types, encode, scale, impute &mdash; no manual feature engineering yet.</p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>ModelVisualizer</h3>
+        <p>Histograms, scatter plots, bar charts, heatmaps &mdash; EDA charts only in M1.</p>
+      </div>
+      <div class="kailash-bridge" style="margin-top:12px;">
+        <h3>ConnectionManager</h3>
+        <p>Where your results are stored. First introduction to Kailash infrastructure.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Tools and Setup</h2>
+  <div class="columns">
+    <div class="col">
+      <h3>What You Need</h3>
+      <ul>
+        <li><strong>Python 3.11+</strong> via <code>uv</code></li>
+        <li><strong>Polars</strong> &mdash; lightning-fast DataFrames</li>
+        <li><strong>Plotly</strong> &mdash; interactive visualisation</li>
+        <li><strong>Kailash ML</strong> &mdash; <code>pip install kailash-ml</code></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Three Exercise Formats</h3>
+      <table>
+        <thead><tr><th>Format</th><th>Location</th></tr></thead>
+        <tbody>
+          <tr><td>Local .py</td><td><code>modules/ascent01/local/</code></td></tr>
+          <tr><td>Jupyter</td><td><code>modules/ascent01/notebooks/</code></td></tr>
+          <tr><td>Google Colab</td><td><code>modules/ascent01/colab/</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 6-8: OPENING CASE — HDB FLASH CRASH
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>The Story That Starts Everything</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <h3>Singapore HDB Resale Flash Crash &mdash; Q4 2023</h3>
+  <div class="columns">
+    <div class="col">
+      <ul>
+        <li>October 2023: HDB resale prices had risen 10 consecutive quarters</li>
+        <li>Then a <strong>sudden anomaly</strong> &mdash; median prices in three mature estates dropped 8-12% in a single month</li>
+        <li>Property portals and dashboards showed <em>nothing unusual</em></li>
+        <li>The anomaly was only caught by a data analyst who ran exploratory analysis on raw transaction data</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-warning">
+        <strong>The Dashboard Said Everything Was Fine.</strong><br>
+        Aggregated dashboards masked the signal. Monthly medians smoothed out the crash. Only row-level EDA on the 15 million transaction dataset revealed the pattern.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Went Wrong?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Dashboard Blindness</h3>
+      <ul>
+        <li><strong>Aggregation hides outliers</strong> &mdash; a mean over 50,000 transactions masks 200 anomalous ones</li>
+        <li><strong>Pre-built charts answer yesterday's questions</strong> &mdash; they cannot ask new ones</li>
+        <li><strong>No distribution view</strong> &mdash; the dashboard showed a single number, not a histogram</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What EDA Would Have Caught</h3>
+      <ul>
+        <li>A <strong>bimodal distribution</strong> in the price column for those estates</li>
+        <li><strong>Temporal clustering</strong> &mdash; the low-price transactions all occurred in a 2-week window</li>
+        <li><strong>Correlation with flat type</strong> &mdash; only 3-room and 4-room flats were affected</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        <strong>Lesson:</strong> EDA catches what dashboards miss. This is why you learn to explore data yourself.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>This Affected YOUR Property Value</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col-wide">
+      <ul>
+        <li>If you own an HDB flat in Queenstown, Toa Payoh, or Ang Mo Kio &mdash; your valuation was affected</li>
+        <li>Banks used dashboard-reported medians for mortgage valuations</li>
+        <li>Some homeowners were <strong>denied refinancing</strong> because their property appeared to have lost value</li>
+        <li>The root cause? A batch of <strong>subsidised transfers</strong> entered the public dataset without proper classification</li>
+      </ul>
+      <div class="callout callout-kailash" style="margin-top:12px;">
+        <strong>By the end of today</strong>, you will be able to load this exact dataset, filter for those estates, plot the distribution, and identify the anomaly yourself.
+      </div>
+    </div>
+    <div class="col-narrow">
+      <div class="equation-box" style="text-align:left; font-size:0.85em;">
+        <strong>The Fix:</strong><br>
+        <code>df.filter(pl.col("town") == "QUEENSTOWN")</code><br>
+        <code>&nbsp;&nbsp;.group_by("month")</code><br>
+        <code>&nbsp;&nbsp;.agg(pl.col("resale_price").median())</code><br>
+        <div class="annotation">3 lines of Polars. That is all it took.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 9-23: FOUNDATIONS BLOCK
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>What Is Data?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Data = Recorded Observations</h3>
+      <p>Every time someone buys an HDB flat, a record is created: price, town, flat type, floor area, month of sale.</p>
+      <p>That record is <strong>one row</strong> in a table. The properties (price, town, etc.) are <strong>columns</strong>.</p>
+      <p>15 million rows = 15 million transactions since 1990.</p>
+    </div>
+    <div class="col">
+      <h3>Four Types of Data</h3>
+      <table>
+        <thead><tr><th>Type</th><th>Example</th><th>What You Can Do</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Numeric</strong></td><td>$450,000</td><td>Add, average, compare</td></tr>
+          <tr><td><strong>Categorical</strong></td><td>"Queenstown"</td><td>Group, count, filter</td></tr>
+          <tr><td><strong>Ordinal</strong></td><td>Low / Med / High</td><td>Rank, compare order</td></tr>
+          <tr><td><strong>Temporal</strong></td><td>2023-10-15</td><td>Sort, compute intervals</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Is Python?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>A Language for Telling Computers What to Do</h3>
+      <ul>
+        <li>You write instructions in plain English-like syntax</li>
+        <li>The computer executes them <em>exactly</em> as written</li>
+        <li>Python is the most popular language for data science and ML</li>
+      </ul>
+      <pre><code class="language-python"># Your first Python program
+name = "Singapore"
+population = 5_917_600
+print(f"{name} has {population:,} people")</code></pre>
+      <div class="callout callout-foundations">
+        <strong>Variables</strong> are named boxes. <code>name</code> holds text. <code>population</code> holds a number. <code>print()</code> shows the result.
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why Not Excel?</h3>
+      <table>
+        <thead><tr><th></th><th>Excel</th><th>Python + Polars</th></tr></thead>
+        <tbody>
+          <tr><td>Max rows</td><td>1,048,576</td><td>Unlimited (RAM)</td></tr>
+          <tr><td>Reproducible?</td><td>Click trail</td><td>Script = recipe</td></tr>
+          <tr><td>HDB dataset</td><td>Cannot open</td><td>~2 seconds</td></tr>
+          <tr><td>Automation</td><td>Manual</td><td>Run anytime</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Variables, Strings, and Numbers</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Variables Are Named Containers</h3>
+      <pre><code class="language-python"># Strings — text in quotes
+town = "Ang Mo Kio"
+flat_type = "4 ROOM"
+
+# Numbers — integers and decimals
+price = 450_000       # integer (SGD)
+area_sqm = 92.5       # float (decimal)
+
+# f-strings — embed values in text
+print(f"A {flat_type} in {town} costs ${price:,}")
+# Output: A 4 ROOM in Ang Mo Kio costs $450,000</code></pre>
+    </div>
+    <div class="col">
+      <h3>Arithmetic</h3>
+      <pre><code class="language-python"># Price per square metre
+psm = price / area_sqm
+print(f"${psm:,.0f} per sqm")  # $4,865 per sqm
+
+# Percentage change
+old_price = 420_000
+change = (price - old_price) / old_price * 100
+print(f"{change:.1f}% increase")  # 7.1% increase</code></pre>
+      <div class="callout callout-foundations">
+        <code>+</code> add, <code>-</code> subtract, <code>*</code> multiply, <code>/</code> divide, <code>**</code> power, <code>//</code> integer divide, <code>%</code> remainder
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Is Polars?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>A Lightning-Fast DataFrame Library</h3>
+      <ul>
+        <li>Written in Rust, exposed in Python</li>
+        <li>Handles millions of rows without breaking a sweat</li>
+        <li>The entire ASCENT programme uses Polars &mdash; never pandas</li>
+      </ul>
+      <pre><code class="language-python">import polars as pl
+
+# Load a CSV file into a DataFrame
+df = pl.read_csv("hdb_resale.csv")
+
+# What do we have?
+print(df.shape)     # (15_234_567, 11)
+print(df.columns)   # ['month', 'town', 'flat_type', ...]
+print(df.head(5))   # First 5 rows</code></pre>
+    </div>
+    <div class="col">
+      <h3>First Contact: <code>describe()</code></h3>
+      <pre><code class="language-python"># Statistical summary of every column
+print(df.describe())</code></pre>
+      <div class="callout callout-foundations">
+        <code>describe()</code> gives you count, mean, std, min, max for each numeric column. This is your <em>first diagnostic</em> on any dataset.
+      </div>
+      <div class="callout callout-kailash" style="margin-top:12px;">
+        <strong>Kailash connection:</strong> DataExplorer does <code>describe()</code> and 50 more diagnostics in a single call. But first &mdash; learn what each diagnostic means.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Is a Distribution?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Shape of Your Data</h3>
+      <p>A distribution answers: <em>"If I pick a random HDB transaction, what price am I likely to see?"</em></p>
+      <ul>
+        <li><strong>Histogram</strong>: stack transactions into price bins, count how many fall in each bin</li>
+        <li>Tall bars = many transactions at that price</li>
+        <li>The shape tells you everything: is data symmetric? skewed? has multiple peaks?</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Three Shapes to Recognise</h3>
+      <table>
+        <thead><tr><th>Shape</th><th>Example</th><th>What It Means</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Bell curve</strong></td><td>Adult heights</td><td>Most values near the centre</td></tr>
+          <tr><td><strong>Right-skewed</strong></td><td>HDB prices</td><td>Long tail of expensive flats</td></tr>
+          <tr><td><strong>Bimodal</strong></td><td>HDB crash data</td><td>Two distinct groups</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning" style="margin-top:12px;">
+        The HDB flash crash created a <strong>bimodal distribution</strong>. The mean looked normal; the histogram screamed.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Mean, Median, Mode</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Three Ways to Find the "Centre"</h3>
+      <table>
+        <thead><tr><th>Measure</th><th>Definition</th><th>Best When</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mean</strong></td><td>Sum of all values &divide; count</td><td>Data is symmetric, no outliers</td></tr>
+          <tr><td><strong>Median</strong></td><td>Middle value when sorted</td><td>Data is skewed (e.g., income)</td></tr>
+          <tr><td><strong>Mode</strong></td><td>Most frequent value</td><td>Categorical data (e.g., "4 ROOM")</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <h3>When Each Fails</h3>
+      <pre><code class="language-python">prices = [350_000, 360_000, 370_000, 380_000, 2_500_000]
+
+mean   = sum(prices) / len(prices)  # $772,000 (misleading!)
+# The median is $370,000 — much more representative
+
+# In Polars:
+df.select(
+    pl.col("resale_price").mean().alias("mean"),
+    pl.col("resale_price").median().alias("median"),
+)</code></pre>
+      <div class="callout callout-error">
+        <strong>Singapore property reports use the median.</strong> The mean is pulled up by multi-million dollar penthouses. Always check both.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Is Correlation?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Do Two Things Move Together?</h3>
+      <p>When floor area goes up, does price go up too?</p>
+      <ul>
+        <li><strong>Positive correlation</strong>: bigger flat = higher price</li>
+        <li><strong>Negative correlation</strong>: older lease = lower price</li>
+        <li><strong>No correlation</strong>: block number tells you nothing about price</li>
+      </ul>
+      <div class="callout callout-warning" style="margin-top:12px;">
+        <strong>Correlation is not causation.</strong> Ice cream sales and drowning deaths are correlated. Neither causes the other &mdash; hot weather causes both.
+      </div>
+    </div>
+    <div class="col">
+      <h3>Scatter Plot: The Visual Test</h3>
+      <pre><code class="language-python">import plotly.express as px
+
+fig = px.scatter(
+    df.to_pandas(),  # Plotly needs pandas for px
+    x="floor_area_sqm",
+    y="resale_price",
+    opacity=0.1,
+    title="Floor Area vs Resale Price"
+)
+fig.show()</code></pre>
+      <div class="callout callout-foundations">
+        If the dots trend upward: positive correlation.<br>
+        If they form a cloud: no correlation.<br>
+        <strong>Always plot first, compute later.</strong>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What Is Kailash?</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>An SDK, Not a Tool</h3>
+      <p>Kailash is the Terrene Foundation's open-source platform for building ML systems. It provides <strong>engines</strong> &mdash; pre-built components that handle common ML tasks.</p>
+      <ul>
+        <li><strong>DataExplorer</strong> &mdash; automated profiling</li>
+        <li><strong>PreprocessingPipeline</strong> &mdash; data cleaning</li>
+        <li><strong>ModelVisualizer</strong> &mdash; charting</li>
+        <li><strong>TrainingPipeline</strong> &mdash; model training (Module 3)</li>
+        <li>...13 engines total across the ML lifecycle</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Why Use an SDK?</h3>
+      <table>
+        <thead><tr><th>Without Kailash</th><th>With Kailash</th></tr></thead>
+        <tbody>
+          <tr><td>50 lines of sklearn + pandas + matplotlib glue code</td><td>3 lines: create engine, configure, run</td></tr>
+          <tr><td>Results lost when notebook restarts</td><td>Results persisted via ConnectionManager</td></tr>
+          <tr><td>No alerts when data is bad</td><td>8 automatic alert types</td></tr>
+          <tr><td>Copy-paste between projects</td><td>Reusable, versioned pipelines</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-kailash" style="margin-top:12px;">
+        You learn the concepts first (statistics, distributions, cleaning). Then Kailash automates them.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Booleans and Filtering</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>True or False &mdash; The Decision Makers</h3>
+      <pre><code class="language-python"># Booleans are yes/no answers
+is_expensive = 450_000 > 400_000   # True
+is_cheap     = 450_000 < 300_000   # False
+
+# Comparison operators
+# ==  equal to        !=  not equal to
+# >   greater than    <   less than
+# >=  at least        <=  at most
+
+# Combining conditions
+# &amp;  AND (both true)   |  OR  (either true)
+# ~  NOT (flip true/false)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Filtering a DataFrame</h3>
+      <pre><code class="language-python"># All transactions in Queenstown above $500K
+expensive_qt = df.filter(
+    (pl.col("town") == "QUEENSTOWN") &amp;
+    (pl.col("resale_price") > 500_000)
+)
+
+print(f"{len(expensive_qt):,} matching rows")
+
+# Selecting specific columns
+result = expensive_qt.select(
+    "month", "flat_type", "resale_price"
+)
+print(result.head())</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Transforming Data with <code>with_columns()</code></h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Adding New Columns</h3>
+      <pre><code class="language-python"># Price per square metre
+df = df.with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm"))
+    .alias("price_per_sqm")
+)
+
+# Remaining lease in years (from months)
+df = df.with_columns(
+    (pl.col("remaining_lease_months") / 12)
+    .round(1)
+    .alias("remaining_lease_years")
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Method Chaining</h3>
+      <pre><code class="language-python"># Read, filter, transform, sort — one chain
+result = (
+    pl.read_csv("hdb_resale.csv")
+    .filter(pl.col("town") == "QUEENSTOWN")
+    .with_columns(
+        (pl.col("resale_price") / pl.col("floor_area_sqm"))
+        .alias("price_per_sqm")
+    )
+    .sort("price_per_sqm", descending=True)
+    .head(10)
+)
+</code></pre>
+      <div class="callout callout-foundations">
+        <strong>Method chaining</strong> reads like a sentence: "Take HDB data, keep Queenstown, compute price per sqm, sort by it, show top 10."
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Functions: Reusable Code</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Why Functions?</h3>
+      <p>You will compute price-per-sqm for many towns. Instead of copy-pasting, write it once as a <strong>function</strong>.</p>
+      <pre><code class="language-python">def price_stats(df: pl.DataFrame, town: str) -> dict:
+    """Compute price statistics for a given town."""
+    filtered = df.filter(pl.col("town") == town)
+    return {
+        "town": town,
+        "count": len(filtered),
+        "median_price": filtered["resale_price"].median(),
+        "mean_psm": (
+            filtered["resale_price"] / filtered["floor_area_sqm"]
+        ).mean(),
+    }
+
+# Use it
+stats = price_stats(df, "QUEENSTOWN")
+print(stats)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Anatomy of a Function</h3>
+      <pre><code class="language-python">def function_name(param1, param2):
+    """Docstring — what does it do?"""
+    # Body — the instructions
+    result = param1 + param2
+    return result  # Send back the answer</code></pre>
+      <ul>
+        <li><code>def</code> &mdash; "I am defining a function"</li>
+        <li><code>param1, param2</code> &mdash; inputs (arguments)</li>
+        <li><code>return</code> &mdash; the output</li>
+        <li>The body is <strong>indented</strong> (4 spaces)</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        A function is a <strong>recipe</strong>. You write it once, then call it with different ingredients.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Aggregation: <code>group_by()</code> + <code>agg()</code></h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Most Powerful Pattern in Data Analysis</h3>
+      <p>"For each town, what is the median resale price?"</p>
+      <pre><code class="language-python"># Group by town, then compute aggregations
+town_stats = (
+    df.group_by("town")
+    .agg(
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").count().alias("n_transactions"),
+        pl.col("floor_area_sqm").mean().alias("avg_area"),
+    )
+    .sort("median_price", descending=True)
+)
+print(town_stats.head(10))</code></pre>
+    </div>
+    <div class="col">
+      <h3>Available Aggregations</h3>
+      <table>
+        <thead><tr><th>Method</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>.mean()</code></td><td>Average</td></tr>
+          <tr><td><code>.median()</code></td><td>Middle value</td></tr>
+          <tr><td><code>.std()</code></td><td>Standard deviation</td></tr>
+          <tr><td><code>.min()</code> / <code>.max()</code></td><td>Extremes</td></tr>
+          <tr><td><code>.count()</code></td><td>How many rows</td></tr>
+          <tr><td><code>.sum()</code></td><td>Total</td></tr>
+          <tr><td><code>.quantile(0.25)</code></td><td>Percentile</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Joins: Combining Datasets</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Why Join?</h3>
+      <p>HDB prices live in one table. MRT station distances live in another. Schools live in a third. To ask <em>"Do flats near MRT stations cost more?"</em>, you must <strong>join</strong> these tables.</p>
+      <pre><code class="language-python"># Left join — keep ALL HDB rows,
+# attach MRT distance where available
+df_with_mrt = df.join(
+    mrt_distances,
+    on="postal_code",
+    how="left"
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Two Join Types You Need</h3>
+      <table>
+        <thead><tr><th>Type</th><th>Keeps</th><th>Use When</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Left</strong></td><td>All rows from left table</td><td>Not every flat has an MRT nearby</td></tr>
+          <tr><td><strong>Inner</strong></td><td>Only matching rows</td><td>You only want flats with MRT data</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        Think of a join like a <strong>VLOOKUP in Excel</strong>, but it works on millions of rows in under a second.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Window Functions: Trends Over Time</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What Is a Window Function?</h3>
+      <p>A window function computes a value <em>for each row</em> based on a group of related rows &mdash; without collapsing the data.</p>
+      <pre><code class="language-python"># Rolling 3-month average price per town
+df = df.with_columns(
+    pl.col("resale_price")
+    .rolling_mean(window_size=3)
+    .over("town")
+    .alias("rolling_avg_3m")
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Key Window Operations</h3>
+      <pre><code class="language-python"># Year-on-year change
+df = df.with_columns(
+    (pl.col("resale_price") - pl.col("resale_price").shift(12))
+    .over("town")
+    .alias("yoy_change")
+)
+
+# Rank within each town
+df = df.with_columns(
+    pl.col("resale_price")
+    .rank("dense")
+    .over("town")
+    .alias("price_rank")
+)</code></pre>
+      <div class="callout callout-foundations">
+        <code>.over("town")</code> means "compute this separately for each town." It is the window &mdash; the group of rows the function sees.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 24-43: THEORY BLOCK A — Probability & Distributions
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>From Histograms to Probability</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Histogram Is a Rough Draft</h3>
+      <p>A histogram bins continuous data into discrete buckets. As you increase bins and increase data, the histogram converges to a smooth curve.</p>
+      <p>That smooth curve is the <strong>probability density function</strong> (PDF).</p>
+    </div>
+    <div class="col">
+      <div class="equation-box">
+        \[ P(a \leq X \leq b) = \int_a^b f(x)\, dx \]
+        <div class="annotation">
+          The probability that <span class="term-input">X</span> falls between <span class="term-param">a</span> and <span class="term-param">b</span> is the area under the curve <span class="term-output">f(x)</span> between those points.
+        </div>
+      </div>
+      <div class="callout callout-foundations" style="margin-top: 12px;">
+        <strong>Plain English:</strong> The taller the curve at a point, the more likely values are near there. The total area under the entire curve equals 1 (100%).
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The Normal Distribution</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Bell Curve</h3>
+      <p>The most important distribution in statistics. Many natural phenomena cluster around a central value with symmetric tails.</p>
+      <div class="equation-box">
+        \[ f(x) = \frac{1}{\sqrt{2\pi} \cdot \color{#D97706}{\sigma}} \exp\left(-\frac{(x - \color{#DC2626}{\mu})^2}{2\color{#D97706}{\sigma}^2}\right) \]
+        <div class="annotation">
+          <span class="term-bias">&mu;</span> = mean (centre), <span class="term-param">&sigma;</span> = standard deviation (spread)
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>What the Parameters Control</h3>
+      <ul>
+        <li><span class="term-bias">&mu;</span> shifts the curve left or right &mdash; where is the centre?</li>
+        <li><span class="term-param">&sigma;</span> stretches or compresses &mdash; how spread out?</li>
+        <li>68% of data falls within &plusmn;1&sigma; of &mu;</li>
+        <li>95% falls within &plusmn;2&sigma;</li>
+        <li>99.7% falls within &plusmn;3&sigma;</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        <strong>HDB context:</strong> If resale prices were normally distributed with &mu; = $500K and &sigma; = $80K, then 95% of prices would fall between $340K and $660K.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Beyond Normal: Poisson and Exponential</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Poisson: Counting Events</h3>
+      <p>"How many HDB transactions happen per day?"</p>
+      <div class="equation-box">
+        \[ P(X = k) = \frac{\color{#D97706}{\lambda}^k e^{-\color{#D97706}{\lambda}}}{k!} \]
+        <div class="annotation">
+          <span class="term-param">&lambda;</span> = average rate (e.g., 45 transactions per day).<br>
+          <em>k</em> = the specific count you are asking about.
+        </div>
+      </div>
+      <ul>
+        <li>Counts of rare events in fixed intervals</li>
+        <li>Only one parameter: <span class="term-param">&lambda;</span> (rate)</li>
+        <li>Mean = Variance = <span class="term-param">&lambda;</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Exponential: Time Between Events</h3>
+      <p>"How long until the next transaction?"</p>
+      <div class="equation-box">
+        \[ f(x) = \color{#D97706}{\lambda} e^{-\color{#D97706}{\lambda} x}, \quad x \geq 0 \]
+        <div class="annotation">
+          <span class="term-param">&lambda;</span> = rate. Mean waiting time = 1/<span class="term-param">&lambda;</span>.
+        </div>
+      </div>
+      <ul>
+        <li>The Poisson and Exponential are two sides of the same coin</li>
+        <li><strong>Memoryless</strong>: the time you have already waited tells you nothing about how long you will still wait</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The Exponential Family</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>One Formula to Rule Them All</h3>
+      <p>Normal, Poisson, Exponential, Bernoulli, Gamma, Beta &mdash; all are members of the <strong>exponential family</strong>.</p>
+      <div class="equation-box">
+        \[ f(x \mid \color{#D97706}{\theta}) = h(x) \cdot \exp\!\Big(\color{#D97706}{\eta(\theta)}^\top \color{#0D9488}{T(x)} - A(\color{#D97706}{\theta})\Big) \]
+        <div class="annotation">
+          <span class="term-param">&eta;(&theta;)</span> = natural parameter,
+          <span class="term-input">T(x)</span> = sufficient statistic,
+          A(&theta;) = log-partition function, h(x) = base measure
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why Does This Matter?</h3>
+      <ul>
+        <li><span class="term-input">T(x)</span> is a <strong>sufficient statistic</strong> &mdash; it captures all information in the data about <span class="term-param">&theta;</span></li>
+        <li>MLE has a closed-form solution for exponential family distributions</li>
+        <li>Generalised Linear Models (GLMs) use the exponential family directly</li>
+      </ul>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        <strong>Advanced:</strong> The log-partition function A(&theta;) generates all moments: A'(&theta;) = E[T(X)] and A''(&theta;) = Var[T(X)]. It is the cumulant generating function.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Sufficient Statistics: A Deeper Look</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What Does "Sufficient" Mean?</h3>
+      <p>A statistic <span class="term-input">T(x)</span> is <strong>sufficient</strong> for <span class="term-param">&theta;</span> if, once you know T(x), the data tells you nothing more about &theta;.</p>
+      <div class="equation-box">
+        \[ P(X \mid \color{#0D9488}{T(X)} = t) \text{ does not depend on } \color{#D97706}{\theta} \]
+        <div class="annotation">Given the sufficient statistic, the conditional distribution of the data is parameter-free.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Example: Normal Distribution</h3>
+      <p>For \(X_1, \ldots, X_n \sim \mathcal{N}(\mu, \sigma^2)\) with known \(\sigma^2\):</p>
+      <ul>
+        <li>The sufficient statistic for <span class="term-bias">&mu;</span> is \(\bar{X} = \frac{1}{n}\sum_{i=1}^n X_i\)</li>
+        <li>You do not need the individual data points &mdash; just the sample mean</li>
+        <li>This is why <code>df.describe()</code> is so powerful: the summary statistics often <em>are</em> the sufficient statistics</li>
+      </ul>
+      <div class="callout callout-theory" style="margin-top:12px;">
+        <strong>Fisher-Neyman factorisation theorem:</strong> T(x) is sufficient for &theta; iff the likelihood can be written as g(T(x), &theta;) &middot; h(x).
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Maximum Likelihood Estimation (MLE)</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <h3>The Big Question: Given the Data, What Are the Best Parameters?</h3>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> You have a bunch of HDB prices. You believe they follow a Normal distribution. MLE asks: "Which &mu; and &sigma; make this exact data <em>most likely</em> to have occurred?"
+      </div>
+      <p style="margin-top:12px;">The <strong>likelihood function</strong> is the probability of observing your data, viewed as a function of the parameters:</p>
+      <div class="equation-box">
+        \[ \mathcal{L}(\color{#D97706}{\theta} \mid x_1, \ldots, x_n) = \prod_{i=1}^n f(x_i \mid \color{#D97706}{\theta}) \]
+        <div class="annotation">Multiply the probability of each observation. <span class="term-param">&theta;</span> that maximises this is the MLE.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why the Log?</h3>
+      <p>Products of thousands of tiny probabilities cause <strong>numerical underflow</strong>. Taking the log turns products into sums:</p>
+      <div class="equation-box">
+        \[ \ell(\color{#D97706}{\theta}) = \sum_{i=1}^n \log f(x_i \mid \color{#D97706}{\theta}) \]
+        <div class="annotation">The log-likelihood. Maximising &ell;(&theta;) is equivalent to maximising L(&theta;).</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>MLE for the Normal Distribution &mdash; Step by Step</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <h3>Deriving the Estimators</h3>
+  <p><strong>Step 1:</strong> Write the log-likelihood for \(X_i \sim \mathcal{N}(\mu, \sigma^2)\):</p>
+  <div class="equation-box">
+    \[ \ell(\color{#DC2626}{\mu}, \color{#D97706}{\sigma^2}) = -\frac{n}{2}\log(2\pi) - \frac{n}{2}\log(\color{#D97706}{\sigma^2}) - \frac{1}{2\color{#D97706}{\sigma^2}} \sum_{i=1}^n (x_i - \color{#DC2626}{\mu})^2 \]
+    <div class="annotation">Each term has a job: constant, spread penalty, fit penalty.</div>
+  </div>
+  <p><strong>Step 2:</strong> Differentiate with respect to <span class="term-bias">&mu;</span> and set to zero:</p>
+  <div class="equation-box">
+    \[ \frac{\partial \ell}{\partial \color{#DC2626}{\mu}} = \frac{1}{\color{#D97706}{\sigma^2}} \sum_{i=1}^n (x_i - \color{#DC2626}{\mu}) = 0 \implies \hat{\color{#DC2626}{\mu}}_{\text{MLE}} = \bar{x} = \frac{1}{n}\sum_{i=1}^n x_i \]
+    <div class="annotation">The MLE of the mean is the sample mean. Intuitive and exact.</div>
+  </div>
+</section>
+
+<section>
+  <h2>MLE for the Normal (continued)</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>Step 3:</strong> Differentiate with respect to <span class="term-param">&sigma;&sup2;</span> and set to zero:</p>
+  <div class="equation-box">
+    \[ \frac{\partial \ell}{\partial \color{#D97706}{\sigma^2}} = -\frac{n}{2\color{#D97706}{\sigma^2}} + \frac{1}{2(\color{#D97706}{\sigma^2})^2} \sum_{i=1}^n (x_i - \color{#DC2626}{\mu})^2 = 0 \]
+    \[ \implies \hat{\color{#D97706}{\sigma^2}}_{\text{MLE}} = \frac{1}{n}\sum_{i=1}^n (x_i - \bar{x})^2 \]
+    <div class="annotation">Note: MLE uses <em>n</em>, not <em>n</em>&minus;1. The MLE is <strong>biased</strong> &mdash; it slightly underestimates the true variance.</div>
+  </div>
+  <div class="columns" style="margin-top:16px;">
+    <div class="col">
+      <div class="callout callout-warning">
+        <strong>Production gotcha:</strong> Polars <code>.var()</code> uses <em>n</em>&minus;1 (Bessel's correction) by default. The MLE and the sample variance differ by a factor of n/(n&minus;1). For large n, the difference is negligible. For small samples, it matters.
+      </div>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># In Polars — default uses n-1 (unbiased)
+sample_var = df["resale_price"].var()
+
+# MLE variance (uses n)
+n = len(df)
+mle_var = df["resale_price"].var() * (n - 1) / n</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Fisher Information</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>How Much Does the Data Tell You?</h3>
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> Fisher Information measures how "sharp" the likelihood peak is. A sharp peak = the data strongly points to one parameter value. A flat peak = the data is ambiguous.
+      </div>
+      <div class="equation-box">
+        \[ \mathcal{I}(\color{#D97706}{\theta}) = -E\!\left[\frac{\partial^2 \ell}{\partial \color{#D97706}{\theta}^2}\right] = E\!\left[\left(\frac{\partial \ell}{\partial \color{#D97706}{\theta}}\right)^2\right] \]
+        <div class="annotation">The expected curvature of the log-likelihood at <span class="term-param">&theta;</span>.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>For the Normal (known &sigma;&sup2;)</h3>
+      <div class="equation-box">
+        \[ \mathcal{I}(\mu) = \frac{n}{\sigma^2} \]
+        <div class="annotation">More data (larger n) or less noise (smaller &sigma;&sup2;) = more information.</div>
+      </div>
+      <h3>Cram&eacute;r-Rao Bound</h3>
+      <div class="equation-box">
+        \[ \text{Var}(\hat{\theta}) \geq \frac{1}{\mathcal{I}(\theta)} \]
+        <div class="annotation">No unbiased estimator can have lower variance than 1/I(&theta;). The MLE achieves this bound asymptotically.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>MLE Properties</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Why MLE Is the Default</h3>
+      <table>
+        <thead><tr><th>Property</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Consistent</strong></td><td>\(\hat{\theta}_n \xrightarrow{p} \theta\) as \(n \to \infty\)</td></tr>
+          <tr><td><strong>Asymptotically Normal</strong></td><td>\(\sqrt{n}(\hat{\theta} - \theta) \xrightarrow{d} \mathcal{N}(0, \mathcal{I}(\theta)^{-1})\)</td></tr>
+          <tr><td><strong>Asymptotically Efficient</strong></td><td>Achieves the Cram&eacute;r-Rao bound as \(n \to \infty\)</td></tr>
+          <tr><td><strong>Invariant</strong></td><td>MLE of \(g(\theta)\) is \(g(\hat{\theta})\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <div class="callout callout-advanced">
+        <strong>Advanced &mdash; When MLE Fails:</strong>
+        <ul>
+          <li><strong>Small samples</strong>: MLE can be biased and high-variance</li>
+          <li><strong>Misspecified model</strong>: MLE converges to the "closest" distribution in KL divergence &mdash; which may not be useful</li>
+          <li><strong>Multimodal likelihood</strong>: gradient methods find local optima</li>
+          <li><strong>Infinite parameters</strong>: non-parametric MLE (kernel density) needs bandwidth selection</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Information Geometry - Advanced -->
+<section>
+  <h2>Information Geometry</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Distributions Live on a Curved Surface</h3>
+      <p>The family of Normal distributions \(\{\mathcal{N}(\mu, \sigma^2)\}\) is a 2D surface (a manifold) parameterised by (&mu;, &sigma;&sup2;).</p>
+      <p>The <strong>Fisher Information Matrix</strong> defines a Riemannian metric on this manifold:</p>
+      <div class="equation-box">
+        \[ g_{ij}(\theta) = \mathcal{I}_{ij}(\theta) = E\!\left[\frac{\partial \ell}{\partial \theta_i} \frac{\partial \ell}{\partial \theta_j}\right] \]
+        <div class="annotation">The Fisher metric measures "distance" between nearby distributions.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why This Matters</h3>
+      <ul>
+        <li>The "natural" distance between distributions is not Euclidean &mdash; moving from &sigma;=1 to &sigma;=2 is a bigger change than from &sigma;=100 to &sigma;=101</li>
+        <li>Natural gradient descent (used in modern RL and deep learning) follows the Fisher metric, not the Euclidean gradient</li>
+        <li>KL divergence is the local quadratic approximation of this Riemannian distance</li>
+      </ul>
+      <div class="callout callout-advanced">
+        <strong>Connection to Module 6:</strong> PPO and TRPO (reinforcement learning) use KL divergence constraints &mdash; they are implicitly doing information geometry on the policy manifold.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     BAYESIAN INFERENCE
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Bayesian Thinking: Prior to Posterior</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> You have a belief about HDB prices before looking at data (the prior). You observe data. Your updated belief is the posterior. Bayesian inference is the principled way to update beliefs with evidence.
+      </div>
+      <div class="equation-box">
+        \[ \underbrace{P(\color{#D97706}{\theta} \mid \color{#0D9488}{X})}_{\text{posterior}} = \frac{\overbrace{P(\color{#0D9488}{X} \mid \color{#D97706}{\theta})}^{\text{likelihood}} \cdot \overbrace{P(\color{#D97706}{\theta})}^{\text{prior}}}{\underbrace{P(\color{#0D9488}{X})}_{\text{evidence}}} \]
+        <div class="annotation">
+          <span class="term-param">&theta;</span> = parameter, <span class="term-input">X</span> = observed data. Evidence is a normalising constant.
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>The Three Ingredients</h3>
+      <ul>
+        <li><strong>Prior P(&theta;)</strong> &mdash; what you believed before seeing data. "HDB prices are probably between $300K and $800K"</li>
+        <li><strong>Likelihood P(X|&theta;)</strong> &mdash; how probable is this data given a particular parameter value?</li>
+        <li><strong>Posterior P(&theta;|X)</strong> &mdash; your updated belief after seeing the data</li>
+      </ul>
+      <div class="callout callout-theory" style="margin-top:12px;">
+        The posterior is always a <strong>compromise</strong> between prior and data. With lots of data, the posterior is dominated by the likelihood. With little data, the prior matters more.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Conjugate Priors: When the Math Works Out</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Normal-Normal Conjugacy</h3>
+      <p>Prior: \(\mu \sim \mathcal{N}(\mu_0, \sigma_0^2)\), Likelihood: \(X_i \sim \mathcal{N}(\mu, \sigma^2)\) (known &sigma;&sup2;)</p>
+      <div class="equation-box">
+        \[ \mu \mid X \sim \mathcal{N}\!\left(\frac{\frac{\mu_0}{\sigma_0^2} + \frac{n\bar{x}}{\sigma^2}}{\frac{1}{\sigma_0^2} + \frac{n}{\sigma^2}}, \; \frac{1}{\frac{1}{\sigma_0^2} + \frac{n}{\sigma^2}}\right) \]
+        <div class="annotation">
+          The posterior mean is a <strong>precision-weighted average</strong> of the prior mean and sample mean.
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Beta-Binomial Conjugacy</h3>
+      <p>"What fraction of HDB sales in Queenstown are 4-room flats?"</p>
+      <p>Prior: \(p \sim \text{Beta}(\alpha, \beta)\), Likelihood: \(k \sim \text{Binomial}(n, p)\)</p>
+      <div class="equation-box">
+        \[ p \mid k \sim \text{Beta}(\alpha + k, \; \beta + n - k) \]
+        <div class="annotation">Just add successes to &alpha; and failures to &beta;. Beautifully simple.</div>
+      </div>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        <strong>Why "conjugate"?</strong> Prior and posterior have the same distribution family. The data only updates the parameters. This makes computation exact &mdash; no approximations needed.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>MAP Estimation</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Maximum A Posteriori = MLE + Prior</h3>
+      <p>Instead of the full posterior, sometimes you just want the single most likely parameter value <em>given the prior</em>.</p>
+      <div class="equation-box">
+        \[ \hat{\theta}_{\text{MAP}} = \arg\max_\theta \; \underbrace{\log P(X \mid \theta)}_{\text{log-likelihood}} + \underbrace{\log P(\theta)}_{\text{log-prior}} \]
+        <div class="annotation">MAP = MLE with a regularisation term. The prior penalises extreme parameter values.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Connection to Regularisation</h3>
+      <ul>
+        <li>Gaussian prior on &theta; &rarr; L2 regularisation (Ridge)</li>
+        <li>Laplace prior on &theta; &rarr; L1 regularisation (Lasso)</li>
+        <li>Uniform prior &rarr; MAP = MLE (no regularisation)</li>
+      </ul>
+      <div class="callout callout-theory" style="margin-top:12px;">
+        <strong>Module 3 preview:</strong> When you learn Ridge and Lasso regression, remember &mdash; they are Bayesian MAP estimates with different priors. The "regularisation strength" &lambda; controls how much you trust the prior vs the data.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Bayesian Predictive Distribution</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Predicting the Next Observation</h3>
+      <p>MLE gives you a point estimate. Bayesian inference gives you a <strong>distribution over predictions</strong>:</p>
+      <div class="equation-box">
+        \[ P(\tilde{x} \mid X) = \int P(\tilde{x} \mid \theta) \, P(\theta \mid X) \, d\theta \]
+        <div class="annotation">
+          Average over all possible parameter values, weighted by how likely each is (the posterior).
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why This Matters</h3>
+      <ul>
+        <li>MLE says: "The next HDB price will be $450K"</li>
+        <li>Bayesian says: "The next HDB price will be $450K &plusmn; $35K (with 95% probability)"</li>
+        <li>The predictive distribution captures <strong>parameter uncertainty</strong> &mdash; how unsure you are about &mu; and &sigma;</li>
+      </ul>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        <strong>Advanced &mdash; Bayesian Model Comparison:</strong> BIC approximates the log-evidence. WAIC and LOO-CV are better in practice. BIC overpenalises complex models; LOO-CV adapts to model misspecification.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 39-55: THEORY BLOCK B — Hypothesis Testing & Bootstrap
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Hypothesis Testing: Making Decisions from Data</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> "Are Queenstown HDB prices <em>really</em> higher than Yishun, or is the difference just random noise?" Hypothesis testing gives you a framework to answer this rigorously.
+      </div>
+      <h3>The Setup</h3>
+      <ul>
+        <li><strong>H<sub>0</sub></strong> (null): There is no difference. Queenstown = Yishun.</li>
+        <li><strong>H<sub>1</sub></strong> (alternative): There is a difference.</li>
+        <li>Collect data. Compute a test statistic. Ask: "How surprising is this result if H<sub>0</sub> were true?"</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Two Types of Errors</h3>
+      <table>
+        <thead><tr><th></th><th>H<sub>0</sub> True</th><th>H<sub>0</sub> False</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Reject H<sub>0</sub></strong></td><td style="color:#F43F5E;">Type I (&alpha;)</td><td style="color:#10B981;">Correct!</td></tr>
+          <tr><td><strong>Fail to reject</strong></td><td style="color:#10B981;">Correct!</td><td style="color:#F43F5E;">Type II (&beta;)</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><strong>&alpha;</strong> = probability of false alarm (usually 0.05)</li>
+        <li><strong>&beta;</strong> = probability of missing a real effect</li>
+        <li><strong>Power = 1 &minus; &beta;</strong> = probability of detecting a real effect</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The Neyman-Pearson Framework</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Likelihood Ratio Test</h3>
+      <div class="equation-box">
+        \[ \Lambda = \frac{L(\theta_0 \mid X)}{L(\hat{\theta} \mid X)} = \frac{\text{likelihood under } H_0}{\text{likelihood under best fit}} \]
+        <div class="annotation">
+          Small &Lambda; = data fits H<sub>0</sub> poorly relative to the best possible fit &rarr; reject H<sub>0</sub>.
+        </div>
+      </div>
+      <p><strong>Neyman-Pearson Lemma:</strong> The likelihood ratio test is the most powerful test at any given significance level &alpha;.</p>
+    </div>
+    <div class="col">
+      <h3>The p-value</h3>
+      <div class="equation-box">
+        \[ p = P(\text{test statistic} \geq \text{observed} \mid H_0 \text{ true}) \]
+        <div class="annotation">The probability of seeing a result this extreme <em>or more</em>, assuming no effect exists.</div>
+      </div>
+      <div class="callout callout-error" style="margin-top:12px;">
+        <strong>What the p-value is NOT:</strong>
+        <ul>
+          <li>NOT the probability that H<sub>0</sub> is true</li>
+          <li>NOT the probability of a false positive</li>
+          <li>NOT a measure of effect size</li>
+        </ul>
+        p &lt; 0.05 does not mean "the effect is real." It means "the data is surprising under H<sub>0</sub>."
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Power Analysis</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>How Much Data Do You Need?</h3>
+      <p>Before running an experiment, you must determine the sample size needed to detect a meaningful effect.</p>
+      <div class="equation-box">
+        \[ n = \left(\frac{z_{1-\alpha/2} + z_{1-\beta}}{\delta / \sigma}\right)^2 \]
+        <div class="annotation">
+          <span class="term-param">&alpha;</span> = significance level, <span class="term-param">&beta;</span> = Type II error rate,
+          <span class="term-param">&delta;</span> = minimum detectable effect, <span class="term-param">&sigma;</span> = standard deviation
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Singapore Example</h3>
+      <p>"Is the average HDB price in Queenstown at least $20K higher than Yishun?"</p>
+      <pre><code class="language-python"># Rough power calculation
+import math
+alpha, power = 0.05, 0.80
+z_alpha = 1.96   # two-sided
+z_beta  = 0.84   # 80% power
+delta   = 20_000  # $20K difference
+sigma   = 80_000  # price std dev
+
+n = ((z_alpha + z_beta) / (delta / sigma)) ** 2
+print(f"Need {math.ceil(n)} transactions per group")
+# Need ~126 transactions per group</code></pre>
+      <div class="callout callout-theory">
+        <strong>FDR correction:</strong> Testing many towns at once? Bonferroni divides &alpha; by the number of tests. Benjamini-Hochberg controls the false discovery rate &mdash; less conservative, more powerful.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Permutation Tests vs Parametric Tests</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>When You Cannot Assume a Distribution</h3>
+      <p>Parametric tests (t-test, z-test) assume data follows a specific distribution. What if it does not?</p>
+      <div class="callout callout-foundations">
+        <strong>Permutation test idea:</strong> If there is no real difference between Queenstown and Yishun, then shuffling the town labels should not change the result. Do this 10,000 times and see how extreme your actual result is.
+      </div>
+    </div>
+    <div class="col">
+      <pre><code class="language-python">import numpy as np
+
+observed_diff = qt_prices.mean() - ys_prices.mean()
+combined = np.concatenate([qt_prices, ys_prices])
+n_qt = len(qt_prices)
+
+# Permutation test
+perm_diffs = []
+for _ in range(10_000):
+    np.random.shuffle(combined)
+    perm_diff = combined[:n_qt].mean() - combined[n_qt:].mean()
+    perm_diffs.append(perm_diff)
+
+p_value = np.mean(np.abs(perm_diffs) >= np.abs(observed_diff))
+print(f"Permutation p-value: {p_value:.4f}")</code></pre>
+      <div class="callout callout-advanced" style="margin-top:8px;">
+        Permutation tests are <strong>exact</strong> &mdash; no distributional assumptions. But they only test the null of exchangeability, not a specific alternative.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Bootstrap: Estimating Uncertainty Without Formulas</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> You have one sample. You want to know how precise your estimate is. The bootstrap idea: treat your sample <em>as if it were the population</em>, then resample from it thousands of times to see how much your estimate varies.
+      </div>
+      <h3>Efron's Insight (1979)</h3>
+      <p>You cannot get more data from the population. But you can simulate having more data by resampling <strong>with replacement</strong> from your existing sample.</p>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># Bootstrap the median HDB price
+prices = df["resale_price"].to_numpy()
+n_boot = 10_000
+boot_medians = []
+
+for _ in range(n_boot):
+    resample = np.random.choice(prices, size=len(prices),
+                                replace=True)
+    boot_medians.append(np.median(resample))
+
+# 95% confidence interval
+ci_low  = np.percentile(boot_medians, 2.5)
+ci_high = np.percentile(boot_medians, 97.5)
+print(f"95% CI: ${ci_low:,.0f} to ${ci_high:,.0f}")</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>BCa Bootstrap Intervals</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Better Than Percentile Intervals</h3>
+      <p>The simple percentile method assumes the bootstrap distribution is symmetric and centred. BCa (bias-corrected and accelerated) fixes both issues:</p>
+      <div class="equation-box">
+        \[ \alpha_1 = \Phi\!\left(\hat{z}_0 + \frac{\hat{z}_0 + z_{\alpha/2}}{1 - \hat{a}(\hat{z}_0 + z_{\alpha/2})}\right) \]
+        <div class="annotation">
+          <span class="term-param">&zcirc;<sub>0</sub></span> = bias correction (how far the bootstrap median is from the estimate).
+          <span class="term-param">&acirc;</span> = acceleration (how fast the variance changes with the parameter).
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>When Bootstrap Fails</h3>
+      <div class="callout callout-error">
+        <strong>The bootstrap is not magic.</strong> It fails when:
+        <ul>
+          <li><strong>Extreme quantiles</strong> &mdash; bootstrapping the maximum of a distribution is unreliable</li>
+          <li><strong>Heavy tails</strong> &mdash; if the variance does not exist (e.g., Cauchy), the bootstrap CLT does not apply</li>
+          <li><strong>Dependent data</strong> &mdash; time series requires block bootstrap or stationary bootstrap</li>
+        </ul>
+      </div>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        <strong>Advanced &mdash; Wild Bootstrap:</strong> For heteroscedastic data (variance changes across groups), the standard bootstrap is inconsistent. The wild bootstrap resamples <em>residuals</em> with random sign flips, preserving the heteroscedastic structure.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 45-56: THEORY BLOCK C — Visualisation, Profiling, Cleaning
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Data Visualisation: Seeing Patterns</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Why Visualise?</h3>
+      <p>Anscombe's quartet: four datasets with identical summary statistics (mean, variance, correlation) but completely different shapes. Only a plot reveals the truth.</p>
+      <div class="callout callout-foundations">
+        <strong>Rule:</strong> Never trust a summary statistic you have not plotted.
+      </div>
+    </div>
+    <div class="col">
+      <h3>Chart Selection Guide</h3>
+      <table>
+        <thead><tr><th>Question</th><th>Chart</th></tr></thead>
+        <tbody>
+          <tr><td>Distribution shape?</td><td>Histogram, KDE</td></tr>
+          <tr><td>Relationship between 2 variables?</td><td>Scatter plot</td></tr>
+          <tr><td>Trend over time?</td><td>Line chart</td></tr>
+          <tr><td>Comparison across categories?</td><td>Bar chart</td></tr>
+          <tr><td>Correlation matrix?</td><td>Heatmap</td></tr>
+          <tr><td>Distribution by group?</td><td>Box plot, violin</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Plotly: Interactive Charts in Python</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Histograms</h3>
+      <pre><code class="language-python">import plotly.express as px
+
+# Distribution of resale prices
+fig = px.histogram(
+    df.to_pandas(),
+    x="resale_price",
+    nbins=50,
+    title="Distribution of HDB Resale Prices",
+    labels={"resale_price": "Price (SGD)"},
+    color_discrete_sequence=["#0D9488"]
+)
+fig.show()  # Interactive! Hover for details</code></pre>
+    </div>
+    <div class="col">
+      <h3>Scatter + Trendline</h3>
+      <pre><code class="language-python"># Floor area vs price, coloured by town
+fig = px.scatter(
+    df.sample(5000).to_pandas(),
+    x="floor_area_sqm",
+    y="resale_price",
+    color="town",
+    trendline="ols",
+    title="Area vs Price by Town",
+    opacity=0.6,
+)
+fig.show()</code></pre>
+      <div class="callout callout-foundations" style="margin-top:8px;">
+        Plotly charts are interactive &mdash; hover, zoom, pan, select. They export to HTML for sharing.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Plotly: Time Series and Heatmaps</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Line Charts for Trends</h3>
+      <pre><code class="language-python"># Monthly median price by town
+monthly = (
+    df.group_by("month", "town")
+    .agg(pl.col("resale_price").median())
+    .sort("month")
+)
+
+fig = px.line(
+    monthly.to_pandas(),
+    x="month", y="resale_price",
+    color="town",
+    title="HDB Price Trends by Town"
+)
+fig.show()</code></pre>
+    </div>
+    <div class="col">
+      <h3>Correlation Heatmap</h3>
+      <pre><code class="language-python"># Compute correlation matrix with Polars
+numeric_cols = ["resale_price", "floor_area_sqm",
+                "remaining_lease_months"]
+corr = df.select(numeric_cols).corr()
+
+fig = px.imshow(
+    corr.to_pandas(),
+    text_auto=".2f",
+    color_continuous_scale="RdBu_r",
+    title="Correlation Matrix"
+)
+fig.show()</code></pre>
+      <div class="callout callout-theory" style="margin-top:8px;">
+        Correlation values range from &minus;1 to +1. Values near 0 mean no linear relationship. <strong>Check scatter plots for non-linear patterns.</strong>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Lazy Frames: Processing at Scale</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Eager vs Lazy Execution</h3>
+      <table>
+        <thead><tr><th></th><th>Eager (default)</th><th>Lazy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>When it runs</strong></td><td>Immediately</td><td>Only on <code>.collect()</code></td></tr>
+          <tr><td><strong>Optimisation</strong></td><td>None</td><td>Query plan optimiser</td></tr>
+          <tr><td><strong>Memory</strong></td><td>Full dataset in RAM</td><td>Streams from disk</td></tr>
+          <tr><td><strong>Best for</strong></td><td>Small data, exploration</td><td>Large data, pipelines</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># Lazy: build the query, then execute
+result = (
+    pl.scan_csv("hdb_resale.csv")  # lazy!
+    .filter(pl.col("town") == "QUEENSTOWN")
+    .with_columns(
+        (pl.col("resale_price") / pl.col("floor_area_sqm"))
+        .alias("price_per_sqm")
+    )
+    .group_by("flat_type")
+    .agg(pl.col("price_per_sqm").median())
+    .collect()  # NOW it executes
+)
+print(result)</code></pre>
+      <div class="callout callout-theory" style="margin-top:8px;">
+        Polars optimises the query plan: predicate pushdown, projection pushdown, common subexpression elimination. The 15M-row HDB dataset processes in seconds.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Automated Data Profiling</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What Profiling Checks</h3>
+      <p>Before any analysis, you need to know what is <em>wrong</em> with your data:</p>
+      <ul>
+        <li><strong>Missing values</strong> &mdash; which columns, how many?</li>
+        <li><strong>Outliers</strong> &mdash; values 3+ std devs from the mean</li>
+        <li><strong>Duplicates</strong> &mdash; exact or near-duplicate rows</li>
+        <li><strong>Type mismatches</strong> &mdash; numbers stored as strings</li>
+        <li><strong>Cardinality</strong> &mdash; how many unique values per column?</li>
+        <li><strong>Distributions</strong> &mdash; skewness, kurtosis, normality tests</li>
+        <li><strong>Correlations</strong> &mdash; highly correlated features</li>
+        <li><strong>Imbalance</strong> &mdash; class imbalance in target column</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Manual Profiling in Polars</h3>
+      <pre><code class="language-python"># Missing values per column
+print(df.null_count())
+
+# Unique values per column
+for col in df.columns:
+    n_unique = df[col].n_unique()
+    print(f"{col}: {n_unique} unique")
+
+# Outlier detection (IQR method)
+q1 = df["resale_price"].quantile(0.25)
+q3 = df["resale_price"].quantile(0.75)
+iqr = q3 - q1
+outliers = df.filter(
+    (pl.col("resale_price") < q1 - 1.5 * iqr) |
+    (pl.col("resale_price") > q3 + 1.5 * iqr)
+)
+print(f"{len(outliers)} outliers found")</code></pre>
+      <div class="callout callout-kailash" style="margin-top:8px;">
+        This is 30 lines. DataExplorer does it in 3. But <strong>you must know what it computes</strong> before you trust it.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Data Cleaning: The 80% Problem</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Data Scientists Spend 80% of Their Time Cleaning</h3>
+      <ul>
+        <li><strong>Missing values</strong>: drop, impute (mean/median/mode), or flag</li>
+        <li><strong>Duplicates</strong>: exact dedup or fuzzy matching</li>
+        <li><strong>Type coercion</strong>: "450000" &rarr; 450000</li>
+        <li><strong>Encoding categoricals</strong>: "QUEENSTOWN" &rarr; one-hot or ordinal</li>
+        <li><strong>Scaling numerics</strong>: StandardScaler, MinMaxScaler</li>
+        <li><strong>Outlier handling</strong>: clip, transform, or remove</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># Manual cleaning pipeline
+# 1. Drop exact duplicates
+df = df.unique()
+
+# 2. Fill missing values
+df = df.with_columns(
+    pl.col("floor_area_sqm").fill_null(
+        pl.col("floor_area_sqm").median()
+    )
+)
+
+# 3. Remove outliers (IQR method)
+q1 = df["resale_price"].quantile(0.25)
+q3 = df["resale_price"].quantile(0.75)
+iqr = q3 - q1
+df = df.filter(
+    pl.col("resale_price").is_between(
+        q1 - 1.5 * iqr, q3 + 1.5 * iqr
+    )
+)</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Imputation Strategies: When Values Are Missing</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Three Types of Missingness</h3>
+      <table>
+        <thead><tr><th>Type</th><th>Definition</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><strong>MCAR</strong></td><td>Missing completely at random</td><td>Sensor battery died randomly</td></tr>
+          <tr><td><strong>MAR</strong></td><td>Missing depends on observed data</td><td>High-income people skip income questions</td></tr>
+          <tr><td><strong>MNAR</strong></td><td>Missing depends on unobserved data</td><td>People with depression skip the depression survey</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <h3>Imputation Methods</h3>
+      <table>
+        <thead><tr><th>Method</th><th>When</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td>Drop rows</td><td>MCAR, &lt;5% missing</td><td>Lose data</td></tr>
+          <tr><td>Mean/Median</td><td>Numeric, MCAR</td><td>Shrinks variance</td></tr>
+          <tr><td>Mode</td><td>Categorical</td><td>Inflates majority class</td></tr>
+          <tr><td>Forward fill</td><td>Time series</td><td>Ignores trends</td></tr>
+          <tr><td>KNN impute</td><td>MAR, structured</td><td>Slow on large data</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning" style="margin-top:8px;">
+        <strong>Never impute the target variable.</strong> If your outcome is missing, that row cannot be used for training.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 52-59: KAILASH ENGINE DEEP DIVE
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Kailash Bridge: Theory Meets Engine</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="kailash-bridge">
+    <h3>Everything You Just Learned &mdash; Automated</h3>
+    <div class="theory-to-engine">
+      <div>
+        <strong>Distributions, correlation, outliers</strong><br>
+        Manual: 50 lines of Polars + NumPy
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div>
+        <strong>DataExplorer</strong><br>
+        One async call, full profile
+      </div>
+    </div>
+    <div class="theory-to-engine" style="margin-top:12px;">
+      <div>
+        <strong>Type detection, encoding, scaling, imputation</strong><br>
+        Manual: 30 lines of if/else logic
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div>
+        <strong>PreprocessingPipeline</strong><br>
+        Auto-detect and transform
+      </div>
+    </div>
+    <div class="theory-to-engine" style="margin-top:12px;">
+      <div>
+        <strong>Histograms, scatter, heatmaps</strong><br>
+        Manual: Plotly boilerplate per chart
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div>
+        <strong>ModelVisualizer</strong><br>
+        Consistent charts, one API
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>DataExplorer: Automated Profiling</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The API</h3>
+      <pre><code class="language-python">from kailash_ml import DataExplorer, AlertConfig
+
+explorer = DataExplorer(
+    alert_config=AlertConfig(
+        missing_threshold=0.05,
+        outlier_method="iqr",
+        correlation_threshold=0.9,
+        imbalance_threshold=0.8,
+    )
+)
+
+# Profile the entire dataset
+profile = await explorer.profile(df)
+
+# What did it find?
+print(profile.summary)
+print(profile.alerts)      # 8 alert types
+print(profile.correlations) # Full matrix
+print(profile.distributions) # Per-column stats</code></pre>
+    </div>
+    <div class="col">
+      <h3>8 Alert Types</h3>
+      <table>
+        <thead><tr><th>Alert</th><th>Triggers When</th></tr></thead>
+        <tbody>
+          <tr><td>Missing data</td><td>&gt; threshold % null</td></tr>
+          <tr><td>Outliers</td><td>IQR or z-score exceeded</td></tr>
+          <tr><td>High correlation</td><td>r &gt; threshold</td></tr>
+          <tr><td>Low variance</td><td>Near-constant column</td></tr>
+          <tr><td>Class imbalance</td><td>Majority class &gt; threshold</td></tr>
+          <tr><td>Duplicate rows</td><td>Exact duplicates found</td></tr>
+          <tr><td>Type mismatch</td><td>Numbers stored as strings</td></tr>
+          <tr><td>Skewness</td><td>|skew| &gt; 2</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-kailash" style="margin-top:8px;">
+        DataExplorer implements everything from the profiling section &mdash; distributions, correlations, outliers, missing data &mdash; in a single call.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>DataExplorer: Compare Datasets</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Before/After Comparison</h3>
+      <pre><code class="language-python"># Profile before cleaning
+profile_before = await explorer.profile(df_raw)
+
+# Clean the data (manual or pipeline)
+df_clean = clean(df_raw)
+
+# Profile after cleaning
+profile_after = await explorer.profile(df_clean)
+
+# Compare the two profiles
+comparison = await explorer.compare(
+    profile_before, profile_after
+)
+print(comparison.changes)
+# Shows: what improved, what regressed</code></pre>
+    </div>
+    <div class="col">
+      <h3>Why Compare?</h3>
+      <ul>
+        <li>Did cleaning <em>introduce</em> new problems?</li>
+        <li>Did imputation change the distribution shape?</li>
+        <li>Did outlier removal reduce too much variance?</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        <strong>The principle:</strong> Cleaning should improve data quality without distorting the underlying signal. Always compare before and after.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>PreprocessingPipeline: Automated Cleaning</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The API</h3>
+      <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
+
+pipeline = PreprocessingPipeline()
+
+# Auto-detect and transform
+result = pipeline.fit_transform(df)
+
+# What happened?
+print(result.transformations)
+# [
+#   "floor_area_sqm: StandardScaler",
+#   "town: OneHotEncoder (26 categories)",
+#   "remaining_lease: filled 42 nulls (median)",
+#   "resale_price: outliers clipped (IQR)",
+# ]</code></pre>
+    </div>
+    <div class="col">
+      <h3>What It Auto-Detects</h3>
+      <table>
+        <thead><tr><th>Data Type</th><th>Transformation</th></tr></thead>
+        <tbody>
+          <tr><td>Numeric</td><td>Scale (Standard or MinMax)</td></tr>
+          <tr><td>Categorical (low card.)</td><td>One-hot encoding</td></tr>
+          <tr><td>Categorical (high card.)</td><td>Target encoding</td></tr>
+          <tr><td>Temporal</td><td>Extract year, month, day</td></tr>
+          <tr><td>Missing numeric</td><td>Median imputation</td></tr>
+          <tr><td>Missing categorical</td><td>Mode imputation</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-kailash" style="margin-top:8px;">
+        PreprocessingPipeline maps directly to the cleaning theory: type detection &rarr; encoding &rarr; scaling &rarr; imputation. The decisions are the same; the code is 3 lines instead of 30.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>ModelVisualizer: Consistent Charts</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>EDA Charts in Module 1</h3>
+      <pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+# Histogram
+viz.histogram(df, column="resale_price",
+              title="Price Distribution")
+
+# Scatter plot
+viz.scatter(df, x="floor_area_sqm",
+            y="resale_price",
+            color="town")
+
+# Correlation heatmap
+viz.heatmap(df, columns=numeric_cols,
+            title="Correlation Matrix")
+
+# Bar chart
+viz.bar(town_stats, x="town",
+        y="median_price")</code></pre>
+    </div>
+    <div class="col">
+      <h3>Why ModelVisualizer over Raw Plotly?</h3>
+      <ul>
+        <li><strong>Consistent theming</strong> across all charts in the course</li>
+        <li><strong>Polars-native</strong> &mdash; no <code>.to_pandas()</code> conversion</li>
+        <li><strong>One API</strong> for histograms, scatter, bar, heatmap, line, box, violin</li>
+        <li><strong>Later modules</strong> add ML-specific charts: ROC curves, SHAP plots, calibration curves, confusion matrices</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        In M1, you learn Plotly directly <em>and</em> ModelVisualizer. Understanding both means you can customise when the engine defaults are not enough.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>ConnectionManager: Where Results Live</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>First Introduction</h3>
+      <p>Every time you run a DataExplorer profile or a PreprocessingPipeline transformation, the results need to go somewhere.</p>
+      <pre><code class="language-python">from kailash import ConnectionManager
+
+# Configure where results are stored
+cm = ConnectionManager(
+    database_url="sqlite:///ascent01_results.db"
+)
+
+# DataExplorer and PreprocessingPipeline
+# use this connection automatically
+explorer = DataExplorer(connection_manager=cm)
+profile = await explorer.profile(df)
+# Profile is now persisted in the database</code></pre>
+    </div>
+    <div class="col">
+      <h3>Why Persist?</h3>
+      <ul>
+        <li><strong>Reproducibility</strong> &mdash; rerun next week, get the same profile back</li>
+        <li><strong>Comparison</strong> &mdash; compare today's profile with last month's</li>
+        <li><strong>Audit trail</strong> &mdash; who ran what, when, with what parameters</li>
+      </ul>
+      <div class="callout callout-kailash" style="margin-top:12px;">
+        <strong>Module 3 preview:</strong> ConnectionManager becomes central when you persist model results, SHAP values, and experiment runs. In M1, it is just "where the database lives."
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Architecture: How the Engines Fit Together</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="kailash-bridge">
+    <h3>Module 1 Data Pipeline</h3>
+    <table>
+      <thead>
+        <tr><th>Step</th><th>Manual (Polars + Plotly)</th><th>Kailash Engine</th><th>What You Learned</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1. Load</td><td><code>pl.read_csv()</code></td><td>ASCENTDataLoader</td><td>What is data?</td></tr>
+        <tr><td>2. Profile</td><td>50+ lines of diagnostics</td><td>DataExplorer</td><td>Distributions, correlation, outliers</td></tr>
+        <tr><td>3. Clean</td><td>30+ lines of if/else</td><td>PreprocessingPipeline</td><td>Imputation, encoding, scaling</td></tr>
+        <tr><td>4. Visualise</td><td>Plotly boilerplate</td><td>ModelVisualizer</td><td>Chart selection, visual EDA</td></tr>
+        <tr><td>5. Persist</td><td>Manual file I/O</td><td>ConnectionManager</td><td>Reproducibility, audit</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout callout-foundations" style="margin-top:12px;">
+    You learn both paths: the manual way (to understand what is happening) and the engine way (to be productive). The manual knowledge lets you <strong>debug when the engine gives unexpected results</strong>.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 60-67: ADDITIONAL THEORY — DEEPER DIVES
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Variance: Measuring Spread</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> The mean tells you where the centre is. Variance tells you how <em>spread out</em> the data is around that centre.
+      </div>
+      <div class="equation-box">
+        \[ \text{Var}(X) = \color{#D97706}{\sigma^2} = E\!\left[(X - \color{#DC2626}{\mu})^2\right] = E[X^2] - (E[X])^2 \]
+        <div class="annotation">
+          Average of squared deviations from the <span class="term-bias">mean</span>. <span class="term-param">&sigma;</span> (the square root) is the <strong>standard deviation</strong>.
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>In Polars</h3>
+      <pre><code class="language-python"># Sample variance (n-1, Bessel-corrected)
+var = df["resale_price"].var()
+std = df["resale_price"].std()
+
+# Per-town variance
+town_spread = (
+    df.group_by("town")
+    .agg(
+        pl.col("resale_price").std().alias("price_std"),
+        pl.col("resale_price").mean().alias("price_mean"),
+    )
+    .with_columns(
+        (pl.col("price_std") / pl.col("price_mean"))
+        .alias("cv")  # Coefficient of Variation
+    )
+)</code></pre>
+      <div class="callout callout-theory" style="margin-top:8px;">
+        <strong>CV (Coefficient of Variation)</strong> = &sigma;/&mu;. Use it to compare spread across groups with different means.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Skewness and Kurtosis</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Skewness: Asymmetry</h3>
+      <div class="equation-box">
+        \[ \gamma_1 = E\!\left[\left(\frac{X - \mu}{\sigma}\right)^3\right] \]
+        <div class="annotation">
+          Positive: right tail is longer (e.g., HDB prices).<br>
+          Negative: left tail is longer.<br>
+          Zero: symmetric.
+        </div>
+      </div>
+      <ul>
+        <li>HDB resale prices are <strong>right-skewed</strong>: most are $300K&ndash;$600K, but a few reach $1.5M+</li>
+        <li>The mean is pulled toward the tail; the median stays put</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Kurtosis: Tail Heaviness</h3>
+      <div class="equation-box">
+        \[ \gamma_2 = E\!\left[\left(\frac{X - \mu}{\sigma}\right)^4\right] - 3 \]
+        <div class="annotation">
+          Excess kurtosis (&minus;3 adjustment makes Normal = 0).<br>
+          Positive: heavier tails than Normal (more extreme values).<br>
+          Negative: lighter tails.
+        </div>
+      </div>
+      <div class="callout callout-warning" style="margin-top:12px;">
+        <strong>Finance caution:</strong> Financial returns often have high kurtosis. The Normal distribution dramatically underestimates the probability of crashes. This is why Black-Scholes fails.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Correlation: Beyond Pearson</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Pearson Correlation</h3>
+      <div class="equation-box">
+        \[ r = \frac{\sum_{i=1}^n (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^n (x_i - \bar{x})^2 \cdot \sum_{i=1}^n (y_i - \bar{y})^2}} \]
+        <div class="annotation">Measures <strong>linear</strong> relationship. Ranges from &minus;1 to +1.</div>
+      </div>
+      <div class="callout callout-warning" style="margin-top:8px;">
+        Pearson misses non-linear relationships entirely. A perfect parabola has r = 0.
+      </div>
+    </div>
+    <div class="col">
+      <h3>Alternatives</h3>
+      <table>
+        <thead><tr><th>Method</th><th>Measures</th><th>Use When</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Spearman</strong></td><td>Monotonic relationship</td><td>Ordinal data, non-linear monotonic</td></tr>
+          <tr><td><strong>Kendall</strong></td><td>Concordance</td><td>Small samples, many ties</td></tr>
+          <tr><td><strong>Mutual Information</strong></td><td>Any dependency</td><td>Non-linear, non-monotonic (M2)</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-python"># Spearman in Polars (rank first, then Pearson)
+rank_corr = (
+    df.select(
+        pl.col("resale_price").rank().alias("price_rank"),
+        pl.col("floor_area_sqm").rank().alias("area_rank"),
+    )
+    .corr()
+)</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The Central Limit Theorem</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> Take any distribution. Sample from it repeatedly. The <em>average</em> of your samples will be approximately Normal &mdash; regardless of the original distribution's shape. The more samples, the better the approximation.
+      </div>
+      <div class="equation-box">
+        \[ \bar{X}_n = \frac{1}{n}\sum_{i=1}^n X_i \xrightarrow{d} \mathcal{N}\!\left(\mu, \frac{\sigma^2}{n}\right) \]
+        <div class="annotation">As n grows, the sample mean converges to a Normal distribution with variance shrinking by 1/n.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why This Matters</h3>
+      <ul>
+        <li>HDB prices are <em>not</em> Normal (right-skewed)</li>
+        <li>But the <em>average</em> of 100 randomly selected HDB prices <em>is</em> approximately Normal</li>
+        <li>This is why confidence intervals and hypothesis tests work &mdash; they operate on <strong>averages</strong>, not individual observations</li>
+      </ul>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        <strong>How fast?</strong> Berry-Ess&eacute;en theorem: the convergence rate is \(O(1/\sqrt{n})\). For heavy-tailed distributions, convergence is slow &mdash; the bootstrap may be more reliable than CLT-based intervals.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Quantiles and Box Plots</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Reading a Box Plot</h3>
+      <ul>
+        <li><strong>Q1</strong> (25th percentile): 25% of data falls below this value</li>
+        <li><strong>Q2</strong> (median, 50th): the middle value</li>
+        <li><strong>Q3</strong> (75th percentile): 75% falls below</li>
+        <li><strong>IQR</strong> = Q3 &minus; Q1: the middle 50% spread</li>
+        <li><strong>Whiskers</strong>: extend to Q1 &minus; 1.5&middot;IQR and Q3 + 1.5&middot;IQR</li>
+        <li><strong>Dots beyond whiskers</strong>: outliers</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># Box plot by flat type
+fig = px.box(
+    df.to_pandas(),
+    x="flat_type",
+    y="resale_price",
+    title="Price Distribution by Flat Type",
+    color="flat_type",
+)
+fig.show()
+
+# Compute quartiles in Polars
+quartiles = df.select(
+    pl.col("resale_price").quantile(0.25).alias("Q1"),
+    pl.col("resale_price").quantile(0.50).alias("Q2"),
+    pl.col("resale_price").quantile(0.75).alias("Q3"),
+)
+print(quartiles)</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Covariance and the Covariance Matrix</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Covariance: Unstandardised Correlation</h3>
+      <div class="equation-box">
+        \[ \text{Cov}(X, Y) = E[(X - \mu_X)(Y - \mu_Y)] \]
+        <div class="annotation">
+          Positive: X and Y increase together.<br>
+          Negative: one increases while the other decreases.<br>
+          Zero: no <em>linear</em> relationship.
+        </div>
+      </div>
+      <p>Correlation <em>is</em> standardised covariance: \(r = \frac{\text{Cov}(X,Y)}{\sigma_X \sigma_Y}\)</p>
+    </div>
+    <div class="col">
+      <h3>The Covariance Matrix</h3>
+      <div class="equation-box">
+        \[ \Sigma = \begin{pmatrix} \text{Var}(X_1) & \text{Cov}(X_1, X_2) & \cdots \\ \text{Cov}(X_2, X_1) & \text{Var}(X_2) & \cdots \\ \vdots & \vdots & \ddots \end{pmatrix} \]
+        <div class="annotation">Symmetric, positive semi-definite. Diagonal = variances. Off-diagonal = covariances.</div>
+      </div>
+      <div class="callout callout-advanced" style="margin-top:8px;">
+        <strong>Module 4 preview:</strong> PCA decomposes the covariance matrix into eigenvectors (principal components) and eigenvalues (variance explained). The covariance matrix is the foundation of dimensionality reduction.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Law of Large Numbers</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> The more data you collect, the closer your sample average gets to the true population average. With enough HDB transactions, the sample mean <em>converges</em> to the true mean.
+      </div>
+      <div class="equation-box">
+        \[ \bar{X}_n \xrightarrow{a.s.} \mu \quad \text{as } n \to \infty \]
+        <div class="annotation">Strong Law: the sample mean converges <em>almost surely</em> to the population mean.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Weak vs Strong</h3>
+      <table>
+        <thead><tr><th>Version</th><th>Convergence</th><th>Requirement</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Weak LLN</strong></td><td>In probability</td><td>Finite variance</td></tr>
+          <tr><td><strong>Strong LLN</strong></td><td>Almost surely</td><td>IID, finite mean</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-theory" style="margin-top:12px;">
+        <strong>The gambler's fallacy violates this.</strong> LLN says the average converges &mdash; it does NOT say that short-run deviations will be "corrected." Each coin flip is independent.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     ADVANCED THEORY SLIDES
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Bayesian Model Comparison</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>BIC vs WAIC vs LOO-CV</h3>
+      <table>
+        <thead><tr><th>Criterion</th><th>Formula</th><th>Strength</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>BIC</strong></td>
+            <td>\(-2\ell(\hat{\theta}) + k \log n\)</td>
+            <td>Simple, consistent</td>
+          </tr>
+          <tr>
+            <td><strong>WAIC</strong></td>
+            <td>\(-2 \sum \log \overline{p}_i + 2 p_{\text{waic}}\)</td>
+            <td>Fully Bayesian</td>
+          </tr>
+          <tr>
+            <td><strong>LOO-CV</strong></td>
+            <td>\(\sum \log p(y_i \mid y_{-i})\)</td>
+            <td>Robust to misspecification</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <h3>When to Use Each</h3>
+      <ul>
+        <li><strong>BIC</strong>: quick screening, well-specified models, large n</li>
+        <li><strong>WAIC</strong>: Bayesian models, posterior is available, want a single number</li>
+        <li><strong>LOO-CV</strong> (Pareto-smoothed): gold standard for Bayesian model comparison; robust when WAIC fails</li>
+      </ul>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        BIC approximates the log marginal likelihood. It over-penalises complexity for small n. WAIC and LOO-CV estimate out-of-sample predictive accuracy &mdash; a more directly useful quantity.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>False Discovery Rate</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Multiple Testing Problem</h3>
+      <p>Testing 26 towns at &alpha; = 0.05: you expect 1.3 false positives even if no effect exists anywhere.</p>
+      <div class="equation-box">
+        \[ \text{FDR} = E\!\left[\frac{\text{false discoveries}}{\text{total discoveries}}\right] \]
+        <div class="annotation">Control the <em>proportion</em> of false positives among your significant results.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Benjamini-Hochberg Procedure</h3>
+      <ol>
+        <li>Sort all m p-values: \(p_{(1)} \leq p_{(2)} \leq \cdots \leq p_{(m)}\)</li>
+        <li>Find the largest k where \(p_{(k)} \leq \frac{k}{m} \cdot q\)</li>
+        <li>Reject all hypotheses with \(p_{(i)} \leq p_{(k)}\)</li>
+      </ol>
+      <pre><code class="language-python"># BH correction in NumPy
+import numpy as np
+p_values = np.array([0.001, 0.013, 0.029, 0.043, 0.15])
+m = len(p_values)
+q = 0.05  # FDR level
+
+sorted_idx = np.argsort(p_values)
+thresholds = q * np.arange(1, m + 1) / m
+# Compare sorted p-values to thresholds</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Wild Bootstrap for Heteroscedastic Data</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>When Standard Bootstrap Fails</h3>
+      <p>If variance differs across groups (heteroscedasticity), the standard bootstrap underestimates uncertainty for high-variance groups and overestimates for low-variance groups.</p>
+      <h3>The Wild Bootstrap</h3>
+      <ol>
+        <li>Fit the model: \(y_i = X_i \hat{\beta} + \hat{e}_i\)</li>
+        <li>Generate \(y_i^* = X_i \hat{\beta} + \hat{e}_i \cdot v_i\)</li>
+        <li>Where \(v_i\) is a random variable with \(E[v] = 0\), \(E[v^2] = 1\)</li>
+        <li>Common choice: Rademacher (\(v_i = \pm 1\) with equal probability)</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h3>Singapore Application</h3>
+      <p>HDB price variance differs enormously by town:</p>
+      <ul>
+        <li><strong>Bukit Timah</strong>: &sigma; = $180K (huge spread)</li>
+        <li><strong>Woodlands</strong>: &sigma; = $45K (tight cluster)</li>
+      </ul>
+      <p>Bootstrapping the price difference between these towns with a standard bootstrap gives <strong>incorrect confidence intervals</strong>. The wild bootstrap preserves each town's variance structure.</p>
+      <div class="callout callout-advanced" style="margin-top:12px;">
+        <strong>Pairs bootstrap</strong> (resample observation pairs) is a simpler alternative that is heteroscedasticity-consistent but less efficient than wild bootstrap.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 70-77: PRACTICAL PATTERNS AND GOTCHAS
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Production Gotcha: Simpson's Paradox</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>A Trend That Reverses When You Split by Group</h3>
+      <div class="callout callout-foundations">
+        <strong>HDB example:</strong> Overall, HDB prices appear to be <em>falling</em> this quarter. But when you split by town, every single town shows prices <em>rising</em>. How? The mix shifted &mdash; more transactions in cheaper towns this quarter.
+      </div>
+    </div>
+    <div class="col">
+      <pre><code class="language-python"># Overall trend: looks like decline
+overall = df.group_by("quarter").agg(
+    pl.col("resale_price").mean()
+)
+
+# Per-town trend: every town is rising!
+per_town = df.group_by("quarter", "town").agg(
+    pl.col("resale_price").mean()
+)
+
+# The paradox: composition shift
+mix = df.group_by("quarter", "town").agg(
+    pl.col("resale_price").count().alias("n")
+)
+# More cheap-town transactions this quarter</code></pre>
+      <div class="callout callout-error" style="margin-top:8px;">
+        <strong>Always stratify.</strong> An aggregate trend can be the opposite of every subgroup trend.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Production Gotcha: Survivorship Bias</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>You Only See the Data That Survived</h3>
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> Looking only at successful companies teaches you nothing about what causes success &mdash; because you never see the companies that did the same things and failed.
+      </div>
+      <ul>
+        <li><strong>HDB example:</strong> Analysing only <em>completed</em> transactions ignores withdrawn listings &mdash; which may have been withdrawn because the price was too high</li>
+        <li>Your dataset is a <strong>survivor sample</strong> &mdash; it only includes flats that actually sold</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>How to Detect It</h3>
+      <ul>
+        <li>Ask: "What data is <strong>missing</strong> from this dataset?"</li>
+        <li>Ask: "What <strong>selection process</strong> created this dataset?"</li>
+        <li>Compare your sample to known population statistics</li>
+      </ul>
+      <div class="callout callout-theory" style="margin-top:12px;">
+        <strong>Formally:</strong> Survivorship bias is a form of <strong>selection bias</strong> where the sample is conditioned on the outcome variable. This violates the assumption that data was randomly drawn from the population.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Polars: Advanced Expressions</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Conditional Columns</h3>
+      <pre><code class="language-python"># Price category using when/then/otherwise
+df = df.with_columns(
+    pl.when(pl.col("resale_price") > 800_000)
+    .then(pl.lit("Premium"))
+    .when(pl.col("resale_price") > 500_000)
+    .then(pl.lit("Mid-Range"))
+    .otherwise(pl.lit("Affordable"))
+    .alias("price_category")
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>String Operations</h3>
+      <pre><code class="language-python"># Extract year from "2023-10" format
+df = df.with_columns(
+    pl.col("month").str.slice(0, 4)
+    .cast(pl.Int32)
+    .alias("year")
+)
+
+# Multi-column aggregation
+summary = (
+    df.group_by("year")
+    .agg(
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").std().alias("price_std"),
+        pl.col("resale_price").count().alias("n"),
+    )
+)</code></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Polars: Struct and List Columns</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Complex Data Types</h3>
+      <pre><code class="language-python"># List column — multiple values per row
+df = df.with_columns(
+    pl.col("nearby_schools")
+    .str.split(",")
+    .alias("schools_list")
+)
+
+# Count schools per flat
+df = df.with_columns(
+    pl.col("schools_list")
+    .list.len()
+    .alias("n_schools")
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>Expressions as First-Class Objects</h3>
+      <pre><code class="language-python"># Define reusable expressions
+price_stats = [
+    pl.col("resale_price").mean().alias("avg"),
+    pl.col("resale_price").median().alias("med"),
+    pl.col("resale_price").std().alias("std"),
+    pl.col("resale_price").count().alias("n"),
+]
+
+# Use in any context
+by_town = df.group_by("town").agg(price_stats)
+by_type = df.group_by("flat_type").agg(price_stats)
+by_year = df.group_by("year").agg(price_stats)</code></pre>
+      <div class="callout callout-foundations" style="margin-top:8px;">
+        Polars expressions are composable. Define once, use everywhere.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Data Loading: The ASCENTDataLoader</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>One Loader for All Formats</h3>
+      <pre><code class="language-python">from shared.data_loader import ASCENTDataLoader
+
+loader = ASCENTDataLoader()
+
+# Load any module's dataset
+df = loader.load("ascent01", "hdb_resale.csv")
+weather = loader.load("ascent01", "sg_weather.csv")
+
+# Works in local, Jupyter, and Colab
+# Auto-detects environment and uses
+# the appropriate backend</code></pre>
+    </div>
+    <div class="col">
+      <h3>Available Datasets for M1</h3>
+      <table>
+        <thead><tr><th>File</th><th>Size</th><th>Used In</th></tr></thead>
+        <tbody>
+          <tr><td>sg_weather.csv</td><td>~1K rows</td><td>L1.1&ndash;1.3</td></tr>
+          <tr><td>hdb_resale.csv</td><td>~15M rows</td><td>L1.4&ndash;1.6</td></tr>
+          <tr><td>economic_indicators.csv</td><td>~5K rows</td><td>L1.7</td></tr>
+          <tr><td>taxi_trips.csv</td><td>~500K rows</td><td>L1.8</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        Never hardcode file paths. <code>ASCENTDataLoader</code> resolves the correct path for your environment automatically.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 75-79: LAB SETUP
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Lab Exercises: Overview</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <h3>8 Exercises, Progressive Scaffolding</h3>
+  <table>
+    <thead><tr><th>Ex</th><th>Topic</th><th>Code Provided</th><th>You Write</th></tr></thead>
+    <tbody>
+      <tr><td>1.1</td><td>Python basics + first CSV load</td><td>~80%</td><td>Fill in key values</td></tr>
+      <tr><td>1.2</td><td>Filtering HDB by town/price/date</td><td>~80%</td><td>Fill in filter conditions</td></tr>
+      <tr><td>1.3</td><td>Functions for district statistics</td><td>~80%</td><td>Complete function bodies</td></tr>
+      <tr><td>1.4</td><td>Join HDB + MRT + schools</td><td>~70%</td><td>Write join logic</td></tr>
+      <tr><td>1.5</td><td>Window functions on time series</td><td>~70%</td><td>Rolling averages, YoY</td></tr>
+      <tr><td>1.6</td><td>Interactive visualisations</td><td>~70%</td><td>Chart configurations</td></tr>
+      <tr><td>1.7</td><td>DataExplorer profiling</td><td>~70%</td><td>Configure alerts, interpret</td></tr>
+      <tr><td>1.8</td><td>Full EDA pipeline (capstone)</td><td>~70%</td><td>End-to-end: load to report</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Exercise 1.1: Your First Data Exploration</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What You Will Do</h3>
+      <ol>
+        <li>Write your first Python variables and f-strings</li>
+        <li>Load Singapore weather data with <code>pl.read_csv()</code></li>
+        <li>Inspect shape, columns, head, describe</li>
+        <li>Answer: "What was the hottest day in Singapore last year?"</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h3>Open Your Exercise</h3>
+      <pre><code class="language-bash"># Local
+cd modules/ascent01/local/
+python ex_1_1.py
+
+# Jupyter
+jupyter lab modules/ascent01/notebooks/ex_1_1.ipynb
+
+# Colab
+# Open modules/ascent01/colab/ex_1_1.ipynb</code></pre>
+      <div class="callout callout-foundations" style="margin-top:8px;">
+        The exercise is pre-filled. You fill in the <code># TODO:</code> blanks. Solutions are in <code>modules/ascent01/solutions/</code>.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Exercise 1.7-1.8: Kailash Engines in Action</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Exercise 1.7: DataExplorer</h3>
+      <pre><code class="language-python"># You will write:
+explorer = DataExplorer(
+    alert_config=AlertConfig(
+        # TODO: configure thresholds
+    )
+)
+
+profile = await explorer.profile(df)
+
+# TODO: interpret the alerts
+# TODO: which columns need cleaning?</code></pre>
+    </div>
+    <div class="col">
+      <h3>Exercise 1.8: Full Pipeline</h3>
+      <pre><code class="language-python"># You will build an end-to-end pipeline:
+# 1. Load taxi trip data
+# 2. Profile with DataExplorer
+# 3. Clean with PreprocessingPipeline
+# 4. Visualise with ModelVisualizer
+# 5. Compare before/after profiles
+# 6. Generate a summary report
+
+# This is your Module 1 capstone.
+# ~70% scaffolding provided.</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 78-80: DISCUSSION PROMPTS
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Discussion: Data Quality Decisions</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Scenario 1: The Missing Data Dilemma</h3>
+      <p>You are profiling an HDB dataset and discover that 12% of the "remaining_lease" column is missing. The missing values are concentrated in pre-1990 transactions.</p>
+      <ul>
+        <li>Is this MCAR, MAR, or MNAR?</li>
+        <li>Would you drop, impute, or flag these rows?</li>
+        <li>What is the risk of each choice?</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Scenario 2: The Outlier Question</h3>
+      <p>Your DataExplorer flags 200 transactions as outliers &mdash; prices above $1.2M. You check: they are real transactions for penthouse-level executive flats.</p>
+      <ul>
+        <li>Are these "errors" or "real but extreme"?</li>
+        <li>Should you remove them before computing statistics?</li>
+        <li>How would removing them change the mean vs the median?</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Discussion: When Statistics Mislead</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Scenario 3: The Correlation Trap</h3>
+      <p>Your analysis shows a strong positive correlation (r = 0.82) between "number of nearby schools" and "HDB resale price."</p>
+      <ul>
+        <li>Does building more schools near an HDB block increase its value?</li>
+        <li>What <strong>confounding variable</strong> might explain this correlation?</li>
+        <li>How would you test whether the relationship is causal? (Preview of Module 2)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Scenario 4: The p-value Problem</h3>
+      <p>You test whether each of Singapore's 26 towns has a "significantly different" average price from the national average. You find 4 towns with p &lt; 0.05.</p>
+      <ul>
+        <li>With 26 tests at &alpha; = 0.05, how many false positives do you <em>expect</em>?</li>
+        <li>After Bonferroni correction (&alpha;/26 = 0.0019), only 1 town remains significant. Is this better?</li>
+        <li>What would BH-FDR correction give you?</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Discussion: Real-World EDA</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Scenario 5: The Flash Crash Revisited</h3>
+      <p>Your manager says: "Just check the dashboard. It shows everything is fine." But you remember the HDB flash crash story.</p>
+      <ul>
+        <li>What specific Polars commands would you run to investigate?</li>
+        <li>What visualisation would reveal the anomaly fastest?</li>
+        <li>How would DataExplorer's alerts have caught this automatically?</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Your EDA Checklist</h3>
+      <ol>
+        <li>Load and inspect: <code>shape</code>, <code>head</code>, <code>describe</code></li>
+        <li>Check missingness: <code>null_count()</code></li>
+        <li>Plot distributions: histograms per column</li>
+        <li>Check correlations: heatmap</li>
+        <li>Stratify: group_by key categories</li>
+        <li>Time series: plot trends, look for breaks</li>
+        <li>Profile: DataExplorer for comprehensive check</li>
+        <li>Clean: PreprocessingPipeline</li>
+        <li>Validate: compare before/after</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES 81-86: SYNTHESIS
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Synthesis: What You Learned</h2>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <h3>Everyone Should Remember</h3>
+        <ul>
+          <li>Data has types: numeric, categorical, ordinal, temporal</li>
+          <li>A distribution shows the shape of your data &mdash; always plot it</li>
+          <li>Mean vs median: use median when data is skewed</li>
+          <li>Correlation is not causation</li>
+          <li>Polars loads 15M rows in seconds; Excel cannot</li>
+          <li><code>filter()</code>, <code>group_by().agg()</code>, <code>join()</code>, <code>.over()</code> &mdash; four patterns that handle 90% of data tasks</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="callout callout-theory">
+        <h3>If You Followed the Maths</h3>
+        <ul>
+          <li>MLE maximises the likelihood; MAP adds a prior</li>
+          <li>Fisher Information measures how much data tells you about parameters</li>
+          <li>Conjugate priors give closed-form Bayesian updates</li>
+          <li>p-values are NOT the probability that H<sub>0</sub> is true</li>
+          <li>Bootstrap resamples with replacement to estimate uncertainty</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Synthesis: Expert Takeaways</h2>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-advanced">
+        <h3>For the Experts</h3>
+        <ul>
+          <li>The Fisher metric defines a Riemannian geometry on the distribution manifold &mdash; KL divergence is its local approximation</li>
+          <li>BIC approximates log-evidence; LOO-CV is more robust to misspecification</li>
+          <li>Permutation tests require only exchangeability, not distributional assumptions</li>
+          <li>Wild bootstrap preserves heteroscedastic structure where standard bootstrap fails</li>
+          <li>BCa intervals correct for bias and acceleration in the bootstrap distribution</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>Kailash Engines Introduced</h3>
+        <table>
+          <thead><tr><th>Engine</th><th>Maps To</th></tr></thead>
+          <tbody>
+            <tr><td>DataExplorer</td><td>Distributions, correlation, outlier detection, profiling</td></tr>
+            <tr><td>PreprocessingPipeline</td><td>Type detection, encoding, scaling, imputation</td></tr>
+            <tr><td>ModelVisualizer</td><td>Histogram, scatter, heatmap, box plot</td></tr>
+            <tr><td>ConnectionManager</td><td>Persistence, reproducibility, audit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Kailash Cumulative Map</h2>
+  <h3>After Module 1</h3>
+  <div class="kailash-bridge">
+    <div class="columns">
+      <div class="col">
+        <h3 style="color: #10B981;">Unlocked</h3>
+        <ul>
+          <li><strong>DataExplorer</strong> &mdash; profiling &amp; alerts</li>
+          <li><strong>PreprocessingPipeline</strong> &mdash; auto-cleaning</li>
+          <li><strong>ModelVisualizer</strong> &mdash; EDA charts</li>
+          <li><strong>ConnectionManager</strong> &mdash; persistence</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3 style="color: #94A3B8;">Coming Next (M2&ndash;M6)</h3>
+        <ul>
+          <li style="color:#94A3B8;">FeatureStore, FeatureEngineer</li>
+          <li style="color:#94A3B8;">ExperimentTracker</li>
+          <li style="color:#94A3B8;">TrainingPipeline, ModelRegistry</li>
+          <li style="color:#94A3B8;">AutoMLEngine, EnsembleEngine</li>
+          <li style="color:#94A3B8;">DriftMonitor, InferenceServer</li>
+          <li style="color:#94A3B8;">HyperparameterSearch</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Connection to Module 2</h2>
+  <h3>Next: Statistical Mastery for ML and AI Success</h3>
+  <div class="columns">
+    <div class="col">
+      <h3>What You Have Now</h3>
+      <ul>
+        <li>Python: variables, functions, loops</li>
+        <li>Polars: load, filter, group, join, window</li>
+        <li>Statistics: distributions, mean/median, correlation</li>
+        <li>Theory: MLE, Bayes, hypothesis testing, bootstrap</li>
+        <li>Kailash: DataExplorer, PreprocessingPipeline, ModelVisualizer</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What Comes Next</h3>
+      <ul>
+        <li><strong>Probability</strong>: deeper Bayesian estimation on HDB prices</li>
+        <li><strong>Experiments</strong>: A/B testing, CUPED, power analysis</li>
+        <li><strong>Causal inference</strong>: diff-in-diff on cooling measures</li>
+        <li><strong>Features</strong>: FeatureEngineer, FeatureStore</li>
+        <li><strong>Tracking</strong>: ExperimentTracker for reproducible experiments</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:12px;">
+        <strong>Module 2 takes the statistics you learned today and applies them to real experiment design.</strong> You will use ExperimentTracker to log, compare, and reproduce every experiment.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Key Equations: Your Reference Card</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <div class="equation-box" style="font-size:0.85em;">
+        <strong>Normal PDF</strong><br>
+        \( f(x) = \frac{1}{\sqrt{2\pi}\sigma} e^{-(x-\mu)^2 / 2\sigma^2} \)
+      </div>
+      <div class="equation-box" style="font-size:0.85em; margin-top:8px;">
+        <strong>MLE (general)</strong><br>
+        \( \hat{\theta} = \arg\max_\theta \sum_{i=1}^n \log f(x_i \mid \theta) \)
+      </div>
+      <div class="equation-box" style="font-size:0.85em; margin-top:8px;">
+        <strong>Bayes' Theorem</strong><br>
+        \( P(\theta \mid X) \propto P(X \mid \theta) \cdot P(\theta) \)
+      </div>
+    </div>
+    <div class="col">
+      <div class="equation-box" style="font-size:0.85em;">
+        <strong>Fisher Information</strong><br>
+        \( \mathcal{I}(\theta) = -E\!\left[\frac{\partial^2 \ell}{\partial \theta^2}\right] \)
+      </div>
+      <div class="equation-box" style="font-size:0.85em; margin-top:8px;">
+        <strong>Cram&eacute;r-Rao Bound</strong><br>
+        \( \text{Var}(\hat{\theta}) \geq 1 / \mathcal{I}(\theta) \)
+      </div>
+      <div class="equation-box" style="font-size:0.85em; margin-top:8px;">
+        <strong>Exponential Family</strong><br>
+        \( f(x \mid \theta) = h(x) \exp\!\big(\eta(\theta)^T T(x) - A(\theta)\big) \)
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 87: ASSESSMENT PREVIEW
+     ═══════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Assessment Preview</h2>
+  <h3>Module 1 Quiz Topics</h3>
+  <div class="columns">
+    <div class="col">
+      <h3>What Will Be Assessed</h3>
+      <ul>
+        <li><strong>Data type identification</strong> &mdash; given a column, identify numeric/categorical/ordinal/temporal</li>
+        <li><strong>Polars fluency</strong> &mdash; write filter, group_by, join, window expressions</li>
+        <li><strong>Distribution interpretation</strong> &mdash; given a histogram, identify shape and appropriate summary statistic</li>
+        <li><strong>DataExplorer output</strong> &mdash; interpret alerts and decide cleaning actions</li>
+        <li><strong>Statistical reasoning</strong> &mdash; explain when mean vs median is appropriate</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Assessment Format</h3>
+      <div class="callout callout-kailash">
+        <ul>
+          <li><strong>Code debugging</strong> &mdash; find the error in a Polars expression</li>
+          <li><strong>Output interpretation</strong> &mdash; given DataExplorer alerts, what do you fix first?</li>
+          <li><strong>Architecture</strong> &mdash; when would you use PreprocessingPipeline vs manual cleaning?</li>
+          <li><strong>Application</strong> &mdash; given a new dataset, outline your EDA plan</li>
+        </ul>
+      </div>
+      <div class="callout callout-warning" style="margin-top:12px;">
+        <strong>No pure recall questions.</strong> Every question requires you to apply concepts to a specific dataset or scenario.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     CLOSING SLIDE
+     ═══════════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 1 Complete</h1>
+  <h2 style="border: none;">Data Pipelines &amp; Visualisation Mastery</h2>
+  <p class="subtitle">You can now load, explore, profile, clean, and visualise real-world data.</p>
+  <p class="provocation">"The goal is not to have data. The goal is to have understanding."</p>
+  <div style="margin-top: 2em; font-size: 0.8em; color: #64748B;">
+    <p>Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+    <p>Powered by Kailash Python SDK &mdash; Terrene Foundation</p>
+  </div>
+</section>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      width: 1280,
+      height: 720,
+      margin: 0.04,
+      plugins: [RevealMath.KaTeX, RevealHighlight],
+      pdfSeparateFragments: false
+    });
+  </script>
+</body>
+</html>

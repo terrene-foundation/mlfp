@@ -108,13 +108,13 @@ assert custom_mcp in app._transports
 
 from nexus.registry import HandlerDef
 
-dummy_def = HandlerDef(
+example_def = HandlerDef(
     name="example",
     description="An example handler",
 )
 
 # Before start, on_handler_registered is safe to call (no-op)
-custom_mcp.on_handler_registered(dummy_def)
+custom_mcp.on_handler_registered(example_def)
 assert custom_mcp._server is None  # Still no server, call was a no-op
 
 # ── 9. Background thread architecture ─────────────────────────────

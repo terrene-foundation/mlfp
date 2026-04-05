@@ -18,6 +18,10 @@ from __future__ import annotations
 import asyncio
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kailash_align import AdapterRegistry, AdapterSignature
 from kailash_align.exceptions import AdapterNotFoundError, AlignmentError
 from kailash_align.registry import AdapterVersion

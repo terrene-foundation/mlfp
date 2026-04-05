@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kaizen import Signature, InputField, OutputField
 
 # ── 1. Define the agent's signature ─────────────────────────────────

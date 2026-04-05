@@ -39,7 +39,7 @@ from shared import ASCENTDataLoader
 
 # ── Data Loading ──────────────────────────────────────────────────────
 loader = ASCENTDataLoader()
-taxi_raw = loader.load("ascent01", "sg_taxi_trips.csv")
+taxi_raw = loader.load("ascent01", "sg_taxi_trips.parquet")
 
 print("=== Raw Taxi Trip Data ===")
 print(f"Shape: {taxi_raw.shape}")

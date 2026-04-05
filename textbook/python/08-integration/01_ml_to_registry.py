@@ -25,7 +25,7 @@ from kailash_ml import (
     ModelRegistry,
 )
 from kailash_ml.types import MetricSpec, ModelSignature
-from dataflow.utils.connection import ConnectionManager
+from kailash.db.connection import ConnectionManager
 
 # ── 1. Create synthetic training data ───────────────────────────────
 
@@ -51,9 +51,10 @@ assert df.shape == (10, 3)
 # model, metrics = pipeline.train(data=df, target="target", spec=ModelSpec(...))
 # model_bytes = pickle.dumps(model)
 
-# For this tutorial, simulate the output
-simulated_model = {"type": "logistic_regression", "weights": [0.5, 0.3]}
-model_bytes = pickle.dumps(simulated_model)
+# For this tutorial, create a minimal model artifact to demonstrate the
+# registry pattern without running a full training pipeline.
+trained_model = {"type": "logistic_regression", "weights": [0.5, 0.3]}
+model_bytes = pickle.dumps(trained_model)
 
 assert isinstance(model_bytes, bytes), "Model must be serialized to bytes"
 

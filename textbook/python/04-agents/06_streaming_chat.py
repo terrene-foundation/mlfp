@@ -17,6 +17,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kaizen_agents.agents.specialized.streaming_chat import (
     StreamingChatAgent,
     StreamingChatConfig,

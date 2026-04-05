@@ -18,6 +18,10 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kaizen_agents.patterns.pipeline import Pipeline, SequentialPipeline
 from kaizen.core.base_agent import BaseAgent, BaseAgentConfig
 from kaizen.signatures import InputField, OutputField, Signature

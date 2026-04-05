@@ -1,0 +1,338 @@
+/**
+ * ASCENT Reveal.js Theme — Professional Certificate in Machine Learning
+ * Terrene Open Academy / Terrene Foundation
+ *
+ * Dual-track slide architecture: 🟢 Foundations | 🔵 Theory | 🟣 Advanced
+ * Canvas: 1280x720
+ */
+
+:root {
+  /* Primary palette */
+  --ascent-primary: #0D9488;      /* Teal — primary accent */
+  --ascent-depth: #4F46E5;        /* Indigo — depth accent */
+  --ascent-bg: #FFFFFF;           /* White background */
+  --ascent-bg-alt: #F8FAFC;       /* Slate 50 — alternate bg */
+  --ascent-text: #1E293B;         /* Slate 800 — body text */
+  --ascent-code-text: #334155;    /* Slate 700 — code text */
+  --ascent-code-bg: #F8FAFC;      /* Slate 50 — code background */
+
+  /* Semantic colors */
+  --ascent-alert: #F59E0B;        /* Amber — warnings */
+  --ascent-error: #F43F5E;        /* Rose — errors/critical */
+  --ascent-success: #10B981;      /* Emerald — success */
+
+  /* Three-layer markers */
+  --ascent-foundations: #22C55E;   /* Green — everyone follows */
+  --ascent-theory: #3B82F6;       /* Blue — mathematical depth */
+  --ascent-advanced: #8B5CF6;     /* Purple — expert insight */
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+
+.reveal {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 28px;
+  color: var(--ascent-text);
+}
+
+.reveal .slides {
+  text-align: left;
+}
+
+.reveal .slides section {
+  padding: 40px 60px;
+}
+
+/* ── Headings ─────────────────────────────────────────── */
+
+.reveal h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  color: var(--ascent-primary);
+  margin-bottom: 0.4em;
+  line-height: 1.1;
+}
+
+.reveal h2 {
+  font-size: 1.6em;
+  font-weight: 600;
+  color: var(--ascent-text);
+  margin-bottom: 0.5em;
+  border-bottom: 3px solid var(--ascent-primary);
+  padding-bottom: 0.2em;
+}
+
+.reveal h3 {
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--ascent-depth);
+  margin-bottom: 0.3em;
+}
+
+/* ── Three-layer markers ──────────────────────────────── */
+
+.marker {
+  display: inline-block;
+  font-size: 0.6em;
+  font-weight: 700;
+  padding: 2px 12px;
+  border-radius: 12px;
+  color: white;
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.marker-foundations {
+  background: var(--ascent-foundations);
+}
+
+.marker-theory {
+  background: var(--ascent-theory);
+}
+
+.marker-advanced {
+  background: var(--ascent-advanced);
+}
+
+/* ── Code blocks ──────────────────────────────────────── */
+
+.reveal pre {
+  background: var(--ascent-code-bg);
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 0.7em;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.reveal code {
+  font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  color: var(--ascent-code-text);
+}
+
+.reveal pre code {
+  max-height: 420px;
+}
+
+.reveal p code, .reveal li code {
+  background: var(--ascent-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  border: 1px solid #E2E8F0;
+}
+
+/* ── Equations ────────────────────────────────────────── */
+
+.equation-box {
+  background: #EFF6FF;
+  border: 2px solid var(--ascent-theory);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin: 16px 0;
+  text-align: center;
+  font-size: 1.1em;
+}
+
+.equation-box .annotation {
+  font-size: 0.7em;
+  color: #64748B;
+  margin-top: 8px;
+}
+
+/* Color-coded equation terms */
+.term-bias { color: #DC2626; font-weight: 600; }
+.term-variance { color: #2563EB; font-weight: 600; }
+.term-noise { color: #6B7280; font-weight: 600; }
+.term-input { color: var(--ascent-primary); font-weight: 600; }
+.term-output { color: var(--ascent-depth); font-weight: 600; }
+.term-param { color: #D97706; font-weight: 600; }
+
+/* ── Callout boxes ────────────────────────────────────── */
+
+.callout {
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 12px 0;
+  font-size: 0.85em;
+}
+
+.callout-foundations {
+  background: #F0FDF4;
+  border-left: 4px solid var(--ascent-foundations);
+}
+
+.callout-theory {
+  background: #EFF6FF;
+  border-left: 4px solid var(--ascent-theory);
+}
+
+.callout-advanced {
+  background: #FAF5FF;
+  border-left: 4px solid var(--ascent-advanced);
+}
+
+.callout-warning {
+  background: #FFFBEB;
+  border-left: 4px solid var(--ascent-alert);
+}
+
+.callout-error {
+  background: #FFF1F2;
+  border-left: 4px solid var(--ascent-error);
+}
+
+.callout-kailash {
+  background: #F0FDFA;
+  border-left: 4px solid var(--ascent-primary);
+}
+
+/* ── Two-column layout ────────────────────────────────── */
+
+.columns {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.col {
+  flex: 1;
+}
+
+.col-narrow {
+  flex: 0.4;
+}
+
+.col-wide {
+  flex: 0.6;
+}
+
+/* ── Tables ───────────────────────────────────────────── */
+
+.reveal table {
+  font-size: 0.75em;
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.reveal table th {
+  background: var(--ascent-primary);
+  color: white;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.reveal table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.reveal table tr:nth-child(even) td {
+  background: var(--ascent-bg-alt);
+}
+
+/* ── Kailash bridge slides ────────────────────────────── */
+
+.kailash-bridge {
+  background: linear-gradient(135deg, #F0FDFA 0%, #ECFDF5 100%);
+  border: 2px solid var(--ascent-primary);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+.kailash-bridge h3 {
+  color: var(--ascent-primary);
+  margin-bottom: 8px;
+}
+
+.theory-to-engine {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.85em;
+}
+
+.theory-to-engine .arrow {
+  font-size: 1.5em;
+  color: var(--ascent-primary);
+}
+
+/* ── Title slide ──────────────────────────────────────── */
+
+.title-slide {
+  text-align: center;
+}
+
+.title-slide h1 {
+  font-size: 2.5em;
+  margin-bottom: 0.2em;
+}
+
+.title-slide .subtitle {
+  font-size: 1.1em;
+  color: #64748B;
+  margin-bottom: 1.5em;
+}
+
+.title-slide .provocation {
+  font-size: 1.3em;
+  font-style: italic;
+  color: var(--ascent-depth);
+  margin-top: 1em;
+}
+
+/* ── Lists ────────────────────────────────────────────── */
+
+.reveal ul, .reveal ol {
+  margin-left: 0.8em;
+}
+
+.reveal li {
+  margin-bottom: 0.4em;
+  line-height: 1.4;
+}
+
+/* ── Images and diagrams ──────────────────────────────── */
+
+.reveal img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.diagram-container {
+  text-align: center;
+  margin: 16px 0;
+}
+
+/* ── Footer ───────────────────────────────────────────── */
+
+.slide-footer {
+  position: absolute;
+  bottom: 12px;
+  left: 60px;
+  right: 60px;
+  font-size: 0.5em;
+  color: #94A3B8;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ── Print/PDF ────────────────────────────────────────── */
+
+@media print {
+  .reveal .slides section {
+    page-break-after: always;
+  }
+
+  .marker {
+    position: static;
+    float: right;
+  }
+}

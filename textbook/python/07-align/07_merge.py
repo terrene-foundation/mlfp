@@ -17,6 +17,10 @@ from __future__ import annotations
 import asyncio
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from kailash_align import AdapterMerger, AdapterRegistry, AdapterSignature
 from kailash_align.exceptions import MergeError
 from kailash_align.registry import AdapterVersion

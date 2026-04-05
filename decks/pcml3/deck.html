@@ -1,0 +1,2315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCENT Module 3 — Supervised ML: Theory to Production</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../assets/css/theme.css">
+
+  <!-- Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+
+  <style>
+    /* Slide-local overrides */
+    .reveal .slides section .fragment.step { opacity: 0; }
+    .reveal .slides section .fragment.step.visible { opacity: 1; }
+    .derivation-step {
+      background: #F8FAFC;
+      border-left: 3px solid var(--ascent-theory);
+      padding: 10px 16px;
+      margin: 8px 0;
+      font-size: 0.9em;
+    }
+    .derivation-step .step-label {
+      font-weight: 700;
+      color: var(--ascent-theory);
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .case-stat {
+      font-size: 2.4em;
+      font-weight: 700;
+      color: var(--ascent-error);
+      text-align: center;
+      margin: 24px 0 8px;
+    }
+    .case-caption {
+      text-align: center;
+      color: #64748B;
+      font-size: 0.85em;
+    }
+    .axiom-box {
+      background: #EFF6FF;
+      border: 1px solid var(--ascent-theory);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      font-size: 0.82em;
+    }
+    .axiom-box strong { color: var(--ascent-depth); }
+    .lifecycle-stage {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.8em;
+      margin: 4px;
+    }
+    .stage-staging { background: #FEF3C7; color: #92400E; }
+    .stage-shadow { background: #DBEAFE; color: #1E40AF; }
+    .stage-production { background: #D1FAE5; color: #065F46; }
+    .stage-archived { background: #F1F5F9; color: #475569; }
+    .comparison-table td:first-child { font-weight: 600; color: var(--ascent-depth); }
+    .svg-diagram { text-align: center; margin: 16px 0; }
+    .svg-diagram svg { max-width: 100%; }
+    .equation-box .katex { font-size: 1.15em; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ═══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 3</h1>
+  <h2 style="border: none;">Supervised ML: Theory to Production</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"They were RIGHT but still lost half a billion dollars."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 3</span>
+    <span>Terrene Foundation</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 2-5 — RECAP
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Where We Are</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Module 1 &mdash; Data Fluency</h3>
+      <ul>
+        <li>Polars for data manipulation</li>
+        <li><code>DataExplorer</code> for automated profiling</li>
+        <li><code>PreprocessingPipeline</code> for cleaning</li>
+        <li><code>ModelVisualizer</code> for charts</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Module 2 &mdash; Experiment Design</h3>
+      <ul>
+        <li><code>FeatureStore</code> with point-in-time correctness</li>
+        <li><code>FeatureEngineer</code> for selection &amp; generation</li>
+        <li><code>ExperimentTracker</code> for reproducibility</li>
+        <li>Hypothesis testing, CUPED, causal inference</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What is New Today</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ul>
+    <li><strong>Theory</strong> &mdash; Bias-variance trade-off, gradient boosting, SHAP explainability</li>
+    <li><strong>Production</strong> &mdash; Workflow orchestration, model registry, governed deployment</li>
+    <li><strong>New engines</strong> &mdash; <code>TrainingPipeline</code>, <code>HyperparameterSearch</code>, <code>ModelRegistry</code>, <code>WorkflowBuilder</code>, <code>DataFlow</code></li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>By the end of today:</strong> You will train, evaluate, explain, register, and deploy a supervised ML model through a governed production pipeline.
+  </div>
+</section>
+
+<section>
+  <h2>Kailash Engines &mdash; Cumulative Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead>
+      <tr><th>Module</th><th>Engines</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
+      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
+      <tr><td style="color:var(--ascent-primary);font-weight:700;">M3</td>
+          <td style="color:var(--ascent-primary);">TrainingPipeline, HyperparameterSearch, ModelRegistry, WorkflowBuilder, DataFlow</td>
+          <td style="color:var(--ascent-primary);">Train, tune, register, orchestrate, persist</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 6-9 — OPENING CASE: ZILLOW
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>Opening Case: Zillow iBuyer</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="case-stat">$881 million</div>
+    <div class="case-caption">Inventory write-down, Q3 2021</div>
+    <p style="margin-top:24px;">Zillow's Zestimate algorithm predicted home prices with impressive accuracy. They trusted it enough to buy 27,000 homes sight-unseen.</p>
+    <p><strong>The model was accurate. The business lost half a billion dollars.</strong></p>
+  </section>
+
+  <section>
+    <h2>What Went Wrong?</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="columns">
+      <div class="col">
+        <h3>The Model Was Good</h3>
+        <ul>
+          <li>Median error ~2% on price estimates</li>
+          <li>Continuously retrained on new data</li>
+          <li>Best-in-class for real estate valuation</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>The System Was Bad</h3>
+        <ul>
+          <li><strong>Uncalibrated confidence</strong> &mdash; model said "this house is worth $500K" without saying "but I could be off by $80K"</li>
+          <li><strong>No drift monitoring</strong> &mdash; market shifted, model did not adapt fast enough</li>
+          <li><strong>No governance gate</strong> &mdash; automated purchasing at scale without human checkpoints</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The Lesson</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="callout callout-error">
+      <strong>Accuracy alone is not enough.</strong> A production ML system needs calibrated uncertainty, drift detection, governance gates, and a model lifecycle &mdash; not just a good loss function.
+    </div>
+    <p>Today we learn <em>all</em> of these pieces: from the math of why models fail, to the engineering of how they survive production.</p>
+    <p style="color:#64748B; font-size:0.8em;">Source: Zillow Q3 2021 earnings, SEC 10-Q filing. 2,000 employees laid off. iBuyer division shut down entirely.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.1 — BIAS-VARIANCE AND REGULARIZATION
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 10: What is Prediction? -->
+<section>
+  <h2>What Is Prediction?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Given <strong>inputs</strong> (features), guess the <strong>output</strong> (target).</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Regression</h3>
+      <p>Output is a <em>continuous number</em></p>
+      <ul>
+        <li>HDB resale price: $450,000</li>
+        <li>Tomorrow's temperature: 31.2&deg;C</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Classification</h3>
+      <p>Output is a <em>category</em></p>
+      <ul>
+        <li>Loan default: Yes / No</li>
+        <li>Image: Cat / Dog / Bird</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 11: Training vs Testing -->
+<section>
+  <h2>Training vs Testing</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Why you cannot grade your own homework.</strong></p>
+  <div class="columns">
+    <div class="col">
+      <h3>Training Set (80%)</h3>
+      <p>The model learns from this data. It adjusts its parameters to fit these examples.</p>
+    </div>
+    <div class="col">
+      <h3>Test Set (20%)</h3>
+      <p>Data the model has <strong>never seen</strong>. We check: does it generalise to new examples?</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Analogy:</strong> A student who memorises past exam papers might score 100% on those papers, but fail the actual exam because it has new questions. The test set IS the actual exam.
+  </div>
+</section>
+
+<!-- SLIDE 12: What is Overfitting? -->
+<section>
+  <h2>What Is Overfitting?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Memorising the training data instead of learning the pattern.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Underfitting</h3>
+      <p>Model is too simple. Straight line through a curve. High error on both training and test data.</p>
+    </div>
+    <div class="col">
+      <h3>Just Right</h3>
+      <p>Model captures the real pattern. Smooth curve that follows the trend. Low error on both sets.</p>
+    </div>
+    <div class="col">
+      <h3>Overfitting</h3>
+      <p>Model memorises noise. Wiggly line through every point. Low training error, <strong>high test error</strong>.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Key insight:</strong> More complex is not always better. The goal is to learn the <em>signal</em>, not the <em>noise</em>.
+  </div>
+</section>
+
+<!-- SLIDE 13: The Darts Analogy -->
+<section>
+  <h2>Bias and Variance &mdash; The Darts Analogy</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col" style="text-align:center;">
+      <svg width="440" height="260" viewBox="0 0 440 260">
+        <!-- Low bias, low variance -->
+        <circle cx="80" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="80" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="80" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="78" cy="76" r="3" fill="#0D9488"/><circle cx="82" cy="83" r="3" fill="#0D9488"/>
+        <circle cx="79" cy="79" r="3" fill="#0D9488"/><circle cx="81" cy="78" r="3" fill="#0D9488"/>
+        <text x="80" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">Low Bias, Low Var</text>
+        <text x="80" y="166" text-anchor="middle" font-size="11" fill="#10B981">IDEAL</text>
+        <!-- High bias, low variance -->
+        <circle cx="220" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="220" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="220" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="240" cy="62" r="3" fill="#F59E0B"/><circle cx="243" cy="65" r="3" fill="#F59E0B"/>
+        <circle cx="238" cy="60" r="3" fill="#F59E0B"/><circle cx="241" cy="64" r="3" fill="#F59E0B"/>
+        <text x="220" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">High Bias, Low Var</text>
+        <text x="220" y="166" text-anchor="middle" font-size="11" fill="#F59E0B">CONSISTENT BUT WRONG</text>
+        <!-- Low bias, high variance -->
+        <circle cx="360" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="360" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="360" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="345" cy="60" r="3" fill="#3B82F6"/><circle cx="380" cy="95" r="3" fill="#3B82F6"/>
+        <circle cx="355" cy="105" r="3" fill="#3B82F6"/><circle cx="370" cy="65" r="3" fill="#3B82F6"/>
+        <text x="360" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">Low Bias, High Var</text>
+        <text x="360" y="166" text-anchor="middle" font-size="11" fill="#3B82F6">RIGHT ON AVERAGE, UNRELIABLE</text>
+      </svg>
+    </div>
+  </div>
+  <p><strong>Bias</strong> = how far the average prediction is from the truth. <strong>Variance</strong> = how spread out predictions are across different training sets.</p>
+</section>
+
+<!-- SLIDE 14: Bias-Variance Decomposition — Setup -->
+<section>
+  <h2>Bias-Variance Decomposition</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>We want to predict target <span class="katex-inline">y = f(x) + \varepsilon</span>, where <span class="katex-inline">\varepsilon \sim \mathcal{N}(0, \sigma^2)</span>.</p>
+  <p>Our model <span class="katex-inline">\hat{f}(x)</span> is trained on a random sample <span class="katex-inline">D</span>. What is the expected prediction error at a point <span class="katex-inline">x</span>?</p>
+  <div class="equation-box">
+    <span class="katex-display">\text{EPE}(x) = \mathbb{E}_D\!\left[(y - \hat{f}(x))^2\right]</span>
+    <div class="annotation">Expected Prediction Error: average squared error over all possible training sets D, and noise in y</div>
+  </div>
+</section>
+
+<!-- SLIDE 15: BV Derivation Step 1 -->
+<section>
+  <h2>Derivation &mdash; Step 1: Expand</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">Substitute y = f(x) + &epsilon;</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\mathbb{E}\!\left[(f(x) + \varepsilon - \hat{f}(x))^2\right]</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Add and subtract E[f&#770;(x)]</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">= \mathbb{E}\!\left[\bigl(\underbrace{f(x) - \mathbb{E}[\hat{f}(x)]}_{\text{bias term}} + \underbrace{\mathbb{E}[\hat{f}(x)] - \hat{f}(x)}_{\text{variance term}} + \underbrace{\varepsilon}_{\text{noise}}\bigr)^2\right]</span>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 16: BV Derivation Step 2 -->
+<section>
+  <h2>Derivation &mdash; Step 2: Cross Terms Vanish</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">Expand the square &mdash; three squared terms + three cross terms</div>
+    <p>The cross terms vanish because:</p>
+    <ul style="font-size:0.85em;">
+      <li><span class="katex-inline">\mathbb{E}[\varepsilon] = 0</span> &mdash; noise is zero-mean, independent of everything</li>
+      <li><span class="katex-inline">\mathbb{E}[\mathbb{E}[\hat{f}] - \hat{f}] = 0</span> &mdash; by definition of expectation</li>
+      <li>Bias term <span class="katex-inline">f(x) - \mathbb{E}[\hat{f}(x)]</span> is a constant w.r.t. <span class="katex-inline">D</span></li>
+    </ul>
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">\text{EPE}(x) = \underbrace{\bigl(f(x) - \mathbb{E}[\hat{f}(x)]\bigr)^2}_{\color{#DC2626}{\textbf{Bias}^2}} + \underbrace{\mathbb{E}\!\left[(\hat{f}(x) - \mathbb{E}[\hat{f}(x)])^2\right]}_{\color{#2563EB}{\textbf{Variance}}} + \underbrace{\sigma^2}_{\color{#6B7280}{\textbf{Irreducible Noise}}}</span>
+  </div>
+</section>
+
+<!-- SLIDE 17: BV — Annotated Result -->
+<section>
+  <h2>The Three Terms</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Term</th><th>What It Measures</th><th>You Control It By</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="term-bias">Bias&sup2;</span></td>
+        <td>How far your model's average prediction is from the truth</td>
+        <td>More complex model (more features, deeper trees)</td>
+      </tr>
+      <tr>
+        <td><span class="term-variance">Variance</span></td>
+        <td>How much your predictions change across different training sets</td>
+        <td>Simpler model, more data, regularisation, ensembles</td>
+      </tr>
+      <tr>
+        <td><span class="term-noise">Noise &sigma;&sup2;</span></td>
+        <td>Randomness in the data itself. Cannot be reduced.</td>
+        <td>Nothing &mdash; this is the floor</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>The trade-off:</strong> Reducing bias (more complex model) typically increases variance. Reducing variance (simpler model) typically increases bias. The art of ML is finding the sweet spot.
+  </div>
+</section>
+
+<!-- SLIDE 18: Double Descent -->
+<section>
+  <h2>Double Descent &mdash; When the Trade-off Breaks</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Classical wisdom: more parameters = more overfitting. But modern deep learning uses <em>billions</em> of parameters and generalises well. Why?</p>
+  <div class="callout callout-advanced">
+    <strong>Double descent (Belkin et al., 2019):</strong> Test error first decreases (underfitting zone), then increases at the <em>interpolation threshold</em> (classical overfitting), then <strong>decreases again</strong> in the over-parameterised regime.
+  </div>
+  <p style="font-size:0.85em;">In the over-parameterised regime, the model can fit training data exactly while still finding a smooth, low-norm solution &mdash; a phenomenon called <strong>benign overfitting</strong>.</p>
+  <p style="font-size:0.8em; color:#64748B;">This does NOT mean "just make everything bigger." It means the classical bias-variance picture is incomplete for modern architectures.</p>
+</section>
+
+<!-- SLIDE 19: Regularisation — Intuition -->
+<section>
+  <h2>Regularisation &mdash; Why Constrain Your Model?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Regularisation adds a <strong>penalty for complexity</strong>. It tells the model: "I will accept slightly worse training accuracy if your weights stay small and reasonable."</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> When writing an essay, your teacher says "explain it in 500 words, not 5000." The constraint forces clarity &mdash; you cannot memorise every detail, so you focus on the important ideas.
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">\text{Loss}_{\text{regularised}} = \underbrace{\text{Loss}_{\text{data}}}_{\text{fit the data}} + \underbrace{\lambda \cdot R(\boldsymbol{w})}_{\text{penalty for large weights}}</span>
+    <div class="annotation">&lambda; controls how strongly we penalise &mdash; too high = underfitting, too low = overfitting</div>
+  </div>
+</section>
+
+<!-- SLIDE 20: L1 vs L2 Geometry -->
+<section>
+  <h2>L1 vs L2 &mdash; Diamond vs Circle</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>L2 (Ridge) &mdash; Circle Constraint</h3>
+      <div class="equation-box">
+        <span class="katex-display">R(\boldsymbol{w}) = \sum_j w_j^2 \leq t</span>
+      </div>
+      <ul style="font-size:0.85em;">
+        <li>Constraint region is a <strong>sphere</strong></li>
+        <li>Loss contours touch the sphere at any point</li>
+        <li>Shrinks all weights toward zero, but rarely <em>to</em> zero</li>
+        <li>All features kept, but large weights penalised</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>L1 (Lasso) &mdash; Diamond Constraint</h3>
+      <div class="equation-box">
+        <span class="katex-display">R(\boldsymbol{w}) = \sum_j |w_j| \leq t</span>
+      </div>
+      <ul style="font-size:0.85em;">
+        <li>Constraint region is a <strong>diamond</strong> (corners on axes)</li>
+        <li>Loss contours hit corners &mdash; where some <span class="katex-inline">w_j = 0</span></li>
+        <li>Produces <strong>sparse</strong> solutions (automatic feature selection)</li>
+        <li>Useful when you believe many features are irrelevant</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 21: Bayesian Interpretation of Regularisation -->
+<section>
+  <h2>Bayesian Interpretation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Regularisation is equivalent to placing a <strong>prior</strong> on the weights and doing MAP estimation:</p>
+  <div class="equation-box">
+    <span class="katex-display">\hat{\boldsymbol{w}}_{\text{MAP}} = \arg\max_{\boldsymbol{w}} \;\underbrace{\log p(D|\boldsymbol{w})}_{\text{log-likelihood (data loss)}} + \underbrace{\log p(\boldsymbol{w})}_{\text{log-prior (regulariser)}}</span>
+  </div>
+  <table>
+    <thead><tr><th>Regulariser</th><th>Prior on Weights</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>L2 (Ridge)</td><td><span class="katex-inline">w_j \sim \mathcal{N}(0, \tau^2)</span> &mdash; Gaussian</td><td>Weights shrink, none eliminated</td></tr>
+      <tr><td>L1 (Lasso)</td><td><span class="katex-inline">w_j \sim \text{Laplace}(0, b)</span> &mdash; sharp peak at 0</td><td>Weights shrink, many driven to exactly 0</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    The Laplace prior has heavier tails but a sharper peak at zero than the Gaussian &mdash; this is <em>why</em> L1 induces sparsity geometrically.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.2 — GRADIENT BOOSTING
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 22: Decision Trees — Intuition -->
+<section>
+  <h2>What Is a Decision Tree?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A flowchart for making predictions. At each step, ask one question about the data and follow the answer.</p>
+  <div class="callout callout-foundations">
+    <strong>Example &mdash; "Should I approve this loan?"</strong><br>
+    1. Is income > $50,000? &rarr; Yes &rarr; 2. Is credit score > 700? &rarr; Yes &rarr; <strong>Approve</strong><br>
+    &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; &rarr; No &rarr; <strong>Review</strong><br>
+    &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; &rarr; No &rarr; 3. Has collateral? &rarr; Yes &rarr; <strong>Review</strong><br>
+    &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; &rarr; No &rarr; <strong>Deny</strong>
+  </div>
+  <p style="font-size:0.85em;">At each node, the tree finds the question (feature + threshold) that best separates the target outcomes.</p>
+</section>
+
+<!-- SLIDE 23: Trees to Forests to Boosting -->
+<section>
+  <h2>Trees &rarr; Forests &rarr; Boosting</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Method</th><th>Idea</th><th>Bias-Variance</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Single Tree</td>
+        <td>One decision flowchart</td>
+        <td>Low bias, <strong>high variance</strong> (unstable)</td>
+      </tr>
+      <tr>
+        <td>Random Forest</td>
+        <td>Train many trees on random subsets, <strong>vote</strong></td>
+        <td>Averaging reduces variance</td>
+      </tr>
+      <tr>
+        <td>Gradient Boosting</td>
+        <td>Train trees <strong>sequentially</strong> &mdash; each corrects the previous tree's mistakes</td>
+        <td>Reduces bias step by step</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Bagging</strong> (Random Forest) reduces variance by averaging. <strong>Boosting</strong> reduces bias by iteratively fitting residuals. Boosting is the dominant paradigm for tabular data.
+  </div>
+</section>
+
+<!-- SLIDE 24: Gradient Boosting Intuition -->
+<section>
+  <h2>Gradient Boosting &mdash; Intuition</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Think of it as a <strong>team of specialists</strong>:</p>
+  <ol>
+    <li>Tree 1 makes a rough prediction</li>
+    <li>Compute the <strong>residuals</strong> (mistakes)</li>
+    <li>Tree 2 learns to predict <em>only the mistakes</em> of Tree 1</li>
+    <li>Tree 3 learns to predict the remaining mistakes</li>
+    <li>Final prediction = sum of all trees' contributions</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">\hat{y} = \sum_{m=1}^{M} \eta \cdot h_m(x)</span>
+    <div class="annotation">M trees, each weighted by learning rate &eta; (small steps to avoid overshooting)</div>
+  </div>
+</section>
+
+<!-- SLIDE 25: XGBoost — Objective -->
+<section>
+  <h2>XGBoost &mdash; The Objective Function</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>XGBoost improves gradient boosting by using <strong>second-order information</strong> (curvature) to find better splits.</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}^{(t)} = \sum_{i=1}^{n} \ell\!\left(y_i,\; \hat{y}_i^{(t-1)} + f_t(x_i)\right) + \Omega(f_t)</span>
+    <div class="annotation">At step t: how well does the new tree f<sub>t</sub> improve the prediction? Plus a regularisation term &Omega;</div>
+  </div>
+  <div class="equation-box" style="background:#FAF5FF; border-color:var(--ascent-advanced);">
+    <span class="katex-display">\Omega(f) = \gamma T + \frac{1}{2}\lambda \sum_{j=1}^{T} w_j^2</span>
+    <div class="annotation">&gamma; penalises number of leaves T; &lambda; penalises large leaf weights w<sub>j</sub></div>
+  </div>
+</section>
+
+<!-- SLIDE 26: XGBoost — Taylor Expansion Step 1 -->
+<section>
+  <h2>XGBoost &mdash; 2nd-Order Taylor Expansion</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">Step 1: Taylor-expand the loss around the current prediction</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\ell(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)) \approx \ell(y_i, \hat{y}_i^{(t-1)}) + g_i f_t(x_i) + \frac{1}{2} h_i f_t(x_i)^2</span>
+    </div>
+    <p style="font-size:0.85em;">Where we define the <strong>gradient</strong> and <strong>Hessian</strong> of the loss for each sample:</p>
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">g_i = \frac{\partial\, \ell(y_i,\, \hat{y}^{(t-1)})}{\partial\, \hat{y}^{(t-1)}}, \qquad h_i = \frac{\partial^2 \ell(y_i,\, \hat{y}^{(t-1)})}{\partial\, (\hat{y}^{(t-1)})^2}</span>
+    <div class="annotation">g<sub>i</sub> = 1st derivative (direction of steepest descent), h<sub>i</sub> = 2nd derivative (curvature)</div>
+  </div>
+</section>
+
+<!-- SLIDE 27: XGBoost — Taylor Expansion Step 2 -->
+<section>
+  <h2>XGBoost &mdash; Optimal Leaf Weights</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">Step 2: Drop constant term, group by leaf j, substitute f<sub>t</sub>(x<sub>i</sub>) = w<sub>j</sub> for sample i in leaf j</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\tilde{\mathcal{L}}^{(t)} = \sum_{j=1}^{T}\!\left[G_j w_j + \frac{1}{2}(H_j + \lambda)\,w_j^2\right] + \gamma T</span>
+    </div>
+    <p style="font-size:0.85em;">Where <span class="katex-inline">G_j = \sum_{i \in I_j} g_i</span> and <span class="katex-inline">H_j = \sum_{i \in I_j} h_i</span> are gradient and Hessian sums for leaf <span class="katex-inline">j</span>.</p>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 3: Differentiate w.r.t. w<sub>j</sub>, set to zero</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">w_j^* = -\frac{G_j}{H_j + \lambda}, \qquad \tilde{\mathcal{L}}^* = -\frac{1}{2}\sum_{j=1}^{T}\frac{G_j^2}{H_j + \lambda} + \gamma T</span>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 28: XGBoost — Split Gain -->
+<section>
+  <h2>XGBoost &mdash; Split Gain Formula</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>To decide whether splitting a leaf is worthwhile, XGBoost computes the <strong>gain</strong>:</p>
+  <div class="equation-box">
+    <span class="katex-display">\text{Gain} = \frac{1}{2}\left[\frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda}\right] - \gamma</span>
+    <div class="annotation">Left child score + Right child score &minus; Parent score &minus; penalty for adding a leaf</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Why second-order matters:</strong> Standard gradient boosting uses only g<sub>i</sub> (Newton's method with step size 1). XGBoost uses h<sub>i</sub> (Newton's method with curvature-adjusted steps), giving faster convergence and better handling of different loss functions.
+  </div>
+</section>
+
+<!-- SLIDE 29: LightGBM -->
+<section>
+  <h2>LightGBM &mdash; Speed and Scale</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Histogram-Based Splitting</h3>
+      <ul>
+        <li>Bin continuous features into ~256 discrete bins</li>
+        <li>Find best split by scanning bins instead of exact values</li>
+        <li><strong>O(bins)</strong> instead of O(n log n) per feature</li>
+        <li>10-20x faster than exact XGBoost on large data</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>GOSS &mdash; Gradient-based One-Side Sampling</h3>
+      <ul>
+        <li>Samples with <strong>large gradients</strong> contribute more to information gain</li>
+        <li>Keep all large-gradient samples, randomly sample small-gradient ones</li>
+        <li>Multiply sampled gradients by <span class="katex-inline">\frac{1-a}{b}</span> to maintain distribution</li>
+        <li>Near-lossless accuracy with much less computation</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Leaf-wise growth:</strong> LightGBM grows the leaf with largest loss reduction (leaf-wise), while XGBoost grows level-by-level. Leaf-wise can overfit more but converges faster.
+  </div>
+</section>
+
+<!-- SLIDE 30: NGBoost -->
+<section>
+  <h2>NGBoost &mdash; Uncertainty from Boosting</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Standard gradient boosting predicts a <em>point estimate</em>. NGBoost predicts a full <strong>probability distribution</strong>.</p>
+  <div class="equation-box">
+    <span class="katex-display">\text{NGBoost outputs } P_\theta(y|x) \text{ instead of } \hat{y}(x)</span>
+  </div>
+  <ul>
+    <li>Uses <strong>natural gradients</strong> (Fisher information matrix) instead of ordinary gradients</li>
+    <li>Natural gradient accounts for the geometry of the distribution space</li>
+    <li>Scoring rule: log-likelihood or CRPS (Continuous Ranked Probability Score)</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Connection to Zillow:</strong> If Zillow had used distributional predictions instead of point estimates, they could have quantified their uncertainty per house and set risk-appropriate purchase prices.
+  </div>
+</section>
+
+<!-- SLIDE 31: Kailash Bridge — TrainingPipeline -->
+<section>
+  <h2>Kailash Bridge &mdash; TrainingPipeline</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>Bias-variance, regularisation, gradient boosting</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>TrainingPipeline</code> + <code>ModelSpec</code> + <code>EvalSpec</code></span>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import TrainingPipeline
+
+pipeline = TrainingPipeline(
+    model_spec=ModelSpec(
+        algorithm="lightgbm",
+        task="classification",
+        hyperparameters={"num_leaves": 31, "learning_rate": 0.05}
+    ),
+    eval_spec=EvalSpec(
+        metrics=["accuracy", "f1", "auc"],
+        cv_folds=5,
+        calibration=True  # Platt scaling automatically applied
+    ),
+)
+results = await pipeline.train(df_train, target="approved")</code></pre>
+  <p style="font-size:0.8em;color:#64748B;">One config object describes your entire experiment. The engine handles train/val splits, cross-validation, metric computation, and optional calibration.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.3 — CLASS IMBALANCE AND CALIBRATION
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 32: Class Imbalance — The Problem -->
+<section>
+  <h2>Class Imbalance &mdash; The Problem</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>In fraud detection, 99.9% of transactions are legitimate. A model that <strong>always predicts "not fraud"</strong> gets 99.9% accuracy.</p>
+  <div class="callout callout-error">
+    <strong>99.9% accurate. 0% useful.</strong> The model never catches a single fraudster.
+  </div>
+  <p>This is the class imbalance problem: when one class vastly outnumbers the other, accuracy becomes a misleading metric.</p>
+  <h3>Better Metrics for Imbalanced Data</h3>
+  <ul>
+    <li><strong>Precision</strong> &mdash; Of all "fraud" predictions, how many were actually fraud?</li>
+    <li><strong>Recall</strong> &mdash; Of all actual fraud cases, how many did we catch?</li>
+    <li><strong>F1</strong> &mdash; Harmonic mean of precision and recall</li>
+    <li><strong>AUPRC</strong> &mdash; Area under precision-recall curve (better than AUROC for imbalance)</li>
+  </ul>
+</section>
+
+<!-- SLIDE 33: SMOTE and Its Failures -->
+<section>
+  <h2>SMOTE &mdash; And Why It Often Fails</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What SMOTE Does</h3>
+      <p><strong>Synthetic Minority Oversampling Technique</strong>: creates new minority samples by interpolating between existing ones.</p>
+      <ol style="font-size:0.85em;">
+        <li>Pick a minority sample</li>
+        <li>Find its k nearest minority neighbours</li>
+        <li>Create a synthetic point on the line between them</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h3>Failure Modes</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Noisy boundaries:</strong> interpolation between classes creates ambiguous points</li>
+        <li><strong>High dimensions:</strong> "nearest neighbour" loses meaning in 100+ features</li>
+        <li><strong>Small clusters:</strong> SMOTE can bridge separate minority clusters, creating non-existent patterns</li>
+        <li><strong>Information leak:</strong> SMOTE before train/test split leaks test information</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>SMOTE must only be applied to training data, never before the split.</strong> Many published papers have made this error.
+  </div>
+</section>
+
+<!-- SLIDE 34: Cost-Sensitive Learning -->
+<section>
+  <h2>Cost-Sensitive Learning</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Instead of resampling the data, adjust the <strong>loss function</strong> to penalise misclassifying the minority class more heavily.</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L} = -\sum_{i=1}^n \left[\alpha_i \cdot y_i \log(\hat{p}_i) + (1-y_i)\log(1-\hat{p}_i)\right]</span>
+    <div class="annotation">&alpha;<sub>i</sub> is higher for minority class &mdash; a false negative costs more than a false positive</div>
+  </div>
+  <p>In XGBoost/LightGBM, this is the <code>scale_pos_weight</code> parameter:</p>
+  <pre><code class="language-python"># Ratio of negative to positive examples
+scale_pos_weight = n_negative / n_positive  # e.g., 999 for 0.1% fraud</code></pre>
+  <div class="callout callout-theory">
+    <strong>Advantage over SMOTE:</strong> No synthetic data, no information leak risk, works in any dimension, and integrates directly with the optimiser.
+  </div>
+</section>
+
+<!-- SLIDE 35: Focal Loss Derivation -->
+<section>
+  <h2>Focal Loss &mdash; Derivation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Standard cross-entropy loss, even with class weights, treats all examples equally in terms of difficulty. <strong>Focal Loss</strong> (Lin et al., 2017) down-weights <em>easy</em> examples so the model focuses on <em>hard</em> ones.</p>
+  <div class="derivation-step">
+    <div class="step-label">Start from binary cross-entropy</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\text{CE}(p_t) = -\log(p_t)</span>
+    </div>
+    <p style="font-size:0.85em;">where <span class="katex-inline">p_t = \hat{p}</span> if <span class="katex-inline">y=1</span>, else <span class="katex-inline">p_t = 1 - \hat{p}</span>. (Probability assigned to the true class.)</p>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Add the modulating factor (1 &minus; p<sub>t</sub>)<sup>&gamma;</sup></div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\text{FL}(p_t) = -\alpha_t\,(1 - p_t)^\gamma \,\log(p_t)</span>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 36: Focal Loss — Why It Works -->
+<section>
+  <h2>Focal Loss &mdash; Why It Works</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Scenario</th><th>p<sub>t</sub></th><th>(1-p<sub>t</sub>)<sup>&gamma;</sup> (&gamma;=2)</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Easy correct</td><td>0.95</td><td>0.0025</td><td>Loss reduced <strong>400x</strong></td></tr>
+      <tr><td>Moderate</td><td>0.70</td><td>0.09</td><td>Loss reduced ~11x</td></tr>
+      <tr><td>Hard / misclassified</td><td>0.10</td><td>0.81</td><td>Loss barely changed</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>The modulating factor acts as a curriculum:</strong> easy examples contribute almost nothing to the gradient, so the model spends its optimisation budget on the hard cases &mdash; exactly the minority class examples that standard cross-entropy misses.
+  </div>
+  <p style="font-size:0.85em;"><strong>&gamma; controls the focusing strength.</strong> &gamma;=0 recovers standard CE. &gamma;=2 is the default in the original paper. &alpha;<sub>t</sub> handles class balance; (1-p<sub>t</sub>)<sup>&gamma;</sup> handles example difficulty. Together they are more effective than either alone.</p>
+</section>
+
+<!-- SLIDE 37: Calibration — Intuition -->
+<section>
+  <h2>Calibration &mdash; Can You Trust the Probabilities?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>When your model says "80% chance of loan default", does it <em>really</em> mean that 80% of similar cases actually default?</p>
+  <div class="callout callout-foundations">
+    <strong>Calibrated model:</strong> Among all cases where the model predicts 80% probability, approximately 80% actually occur.<br>
+    <strong>Uncalibrated model:</strong> The model says 80% but the true rate is 45%. You cannot use these probabilities for decisions.
+  </div>
+  <p><strong>Why calibration matters:</strong></p>
+  <ul>
+    <li>Setting <strong>thresholds</strong> (approve loans above 60% repayment probability)</li>
+    <li>Comparing <strong>risks</strong> across models or populations</li>
+    <li><strong>Zillow:</strong> uncalibrated confidence led to over-aggressive purchases</li>
+  </ul>
+</section>
+
+<!-- SLIDE 38: Calibration Methods -->
+<section>
+  <h2>Calibration Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Platt Scaling</h3>
+      <p>Fit a logistic regression on the model's raw outputs:</p>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">p_{\text{cal}} = \frac{1}{1 + e^{-(Af(x) + B)}}</span>
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Parameters A, B fit on validation set</li>
+        <li>Works well when miscalibration is monotonic</li>
+        <li>Low data requirement</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Isotonic Regression</h3>
+      <p>Non-parametric: fit a monotone step function</p>
+      <ul style="font-size:0.82em;">
+        <li>No functional form assumed</li>
+        <li>More flexible than Platt</li>
+        <li>Needs more data (~1000+ validation samples)</li>
+        <li>Can overfit on small sets</li>
+      </ul>
+      <h3 style="margin-top:12px;">ECE &mdash; Expected Calibration Error</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{ECE} = \sum_{b=1}^{B}\frac{|B_b|}{n}\,|\text{acc}(B_b) - \text{conf}(B_b)|</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 39: Proper Scoring Rules -->
+<section>
+  <h2>Proper Scoring Rules</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>A scoring rule <span class="katex-inline">S(p, y)</span> is <strong>proper</strong> if it is minimised when the predicted distribution matches the true distribution. In other words: a proper score cannot be "gamed" by reporting anything other than your true belief.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Brier Score (Proper)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\text{BS} = \frac{1}{n}\sum_{i=1}^n (\hat{p}_i - y_i)^2</span>
+      </div>
+      <p style="font-size:0.85em;">Strictly proper: unique minimum at <span class="katex-inline">\hat{p} = p_{\text{true}}</span>. Decomposes into calibration + resolution + uncertainty.</p>
+    </div>
+    <div class="col">
+      <h3>Accuracy (NOT Proper)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\text{Acc} = \frac{1}{n}\sum_{i=1}^n \mathbb{1}[\hat{y}_i = y_i]</span>
+      </div>
+      <p style="font-size:0.85em;">Depends only on the hard prediction, not the probability. A model predicting 0.51 and 0.99 get the same accuracy for a positive example. <strong>No incentive to calibrate.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.4 — SHAP, LIME, AND FAIRNESS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 40: Why Explainability? -->
+<section>
+  <h2>Why Explain Your Model?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A model predicts "deny this loan application." The applicant asks: <strong>why?</strong></p>
+  <ul>
+    <li><strong>Regulatory requirement</strong> &mdash; EU AI Act Art. 13, Singapore PDPA</li>
+    <li><strong>Debugging</strong> &mdash; is the model using sensible features or spurious correlations?</li>
+    <li><strong>Trust</strong> &mdash; stakeholders will not deploy what they cannot understand</li>
+    <li><strong>Fairness</strong> &mdash; does the model discriminate based on protected attributes?</li>
+  </ul>
+  <div class="callout callout-warning">
+    <strong>Zillow again:</strong> If Zillow could have explained <em>which features</em> drove each price estimate, they might have caught that the model was over-relying on recent comps during a market bubble.
+  </div>
+</section>
+
+<!-- SLIDE 41: Shapley Values — Intuition -->
+<section>
+  <h2>Shapley Values &mdash; Intuition</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Imagine a group project. Three students (A, B, C) submit a joint assignment and receive a grade. <strong>How much did each student contribute?</strong></p>
+  <div class="callout callout-foundations">
+    <strong>Shapley's answer (1953):</strong> Try every possible order in which students could have joined the team. Measure each student's marginal contribution in each order. Their fair share is the <em>average</em> of their marginal contributions across all orderings.
+  </div>
+  <p>Replace "students" with <strong>features</strong> and "grade" with <strong>model prediction</strong>, and you have SHAP values for ML.</p>
+</section>
+
+<!-- SLIDE 42: Shapley Axioms -->
+<section>
+  <h2>Shapley Axioms &mdash; The Only Fair Attribution</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Shapley (1953) proved that <strong>only one</strong> attribution method satisfies all four fairness axioms simultaneously:</p>
+  <div class="axiom-box">
+    <strong>1. Efficiency:</strong> Contributions sum to the total. <span class="katex-inline">\sum_{j=1}^{p} \phi_j = f(x) - \mathbb{E}[f(x)]</span>
+  </div>
+  <div class="axiom-box">
+    <strong>2. Symmetry:</strong> If features i and j contribute equally in all coalitions, they receive equal attribution. <span class="katex-inline">\phi_i = \phi_j</span>
+  </div>
+  <div class="axiom-box">
+    <strong>3. Dummy (Null Player):</strong> A feature that never changes the prediction receives zero attribution. <span class="katex-inline">\phi_j = 0</span>
+  </div>
+  <div class="axiom-box">
+    <strong>4. Linearity (Additivity):</strong> For a model that is a sum of two models, SHAP values add: <span class="katex-inline">\phi_j(f + g) = \phi_j(f) + \phi_j(g)</span>
+  </div>
+</section>
+
+<!-- SLIDE 43: Shapley Formula -->
+<section>
+  <h2>The Shapley Value Formula</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">\phi_j = \sum_{S \subseteq \{1,\ldots,p\} \setminus \{j\}} \frac{|S|!\;(p - |S| - 1)!}{p!} \left[f(S \cup \{j\}) - f(S)\right]</span>
+    <div class="annotation">Sum over all subsets S not containing feature j. Weight = probability of this ordering. Bracket = marginal contribution of adding feature j to coalition S.</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Computational cost:</strong> <span class="katex-inline">2^p</span> subsets to evaluate. With 100 features, that is <span class="katex-inline">2^{100} \approx 10^{30}</span> evaluations. <em>Exact Shapley values are intractable for real models.</em>
+  </div>
+</section>
+
+<!-- SLIDE 44: TreeSHAP -->
+<section>
+  <h2>TreeSHAP &mdash; Fast Exact SHAP for Trees</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Lundberg et al. (2020) exploited the tree structure to compute <strong>exact</strong> Shapley values in polynomial time.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Key Insight</h3>
+      <ul style="font-size:0.85em;">
+        <li>In a decision tree, a feature is "absent" if its split is ignored (sample follows <em>both</em> branches, weighted by training proportions)</li>
+        <li>Tree structure limits which coalitions matter</li>
+        <li>Dynamic programming over tree paths: <strong>O(TLD&sup2;)</strong> instead of <span class="katex-inline">O(2^p)</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Complexity</h3>
+      <table style="font-size:0.82em;">
+        <thead><tr><th>Method</th><th>Time</th></tr></thead>
+        <tbody>
+          <tr><td>Exact Shapley</td><td><span class="katex-inline">O(2^p)</span> &mdash; intractable</td></tr>
+          <tr><td>Kernel SHAP</td><td><span class="katex-inline">O(n \cdot p)</span> per sample &mdash; approximate</td></tr>
+          <tr><td>TreeSHAP</td><td><span class="katex-inline">O(TLD^2)</span> &mdash; <strong>exact</strong></td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:0.8em;">T = trees, L = leaves, D = max depth</p>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 45: Counterfactual Explanations -->
+<section>
+  <h2>Counterfactual Explanations</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>SHAP answers: <strong>"Why was this prediction made?"</strong><br>
+  Counterfactuals answer: <strong>"What would need to change for a different outcome?"</strong></p>
+  <div class="callout callout-advanced">
+    <strong>Example:</strong> "Your loan was denied. If your annual income were $5,000 higher OR your credit utilisation were below 30%, the loan would have been approved."
+  </div>
+  <p>Wachter et al. (2017) formalised this as an optimisation problem:</p>
+  <div class="equation-box">
+    <span class="katex-display">x' = \arg\min_{x'} \; \lambda\,(f(x') - y')^2 + d(x, x')</span>
+    <div class="annotation">Find the closest point x' (minimum distance d) where the model predicts the desired outcome y'</div>
+  </div>
+  <p style="font-size:0.85em;">Constraints: changes must be <em>actionable</em> (cannot change age) and <em>plausible</em> (income cannot jump from $30K to $3M).</p>
+</section>
+
+<!-- SLIDE 46: Model Cards -->
+<section>
+  <h2>Model Cards &mdash; Documentation as Governance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Mitchell et al. (2019) proposed <strong>model cards</strong>: standardised documentation for every deployed model.</p>
+  <table>
+    <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Model Details</td><td>Algorithm, version, owner, date, licence</td></tr>
+      <tr><td>Intended Use</td><td>Primary use cases, out-of-scope uses</td></tr>
+      <tr><td>Factors</td><td>Relevant groups, evaluation factors</td></tr>
+      <tr><td>Metrics</td><td>Performance metrics with confidence intervals</td></tr>
+      <tr><td>Evaluation Data</td><td>Datasets used, preprocessing applied</td></tr>
+      <tr><td>Training Data</td><td>Source, size, representativeness</td></tr>
+      <tr><td>Ethical Considerations</td><td>Bias, fairness, sensitive data handling</td></tr>
+      <tr><td>Caveats &amp; Recommendations</td><td>Known limitations, deployment conditions</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SLIDE 47: Kailash Bridge — Explainability -->
+<section>
+  <h2>Kailash Bridge &mdash; ModelVisualizer for SHAP</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>SHAP values, feature importance, calibration</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>ModelVisualizer</code></span>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+# SHAP summary plot — global feature importance
+await viz.feature_importance(model, X_test, method="shap")
+
+# Calibration curve — reliability diagram
+await viz.calibration_curve(model, X_test, y_test, n_bins=10)
+
+# Precision-recall curve — for imbalanced data
+await viz.precision_recall_curve(model, X_test, y_test)</code></pre>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.5 — WORKFLOW ORCHESTRATION
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 48: Why Workflows? -->
+<section>
+  <h2>Why Workflow Orchestration?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A production ML system is not a single script. It is a <strong>pipeline</strong> of steps that must run in order, handle failures, and be reproducible.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Without Orchestration</h3>
+      <ul>
+        <li>Notebooks run manually, out of order</li>
+        <li>"It works on my machine"</li>
+        <li>No retry on failure</li>
+        <li>No audit trail</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>With Orchestration</h3>
+      <ul>
+        <li>Steps run in defined order</li>
+        <li>Parameters passed between steps</li>
+        <li>Failures logged and retried</li>
+        <li>Every run is reproducible</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 49: WorkflowBuilder -->
+<section>
+  <h2>Kailash WorkflowBuilder</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash import WorkflowBuilder, LocalRuntime
+
+# Build a workflow as a DAG of nodes
+wf = (
+    WorkflowBuilder("ml-pipeline")
+    .add_node("load", "LoadCSVNode", params={"path": "data.csv"})
+    .add_node("clean", "PreprocessNode")
+    .add_node("train", "TrainModelNode", params={"algorithm": "lightgbm"})
+    .add_node("evaluate", "EvalNode")
+    .connect("load", "clean")
+    .connect("clean", "train")
+    .connect("train", "evaluate")
+    .build()
+)
+
+runtime = LocalRuntime()
+result = await runtime.execute(wf)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Key pattern:</strong> add_node &rarr; connect &rarr; build &rarr; execute. The workflow is a directed acyclic graph (DAG). Kailash handles ordering, parallelism, and error propagation.
+  </div>
+</section>
+
+<!-- SLIDE 50: Custom Nodes -->
+<section>
+  <h2>Custom Nodes &mdash; Extend the Engine</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash import Node, register_node
+
+@register_node("FeatureEngineerNode")
+class FeatureEngineerNode(Node):
+    """Custom node that adds domain-specific features."""
+
+    async def execute(self, inputs: dict) -> dict:
+        df = inputs["dataframe"]
+
+        # Domain logic: price per sqm for HDB
+        df = df.with_columns([
+            (pl.col("resale_price") / pl.col("floor_area_sqm"))
+            .alias("price_per_sqm"),
+            pl.col("lease_commence_date")
+            .map_elements(lambda x: 99 - (2024 - x))
+            .alias("remaining_lease_years"),
+        ])
+
+        return {"dataframe": df, "features_added": 2}</code></pre>
+  <div class="callout callout-theory">
+    <strong>Node contract:</strong> Every node receives <code>inputs: dict</code> and returns <code>dict</code>. Connection names map output keys to input keys. Type safety is enforced at build time.
+  </div>
+</section>
+
+<!-- SLIDE 51: Conditional and Logic Nodes -->
+<section>
+  <h2>Logic Nodes &mdash; Decision Points in Workflows</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash import WorkflowBuilder, ConditionalNode, PythonCodeNode
+
+wf = (
+    WorkflowBuilder("governed-pipeline")
+    .add_node("train", "TrainModelNode")
+    .add_node("check_quality", "PythonCodeNode", params={
+        "code": "output = {'pass': inputs['f1_score'] > 0.85}"
+    })
+    .add_node("register", "RegisterModelNode")   # if quality passes
+    .add_node("alert", "AlertNode")               # if quality fails
+    .add_node("gate", "ConditionalNode", params={
+        "condition_key": "pass",
+        "true_target": "register",
+        "false_target": "alert"
+    })
+    .connect("train", "check_quality")
+    .connect("check_quality", "gate")
+    .build()
+)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Governance built into the pipeline:</strong> The model is only registered if quality thresholds are met. Failed models trigger alerts instead.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.6 — DATAFLOW AND PERSISTENCE
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 52: Why Persist? -->
+<section>
+  <h2>Why Persist ML Results?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Every time you train a model, you generate valuable data: metrics, parameters, predictions, SHAP values. Without persistence, they vanish when you close the notebook.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Without Persistence</h3>
+      <ul>
+        <li>"What was the F1 score last week?"</li>
+        <li>"Which hyperparameters worked best?"</li>
+        <li>"Show me the SHAP values from that experiment"</li>
+        <li><em>No answer available</em></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>With DataFlow</h3>
+      <ul>
+        <li>Every metric stored with timestamp</li>
+        <li>Every experiment queryable</li>
+        <li>Compare runs side by side</li>
+        <li>Full audit trail for compliance</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 53: DataFlow Model Definition -->
+<section>
+  <h2>DataFlow &mdash; Define Your Schema</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash_dataflow import db, field
+
+@db.model
+class ExperimentResult:
+    """Persists ML experiment results."""
+    experiment_name: str = field(index=True)
+    algorithm: str
+    hyperparameters: dict
+    f1_score: float
+    auc_roc: float
+    calibration_ece: float
+    shap_summary: dict      # top-10 features + values
+    model_version: str
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Zero-config:</strong> <code>@db.model</code> auto-generates the table, migrations, and CRUD operations. No raw SQL. Schema changes are auto-detected.
+  </div>
+</section>
+
+<!-- SLIDE 54: DataFlow CRUD -->
+<section>
+  <h2>DataFlow &mdash; CRUD Operations</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python"># Create
+await db.express.create(ExperimentResult(
+    experiment_name="hdb-pricing-v3",
+    algorithm="lightgbm",
+    hyperparameters={"num_leaves": 31, "lr": 0.05},
+    f1_score=0.87,
+    auc_roc=0.94,
+    calibration_ece=0.023,
+    shap_summary={"floor_area": 0.35, "town": 0.28, "storey": 0.15},
+    model_version="3.1.0"
+))
+
+# Query — find best experiments
+results = await db.express.list(
+    ExperimentResult,
+    filters={"algorithm": "lightgbm"},
+    order_by="-f1_score",
+    limit=5
+)
+
+# Compare
+for r in results:
+    print(f"{r.experiment_name}: F1={r.f1_score:.3f}, ECE={r.calibration_ece:.4f}")</code></pre>
+</section>
+
+<!-- SLIDE 55: Async Primer -->
+<section>
+  <h2>Async/Await &mdash; A Quick Primer</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>DataFlow operations use <code>await</code>. What does that mean?</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> You order food at a restaurant. Instead of standing at the counter until it is ready (blocking), you sit down and do other things. The waiter brings it when it is done. <code>await</code> = "start this operation and come back when it finishes."
+  </div>
+  <pre><code class="language-python"># In Jupyter/Colab — top-level await works
+result = await db.express.create(my_model)
+
+# In a local .py file — wrap in an async function
+import asyncio
+
+async def main():
+    result = await db.express.create(my_model)
+
+asyncio.run(main())</code></pre>
+  <p style="font-size:0.85em;">You do not need to deeply understand async programming for this course. Just know: <code>await</code> before database operations, <code>asyncio.run()</code> in scripts.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.7 — MODEL REGISTRY AND HPO
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 56: Model Lifecycle -->
+<section>
+  <h2>Model Lifecycle &mdash; Not Just Training</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A model is not "done" when training finishes. It has a lifecycle, just like software:</p>
+  <div style="text-align:center; margin:20px 0;">
+    <span class="lifecycle-stage stage-staging">Staging</span>
+    <span style="font-size:1.5em; color:var(--ascent-primary);">&rarr;</span>
+    <span class="lifecycle-stage stage-shadow">Shadow</span>
+    <span style="font-size:1.5em; color:var(--ascent-primary);">&rarr;</span>
+    <span class="lifecycle-stage stage-production">Production</span>
+    <span style="font-size:1.5em; color:var(--ascent-primary);">&rarr;</span>
+    <span class="lifecycle-stage stage-archived">Archived</span>
+  </div>
+  <table>
+    <thead><tr><th>Stage</th><th>What Happens</th><th>Who Decides</th></tr></thead>
+    <tbody>
+      <tr><td><span class="lifecycle-stage stage-staging" style="padding:3px 10px;">Staging</span></td><td>Model trained, initial evaluation</td><td>Data scientist</td></tr>
+      <tr><td><span class="lifecycle-stage stage-shadow" style="padding:3px 10px;">Shadow</span></td><td>Runs alongside production, predictions logged but not served</td><td>ML engineer</td></tr>
+      <tr><td><span class="lifecycle-stage stage-production" style="padding:3px 10px;">Production</span></td><td>Serves live predictions</td><td>ML engineer + governance approval</td></tr>
+      <tr><td><span class="lifecycle-stage stage-archived" style="padding:3px 10px;">Archived</span></td><td>Replaced by newer version, kept for audit</td><td>Automated on new production model</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SLIDE 57: ModelRegistry -->
+<section>
+  <h2>Kailash ModelRegistry</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_ml import ModelRegistry, MetricSpec, ModelSignature
+
+registry = ModelRegistry()
+
+# Register a trained model
+model_id = await registry.register(
+    model=trained_model,
+    name="hdb-price-predictor",
+    version="3.1.0",
+    signature=ModelSignature(
+        inputs=["floor_area", "town", "storey_range", "remaining_lease"],
+        output="resale_price"
+    ),
+    metrics={
+        "rmse": 28500,
+        "mape": 0.043,
+        "calibration_ece": 0.018
+    },
+    tags={"team": "pricing", "region": "singapore"}
+)</code></pre>
+</section>
+
+<!-- SLIDE 58: Model Promotion -->
+<section>
+  <h2>Model Promotion &mdash; Governed Transitions</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python"># Promote staging → shadow (runs alongside production)
+await registry.promote(model_id, stage="shadow")
+
+# After shadow period — compare metrics
+shadow_metrics = await registry.get_metrics(model_id, stage="shadow")
+prod_metrics = await registry.get_metrics(production_model_id, stage="production")
+
+# Promote shadow → production (governance gate)
+if shadow_metrics["rmse"] < prod_metrics["rmse"] * 0.95:  # 5% improvement
+    await registry.promote(model_id, stage="production")
+    # Previous production model auto-archived</code></pre>
+  <div class="callout callout-warning">
+    <strong>The governance gate:</strong> Promotion from shadow to production is NOT automatic. It requires explicit criteria and, in M6, will require PACT governance approval.
+  </div>
+</section>
+
+<!-- SLIDE 59: Hyperparameter Search — Why? -->
+<section>
+  <h2>Hyperparameter Search &mdash; Finding the Sweet Spot</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Hyperparameters are settings you choose <em>before</em> training: learning rate, tree depth, regularisation strength. The model cannot learn these from data &mdash; you must search for the best combination.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Grid Search</h3>
+      <p>Try every combination. Simple but exhaustive. 5 parameters &times; 5 values = 3,125 experiments.</p>
+    </div>
+    <div class="col">
+      <h3>Bayesian Optimisation</h3>
+      <p>Use past results to predict which combination to try next. Focuses on promising regions. Typically finds the optimum in 30-50 trials.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 60: Bayesian Optimisation -->
+<section>
+  <h2>Bayesian Optimisation &mdash; The Theory</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Surrogate Model</h3>
+      <p>Fit a Gaussian Process (GP) to map hyperparameters &rarr; validation metric.</p>
+      <p>The GP gives both a <strong>mean prediction</strong> (expected performance) and <strong>uncertainty</strong> (how unsure we are).</p>
+    </div>
+    <div class="col">
+      <h3>Acquisition Function</h3>
+      <p>Balances <strong>exploitation</strong> (try where the GP predicts high performance) vs <strong>exploration</strong> (try where uncertainty is high).</p>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{EI}(x) = \mathbb{E}\!\left[\max(f(x) - f^+, 0)\right]</span>
+      </div>
+      <p style="font-size:0.82em;">Expected Improvement: how much better might this point be than the current best <span class="katex-inline">f^+</span>?</p>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 61: HyperparameterSearch Engine -->
+<section>
+  <h2>Kailash HyperparameterSearch</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>Bayesian optimisation, search spaces, early stopping</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>HyperparameterSearch</code> + <code>SearchSpace</code> + <code>SearchConfig</code></span>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig
+from kailash_ml import ParamDistribution
+
+search = HyperparameterSearch(
+    search_space=SearchSpace(
+        params=[
+            ParamDistribution("num_leaves", "int", low=20, high=100),
+            ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+            ParamDistribution("min_child_samples", "int", low=5, high=50),
+            ParamDistribution("reg_lambda", "log_uniform", low=1e-3, high=10.0),
+        ]
+    ),
+    config=SearchConfig(strategy="bayesian", n_trials=50, cv_folds=5)
+)
+
+best = await search.run(pipeline, df_train, target="resale_price")</code></pre>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 3.8 — PRODUCTION PIPELINE
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 62: The Full Picture -->
+<section>
+  <h2>Production Pipeline &mdash; All Pieces Together</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="svg-diagram">
+    <svg width="900" height="200" viewBox="0 0 900 200">
+      <!-- Boxes -->
+      <rect x="10" y="60" width="110" height="50" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="65" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Load Data</text>
+      <rect x="150" y="60" width="110" height="50" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="205" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Features</text>
+      <rect x="290" y="60" width="110" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="345" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Train + HPO</text>
+      <rect x="430" y="60" width="110" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="485" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Calibrate</text>
+      <rect x="570" y="60" width="110" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="625" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">SHAP +</text>
+      <text x="625" y="100" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Model Card</text>
+      <rect x="710" y="60" width="110" height="50" rx="8" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="765" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#1E293B">Register</text>
+      <!-- Arrows -->
+      <line x1="120" y1="85" x2="150" y2="85" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <line x1="260" y1="85" x2="290" y2="85" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <line x1="400" y1="85" x2="430" y2="85" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <line x1="540" y1="85" x2="570" y2="85" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <line x1="680" y1="85" x2="710" y2="85" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <!-- DataFlow persistence -->
+      <rect x="290" y="140" width="250" height="40" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="415" y="165" text-anchor="middle" font-size="12" font-weight="600" fill="#0D9488">DataFlow &mdash; persist everything</text>
+      <line x1="345" y1="110" x2="345" y2="140" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4"/>
+      <line x1="485" y1="110" x2="485" y2="140" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4"/>
+      <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#94A3B8"/></marker></defs>
+    </svg>
+  </div>
+  <table style="font-size:0.75em;">
+    <thead><tr><th>Step</th><th>Engine</th><th>Lesson</th></tr></thead>
+    <tbody>
+      <tr><td>Load &amp; Clean</td><td>PreprocessingPipeline</td><td>M1</td></tr>
+      <tr><td>Features</td><td>FeatureEngineer, FeatureStore</td><td>M2</td></tr>
+      <tr><td>Train + HPO</td><td>TrainingPipeline, HyperparameterSearch</td><td>M3.1-3.2, 3.7</td></tr>
+      <tr><td>Calibrate</td><td>TrainingPipeline (calibration=True)</td><td>M3.3</td></tr>
+      <tr><td>Explain</td><td>ModelVisualizer (SHAP)</td><td>M3.4</td></tr>
+      <tr><td>Register</td><td>ModelRegistry</td><td>M3.7</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SLIDE 63: Conformal Prediction — Intuition -->
+<section>
+  <h2>Conformal Prediction &mdash; Guaranteed Uncertainty</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Calibration gives better probabilities. Conformal prediction goes further: it provides <strong>prediction intervals with guaranteed coverage</strong>.</p>
+  <div class="callout callout-theory">
+    <strong>The guarantee:</strong> For a chosen confidence level &alpha;, the true value falls within the prediction interval at least (1-&alpha;) &times; 100% of the time, <em>regardless of the model or data distribution</em>.
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">\hat{C}(x) = \left\{y : s(x, y) \leq \hat{q}\right\}</span>
+    <div class="annotation">Prediction set: all labels y whose nonconformity score s(x,y) is below quantile q&#770; of calibration scores</div>
+  </div>
+  <p style="font-size:0.85em;"><strong>For regression:</strong> Interval = <span class="katex-inline">[\hat{y} - \hat{q}, \hat{y} + \hat{q}]</span> where <span class="katex-inline">\hat{q}</span> is the (1-&alpha;) quantile of absolute residuals on a calibration set.</p>
+</section>
+
+<!-- SLIDE 64: Full Production Pipeline Code -->
+<section>
+  <h2>The Complete Pipeline in Kailash</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash import WorkflowBuilder, LocalRuntime
+
+wf = (
+    WorkflowBuilder("hdb-pricing-production")
+    .add_node("load", "LoadCSVNode", params={"path": "hdb_resale.csv"})
+    .add_node("preprocess", "PreprocessNode")
+    .add_node("features", "FeatureEngineerNode")
+    .add_node("split", "TrainTestSplitNode", params={"test_size": 0.2})
+    .add_node("hpo", "HyperparameterSearchNode", params={
+        "strategy": "bayesian", "n_trials": 50
+    })
+    .add_node("train", "TrainModelNode")
+    .add_node("calibrate", "CalibrateNode")
+    .add_node("explain", "SHAPNode")
+    .add_node("quality_gate", "ConditionalNode", params={
+        "condition_key": "meets_threshold",
+        "true_target": "register", "false_target": "alert"
+    })
+    .add_node("register", "RegisterModelNode")
+    .add_node("alert", "AlertNode")
+    .connect("load", "preprocess").connect("preprocess", "features")
+    .connect("features", "split").connect("split", "hpo")
+    .connect("hpo", "train").connect("train", "calibrate")
+    .connect("calibrate", "explain").connect("explain", "quality_gate")
+    .build()
+)
+
+result = await LocalRuntime().execute(wf)</code></pre>
+</section>
+
+<!-- SLIDE 65: Model Card in Practice -->
+<section>
+  <h2>Model Card &mdash; Filled Example</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.7em;">
+    <thead><tr><th>Section</th><th>HDB Price Predictor v3.1</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Model Details</strong></td><td>LightGBM regressor, 500 trees, num_leaves=31. Kailash ML v0.8. Owner: Pricing Team.</td></tr>
+      <tr><td><strong>Intended Use</strong></td><td>Predict HDB resale prices for property valuation. NOT for lending decisions without additional underwriting.</td></tr>
+      <tr><td><strong>Factors</strong></td><td>Performance varies by town, flat type, and lease age. Newer leases are better predicted.</td></tr>
+      <tr><td><strong>Metrics</strong></td><td>RMSE: $28,500 (&plusmn;$1,200 95% CI). MAPE: 4.3%. Calibration ECE: 0.018.</td></tr>
+      <tr><td><strong>Training Data</strong></td><td>15M HDB transactions, 2012-2024, from data.gov.sg. 80/20 temporal split.</td></tr>
+      <tr><td><strong>Ethical</strong></td><td>Race/ethnicity not used as features. Town may correlate with demographics &mdash; monitored via DriftMonitor.</td></tr>
+      <tr><td><strong>Caveats</strong></td><td>Does not account for renovation quality. New towns (e.g., Tengah) have limited data (&lt;500 transactions).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     KAILASH ENGINE DEEP DIVE
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 66: Engine Architecture -->
+<section>
+  <h2>Kailash ML Engine Architecture</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="svg-diagram">
+    <svg width="800" height="220" viewBox="0 0 800 220">
+      <!-- TrainingPipeline -->
+      <rect x="20" y="20" width="180" height="180" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="110" y="48" text-anchor="middle" font-size="14" font-weight="700" fill="#0D9488">TrainingPipeline</text>
+      <rect x="35" y="60" width="150" height="26" rx="4" fill="white" stroke="#CBD5E1"/>
+      <text x="110" y="78" text-anchor="middle" font-size="11" fill="#334155">ModelSpec (algorithm)</text>
+      <rect x="35" y="92" width="150" height="26" rx="4" fill="white" stroke="#CBD5E1"/>
+      <text x="110" y="110" text-anchor="middle" font-size="11" fill="#334155">EvalSpec (metrics, CV)</text>
+      <rect x="35" y="124" width="150" height="26" rx="4" fill="white" stroke="#CBD5E1"/>
+      <text x="110" y="142" text-anchor="middle" font-size="11" fill="#334155">Calibration</text>
+      <rect x="35" y="156" width="150" height="26" rx="4" fill="white" stroke="#CBD5E1"/>
+      <text x="110" y="174" text-anchor="middle" font-size="11" fill="#334155">train() &rarr; Results</text>
+      <!-- HPO -->
+      <rect x="240" y="30" width="160" height="80" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="320" y="58" text-anchor="middle" font-size="13" font-weight="700" fill="#3B82F6">HPO Search</text>
+      <text x="320" y="78" text-anchor="middle" font-size="11" fill="#334155">SearchSpace</text>
+      <text x="320" y="94" text-anchor="middle" font-size="11" fill="#334155">SearchConfig</text>
+      <!-- Registry -->
+      <rect x="240" y="130" width="160" height="70" rx="10" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="320" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="#8B5CF6">ModelRegistry</text>
+      <text x="320" y="178" text-anchor="middle" font-size="11" fill="#334155">stage &rarr; shadow &rarr; prod</text>
+      <!-- Arrows -->
+      <line x1="200" y1="85" x2="240" y2="70" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <line x1="200" y1="150" x2="240" y2="160" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <!-- Visualiser -->
+      <rect x="450" y="30" width="160" height="80" rx="10" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="530" y="55" text-anchor="middle" font-size="13" font-weight="700" fill="#22C55E">ModelVisualizer</text>
+      <text x="530" y="75" text-anchor="middle" font-size="11" fill="#334155">SHAP, calibration,</text>
+      <text x="530" y="91" text-anchor="middle" font-size="11" fill="#334155">PR curve, confusion</text>
+      <!-- DataFlow -->
+      <rect x="450" y="130" width="160" height="70" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="530" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="#0D9488">DataFlow</text>
+      <text x="530" y="178" text-anchor="middle" font-size="11" fill="#334155">persist metrics, SHAP</text>
+      <!-- Workflow -->
+      <rect x="660" y="60" width="120" height="100" rx="10" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+      <text x="720" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="#D97706">Workflow</text>
+      <text x="720" y="108" text-anchor="middle" font-size="13" font-weight="700" fill="#D97706">Builder</text>
+      <text x="720" y="135" text-anchor="middle" font-size="11" fill="#334155">orchestrates all</text>
+      <line x1="400" y1="70" x2="450" y2="70" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <line x1="400" y1="165" x2="450" y2="165" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <line x1="610" y1="70" x2="660" y2="100" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <line x1="610" y1="165" x2="660" y2="130" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <defs><marker id="ah2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94A3B8"/></marker></defs>
+    </svg>
+  </div>
+</section>
+
+<!-- SLIDE 67: Theory-to-Engine Mapping -->
+<section>
+  <h2>Theory &rarr; Engine Mapping</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Mathematical Concept</th><th>Kailash Engine</th><th>Method / Parameter</th></tr></thead>
+    <tbody>
+      <tr><td>Bias-variance trade-off</td><td>TrainingPipeline</td><td><code>EvalSpec(cv_folds=5)</code></td></tr>
+      <tr><td>L1/L2 regularisation</td><td>TrainingPipeline</td><td><code>ModelSpec(hyperparameters={"reg_lambda": ...})</code></td></tr>
+      <tr><td>XGBoost / LightGBM</td><td>TrainingPipeline</td><td><code>ModelSpec(algorithm="lightgbm")</code></td></tr>
+      <tr><td>Focal Loss / cost-sensitive</td><td>TrainingPipeline</td><td><code>ModelSpec(hyperparameters={"scale_pos_weight": ...})</code></td></tr>
+      <tr><td>Platt scaling / isotonic</td><td>TrainingPipeline</td><td><code>EvalSpec(calibration=True)</code></td></tr>
+      <tr><td>SHAP / TreeSHAP</td><td>ModelVisualizer</td><td><code>feature_importance(method="shap")</code></td></tr>
+      <tr><td>Bayesian optimisation</td><td>HyperparameterSearch</td><td><code>SearchConfig(strategy="bayesian")</code></td></tr>
+      <tr><td>Model lifecycle</td><td>ModelRegistry</td><td><code>register(), promote(), archive()</code></td></tr>
+      <tr><td>DAG orchestration</td><td>WorkflowBuilder</td><td><code>add_node(), connect(), build()</code></td></tr>
+      <tr><td>Persistence / audit</td><td>DataFlow</td><td><code>@db.model, db.express.create()</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     INTERLUDE — RECAP OF KEY DERIVATIONS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 68: L1/L2 Elastic Net -->
+<section>
+  <h2>Elastic Net &mdash; The Best of Both</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>In practice, L1 alone can be unstable (selects one of several correlated features arbitrarily). Elastic Net combines both:</p>
+  <div class="equation-box">
+    <span class="katex-display">R(\boldsymbol{w}) = \alpha \sum_j |w_j| + (1-\alpha) \sum_j w_j^2</span>
+    <div class="annotation">&alpha;=1 is pure Lasso; &alpha;=0 is pure Ridge. &alpha;=0.5 is a common default.</div>
+  </div>
+  <ul>
+    <li>Groups of correlated features: L1 picks one, Elastic Net keeps all (with reduced weights)</li>
+    <li>Feature selection: still happens via the L1 component</li>
+    <li>Stability: the L2 component provides regularisation even when L1 saturates</li>
+  </ul>
+</section>
+
+<!-- SLIDE 69: XGBoost for Squared Loss — Concrete Example -->
+<section>
+  <h2>XGBoost &mdash; Worked Example (Squared Loss)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>For squared loss <span class="katex-inline">\ell(y, \hat{y}) = (y - \hat{y})^2</span>:</p>
+  <div class="derivation-step">
+    <div class="step-label">Compute g<sub>i</sub> and h<sub>i</sub></div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">g_i = \frac{\partial (y_i - \hat{y}_i)^2}{\partial \hat{y}_i} = -2(y_i - \hat{y}_i) = -2r_i</span>
+    </div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">h_i = \frac{\partial^2 (y_i - \hat{y}_i)^2}{\partial \hat{y}_i^2} = 2</span>
+    </div>
+    <p style="font-size:0.85em;"><strong>For squared loss, the Hessian is constant</strong> &mdash; all samples have equal curvature. For logistic loss, <span class="katex-inline">h_i = \hat{p}_i(1-\hat{p}_i)</span> varies per sample, which is where second-order information truly helps.</p>
+  </div>
+</section>
+
+<!-- SLIDE 70: CatBoost -->
+<section>
+  <h2>CatBoost &mdash; Ordered Boosting</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Target Leakage Problem</h3>
+      <p>Standard gradient boosting computes residuals using <em>all</em> training data, including the sample being predicted. This creates a subtle form of overfitting called <strong>prediction shift</strong>.</p>
+    </div>
+    <div class="col">
+      <h3>Ordered Boosting</h3>
+      <ul style="font-size:0.85em;">
+        <li>Randomly permute training samples</li>
+        <li>For sample <em>i</em>, compute residuals using only samples 1..<em>i</em>-1</li>
+        <li>Eliminates prediction shift</li>
+        <li>Native categorical feature handling (ordered target statistics)</li>
+      </ul>
+    </div>
+  </div>
+  <table style="font-size:0.78em;">
+    <thead><tr><th>Library</th><th>Key Innovation</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td>XGBoost</td><td>2nd-order Taylor, regularised objective</td><td>General purpose, GPU support</td></tr>
+      <tr><td>LightGBM</td><td>Histogram splits, GOSS, leaf-wise</td><td>Large datasets, speed</td></tr>
+      <tr><td>CatBoost</td><td>Ordered boosting, native categoricals</td><td>Categorical-heavy data, less tuning</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FAIRNESS AND DISPARATE IMPACT
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 71: Fairness -->
+<section>
+  <h2>Fairness &mdash; When Models Discriminate</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Even if you remove race and gender from the features, a model can still discriminate. Why?</p>
+  <ul>
+    <li><strong>Proxy features:</strong> Postal code correlates with race. School name correlates with socioeconomic status.</li>
+    <li><strong>Historical bias:</strong> Training data reflects past discrimination (fewer loans approved for certain groups).</li>
+    <li><strong>Measurement bias:</strong> The target variable itself may be biased (arrests &ne; actual crime rates).</li>
+  </ul>
+  <div class="callout callout-error">
+    <strong>Disparate impact test (US 4/5ths rule):</strong> If the selection rate for a protected group is less than 80% of the highest selection rate, there is evidence of disparate impact.
+    <div style="margin-top:6px;">
+      <span class="katex-inline">\frac{\text{selection rate}_{minority}}{\text{selection rate}_{majority}} \geq 0.8</span>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 72: LIME -->
+<section>
+  <h2>LIME &mdash; Local Interpretable Explanations</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Where SHAP gives the theoretically optimal attribution, <strong>LIME</strong> provides a pragmatic alternative:</p>
+  <ol>
+    <li>Perturb the input around the instance to explain</li>
+    <li>Get model predictions for each perturbation</li>
+    <li>Fit a simple, interpretable model (linear regression) on the perturbations</li>
+    <li>The coefficients of the simple model are the explanations</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">\xi(x) = \arg\min_{g \in G} \; \mathcal{L}(f, g, \pi_x) + \Omega(g)</span>
+    <div class="annotation">Find simple model g that best approximates f locally (weighted by proximity &pi;<sub>x</sub>) with low complexity &Omega;(g)</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>SHAP vs LIME:</strong> SHAP is mathematically grounded (Shapley axioms) but slower. LIME is fast and flexible but can produce inconsistent explanations (violates efficiency axiom).
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LAB SETUP
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 73: Lab Overview -->
+<section>
+  <h2>Lab Exercises &mdash; Overview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Exercise</th><th>Focus</th><th>Engines Used</th></tr></thead>
+    <tbody>
+      <tr><td>ex_1</td><td>Bias-variance &amp; gradient boosting</td><td>TrainingPipeline, ModelSpec, EvalSpec</td></tr>
+      <tr><td>ex_2</td><td>Class imbalance &amp; calibration</td><td>ModelVisualizer (calibration, PR curve)</td></tr>
+      <tr><td>ex_3</td><td>SHAP &amp; LIME explainability</td><td>ModelVisualizer (feature_importance)</td></tr>
+      <tr><td>ex_4</td><td>Workflow orchestration</td><td>WorkflowBuilder, LocalRuntime, custom nodes</td></tr>
+      <tr><td>ex_5</td><td>HPO &amp; model registry</td><td>HyperparameterSearch, ModelRegistry</td></tr>
+      <tr><td>ex_6</td><td>Full production pipeline</td><td>All M3 engines combined</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Open your exercise files:</strong> <code>modules/ascent03/local/ex_1.py</code><br>
+    Scaffolding is ~50% &mdash; you will write method calls, setup code, and some logic from the Kailash API documentation.
+  </div>
+</section>
+
+<!-- SLIDE 74: Dataset -->
+<section>
+  <h2>Dataset &mdash; HDB Resale Prices</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from shared.data_loader import ASCENTDataLoader
+import polars as pl
+
+loader = ASCENTDataLoader()
+df = loader.load("ascent03", "hdb_resale.csv")
+
+print(df.shape)       # (15_000_000, 11)
+print(df.columns)     # town, flat_type, storey_range, floor_area_sqm,
+                       # flat_model, lease_commence_date, resale_price, ...
+print(df.head(3))</code></pre>
+  <div class="columns">
+    <div class="col">
+      <h3>Regression Target</h3>
+      <p><code>resale_price</code> (continuous)</p>
+    </div>
+    <div class="col">
+      <h3>Classification Target</h3>
+      <p><code>above_median</code> (binary &mdash; for imbalance exercises)</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DISCUSSION PROMPTS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 75: Discussion 1 -->
+<section>
+  <h2>Discussion: The SHAP Dilemma</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-warning" style="font-size:1em;">
+    <strong>Scenario:</strong> Your model predicts a customer will default on their loan. The SHAP values show the top 3 contributing features are:
+    <ol>
+      <li><strong>Postal code</strong> (SHAP = +0.25)</li>
+      <li><strong>Employment length</strong> (SHAP = -0.15)</li>
+      <li><strong>Number of dependents</strong> (SHAP = +0.10)</li>
+    </ol>
+    <em>Postal code is a known proxy for ethnicity in your market.</em>
+  </div>
+  <h3>Questions for the room:</h3>
+  <ul>
+    <li>Would you deploy this model? Why or why not?</li>
+    <li>How would you explain this decision to the regulator?</li>
+    <li>What would you change to make the model fairer without losing accuracy?</li>
+  </ul>
+</section>
+
+<!-- SLIDE 76: Discussion 2 -->
+<section>
+  <h2>Discussion: The 3am DriftMonitor Alert</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-error" style="font-size:1em;">
+    <strong>Scenario:</strong> Your DriftMonitor fires at 3am. The PSI score for the <code>floor_area_sqm</code> feature has jumped from 0.02 to 0.35 (above the 0.2 threshold). Model performance has not degraded <em>yet</em>.
+  </div>
+  <h3>What is your runbook?</h3>
+  <ol>
+    <li>Do you take the model offline immediately?</li>
+    <li>What data would you investigate first?</li>
+    <li>When would you retrain vs wait?</li>
+    <li>Who needs to be notified?</li>
+  </ol>
+  <div class="callout callout-kailash">
+    <strong>In M4</strong>, we will build the <code>DriftMonitor</code> engine that generates these alerts. For now, think about the <em>human process</em> around model monitoring.
+  </div>
+</section>
+
+<!-- SLIDE 77: Discussion 3 -->
+<section>
+  <h2>Discussion: Calibration in Practice</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="callout callout-warning" style="font-size:1em;">
+    <strong>Scenario:</strong> You are building a model to prioritise leads for a sales team. The model outputs a "conversion probability" for each lead. The sales team sorts by probability and calls the top 50 each day.
+  </div>
+  <h3>Does calibration matter here?</h3>
+  <ul>
+    <li>The team only cares about <strong>ranking</strong> (top 50), not the actual probability values</li>
+    <li>Would Platt scaling change which leads are in the top 50?</li>
+    <li>When <em>would</em> calibration matter for this business? (Hint: think about thresholds and expected revenue calculations)</li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SYNTHESIS
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 78: Key Takeaways — Foundations -->
+<section>
+  <h2>Key Takeaways</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Everyone Should Remember</h3>
+  <ul>
+    <li><strong>Overfitting</strong> &mdash; More complex is not always better. Test on data the model has never seen.</li>
+    <li><strong>Accuracy is misleading</strong> for imbalanced data &mdash; use F1, AUPRC, or calibrated probabilities.</li>
+    <li><strong>Explainability</strong> is not optional &mdash; SHAP tells you <em>why</em> the model made each prediction.</li>
+    <li><strong>Models have lifecycles</strong> &mdash; staging, shadow, production, archived.</li>
+    <li>A <strong>production pipeline</strong> connects training, evaluation, registration, and governance.</li>
+  </ul>
+</section>
+
+<!-- SLIDE 79: Key Takeaways — Theory -->
+<section>
+  <h2>Key Takeaways</h2>
+  <span class="marker marker-theory">Theory</span>
+  <h3>If You Followed the Math</h3>
+  <ul>
+    <li><strong>Bias-variance decomposition:</strong> EPE = Bias&sup2; + Variance + Noise &mdash; three independent, irreducible terms.</li>
+    <li><strong>Regularisation</strong> is placing a prior on weights (L2 = Gaussian, L1 = Laplace).</li>
+    <li><strong>XGBoost</strong> uses 2nd-order Taylor expansion for curvature-aware optimisation.</li>
+    <li><strong>Focal Loss</strong> down-weights easy examples via <span class="katex-inline">(1-p_t)^\gamma</span>, focusing on hard cases.</li>
+    <li><strong>Shapley values</strong> are the unique attribution satisfying efficiency, symmetry, dummy, and linearity.</li>
+    <li><strong>Calibration</strong> and <strong>proper scoring rules</strong> matter more than raw accuracy.</li>
+  </ul>
+</section>
+
+<!-- SLIDE 80: Key Takeaways — Advanced -->
+<section>
+  <h2>Key Takeaways</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <h3>For the Experts</h3>
+  <ul>
+    <li><strong>Double descent:</strong> The classical bias-variance picture is incomplete for over-parameterised models.</li>
+    <li><strong>NGBoost:</strong> Natural gradient boosting for distributional predictions with uncertainty.</li>
+    <li><strong>Proper scoring rules:</strong> Brier score is proper (unique minimum at true probability); accuracy is not.</li>
+    <li><strong>Counterfactual explanations:</strong> "What would need to change?" is more actionable than "What contributed?"</li>
+    <li><strong>Conformal prediction:</strong> Distribution-free guaranteed coverage &mdash; the gold standard for uncertainty.</li>
+  </ul>
+</section>
+
+<!-- SLIDE 81: Cumulative Kailash Map Updated -->
+<section>
+  <h2>Kailash Engine Map &mdash; After Module 3</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="svg-diagram">
+    <svg width="850" height="250" viewBox="0 0 850 250">
+      <!-- M1 cluster -->
+      <rect x="10" y="20" width="250" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="135" y="42" text-anchor="middle" font-size="12" font-weight="700" fill="#22C55E">Module 1 — Explore</text>
+      <text x="135" y="62" text-anchor="middle" font-size="10" fill="#334155">DataExplorer | PreprocessingPipeline | ModelVisualizer</text>
+      <!-- M2 cluster -->
+      <rect x="290" y="20" width="250" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="415" y="42" text-anchor="middle" font-size="12" font-weight="700" fill="#3B82F6">Module 2 — Experiment</text>
+      <text x="415" y="62" text-anchor="middle" font-size="10" fill="#334155">FeatureStore | FeatureEngineer | ExperimentTracker</text>
+      <!-- M3 cluster -->
+      <rect x="10" y="100" width="530" height="130" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
+      <text x="275" y="125" text-anchor="middle" font-size="14" font-weight="700" fill="#0D9488">Module 3 — Train, Tune, Deploy</text>
+      <rect x="25" y="140" width="120" height="35" rx="5" fill="white" stroke="#0D9488"/>
+      <text x="85" y="162" text-anchor="middle" font-size="10" fill="#334155">TrainingPipeline</text>
+      <rect x="160" y="140" width="120" height="35" rx="5" fill="white" stroke="#0D9488"/>
+      <text x="220" y="162" text-anchor="middle" font-size="10" fill="#334155">HPO Search</text>
+      <rect x="295" y="140" width="110" height="35" rx="5" fill="white" stroke="#0D9488"/>
+      <text x="350" y="162" text-anchor="middle" font-size="10" fill="#334155">ModelRegistry</text>
+      <rect x="420" y="140" width="110" height="35" rx="5" fill="white" stroke="#0D9488"/>
+      <text x="475" y="162" text-anchor="middle" font-size="10" fill="#334155">WorkflowBuilder</text>
+      <rect x="25" y="185" width="120" height="35" rx="5" fill="white" stroke="#0D9488"/>
+      <text x="85" y="207" text-anchor="middle" font-size="10" fill="#334155">DataFlow</text>
+      <!-- M4 preview -->
+      <rect x="580" y="100" width="250" height="130" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6"/>
+      <text x="705" y="128" text-anchor="middle" font-size="12" font-weight="600" fill="#94A3B8">Module 4 — Coming Next</text>
+      <text x="705" y="155" text-anchor="middle" font-size="10" fill="#CBD5E1">AutoMLEngine</text>
+      <text x="705" y="172" text-anchor="middle" font-size="10" fill="#CBD5E1">EnsembleEngine</text>
+      <text x="705" y="189" text-anchor="middle" font-size="10" fill="#CBD5E1">DriftMonitor</text>
+      <text x="705" y="206" text-anchor="middle" font-size="10" fill="#CBD5E1">InferenceServer</text>
+    </svg>
+  </div>
+</section>
+
+<!-- SLIDE 82: Connection to Module 4 -->
+<section>
+  <h2>What Comes Next &mdash; Module 4</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Advanced ML &mdash; Unsupervised Methods and Deep Learning</h3>
+  <div class="columns">
+    <div class="col">
+      <h3>Unsupervised Learning</h3>
+      <ul>
+        <li>K-means, spectral clustering, HDBSCAN</li>
+        <li>EM algorithm and GMMs</li>
+        <li>PCA, UMAP, t-SNE</li>
+        <li>Anomaly detection</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Production Monitoring</h3>
+      <ul>
+        <li><code>DriftMonitor</code> &mdash; PSI, KS test</li>
+        <li><code>EnsembleEngine</code> &mdash; blend, stack, bag</li>
+        <li>Deep learning foundations (CNNs, backprop)</li>
+        <li><code>InferenceServer</code> &mdash; ONNX serving</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Opening question for M4:</strong> "Credit Suisse's AML model had 99.9% accuracy and was completely useless. Would YOU trust a system that cries wolf 10,000 times a day?"
+  </div>
+</section>
+
+<!-- SLIDE 83: Reliability Diagram Deep Dive -->
+<section>
+  <h2>Reliability Diagram &mdash; Reading the Plot</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>How to Read It</h3>
+      <ul style="font-size:0.85em;">
+        <li>X-axis: predicted probability (binned)</li>
+        <li>Y-axis: observed frequency of positive class</li>
+        <li><strong>Diagonal line</strong> = perfect calibration</li>
+        <li>Points above diagonal: model is <em>underconfident</em></li>
+        <li>Points below diagonal: model is <em>overconfident</em></li>
+      </ul>
+      <p style="font-size:0.82em;">Bar chart below shows sample count per bin &mdash; estimates in sparse bins are unreliable.</p>
+    </div>
+    <div class="col">
+      <h3>Common Patterns</h3>
+      <table style="font-size:0.78em;">
+        <thead><tr><th>Shape</th><th>Diagnosis</th></tr></thead>
+        <tbody>
+          <tr><td>S-shaped below</td><td>Overconfident (typical for deep learning)</td></tr>
+          <tr><td>S-shaped above</td><td>Underconfident (typical for Random Forests)</td></tr>
+          <tr><td>Sigmoid-shifted</td><td>Platt scaling will fix this</td></tr>
+          <tr><td>Non-monotonic</td><td>Needs isotonic regression</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 84: Singapore Context — MAS Guidelines -->
+<section>
+  <h2>Singapore Context &mdash; MAS FEAT Principles</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>The Monetary Authority of Singapore (MAS) published the <strong>FEAT Principles</strong> for responsible AI in financial services:</p>
+  <table>
+    <thead><tr><th>Principle</th><th>M3 Relevance</th><th>Kailash Engine</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Fairness</strong></td><td>Disparate impact testing, bias monitoring</td><td>ModelVisualizer (SHAP by group)</td></tr>
+      <tr><td><strong>Ethics</strong></td><td>Model cards document ethical considerations</td><td>ModelRegistry (metadata)</td></tr>
+      <tr><td><strong>Accountability</strong></td><td>Audit trail of all model decisions</td><td>DataFlow, ExperimentTracker</td></tr>
+      <tr><td><strong>Transparency</strong></td><td>SHAP explanations for every prediction</td><td>ModelVisualizer</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    In M6, we will implement full PACT governance on top of these principles. For now, model cards and SHAP values lay the foundation.
+  </div>
+</section>
+
+<!-- SLIDE 85: Cross-Validation Deep Dive -->
+<section>
+  <h2>Cross-Validation &mdash; Reliable Performance Estimates</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A single train/test split is noisy. <strong>K-fold cross-validation</strong> gives a more reliable estimate:</p>
+  <ol>
+    <li>Split data into K equal folds</li>
+    <li>For each fold: train on K-1 folds, evaluate on the held-out fold</li>
+    <li>Report the mean and standard deviation of the K scores</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">\widehat{\text{EPE}} = \frac{1}{K}\sum_{k=1}^{K} \ell(y^{(k)}, \hat{f}^{(-k)}(x^{(k)}))</span>
+    <div class="annotation">Average loss across K held-out folds. The superscript (-k) means "trained without fold k."</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>For time series:</strong> Standard K-fold violates temporal ordering. Use <strong>time-series split</strong> (expanding window) instead. Kailash's <code>EvalSpec</code> handles this with <code>cv_strategy="timeseries"</code>.
+  </div>
+</section>
+
+<!-- SLIDE 86: SHAP Force Plot -->
+<section>
+  <h2>SHAP &mdash; Reading a Force Plot</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A SHAP force plot shows how each feature pushes a <strong>single prediction</strong> from the average prediction to its final value.</p>
+  <div class="callout callout-foundations">
+    <strong>How to read it:</strong>
+    <ul>
+      <li><span style="color:#DC2626;font-weight:600;">Red features</span> push the prediction <strong>higher</strong></li>
+      <li><span style="color:#2563EB;font-weight:600;">Blue features</span> push the prediction <strong>lower</strong></li>
+      <li>Wider bars = larger contribution</li>
+      <li>Base value (left) = average prediction across all data</li>
+      <li>Output value (right) = this specific prediction</li>
+    </ul>
+  </div>
+  <p style="font-size:0.85em;"><strong>Global vs Local:</strong> A summary plot (beeswarm) shows all samples' SHAP values for global importance. A force plot explains one prediction. Both use the same Shapley values.</p>
+</section>
+
+<!-- SLIDE 87: Workflow Patterns -->
+<section>
+  <h2>Workflow Patterns &mdash; Beyond Linear</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Sequential Pipeline</h3>
+      <pre style="font-size:0.65em;"><code>A → B → C → D</code></pre>
+      <p style="font-size:0.82em;">Simple data processing chains</p>
+
+      <h3>Parallel Fan-out</h3>
+      <pre style="font-size:0.65em;"><code>    ┌→ B ─┐
+A → │     │ → D
+    └→ C ─┘</code></pre>
+      <p style="font-size:0.82em;">Train multiple models simultaneously</p>
+    </div>
+    <div class="col">
+      <h3>Conditional Branch</h3>
+      <pre style="font-size:0.65em;"><code>      ┌→ C (if pass)
+A → B │
+      └→ D (if fail)</code></pre>
+      <p style="font-size:0.82em;">Quality gates and governance</p>
+
+      <h3>Cyclic (with convergence)</h3>
+      <pre style="font-size:0.65em;"><code>A → B → C ─┐
+    ↑       │ (until converged)
+    └───────┘</code></pre>
+      <p style="font-size:0.82em;">Iterative refinement, EM algorithm</p>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 88: DataFlow Schema Design -->
+<section>
+  <h2>DataFlow &mdash; Schema Design for ML</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">@db.model
+class ModelVersion:
+    """Tracks every model version through its lifecycle."""
+    model_name: str = field(index=True)
+    version: str
+    algorithm: str
+    stage: str = field(default="staging")  # staging|shadow|production|archived
+    training_data_hash: str                 # reproducibility
+    feature_schema_version: str             # which features were used
+    metrics: dict                           # {"f1": 0.87, "auc": 0.94}
+    shap_top_features: list                 # ["floor_area", "town", ...]
+    model_card: dict                        # Mitchell et al. template
+    promoted_at: str | None = None
+    promoted_by: str | None = None          # governance: who approved</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Notice the governance fields:</strong> <code>promoted_by</code> and <code>stage</code> create an audit trail. In M6, PACT governance will enforce who can promote models.
+  </div>
+</section>
+
+<!-- SLIDE 89: Error Analysis -->
+<section>
+  <h2>Error Analysis &mdash; Where Does Your Model Fail?</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>After training, look at the <strong>worst predictions</strong>. Patterns in errors reveal systematic problems:</p>
+  <table>
+    <thead><tr><th>Error Pattern</th><th>Diagnosis</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>High error on specific town</td><td>Insufficient data for that segment</td><td>More data or segment-specific model</td></tr>
+      <tr><td>High error on extreme prices</td><td>Distribution shift at tails</td><td>Log-transform target, add features</td></tr>
+      <tr><td>High error on new flat types</td><td>Out-of-distribution</td><td>Add flat type embeddings, flag OOD</td></tr>
+      <tr><td>Systematic over-prediction</td><td>Bias in target variable</td><td>Recalibrate, check data collection</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Zillow's failure was partly an error analysis failure.</strong> They did not systematically analyse where their model was worst &mdash; those were exactly the homes that lost the most money.
+  </div>
+</section>
+
+<!-- SLIDE 90: Interop — Connecting to sklearn -->
+<section>
+  <h2>Kailash Interop &mdash; Bridging Ecosystems</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Kailash ML is polars-native, but you may need to interface with sklearn or other libraries. The interop module handles conversion:</p>
+  <pre><code class="language-python">from kailash_ml.interop import to_sklearn_input, from_sklearn_output
+
+# Convert polars DataFrame to sklearn-compatible format
+X_train, y_train = to_sklearn_input(df_train, target="resale_price")
+
+# Use any sklearn model
+from sklearn.ensemble import GradientBoostingRegressor
+model = GradientBoostingRegressor(n_estimators=100)
+model.fit(X_train, y_train)
+
+# Convert predictions back to polars
+predictions = from_sklearn_output(model.predict(X_test), column_name="predicted")</code></pre>
+  <div class="callout callout-kailash">
+    <strong>When to use interop:</strong> When Kailash does not yet wrap a specific algorithm, or when integrating with existing sklearn pipelines. Prefer native Kailash engines when available.
+  </div>
+</section>
+
+<!-- SLIDE 91: Ensemble Methods Preview -->
+<section>
+  <h2>Ensembles &mdash; Combining Models</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Why use one model when you can use many? Ensemble methods reduce variance by combining diverse models.</p>
+  <table>
+    <thead><tr><th>Strategy</th><th>How It Works</th><th>When to Use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Blending</strong></td><td>Weighted average of predictions</td><td>Quick improvement, minimal complexity</td></tr>
+      <tr><td><strong>Stacking</strong></td><td>Train a meta-model on base model predictions</td><td>Maximum performance, more complexity</td></tr>
+      <tr><td><strong>Bagging</strong></td><td>Train on bootstrap samples, average</td><td>Reducing variance (Random Forest)</td></tr>
+      <tr><td><strong>Boosting</strong></td><td>Train sequentially on residuals</td><td>Reducing bias (XGBoost, LightGBM)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>M4 preview:</strong> <code>EnsembleEngine</code> implements all four strategies: <code>blend()</code>, <code>stack()</code>, <code>bag()</code>, <code>boost()</code>. You will use it in Module 4 exercises.
+  </div>
+</section>
+
+<!-- SLIDE 92: Common Pitfalls -->
+<section>
+  <h2>Common Pitfalls &mdash; Things That Go Wrong</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Pitfall</th><th>Symptom</th><th>Prevention</th></tr></thead>
+    <tbody>
+      <tr><td>Data leakage</td><td>Suspiciously high test accuracy</td><td>Temporal splits, pipeline validation</td></tr>
+      <tr><td>SMOTE before split</td><td>Inflated test metrics</td><td>SMOTE only on training fold</td></tr>
+      <tr><td>No calibration</td><td>Wrong threshold decisions</td><td><code>EvalSpec(calibration=True)</code></td></tr>
+      <tr><td>No SHAP analysis</td><td>Model uses spurious features</td><td>Always inspect top features</td></tr>
+      <tr><td>No model card</td><td>Undocumented model in production</td><td>ModelRegistry metadata fields</td></tr>
+      <tr><td>No versioning</td><td>"Which model is in production?"</td><td>ModelRegistry lifecycle</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SLIDE 93: Proper Scoring Rules — Deeper -->
+<section>
+  <h2>Proper Scoring Rules &mdash; Why Brier Works</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>A scoring rule <span class="katex-inline">S(\hat{p}, y)</span> is <strong>strictly proper</strong> if:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathbb{E}_{y \sim p}[S(\hat{p}, y)] > \mathbb{E}_{y \sim p}[S(p, y)] \quad \forall\, \hat{p} \neq p</span>
+    <div class="annotation">The expected score is uniquely minimised when the reported probability equals the true probability</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Brier Score Decomposition</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{BS} = \underbrace{\text{REL}}_{\text{calibration}} - \underbrace{\text{RES}}_{\text{resolution}} + \underbrace{\text{UNC}}_{\text{uncertainty}}</span>
+      </div>
+      <p style="font-size:0.82em;">REL measures calibration, RES measures how much predictions vary, UNC is entropy of the base rate.</p>
+    </div>
+    <div class="col">
+      <h3>Log Loss (also proper)</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{LL} = -\frac{1}{n}\sum_i y_i\log\hat{p}_i + (1-y_i)\log(1-\hat{p}_i)</span>
+      </div>
+      <p style="font-size:0.82em;">More sensitive to confident wrong predictions. Penalises <span class="katex-inline">\hat{p} \to 0</span> for <span class="katex-inline">y=1</span> very heavily.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 94: Feature Importance Methods Comparison -->
+<section>
+  <h2>Feature Importance &mdash; Methods Compared</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>Type</th><th>Consistent?</th><th>Speed</th></tr></thead>
+    <tbody>
+      <tr><td>Gain (split improvement)</td><td>Global</td><td>No &mdash; biased toward high-cardinality features</td><td>Fast</td></tr>
+      <tr><td>Permutation importance</td><td>Global</td><td>No &mdash; affected by correlated features</td><td>Medium</td></tr>
+      <tr><td>SHAP (TreeSHAP)</td><td>Global + Local</td><td><strong>Yes</strong> &mdash; Shapley axioms guarantee consistency</td><td>Medium</td></tr>
+      <tr><td>LIME</td><td>Local</td><td>No &mdash; inconsistent across perturbation samples</td><td>Slow</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Recommendation:</strong> Use SHAP as the primary explainability tool. Use permutation importance as a quick sanity check. Avoid relying on split-based gain for feature importance.
+  </div>
+</section>
+
+<!-- SLIDE 95: Model Selection Decision Tree -->
+<section>
+  <h2>Which Algorithm? &mdash; A Decision Guide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Scenario</th><th>Algorithm</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Tabular, structured, &lt;100K rows</td><td>LightGBM or XGBoost</td><td>Best default for tabular data</td></tr>
+      <tr><td>Many categorical features</td><td>CatBoost</td><td>Native categorical handling</td></tr>
+      <tr><td>Need interpretability</td><td>Logistic regression, small tree</td><td>Directly interpretable</td></tr>
+      <tr><td>Need uncertainty</td><td>NGBoost or conformal</td><td>Distributional output</td></tr>
+      <tr><td>Huge data (&gt;10M rows)</td><td>LightGBM (GOSS)</td><td>Designed for scale</td></tr>
+      <tr><td>Images/text</td><td>Deep learning (M4)</td><td>Feature learning required</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <code>TrainingPipeline</code> with <code>ModelSpec(algorithm="auto")</code> will benchmark multiple algorithms and select the best one based on your <code>EvalSpec</code>.
+  </div>
+</section>
+
+<!-- SLIDE 96: Governance Preview -->
+<section>
+  <h2>From Model Registry to Full Governance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Today we built the foundation: model lifecycle, audit trail, quality gates. In Module 6, we add the governance layer:</p>
+  <div class="columns">
+    <div class="col">
+      <h3>M3 (Today)</h3>
+      <ul>
+        <li>ModelRegistry: version and stage management</li>
+        <li>Quality gates in workflows (ConditionalNode)</li>
+        <li>DataFlow persistence for audit</li>
+        <li>Model cards for documentation</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>M6 (Future)</h3>
+      <ul>
+        <li>PACT: D/T/R accountability grammar</li>
+        <li>GovernanceEngine: who can promote models</li>
+        <li>Operating envelopes: what the model can do</li>
+        <li>PactGovernedAgent: automated governance enforcement</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 97: Assessment Preview -->
+<section>
+  <h2>Assessment Preview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Quiz Topics (Module 3)</h3>
+  <ul>
+    <li>Bias-variance trade-off: identify bias vs variance in a given scenario</li>
+    <li>Regularisation: when to use L1 vs L2 and why</li>
+    <li>Class imbalance: critique a given approach (e.g., SMOTE before split)</li>
+    <li>SHAP interpretation: read a force plot and explain a prediction</li>
+    <li>Model lifecycle: which stage should this model be in?</li>
+    <li>Debug a Kailash pipeline: find the error in a WorkflowBuilder definition</li>
+  </ul>
+  <div class="callout callout-warning">
+    <strong>Assessment style:</strong> No pure recall questions. Every question requires applying what you learned to a specific scenario, reading output from a Kailash engine, or debugging real code.
+  </div>
+</section>
+
+<!-- SLIDE 98: Summary — The Zillow Lesson Revisited -->
+<section>
+  <h2>Revisiting Zillow &mdash; What We Now Know</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>At the start of this module, we asked: how can an accurate model lose $500 million?</p>
+  <table>
+    <thead><tr><th>Zillow's Gap</th><th>Today's Solution</th><th>Kailash Engine</th></tr></thead>
+    <tbody>
+      <tr><td>Uncalibrated confidence</td><td>Platt scaling + conformal intervals</td><td><code>EvalSpec(calibration=True)</code></td></tr>
+      <tr><td>No feature understanding</td><td>SHAP + model cards</td><td><code>ModelVisualizer</code></td></tr>
+      <tr><td>No drift detection</td><td>Monitoring + alerting (M4)</td><td><code>DriftMonitor</code></td></tr>
+      <tr><td>No governance gate</td><td>Quality gates + model lifecycle</td><td><code>ModelRegistry</code> + <code>ConditionalNode</code></td></tr>
+      <tr><td>No reproducibility</td><td>Pipeline orchestration</td><td><code>WorkflowBuilder</code> + <code>DataFlow</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SLIDE 99: Final Provocation -->
+<section>
+  <h2>One Last Question</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="text-align:center; margin:40px 0;">
+    <p style="font-size:1.4em; font-style:italic; color:var(--ascent-depth);">
+      "Your model is 95% accurate. Your business partner asks:<br>
+      <strong>'Should we put it in production?'</strong><br><br>
+      What questions do you ask before answering?"
+    </p>
+  </div>
+  <div class="callout callout-kailash">
+    If you can answer that question well, you have understood Module 3.
+  </div>
+</section>
+
+<!-- SLIDE 100: Closing -->
+<section class="title-slide">
+  <h1>Module 3 Complete</h1>
+  <h2 style="border: none;">Supervised ML: Theory to Production</h2>
+  <p class="subtitle">Next: Module 4 &mdash; Advanced ML: Unsupervised Methods and Deep Learning</p>
+  <p style="margin-top:40px; color:#64748B; font-size:0.8em;">
+    Professional Certificate in Machine Learning &mdash; Terrene Open Academy<br>
+    Powered by Kailash Python SDK &mdash; Terrene Foundation
+  </p>
+  <div class="slide-footer">
+    <span>ASCENT Module 3</span>
+    <span>Terrene Foundation</span>
+  </div>
+</section>
+
+</div><!-- .slides -->
+</div><!-- .reveal -->
+
+<!-- Reveal.js 5.1.0 -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+
+<!-- KaTeX -->
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.04,
+    hash: true,
+    history: true,
+    center: false,
+    transition: 'slide',
+    plugins: [RevealHighlight, RevealNotes],
+  });
+
+  // Render KaTeX after Reveal initialises
+  Reveal.on('ready', () => {
+    // Render display-mode equations
+    document.querySelectorAll('.katex-display').forEach(el => {
+      katex.render(el.textContent, el, { displayMode: true, throwOnError: false });
+    });
+    // Render inline equations
+    document.querySelectorAll('.katex-inline').forEach(el => {
+      katex.render(el.textContent, el, { displayMode: false, throwOnError: false });
+    });
+  });
+</script>
+</body>
+</html>

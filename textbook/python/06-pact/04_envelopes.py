@@ -51,7 +51,7 @@ cto_envelope = ConstraintEnvelopeConfig(
     ),
     data_access=DataAccessConstraintConfig(
         read_paths=["/engineering/**", "/shared/**"],
-        write_paths=["/engineering/**"],
+        write_paths=["/engineering/**", "/shared/**"],
     ),
 )
 
@@ -78,7 +78,7 @@ lead_envelope = ConstraintEnvelopeConfig(
     ),
     data_access=DataAccessConstraintConfig(
         read_paths=["/engineering/**"],
-        write_paths=["/engineering/backend/**"],
+        write_paths=["/engineering/**"],
     ),
 )
 

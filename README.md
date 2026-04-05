@@ -1,8 +1,8 @@
-# ASCENT — Professional Certificate in Machine Learning
+# ASCENT — Practical Course in Machine Learning
 
 A rigorous, production-grade machine learning curriculum for working professionals. 34 hands-on exercises across 6 modules, delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py).
 
-**License**: Apache 2.0 | **Python**: 3.10+ | **Data**: [Polars](https://pola.rs)-native
+**License**: Apache 2.0 | **Python**: 3.10+ | **Data**: [Polars](https://pola.rs)-native | **New to Polars?** See the [cheatsheet](docs/polars-cheatsheet.md)
 
 > This curriculum is under active development. All 34 exercises and solutions are complete. Lecture slides, quizzes, and datasets are in progress. See [Status](#status) for details.
 
@@ -42,7 +42,16 @@ Every module has two layers:
 | **5**  | LLMs, AI Agents & RAG             | Transformer internals, RAG evaluation (RAGAS), agent safety                    | Kaizen Delegate, ReActAgent, 6 ML agents         |
 | **6**  | Alignment, Governance & RL        | LoRA/DPO/GRPO, EU AI Act, PACT D/T/R, PPO, Bellman equations                   | AlignmentPipeline, GovernanceEngine, Nexus       |
 
-Each module is designed for 7 hours (3h lecture + 3h lab + 1h assessment). Total: 42 hours of structured learning.
+Each module is designed for 7 hours (3h lecture + 3h lab + 1h assessment). Total: 42 hours of structured learning. Modules 4-6 are denser — some exercises may extend beyond class time as take-home practice.
+
+### After completing this course, you will be able to:
+
+- Profile and clean messy real-world data at scale using polars and automated data quality tools
+- Design and execute A/B tests with proper power analysis, variance reduction (CUPED), and causal inference
+- Train, calibrate, and interpret production ML models with full SHAP explainability and conformal prediction
+- Deploy models as governed APIs with drift monitoring, version control, and audit trails
+- Build AI agent systems with structured outputs, tool use, RAG retrieval, and cost budgets
+- Implement organizational governance that scales: access control, operating envelopes, and tamper-evident logging
 
 ---
 
@@ -82,6 +91,8 @@ Kailash is maintained by the [Terrene Foundation](https://terrene.foundation), a
 
 ## Quick Start
 
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager).
+
 ```bash
 git clone https://github.com/terrene-foundation/ascent.git
 cd ascent
@@ -90,6 +101,9 @@ cp .env.example .env  # API keys needed for Modules 5-6
 
 # Run your first exercise
 uv run python modules/ascent01/local/ex_1.py
+
+# For Modules 4-6 (deep learning, agents, RL, alignment):
+uv sync --extra full
 ```
 
 Three delivery formats for every exercise:
@@ -99,6 +113,8 @@ Three delivery formats for every exercise:
 | Local Python | `modules/ascent*/local/*.py`        | Full async support, Nexus deployment |
 | Jupyter      | `modules/ascent*/notebooks/*.ipynb` | Interactive exploration              |
 | Google Colab | `modules/ascent*/colab/*.ipynb`     | Zero-install, GPU access             |
+
+**Recommended**: Local Python for classroom delivery. Use Colab if you cannot install software on your machine. Note: Nexus deployment exercises (M4, M6) are local-only.
 
 See [docs/setup-guide.md](docs/setup-guide.md) for detailed installation instructions.
 

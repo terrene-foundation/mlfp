@@ -2,14 +2,14 @@
 resolver = "2"
 members = [
     "00-core",
-    # "01-dataflow",
-    # "02-nexus",
-    # "03-kaizen",
-    # "04-agents",
-    # "05-ml",
-    # "06-pact",
-    # "07-align",
-    # "08-rl",
+    "01-dataflow",
+    "02-nexus",
+    "03-kaizen",
+    "04-agents",
+    "05-ml",
+    "06-pact",
+    "07-align",
+    "08-rl",
 ]
 
 [workspace.package]

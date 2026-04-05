@@ -4,56 +4,50 @@
 
 1. `CLAUDE.md` -- 6 absolute directives, "Professional Certificate in Machine Learning"
 2. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- Definitive 48-lesson curriculum
-3. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- v4 mapping table (all 48 exercises traced to source)
-4. `textbook/README.md` -- Textbook overview: Py+Rs parity
+3. `workspaces/decks/briefs/deck-brief.md` -- Deck spec (Reveal.js, three-layer, 80-100 slides, speaker notes)
+4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- v4 exercise mapping table
 5. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
-6. `scripts/py_to_notebook.py` -- Canonical .py to .ipynb converter
-7. `scripts/generate_datasets.py` -- Dataset generator (seed=42, Singapore context)
+6. `scripts/py_to_notebook.py` -- .py to .ipynb converter
+7. `scripts/generate_datasets.py` -- Dataset generator (seed=42, Singapore context, full scale)
 
 ## Accomplished
 
-- **48/48 exercise solutions** across all 6 modules -- v4 curriculum alignment complete
-- **48/48 local exercises** with progressive scaffolding (M1:70% to M6:20%)
-- **96 notebooks** (48 Jupyter + 48 Colab) auto-generated from local files
-- **80 Rust tutorials** across 9 packages (00-core through 08-rl)
-- **11 Singapore-context datasets** (weather, HDB, credit, ecommerce, documents, QA, MRT, schools)
-- **48 Marp lecture decks** (ascent01_1.md through ascent06_8.md)
-- **6 AI-resilient quiz files** (~146 questions total, balanced answer distribution)
-- **shared/run_profile.py** sync wrapper hiding async for M1
-- **ASCENTDataLoader** updated with local data/ directory support
-- **uv.lock** generated (bumped to Python >=3.11 per SDK requirement)
-- **Red team validation** -- 6 header mismatches found and fixed, no pandas, no secrets
-- **5 commits pushed** to terrene-foundation/ascent (b8c6667..05c446e)
+- **192 exercise files**: 48 solutions + 48 local + 48 Jupyter + 48 Colab (v4 curriculum aligned)
+- **6 Reveal.js lecture decks**: 85-99 slides each, three-layer depth, KaTeX math, Kailash bridge slides
+- **6 speaker notes**: 929-1177 lines each, per-slide timing (~180min), dual-audience tips
+- **Theme CSS**: `decks/assets/css/theme.css` with color palette, equation boxes, markers
+- **163 textbook tutorials**: 83 Python + 80 Rust (all 9 packages)
+- **11 full-scale datasets**: credit 100K, experiment 500K, taxi 50K, ecommerce 50K
+- **6 quiz files**: ~146 AI-resilient questions, balanced answer distribution
+- **Infrastructure**: run_profile.py, uv.lock (Python >=3.11), ASCENTDataLoader with local data/
+- **Red team**: exercises (17 fixes) + textbook (22 fixes) -- imports, headers, load_dotenv, naming
+- **8 commits pushed** to terrene-foundation/ascent (b8c6667..1052fcd)
 
 ## Outstanding
 
-- [ ] Red team Python textbook tutorials (83 files) -- only exercises were red-teamed this session
-- [ ] Fix quiz syntax issues in quiz_ascent01.py, quiz_ascent03.py, quiz_ascent05.py (Pyright reports unclosed braces)
-- [ ] Clean up `.staging/` directory (34 backup files from v4 reorganization, safe to delete)
-- [ ] Update `textbook/PARITY.md` with new Rust packages (07-align, 08-rl added)
-- [ ] Update `README.md` status table (exercises now 48, Rust tutorials now 80)
+- [ ] Assessment rubrics: portfolio guidelines, capstone rubric, peer review rubric, model card template
 - [ ] Upload datasets to Google Drive folder `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`
 - [ ] Verify Rust compilation: `cd textbook/rust && cargo build --workspace`
+- [ ] Update `data_loader.py` -- taxi trips changed from .csv to .parquet (verify all exercise refs)
+- [ ] Deck quality review: verify KaTeX renders, test with `python -m http.server`
 
 ### Oversight -- Verify Before Starting
 
 - [ ] 48 solutions: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 48
-- [ ] 48 local: `find modules/ascent*/local -name "ex_*.py" | wc -l` = 48
-- [ ] 96 notebooks: `find modules -name "ex_*.ipynb" | wc -l` = 96
-- [ ] 80 Rust: `find textbook/rust -name "*.rs" -not -path "*/target/*" | wc -l` = 80
+- [ ] 192 exercises: `find modules -name "ex_*" | wc -l` = 192
+- [ ] 6 decks: `find decks -name "deck.html" | wc -l` = 6
+- [ ] 6 speaker notes: `find decks -name "speaker-notes.md" | wc -l` = 6
 - [ ] 11 datasets: `find data/ -type f | wc -l` = 11
-- [ ] No pandas: `grep -rl "import pandas" modules/ textbook/ --include="*.py"` = 0 (excl quizzes)
-- [ ] Remote current: `git log --oneline -1` = 05c446e
+- [ ] No pandas: `grep -rl "import pandas" modules/ textbook/ --include="*.py"` = 0
+- [ ] Remote: `git log --oneline -1` = 1052fcd
 
 ### Oversight -- Verify After Completing
 
 - [ ] No hardcoded keys: `grep -rn "sk-[a-zA-Z0-9]\{10\}" textbook/ modules/` = 0
-- [ ] Headers consistent: all solutions match ASCENTX Exercise N pattern
-- [ ] PARITY.md updated with new findings
+- [ ] Decks render: `cd decks && python -m http.server 8080` then open each deck.html
 - [ ] Push to remote: `git push origin main`
 
 ## Blockers
 
 - Kailash SDK packages not on PyPI -- tutorials validate against source only
 - Google Drive access needed for dataset upload
-- Quiz syntax issues are cosmetic (em-dash splitting) -- files run but Pyright flags them

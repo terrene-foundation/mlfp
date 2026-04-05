@@ -2,60 +2,50 @@
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` — Master directive: 6 absolute directives, course structure, module-framework mapping
-2. `workspaces/curriculum/briefs/course-brief.md` — THE authoritative curriculum: 6 modules, 7h each
-3. `workspaces/ascent01/briefs/module-brief.md` through `ascent06` — Detailed module briefs
-4. `workspaces/datasets/briefs/dataset-brief.md` — Dataset curation plan
+1. `CLAUDE.md` — 6 absolute directives, course structure, module-framework mapping
+2. `workspaces/curriculum/briefs/course-brief.md` — Authoritative curriculum (6 modules, 7h each)
+3. `workspaces/ascent01/briefs/module-brief.md` through `ascent06` — Per-module briefs with exercises, datasets, quiz topics
+4. `workspaces/datasets/briefs/dataset-brief.md` — Dataset curation plan (what to create/source)
+5. `.claude/agents/education/kailash-tutor.md` — Verified SDK API patterns (from red team)
+6. `.claude/agents/education/exercise-designer.md` — Stripping modes, blank counts, converter reference
+7. `scripts/py_to_notebook.py` — Canonical .py→.ipynb converter (--all, --module, single file)
 
-## Session 1 — Repo creation
+## Accomplished
 
-- Created ascent repo (49 files), professional-grade curriculum, 4-expert red-team validation
-- All SDK paths verified against kailash-py source (64 checks)
-
-## Session 2 — Solutions
-
-- Initial commit + COC sync (615 files from v2.6.0, 26 commands, 445 skills)
-- All 34 solutions written (9,598 lines across 6 modules)
-- Red team review: 8 critical SDK API issues found and fixed
-
-## Session 3 — Exercises + Red team
-
-- **Red team review completed** (3 parallel reviewers):
-  - SDK paths: 8 critical fixed (ExperimentTracker, FeatureStore, ModelRegistry, FeatureEngineer APIs)
-  - Rule compliance: clean (no pandas, polars-native, framework-first, no hardcoded keys)
-  - Exercise standards: clean (all headers, TASKS, no placeholders in solutions)
-- **All 34 exercises generated in 3 formats** (102 files total):
-  - 34 local .py files with progressive scaffolding (70% M1 → 20% M6)
-  - 34 Jupyter .ipynb (auto-converted: %pip install, top-level await)
-  - 34 Colab .ipynb (auto-converted: !pip install, Drive mount)
-- **Notebook converter utility**: `scripts/py_to_notebook.py` (--all, --module, single file)
-
-## File Counts
-
-| Content | Files | Lines |
-|---------|-------|-------|
-| Solutions | 34 | ~9,600 |
-| Local exercises | 34 | ~7,000 |
-| Jupyter notebooks | 34 | ~14,000 |
-| Colab notebooks | 34 | ~14,000 |
-| COC artifacts | 615 | ~111,000 |
-| Scaffolding | 50 | ~7,800 |
-| **Total** | **~800** | **~163,000** |
+- **34 solutions** written (9,600 lines) across 6 modules, red-team reviewed, 8 critical SDK API issues fixed
+- **102 exercise files** generated: 34 local .py + 34 Jupyter + 34 Colab notebooks with progressive scaffolding (70%→20%)
+- **COC sync** from kailash-coc-claude-py v2.6.0 (26 commands, 445 skills, 32 agents, 54 scripts)
+- **4 agents codified** with session learnings: exercise-designer (stripping modes), notebook-validator (converter checks), kailash-tutor (6 verified API patterns), dataset-curator (reuse policy, naming)
+- **13 commits**, repo at `e3ffdb1`
 
 ## Outstanding
 
-- [ ] Create synthetic datasets: Singapore credit scoring (100K), e-commerce (200K), healthcare ICU (60K)
-- [ ] Source public datasets: data.gov.sg (HDB, taxi, weather), Kaggle (fraud 284K), ChestX-ray14 subset
-- [ ] Upload datasets to ascent_data shared Google Drive folder
-- [ ] Build Reveal.js decks (decks/ascentN/deck.html) — 80-100 slides each
-- [ ] Write quizzes (modules/ascentN/quiz/) — 15 questions each, Kailash pattern focused
-- [ ] Run `uv lock` and commit lockfile
+- [ ] Create synthetic datasets: `sg_credit_scoring.parquet` (100K), `ecommerce_customers.parquet` (200K), `icu_*.parquet` (60K stays), `ecommerce_experiment.parquet` (500K), `sg_cooling_measures.csv` (verified: 0 data files in modules/)
+- [ ] Source public datasets: HDB resale (data.gov.sg), `sg_cpi.csv`, `sg_employment.csv`, `sg_fx_rates.csv`, `sg_taxi_trips.parquet`, `credit_card_fraud.parquet` (Kaggle), `sg_news_corpus.parquet`
+- [ ] Upload all datasets to ascent_data Google Drive folder ID `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`
+- [ ] Build Reveal.js decks: `decks/ascentN/deck.html` per `workspaces/decks/briefs/deck-brief.md` (verified: 0 deck.html files)
+- [ ] Write quizzes: `modules/ascentN/quiz/` — 15 questions each (verified: 0 quiz files)
+- [ ] Run `uv lock` and commit lockfile (verified: no uv.lock)
 - [ ] Create GitHub repo at terrene-foundation/ascent and push
-- [ ] Validate solutions end-to-end (need kailash packages + datasets)
-- [ ] Validate notebook consistency across 3 formats
+- [ ] Validate solutions end-to-end (needs kailash packages on PyPI + datasets on Drive)
+- [ ] Validate notebook 3-format consistency with notebook-validator agent
+
+### Oversight — Verify Before Starting
+
+- [ ] All 34 solutions exist: `find modules/*/solutions -name "ex_*.py" | wc -l` = 34
+- [ ] All 102 exercises exist: `find modules/*/local modules/*/notebooks modules/*/colab -name "ex_*" | wc -l` = 102
+- [ ] No pandas: `grep -rl "import pandas" modules/ | wc -l` = 0
+- [ ] No stale log_run: `grep -rl "tracker\.log_run" modules/*/solutions/*.py | wc -l` = 0
+
+### Oversight — Verify After Completing
+
+- [ ] All solutions run: `uv run pytest tests/ -v` passes (blocked: needs kailash packages)
+- [ ] 3-format consistency: run `/validate-notebooks`
+- [ ] No hardcoded keys: `grep -rn "sk-\|gsk_\|hf_" --include="*.py" modules/` = 0
+- [ ] Dataset files present: `find .data_cache -type f | wc -l` > 0
 
 ## Blockers
 
-- Need Google Drive access for dataset upload
-- Need terrene-foundation GitHub org access for public repo
-- Kailash SDK packages must be on PyPI for uv sync
+- Google Drive access needed for dataset upload to ascent_data folder
+- terrene-foundation GitHub org access needed for public repo creation
+- Kailash SDK packages must be on PyPI before `uv sync` works

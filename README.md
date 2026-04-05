@@ -1,4 +1,4 @@
-# ASCENT — Practical Course in Machine Learning
+# ASCENT — Professional Certificate in Machine Learning
 
 A rigorous, production-grade machine learning curriculum for working professionals. 34 hands-on exercises across 6 modules, delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py).
 

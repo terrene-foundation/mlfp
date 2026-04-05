@@ -224,7 +224,7 @@ fn main() {
     // The Workflow pre-computes input routes for O(1) lookup during execution.
     // This is a Rust-specific optimization (DIV-007).
 
-    let join_node = workflow.get_node("join").expect("join node");
+    let _join_node = workflow.get_node("join").expect("join node");
     let join_idx = *workflow
         .execution_levels()
         .last()

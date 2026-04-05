@@ -333,7 +333,7 @@ fn main() {
         .connect("left_src", "data", "concat", "left")
         .connect("right_src", "data", "concat", "right");
 
-    let workflow = builder.build(&registry).expect("concat workflow build");
+    let _workflow = builder.build(&registry).expect("concat workflow build");
 
     // We need separate input paths. NoOpNode forwards "data" -> "data",
     // so left_src receives "data" from workflow inputs. For right_src,

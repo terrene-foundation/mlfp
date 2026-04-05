@@ -171,8 +171,12 @@ prob_treatment_better = 1 - stats.norm.cdf(0, loc=lift_adj, scale=se_lift)
 # For Normal: E[max(-Z, 0)] where Z ~ N(lift_adj, se_lift²)
 # = se_lift * φ(-lift_adj/se_lift) - lift_adj * Φ(-lift_adj/se_lift)
 z_ratio = -lift_adj / se_lift
-expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(z_ratio)
-expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(-z_ratio)
+expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(
+    z_ratio
+)
+expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(
+    -z_ratio
+)
 
 # 95% credible interval for lift
 bayesian_ci = (
@@ -181,7 +185,9 @@ bayesian_ci = (
 )
 
 print(f"\n=== Bayesian A/B Test ===")
-print(f"P(treatment > control): {prob_treatment_better:.4f} ({prob_treatment_better:.1%})")
+print(
+    f"P(treatment > control): {prob_treatment_better:.4f} ({prob_treatment_better:.1%})"
+)
 print(f"Expected loss (choose treatment): ${expected_loss_treatment:.2f}/user")
 print(f"Expected loss (choose control):   ${expected_loss_control:.2f}/user")
 print(f"95% credible interval for lift: [${bayesian_ci[0]:.2f}, ${bayesian_ci[1]:.2f}]")
@@ -215,8 +221,16 @@ for i, day in enumerate(days):
 
     # Cumulative data up to this day
     cumulative = experiment_with_day.filter(pl.col("day") <= day)
-    c = cumulative.filter(pl.col("group") == "control")["revenue"].to_numpy().astype(np.float64)
-    t = cumulative.filter(pl.col("group") == "treatment")["revenue"].to_numpy().astype(np.float64)
+    c = (
+        cumulative.filter(pl.col("group") == "control")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
+    )
+    t = (
+        cumulative.filter(pl.col("group") == "treatment")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
+    )
 
     if len(c) < 100 or len(t) < 100:
         continue
@@ -240,19 +254,23 @@ for i, day in enumerate(days):
     )
     p_sequential = min(1.0, 1.0 / lambda_n) if lambda_n > 0 else 1.0
 
-    sequential_results.append({
-        "day": i + 1,
-        "n": n_curr,
-        "lift": diff,
-        "p_fixed": p_fixed,
-        "p_sequential": p_sequential,
-    })
+    sequential_results.append(
+        {
+            "day": i + 1,
+            "n": n_curr,
+            "lift": diff,
+            "p_fixed": p_fixed,
+            "p_sequential": p_sequential,
+        }
+    )
 
 print(f"\n=== Sequential Testing ===")
 print(f"{'Day':>4} {'n':>8} {'Lift':>10} {'p (fixed)':>12} {'p (mSPRT)':>12}")
 print("─" * 52)
-for r in sequential_results[::max(1, len(sequential_results) // 10)]:
-    print(f"{r['day']:>4} {r['n']:>8,} ${r['lift']:>8.2f} {r['p_fixed']:>12.6f} {r['p_sequential']:>12.6f}")
+for r in sequential_results[:: max(1, len(sequential_results) // 10)]:
+    print(
+        f"{r['day']:>4} {r['n']:>8,} ${r['lift']:>8.2f} {r['p_fixed']:>12.6f} {r['p_sequential']:>12.6f}"
+    )
 
 # Show the danger of peeking
 early_sig = sum(1 for r in sequential_results if r["p_fixed"] < 0.05)
@@ -265,6 +283,7 @@ print("→ Fixed p-values cross significance more often (inflated Type I error)"
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Log to ExperimentTracker
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def log_ab_analysis():
     experiments = await tracker.list_experiments()
@@ -281,44 +300,50 @@ async def log_ab_analysis():
             tags=["ascent02", "ab-test", "cuped", "bayesian"],
         )
 
-    run_id = await tracker.log_run(
-        experiment_id=exp_id,
-        name="ecommerce_ab_cuped_bayesian",
-        params={
-            "method": "CUPED + Bayesian",
-            "pre_covariate": "pre_revenue",
-            "cuped_theta": float(theta),
-            "cuped_rho": float(rho),
-            "sequential_method": "mSPRT",
-        },
-        metrics={
-            "lift_naive": float(lift),
-            "lift_cuped": float(lift_adj),
-            "se_naive": float(se_naive),
-            "se_cuped": float(se_cuped),
-            "p_naive": float(p_naive),
-            "p_cuped": float(p_cuped),
-            "variance_reduction": float(var_reduction),
-            "prob_treatment_better": float(prob_treatment_better),
-            "expected_loss": float(expected_loss_treatment),
-        },
-        tags=["ab-test", "cuped", "bayesian", "sequential"],
-    )
-    print(f"\nLogged run: {run_id}")
+    async with tracker.run(exp_id, run_name="ecommerce_ab_cuped_bayesian") as run:
+        await run.log_params(
+            {
+                "method": "CUPED + Bayesian",
+                "pre_covariate": "pre_revenue",
+                "cuped_theta": str(float(theta)),
+                "cuped_rho": str(float(rho)),
+                "sequential_method": "mSPRT",
+            }
+        )
+        await run.log_metrics(
+            {
+                "lift_naive": float(lift),
+                "lift_cuped": float(lift_adj),
+                "se_naive": float(se_naive),
+                "se_cuped": float(se_cuped),
+                "p_naive": float(p_naive),
+                "p_cuped": float(p_cuped),
+                "variance_reduction": float(var_reduction),
+                "prob_treatment_better": float(prob_treatment_better),
+                "expected_loss": float(expected_loss_treatment),
+            }
+        )
+        await run.set_tag("method", "cuped-bayesian-sequential")
+    print(f"\nLogged run")
+
 
 asyncio.run(log_ab_analysis())
 
 
 # Visualize comparison
 viz = ModelVisualizer()
-fig = viz.metric_comparison({
-    "Standard": {"SE": se_naive, "CI_Width": ci_naive[1] - ci_naive[0]},
-    "CUPED": {"SE": se_cuped, "CI_Width": ci_cuped[1] - ci_cuped[0]},
-})
+fig = viz.metric_comparison(
+    {
+        "Standard": {"SE": se_naive, "CI_Width": ci_naive[1] - ci_naive[0]},
+        "CUPED": {"SE": se_cuped, "CI_Width": ci_cuped[1] - ci_cuped[0]},
+    }
+)
 fig.update_layout(title="Standard vs CUPED: Variance Reduction")
 fig.write_html("ex3_cuped_comparison.html")
 print("Saved: ex3_cuped_comparison.html")
 
 asyncio.run(conn.close())
 
-print("\n✓ Exercise 3 complete — A/B testing with CUPED + Bayesian + sequential testing")
+print(
+    "\n✓ Exercise 3 complete — A/B testing with CUPED + Bayesian + sequential testing"
+)

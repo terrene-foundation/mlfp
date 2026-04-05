@@ -49,8 +49,13 @@ medications = loader.load("ascent02", "icu_medications.parquet")
 labs = loader.load("ascent02", "icu_labs.parquet")
 
 print("=== ICU Dataset ===")
-for name, df in [("patients", patients), ("admissions", admissions),
-                 ("vitals", vitals), ("medications", medications), ("labs", labs)]:
+for name, df in [
+    ("patients", patients),
+    ("admissions", admissions),
+    ("vitals", vitals),
+    ("medications", medications),
+    ("labs", labs),
+]:
     print(f"  {name}: {df.shape} — columns: {df.columns}")
 
 
@@ -61,7 +66,9 @@ for name, df in [("patients", patients), ("admissions", admissions),
 # Vitals are recorded at irregular intervals
 print("\n=== Vital Signs Sample (one patient) ===")
 sample_patient = vitals["patient_id"].unique()[0]
-patient_vitals = vitals.filter(pl.col("patient_id") == sample_patient).sort("recorded_at")
+patient_vitals = vitals.filter(pl.col("patient_id") == sample_patient).sort(
+    "recorded_at"
+)
 print(patient_vitals.head(20))
 
 # Check recording frequency
@@ -76,6 +83,7 @@ if patient_vitals.height > 1:
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Set up ExperimentTracker (persists across all M2 exercises)
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def setup_tracking():
     """Initialize ExperimentTracker for Module 2."""
@@ -115,8 +123,7 @@ patient_admissions = patients.join(admissions, on="patient_id", how="inner")
 # Aggregate vitals PER ADMISSION with temporal correctness
 # Only use vitals recorded DURING this admission (between admit and discharge)
 vitals_features = (
-    vitals
-    .join(
+    vitals.join(
         admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
         on="patient_id",
         how="inner",
@@ -153,7 +160,9 @@ for agg in vital_aggs:
 
 print(f"\n=== Features after vital aggregation ===")
 print(f"Shape: {features.shape}")
-print(f"New vital columns: {[c for c in features.columns if any(v in c for v in vital_names)][:10]}...")
+print(
+    f"New vital columns: {[c for c in features.columns if any(v in c for v in vital_names)][:10]}..."
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -162,8 +171,7 @@ print(f"New vital columns: {[c for c in features.columns if any(v in c for v in 
 
 # Medication features — count of distinct medications, specific drug flags
 med_features = (
-    medications
-    .join(
+    medications.join(
         admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
         on="patient_id",
         how="inner",
@@ -177,11 +185,15 @@ med_features = (
         pl.col("medication_name").n_unique().alias("n_unique_medications"),
         pl.col("medication_name").count().alias("n_medication_doses"),
         # Flag high-risk medications (vasopressors indicate hemodynamic instability)
-        pl.col("medication_name").str.contains("(?i)vasopressor|norepinephrine|dopamine")
-        .any().alias("received_vasopressors"),
+        pl.col("medication_name")
+        .str.contains("(?i)vasopressor|norepinephrine|dopamine")
+        .any()
+        .alias("received_vasopressors"),
         # Antibiotic flag (infection)
-        pl.col("medication_name").str.contains("(?i)antibiotic|vancomycin|meropenem")
-        .any().alias("received_antibiotics"),
+        pl.col("medication_name")
+        .str.contains("(?i)antibiotic|vancomycin|meropenem")
+        .any()
+        .alias("received_antibiotics"),
     )
 )
 
@@ -189,8 +201,7 @@ features = features.join(med_features, on="admission_id", how="left")
 
 # Lab features — most recent lab values and abnormal counts
 lab_features = (
-    labs
-    .join(
+    labs.join(
         admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
         on="patient_id",
         how="inner",
@@ -213,11 +224,13 @@ features = features.join(lab_features, on="admission_id", how="left")
 # Derived features
 features = features.with_columns(
     # Abnormal lab ratio
-    (pl.col("n_abnormal_labs") / pl.col("n_lab_results").clip(lower_bound=1))
-    .alias("abnormal_lab_ratio"),
+    (pl.col("n_abnormal_labs") / pl.col("n_lab_results").clip(lower_bound=1)).alias(
+        "abnormal_lab_ratio"
+    ),
     # Medication intensity (doses per day of stay)
-    (pl.col("n_medication_doses") / pl.col("length_of_stay_days").clip(lower_bound=1))
-    .alias("medication_intensity"),
+    (
+        pl.col("n_medication_doses") / pl.col("length_of_stay_days").clip(lower_bound=1)
+    ).alias("medication_intensity"),
 )
 
 # Fill nulls for patients with no medications/labs (they exist!)
@@ -246,20 +259,48 @@ print(f"Total feature columns: {len(features.columns)}")
 icu_schema = FeatureSchema(
     name="icu_clinical_features_v1",
     features=[
-        FeatureField(name="age", dtype="float64", nullable=False,
-                     description="Patient age at admission"),
-        FeatureField(name="length_of_stay_days", dtype="float64", nullable=False,
-                     description="Length of ICU stay in days"),
-        FeatureField(name="n_unique_medications", dtype="int64", nullable=False,
-                     description="Count of distinct medications administered"),
-        FeatureField(name="received_vasopressors", dtype="bool", nullable=False,
-                     description="Whether patient received vasopressor drugs"),
-        FeatureField(name="n_abnormal_labs", dtype="int64", nullable=False,
-                     description="Count of abnormal lab results"),
-        FeatureField(name="abnormal_lab_ratio", dtype="float64", nullable=False,
-                     description="Proportion of lab results flagged abnormal"),
-        FeatureField(name="medication_intensity", dtype="float64", nullable=False,
-                     description="Medication doses per day of stay"),
+        FeatureField(
+            name="age",
+            dtype="float64",
+            nullable=False,
+            description="Patient age at admission",
+        ),
+        FeatureField(
+            name="length_of_stay_days",
+            dtype="float64",
+            nullable=False,
+            description="Length of ICU stay in days",
+        ),
+        FeatureField(
+            name="n_unique_medications",
+            dtype="int64",
+            nullable=False,
+            description="Count of distinct medications administered",
+        ),
+        FeatureField(
+            name="received_vasopressors",
+            dtype="bool",
+            nullable=False,
+            description="Whether patient received vasopressor drugs",
+        ),
+        FeatureField(
+            name="n_abnormal_labs",
+            dtype="int64",
+            nullable=False,
+            description="Count of abnormal lab results",
+        ),
+        FeatureField(
+            name="abnormal_lab_ratio",
+            dtype="float64",
+            nullable=False,
+            description="Proportion of lab results flagged abnormal",
+        ),
+        FeatureField(
+            name="medication_intensity",
+            dtype="float64",
+            nullable=False,
+            description="Medication doses per day of stay",
+        ),
     ],
     entity_id_column="patient_id",
     timestamp_column="admit_time",
@@ -270,12 +311,15 @@ print(f"\n=== FeatureSchema: {icu_schema.name} ===")
 print(f"Entity ID: {icu_schema.entity_id_column}")
 print(f"Timestamp: {icu_schema.timestamp_column}")
 for f in icu_schema.features:
-    print(f"  {f.name}: {f.dtype} ({'nullable' if f.nullable else 'required'}) — {f.description}")
+    print(
+        f"  {f.name}: {f.dtype} ({'nullable' if f.nullable else 'required'}) — {f.description}"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Log to ExperimentTracker
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def log_feature_run():
     """Log the feature engineering results to ExperimentTracker."""
@@ -284,25 +328,28 @@ async def log_feature_run():
     explorer = DataExplorer()
     profile = await explorer.profile(features)
 
-    # Log the run
-    run_id = await tracker.log_run(
-        experiment_id=experiment_id,
-        name="icu_clinical_features_v1",
-        params={
-            "source_tables": ["patients", "admissions", "vitals", "medications", "labs"],
-            "temporal_filter": "point_in_time",
-            "vital_aggregations": ["mean", "std", "min", "max", "trend", "count"],
-            "medication_flags": ["vasopressors", "antibiotics"],
-            "derived_features": ["abnormal_lab_ratio", "medication_intensity"],
-        },
-        metrics={
-            "n_features": len(features.columns),
-            "n_samples": features.height,
-            "null_rate": sum(features[c].null_count() for c in features.columns) / (features.height * len(features.columns)),
-            "n_alerts": len(profile.alerts),
-        },
-        tags=["clinical", "temporal", "multi-table"],
-    )
+    # Log the run using context manager pattern
+    async with tracker.run(experiment_id, run_name="icu_clinical_features_v1") as run:
+        await run.log_params(
+            {
+                "source_tables": "patients,admissions,vitals,medications,labs",
+                "temporal_filter": "point_in_time",
+                "vital_aggregations": "mean,std,min,max,trend,count",
+                "medication_flags": "vasopressors,antibiotics",
+                "derived_features": "abnormal_lab_ratio,medication_intensity",
+            }
+        )
+        await run.log_metrics(
+            {
+                "n_features": float(len(features.columns)),
+                "n_samples": float(features.height),
+                "null_rate": sum(features[c].null_count() for c in features.columns)
+                / (features.height * len(features.columns)),
+                "n_alerts": float(len(profile.alerts)),
+            }
+        )
+        await run.set_tag("domain", "clinical")
+        run_id = run.id if hasattr(run, "id") else "logged"
 
     print(f"\n=== Experiment Run Logged ===")
     print(f"Run ID: {run_id}")
@@ -320,5 +367,9 @@ run_id = asyncio.run(log_feature_run())
 # Clean up
 asyncio.run(conn.close())
 
-print("\n✓ Exercise 1 complete — healthcare feature engineering with temporal correctness")
-print("  ExperimentTracker is now tracking. All subsequent M2 exercises add to this experiment.")
+print(
+    "\n✓ Exercise 1 complete — healthcare feature engineering with temporal correctness"
+)
+print(
+    "  ExperimentTracker is now tracking. All subsequent M2 exercises add to this experiment."
+)

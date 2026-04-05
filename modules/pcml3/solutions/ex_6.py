@@ -26,8 +26,12 @@ import polars as pl
 import lightgbm as lgb
 from sklearn.model_selection import cross_val_score
 from sklearn.metrics import (
-    roc_auc_score, average_precision_score, log_loss,
-    brier_score_loss, f1_score, accuracy_score,
+    roc_auc_score,
+    average_precision_score,
+    log_loss,
+    brier_score_loss,
+    f1_score,
+    accuracy_score,
 )
 from sklearn.calibration import CalibratedClassifierCV
 
@@ -49,7 +53,9 @@ loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
 pipeline = PreprocessingPipeline()
-result = pipeline.setup(credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal")
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
 
 X_train, y_train, col_info = to_sklearn_input(
     result.train_data,
@@ -220,10 +226,24 @@ print(f"Ambiguous rate: {1 - singleton_rate:.1%} (both classes possible)")
 
 # Compare models of increasing complexity
 complexities = [
-    ("Simple (depth=3)", lgb.LGBMClassifier(max_depth=3, n_estimators=100, verbose=-1, random_state=42)),
-    ("Medium (depth=6)", lgb.LGBMClassifier(max_depth=6, n_estimators=300, verbose=-1, random_state=42)),
-    ("Complex (depth=10)", lgb.LGBMClassifier(max_depth=10, n_estimators=500, verbose=-1, random_state=42)),
-    ("Very Complex (depth=-1)", lgb.LGBMClassifier(max_depth=-1, n_estimators=1000, num_leaves=255, verbose=-1, random_state=42)),
+    (
+        "Simple (depth=3)",
+        lgb.LGBMClassifier(max_depth=3, n_estimators=100, verbose=-1, random_state=42),
+    ),
+    (
+        "Medium (depth=6)",
+        lgb.LGBMClassifier(max_depth=6, n_estimators=300, verbose=-1, random_state=42),
+    ),
+    (
+        "Complex (depth=10)",
+        lgb.LGBMClassifier(max_depth=10, n_estimators=500, verbose=-1, random_state=42),
+    ),
+    (
+        "Very Complex (depth=-1)",
+        lgb.LGBMClassifier(
+            max_depth=-1, n_estimators=1000, num_leaves=255, verbose=-1, random_state=42
+        ),
+    ),
 ]
 
 print(f"\n=== Bias-Variance Analysis ===")
@@ -235,7 +255,9 @@ for name, m in complexities:
     m.fit(X_train, y_train)
     train_score = average_precision_score(y_train, m.predict_proba(X_train)[:, 1])
     gap = train_score - cv_scores.mean()
-    print(f"{name:<25} {cv_scores.mean():>10.4f} {cv_scores.std():>10.4f} {train_score:>10.4f} {gap:>10.4f}")
+    print(
+        f"{name:<25} {cv_scores.mean():>10.4f} {cv_scores.std():>10.4f} {train_score:>10.4f} {gap:>10.4f}"
+    )
 
 print("\nInterpretation:")
 print("  Small gap + low score → high bias (underfitting)")
@@ -247,6 +269,7 @@ print("  The 'Medium' model typically offers the best bias-variance trade-off")
 # TASK 5: Persist everything and generate artifacts
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def persist_final():
     conn = ConnectionManager("sqlite:///ascent03_models.db")
     await conn.initialize()
@@ -257,41 +280,39 @@ async def persist_final():
     tracker = ExperimentTracker(conn)
     await tracker.initialize()
 
-    # Register calibrated model
-    model_id = await registry.register(
+    # Register calibrated model (serialize to bytes)
+    import pickle
+    from kailash_ml.types import MetricSpec
+
+    model_bytes = pickle.dumps(calibrated_model)
+    model_version = await registry.register_model(
         name="credit_default_production",
-        model=calibrated_model,
-        metrics=metrics,
-        params={
-            "base_model": "LightGBM",
-            "calibration": "isotonic",
-            "conformal_alpha": alpha,
-            "conformal_q_hat": float(q_hat),
-        },
-        tags=["production", "calibrated", "conformal"],
-        description="Production credit default model with calibration and conformal prediction",
+        artifact=model_bytes,
+        metrics=[
+            MetricSpec(name="auc_pr", value=metrics["auc_pr"]),
+            MetricSpec(name="brier", value=metrics["brier"]),
+        ],
     )
 
     # Promote to production
-    await registry.promote(
-        model_id=model_id,
-        stage="production",
+    await registry.promote_model(
+        name="credit_default_production",
+        version=model_version.version,
+        target_stage="production",
         reason=f"Passed all quality gates: AUC-PR={metrics['auc_pr']:.4f}, "
-               f"Brier={metrics['brier']:.4f}, Coverage={coverage:.4f}",
+        f"Brier={metrics['brier']:.4f}, Coverage={coverage:.4f}",
     )
+    model_id = model_version.version
 
     # Log to experiment tracker
     exp_id = await tracker.create_experiment(
         name="ascent03_e2e_pipeline",
         description="End-to-end supervised ML pipeline",
     )
-    await tracker.log_run(
-        experiment_id=exp_id,
-        name="production_model_v1",
-        params={"model": "lgbm_calibrated_conformal"},
-        metrics={**metrics, "conformal_coverage": coverage},
-        tags=["production", "final"],
-    )
+    async with tracker.run(exp_id, run_name="production_model_v1") as run:
+        await run.log_param("model", "lgbm_calibrated_conformal")
+        await run.log_metrics({**metrics, "conformal_coverage": coverage})
+        await run.set_tag("stage", "production")
 
     print(f"\n=== Final Artifacts ===")
     print(f"Model registered: {model_id}")
@@ -300,13 +321,16 @@ async def persist_final():
 
     await conn.close()
 
+
 asyncio.run(persist_final())
 
 # Final visualisation
 viz = ModelVisualizer()
-fig = viz.metric_comparison({
-    "Final Model": metrics,
-})
+fig = viz.metric_comparison(
+    {
+        "Final Model": metrics,
+    }
+)
 fig.update_layout(title="Production Model: Credit Default Prediction")
 fig.write_html("ex6_final_metrics.html")
 print("Saved: ex6_final_metrics.html")

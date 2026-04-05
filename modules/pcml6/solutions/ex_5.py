@@ -273,23 +273,22 @@ async def track_experiment():
         description="RL inventory management — PPO vs heuristic",
     )
 
-    for name, rewards, params in [
+    for run_name, rewards, run_params in [
         ("random_baseline", random_rewards, {"policy": "random"}),
-        ("ss_heuristic", heuristic_rewards, {"policy": "(s,S)", "s": 20, "S": 60}),
-        ("ppo_agent", rl_rewards, {"algorithm": "PPO", "timesteps": 50_000}),
+        ("ss_heuristic", heuristic_rewards, {"policy": "(s,S)", "s": "20", "S": "60"}),
+        ("ppo_agent", rl_rewards, {"algorithm": "PPO", "timesteps": "50000"}),
     ]:
-        await tracker.log_run(
-            experiment_id=exp_id,
-            name=name,
-            params=params,
-            metrics={
-                "mean_reward": float(rewards.mean()),
-                "std_reward": float(rewards.std()),
-                "min_reward": float(rewards.min()),
-                "max_reward": float(rewards.max()),
-            },
-            tags=["rl", "inventory"],
-        )
+        async with tracker.run(exp_id, run_name=run_name) as run:
+            await run.log_params(run_params)
+            await run.log_metrics(
+                {
+                    "mean_reward": float(rewards.mean()),
+                    "std_reward": float(rewards.std()),
+                    "min_reward": float(rewards.min()),
+                    "max_reward": float(rewards.max()),
+                }
+            )
+            await run.set_tag("domain", "rl-inventory")
 
     print(f"\nLogged 3 runs to ExperimentTracker")
     await conn.close()

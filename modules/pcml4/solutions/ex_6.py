@@ -44,6 +44,7 @@ async def register_onnx_model():
     await conn.initialize()
 
     registry = ModelRegistry(conn)
+    await registry.initialize()
 
     # Load ONNX model bytes
     onnx_path = Path("medical_cnn.onnx")

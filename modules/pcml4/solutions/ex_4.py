@@ -24,7 +24,7 @@ import asyncio
 import numpy as np
 import polars as pl
 from kailash.db.connection import ConnectionManager
-from kailash_ml import PreprocessingPipeline
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.engines.drift_monitor import DriftMonitor, DriftSpec
 from kailash_ml.interop import to_sklearn_input
 
@@ -238,8 +238,6 @@ async def show_history():
 
 
 asyncio.run(show_history())
-
-from kailash_ml import ModelVisualizer
 
 viz = ModelVisualizer()
 comparison = {

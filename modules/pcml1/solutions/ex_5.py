@@ -34,10 +34,10 @@ import numpy as np
 import polars as pl
 from kailash_ml import (
     DataExplorer,
-    AlertConfig,
     PreprocessingPipeline,
     ModelVisualizer,
 )
+from kailash_ml.engines.data_explorer import AlertConfig
 from kailash_ml.types import FeatureSchema, FeatureField
 
 from shared import ASCENTDataLoader
@@ -71,7 +71,11 @@ for col in taxi_raw.columns:
         print(f"  {col}: {nc:,} ({nc / taxi_raw.height:.1%})")
 
 # Value ranges for key columns
-numeric_cols = [c for c, d in zip(taxi_raw.columns, taxi_raw.dtypes) if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)]
+numeric_cols = [
+    c
+    for c, d in zip(taxi_raw.columns, taxi_raw.dtypes)
+    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)
+]
 for col in numeric_cols:
     series = taxi_raw[col].drop_nulls()
     if series.len() > 0:
@@ -82,15 +86,16 @@ for col in numeric_cols:
 # TASK 2: Profile raw data with DataExplorer
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def profile_raw_data():
     """Profile the raw taxi data to identify quality issues."""
 
     alert_config = AlertConfig(
-        high_null_pct_threshold=0.02,        # Strict: even 2% missing is flagged
-        skewness_threshold=2.0,              # Flag heavy tails in fare/distance
-        high_cardinality_ratio=0.8,          # Flag near-unique columns
-        zero_pct_threshold=0.1,              # Flag columns with >10% zeros
-        high_correlation_threshold=0.9,      # Flag redundant features
+        high_null_pct_threshold=0.02,  # Strict: even 2% missing is flagged
+        skewness_threshold=2.0,  # Flag heavy tails in fare/distance
+        high_cardinality_ratio=0.8,  # Flag near-unique columns
+        zero_pct_threshold=0.1,  # Flag columns with >10% zeros
+        high_correlation_threshold=0.9,  # Flag redundant features
     )
 
     explorer = DataExplorer(alert_config=alert_config)
@@ -109,14 +114,18 @@ async def profile_raw_data():
     print(f"\n--- Data Quality Alerts ({len(profile.alerts)}) ---")
     cleaning_actions = []
     for alert in profile.alerts:
-        print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}")
+        print(
+            f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}"
+        )
         # Map alerts to cleaning actions
         if alert["type"] == "high_nulls":
             cleaning_actions.append(f"Handle missing values in {alert.get('column')}")
         elif alert["type"] == "high_skewness":
             cleaning_actions.append(f"Investigate outliers in {alert.get('column')}")
         elif alert["type"] == "high_zeros":
-            cleaning_actions.append(f"Check zero values in {alert.get('column')} — real or missing?")
+            cleaning_actions.append(
+                f"Check zero values in {alert.get('column')} — real or missing?"
+            )
 
     print(f"\n--- Recommended Cleaning Actions ---")
     for i, action in enumerate(cleaning_actions, 1):
@@ -146,10 +155,7 @@ for lat_col in lat_cols:
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(
         (pl.col(lat_col).is_null())  # Keep nulls for now (handle separately)
-        | (
-            (pl.col(lat_col) >= SG_LAT_MIN)
-            & (pl.col(lat_col) <= SG_LAT_MAX)
-        )
+        | ((pl.col(lat_col) >= SG_LAT_MIN) & (pl.col(lat_col) <= SG_LAT_MAX))
     )
     removed = before - taxi_clean.height
     if removed > 0:
@@ -159,10 +165,7 @@ for lng_col in lng_cols:
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(
         (pl.col(lng_col).is_null())
-        | (
-            (pl.col(lng_col) >= SG_LNG_MIN)
-            & (pl.col(lng_col) <= SG_LNG_MAX)
-        )
+        | ((pl.col(lng_col) >= SG_LNG_MIN) & (pl.col(lng_col) <= SG_LNG_MAX))
     )
     removed = before - taxi_clean.height
     if removed > 0:
@@ -179,7 +182,9 @@ if "fare" in taxi_clean.columns:
     fare_p999 = taxi_clean["fare"].quantile(0.999)
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("fare") <= fare_p999)
-    print(f"Extreme fare filter (>{fare_p999:.0f}): removed {before - taxi_clean.height:,} rows")
+    print(
+        f"Extreme fare filter (>{fare_p999:.0f}): removed {before - taxi_clean.height:,} rows"
+    )
 
 # Step 3c: Fix trip duration anomalies
 if "trip_duration_sec" in taxi_clean.columns:
@@ -201,7 +206,9 @@ if critical_cols:
     print(f"Critical null filter: removed {before - taxi_clean.height:,} rows")
 
 print(f"\n=== After Cleaning ===")
-print(f"Rows: {taxi_raw.height:,} → {taxi_clean.height:,} ({taxi_clean.height / taxi_raw.height:.1%} retained)")
+print(
+    f"Rows: {taxi_raw.height:,} → {taxi_clean.height:,} ({taxi_clean.height / taxi_raw.height:.1%} retained)"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -209,16 +216,20 @@ print(f"Rows: {taxi_raw.height:,} → {taxi_clean.height:,} ({taxi_clean.height 
 # ══════════════════════════════════════════════════════════════════════
 
 # Parse datetime columns
-datetime_cols = [c for c in taxi_clean.columns if "time" in c.lower() or "date" in c.lower()]
+datetime_cols = [
+    c for c in taxi_clean.columns if "time" in c.lower() or "date" in c.lower()
+]
 for col in datetime_cols:
     if taxi_clean[col].dtype == pl.Utf8:
-        taxi_clean = taxi_clean.with_columns(
-            pl.col(col).str.to_datetime().alias(col)
-        )
+        taxi_clean = taxi_clean.with_columns(pl.col(col).str.to_datetime().alias(col))
 
 # Extract temporal features from pickup time
 pickup_col = next(
-    (c for c in taxi_clean.columns if "pickup" in c.lower() and ("time" in c.lower() or "date" in c.lower())),
+    (
+        c
+        for c in taxi_clean.columns
+        if "pickup" in c.lower() and ("time" in c.lower() or "date" in c.lower())
+    ),
     None,
 )
 
@@ -235,17 +246,11 @@ if pickup_col:
 
     # Peak hour classification
     taxi_clean = taxi_clean.with_columns(
-        pl.when(
-            (pl.col("hour_of_day") >= 7) & (pl.col("hour_of_day") <= 9)
-        )
+        pl.when((pl.col("hour_of_day") >= 7) & (pl.col("hour_of_day") <= 9))
         .then(pl.lit("morning_peak"))
-        .when(
-            (pl.col("hour_of_day") >= 17) & (pl.col("hour_of_day") <= 20)
-        )
+        .when((pl.col("hour_of_day") >= 17) & (pl.col("hour_of_day") <= 20))
         .then(pl.lit("evening_peak"))
-        .when(
-            (pl.col("hour_of_day") >= 22) | (pl.col("hour_of_day") <= 5)
-        )
+        .when((pl.col("hour_of_day") >= 22) | (pl.col("hour_of_day") <= 5))
         .then(pl.lit("late_night"))
         .otherwise(pl.lit("off_peak"))
         .alias("time_period")
@@ -265,10 +270,14 @@ if lat_cols and lng_cols and len(lat_cols) >= 2:
             * 6371  # Earth radius in km
             * (
                 (
-                    ((pl.col(dropoff_lat) - pl.col(pickup_lat)) * np.pi / 180 / 2).sin().pow(2)
+                    ((pl.col(dropoff_lat) - pl.col(pickup_lat)) * np.pi / 180 / 2)
+                    .sin()
+                    .pow(2)
                     + (pl.col(pickup_lat) * np.pi / 180).cos()
                     * (pl.col(dropoff_lat) * np.pi / 180).cos()
-                    * ((pl.col(dropoff_lng) - pl.col(pickup_lng)) * np.pi / 180 / 2).sin().pow(2)
+                    * ((pl.col(dropoff_lng) - pl.col(pickup_lng)) * np.pi / 180 / 2)
+                    .sin()
+                    .pow(2)
                 )
                 .sqrt()
                 .arcsin()
@@ -279,7 +288,9 @@ if lat_cols and lng_cols and len(lat_cols) >= 2:
     # Speed (km/h)
     if "trip_duration_sec" in taxi_clean.columns:
         taxi_clean = taxi_clean.with_columns(
-            (pl.col("haversine_km") / (pl.col("trip_duration_sec") / 3600)).alias("avg_speed_kmh")
+            (pl.col("haversine_km") / (pl.col("trip_duration_sec") / 3600)).alias(
+                "avg_speed_kmh"
+            )
         )
 
         # Filter unrealistic speeds (> 120 km/h in Singapore)
@@ -288,7 +299,9 @@ if lat_cols and lng_cols and len(lat_cols) >= 2:
             (pl.col("avg_speed_kmh") <= 120) & (pl.col("avg_speed_kmh") > 0)
         )
         if before - taxi_clean.height > 0:
-            print(f"Speed filter: removed {before - taxi_clean.height:,} rows (>120 km/h)")
+            print(
+                f"Speed filter: removed {before - taxi_clean.height:,} rows (>120 km/h)"
+            )
 
 # Fare per km
 if "fare" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
@@ -308,13 +321,18 @@ print(taxi_clean.select(new_cols).head(5))
 
 # Prepare features for a fare prediction model
 feature_cols = [
-    c for c in taxi_clean.columns
-    if c not in (
-        "fare", "fare_per_km",  # targets / derived from target
-        *datetime_cols,          # raw datetime (use extracted features instead)
-        *lat_cols, *lng_cols,    # raw coordinates (use haversine instead)
+    c
+    for c in taxi_clean.columns
+    if c
+    not in (
+        "fare",
+        "fare_per_km",  # targets / derived from target
+        *datetime_cols,  # raw datetime (use extracted features instead)
+        *lat_cols,
+        *lng_cols,  # raw coordinates (use haversine instead)
     )
-    and taxi_clean[c].dtype in (pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Utf8, pl.Boolean, pl.Categorical)
+    and taxi_clean[c].dtype
+    in (pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Utf8, pl.Boolean, pl.Categorical)
 ]
 
 # Cast string columns to categorical for PreprocessingPipeline
@@ -369,8 +387,16 @@ if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
         if subset.height > 0:
             metrics = {
                 "avg_fare": subset["fare"].mean(),
-                "avg_distance_km": subset["haversine_km"].mean() if "haversine_km" in subset.columns else 0.0,
-                "avg_speed_kmh": subset["avg_speed_kmh"].mean() if "avg_speed_kmh" in subset.columns else 0.0,
+                "avg_distance_km": (
+                    subset["haversine_km"].mean()
+                    if "haversine_km" in subset.columns
+                    else 0.0
+                ),
+                "avg_speed_kmh": (
+                    subset["avg_speed_kmh"].mean()
+                    if "avg_speed_kmh" in subset.columns
+                    else 0.0
+                ),
                 "trip_count": float(subset.height),
             }
             time_metrics[period] = metrics
@@ -383,10 +409,18 @@ if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
 
 # Hourly trip distribution
 if "hour_of_day" in taxi_clean.columns:
-    hourly_counts = taxi_clean.group_by("hour_of_day").agg(
-        pl.col("hour_of_day").count().alias("trip_count"),
-        pl.col("fare").mean().alias("avg_fare") if "fare" in taxi_clean.columns else pl.lit(0).alias("avg_fare"),
-    ).sort("hour_of_day")
+    hourly_counts = (
+        taxi_clean.group_by("hour_of_day")
+        .agg(
+            pl.col("hour_of_day").count().alias("trip_count"),
+            (
+                pl.col("fare").mean().alias("avg_fare")
+                if "fare" in taxi_clean.columns
+                else pl.lit(0).alias("avg_fare")
+            ),
+        )
+        .sort("hour_of_day")
+    )
 
     hourly_metrics = {
         "Trip Volume": hourly_counts["trip_count"].to_list(),
@@ -406,22 +440,54 @@ if "hour_of_day" in taxi_clean.columns:
 taxi_schema = FeatureSchema(
     name="sg_taxi_trip_features",
     features=[
-        FeatureField(name="trip_duration_sec", dtype="float64", nullable=False,
-                     description="Trip duration in seconds (60-10800)"),
-        FeatureField(name="haversine_km", dtype="float64", nullable=False,
-                     description="Haversine distance between pickup and dropoff"),
-        FeatureField(name="hour_of_day", dtype="int64", nullable=False,
-                     description="Hour of pickup (0-23)"),
-        FeatureField(name="day_of_week", dtype="int64", nullable=False,
-                     description="Day of week (0=Monday, 6=Sunday)"),
-        FeatureField(name="is_weekend", dtype="bool", nullable=False,
-                     description="Whether trip is on Saturday/Sunday"),
-        FeatureField(name="time_period", dtype="categorical", nullable=False,
-                     description="Peak classification: morning_peak, evening_peak, off_peak, late_night"),
-        FeatureField(name="avg_speed_kmh", dtype="float64", nullable=False,
-                     description="Average trip speed in km/h (0-120)"),
-        FeatureField(name="fare", dtype="float64", nullable=False,
-                     description="Trip fare in SGD (target variable)"),
+        FeatureField(
+            name="trip_duration_sec",
+            dtype="float64",
+            nullable=False,
+            description="Trip duration in seconds (60-10800)",
+        ),
+        FeatureField(
+            name="haversine_km",
+            dtype="float64",
+            nullable=False,
+            description="Haversine distance between pickup and dropoff",
+        ),
+        FeatureField(
+            name="hour_of_day",
+            dtype="int64",
+            nullable=False,
+            description="Hour of pickup (0-23)",
+        ),
+        FeatureField(
+            name="day_of_week",
+            dtype="int64",
+            nullable=False,
+            description="Day of week (0=Monday, 6=Sunday)",
+        ),
+        FeatureField(
+            name="is_weekend",
+            dtype="bool",
+            nullable=False,
+            description="Whether trip is on Saturday/Sunday",
+        ),
+        FeatureField(
+            name="time_period",
+            dtype="categorical",
+            nullable=False,
+            description="Peak classification: morning_peak, evening_peak, off_peak, late_night",
+        ),
+        FeatureField(
+            name="avg_speed_kmh",
+            dtype="float64",
+            nullable=False,
+            description="Average trip speed in km/h (0-120)",
+        ),
+        FeatureField(
+            name="fare",
+            dtype="float64",
+            nullable=False,
+            description="Trip fare in SGD (target variable)",
+        ),
     ],
     entity_id_column="trip_id",
     timestamp_column="pickup_datetime",
@@ -446,13 +512,16 @@ print("  await feature_store.store(cleaned_df, taxi_schema)")
 # Final: Profile the cleaned data to verify quality improvements
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def profile_cleaned_data():
     """Profile cleaned data and compare with raw profile."""
 
-    explorer = DataExplorer(alert_config=AlertConfig(
-        high_null_pct_threshold=0.01,  # Strict post-cleaning
-        skewness_threshold=2.0,
-    ))
+    explorer = DataExplorer(
+        alert_config=AlertConfig(
+            high_null_pct_threshold=0.01,  # Strict post-cleaning
+            skewness_threshold=2.0,
+        )
+    )
 
     sample = taxi_clean.sample(n=min(200_000, taxi_clean.height), seed=42)
     profile_clean = await explorer.profile(sample)
@@ -464,12 +533,16 @@ async def profile_cleaned_data():
     if profile_clean.alerts:
         print("\nRemaining alerts:")
         for alert in profile_clean.alerts:
-            print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}")
+            print(
+                f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}"
+            )
     else:
         print("✓ No alerts — data is clean!")
 
     # Generate final HTML report
-    report_html = await explorer.to_html(sample, title="Singapore Taxi Trips — Cleaned Data Profile")
+    report_html = await explorer.to_html(
+        sample, title="Singapore Taxi Trips — Cleaned Data Profile"
+    )
     with open("ex5_taxi_profile_report.html", "w") as f:
         f.write(report_html)
     print("Saved: ex5_taxi_profile_report.html")

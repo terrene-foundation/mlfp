@@ -47,9 +47,7 @@ hdb = loader.load("ascent01", "hdb_resale.parquet")
 cooling_measures = loader.load("ascent02", "sg_cooling_measures.csv")
 
 # Parse dates
-hdb = hdb.with_columns(
-    pl.col("month").str.to_date("%Y-%m").alias("transaction_date")
-)
+hdb = hdb.with_columns(pl.col("month").str.to_date("%Y-%m").alias("transaction_date"))
 
 print("=== Cooling Measures ===")
 print(cooling_measures)
@@ -98,8 +96,12 @@ did_data = did_data.with_columns(
 )
 
 print(f"\nDiD sample: {did_data.height:,} transactions")
-print(f"Treatment (high-investment towns): {did_data.filter(pl.col('treated') == 1).height:,}")
-print(f"Control (owner-occupied towns):    {did_data.filter(pl.col('treated') == 0).height:,}")
+print(
+    f"Treatment (high-investment towns): {did_data.filter(pl.col('treated') == 1).height:,}"
+)
+print(
+    f"Control (owner-occupied towns):    {did_data.filter(pl.col('treated') == 0).height:,}"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -109,22 +111,28 @@ print(f"Control (owner-occupied towns):    {did_data.filter(pl.col('treated') ==
 # Monthly price trends by group (pre-treatment period only)
 pre_treatment = did_data.filter(pl.col("post") == 0)
 
-monthly_trends = pre_treatment.group_by(
-    "transaction_date", "treated"
-).agg(
-    pl.col("price_per_sqm").median().alias("median_price_sqm"),
-    pl.col("price_per_sqm").count().alias("n_transactions"),
-).sort("transaction_date", "treated")
+monthly_trends = (
+    pre_treatment.group_by("transaction_date", "treated")
+    .agg(
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+        pl.col("price_per_sqm").count().alias("n_transactions"),
+    )
+    .sort("transaction_date", "treated")
+)
 
 # Compute growth rates for each group
 for group in [0, 1]:
-    group_data = monthly_trends.filter(pl.col("treated") == group).sort("transaction_date")
+    group_data = monthly_trends.filter(pl.col("treated") == group).sort(
+        "transaction_date"
+    )
     prices = group_data["median_price_sqm"].to_numpy()
     if len(prices) > 1:
         growth = (prices[-1] - prices[0]) / prices[0] * 100
         monthly_growth = growth / len(prices)
         group_name = "Treatment" if group == 1 else "Control"
-        print(f"\n{group_name} pre-trend: {growth:.1f}% total, {monthly_growth:.2f}%/month")
+        print(
+            f"\n{group_name} pre-trend: {growth:.1f}% total, {monthly_growth:.2f}%/month"
+        )
 
 # Formal test: interaction of group × time should be non-significant pre-treatment
 # Using monthly dummies
@@ -164,14 +172,17 @@ for treated in [0, 1]:
         )
         means[(treated, post)] = subset["price_per_sqm"].mean()
 
-did_estimate = (
-    (means[(1, 1)] - means[(1, 0)])  # Treatment group change
-    - (means[(0, 1)] - means[(0, 0)])  # Control group change
-)
+did_estimate = (means[(1, 1)] - means[(1, 0)]) - (  # Treatment group change
+    means[(0, 1)] - means[(0, 0)]
+)  # Control group change
 
 print(f"\n=== DiD Estimation ===")
-print(f"Treatment group: pre=${means[(1,0)]:,.0f} → post=${means[(1,1)]:,.0f} (Δ={means[(1,1)]-means[(1,0)]:+,.0f})")
-print(f"Control group:   pre=${means[(0,0)]:,.0f} → post=${means[(0,1)]:,.0f} (Δ={means[(0,1)]-means[(0,0)]:+,.0f})")
+print(
+    f"Treatment group: pre=${means[(1,0)]:,.0f} → post=${means[(1,1)]:,.0f} (Δ={means[(1,1)]-means[(1,0)]:+,.0f})"
+)
+print(
+    f"Control group:   pre=${means[(0,0)]:,.0f} → post=${means[(0,1)]:,.0f} (Δ={means[(0,1)]-means[(0,0)]:+,.0f})"
+)
 print(f"DiD estimate (ATT): ${did_estimate:+,.0f} per sqm")
 
 # Regression-based DiD with standard errors
@@ -180,12 +191,14 @@ print(f"DiD estimate (ATT): ${did_estimate:+,.0f} per sqm")
 from numpy.linalg import lstsq
 
 y = did_data["price_per_sqm"].to_numpy()
-X = np.column_stack([
-    np.ones(len(y)),
-    did_data["treated"].to_numpy(),
-    did_data["post"].to_numpy(),
-    did_data["did_interaction"].to_numpy(),
-])
+X = np.column_stack(
+    [
+        np.ones(len(y)),
+        did_data["treated"].to_numpy(),
+        did_data["post"].to_numpy(),
+        did_data["did_interaction"].to_numpy(),
+    ]
+)
 
 beta, residuals, rank, sv = lstsq(X, y, rcond=None)
 y_hat = X @ beta
@@ -209,8 +222,10 @@ print(f"Standard error: ${did_se:,.2f}")
 print(f"t-statistic: {did_t:.3f}")
 print(f"p-value: {did_p:.6f}")
 print(f"95% CI: [${did_ci[0]:,.2f}, ${did_ci[1]:,.2f}]")
-print(f"Interpretation: Cooling measure {'reduced' if did_coef < 0 else 'increased'} "
-      f"prices by ${abs(did_coef):,.0f}/sqm in investment-heavy towns")
+print(
+    f"Interpretation: Cooling measure {'reduced' if did_coef < 0 else 'increased'} "
+    f"prices by ${abs(did_coef):,.0f}/sqm in investment-heavy towns"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -222,27 +237,37 @@ print(f"Interpretation: Cooling measure {'reduced' if did_coef < 0 else 'increas
 placebo_date = event_date - pl.duration(days=365)  # 1 year before actual event
 placebo_window_start = placebo_date - pl.duration(days=365)
 
-placebo_data = hdb.filter(
-    (pl.col("transaction_date") >= placebo_window_start)
-    & (pl.col("transaction_date") <= placebo_date + pl.duration(days=365))
-    & (pl.col("town").is_in(treatment_towns + control_towns))
-    & (pl.col("transaction_date") < event_date)  # Strictly before actual event
-).with_columns(
-    pl.when(pl.col("town").is_in(treatment_towns)).then(pl.lit(1)).otherwise(pl.lit(0)).alias("treated"),
-    pl.when(pl.col("transaction_date") >= placebo_date).then(pl.lit(1)).otherwise(pl.lit(0)).alias("post"),
-    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
-).with_columns(
-    (pl.col("treated") * pl.col("post")).alias("did_interaction")
+placebo_data = (
+    hdb.filter(
+        (pl.col("transaction_date") >= placebo_window_start)
+        & (pl.col("transaction_date") <= placebo_date + pl.duration(days=365))
+        & (pl.col("town").is_in(treatment_towns + control_towns))
+        & (pl.col("transaction_date") < event_date)  # Strictly before actual event
+    )
+    .with_columns(
+        pl.when(pl.col("town").is_in(treatment_towns))
+        .then(pl.lit(1))
+        .otherwise(pl.lit(0))
+        .alias("treated"),
+        pl.when(pl.col("transaction_date") >= placebo_date)
+        .then(pl.lit(1))
+        .otherwise(pl.lit(0))
+        .alias("post"),
+        (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+    )
+    .with_columns((pl.col("treated") * pl.col("post")).alias("did_interaction"))
 )
 
 # Placebo regression
 y_p = placebo_data["price_per_sqm"].to_numpy()
-X_p = np.column_stack([
-    np.ones(len(y_p)),
-    placebo_data["treated"].to_numpy(),
-    placebo_data["post"].to_numpy(),
-    placebo_data["did_interaction"].to_numpy(),
-])
+X_p = np.column_stack(
+    [
+        np.ones(len(y_p)),
+        placebo_data["treated"].to_numpy(),
+        placebo_data["post"].to_numpy(),
+        placebo_data["did_interaction"].to_numpy(),
+    ]
+)
 
 beta_p, _, _, _ = lstsq(X_p, y_p, rcond=None)
 resid_p = y_p - X_p @ beta_p
@@ -268,7 +293,9 @@ else:
 
 # Create relative month variable
 did_data_event = did_data.with_columns(
-    ((pl.col("transaction_date") - event_date).dt.total_days() / 30).cast(pl.Int32).alias("rel_month")
+    ((pl.col("transaction_date") - event_date).dt.total_days() / 30)
+    .cast(pl.Int32)
+    .alias("rel_month")
 )
 
 # Estimate treatment effect for each relative month
@@ -283,26 +310,34 @@ for rel_m in range(-12, 13):
 
     if len(treat_prices) > 10 and len(ctrl_prices) > 10:
         diff = treat_prices.mean() - ctrl_prices.mean()
-        se = np.sqrt(treat_prices.var(ddof=1) / len(treat_prices) + ctrl_prices.var(ddof=1) / len(ctrl_prices))
-        event_study.append({
-            "rel_month": rel_m,
-            "diff": diff,
-            "se": se,
-            "ci_lower": diff - 1.96 * se,
-            "ci_upper": diff + 1.96 * se,
-        })
+        se = np.sqrt(
+            treat_prices.var(ddof=1) / len(treat_prices)
+            + ctrl_prices.var(ddof=1) / len(ctrl_prices)
+        )
+        event_study.append(
+            {
+                "rel_month": rel_m,
+                "diff": diff,
+                "se": se,
+                "ci_lower": diff - 1.96 * se,
+                "ci_upper": diff + 1.96 * se,
+            }
+        )
 
 print(f"\n=== Event Study ===")
 print(f"{'Month':>6} {'Diff':>10} {'95% CI':>24}")
 print("─" * 44)
 for e in event_study:
     marker = " ←event" if e["rel_month"] == 0 else ""
-    print(f"  t{e['rel_month']:+3d}  ${e['diff']:>8,.0f}  [${e['ci_lower']:>8,.0f}, ${e['ci_upper']:>8,.0f}]{marker}")
+    print(
+        f"  t{e['rel_month']:+3d}  ${e['diff']:>8,.0f}  [${e['ci_lower']:>8,.0f}, ${e['ci_upper']:>8,.0f}]{marker}"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Log to ExperimentTracker
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def log_did_analysis():
     conn = ConnectionManager("sqlite:///ascent02_experiments.db")
@@ -316,39 +351,43 @@ async def log_did_analysis():
         tags=["ascent02", "causal", "did"],
     )
 
-    run_id = await tracker.log_run(
-        experiment_id=exp_id,
-        name="did_cooling_measure_absd_2022",
-        params={
-            "method": "Difference-in-Differences",
-            "event_date": "2022-09-30",
-            "treatment_towns": treatment_towns,
-            "control_towns": control_towns,
-            "window_months": 12,
-        },
-        metrics={
-            "did_estimate": float(did_coef),
-            "did_se": float(did_se),
-            "did_p_value": float(did_p),
-            "placebo_p_value": float(p_placebo),
-            "n_treatment": int(did_data.filter(pl.col("treated") == 1).height),
-            "n_control": int(did_data.filter(pl.col("treated") == 0).height),
-        },
-        tags=["causal", "did", "cooling-measures"],
-    )
-    print(f"\nLogged DiD run: {run_id}")
+    async with tracker.run(exp_id, run_name="did_cooling_measure_absd_2022") as run:
+        await run.log_params(
+            {
+                "method": "Difference-in-Differences",
+                "event_date": "2022-09-30",
+                "treatment_towns": ",".join(treatment_towns),
+                "control_towns": ",".join(control_towns),
+                "window_months": "12",
+            }
+        )
+        await run.log_metrics(
+            {
+                "did_estimate": float(did_coef),
+                "did_se": float(did_se),
+                "did_p_value": float(did_p),
+                "placebo_p_value": float(p_placebo),
+                "n_treatment": float(did_data.filter(pl.col("treated") == 1).height),
+                "n_control": float(did_data.filter(pl.col("treated") == 0).height),
+            }
+        )
+        await run.set_tag("method", "did")
+    print(f"\nLogged DiD run")
     await conn.close()
+
 
 asyncio.run(log_did_analysis())
 
 # Visualise
 viz = ModelVisualizer()
-fig = viz.metric_comparison({
-    "Treatment (pre)": {"price_sqm": means[(1, 0)]},
-    "Treatment (post)": {"price_sqm": means[(1, 1)]},
-    "Control (pre)": {"price_sqm": means[(0, 0)]},
-    "Control (post)": {"price_sqm": means[(0, 1)]},
-})
+fig = viz.metric_comparison(
+    {
+        "Treatment (pre)": {"price_sqm": means[(1, 0)]},
+        "Treatment (post)": {"price_sqm": means[(1, 1)]},
+        "Control (pre)": {"price_sqm": means[(0, 0)]},
+        "Control (post)": {"price_sqm": means[(0, 1)]},
+    }
+)
 fig.update_layout(title="DiD: Treatment vs Control, Pre vs Post Cooling Measure")
 fig.write_html("ex4_did_comparison.html")
 print("Saved: ex4_did_comparison.html")

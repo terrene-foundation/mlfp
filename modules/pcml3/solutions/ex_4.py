@@ -124,6 +124,7 @@ db = DataFlow("sqlite:///ascent03_models.db")
 @db.model
 class ModelEvaluation:
     """Stores evaluation results for trained models."""
+
     id: int = field(primary_key=True)
     model_name: str = field()
     dataset: str = field()
@@ -140,6 +141,7 @@ class ModelEvaluation:
 @db.model
 class ModelArtifact:
     """Stores model metadata and serialisation path."""
+
     id: int = field(primary_key=True)
     model_name: str = field()
     version: int = field()
@@ -155,10 +157,18 @@ class ModelArtifact:
 # to understand what each node does internally.
 
 import lightgbm as lgb
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score, log_loss
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    average_precision_score,
+    log_loss,
+)
 
 pipeline = PreprocessingPipeline()
-result = pipeline.setup(credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal")
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
 
 X_train, y_train, col_info = to_sklearn_input(
     result.train_data,
@@ -172,9 +182,12 @@ X_test, y_test, _ = to_sklearn_input(
 )
 
 model = lgb.LGBMClassifier(
-    n_estimators=500, learning_rate=0.1, max_depth=6,
+    n_estimators=500,
+    learning_rate=0.1,
+    max_depth=6,
     scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
-    random_state=42, verbose=-1,
+    random_state=42,
+    verbose=-1,
 )
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
@@ -197,33 +210,40 @@ for metric, value in eval_metrics.items():
 # TASK 4: Persist results with db.express
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def persist_results():
     """Store evaluation results and model metadata in DataFlow."""
     await db.initialize()
 
     # Store evaluation
-    eval_record = await db.express.create("ModelEvaluation", {
-        "model_name": "lgbm_credit_v1",
-        "dataset": "sg_credit_scoring",
-        "accuracy": eval_metrics["accuracy"],
-        "f1_score": eval_metrics["f1"],
-        "auc_roc": eval_metrics["auc_roc"],
-        "auc_pr": eval_metrics["auc_pr"],
-        "log_loss": eval_metrics["log_loss"],
-        "train_size": X_train.shape[0],
-        "test_size": X_test.shape[0],
-        "feature_count": X_train.shape[1],
-    })
+    eval_record = await db.express.create(
+        "ModelEvaluation",
+        {
+            "model_name": "lgbm_credit_v1",
+            "dataset": "sg_credit_scoring",
+            "accuracy": eval_metrics["accuracy"],
+            "f1_score": eval_metrics["f1"],
+            "auc_roc": eval_metrics["auc_roc"],
+            "auc_pr": eval_metrics["auc_pr"],
+            "log_loss": eval_metrics["log_loss"],
+            "train_size": X_train.shape[0],
+            "test_size": X_test.shape[0],
+            "feature_count": X_train.shape[1],
+        },
+    )
     print(f"\nPersisted evaluation: ID={eval_record['id']}")
 
     # Store model artifact metadata
-    artifact_record = await db.express.create("ModelArtifact", {
-        "model_name": "lgbm_credit_v1",
-        "version": 1,
-        "artifact_path": "models/lgbm_credit_v1.pkl",
-        "is_production": False,
-        "created_by": "ascent03_ex4",
-    })
+    artifact_record = await db.express.create(
+        "ModelArtifact",
+        {
+            "model_name": "lgbm_credit_v1",
+            "version": 1,
+            "artifact_path": "models/lgbm_credit_v1.pkl",
+            "is_production": False,
+            "created_by": "ascent03_ex4",
+        },
+    )
     print(f"Persisted artifact: ID={artifact_record['id']}")
 
     return eval_record, artifact_record
@@ -238,25 +258,27 @@ eval_record, artifact_record = asyncio.run(persist_results())
 # ModelSignature is the input/output contract for a trained model.
 # It specifies what features are required and what outputs are produced.
 
-from kailash_ml.engines.training_pipeline import ModelSignature
+from kailash_ml.types import ModelSignature, FeatureSchema, FeatureField
+
+input_schema = FeatureSchema(
+    name="credit_model_input",
+    features=[
+        FeatureField(name=f, dtype="float64") for f in col_info["feature_columns"]
+    ],
+    entity_id_column="application_id",
+)
 
 signature = ModelSignature(
-    input_schema={
-        "features": col_info["feature_columns"],
-        "dtypes": {f: "float64" for f in col_info["feature_columns"]},
-    },
-    output_schema={
-        "predictions": ["default_probability", "default_label"],
-        "dtypes": {"default_probability": "float64", "default_label": "int64"},
-    },
-    model_class="lightgbm.LGBMClassifier",
-    version=1,
+    input_schema=input_schema,
+    output_columns=["default_probability", "default_label"],
+    output_dtypes=["float64", "int64"],
+    model_type="classifier",
 )
 
 print(f"\n=== ModelSignature ===")
-print(f"Input features: {len(signature.input_schema['features'])}")
-print(f"Output: {signature.output_schema['predictions']}")
-print(f"Model class: {signature.model_class}")
+print(f"Input features: {len(signature.input_schema.features)}")
+print(f"Output: {signature.output_columns}")
+print(f"Model type: {signature.model_type}")
 print(f"\nModelSignature is the contract between model and deployment.")
 print("InferenceServer (M4) validates inputs against this signature.")
 
@@ -265,12 +287,15 @@ print("InferenceServer (M4) validates inputs against this signature.")
 # TASK 6: Query persisted results
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def query_results():
     """Query stored evaluations to compare models."""
     evals = await db.express.list("ModelEvaluation")
     print(f"\n=== Persisted Evaluations ({len(evals)}) ===")
     for e in evals:
-        print(f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}")
+        print(
+            f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}"
+        )
 
     artifacts = await db.express.list("ModelArtifact")
     print(f"\nModel Artifacts ({len(artifacts)}):")
@@ -279,6 +304,7 @@ async def query_results():
         print(f"  {a['model_name']} v{a['version']}: {status}")
 
     await db.close()
+
 
 asyncio.run(query_results())
 

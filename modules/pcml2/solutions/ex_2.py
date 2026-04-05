@@ -40,14 +40,13 @@ loader = ASCENTDataLoader()
 hdb = loader.load("ascent01", "hdb_resale.parquet")
 
 # Focus on recent data for feature engineering
-hdb = hdb.with_columns(
-    pl.col("month").str.to_date("%Y-%m").alias("transaction_date")
-)
+hdb = hdb.with_columns(pl.col("month").str.to_date("%Y-%m").alias("transaction_date"))
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Connect to FeatureStore (shared DB)
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def setup():
     conn = ConnectionManager("sqlite:///ascent02_experiments.db")
@@ -73,14 +72,30 @@ conn, fs, tracker = asyncio.run(setup())
 property_schema_v1 = FeatureSchema(
     name="hdb_property_features",
     features=[
-        FeatureField(name="floor_area_sqm", dtype="float64", nullable=False,
-                     description="Floor area in square metres"),
-        FeatureField(name="remaining_lease_years", dtype="float64", nullable=False,
-                     description="Remaining lease in years"),
-        FeatureField(name="storey_midpoint", dtype="float64", nullable=False,
-                     description="Midpoint of storey range"),
-        FeatureField(name="price_per_sqm", dtype="float64", nullable=False,
-                     description="Transaction price per square metre"),
+        FeatureField(
+            name="floor_area_sqm",
+            dtype="float64",
+            nullable=False,
+            description="Floor area in square metres",
+        ),
+        FeatureField(
+            name="remaining_lease_years",
+            dtype="float64",
+            nullable=False,
+            description="Remaining lease in years",
+        ),
+        FeatureField(
+            name="storey_midpoint",
+            dtype="float64",
+            nullable=False,
+            description="Midpoint of storey range",
+        ),
+        FeatureField(
+            name="price_per_sqm",
+            dtype="float64",
+            nullable=False,
+            description="Transaction price per square metre",
+        ),
     ],
     entity_id_column="transaction_id",
     timestamp_column="transaction_date",
@@ -98,14 +113,17 @@ for f in property_schema_v1.features:
 # TASK 3: Compute and store features
 # ══════════════════════════════════════════════════════════════════════
 
+
 # Compute features from raw data
 def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
     """Compute version 1 property features."""
     return df.with_columns(
         # Parse storey range to midpoint
         (
-            (pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
-             + pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64))
+            (
+                pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
+                + pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64)
+            )
             / 2
         ).alias("storey_midpoint"),
         # Price per sqm
@@ -144,22 +162,25 @@ row_count = asyncio.run(store_features())
 # If training a model to predict prices at time T, you must only use
 # features computed from data BEFORE time T.
 
+
 async def demonstrate_pit_retrieval():
     """Show point-in-time feature retrieval."""
 
     # Retrieve features as of Jan 2023 (no future data)
     cutoff_date = datetime(2023, 1, 1)
-    features_jan_2023 = await fs.retrieve(
-        schema_name="hdb_property_features",
-        as_of=cutoff_date,
+    features_jan_2023 = await fs.get_training_set(
+        schema=property_schema_v1,
+        start=datetime(2000, 1, 1),
+        end=cutoff_date,
     )
     print(f"\n=== Point-in-Time Retrieval ===")
     print(f"Features as of 2023-01-01: {features_jan_2023.height:,} rows")
 
     # Retrieve features as of Jan 2024 (one year later)
-    features_jan_2024 = await fs.retrieve(
-        schema_name="hdb_property_features",
-        as_of=datetime(2024, 1, 1),
+    features_jan_2024 = await fs.get_training_set(
+        schema=property_schema_v1,
+        start=datetime(2000, 1, 1),
+        end=datetime(2024, 1, 1),
     )
     print(f"Features as of 2024-01-01: {features_jan_2024.height:,} rows")
 
@@ -189,17 +210,30 @@ property_schema_v2 = FeatureSchema(
     name="hdb_property_features",
     features=[
         *property_schema_v1.features,
-        FeatureField(name="town_median_price", dtype="float64", nullable=True,
-                     description="Median price in the same town (trailing 6 months)"),
-        FeatureField(name="town_transaction_volume", dtype="int64", nullable=True,
-                     description="Number of transactions in town (trailing 6 months)"),
-        FeatureField(name="town_price_trend", dtype="float64", nullable=True,
-                     description="6-month price change % in town"),
+        FeatureField(
+            name="town_median_price",
+            dtype="float64",
+            nullable=True,
+            description="Median price in the same town (trailing 6 months)",
+        ),
+        FeatureField(
+            name="town_transaction_volume",
+            dtype="int64",
+            nullable=True,
+            description="Number of transactions in town (trailing 6 months)",
+        ),
+        FeatureField(
+            name="town_price_trend",
+            dtype="float64",
+            nullable=True,
+            description="6-month price change % in town",
+        ),
     ],
     entity_id_column="transaction_id",
     timestamp_column="transaction_date",
     version=2,
 )
+
 
 def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
     """Compute v2 features including market context."""
@@ -209,8 +243,7 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
     # Compute trailing 6-month town-level statistics
     # Group by town and 6-month windows
     town_stats = (
-        result
-        .group_by_dynamic("transaction_date", every="1mo", group_by="town")
+        result.group_by_dynamic("transaction_date", every="1mo", group_by="town")
         .agg(
             pl.col("resale_price").median().alias("monthly_median"),
             pl.col("resale_price").count().alias("monthly_volume"),
@@ -238,8 +271,11 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
     # Join back to transactions
     result = result.join(
         town_stats.select(
-            "town", "transaction_date",
-            "town_median_price", "town_transaction_volume", "town_price_trend"
+            "town",
+            "transaction_date",
+            "town_median_price",
+            "town_transaction_volume",
+            "town_price_trend",
         ),
         on=["town", "transaction_date"],
         how="left",
@@ -250,9 +286,12 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
 
 features_v2 = compute_v2_features(hdb)
 
+
 async def store_v2():
     await fs.register_features(property_schema_v2)
-    print(f"\nRegistered schema: {property_schema_v2.name} v{property_schema_v2.version}")
+    print(
+        f"\nRegistered schema: {property_schema_v2.name} v{property_schema_v2.version}"
+    )
 
     row_count = await fs.store(features_v2, property_schema_v2)
     print(f"Stored {row_count:,} v2 feature rows")
@@ -261,12 +300,14 @@ async def store_v2():
     versions = await fs.list_versions("hdb_property_features")
     print(f"Available versions: {versions}")
 
+
 asyncio.run(store_v2())
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Data lineage — what data trained this model?
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def demonstrate_lineage():
     """Show data lineage tracking: model → features → source data."""
@@ -278,23 +319,25 @@ async def demonstrate_lineage():
         tags=["ascent02", "feature-store", "lineage"],
     )
 
-    run_id = await tracker.log_run(
-        experiment_id=experiment_id,
-        name="hdb_price_model_v1",
-        params={
-            "feature_schema": "hdb_property_features",
-            "feature_version": 2,
-            "as_of_date": "2023-06-01",
-            "train_rows": features_2023.height,
-            "model_type": "LightGBM",
-        },
-        metrics={
-            "rmse": 45_000.0,  # Simulated
-            "r2": 0.87,
-            "mae": 32_000.0,
-        },
-        tags=["lineage-demo", "hdb-pricing"],
-    )
+    async with tracker.run(experiment_id, run_name="hdb_price_model_v1") as run:
+        await run.log_params(
+            {
+                "feature_schema": "hdb_property_features",
+                "feature_version": "2",
+                "as_of_date": "2023-06-01",
+                "train_rows": str(features_2023.height),
+                "model_type": "LightGBM",
+            }
+        )
+        await run.log_metrics(
+            {
+                "rmse": 45_000.0,
+                "r2": 0.87,
+                "mae": 32_000.0,
+            }
+        )
+        await run.set_tag("purpose", "lineage-demo")
+        run_id = run.id if hasattr(run, "id") else "logged"
 
     print(f"\n=== Data Lineage ===")
     print(f"Model run: {run_id}")
@@ -311,6 +354,7 @@ async def demonstrate_lineage():
     print(f"  5. Source: data.gov.sg resale flat prices")
 
     return experiment_id, run_id
+
 
 exp_id, run_id = asyncio.run(demonstrate_lineage())
 

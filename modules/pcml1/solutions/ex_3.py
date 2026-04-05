@@ -28,7 +28,8 @@ from __future__ import annotations
 import asyncio
 
 import polars as pl
-from kailash_ml import DataExplorer, AlertConfig
+from kailash_ml import DataExplorer
+from kailash_ml.engines.data_explorer import AlertConfig
 
 from shared import ASCENTDataLoader
 
@@ -38,9 +39,9 @@ from shared import ASCENTDataLoader
 loader = ASCENTDataLoader()
 
 # Three datasets with different reporting frequencies
-cpi = loader.load("ascent01", "sg_cpi.csv")           # Monthly
+cpi = loader.load("ascent01", "sg_cpi.csv")  # Monthly
 employment = loader.load("ascent01", "sg_employment.csv")  # Quarterly
-fx_rates = loader.load("ascent01", "sg_fx_rates.csv")      # Daily
+fx_rates = loader.load("ascent01", "sg_fx_rates.csv")  # Daily
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -78,22 +79,16 @@ print(fx_rates.head(5))
 #   - FX: aggregate daily → monthly (mean)
 
 # Parse dates
-cpi = cpi.with_columns(
-    pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-)
+cpi = cpi.with_columns(pl.col("date").str.to_date("%Y-%m-%d").alias("date"))
 
 employment = employment.with_columns(
     pl.col("date").str.to_date("%Y-%m-%d").alias("date")
 )
 
-fx_rates = fx_rates.with_columns(
-    pl.col("date").str.to_date("%Y-%m-%d").alias("date")
-)
+fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d").alias("date"))
 
 # Create a monthly date column for joining
-cpi = cpi.with_columns(
-    pl.col("date").dt.truncate("1mo").alias("month_date")
-)
+cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
 
 # Employment: extract month, forward-fill to monthly
 employment = employment.with_columns(
@@ -123,24 +118,29 @@ employment_monthly = employment_monthly.with_columns(
 )
 
 # FX rates: aggregate to monthly means
-fx_monthly = fx_rates.with_columns(
-    pl.col("date").dt.truncate("1mo").alias("month_date")
-).group_by("month_date").agg(
-    [pl.col(c).mean() for c in fx_rates.columns if c != "date"]
-).sort("month_date")
+fx_monthly = (
+    fx_rates.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
+    .group_by("month_date")
+    .agg([pl.col(c).mean() for c in fx_rates.columns if c != "date"])
+    .sort("month_date")
+)
 
 # Merge all three
-economic = cpi.join(
-    employment_monthly,
-    on="month_date",
-    how="left",
-    suffix="_emp",
-).join(
-    fx_monthly,
-    on="month_date",
-    how="left",
-    suffix="_fx",
-).sort("month_date")
+economic = (
+    cpi.join(
+        employment_monthly,
+        on="month_date",
+        how="left",
+        suffix="_emp",
+    )
+    .join(
+        fx_monthly,
+        on="month_date",
+        how="left",
+        suffix="_fx",
+    )
+    .sort("month_date")
+)
 
 print(f"\n=== Merged Economic Dataset ===")
 print(f"Shape: {economic.shape}")
@@ -170,14 +170,14 @@ if null_summary:
 #   - We care more about constant columns (data pipeline failures)
 
 alert_config = AlertConfig(
-    high_correlation_threshold=0.95,    # Relax: macro indicators are correlated
-    high_null_pct_threshold=0.10,       # Relax: quarterly data has gaps
-    constant_threshold=1,               # Strict: flag constant columns (pipeline issue)
-    high_cardinality_ratio=0.95,        # Relax: date-like columns are expected
-    skewness_threshold=3.0,             # Relax: crisis periods cause skew
-    zero_pct_threshold=0.3,             # Relax: some indicators naturally hit zero
-    imbalance_ratio_threshold=0.05,     # Strict: catch extreme class imbalance
-    duplicate_pct_threshold=0.05,       # Moderate: some duplication from forward-fill
+    high_correlation_threshold=0.95,  # Relax: macro indicators are correlated
+    high_null_pct_threshold=0.10,  # Relax: quarterly data has gaps
+    constant_threshold=1,  # Strict: flag constant columns (pipeline issue)
+    high_cardinality_ratio=0.95,  # Relax: date-like columns are expected
+    skewness_threshold=3.0,  # Relax: crisis periods cause skew
+    zero_pct_threshold=0.3,  # Relax: some indicators naturally hit zero
+    imbalance_ratio_threshold=0.05,  # Strict: catch extreme class imbalance
+    duplicate_pct_threshold=0.05,  # Moderate: some duplication from forward-fill
 )
 
 print(f"\n=== Custom AlertConfig ===")
@@ -189,6 +189,7 @@ print(f"Skewness threshold: {alert_config.skewness_threshold}")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Run async profiling and interpret alerts
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def profile_economic_data():
     """Profile the merged economic dataset with DataExplorer."""
@@ -298,12 +299,15 @@ def _interpret_alert(alert_type: str, column: str, value) -> str:
             "Rare events in economic data (recessions) are naturally imbalanced."
         ),
     }
-    return interpretations.get(alert_type, f"Alert type '{alert_type}' — review manually.")
+    return interpretations.get(
+        alert_type, f"Alert type '{alert_type}' — review manually."
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5: Compare data quality across time periods
 # ══════════════════════════════════════════════════════════════════════
+
 
 async def compare_periods():
     """Compare pre-COVID vs COVID-era economic data quality."""
@@ -344,12 +348,15 @@ async def compare_periods():
 # TASK 6: Generate HTML report
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def generate_report():
     """Generate a self-contained profiling HTML report."""
 
     explorer = DataExplorer(alert_config=alert_config)
 
-    report_html = await explorer.to_html(economic, title="Singapore Economic Indicators — Data Profile")
+    report_html = await explorer.to_html(
+        economic, title="Singapore Economic Indicators — Data Profile"
+    )
 
     with open("ex3_economic_profile_report.html", "w") as f:
         f.write(report_html)
@@ -357,6 +364,7 @@ async def generate_report():
 
 
 # ── Run all async tasks ──────────────────────────────────────────────
+
 
 async def main():
     profile = await profile_economic_data()

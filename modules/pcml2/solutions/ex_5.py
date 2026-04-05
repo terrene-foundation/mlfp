@@ -51,24 +51,23 @@ print(f"Default rate: {credit['default'].mean():.2%}")
 
 credit_manual = credit.with_columns(
     # Debt-to-income ratio
-    (pl.col("total_debt") / pl.col("annual_income").clip(lower_bound=1))
-    .alias("debt_to_income"),
-
+    (pl.col("total_debt") / pl.col("annual_income").clip(lower_bound=1)).alias(
+        "debt_to_income"
+    ),
     # Credit utilisation
-    (pl.col("credit_used") / pl.col("credit_limit").clip(lower_bound=1))
-    .alias("credit_utilisation"),
-
+    (pl.col("credit_used") / pl.col("credit_limit").clip(lower_bound=1)).alias(
+        "credit_utilisation"
+    ),
     # Payment behaviour
-    (pl.col("late_payments_12m") / pl.col("total_payments_12m").clip(lower_bound=1))
-    .alias("late_payment_ratio"),
-
+    (
+        pl.col("late_payments_12m") / pl.col("total_payments_12m").clip(lower_bound=1)
+    ).alias("late_payment_ratio"),
     # Account age features
     (pl.col("account_age_months") / 12).alias("account_age_years"),
-
     # Income stability (std of monthly income / mean)
-    (pl.col("income_std") / pl.col("annual_income").clip(lower_bound=1) * 12)
-    .alias("income_cv"),
-
+    (pl.col("income_std") / pl.col("annual_income").clip(lower_bound=1) * 12).alias(
+        "income_cv"
+    ),
     # Log-transformed skewed features
     pl.col("annual_income").log1p().alias("log_income"),
     pl.col("total_debt").log1p().alias("log_debt"),
@@ -82,42 +81,60 @@ print(f"\nManual features ({len(manual_features)}): {manual_features}")
 # TASK 2: Automated feature engineering with FeatureEngineer
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def automated_features():
     """Use FeatureEngineer for automated feature generation."""
 
-    engineer = FeatureEngineer()
+    engineer = FeatureEngineer(max_features=30)
 
-    # Generate interactions between numeric features
+    # Define schema for the features to engineer
+    from kailash_ml.types import FeatureSchema, FeatureField
+
     numeric_cols = [
-        "annual_income", "total_debt", "credit_limit", "credit_used",
-        "account_age_months", "late_payments_12m",
+        "annual_income",
+        "total_debt",
+        "credit_limit",
+        "credit_used",
+        "account_age_months",
+        "late_payments_12m",
     ]
+    eng_schema = FeatureSchema(
+        name="credit_features",
+        features=[FeatureField(name=c, dtype="float64") for c in numeric_cols],
+        entity_id_column="application_id",
+    )
 
-    # Automated feature generation
-    result = await engineer.generate(
+    # Automated feature generation using FeatureSchema
+    generated = engineer.generate(
         data=credit,
-        target="default",
-        feature_columns=numeric_cols,
+        schema=eng_schema,
         strategies=["interactions", "polynomial", "binning", "ratios"],
-        max_features=30,  # Limit to prevent feature explosion
+    )
+
+    # Select best features by importance
+    result = engineer.select(
+        data=generated.data,
+        candidates=generated,
+        target="default",
+        method="importance",
+        top_k=30,
     )
 
     print(f"\n=== FeatureEngineer Results ===")
     print(f"Original features: {len(numeric_cols)}")
-    print(f"Generated features: {len(result.new_features)}")
-    print(f"Total features: {result.data.width}")
-    print(f"\nGenerated feature names:")
-    for f in result.new_features[:15]:
-        print(f"  {f}")
-    if len(result.new_features) > 15:
-        print(f"  ... and {len(result.new_features) - 15} more")
+    print(f"Generated candidates: {generated.total_candidates}")
+    print(f"Selected features: {result.n_selected}")
+    print(f"\nTop selected features:")
+    for rank in result.rankings[:15]:
+        print(f"  {rank.column_name}: score={rank.score:.4f}")
+    if result.n_selected > 15:
+        print(f"  ... and {result.n_selected - 15} more")
 
-    # Feature importance scores from the engineer
-    if result.importance_scores:
+    # Feature importance from rankings
+    if result.rankings:
         print(f"\nTop 10 by importance:")
-        sorted_imp = sorted(result.importance_scores.items(), key=lambda x: x[1], reverse=True)
-        for name, score in sorted_imp[:10]:
-            print(f"  {name}: {score:.4f}")
+        for rank in result.rankings[:10]:
+            print(f"  {rank.column_name}: {rank.score:.4f}")
 
     return result
 
@@ -129,6 +146,7 @@ engineer_result = asyncio.run(automated_features())
 # TASK 3: Compare manual vs automated features
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def compare_features():
     """Compare manual and automated feature sets with DataExplorer."""
 
@@ -139,17 +157,25 @@ async def compare_features():
     profile_manual = await explorer.profile(manual_df)
 
     # Profile automated features
-    auto_df = engineer_result.data.select(engineer_result.new_features + ["default"])
+    auto_df = engineer_result.data.select(
+        engineer_result.selected_columns + ["default"]
+    )
     profile_auto = await explorer.profile(auto_df)
 
     print(f"\n=== Feature Set Comparison ===")
     print(f"{'Metric':<25} {'Manual':>10} {'Automated':>12}")
     print("─" * 50)
-    print(f"{'Feature count':<25} {len(manual_features):>10} {len(engineer_result.new_features):>12}")
-    print(f"{'Alerts':<25} {len(profile_manual.alerts):>10} {len(profile_auto.alerts):>12}")
-    print(f"{'Avg null %':<25} "
-          f"{np.mean([c.null_pct for c in profile_manual.columns]):>10.2%} "
-          f"{np.mean([c.null_pct for c in profile_auto.columns]):>12.2%}")
+    print(
+        f"{'Feature count':<25} {len(manual_features):>10} {len(engineer_result.selected_columns):>12}"
+    )
+    print(
+        f"{'Alerts':<25} {len(profile_manual.alerts):>10} {len(profile_auto.alerts):>12}"
+    )
+    print(
+        f"{'Avg null %':<25} "
+        f"{np.mean([c.null_pct for c in profile_manual.columns]):>10.2%} "
+        f"{np.mean([c.null_pct for c in profile_auto.columns]):>12.2%}"
+    )
 
     return profile_manual, profile_auto
 
@@ -166,14 +192,18 @@ from kailash_ml.interop import to_sklearn_input
 
 # Combine all features
 all_feature_cols = manual_features + [
-    f for f in engineer_result.new_features
-    if f not in manual_features
+    f for f in engineer_result.selected_columns if f not in manual_features
 ]
 
 # Prepare combined dataset
 combined = credit_manual.join(
     engineer_result.data.select(
-        ["default"] + [f for f in engineer_result.new_features if f not in credit_manual.columns]
+        ["default"]
+        + [
+            f
+            for f in engineer_result.selected_columns
+            if f not in credit_manual.columns
+        ]
     ),
     on="default",
     how="cross",
@@ -201,6 +231,7 @@ for name, score in mi_ranking:
 # TASK 5: Review full M2 experiment history
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def review_experiments():
     """Review all experiments from Module 2 exercises."""
 
@@ -216,22 +247,22 @@ async def review_experiments():
         tags=["ascent02", "feature-engineering", "automated"],
     )
 
-    await tracker.log_run(
-        experiment_id=exp_id,
-        name="manual_vs_automated_features",
-        params={
-            "manual_features": manual_features,
-            "auto_strategies": ["interactions", "polynomial", "binning", "ratios"],
-            "max_features": 30,
-        },
-        metrics={
-            "n_manual_features": len(manual_features),
-            "n_auto_features": len(engineer_result.new_features),
-            "top_mi_feature": mi_ranking[0][0],
-            "top_mi_score": float(mi_ranking[0][1]),
-        },
-        tags=["feature-engineering", "comparison"],
-    )
+    async with tracker.run(exp_id, run_name="manual_vs_automated_features") as run:
+        await run.log_params(
+            {
+                "manual_features": ",".join(manual_features),
+                "auto_strategies": "interactions,polynomial,binning,ratios",
+                "max_features": "30",
+            }
+        )
+        await run.log_metrics(
+            {
+                "n_manual_features": float(len(manual_features)),
+                "n_auto_features": float(len(engineer_result.selected_columns)),
+                "top_mi_score": float(mi_ranking[0][1]),
+            }
+        )
+        await run.set_tag("type", "feature-engineering")
 
     # List ALL experiments from M2
     experiments = await tracker.list_experiments()
@@ -243,8 +274,10 @@ async def review_experiments():
         runs = await tracker.list_runs(exp["id"])
         print(f"  Runs: {len(runs)}")
         for run in runs:
-            print(f"    - {run.get('name', 'unnamed')}: "
-                  f"metrics={list(run.get('metrics', {}).keys())}")
+            print(
+                f"    - {run.get('name', 'unnamed')}: "
+                f"metrics={list(run.get('metrics', {}).keys())}"
+            )
 
     # Compare experiments
     print(f"\n=== Cross-Experiment Summary ===")
@@ -271,10 +304,7 @@ experiments = asyncio.run(review_experiments())
 viz = ModelVisualizer()
 
 # Compare manual feature importance
-mi_data = {
-    f: {"MI_Score": score}
-    for f, score in mi_ranking[:8]
-}
+mi_data = {f: {"MI_Score": score} for f, score in mi_ranking[:8]}
 fig = viz.metric_comparison(mi_data)
 fig.update_layout(title="Feature Importance (Mutual Information)")
 fig.write_html("ex5_feature_importance.html")

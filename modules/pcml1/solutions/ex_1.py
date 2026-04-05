@@ -20,7 +20,8 @@ from __future__ import annotations
 import asyncio
 
 import polars as pl
-from kailash_ml import DataExplorer, AlertConfig
+from kailash_ml import DataExplorer
+from kailash_ml.engines.data_explorer import AlertConfig
 
 from shared import ASCENTDataLoader
 
@@ -79,9 +80,7 @@ hdb_enriched = hdb_enriched.join(
 )
 
 # Fill missing school counts (towns with no schools in dataset)
-hdb_enriched = hdb_enriched.with_columns(
-    pl.col("school_count").fill_null(0)
-)
+hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(0))
 
 print(f"\nEnriched dataset shape: {hdb_enriched.shape}")
 print(f"New columns: {[c for c in hdb_enriched.columns if c not in hdb.columns]}")
@@ -103,13 +102,15 @@ hdb_enriched = hdb_enriched.with_columns(
 
 # Monthly median price per town using window functions
 # This uses Polars' `over()` for partition-based computation
-monthly_town_prices = hdb_enriched.group_by(
-    "town", "transaction_date"
-).agg(
-    pl.col("price_per_sqm").median().alias("median_price_sqm"),
-    pl.col("resale_price").median().alias("median_resale_price"),
-    pl.col("resale_price").count().alias("transaction_count"),
-).sort("town", "transaction_date")
+monthly_town_prices = (
+    hdb_enriched.group_by("town", "transaction_date")
+    .agg(
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+        pl.col("resale_price").median().alias("median_resale_price"),
+        pl.col("resale_price").count().alias("transaction_count"),
+    )
+    .sort("town", "transaction_date")
+)
 
 # 12-month rolling average price per town
 monthly_town_prices = monthly_town_prices.with_columns(
@@ -129,11 +130,7 @@ monthly_town_prices = monthly_town_prices.with_columns(
 )
 
 print("\n=== Monthly Town Prices (sample) ===")
-print(
-    monthly_town_prices
-    .filter(pl.col("town") == "ANG MO KIO")
-    .tail(12)
-)
+print(monthly_town_prices.filter(pl.col("town") == "ANG MO KIO").tail(12))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -141,27 +138,27 @@ print(
 # ══════════════════════════════════════════════════════════════════════
 
 # Summary statistics by town across all time
-district_summary = hdb_enriched.group_by("town").agg(
-    # Price statistics
-    pl.col("resale_price").median().alias("median_price"),
-    pl.col("resale_price").mean().alias("mean_price"),
-    pl.col("resale_price").std().alias("std_price"),
-    pl.col("resale_price").quantile(0.25).alias("q25_price"),
-    pl.col("resale_price").quantile(0.75).alias("q75_price"),
-
-    # Size statistics
-    pl.col("floor_area_sqm").median().alias("median_area_sqm"),
-
-    # Volume
-    pl.col("resale_price").count().alias("total_transactions"),
-
-    # Price per sqm
-    pl.col("price_per_sqm").median().alias("median_price_per_sqm"),
-
-    # Proximity features
-    pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
-    pl.col("school_count").first().alias("school_count"),
-).sort("median_price", descending=True)
+district_summary = (
+    hdb_enriched.group_by("town")
+    .agg(
+        # Price statistics
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").mean().alias("mean_price"),
+        pl.col("resale_price").std().alias("std_price"),
+        pl.col("resale_price").quantile(0.25).alias("q25_price"),
+        pl.col("resale_price").quantile(0.75).alias("q75_price"),
+        # Size statistics
+        pl.col("floor_area_sqm").median().alias("median_area_sqm"),
+        # Volume
+        pl.col("resale_price").count().alias("total_transactions"),
+        # Price per sqm
+        pl.col("price_per_sqm").median().alias("median_price_per_sqm"),
+        # Proximity features
+        pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
+        pl.col("school_count").first().alias("school_count"),
+    )
+    .sort("median_price", descending=True)
+)
 
 # Add IQR and coefficient of variation
 district_summary = district_summary.with_columns(
@@ -177,15 +174,16 @@ print(district_summary.head(10))
 # TASK 5: DataExplorer profiling — first Kailash engine call
 # ══════════════════════════════════════════════════════════════════════
 
+
 async def profile_with_data_explorer():
     """Use DataExplorer to auto-profile the district summary."""
 
     # Configure alert thresholds for our use case
     alert_config = AlertConfig(
-        high_correlation_threshold=0.85,     # Flag correlated features
-        high_null_pct_threshold=0.05,        # Flag >5% missing
-        skewness_threshold=2.0,              # Flag highly skewed distributions
-        high_cardinality_ratio=0.9,          # Flag near-unique columns
+        high_correlation_threshold=0.85,  # Flag correlated features
+        high_null_pct_threshold=0.05,  # Flag >5% missing
+        skewness_threshold=2.0,  # Flag highly skewed distributions
+        high_cardinality_ratio=0.9,  # Flag near-unique columns
     )
 
     explorer = DataExplorer(alert_config=alert_config)
@@ -201,7 +199,9 @@ async def profile_with_data_explorer():
     # Display alerts
     print(f"\n--- Data Quality Alerts ({len(profile.alerts)}) ---")
     for alert in profile.alerts:
-        print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')} = {alert.get('value', 'N/A')}")
+        print(
+            f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')} = {alert.get('value', 'N/A')}"
+        )
 
     # Column-level statistics
     print("\n--- Column Profiles ---")
@@ -241,7 +241,9 @@ async def profile_with_data_explorer():
     print(f"Rows: {profile_full.n_rows}, Columns: {profile_full.n_columns}")
     print(f"Alerts: {len(profile_full.alerts)}")
     for alert in profile_full.alerts:
-        print(f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}")
+        print(
+            f"  [{alert['severity'].upper()}] {alert['type']}: {alert.get('column', 'N/A')}"
+        )
 
     return profile, profile_full
 

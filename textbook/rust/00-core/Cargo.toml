@@ -1,0 +1,13 @@
+[package]
+name = "tutorial-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+kailash-core = { path = "../../../../loom/kailash-rs/crates/kailash-core" }
+kailash-value = { path = "../../../../loom/kailash-rs/crates/kailash-value" }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"

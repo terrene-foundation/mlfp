@@ -26,12 +26,12 @@ QUIZ = {
                 "print(f'Average HDB price: {celsius_avg:.1f}°C')"
             ),
             "options": [
-                "A) Missing import polars; wrong variable name in f-string",
-                "B) Wrong variable referenced in the f-string (celsius_avg instead of mean_price); missing S$ currency format",
+                "A) Wrong variable referenced in the f-string (celsius_avg instead of mean_price); missing S$ currency format",
+                "B) Missing import polars; wrong variable name in f-string",
                 "C) mean_price should be a float; f-strings cannot format currency",
                 "D) Missing load_dotenv(); wrong decimal places",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "The f-string uses celsius_avg (28.8) instead of mean_price (485000), "
                 "and there is no currency prefix or thousands separator. "
@@ -56,11 +56,11 @@ QUIZ = {
             ),
             "options": [
                 "A) High variance; stats.filter(pl.col('statistic').is_in(['mean', 'std']))",
-                "B) Low variance (temperatures cluster tightly around the mean); stats.filter(pl.col('statistic').is_in(['mean', 'std']))",
-                "C) Low variance; stats.select(['mean', 'std'])",
-                "D) Bimodal distribution; stats.filter(pl.col('statistic') == 'mean')",
+                "B) Low variance; stats.select(['mean', 'std'])",
+                "C) Bimodal distribution; stats.filter(pl.col('statistic') == 'mean')",
+                "D) Low variance (temperatures cluster tightly around the mean); stats.filter(pl.col('statistic').is_in(['mean', 'std']))",
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "Singapore is near the equator so temperature varies little year-round — "
                 "a small std dev confirms this. "
@@ -82,11 +82,11 @@ QUIZ = {
             ),
             "options": [
                 "A) No error; mean() works on any column type",
-                "B) InvalidOperationError because Utf8 columns cannot be averaged; use df.filter(pl.col('total_rainfall_mm') == df['total_rainfall_mm'].max())['month'][0]",
-                "C) AttributeError; use df.month.max()",
+                "B) AttributeError; use df.month.max()",
+                "C) InvalidOperationError because Utf8 columns cannot be averaged; use df.filter(pl.col('total_rainfall_mm') == df['total_rainfall_mm'].max())['month'][0]",
                 "D) TypeError; use df['month'].cast(pl.Float64).mean()",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Polars raises InvalidOperationError when you call a numeric aggregation on a text column. "
                 "To find the wettest month you filter where rainfall equals the max rainfall value, "
@@ -110,12 +110,12 @@ QUIZ = {
                 ")"
             ),
             "options": [
-                "A) & should be and; Python uses 'and' not '&' for DataFrames",
-                "B) Missing parentheses around each condition — & has higher precedence than >=, so the expression is parsed as >= (300_000 & pl.col(...)) which is a type error or always False",
+                "A) Missing parentheses around each condition — & has higher precedence than >=, so the expression is parsed as >= (300_000 & pl.col(...)) which is a type error or always False",
+                "B) & should be and; Python uses 'and' not '&' for DataFrames",
                 "C) filter() does not accept two conditions at once; use filter().filter()",
                 "D) pl.col() cannot be used with numeric literals",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "Python's bitwise & has higher operator precedence than comparison operators. "
                 "Without parentheses, Python evaluates 300_000 & pl.col('resale_price') first (nonsense), "
@@ -139,11 +139,11 @@ QUIZ = {
             ),
             "options": [
                 "A) It cannot be combined; Polars requires separate calls for derived columns",
-                "B) hdb = hdb.with_columns((pl.col('resale_price') / pl.col('floor_area_sqm')).round(2).alias('price_per_sqm')); single call avoids materialising an intermediate DataFrame",
-                "C) Use hdb.assign() instead; with_columns() does not support chaining",
+                "B) Use hdb.assign() instead; with_columns() does not support chaining",
+                "C) hdb = hdb.with_columns((pl.col('resale_price') / pl.col('floor_area_sqm')).round(2).alias('price_per_sqm')); single call avoids materialising an intermediate DataFrame",
                 "D) Use pl.concat() to merge the results of two separate with_columns() calls",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "You can chain Polars expressions before .alias(), so compute and round in one expression. "
                 "A single with_columns() call is more efficient because it avoids allocating an intermediate "
@@ -164,11 +164,11 @@ QUIZ = {
             ),
             "options": [
                 "A) tier_counts.filter(pl.col('price_tier') == 'premium')['count'].sum() / tier_counts['count'].mean()",
-                "B) tier_counts.filter(pl.col('price_tier') == 'premium')['count'][0] / tier_counts['count'].sum()",
-                "C) tier_counts['price_tier'].value_counts()['premium']",
+                "B) tier_counts['price_tier'].value_counts()['premium']",
+                "C) tier_counts.filter(pl.col('price_tier') == 'premium')['count'][0] / tier_counts['count'].sum()",
                 "D) hdb.filter(pl.col('price_tier') == 'premium').height / hdb.height",
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "After group_by/agg you have one row per tier with a count column. "
                 "Filter to the premium row, take its count, divide by the total of all counts. "
@@ -198,12 +198,12 @@ QUIZ = {
                 ")"
             ),
             "options": [
-                "A) group_by() does not accept string arguments",
-                "B) pandas is imported and used inside a Polars expression — this project requires polars only, and pd.Series cannot wrap a Polars expression; use pl.col().quantile(0.75) - pl.col().quantile(0.25)",
+                "A) pandas is imported and used inside a Polars expression — this project requires polars only, and pd.Series cannot wrap a Polars expression; use pl.col().quantile(0.75) - pl.col().quantile(0.25)",
+                "B) group_by() does not accept string arguments",
                 "C) agg() must receive a named alias via .alias()",
                 "D) quantile() is not available in Polars group_by context",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "The course rule is polars-only — no pandas imports. "
                 "Even if pandas were allowed, you cannot pass a Polars lazy expression to pd.Series(). "
@@ -225,11 +225,11 @@ QUIZ = {
             ),
             "options": [
                 "A) QUEENSTOWN has more transactions; WOODLANDS has fewer — neither is about pricing predictability",
-                "B) QUEENSTOWN has wider price spread relative to its mean (CV=32%) indicating mixed flat types or renovation premiums; WOODLANDS is more homogeneous — buyers wanting predictable pricing should target WOODLANDS",
-                "C) CV measures the number of outliers; QUEENSTOWN has more outliers",
+                "B) CV measures the number of outliers; QUEENSTOWN has more outliers",
+                "C) QUEENSTOWN has wider price spread relative to its mean (CV=32%) indicating mixed flat types or renovation premiums; WOODLANDS is more homogeneous — buyers wanting predictable pricing should target WOODLANDS",
                 "D) Both CVs are acceptable; the difference is not meaningful below 50%",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Coefficient of variation = std / mean * 100. "
                 "A higher CV means prices are more spread out relative to the average — "
@@ -285,11 +285,11 @@ QUIZ = {
             ),
             "options": [
                 "A) Change how='left' to how='inner' to force matching",
-                "B) Normalise the join key before joining: add a lowercase town column to both DataFrames and join on that column",
+                "B) Reverse the join: mrt_stations.join(hdb, on='town', how='left')",
                 "C) Use .join_asof() instead of .join() to handle fuzzy string matching",
-                "D) Reverse the join: mrt_stations.join(hdb, on='town', how='left')",
+                "D) Normalise the join key before joining: add a lowercase town column to both DataFrames and join on that column",
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "Case mismatch is the most common join failure in real datasets. "
                 "The fix is to normalise both keys to the same case before joining: "
@@ -310,12 +310,12 @@ QUIZ = {
                 "final group_by. Why is .first() correct here while .mean() would be wrong?"
             ),
             "options": [
-                "A) .mean() is slower than .first() for numeric columns",
-                "B) distance_to_mrt_km is constant within each town (it came from a town-level lookup table), so every row in the group has the same value — .first() extracts one copy without recomputing a spurious average",
+                "A) distance_to_mrt_km is constant within each town (it came from a town-level lookup table), so every row in the group has the same value — .first() extracts one copy without recomputing a spurious average",
+                "B) .mean() is slower than .first() for numeric columns",
                 "C) .first() works only on string columns; .mean() would produce a type error",
                 "D) group_by() requires you to use .first() for all non-aggregated columns",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "The MRT proximity data was joined from a town-level table, so every HDB transaction "
                 "in a given town carries the same distance_to_mrt_km value. "
@@ -371,11 +371,11 @@ QUIZ = {
             ),
             "options": [
                 "A) BISHAN — higher mean growth always means more predictable appreciation",
-                "B) TAMPINES — lower std_yoy_pct relative to mean_yoy_pct indicates lower growth volatility; compute CV = std/mean: BISHAN CV = 74%, TAMPINES CV = 17%, so TAMPINES growth is far more predictable",
-                "C) Both are equally predictable because their mean growth rates are similar",
+                "B) Both are equally predictable because their mean growth rates are similar",
+                "C) TAMPINES — lower std_yoy_pct relative to mean_yoy_pct indicates lower growth volatility; compute CV = std/mean: BISHAN CV = 74%, TAMPINES CV = 17%, so TAMPINES growth is far more predictable",
                 "D) BISHAN — the absolute std of 6.1% is not large enough to matter",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Predictability of growth is measured by the coefficient of variation of the growth rate "
                 "(std_yoy / mean_yoy). BISHAN CV = 6.1/8.2 = 74% — highly volatile. "
@@ -443,11 +443,11 @@ QUIZ = {
             ),
             "options": [
                 "A) confusion_matrix() should be called confusion_heatmap()",
-                "B) confusion_matrix() expects a 2D list of floats (list[list[float]]), not a Polars DataFrame — you must build the correlation matrix as a nested list first",
-                "C) ModelVisualizer must be imported from kailash_ml.engines.model_visualizer",
+                "B) ModelVisualizer must be imported from kailash_ml.engines.model_visualizer",
+                "C) confusion_matrix() expects a 2D list of floats (list[list[float]]), not a Polars DataFrame — you must build the correlation matrix as a nested list first",
                 "D) labels must be a Polars Series, not a Python list",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "ModelVisualizer.confusion_matrix() accepts a plain Python 2D list as the matrix argument. "
                 "In Exercise 6, the correlation values are computed with a nested loop using .pearson_corr() "
@@ -469,11 +469,11 @@ QUIZ = {
             ),
             "options": [
                 "A) There is no good reason; you should use plotly.express.bar() directly for non-ML charts",
-                "B) ModelVisualizer provides a consistent API across all EDA chart types — feature_importance() accepts any dict[str, float] mapping labels to values, not just ML feature importances",
+                "B) importance_dict must be a Polars Series with a label index",
                 "C) feature_importance() is the only bar chart method; it requires a trained sklearn model as input",
-                "D) importance_dict must be a Polars Series with a label index",
+                "D) ModelVisualizer provides a consistent API across all EDA chart types — feature_importance() accepts any dict[str, float] mapping labels to values, not just ML feature importances",
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "The Kailash course uses ModelVisualizer for all visualisation to keep the API surface consistent. "
                 "feature_importance() is a horizontal bar chart that accepts any dict[str, float]. "
@@ -496,12 +496,12 @@ QUIZ = {
                 "and explain what a positive r between price_per_sqm and year means for buyers."
             ),
             "options": [
-                "A) viz.scatter_plot(x_values=hdb['year'].to_list(), y_values=hdb['resale_price'].to_list()); a positive r means prices rose over time",
-                "B) viz.scatter_plot(x_values=hdb['year'].to_list(), y_values=hdb['price_per_sqm'].drop_nulls().to_list(), x_label='Year', y_label='Price per sqm (S$)'); positive r means per-sqm prices rose over time independent of flat size",
+                "A) viz.scatter_plot(x_values=hdb['year'].to_list(), y_values=hdb['price_per_sqm'].drop_nulls().to_list(), x_label='Year', y_label='Price per sqm (S$)'); positive r means per-sqm prices rose over time independent of flat size",
+                "B) viz.scatter_plot(x_values=hdb['year'].to_list(), y_values=hdb['resale_price'].to_list()); a positive r means prices rose over time",
                 "C) viz.feature_distribution(values=hdb['price_per_sqm'].to_list(), feature_name='Price per sqm'); scatter_plot() only accepts pre-sampled arrays",
                 "D) viz.training_history(history={'price_per_sqm': hdb['price_per_sqm'].to_list()}); year must be the x_label not a value list",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "scatter_plot() requires x_values and y_values as plain Python lists plus optional axis labels. "
                 "drop_nulls() removes any rows where price_per_sqm is null to avoid list alignment issues. "
@@ -553,12 +553,12 @@ QUIZ = {
                 "column as ordinal or drop it before training a tree model?"
             ),
             "options": [
-                "A) HIGH_CARDINALITY means the column has many nulls; drop it",
-                "B) 94% of values in storey_range are unique — it behaves like an ID column, not a category. For a tree model, consider extracting numeric floor number (e.g., lower floor of range) rather than encoding the raw string as ordinal, which would create a near-unique feature with no generalisation power",
+                "A) 94% of values in storey_range are unique — it behaves like an ID column, not a category. For a tree model, consider extracting numeric floor number (e.g., lower floor of range) rather than encoding the raw string as ordinal, which would create a near-unique feature with no generalisation power",
+                "B) HIGH_CARDINALITY means the column has many nulls; drop it",
                 "C) Ordinal encoding is always correct for string columns regardless of cardinality",
                 "D) HIGH_CARDINALITY means the column is already numeric; no encoding needed",
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "A unique_ratio near 1.0 means almost every row has a different value. "
                 "Encoding 'storey_range' as ordinal would give each category a unique integer, "
@@ -618,11 +618,11 @@ QUIZ = {
             ),
             "options": [
                 "A) Both require normalize=True and categorical_encoding='one_hot'",
-                "B) Lasso: normalize=True, categorical_encoding='ordinal'; LightGBM: normalize=False, categorical_encoding='ordinal'. Lasso requires normalisation because L1 penalty treats all coefficients equally regardless of scale; LightGBM builds splits so scale is irrelevant, and ordinal is sufficient for categorical columns",
+                "B) Both require normalize=False; PreprocessingPipeline normalisation causes data leakage",
                 "C) Lasso: normalize=False; LightGBM: normalize=True — tree models are more sensitive to scale",
-                "D) Both require normalize=False; PreprocessingPipeline normalisation causes data leakage",
+                "D) Lasso: normalize=True, categorical_encoding='ordinal'; LightGBM: normalize=False, categorical_encoding='ordinal'. Lasso requires normalisation because L1 penalty treats all coefficients equally regardless of scale; LightGBM builds splits so scale is irrelevant, and ordinal is sufficient for categorical columns",
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "Lasso's L1 penalty applies the same regularisation strength to all coefficients. "
                 "If features have vastly different scales (income in thousands vs. age in decades), "
@@ -731,11 +731,11 @@ QUIZ = {
             ),
             "options": [
                 "A) to_dicts() is always faster; iter_rows() is deprecated",
-                "B) For 26 rows both are equivalent in practice. For 500,000 rows, iter_rows() is preferable: it yields one dict at a time without materialising the entire list in memory, while to_dicts() allocates all 500,000 dicts simultaneously. iter_rows() also signals intent — you are processing row-by-row, not needing all rows at once",
-                "C) iter_rows() does not support named=True for DataFrames with more than 100 columns",
+                "B) iter_rows() does not support named=True for DataFrames with more than 100 columns",
+                "C) For 26 rows both are equivalent in practice. For 500,000 rows, iter_rows() is preferable: it yields one dict at a time without materialising the entire list in memory, while to_dicts() allocates all 500,000 dicts simultaneously. iter_rows() also signals intent — you are processing row-by-row, not needing all rows at once",
                 "D) to_dicts() is the only option; iter_rows() requires a LazyFrame",
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Both produce the same output for small DataFrames. "
                 "iter_rows() is a generator — it yields rows lazily, keeping memory O(1) at any point. "

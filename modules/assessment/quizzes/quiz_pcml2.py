@@ -27,11 +27,11 @@ QUIZ = {
             ),
             "options": [
                 "A) The prior is wrong; a correct prior would always equal the MLE",
-                "B) With a large sample (n >> 1/σ₀²), the likelihood dominates the prior — the posterior mean is pulled strongly toward the MLE and the prior's influence shrinks proportionally to 1/n",
-                "C) Normal-Normal conjugacy always places the posterior mean exactly at the MLE",
-                "D) The posterior mean is closer to the MLE because the prior std is too small",
+                "B) Normal-Normal conjugacy always places the posterior mean exactly at the MLE",
+                "C) With a large sample (n >> 1/σ₀²), the likelihood dominates the prior — the posterior mean is pulled strongly toward the MLE and the prior's influence shrinks proportionally to 1/n",
+                "D) The posterior mean is closer to the MLE because the prior std is too small"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "In Normal-Normal conjugacy, the posterior precision is 1/σ₀² + n/σ². "
                 "With many observations, n/σ² dominates and the posterior mean approaches x̄ (the MLE). "
@@ -52,12 +52,12 @@ QUIZ = {
                 "Answer correctly for the Bayesian interval and the bootstrap interval separately."
             ),
             "options": [
-                "A) Yes for both — both intervals have 95% probability of containing the true mean",
-                "B) Bayesian credible interval: yes, given the prior and data, there is 95% posterior probability the mean lies in the interval. Bootstrap confidence interval: no — it means 95% of such intervals constructed from repeated samples would contain the true mean; any single interval either does or does not contain it",
+                "A) Bayesian credible interval: yes, given the prior and data, there is 95% posterior probability the mean lies in the interval. Bootstrap confidence interval: no — it means 95% of such intervals constructed from repeated samples would contain the true mean; any single interval either does or does not contain it",
+                "B) Yes for both — both intervals have 95% probability of containing the true mean",
                 "C) Neither — only a full posterior distribution can make probability statements",
-                "D) Bootstrap interval: yes; Bayesian interval: no — the Bayesian interval depends on the prior which may be wrong",
+                "D) Bootstrap interval: yes; Bayesian interval: no — the Bayesian interval depends on the prior which may be wrong"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "The frequentist confidence interval is a statement about the procedure, not a single interval. "
                 "The Bayesian credible interval is a statement about the parameter given the observed data and prior. "
@@ -82,12 +82,12 @@ QUIZ = {
                 "should we ship the feature?' What do you advise and why?"
             ),
             "options": [
-                "A) Yes — a 2% lift is significant and the sample is large",
-                "B) No — the SRM (Sample Ratio Mismatch) indicates randomisation was compromised. The p-value of 0.000018 is far below 0.05, rejecting H₀ that the 1:1 split was achieved. Any observed lift may be a selection artifact, not a causal effect of the feature",
+                "A) No — the SRM (Sample Ratio Mismatch) indicates randomisation was compromised. The p-value of 0.000018 is far below 0.05, rejecting H₀ that the 1:1 split was achieved. Any observed lift may be a selection artifact, not a causal effect of the feature",
+                "B) Yes — a 2% lift is significant and the sample is large",
                 "C) Borderline — run the experiment for another week to get a balanced split",
-                "D) Yes — chi-square tests are conservative; the actual p-value is larger than reported",
+                "D) Yes — chi-square tests are conservative; the actual p-value is larger than reported"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "An SRM chi-square p-value of 0.000018 is overwhelming evidence that randomisation failed — "
                 "the observed 4212/5788 split is extremely unlikely under a true 50/50 assignment. "
@@ -112,11 +112,11 @@ QUIZ = {
             ),
             "options": [
                 "A) All three survive; the treatment improves the full funnel",
-                "B) Only conversion survives (0.009 < 0.0167); AOV (0.042) and revenue (0.018) fail the corrected threshold. The treatment improves how many people buy but not how much each person spends, so total revenue lift is uncertain",
-                "C) None survive; Bonferroni is too conservative for business decisions",
-                "D) AOV and revenue survive; conversion is the primary metric and must not be corrected",
+                "B) None survive; Bonferroni is too conservative for business decisions",
+                "C) Only conversion survives (0.009 < 0.0167); AOV (0.042) and revenue (0.018) fail the corrected threshold. The treatment improves how many people buy but not how much each person spends, so total revenue lift is uncertain",
+                "D) AOV and revenue survive; conversion is the primary metric and must not be corrected"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Bonferroni correction: α_adj = 0.05/3 = 0.0167. "
                 "Only conversion (0.009) is below 0.0167. "
@@ -151,11 +151,11 @@ QUIZ = {
             ),
             "options": [
                 "A) np.random.choice() should be np.random.sample()",
-                "B) np.random.seed() or a Generator with a fixed seed is missing — without it, the random resampling differs each run, making results non-reproducible",
+                "B) percentile boundaries are computed incorrectly for 95% CI",
                 "C) replace=True should be replace=False for bootstrap",
-                "D) percentile boundaries are computed incorrectly for 95% CI",
+                "D) np.random.seed() or a Generator with a fixed seed is missing — without it, the random resampling differs each run, making results non-reproducible"
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "Bootstrap relies on random resampling. Without a fixed seed, results change each run, "
                 "making intervals irreproducible. In ExperimentTracker-tracked runs, reproducibility is "
@@ -177,11 +177,11 @@ QUIZ = {
             ),
             "options": [
                 "A) Percentile — simplest to explain and most widely understood",
-                "B) BCa — it corrects for both bias in the bootstrap estimate and skewness in the sampling distribution, making it the most accurate interval when the statistic's distribution is asymmetric",
-                "C) Basic (pivotal) — it is the most conservative and protects against false positives",
-                "D) The mean of all three intervals — averaging reduces variance",
+                "B) Basic (pivotal) — it is the most conservative and protects against false positives",
+                "C) BCa — it corrects for both bias in the bootstrap estimate and skewness in the sampling distribution, making it the most accurate interval when the statistic's distribution is asymmetric",
+                "D) The mean of all three intervals — averaging reduces variance"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "When the bootstrap distribution is skewed, the percentile interval is biased "
                 "because it assumes symmetry around the estimate. "
@@ -207,11 +207,11 @@ QUIZ = {
             ),
             "options": [
                 "A) Var(Y_adj) = 12,400 × 0.68 = 8,432; CI width shrinks by 32%",
-                "B) Var(Y_adj) = 12,400 × (1 - 0.68²) = 12,400 × 0.5376 = 6,667; CI width shrinks by factor √(1 - 0.68²) ≈ 0.733, a 26.7% reduction",
+                "B) CUPED does not reduce variance when ρ > 0.5; additional covariates are needed",
                 "C) Var(Y_adj) = 12,400 × (1 - 0.68) = 3,968; CI width shrinks by 68%",
-                "D) CUPED does not reduce variance when ρ > 0.5; additional covariates are needed",
+                "D) Var(Y_adj) = 12,400 × (1 - 0.68²) = 12,400 × 0.5376 = 6,667; CI width shrinks by factor √(1 - 0.68²) ≈ 0.733, a 26.7% reduction"
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "CUPED variance formula: Var(Y_adj) = Var(Y)(1 - ρ²). "
                 "With ρ = 0.68: 1 - 0.68² = 1 - 0.4624 = 0.5376. "
@@ -233,12 +233,12 @@ QUIZ = {
                 "and which ExperimentTracker method records the variance reduction metric?"
             ),
             "options": [
-                "A) Nothing is lost; ExperimentTracker automatically applies CUPED when it detects a covariate",
-                "B) You lose the reproducible record of which pre-experiment covariate was used (θ coefficient), the variance reduction achieved, and the adjusted effect size — tracker.log_metric() records these after tracker.start_run()",
+                "A) You lose the reproducible record of which pre-experiment covariate was used (θ coefficient), the variance reduction achieved, and the adjusted effect size — tracker.log_metric() records these after tracker.start_run()",
+                "B) Nothing is lost; ExperimentTracker automatically applies CUPED when it detects a covariate",
                 "C) ExperimentTracker.log_cuped() is the dedicated method; no other methods are needed",
-                "D) The adjusted p-value cannot be reproduced without the tracker; log it manually to a CSV",
+                "D) The adjusted p-value cannot be reproduced without the tracker; log it manually to a CSV"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "ExperimentTracker.start_run() opens a run, then log_metric() records named scalar metrics. "
                 "You would log: theta (CUPED coefficient), variance_reduction_pct, adjusted_lift, "
@@ -262,11 +262,11 @@ QUIZ = {
             ),
             "options": [
                 "A) Pre-period divergence is expected; DiD adjusts for it automatically",
-                "B) Pre-period divergence violates the parallel trends assumption — the DiD estimate is biased. Exercise 6 recommends a placebo test: apply the DiD design to a fake (pre-period) policy date where the true effect is zero; if DiD detects a significant 'effect' there, the identification is broken",
+                "B) Parallel trends only need to hold post-treatment; pre-period divergence is irrelevant",
                 "C) Use a longer pre-period window to find parallel trends; DiD is still valid",
-                "D) Parallel trends only need to hold post-treatment; pre-period divergence is irrelevant",
+                "D) Pre-period divergence violates the parallel trends assumption — the DiD estimate is biased. Exercise 6 recommends a placebo test: apply the DiD design to a fake (pre-period) policy date where the true effect is zero; if DiD detects a significant 'effect' there, the identification is broken"
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "DiD's key identifying assumption is parallel counterfactual trends: "
                 "absent the treatment, both groups would have moved together. "
@@ -295,12 +295,12 @@ QUIZ = {
                 "selected = engineer.transform(vitals_df)"
             ),
             "options": [
-                "A) FeatureEngineer requires a target column, but 'mortality' is a reserved name",
-                "B) FeatureEngineer uses generate() not fit(), and select() not transform() — calling fit() raises AttributeError because the sklearn API is not implemented on Kailash engines",
+                "A) FeatureEngineer uses generate() not fit(), and select() not transform() — calling fit() raises AttributeError because the sklearn API is not implemented on Kailash engines",
+                "B) FeatureEngineer requires a target column, but 'mortality' is a reserved name",
                 "C) FeatureEngineer must be called with await because it runs asynchronously",
-                "D) vitals_df must be converted to a numpy array before passing to FeatureEngineer",
+                "D) vitals_df must be converted to a numpy array before passing to FeatureEngineer"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "FeatureEngineer is a Kailash engine with its own API, not an sklearn transformer. "
                 "The correct pattern is: features = await engineer.generate(vitals_df, schema=schema) "
@@ -322,12 +322,12 @@ QUIZ = {
                 "for choosing between mean imputation and indicator-variable imputation?"
             ),
             "options": [
-                "A) The missing data is MCAR so any imputation is equivalent",
-                "B) When missingness is informative (MNAR — Missing Not At Random), a null in lactate_level may signal a low-acuity patient. Mean imputation destroys this signal. Adding a binary indicator column (lactate_level_is_null=1/0) preserves the missingness information as a feature for the model",
+                "A) When missingness is informative (MNAR — Missing Not At Random), a null in lactate_level may signal a low-acuity patient. Mean imputation destroys this signal. Adding a binary indicator column (lactate_level_is_null=1/0) preserves the missingness information as a feature for the model",
+                "B) The missing data is MCAR so any imputation is equivalent",
                 "C) 62% nulls means the column should always be dropped",
-                "D) Median imputation is always superior to mean imputation regardless of missing mechanism",
+                "D) Median imputation is always superior to mean imputation regardless of missing mechanism"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "In ICU data, tests are ordered because patients are suspected to be ill — "
                 "a missing lactate measurement often means the patient was not sick enough to warrant the test. "
@@ -361,11 +361,11 @@ QUIZ = {
             ),
             "options": [
                 "A) table_prefix must not have underscores",
-                "B) await conn.initialize() is missing after creating the ConnectionManager — without initialising the connection, fs.initialize() and fs.store() will fail because no database tables have been created",
+                "B) asyncio.run() cannot be used with FeatureStore; use a thread pool instead",
                 "C) FeatureStore must be imported from kailash_ml.feature_store, not kailash_ml",
-                "D) asyncio.run() cannot be used with FeatureStore; use a thread pool instead",
+                "D) await conn.initialize() is missing after creating the ConnectionManager — without initialising the connection, fs.initialize() and fs.store() will fail because no database tables have been created"
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "ConnectionManager.initialize() creates the database schema and connection pool. "
                 "Without calling it, the connection is in an uninitialised state. "
@@ -388,11 +388,11 @@ QUIZ = {
             ),
             "options": [
                 "A) FeatureStore is faster to read; Parquet files are slow",
-                "B) (1) Point-in-time correctness: FeatureStore retrieves the feature value that was available at a given timestamp, preventing label leakage from using future data; (2) Data lineage: FeatureStore tracks which features trained which model version, enabling regulatory audit of model provenance",
-                "C) FeatureStore compresses data better than Parquet",
-                "D) Parquet files cannot store schema information; FeatureStore adds column types",
+                "B) FeatureStore compresses data better than Parquet",
+                "C) (1) Point-in-time correctness: FeatureStore retrieves the feature value that was available at a given timestamp, preventing label leakage from using future data; (2) Data lineage: FeatureStore tracks which features trained which model version, enabling regulatory audit of model provenance",
+                "D) Parquet files cannot store schema information; FeatureStore adds column types"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Flat files are snapshots — they do not track when each value was computed. "
                 "When you join a flat file at training time you can accidentally use features "
@@ -418,11 +418,11 @@ QUIZ = {
             ),
             "options": [
                 "A) fs.retrieve(schema_name='hdb_features') always returns the latest version automatically",
-                "B) fs.retrieve(schema_name='hdb_features', version='1.0', as_of=prediction_timestamp) — without version pinning, a schema update could silently add or remove columns, breaking the production model that expects the exact feature set it was trained on",
-                "C) Feature versions are for documentation only; retrieval always uses the most recent data regardless of version",
-                "D) fs.get_schema(version='1.0') returns the schema; you must join manually to get values",
+                "B) Feature versions are for documentation only; retrieval always uses the most recent data regardless of version",
+                "C) fs.retrieve(schema_name='hdb_features', version='1.0', as_of=prediction_timestamp) — without version pinning, a schema update could silently add or remove columns, breaking the production model that expects the exact feature set it was trained on",
+                "D) fs.get_schema(version='1.0') returns the schema; you must join manually to get values"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "Production models have a fixed input contract — the exact feature columns and their semantics. "
                 "If retrieval automatically used version 2.0, the model would receive an unexpected extra column "
@@ -512,11 +512,11 @@ QUIZ = {
             ),
             "options": [
                 "A) One experiment is simpler to manage; there is no analytical benefit",
-                "B) Logging both to one experiment enables comparative analysis: you can query which variance reduction method (CUPED vs DiD) gave the tighter CI for the same underlying metric, compare convergence dates, and trace which analysis informed which business decision — all within a single reproducible lineage record",
-                "C) ExperimentTracker only allows one run per experiment; logging both is a bug",
-                "D) Separate experiments are required for regulatory submissions",
+                "B) ExperimentTracker only allows one run per experiment; logging both is a bug",
+                "C) Logging both to one experiment enables comparative analysis: you can query which variance reduction method (CUPED vs DiD) gave the tighter CI for the same underlying metric, compare convergence dates, and trace which analysis informed which business decision — all within a single reproducible lineage record",
+                "D) Separate experiments are required for regulatory submissions"
             ],
-            "answer": "B",
+            "answer": "C",
             "explanation": (
                 "ExperimentTracker organises work as experiments → runs → metrics. "
                 "Multiple runs within one experiment are comparable: "
@@ -570,12 +570,12 @@ QUIZ = {
                 "and at what value would you stop increasing it?"
             ),
             "options": [
-                "A) Always use n_bootstrap=10000; more resamples are always better",
-                "B) The CI width stabilises after n_bootstrap=1000 (41.8 vs 41.3 is negligible). The Monte Carlo error of the bootstrap interval itself shrinks as O(1/√B) — doubling B from 1000 to 10000 only reduces MC error by ~68%. At 1000 resamples the CI is already converged; 10000 is computationally wasteful for routine use",
+                "A) The CI width stabilises after n_bootstrap=1000 (41.8 vs 41.3 is negligible). The Monte Carlo error of the bootstrap interval itself shrinks as O(1/√B) — doubling B from 1000 to 10000 only reduces MC error by ~68%. At 1000 resamples the CI is already converged; 10000 is computationally wasteful for routine use",
+                "B) Always use n_bootstrap=10000; more resamples are always better",
                 "C) n_bootstrap should equal the sample size; use n_bootstrap=len(data)",
-                "D) The convergence means bootstrap is not applicable to this data distribution",
+                "D) The convergence means bootstrap is not applicable to this data distribution"
             ],
-            "answer": "B",
+            "answer": "A",
             "explanation": (
                 "Bootstrap CI precision improves as O(1/√B) where B is n_bootstrap. "
                 "Going from 100 to 1000 (10×) reduces MC error by ~68% — worth it. "
@@ -706,11 +706,11 @@ QUIZ = {
             ),
             "options": [
                 "A) BH-FDR and Bonferroni always give identical results; they differ only in computation",
-                "B) Ranked p-values: p(1)=0.009 ≤ 0.017 ✓, p(2)=0.018 ≤ 0.033 ✓, p(3)=0.042 ≤ 0.050 ✓. All three survive BH-FDR vs only one under Bonferroni. Use Bonferroni when controlling FWER (zero false positives critical, e.g., clinical trials); use BH-FDR when controlling FDR (acceptable to have some false positives among many discoveries, e.g., exploratory metric analysis)",
+                "B) BH-FDR requires independent p-values; since conversion, AOV, and revenue are correlated, it cannot be applied",
                 "C) BH-FDR is always less conservative; always prefer it over Bonferroni",
-                "D) BH-FDR requires independent p-values; since conversion, AOV, and revenue are correlated, it cannot be applied",
+                "D) Ranked p-values: p(1)=0.009 ≤ 0.017 ✓, p(2)=0.018 ≤ 0.033 ✓, p(3)=0.042 ≤ 0.050 ✓. All three survive BH-FDR vs only one under Bonferroni. Use Bonferroni when controlling FWER (zero false positives critical, e.g., clinical trials); use BH-FDR when controlling FDR (acceptable to have some false positives among many discoveries, e.g., exploratory metric analysis)"
             ],
-            "answer": "B",
+            "answer": "D",
             "explanation": (
                 "BH-FDR step: rank p-values ascending, threshold k = (k/m)α. "
                 "p(1)=0.009: threshold = (1/3)×0.05 = 0.017. 0.009 ≤ 0.017 ✓. "

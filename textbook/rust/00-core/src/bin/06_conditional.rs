@@ -264,7 +264,12 @@ fn main() {
         .execute_sync(&workflow, value_map! { "condition" => "no" })
         .unwrap_err();
 
-    assert!(format!("{err}").contains("no matching case"));
+    // Use Debug format to see through RuntimeError::NodeFailed wrapper.
+    let err_debug = format!("{err:?}");
+    assert!(
+        err_debug.contains("no matching case"),
+        "unexpected error: {err_debug}"
+    );
 
     // ── LoopNode: Array Iteration ──
     // LoopNode iterates over "items" and collects results.

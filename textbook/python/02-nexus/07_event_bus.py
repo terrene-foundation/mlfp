@@ -75,8 +75,10 @@ bus = EventBus(capacity=128)
 assert bus.subscriber_count == 0
 
 # ── 5. Publish events (sync, thread-safe) ──────────────────────────
-# publish() is non-blocking and thread-safe. Before the async loop
-# starts, events are stored directly in the history deque.
+# publish() is non-blocking and thread-safe. It uses a janus.Queue
+# to bridge sync producers and async consumers. Events enter the
+# queue immediately and are dispatched to subscribers + history
+# once bus.start() launches the async dispatch loop.
 
 bus.publish(
     NexusEvent(
@@ -108,10 +110,24 @@ bus.publish(
 
 bus.publish_handler_registered("new_handler")
 
-# ── 7. Event history ──────────────────────────────────────────────
-# get_history() returns events from the bounded deque in legacy
-# dict format. It supports filtering by event_type and limiting.
+# ── 7. Event history with dispatch loop ───────────────────────────
+# get_history() reads from the internal bounded deque. Events only
+# appear in history after the dispatch loop (bus.start()) moves
+# them from the janus queue. We can verify this by running the
+# loop briefly with asyncio.
 
+
+async def run_bus_briefly():
+    """Start the bus, let it dispatch, then stop."""
+    await bus.start()
+    # Give the dispatch loop a moment to drain the janus queue
+    await asyncio.sleep(0.1)
+    await bus.stop()
+
+
+asyncio.run(run_bus_briefly())
+
+# After the dispatch loop ran, events are now in history
 all_history = bus.get_history()
 assert len(all_history) == 4
 

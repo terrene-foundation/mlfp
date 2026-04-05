@@ -185,8 +185,12 @@ async fn main() {
         .execute_sync(&workflow, ValueMap::new())
         .unwrap_err();
 
-    // The error is a timeout.
-    assert!(format!("{err}").contains("timed out") || format!("{err}").contains("timeout"));
+    // The error is a timeout. Use Debug format to see the full error chain.
+    let err_debug = format!("{err:?}");
+    assert!(
+        err_debug.contains("timed out") || err_debug.contains("timeout") || err_debug.contains("Timeout"),
+        "unexpected error: {err_debug}"
+    );
 
     // ── Per-Node Timeout Overrides ──
     // Override the global timeout for specific nodes.

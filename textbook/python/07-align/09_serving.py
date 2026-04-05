@@ -150,7 +150,9 @@ import asyncio
 
 
 async def test_serving_requires_registry() -> None:
-    no_registry = AlignmentServing()
+    # Use vllm target to avoid optional [serve] dependency check
+    # (ollama path hits _check_serve_deps before the registry check)
+    no_registry = AlignmentServing(config=ServingConfig(target="vllm"))
 
     try:
         await no_registry.deploy("any-adapter")

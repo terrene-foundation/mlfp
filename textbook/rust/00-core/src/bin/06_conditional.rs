@@ -326,6 +326,19 @@ fn main() {
 
     // ── Combined Pattern: Conditional + SwitchNode ──
     // Use ConditionalNode to decide, then SwitchNode to route.
+    //
+    // Important: when a node has incoming connections, the runtime merges
+    // the node's build-time config into the input map. Strict input
+    // validation then rejects config keys (like "cases") that are not
+    // declared as input parameters. Since SwitchNode reads "cases" at
+    // factory creation time (not at execution time), we disable strict
+    // validation for this combined workflow.
+
+    let relaxed_config = RuntimeConfig {
+        strict_input_validation: false,
+        ..RuntimeConfig::default()
+    };
+    let relaxed_runtime = Runtime::new(relaxed_config, Arc::clone(&registry));
 
     let switch_config = value_map! {
         "cases" => Value::Object({
@@ -346,7 +359,7 @@ fn main() {
     let workflow = builder.build(&registry).expect("combined build");
 
     // Truthy condition -> if_value "process" -> SwitchNode matches "process".
-    let result = runtime
+    let result = relaxed_runtime
         .execute_sync(
             &workflow,
             value_map! {
@@ -363,7 +376,7 @@ fn main() {
     );
 
     // Falsy condition -> else_value "skip" -> SwitchNode matches "skip".
-    let result = runtime
+    let result = relaxed_runtime
         .execute_sync(
             &workflow,
             value_map! {

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT6 — Exercise 3: PACT Governance Setup
+# ASCENT6 — Exercise 5: AI Governance with PACT
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Define a realistic organization in YAML, compile it, and
 #   create a GovernanceEngine. Verify access decisions.

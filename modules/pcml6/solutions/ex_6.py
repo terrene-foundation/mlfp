@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT6 — Exercise 4: Governed Agents
+# ASCENT6 — Exercise 6: Governed Agents
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Wrap Module 5's ReActAgent with PactGovernedAgent. Define
 #   operating envelopes and demonstrate that agents cannot modify their

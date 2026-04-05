@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT4 — Exercise 6: InferenceServer + Nexus Deployment
+# ASCENT4 — Exercise 8: M4 Capstone — Unsupervised + DL Pipeline
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Deploy the ONNX model from Exercise 5 via InferenceServer,
 #   expose through Nexus (API + CLI + MCP simultaneously). Use

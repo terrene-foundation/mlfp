@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT6 — Exercise 5: Reinforcement Learning
+# ASCENT6 — Exercise 3: Reinforcement Learning
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Use RLTrainer with PPO/SAC on an inventory management
 #   environment. Compare RL policy vs heuristic baseline.

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT6 — Exercise 6: Capstone — Full Platform Deployment
+# ASCENT6 — Exercise 8: Capstone — Full Platform
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Deploy a governed ML system combining the full Kailash
 #   platform: trained model (M3) → InferenceServer → Kaizen agent (M5)

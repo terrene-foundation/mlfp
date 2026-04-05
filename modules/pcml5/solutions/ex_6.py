@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT5 — Exercise 5: ML Agent Pipeline (All 6 ML Agents)
+# ASCENT5 — Exercise 6: ML Agent Pipeline
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Chain all 6 kailash-ml agents in a full ML pipeline:
 #   DataScientist → FeatureEngineer → ModelSelector → ExperimentInterpreter

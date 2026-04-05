@@ -11,3 +11,4 @@ kailash-core = { path = "../../../../loom/kailash-rs/crates/kailash-core" }
 kailash-value = { path = "../../../../loom/kailash-rs/crates/kailash-value" }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
+bytes = "1"

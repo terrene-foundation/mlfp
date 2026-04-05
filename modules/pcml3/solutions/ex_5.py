@@ -308,5 +308,5 @@ async def query_results():
 
 asyncio.run(query_results())
 
-print("\n✓ Exercise 4 complete — Kailash workflow orchestration + DataFlow persistence")
+print("\n✓ Exercise 5 complete — Kailash workflow orchestration + DataFlow persistence")
 print("  Pattern: WorkflowBuilder → runtime.execute(workflow.build()) → db.express")

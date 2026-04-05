@@ -1,10 +1,10 @@
 # ASCENT — Professional Certificate in Machine Learning
 
-The official Terrene Open Academy machine learning programme. 6 modules × 8 lessons = 48 lessons, from zero Python to masters-level ML engineering. 34 hands-on exercises (15 more in development), delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). Includes a supplementary [SDK textbook](textbook/) with 96 tutorials covering every Kailash engine in both Python and Rust.
+The official Terrene Open Academy machine learning programme. 6 modules × 8 lessons = 48 lessons, from zero Python to masters-level ML engineering. 48 hands-on exercises delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). Includes a supplementary [SDK textbook](textbook/) with 163 tutorials covering every Kailash engine in both Python and Rust.
 
 **License**: Apache 2.0 | **Python**: 3.10+ | **Data**: [Polars](https://pola.rs)-native | **New to Polars?** See the [cheatsheet](docs/polars-cheatsheet.md)
 
-> This curriculum is under active development. All 34 exercises and solutions are complete. Lecture slides, quizzes, and datasets are in progress. See [Status](#status) for details.
+> All 48 exercises, 11 datasets, 48 lecture decks, and 6 quiz files are complete. See [Status](#status) for details.
 
 ---
 
@@ -132,15 +132,16 @@ modules/
     quiz/         Assessment questions
   ascent02-6/        Modules 2-6 (same structure)
 
-textbook/         Supplementary SDK textbook (96 tutorials)
+textbook/         Supplementary SDK textbook (163 tutorials)
   python/         83 Python tutorials (all 8 packages, basic→advanced)
-  rust/           13 Rust tutorials (core complete, parity testing)
+  rust/           80 Rust tutorials (all 9 packages, basic→advanced)
   PARITY.md       Cross-language parity matrix (20 known divergences)
 
-shared/           Data loader, Kailash helpers (used by all exercises)
+data/             11 Singapore-context datasets (CSV/Parquet)
+shared/           Data loader, Kailash helpers, async wrappers
 docs/             Course outline, setup guide, Polars cheatsheet
-decks/            Reveal.js lecture slides
-scripts/          Notebook converter, CI validation
+decks/            48 Marp-format lecture slide decks
+scripts/          Notebook converter, dataset generator, CI validation
 ```
 
 ### Data
@@ -160,19 +161,19 @@ Singapore-focused datasets (HDB prices, taxi trips, economic indicators) combine
 
 ## Status
 
-| Component                | Status      | Details                                          |
-| ------------------------ | ----------- | ------------------------------------------------ |
-| Curriculum (48 lessons)  | Complete    | 6 modules × 8 lessons, red-team reviewed (v4)    |
-| Solutions (34/49)        | In progress | 34 complete, 15 new exercises from v4 curriculum |
-| Exercises — local (34)   | Complete    | Progressive scaffolding: 80% (M1) to 20% (M6)    |
-| Exercises — Jupyter (34) | Complete    | Auto-generated from local sources                |
-| Exercises — Colab (34)   | Complete    | Auto-generated with Drive mount + pip install    |
-| SDK Textbook — Python    | Complete    | 83 tutorials across all 8 packages               |
-| SDK Textbook — Rust      | In progress | 7/44 tutorials (core complete, parity testing)   |
-| Datasets                 | In progress | Synthetic + public datasets being prepared       |
-| Lecture slides           | Planned     | Reveal.js decks per module                       |
-| Quizzes                  | Planned     | 15 Kailash-pattern questions per module          |
-| CI/Testing               | Planned     | Needs Kailash packages on PyPI                   |
+| Component                | Status   | Details                                                    |
+| ------------------------ | -------- | ---------------------------------------------------------- |
+| Curriculum (48 lessons)  | Complete | 6 modules × 8 lessons, red-team reviewed (v4)              |
+| Solutions (48/48)        | Complete | All exercises written (16 new, 8 adapted, 2 moved)         |
+| Exercises — local (48)   | Complete | Progressive scaffolding: 70% (M1) to 20% (M6)              |
+| Exercises — Jupyter (48) | Complete | Auto-generated from local sources                          |
+| Exercises — Colab (48)   | Complete | Auto-generated with Drive mount + pip install              |
+| SDK Textbook — Python    | Complete | 83 tutorials across all 8 packages                         |
+| SDK Textbook — Rust      | Complete | 80 tutorials across all 9 packages (core through RL)       |
+| Datasets (11)            | Complete | Singapore-context CSV/Parquet (weather, HDB, credit, etc.) |
+| Lecture decks (48)       | Complete | Marp-format slide decks, 20-30 slides each                 |
+| Quizzes (6)              | Complete | AI-resilient questions, ~24-32 per module                  |
+| CI/Testing               | Planned  | Needs Kailash packages on PyPI                             |
 
 ---
 

@@ -274,4 +274,4 @@ asyncio.run(test_monotonic_tightening())
 # Clean up
 org_file.unlink()
 
-print("\n✓ Exercise 3 complete — PACT governance setup with access control")
+print("\n✓ Exercise 5 complete — PACT governance setup with access control")

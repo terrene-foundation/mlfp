@@ -319,4 +319,4 @@ fig.update_layout(title="Class Imbalance Methods Comparison")
 fig.write_html("ex2_imbalance_comparison.html")
 print("\nSaved: ex2_imbalance_comparison.html")
 
-print("\n✓ Exercise 2 complete — class imbalance handling + calibration")
+print("\n✓ Exercise 3 complete — class imbalance handling + calibration")

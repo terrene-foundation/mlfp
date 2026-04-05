@@ -299,4 +299,4 @@ if protected_in_model:
 else:
     print("\n✓ No protected attributes found in feature set")
 
-print("\n✓ Exercise 3 complete — SHAP interpretability + fairness audit")
+print("\n✓ Exercise 4 complete — SHAP interpretability + fairness audit")

@@ -318,5 +318,5 @@ async def compare_versions():
 
 asyncio.run(compare_versions())
 
-print("\n✓ Exercise 5 complete — HyperparameterSearch + ModelRegistry promotion")
+print("\n✓ Exercise 7 complete — HyperparameterSearch + ModelRegistry promotion")
 print("  Key concept: staging → production promotion as governance gate")

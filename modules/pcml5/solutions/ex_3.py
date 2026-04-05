@@ -65,7 +65,8 @@ async def tool_profile_data(dataset_name: str) -> str:
 
 async def tool_check_correlations(threshold: float = 0.8) -> str:
     """Find highly correlated features."""
-    from kailash_ml import DataExplorer, AlertConfig
+    from kailash_ml import DataExplorer
+    from kailash_ml.engines.data_explorer import AlertConfig
 
     explorer = DataExplorer(
         alert_config=AlertConfig(high_correlation_threshold=threshold)

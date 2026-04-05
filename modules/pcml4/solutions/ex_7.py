@@ -407,5 +407,5 @@ fig_grad.write_html("ex5_gradient_norms.html")
 
 print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
 
-print("\n✓ Exercise 5 complete — CNN training + ONNX export")
-print("  Next: Exercise 6 deploys this ONNX model via InferenceServer + Nexus")
+print("\n✓ Exercise 7 complete — CNN training + ONNX export")
+print("  Next: Exercise 8 deploys this ONNX model via InferenceServer + Nexus")

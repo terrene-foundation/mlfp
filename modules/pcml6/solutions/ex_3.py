@@ -296,4 +296,4 @@ async def track_experiment():
 
 asyncio.run(track_experiment())
 
-print("\n✓ Exercise 5 complete — RL inventory management with PPO")
+print("\n✓ Exercise 3 complete — RL inventory management with PPO")

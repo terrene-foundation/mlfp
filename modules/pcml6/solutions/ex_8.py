@@ -338,6 +338,6 @@ asyncio.run(end_to_end())
 # Clean up
 asyncio.run(conn.close())
 
-print("✓ Exercise 6 (CAPSTONE) complete — full Kailash platform deployment")
+print("✓ Exercise 8 (CAPSTONE) complete — full Kailash platform deployment")
 print("  Module 6 complete: alignment, governance, RL, and governed deployment")
-print("  ASCENT course complete: 34 exercises across 6 modules")
+print("  ASCENT course complete: 48 exercises across 6 modules")

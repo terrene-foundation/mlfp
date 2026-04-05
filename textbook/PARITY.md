@@ -132,17 +132,43 @@ Cross-language parity reference built from tutorials and the 20 known divergence
 
 ## 07-align: LLM Fine-Tuning
 
-| Concept          | Python API                        | Rust API                                      | Status  |
-| ---------------- | --------------------------------- | --------------------------------------------- | ------- |
-| SFT              | `AlignmentPipeline` + `SFTConfig` | —                                             | Py-only |
-| LoRA             | `LoRAConfig`                      | —                                             | Py-only |
-| DPO              | `DPOConfig`                       | —                                             | Py-only |
-| KTO/ORPO/GRPO    | Method configs                    | —                                             | Py-only |
-| Adapter registry | `AdapterRegistry`                 | —                                             | Py-only |
-| Merge            | `AdapterMerger`                   | —                                             | Py-only |
-| Evaluation       | `AlignmentEvaluator`              | —                                             | Py-only |
-| Serving          | `AlignmentServing`                | `kailash-align-serving` (GGUF, LoRA hot-swap) | Partial |
+| Concept          | Python API                        | Rust API                                      | Status  | Tutorial |
+| ---------------- | --------------------------------- | --------------------------------------------- | ------- | -------- |
+| Config           | `AlignmentConfig`                 | `TrainingMethod`, `AdapterMetadata`           | Partial | 07/01    |
+| LoRA             | `LoRAConfig`                      | Concept (pending kailash-rs)                  | Py-only | 07/02    |
+| SFT              | `AlignmentPipeline` + `SFTConfig` | Concept (pending kailash-rs)                  | Py-only | 07/03    |
+| DPO              | `DPOConfig`                       | Concept (pending kailash-rs)                  | Py-only | 07/04    |
+| KTO/ORPO/GRPO    | Method configs                    | Concept (pending kailash-rs)                  | Py-only | 07/05    |
+| Adapter registry | `AdapterRegistry`                 | `DefaultAdapterManager`                       | Full    | 07/06    |
+| Merge            | `AdapterMerger`                   | Concept (TIES/DARE/linear)                    | Py-only | 07/07    |
+| Evaluation       | `AlignmentEvaluator`              | Concept (perplexity, ROUGE, LLM-as-judge)     | Py-only | 07/08    |
+| Serving          | `AlignmentServing`                | `kailash-align-serving` (GGUF, LoRA hot-swap) | Full    | 07/09    |
+
+## 08-rl: Reinforcement Learning
+
+| Concept        | Python API                  | Rust API                                   | Status  | Tutorial |
+| -------------- | --------------------------- | ------------------------------------------ | ------- | -------- |
+| RL Trainer     | `RLTrainer`, `env_registry` | `FrozenLake`, `QLearning`, `train_tabular` | Full    | 08/01    |
+| Environments   | Gymnasium-compatible envs   | `CliffWalking`, `CartPole`, `GridWorld`    | Full    | 08/02    |
+| Policies       | `policy_registry`           | `TabularAgent`, SARSA, Expected SARSA, MC  | Full    | 08/03    |
+| Training loops | PPO, reward/value networks  | `ReplayBuffer`, `RolloutBuffer`, PPO       | Partial | 08/04    |
+| Reward shaping | Custom reward functions     | Potential-based shaping, curriculum        | Partial | 08/05    |
 
 ---
+
+## Tutorial Coverage Summary
+
+| Package     | Python Tutorials | Rust Tutorials | Parity Notes                                    |
+| ----------- | ---------------- | -------------- | ----------------------------------------------- |
+| 00-core     | 10               | 7              | Full parity (20 known divergences documented)   |
+| 01-dataflow | 9                | 9              | Full parity (validators/classification Py-only) |
+| 02-nexus    | 9                | 9              | Full parity (SSE Py-only, CLI Rs-only)          |
+| 03-kaizen   | 6                | 6              | Equivalent (API shape differs)                  |
+| 04-agents   | 10               | 10             | Most specialized agents Py-only                 |
+| 05-ml       | 16               | 16             | Architecturally different approaches            |
+| 06-pact     | 9                | 9              | Full parity                                     |
+| 07-align    | 9                | 9              | Mostly Py-only, serving/registry in Rust        |
+| 08-rl       | —                | 5              | kailash-rl crate has native implementations     |
+| **Total**   | **83**           | **80**         |                                                 |
 
 _This matrix is updated as tutorials are written. Each tutorial validates its parity claims against the actual SDK source._

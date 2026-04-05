@@ -286,6 +286,11 @@ print("→ Fixed p-values cross significance more often (inflated Type I error)"
 
 
 async def log_ab_analysis():
+    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
+    await conn.initialize()
+    tracker = ExperimentTracker(conn)
+    await tracker.initialize()
+
     experiments = await tracker.list_experiments()
     # Find the M2 experiment or create new
     exp_id = None
@@ -325,6 +330,7 @@ async def log_ab_analysis():
         )
         await run.set_tag("method", "cuped-bayesian-sequential")
     print(f"\nLogged run")
+    await conn.close()
 
 
 asyncio.run(log_ab_analysis())
@@ -341,8 +347,6 @@ fig = viz.metric_comparison(
 fig.update_layout(title="Standard vs CUPED: Variance Reduction")
 fig.write_html("ex5_cuped_comparison.html")
 print("Saved: ex5_cuped_comparison.html")
-
-asyncio.run(conn.close())
 
 print(
     "\n✓ Exercise 5 complete — A/B testing with CUPED + Bayesian + sequential testing"

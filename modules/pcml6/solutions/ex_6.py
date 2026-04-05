@@ -9,7 +9,7 @@
 #   own governance (frozen GovernanceContext).
 #
 # TASKS:
-#   1. Create GovernanceEngine from Exercise 3's organization
+#   1. Create GovernanceEngine from Exercise 5's organization
 #   2. Wrap a ReActAgent with PactGovernedAgent
 #   3. Define operating envelopes (cost, tools, data)
 #   4. Test governance enforcement
@@ -35,7 +35,7 @@ model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Set up GovernanceEngine (from Ex3)
+# TASK 1: Set up GovernanceEngine (from Ex5)
 # ══════════════════════════════════════════════════════════════════════
 
 # Minimal org for this exercise
@@ -242,4 +242,4 @@ try:
 except (AttributeError, TypeError) as e:
     print(f"✓ Attempted modification blocked: {type(e).__name__}")
 
-print("\n✓ Exercise 4 complete — governed agents with PACT enforcement")
+print("\n✓ Exercise 6 complete — governed agents with PACT enforcement")

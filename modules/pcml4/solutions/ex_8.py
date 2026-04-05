@@ -4,7 +4,7 @@
 # ════════════════════════════════════════════════════════════════════════
 # ASCENT4 — Exercise 8: M4 Capstone — Unsupervised + DL Pipeline
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Deploy the ONNX model from Exercise 5 via InferenceServer,
+# OBJECTIVE: Deploy the ONNX model from Exercise 7 via InferenceServer,
 #   expose through Nexus (API + CLI + MCP simultaneously). Use
 #   ModelSignature for input validation.
 #
@@ -53,7 +53,7 @@ async def register_onnx_model():
     else:
         # Create a placeholder for environments without the trained model
         model_bytes = b"placeholder_onnx_model"
-        print("⚠ ONNX model not found — using placeholder. Run Exercise 5 first.")
+        print("⚠ ONNX model not found — using placeholder. Run Exercise 7 first.")
 
     # Define model signature
     signature = ModelSignature(
@@ -286,7 +286,7 @@ companies that can PROVE their AI is governed win regulated markets.
 # Clean up
 asyncio.run(conn.close())
 
-print("✓ Exercise 6 complete — InferenceServer + Nexus multi-channel deployment")
+print("✓ Exercise 8 complete — InferenceServer + Nexus multi-channel deployment")
 print(
-    "  Module 4 complete: 6 exercises covering unsupervised ML, NLP, DL, and deployment"
+    "  Module 4 complete: 8 exercises covering unsupervised ML, NLP, DL, and deployment"
 )

@@ -361,4 +361,4 @@ fig_size.update_layout(title="Topic Size Distribution")
 fig_size.write_html("ex3_topic_sizes.html")
 print("Saved: ex3_topic_sizes.html")
 
-print("\n✓ Exercise 3 complete — topic modeling with BERTopic / NMF")
+print("\n✓ Exercise 5 complete — topic modeling with BERTopic / NMF")

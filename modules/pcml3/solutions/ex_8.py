@@ -335,6 +335,6 @@ fig.update_layout(title="Production Model: Credit Default Prediction")
 fig.write_html("ex6_final_metrics.html")
 print("Saved: ex6_final_metrics.html")
 
-print("\n✓ Exercise 6 complete — end-to-end supervised ML pipeline")
+print("\n✓ Exercise 8 complete — end-to-end supervised ML pipeline")
 print("  Pipeline: preprocess → train → calibrate → conformal → persist → deploy")
-print("  Module 3 complete: 6 exercises covering supervised ML theory to production")
+print("  Module 3 complete: 8 exercises covering supervised ML theory to production")

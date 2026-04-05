@@ -268,4 +268,4 @@ fig_fi.update_layout(title=f"Feature Importance: {best_model[0]}")
 fig_fi.write_html("ex1_feature_importance.html")
 print("Saved: ex1_feature_importance.html")
 
-print("\n✓ Exercise 1 complete — gradient boosting comparison on credit data")
+print("\n✓ Exercise 2 complete — gradient boosting comparison on credit data")

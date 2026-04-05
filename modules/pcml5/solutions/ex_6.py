@@ -268,4 +268,4 @@ The double opt-in pattern: agent=True in config + kailash-ml[agents] installed.
 """
 )
 
-print("✓ Exercise 5 complete — full ML agent pipeline with 6 agents")
+print("✓ Exercise 6 complete — full ML agent pipeline with 6 agents")

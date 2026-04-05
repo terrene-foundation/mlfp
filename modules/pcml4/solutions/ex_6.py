@@ -253,4 +253,4 @@ fig.update_layout(title="Drift Detection: Scenario Comparison")
 fig.write_html("ex4_drift_comparison.html")
 print("\nSaved: ex4_drift_comparison.html")
 
-print("\n✓ Exercise 4 complete — DriftMonitor for production model monitoring")
+print("\n✓ Exercise 6 complete — DriftMonitor for production model monitoring")

@@ -255,4 +255,4 @@ print(
     f"\nAt recall=0.80: precision={precision[np.searchsorted(-recall[::-1], -0.80)]:.4f}"
 )
 
-print("\n✓ Exercise 2 complete — UMAP + anomaly detection ensemble")
+print("\n✓ Exercise 4 complete — UMAP + anomaly detection ensemble")

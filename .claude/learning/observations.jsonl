@@ -603,3 +603,7 @@
 {"id":"obs_1775453192668_hlk309a9n","timestamp":"2026-04-06T05:26:32.668Z","type":"test_pattern","data":{"test_tier":"unit","test_path":null,"is_pytest":false,"command_flags":[]},"context":{"session_id":"unknown","cwd":"/Users/esperie/repos/training/pcml","framework":"unknown"}}
 {"timestamp":"2026-04-06T05:28:37.499Z","type":"stop","session_id":"09c27b49-810a-4d3d-b8c8-c2a2ef2829e2","reason":"signal","success":true}
 {"timestamp":"2026-04-06T05:30:24.933Z","type":"stop","session_id":"09c27b49-810a-4d3d-b8c8-c2a2ef2829e2","reason":"signal","success":true}
+{"timestamp":"2026-04-06T05:31:08.117Z","type":"stop","session_id":"09c27b49-810a-4d3d-b8c8-c2a2ef2829e2","reason":"signal","success":true}
+{"id":"obs_1775453498077_8v7bez7y2","timestamp":"2026-04-06T05:31:38.077Z","type":"test_pattern","data":{"test_tier":"unit","test_path":null,"is_pytest":false,"command_flags":[]},"context":{"session_id":"unknown","cwd":"/Users/esperie/repos/training/pcml","framework":"unknown"}}
+{"id":"obs_1775453542444_g10fxgwqx","timestamp":"2026-04-06T05:32:22.444Z","type":"test_pattern","data":{"test_tier":"unit","test_path":null,"is_pytest":false,"command_flags":[]},"context":{"session_id":"unknown","cwd":"/Users/esperie/repos/training/pcml","framework":"unknown"}}
+{"timestamp":"2026-04-06T05:32:49.025Z","type":"stop","session_id":"09c27b49-810a-4d3d-b8c8-c2a2ef2829e2","reason":"signal","success":true}

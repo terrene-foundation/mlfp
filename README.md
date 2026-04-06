@@ -1,224 +1,227 @@
-# ASCENT — ML Engineering from Foundations to Mastery
+# ASCENT
 
-The official Terrene Open Academy machine learning programme. 10 modules, 80 lessons, from zero Python to masters-level ML engineering. Hands-on exercises delivered in three formats (Python, Jupyter, Colab), powered by the open-source [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). Includes a supplementary [SDK textbook](textbook/) with 163 tutorials covering every Kailash engine in both Python and Rust.
+### ML Engineering from Foundations to Mastery
 
-**License**: Apache 2.0 | **Python**: 3.10+ | **Data**: [Polars](https://pola.rs)-native | **New to Polars?** See the [cheatsheet](docs/polars-cheatsheet.md)
+> _"The question isn't whether AI will transform your industry. The question is: will you be the one leading that transformation?"_
 
----
+**1,333 lecture slides. 10 modules. 320 hours. Zero to masters.**
 
-## Who This Is For
+ASCENT is the open-source ML engineering programme from [Terrene Open Academy](https://terrene.foundation), powered by the [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). It takes working professionals from their first line of Python to production-grade ML systems with full governance — and every step is backed by rigorous mathematical derivations.
 
-Working professionals at any level — from complete beginners to experienced practitioners. **No prerequisites.** The programme starts from zero Python and progresses to masters-level content:
-
-- **Module 1** teaches Python from scratch through real data exploration (variables, functions, loops — learned by using Polars and Kailash engines, not abstract exercises)
-- **Modules 2-5** build statistical, feature engineering, and supervised ML foundations to production-grade systems
-- **Modules 6-7** cover unsupervised ML as automated feature engineering, then deep learning as architecture-driven feature engineering
-- **Modules 8-10** cover NLP/transformers, LLM agents, alignment, governance, and RL at an advanced level
-
-You do **not** need prior experience with Python, statistics, Polars, Kailash, or ML. The course teaches everything from the ground up and ends at a masters-and-above level.
-
-**What you get at the end**: A portfolio of completed exercises spanning Python basics through governed AI deployment, plus the architectural patterns to build ML systems that survive production.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://python.org)
+[![Data](https://img.shields.io/badge/Data-Polars%20Native-orange.svg)](https://pola.rs)
+[![Slides](https://img.shields.io/badge/Slides-1%2C333-purple.svg)](#lecture-decks)
 
 ---
 
-## Why This Course Exists
+## The Programme
 
-Most ML courses teach you to call `model.fit()`. This course teaches you to build ML systems that survive production — where data is messy, models drift, stakeholders need explanations, and regulators need audit trails.
+|             | Foundation Ascent (M1-M5)    | Summit Ascent (M6-M10)         |
+| ----------- | ---------------------------- | ------------------------------ |
+| **Level**   | Zero Python to production ML | Advanced to masters            |
+| **Hours**   | 160h (40 lessons)            | 160h (40 lessons)              |
+| **Outcome** | Deploy governed ML models    | Build aligned AI agent systems |
 
-Every module has two layers:
+### Module Map
 
-- **Mathematical foundations** you can derive on a whiteboard: bias-variance decomposition, EM algorithm, SHAP axioms, DPO from Bradley-Terry, PPO clipped objective, Bellman equations
-- **Production practice** on real-world data using the Kailash platform: data profiling, experiment tracking, model registry, drift monitoring, governed deployment
+| #   | Module                                  | What You Master                                                                                                                                                      | Slides    |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | **Python & Data Fluency**               | Python from scratch, Polars, data profiling, visualization                                                                                                           | 85        |
+| 2   | **Statistical Foundations**             | 20+ distributions, MLE, Bayesian inference, hypothesis testing, bootstrap, information theory                                                                        | 131       |
+| 3   | **Feature Engineering & Experiments**   | CUPED variance reduction, DiD, causal forests, Double ML, 9 encoding methods, Boruta, leakage detection                                                              | 99        |
+| 4   | **Supervised ML**                       | Complete model zoo (linear through CatBoost), XGBoost 2nd-order Taylor, bias-variance decomposition, conformal prediction                                            | 83        |
+| 5   | **ML Engineering & Production**         | SHAP axioms + TreeSHAP, LIME, ALE, fairness (impossibility theorem), workflows, DataFlow, model registry, ensembles                                                  | 150       |
+| 6   | **Unsupervised ML & Pattern Discovery** | K-means through HDBSCAN, EM/GMM (full derivation), PCA-SVD connection, t-SNE, UMAP, LDA, NMF, BERTopic, anomaly detection                                            | 146       |
+| 7   | **Deep Learning**                       | Linear regression as NN, backpropagation (full chain rule), parallelized training (data/model/pipeline/tensor), CNN, ResNet, Adam derivation                         | 100       |
+| 8   | **NLP & Transformers**                  | BPE tokenization, Word2Vec (negative sampling derivation), LSTM gates, self-attention (why divide by sqrt d_k), transformer architecture, BERT, GPT, Flash Attention | 150       |
+| 9   | **LLMs, AI Agents & RAG**               | LLM landscape Q1 2026, 7 RAG architectures, hybrid retrieval, RAGAS evaluation, ReAct/Reflexion agents, multi-agent A2A, MCP protocol, Nexus deployment              | 235       |
+| 10  | **Alignment, RL & Governance**          | LoRA/QLoRA, DPO (5-step derivation from RLHF), GRPO, PPO (clipped objective + GAE), Bellman equations, EU AI Act, PACT D/T/R governance, full platform capstone      | 154       |
+|     |                                         | **Total**                                                                                                                                                            | **1,333** |
 
-## What You Learn
+### The Organizing Principle: Feature Engineering Spectrum
 
-| Module | Topic                               | Theory Depth                                                                  | Production Practice                                   |
-| ------ | ----------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
-| **1**  | Python & Data Fluency               | Python from scratch, Polars, joins, windows, data profiling                   | DataExplorer, PreprocessingPipeline, ModelVisualizer  |
-| **2**  | Statistical Foundations             | Probability, MLE, Bayesian inference, hypothesis testing, bootstrap           | ExperimentTracker, ModelVisualizer                    |
-| **3**  | Feature Engineering & Experiments   | CUPED, DiD, causal inference, encoding, selection, leakage                    | FeatureEngineer, FeatureStore, ExperimentTracker      |
-| **4**  | Supervised ML                       | Bias-variance, XGBoost internals, complete model zoo, calibration             | TrainingPipeline, HyperparameterSearch, ModelRegistry |
-| **5**  | ML Engineering & Production         | SHAP/LIME/ALE, workflows, DataFlow, model lifecycle, ensembles                | WorkflowBuilder, DataFlow, EnsembleEngine             |
-| **6**  | Unsupervised ML & Pattern Discovery | EM/GMM, PCA, spectral clustering, LDA, NMF, BERTopic, anomaly detection       | AutoMLEngine, DriftMonitor                            |
-| **7**  | Deep Learning                       | Neural networks from linear regression, backprop, CNN, optimizers, embeddings | OnnxBridge, InferenceServer                           |
-| **8**  | NLP & Transformers                  | Word2Vec, LSTM, attention, transformer architecture, BERT, GPT                | ModelVisualizer, AutoMLEngine (text)                  |
-| **9**  | LLMs, AI Agents & RAG               | Scaling laws, RAG evaluation, MCP protocol, multi-agent A2A                   | Kaizen Delegate, ReActAgent, 6 ML agents, Nexus       |
-| **10** | Alignment, RL & Governance          | LoRA/DPO/GRPO, EU AI Act, PACT D/T/R, PPO, Bellman equations                  | AlignmentPipeline, GovernanceEngine, RLTrainer        |
-
-### Certification Structure
-
-| Certificate           | Modules | Hours | Level                 |
-| --------------------- | ------- | ----- | --------------------- |
-| **Foundation Ascent** | M1-M5   | 160h  | Zero to production ML |
-| **Summit Ascent**     | M6-M10  | 160h  | Advanced to masters   |
-
-### The Feature Engineering Spectrum
-
-The curriculum is organized around a central insight — the evolution of feature engineering:
+Every module builds on a single insight — the evolution of how we create features:
 
 ```
-M3-M5: Manual      →  M6: USML discovers    →  M7: DL learns        →  M8-M9: Transformers
-Human designs         patterns within X         features via            learn semantic
-features              n → 1 (clustering)        architecture            features from
-                      n → k (dim reduction)     n → m (embeddings)      language
+M3-M5                    M6                        M7                     M8-M9
+Manual                   USML discovers            DL learns features     Transformers learn
+Human designs            patterns within X         via architecture       semantic features
+features                 n → 1 (clustering)        n → m (embeddings)     from language
+                         n → k (dim reduction)
+                         n → k (topics)
 ```
 
-### After completing this course, you will be able to:
-
-- Profile and clean messy real-world data at scale using polars and automated data quality tools
-- Design and execute A/B tests with proper power analysis, variance reduction (CUPED), and causal inference
-- Train, calibrate, and interpret production ML models with full SHAP explainability and conformal prediction
-- Build and deploy unsupervised ML and deep learning systems with drift monitoring
-- Build AI agent systems with structured outputs, tool use, RAG retrieval, and cost budgets
-- Implement organizational governance that scales: access control, operating envelopes, and tamper-evident logging
+**Unsupervised ML is automated feature engineering.** Supervised ML discovers combinations of X that predict y. Unsupervised ML discovers patterns _within_ X and represents them as new features. Deep learning uses architecture to _learn_ features through gradient optimization. This progression — manual, algorithmic, architectural, semantic — is the spine of the entire curriculum.
 
 ---
 
-## Learn Industry Standards, Not Vendor Lock-in
+## Three Layers Per Concept
 
-A fair question: _"Am I learning something I can only use with Kailash?"_
+Every concept is taught at three depths simultaneously:
 
-**No.** Kailash is a governance and orchestration layer that sits on top of the Python data science ecosystem. The core libraries are industry standards:
+| Layer           | Marker                     | Audience                      | Example (Bias-Variance)                                                                                                                      |
+| --------------- | -------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Intuition**   | :green_circle: FOUNDATIONS | Zero-background professionals | _"Imagine throwing darts at a target. Bias is how far the center of your throws is from the bullseye. Variance is how spread out they are."_ |
+| **Mathematics** | :blue_circle: THEORY       | Intermediate practitioners    | E[(y-y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2 — derived step by step, each term color-coded                                          |
+| **Research**    | :purple_circle: ADVANCED   | Masters+ / PhD holders        | Double descent (Belkin et al., 2019): test error _decreases_ past the interpolation threshold in over-parameterized models                   |
 
-| What You Learn      | Industry Standard                                      | What Kailash Adds                                        |
-| ------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
-| Data manipulation   | **Polars** (Apache Arrow)                              | DataExplorer: automated profiling with 8 alert types     |
-| Classical ML        | **scikit-learn**, XGBoost, LightGBM, CatBoost          | TrainingPipeline: orchestrates training + model registry |
-| Deep learning       | **PyTorch**                                            | OnnxBridge: exports to portable ONNX format              |
-| NLP                 | **BERTopic**, sentence-transformers                    | ModelVisualizer: renders analysis as interactive Plotly  |
-| Experiment tracking | Structured logging (run/params/metrics pattern)        | ExperimentTracker: async context manager with comparison |
-| Model serving       | ONNX Runtime                                           | InferenceServer: serves ONNX with signature validation   |
-| LLM agents          | OpenAI / Anthropic / Groq APIs (configurable via .env) | Kaizen Delegate: structured output with cost budgets     |
-
-**Every concept has a mathematical derivation, an industry-standard implementation, AND a Kailash engine that adds production governance.** If you move to a different stack, you keep the math, the sklearn, the PyTorch, and the architectural patterns. Kailash teaches you _how to govern_ ML systems — that knowledge transfers everywhere.
-
-The `kailash_ml.interop` module is the proof: `to_sklearn_input()`, `from_sklearn_output()`, `to_pandas()`, `polars_to_arrow()`. Kailash converts to and from standard formats at every boundary.
+A banker and a PhD sit in the same classroom. Both leave having learned something they didn't know.
 
 ---
 
-## Why Terrene Foundation
+## What's In The Box
 
-Kailash is maintained by the [Terrene Foundation](https://terrene.foundation), an independent non-profit (Singapore CLG). This matters for learners:
+| Component          | Count         | Details                                                            |
+| ------------------ | ------------- | ------------------------------------------------------------------ |
+| Lecture decks      | 10            | Reveal.js HTML, three-layer depth, KaTeX math, speaker notes       |
+| Slides             | 1,333         | Every equation derived, every algorithm stepped through            |
+| Speaker notes      | 6             | Per-slide timing, beginner tips, expert tangents                   |
+| Exercises          | 48+           | Solutions + local + Jupyter + Colab (three-format consistency)     |
+| Datasets           | 11            | Singapore-context: HDB 15M, taxi 50K, credit 100K, experiment 500K |
+| Quizzes            | 6             | AI-resilient questions (context-specific, not recall)              |
+| SDK Textbook       | 163 tutorials | 83 Python + 80 Rust, basic to advanced, every Kailash engine       |
+| Assessment rubrics | 6             | Portfolio, capstone, peer review, model card template              |
 
-**Genuinely open source.** All intellectual property was irrevocably transferred to the Foundation under Apache 2.0. No contributor has exclusive rights, special access, or structural advantage. The Foundation's constitution explicitly prevents open-washing, rent-seeking, and commercial capture by any party.
+### Verified Mathematical Content
 
-**Open governance specifications.** The CARE, EATP, and CO specifications that underpin Kailash's governance features are published under CC BY 4.0. You can read, implement, and build commercial products on these specifications without restriction.
+Every derivation was red-teamed by specialist reviewers:
 
-**Standard dependencies only.** PyPI packages with OSI-approved licenses. No proprietary SDKs, no vendor APIs, no commercial plug-ins required.
+- Bias-variance decomposition (squared loss)
+- XGBoost 2nd-order Taylor expansion + split gain formula
+- EM algorithm (E-step responsibilities, M-step MLE, convergence)
+- PCA eigendecomposition + SVD connection
+- DPO 5-step derivation (RLHF objective through Z(x) cancellation)
+- PPO clipped objective + Generalized Advantage Estimation
+- Bellman equations (expectation + optimality)
+- SHAP Shapley axioms (efficiency, symmetry, dummy, linearity)
+- LSTM gate equations (all 6)
+- Transformer scaled dot-product attention (why divide by sqrt d_k)
+
+---
+
+## Not Vendor Lock-in
+
+Kailash is a governance and orchestration layer on top of industry standards:
+
+| What You Learn | Industry Standard                             | What Kailash Adds                                        |
+| -------------- | --------------------------------------------- | -------------------------------------------------------- |
+| Data           | **Polars** (Apache Arrow)                     | DataExplorer: automated profiling, 8 alert types         |
+| Classical ML   | **scikit-learn**, XGBoost, LightGBM, CatBoost | TrainingPipeline: orchestrated training + model registry |
+| Deep learning  | **PyTorch**                                   | OnnxBridge: portable ONNX export                         |
+| NLP            | **BERTopic**, sentence-transformers           | ModelVisualizer: interactive Plotly analysis             |
+| LLM agents     | OpenAI / Anthropic / Groq APIs                | Kaizen Delegate: structured output with cost budgets     |
+| Model serving  | ONNX Runtime                                  | InferenceServer: signature validation + caching          |
+| Governance     | EU AI Act / Singapore AI Verify               | PACT: D/T/R accountability with operating envelopes      |
+
+Every concept has a derivation, an industry-standard implementation, _and_ a Kailash engine. If you move to a different stack, you keep the math, the sklearn, the PyTorch, and the architectural patterns.
 
 ---
 
 ## Quick Start
 
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager).
-
 ```bash
 git clone https://github.com/terrene-foundation/ascent.git
 cd ascent
 uv venv && uv sync
-cp .env.example .env  # API keys needed for Modules 9-10
+cp .env.example .env  # API keys for M9-M10
 
-# Run your first exercise
+# Your first exercise
 uv run python modules/ascent01/local/ex_1.py
 
-# For advanced modules (deep learning, agents, RL, alignment):
+# View lecture deck
+open decks/ascent01/deck.html
+
+# Advanced modules (DL, agents, alignment)
 uv sync --extra full
 ```
 
-Three delivery formats for every exercise:
+### Three Delivery Formats
 
-| Format       | Location                            | Best For                             |
-| ------------ | ----------------------------------- | ------------------------------------ |
-| Local Python | `modules/ascent*/local/*.py`        | Full async support, Nexus deployment |
-| Jupyter      | `modules/ascent*/notebooks/*.ipynb` | Interactive exploration              |
-| Google Colab | `modules/ascent*/colab/*.ipynb`     | Zero-install, GPU access             |
+| Format       | Location                            | Best For                     |
+| ------------ | ----------------------------------- | ---------------------------- |
+| Local Python | `modules/ascent*/local/*.py`        | Full async, Nexus deployment |
+| Jupyter      | `modules/ascent*/notebooks/*.ipynb` | Interactive exploration      |
+| Google Colab | `modules/ascent*/colab/*.ipynb`     | Zero-install, GPU access     |
 
-See [docs/setup-guide.md](docs/setup-guide.md) for detailed installation instructions.
-
----
-
-## Course Structure
-
-```
-modules/
-  ascent01/         Module 1: Python & Data Fluency
-    solutions/    Complete, runnable solutions (instructor reference)
-    local/        Python exercises (fill-in-the-blank)
-    notebooks/    Jupyter notebooks (same exercises, notebook format)
-    colab/        Colab notebooks (Drive mount, pip install)
-  ascent02-10/      Modules 2-10 (same structure)
-
-textbook/         Supplementary SDK textbook (163 tutorials)
-  python/         83 Python tutorials (all 8 packages, basic→advanced)
-  rust/           80 Rust tutorials (all 9 packages, basic→advanced)
-
-data/             11 Singapore-context datasets (CSV/Parquet)
-shared/           Data loader, Kailash helpers, async wrappers
-docs/             Course outline, setup guide, Polars cheatsheet
-decks/            10 Reveal.js lecture decks (1,333 slides total)
-scripts/          Notebook converter, dataset generator, deck auditor
-```
-
-### Data
-
-Datasets load automatically via `ASCENTDataLoader`, which detects your environment and pulls from Google Drive:
+### Data Loading
 
 ```python
 from shared import ASCENTDataLoader
 
 loader = ASCENTDataLoader()
-df = loader.load("ascent01", "hdb_resale.parquet")  # Singapore HDB resale prices
+df = loader.load("ascent01", "hdb_resale.parquet")
 ```
 
-Singapore-focused datasets (HDB prices, taxi trips, economic indicators) combined with standard ML benchmarks (credit scoring, ecommerce, experiment data).
+Auto-detects environment (local vs Colab) and pulls from Google Drive when needed.
 
 ---
 
-## Status
+## Repository Structure
 
-| Component               | Status   | Details                                        |
-| ----------------------- | -------- | ---------------------------------------------- |
-| Curriculum (80 lessons) | Complete | 10 modules × 8 lessons                         |
-| Exercises               | Complete | Progressive scaffolding: 70% (M1) to 20% (M10) |
-| SDK Textbook — Python   | Complete | 83 tutorials across all 8 packages             |
-| SDK Textbook — Rust     | Complete | 80 tutorials across all 9 packages             |
-| Datasets (11)           | Complete | Singapore-context CSV/Parquet                  |
-| Lecture decks (10)      | Complete | Reveal.js, 1,333 slides, three-layer depth     |
-| Quizzes (6)             | Complete | AI-resilient questions                         |
-| Speaker notes (6)       | Complete | Per-slide timing + dual-audience tips          |
+```
+ascent/
+  modules/
+    ascent01-10/        10 modules, each with:
+      solutions/        Complete runnable solutions (instructor reference)
+      local/            Python exercises (fill-in-the-blank)
+      notebooks/        Jupyter notebooks
+      colab/            Colab notebooks (Drive mount)
+  decks/
+    ascent01-10/        10 Reveal.js lecture decks (1,333 slides)
+    assets/css/         Custom theme (teal/indigo, three-layer markers)
+  textbook/
+    python/             83 tutorials (all 8 Kailash packages)
+    rust/               80 tutorials (all 9 Kailash packages)
+  data/                 11 Singapore-context datasets (CSV/Parquet)
+  shared/               Data loader, async wrappers, Kailash helpers
+  scripts/              Notebook converter, dataset generator, deck auditor
+```
 
 ---
 
-## Kailash Platform Packages
+## Kailash Platform
 
-| Package                                                     | Purpose                                             | Install                        |
-| ----------------------------------------------------------- | --------------------------------------------------- | ------------------------------ |
-| [kailash](https://github.com/terrene-foundation/kailash-py) | Workflow orchestration (140+ nodes)                 | `pip install kailash`          |
-| kailash-ml                                                  | ML lifecycle: 13 engines + RLTrainer, polars-native | `pip install kailash-ml`       |
-| kailash-dataflow                                            | Zero-config database operations                     | `pip install kailash-dataflow` |
-| kailash-nexus                                               | Deploy as API + CLI + MCP simultaneously            | `pip install kailash-nexus`    |
-| kailash-kaizen                                              | AI agent framework (signatures, tools, A2A)         | `pip install kailash-kaizen`   |
-| kailash-pact                                                | Governance: D/T/R accountability, audit chains      | `pip install kailash-pact`     |
-| kailash-align                                               | LLM fine-tuning: SFT, DPO, QLoRA, GRPO              | `pip install kailash-align`    |
+| Package                                                     | Purpose                                  | Install                        |
+| ----------------------------------------------------------- | ---------------------------------------- | ------------------------------ |
+| [kailash](https://github.com/terrene-foundation/kailash-py) | Workflow orchestration, 140+ nodes       | `pip install kailash`          |
+| kailash-ml                                                  | 13 ML engines + RLTrainer, polars-native | `pip install kailash-ml`       |
+| kailash-dataflow                                            | Zero-config database operations          | `pip install kailash-dataflow` |
+| kailash-nexus                                               | API + CLI + MCP deployment               | `pip install kailash-nexus`    |
+| kailash-kaizen                                              | AI agent framework, signatures, A2A      | `pip install kailash-kaizen`   |
+| kailash-pact                                                | D/T/R governance, operating envelopes    | `pip install kailash-pact`     |
+| kailash-align                                               | SFT, DPO, QLoRA, GRPO fine-tuning        | `pip install kailash-align`    |
 
 ---
 
 ## For Instructors
 
-See [docs/course-outline.md](docs/course-outline.md) for the full curriculum map, lecture topics, and assessment framework.
+**Solution-first authoring.** Solutions in `modules/ascent*/solutions/` are the source of truth. Exercises are generated by stripping to the appropriate scaffolding level.
 
-**Solution-first authoring**: Complete solutions in `modules/ascent*/solutions/` are the source of truth. Exercises are generated by stripping solutions to the appropriate scaffolding level. The `scripts/py_to_notebook.py` converter generates Jupyter and Colab formats from local Python files.
+**Progressive scaffolding.** M1 provides ~70% of code. M10 provides ~20%. By the end, students write from documentation alone.
 
-**Progressive scaffolding**: M1 provides ~70% of the code (students fill in key arguments). By M10, only imports and section headers are given (~20%) — students write nearly everything from hints and documentation.
+**Three-layer delivery.** Green/blue/purple markers let instructors calibrate depth in real time. Beginners follow green. Experts engage with purple. Everyone sees the same deck.
+
+**Speaker notes.** Per-slide timing, common student questions, "if beginners look confused" alternatives, "if experts look bored" tangents.
+
+---
+
+## Why Terrene Foundation
+
+[Terrene Foundation](https://terrene.foundation) is an independent non-profit (Singapore CLG).
+
+**Genuinely open source.** All IP irrevocably transferred under Apache 2.0. No contributor has exclusive rights or structural advantage. The constitution prevents open-washing and commercial capture.
+
+**Open specifications.** CARE, EATP, and CO published under CC BY 4.0. Build commercial products on them without restriction.
+
+**Standard dependencies only.** PyPI packages, OSI-approved licenses. No proprietary SDKs required.
+
+---
 
 ## Contributing
 
-This is a [Terrene Foundation](https://terrene.foundation) project. Contributions welcome via pull requests to [terrene-foundation/ascent](https://github.com/terrene-foundation/ascent).
-
-Questions or feedback? Open an [issue](https://github.com/terrene-foundation/ascent/issues).
+Contributions welcome via [pull request](https://github.com/terrene-foundation/ascent/pulls). Questions via [issues](https://github.com/terrene-foundation/ascent/issues).
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
-
-Specifications (CARE, EATP, CO) are licensed under CC BY 4.0.
+[Apache 2.0](LICENSE). Specifications (CARE, EATP, CO) under CC BY 4.0.

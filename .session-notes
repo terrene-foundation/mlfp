@@ -1,76 +1,71 @@
-# Session Notes -- 2026-04-06 (Session 6)
+# Session Notes -- 2026-04-06 (Session 8)
 
 ### Read These Files First (in order)
 
 1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, Kailash engine table
 2. `README.md` -- Programme overview: 1,398 slides, 10 modules, Feature Engineering Spectrum
-3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js spec (three-layer 🟢🔵🟣, speaker notes format, 1280x720)
-4. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- 48-lesson curriculum (6-module, STALE — needs 10-module update)
-5. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
-6. `scripts/py_to_notebook.py` -- .py→.ipynb converter (local→Jupyter+Colab)
-7. `scripts/deck-audit.mjs` -- Playwright deck overflow auditor
+3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js spec (three-layer slide architecture, 1280x720)
+4. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
+5. `scripts/py_to_notebook.py` -- .py→.ipynb converter (now auto-detects Kailash packages per exercise)
+6. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
 
-## Accomplished (Session 6)
+## Accomplished (Session 8)
 
-- **PCML→ASCENT rebrand**: repo renamed (`terrene-foundation/ascent`), git history rewritten, 0 stale refs
-- **6→10 module expansion**: Feature Engineering Spectrum (manual→USML→DL→transformers→LLMs)
-- **10 Reveal.js decks** (1,398 slides): 85+131+164+83+150+146+100+150+235+154
-- **Red-teamed all 10 decks**: 5 specialist panels, all critical findings fixed (KaTeX, recaps, formulas)
-- **README.md**: complete rewrite with module map, slide counts, verification list
-- **Cross-module consistency**: all recap/preview slides aligned to 10-module structure
-- Kailash SDK packages ARE on PyPI (user confirmed) — no longer a blocker
+- **M7-M10 exercises complete**: 32 solutions + 32 local + 64 notebooks = 128 exercise files
+- **M7-M10 quizzes complete**: 64 AI-resilient questions (16 per module), all 4 types represented
+- **M7-M10 speaker notes complete**: 4 files (1450-2472 lines each), per-slide instructor guidance
+- **M7-M10 READMEs**: 4 module READMEs with lesson plans and dataset lists
+- **Red team round 1 converged**: 6 specialist panels, all CRITICAL/HIGH findings fixed
+  - Removed fake training data (M7 ex_6 Adam, ex_7 CNN) — zero-tolerance violation
+  - Fixed He init scale bug (extra 0.01× multiplier)
+  - Increased scaffolding levels in 6 under-stripped exercises (M7-M9)
+  - Fixed 4 quiz accuracy errors (M9 math, M10 contradiction, M10 percentages, M8 code comment)
+  - Fixed py_to_notebook.py to auto-detect kailash-kaizen/align/pact/nexus/mcp per exercise
+  - Cleaned mid-file imports (6 files) and unused load_dotenv imports (6 files)
+- **Pushed**: 3 commits to `terrene-foundation/ascent` main (a3e7cb3)
 
 ## Outstanding — Next Session Work Queue
 
-### P0: M7-M10 Exercises (128 files needed)
-- `modules/ascent07/` through `modules/ascent10/` DO NOT EXIST (verified)
-- Each needs: 8 solutions + 8 local + 8 notebooks + 8 colab = 32 files per module
-- Pattern: copy `modules/ascent06/` structure. Solutions first, then strip per scaffolding level
-- M7=DL (PyTorch, backprop, CNN, ONNX), M8=NLP (tokenization, Word2Vec, transformers)
-- M9=LLM agents (Kaizen Delegate, RAG, MCP, Nexus), M10=Alignment+RL+Governance (LoRA, DPO, PPO, PACT)
-- Scaffolding: M7=~30%, M8=~30%, M9=~25%, M10=~20%
+### P1: Deck PDFs (10 needed, 6 stale exist)
+- 6 existing PDFs are from old deck content; all 10 need regeneration
+- Use decktape or Playwright PDF: `decktape reveal deck.html deck.pdf`
+- KaTeX-heavy decks may need Playwright fallback (`page.pdf()` with `?print-pdf`)
 
-### P0: M7-M10 Speaker Notes (4 files needed)
-- Only `decks/ascent01-06/speaker-notes.md` exist (6 files, verified)
-- Need `decks/ascent07-10/speaker-notes.md` matching format: per-slide timing, beginner tips, expert tangents
-
-### P0: M7-M10 Quizzes (4 files needed)
-- Only `modules/assessment/quizzes/quiz_ascent01-06.py` exist (6 files, verified)
-- Need `quiz_ascent07-10.py` — AI-resilient, context-specific, not recall
-
-### P1: All 10 Deck PDFs
-- 6 stale PDFs exist (old deck content). All 10 need regeneration
-- Use Playwright fallback for KaTeX-heavy decks: `decktape reveal deck.html deck.pdf`
-
-### P1: M1 Speaker Notes
-- Red team flagged: ascent01 has NO speaker notes (all other M1-M6 modules do)
+### P1: Curriculum Doc Update (v4 → v5)
+- `workspaces/curriculum/briefs/expanded-curriculum-v4.md` still says "6 modules × 8 lessons = 48"
+- Needs rewrite to 10 modules × 8 lessons = 80 lessons with M7-M10 lesson plans
+- (verified: `head -3 workspaces/curriculum/briefs/expanded-curriculum-v4.md` says "6 Modules")
 
 ### P1: Textbook MD/HTML Completion
-- 33/83 MD files done. Missing: 01-dataflow(9), 04-agents(10), 07-align(9), 08-integration(5) = 50 needed
-- 26/83 HTML files done. Missing: 01-dataflow(9), 04-agents(10), 06-pact(9), 07-align(9), 08-integration(5) = 57 needed
+- ~50 MD files and ~57 HTML files still needed across multiple sections
+- (verified: this was in session 6 notes, not rechecked — next session should audit)
 
-### P2: Curriculum Doc Update
-- `workspaces/curriculum/briefs/expanded-curriculum-v4.md` still says "6 modules x 8 lessons = 48 lessons"
-- Needs rewrite to 10 modules x 8 lessons = 80 lessons with M7-M10 lesson plans
+### P2: Speaker Note Time Calibration
+- M7=300min, M8=293min, M9=244min vs 180min target (M10=180min is correct)
+- Systemic issue — M6 also overruns at 238min
+- Options: add skip markers, reduce per-slide times, or accept longer delivery
 
-### P2: Deck Overflow Audit + Classroom Exercises (M7-M10)
+### P2: Remaining Scaffolding Calibration
+- Red team fixed 6 worst offenders but other M7-M9 exercises may be slightly under-stripped
+- M10 exercises all hit 20% target (PASS)
 
-### Oversight — Verify Before Starting
+### P2: Deck Overflow Audit (M7-M10)
+- `scripts/deck-audit.mjs` exists but hasn't been run on new decks
 
-- [ ] 10 decks: `for i in $(seq -w 1 10); do ls decks/ascent${i}/deck.html; done` = all exist
-- [ ] No pcml: `grep -rli "pcml" --include="*.py" --include="*.md" --include="*.html" . | grep -v .git | grep -v .venv` = 0
-- [ ] Remote current: `git log --oneline -1` = dd19073
-- [ ] 48 existing exercises: `find modules/ascent0{1..6}/solutions -name "ex_*.py" | wc -l` = 48
+## Oversight — Verify Before Starting
 
-### Oversight — Verify After Completing
+- [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80 (verified: 80)
+- [ ] 64 quiz questions (M7-M10): `for q in quiz_ascent{07,08,09,10}.py; do grep -c '"id":' modules/assessment/quizzes/$q; done` = 16 each (verified: 16,16,16,16)
+- [ ] 10 speaker notes: `ls decks/ascent*/speaker-notes.md | wc -l` = 10 (verified: 10)
+- [ ] No PCML: `grep -rli "pcml" --include="*.py" --include="*.md" modules/ | wc -l` = 0 (verified: 0)
+- [ ] Remote current: `git log --oneline -1` = a3e7cb3 (verified)
 
-- [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80
-- [ ] 10 speaker notes: `ls decks/ascent*/speaker-notes.md | wc -l` = 10
-- [ ] 10 quizzes: `ls modules/assessment/quizzes/quiz_ascent*.py | wc -l` = 10
+## Oversight — Verify After Completing
+
 - [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10
+- [ ] Curriculum v5: `head -1 workspaces/curriculum/briefs/expanded-curriculum-v5.md` exists
 - [ ] Push: `git push origin main`
 
 ## Blockers
 
 - decktape crashes on heavy KaTeX — use Playwright PDF fallback (`page.pdf()` with `?print-pdf`)
-- Classroom exercises (gitignored) only cover M1-M6

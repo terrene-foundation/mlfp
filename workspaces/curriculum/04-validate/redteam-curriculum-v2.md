@@ -108,7 +108,7 @@ But the existing exercises were built for the OLD structure:
 ## Top 5 Structural Actions Required
 
 1. **Reconcile curriculum with exercises** — update curriculum to match what exercises teach, then fill gaps
-2. **Resolve beginner vs professional tension** — user says start from zero; official SMU says "intermediate"; exercises assume professional
+2. **Resolve beginner vs professional tension** — user says start from zero; official programme says "intermediate"; exercises assume professional
 3. **Create 14 missing exercises** (2 per module) to reach 48
 4. **Move content between modules** — MCP from M5, Nexus auth from M4, workflow orchestration earlier
 5. **Split overloaded lessons** — M6.2 (agents), M6.4 (patterns), M6.6 (alignment) each need 2 sessions

@@ -6,6 +6,12 @@
  * Canvas: 1280x720
  */
 
+/* ── Global box-sizing — prevent all overflow from padding ── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 :root {
   /* Primary palette */
   --ascent-primary: #0D9488;      /* Teal — primary accent */
@@ -41,6 +47,15 @@
 
 .reveal .slides section {
   padding: 40px 60px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* Prevent any child from exceeding the slide viewport */
+.reveal .slides section > * {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 /* ── Headings ─────────────────────────────────────────── */
@@ -106,6 +121,8 @@
   padding: 16px 20px;
   font-size: 0.7em;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
@@ -132,10 +149,11 @@
   background: #EFF6FF;
   border: 2px solid var(--ascent-theory);
   border-radius: 8px;
-  padding: 20px 24px;
-  margin: 16px 0;
+  padding: 16px 20px;
+  margin: 12px 0;
   text-align: center;
-  font-size: 1.1em;
+  font-size: 1em;
+  overflow-x: auto;
 }
 
 .equation-box .annotation {
@@ -195,12 +213,16 @@
 
 .columns {
   display: flex;
-  gap: 32px;
+  gap: 24px;
   align-items: flex-start;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .col {
   flex: 1;
+  min-width: 0; /* prevent flex children from overflowing */
+  overflow: hidden;
 }
 
 .col-narrow {
@@ -214,10 +236,13 @@
 /* ── Tables ───────────────────────────────────────────── */
 
 .reveal table {
-  font-size: 0.75em;
+  font-size: 0.72em;
   border-collapse: collapse;
   width: 100%;
+  max-width: 100%;
   margin: 12px 0;
+  table-layout: fixed;
+  overflow: hidden;
 }
 
 .reveal table th {
@@ -243,8 +268,10 @@
   background: linear-gradient(135deg, #F0FDFA 0%, #ECFDF5 100%);
   border: 2px solid var(--ascent-primary);
   border-radius: 12px;
-  padding: 20px;
-  margin: 16px 0;
+  padding: 16px 20px;
+  margin: 12px 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .kailash-bridge h3 {
@@ -322,6 +349,31 @@
   color: #94A3B8;
   display: flex;
   justify-content: space-between;
+}
+
+/* ── KaTeX overflow prevention ─────────────────────────── */
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 4px 0;
+}
+
+.katex {
+  font-size: 0.95em;
+}
+
+/* Ensure MathJax/KaTeX inline doesn't break layout */
+.katex-html {
+  max-width: 100%;
+}
+
+/* ── Callout overflow ─────────────────────────────────── */
+
+.callout {
+  overflow: hidden;
+  word-wrap: break-word;
 }
 
 /* ── Print/PDF ────────────────────────────────────────── */

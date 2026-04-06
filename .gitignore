@@ -39,5 +39,8 @@ Thumbs.db
 mlruns/
 catboost_info/
 
+# Classroom exercises (face-to-face only, not open-source)
+classroom/
+
 # Claude Code
 .claude/worktrees/

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 1: Signatures — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+
+  <h1>Chapter 1: Signatures</h1>
+
+  <h2>Overview</h2>
+  <p>Signatures are the foundational abstraction in Kaizen's agent system. A Signature declares WHAT an agent does &mdash; its inputs and outputs &mdash; without specifying HOW. The docstring becomes the agent's system instructions, and <code>InputField</code>/<code>OutputField</code> descriptors define the structured interface.</p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li>Kailash Kaizen installed (<code>pip install kailash-kaizen</code>)</li>
+    <li>Understanding of Python class syntax and type annotations</li>
+  </ul>
+
+  <h2>Concepts</h2>
+
+  <h3>What Is a Signature?</h3>
+  <p>A declarative contract between programmer and AI agent. It specifies:</p>
+  <ul>
+    <li><strong>System prompt</strong>: The class docstring</li>
+    <li><strong>Inputs</strong>: Fields the agent receives</li>
+    <li><strong>Outputs</strong>: Fields the agent must produce</li>
+  </ul>
+
+  <h3>Why Signatures?</h3>
+  <p>Signatures separate interface declaration from execution strategy, making agents composable, testable, and auditable.</p>
+
+  <h2>Key API</h2>
+  <table>
+    <tr><th>API</th><th>Description</th></tr>
+    <tr><td><code>InputField(description=, default=)</code></td><td>Declare an input field</td></tr>
+    <tr><td><code>OutputField(description=)</code></td><td>Declare an output field</td></tr>
+    <tr><td><code>cls._signature_inputs</code></td><td>Dict of all input fields</td></tr>
+    <tr><td><code>cls._signature_outputs</code></td><td>Dict of all output fields</td></tr>
+    <tr><td><code>field.required</code></td><td>True if no default value</td></tr>
+    <tr><td><code>field.metadata</code></td><td>Extra keyword arguments</td></tr>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Class-Based Signature</h3>
+  <pre><code class="language-python">from kaizen import Signature, InputField, OutputField
+
+class QASignature(Signature):
+    """You are a helpful question-answering assistant."""
+
+    question: str = InputField(description="The question to answer")
+    context: str = InputField(description="Additional context", default="")
+    answer: str = OutputField(description="Clear, accurate answer")
+    confidence: float = OutputField(description="Confidence score 0.0 to 1.0")</code></pre>
+  <p>The docstring becomes the system prompt. <code>question</code> is required (no default); <code>context</code> is optional.</p>
+
+  <h3>Step 2: Verify Fields</h3>
+  <pre><code class="language-python">assert "question" in QASignature._signature_inputs
+assert "answer" in QASignature._signature_outputs
+
+question_field = QASignature._signature_inputs["question"]
+assert question_field.required is True
+
+context_field = QASignature._signature_inputs["context"]
+assert context_field.required is False
+assert context_field.default == ""</code></pre>
+
+  <h3>Step 3: Intent and Guidelines</h3>
+  <pre><code class="language-python">class CustomerSupportSignature(Signature):
+    """You are a customer support agent for an e-commerce platform."""
+
+    __intent__ = "Resolve customer issues efficiently and empathetically"
+    __guidelines__ = [
+        "Acknowledge concerns before proposing solutions",
+        "Use empathetic language",
+        "Escalate if unresolved in 3 turns",
+    ]
+
+    customer_message: str = InputField(description="Customer's message")
+    response: str = OutputField(description="Support response")
+    action: str = OutputField(description="Action: resolve, escalate, transfer")</code></pre>
+
+  <h3>Step 4: Inheritance</h3>
+  <pre><code class="language-python">class DetailedQA(QASignature):
+    """Extended QA with source citations."""
+
+    sources: str = OutputField(description="List of sources used")
+
+assert "question" in DetailedQA._signature_inputs   # Inherited
+assert "sources" in DetailedQA._signature_outputs    # Added</code></pre>
+
+  <div class="callout">
+    <strong>Note:</strong> Child fields merge with parent fields. On name collision, the child field overrides the parent.
+  </div>
+
+  <h3>Step 5: Field Metadata</h3>
+  <pre><code class="language-python">class RichSignature(Signature):
+    """Signature with rich field metadata."""
+
+    data: str = InputField(
+        description="Input data",
+        format="json",
+        max_length=10000,
+    )
+    result: str = OutputField(description="Processed result")
+
+data_field = RichSignature._signature_inputs["data"]
+assert data_field.metadata.get("format") == "json"
+assert data_field.metadata.get("max_length") == 10000</code></pre>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Forgetting the docstring</td><td>Agent has no system prompt</td><td>Always include a descriptive docstring</td></tr>
+    <tr><td>All fields required</td><td>Agent fails on partial input</td><td>Use <code>default=""</code> for optional fields</td></tr>
+    <tr><td>Minimal output fields</td><td>Response lacks structure</td><td>Include all expected dimensions</td></tr>
+    <tr><td>Logic in signatures</td><td>Signatures are data, not code</td><td>Put logic in execution strategy</td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li>Signatures declare WHAT an agent does (inputs/outputs), not HOW.</li>
+    <li>The class docstring becomes the agent's system prompt.</li>
+    <li>Fields without defaults are required; fields with defaults are optional.</li>
+    <li><code>__intent__</code> and <code>__guidelines__</code> provide purpose and constraints.</li>
+    <li>Signatures support inheritance and field metadata.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="../02-nexus/09_probes.html">&larr; Previous: Probes</a>
+    <a href="02_delegate.html">Next: Delegate &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

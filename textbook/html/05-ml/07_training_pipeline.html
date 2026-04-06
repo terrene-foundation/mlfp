@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 7: TrainingPipeline — Kailash ML Textbook</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+h2 { color: #1E293B; margin-top: 2em; }
+h3 { color: #4F46E5; }
+pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+tr:hover { background: #F8FAFC; }
+.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
+.nav a { color: #0D9488; text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+<span><a href="06_experiment_tracker.html">&larr; Prev: ExperimentTracker</a></span>
+<span><a href="08_hyperparameter_search.html">Next: HyperparameterSearch &rarr;</a></span>
+</nav>
+
+<h1>Chapter 7: TrainingPipeline</h1>
+
+<h2>Overview</h2>
+<p>TrainingPipeline orchestrates the full model training workflow: validate data, split, train, evaluate, and optionally register the model. It integrates FeatureStore, ModelRegistry, and ExperimentTracker into a single <code>train()</code> call.</p>
+
+<h2>Concepts</h2>
+
+<h3>ModelSpec &amp; EvalSpec</h3>
+<p><code>ModelSpec</code> declares <em>what</em> to train (class, hyperparameters, framework). <code>EvalSpec</code> declares <em>how</em> to evaluate (metrics, split strategy, thresholds). Together they fully specify a training run.</p>
+
+<h3>Split Strategies</h3>
+<table>
+<tr><th>Strategy</th><th>Behavior</th><th>Best For</th></tr>
+<tr><td><code>holdout</code></td><td>Random train/test split</td><td>Most datasets</td></tr>
+<tr><td><code>kfold</code></td><td>K cross-validation folds</td><td>Small datasets</td></tr>
+<tr><td><code>walk_forward</code></td><td>Sequential split (no shuffle)</td><td>Time-series</td></tr>
+</table>
+
+<h3>Threshold Gating</h3>
+<p>When <code>min_threshold</code> is set in EvalSpec, models that fail to meet the bar are not registered. This prevents deploying underperforming models.</p>
+
+<div class="warning">
+<strong>Security:</strong> Model classes are restricted to an allowlist (sklearn, xgboost, lightgbm). Attempting to instantiate dangerous classes like <code>os.system</code> raises <code>ValueError</code>.
+</div>
+
+<h2>Key API Reference</h2>
+<table>
+<tr><th>Class / Method</th><th>Purpose</th></tr>
+<tr><td><code>TrainingPipeline(feature_store, registry)</code></td><td>Create pipeline</td></tr>
+<tr><td><code>pipeline.train(data, schema, model_spec, eval_spec, experiment_name)</code></td><td>Train, evaluate, register (async)</td></tr>
+<tr><td><code>pipeline.evaluate(model_name, version, data, schema, eval_spec)</code></td><td>Evaluate registered model (async)</td></tr>
+<tr><td><code>pipeline.retrain(model_name, schema, model_spec, eval_spec, data)</code></td><td>Retrain with fresh data (async)</td></tr>
+<tr><td><code>ModelSpec</code></td><td>model_class, hyperparameters, framework</td></tr>
+<tr><td><code>EvalSpec</code></td><td>metrics, split_strategy, test_size, min_threshold</td></tr>
+<tr><td><code>TrainingResult</code></td><td>metrics, threshold_met, registered, model_version</td></tr>
+</table>
+
+<h2>Code Walkthrough</h2>
+
+<h3>Step 1: Define Specs</h3>
+<pre><code class="language-python">from kailash_ml.engines.training_pipeline import ModelSpec, EvalSpec
+
+model_spec = ModelSpec(
+    model_class="sklearn.ensemble.RandomForestClassifier",
+    hyperparameters={"n_estimators": 20, "random_state": 42},
+    framework="sklearn",
+)
+
+eval_spec = EvalSpec(
+    metrics=["accuracy", "f1"],
+    split_strategy="holdout",
+    test_size=0.2,
+)</code></pre>
+
+<h3>Step 2: Train</h3>
+<pre><code class="language-python">result = await pipeline.train(
+    data=df, schema=schema,
+    model_spec=model_spec,
+    eval_spec=eval_spec,
+    experiment_name="tutorial_experiment",
+)
+
+assert result.threshold_met is True
+assert result.registered is True
+assert result.model_version.stage == "staging"</code></pre>
+
+<h3>Step 3: Threshold Gating</h3>
+<pre><code class="language-python">strict_eval = EvalSpec(
+    metrics=["accuracy"],
+    split_strategy="holdout",
+    test_size=0.2,
+    min_threshold={"accuracy": 0.99},
+)
+
+strict_result = await pipeline.train(
+    data=df, schema=schema,
+    model_spec=model_spec, eval_spec=strict_eval,
+    experiment_name="strict",
+)
+
+if not strict_result.threshold_met:
+    assert strict_result.registered is False</code></pre>
+
+<h3>Step 4: Evaluate and Retrain</h3>
+<pre><code class="language-python"># Evaluate on new data
+eval_metrics = await pipeline.evaluate(
+    model_name="tutorial_experiment",
+    version=1, data=new_data,
+    schema=schema,
+    eval_spec=EvalSpec(metrics=["accuracy"]),
+)
+
+# Retrain with fresh data
+retrain_result = await pipeline.retrain(
+    model_name="tutorial_experiment",
+    schema=schema, model_spec=model_spec,
+    eval_spec=eval_spec, data=new_data,
+)</code></pre>
+
+<h2>Common Mistakes</h2>
+<table>
+<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
+<tr><td>Missing columns in data</td><td><code>ValueError</code></td><td>Include all schema features + target</td></tr>
+<tr><td>Non-allowlisted model class</td><td><code>ValueError</code></td><td>Use sklearn/xgboost/lightgbm</td></tr>
+<tr><td>Invalid split strategy</td><td><code>ValueError</code></td><td>Use holdout, kfold, or walk_forward</td></tr>
+<tr><td>Unrealistic threshold</td><td>Model never registers</td><td>Set thresholds from baseline results</td></tr>
+</table>
+
+<h2>Exercises</h2>
+<div class="exercise"><p><strong>Exercise 1:</strong> Train the same model with holdout, kfold, and walk_forward. How do metrics differ?</p></div>
+<div class="exercise"><p><strong>Exercise 2:</strong> Start with a low threshold and increase until registration fails. What is the boundary?</p></div>
+<div class="exercise"><p><strong>Exercise 3:</strong> Train, evaluate on new data, retrain. Does the retrained model improve?</p></div>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>TrainingPipeline integrates FeatureStore, ModelRegistry, and ExperimentTracker.</li>
+<li>ModelSpec declares what to train; EvalSpec declares how to evaluate.</li>
+<li>Three split strategies cover different data scenarios.</li>
+<li>Threshold gating prevents weak models from being registered.</li>
+<li>Model classes are allowlisted for security.</li>
+</ul>
+
+<div class="callout">
+<strong>Next chapter:</strong> <a href="08_hyperparameter_search.html">HyperparameterSearch</a> &mdash; optimize hyperparameters with grid, random, and Bayesian strategies.
+</div>
+
+<footer>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

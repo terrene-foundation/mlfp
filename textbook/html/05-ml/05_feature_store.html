@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 5: FeatureStore — Kailash ML Textbook</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+h2 { color: #1E293B; margin-top: 2em; }
+h3 { color: #4F46E5; }
+pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+tr:hover { background: #F8FAFC; }
+.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
+.nav a { color: #0D9488; text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+<span><a href="04_feature_engineer.html">&larr; Prev: FeatureEngineer</a></span>
+<span><a href="06_experiment_tracker.html">Next: ExperimentTracker &rarr;</a></span>
+</nav>
+
+<h1>Chapter 5: FeatureStore</h1>
+
+<h2>Overview</h2>
+<p>FeatureStore bridges the gap between feature engineering and model training by providing a centralized, versioned repository for computed features. You register a <code>FeatureSchema</code>, compute features from raw data, store them in a database, and retrieve them by entity ID or time window with point-in-time correctness.</p>
+
+<h2>Prerequisites</h2>
+<table>
+<tr><th>Requirement</th><th>Details</th></tr>
+<tr><td>Python</td><td>3.10+</td></tr>
+<tr><td>kailash-ml</td><td><code>pip install kailash-ml</code></td></tr>
+<tr><td>kailash (core)</td><td>For <code>ConnectionManager</code></td></tr>
+<tr><td>Level</td><td>Intermediate</td></tr>
+</table>
+
+<h2>Concepts</h2>
+
+<h3>Why a Feature Store?</h3>
+<p>Without a feature store, features are computed ad-hoc in notebooks, leading to training/serving skew (different code for training vs inference), feature duplication (multiple teams recompute the same features), and point-in-time leakage (training data includes future values). FeatureStore solves these by centralizing definitions and providing time-aware retrieval.</p>
+
+<h3>Point-in-Time Retrieval</h3>
+<p><code>get_training_set(schema, start, end)</code> returns only rows where <code>created_at</code> falls within the window. This prevents lookahead bias when building training datasets from historical features.</p>
+
+<div class="callout">
+<strong>Lazy retrieval:</strong> <code>get_features_lazy()</code> returns a polars <code>LazyFrame</code> instead of a <code>DataFrame</code>, enabling streaming operations on large feature sets without loading everything into memory.
+</div>
+
+<h2>Key API Reference</h2>
+<table>
+<tr><th>Method</th><th>Purpose</th></tr>
+<tr><td><code>FeatureStore(conn, table_prefix)</code></td><td>Create store with database connection</td></tr>
+<tr><td><code>fs.initialize()</code></td><td>Create metadata tables (idempotent, async)</td></tr>
+<tr><td><code>fs.register_features(schema)</code></td><td>Register schema and create backing table (async)</td></tr>
+<tr><td><code>fs.compute(data, schema)</code></td><td>Validate data against schema, project columns</td></tr>
+<tr><td><code>fs.store(data, schema)</code></td><td>Persist features to database (async)</td></tr>
+<tr><td><code>fs.get_features(entity_ids, feature_names, schema)</code></td><td>Retrieve by entity IDs (async)</td></tr>
+<tr><td><code>fs.get_training_set(schema, start, end)</code></td><td>Retrieve by time window (async)</td></tr>
+<tr><td><code>fs.get_features_lazy(...)</code></td><td>Returns LazyFrame (async)</td></tr>
+<tr><td><code>fs.list_schemas()</code></td><td>List all registered schemas (async)</td></tr>
+</table>
+
+<h2>Code Walkthrough</h2>
+
+<h3>Step 1: Set Up Infrastructure</h3>
+<pre><code class="language-python">from kailash.db.connection import ConnectionManager
+from kailash_ml import FeatureField, FeatureSchema
+from kailash_ml.engines.feature_store import FeatureStore
+
+conn = ConnectionManager("sqlite:///:memory:")
+await conn.initialize()
+
+fs = FeatureStore(conn, table_prefix="kml_feat_")
+await fs.initialize()</code></pre>
+
+<h3>Step 2: Register a Schema</h3>
+<pre><code class="language-python">schema = FeatureSchema(
+    name="user_churn",
+    features=[
+        FeatureField(name="age", dtype="float64"),
+        FeatureField(name="tenure_months", dtype="float64"),
+        FeatureField(name="monthly_charges", dtype="float64"),
+    ],
+    entity_id_column="user_id",
+)
+
+await fs.register_features(schema)</code></pre>
+
+<h3>Step 3: Compute and Store</h3>
+<pre><code class="language-python">computed = fs.compute(raw_data, schema)
+stored_count = await fs.store(computed, schema)
+assert stored_count == 20</code></pre>
+
+<h3>Step 4: Retrieve by Entity ID</h3>
+<pre><code class="language-python">features = await fs.get_features(
+    entity_ids=["u0", "u1", "u2"],
+    feature_names=["age", "tenure_months"],
+    schema=schema,
+)
+assert features.height == 3</code></pre>
+
+<h3>Step 5: Build Training Set by Time Window</h3>
+<pre><code class="language-python">from datetime import datetime, timedelta, timezone
+
+now = datetime.now(timezone.utc)
+training_set = await fs.get_training_set(
+    schema,
+    start=now - timedelta(hours=1),
+    end=now + timedelta(hours=1),
+)
+assert training_set.height == 20</code></pre>
+
+<div class="warning">
+<strong>Schema conflicts:</strong> Re-registering a schema with the same name but different features raises <code>ValueError</code>. Use unique names for different feature sets.
+</div>
+
+<h2>Common Mistakes</h2>
+<table>
+<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
+<tr><td>Forgetting <code>await fs.initialize()</code></td><td>Metadata tables missing</td><td>Always initialize before use</td></tr>
+<tr><td>Schema name conflict</td><td><code>ValueError</code></td><td>Use unique schema names</td></tr>
+<tr><td>Invalid table prefix</td><td><code>ValueError</code></td><td>Alphanumeric + underscore only</td></tr>
+<tr><td>Missing feature columns in data</td><td><code>ValueError</code></td><td>Ensure all schema fields present</td></tr>
+<tr><td>Not closing ConnectionManager</td><td>Resource leak</td><td><code>await conn.close()</code></td></tr>
+</table>
+
+<h2>Exercises</h2>
+<div class="exercise">
+<p><strong>Exercise 1:</strong> Store features at two different times. Use <code>get_training_set()</code> with a narrow window to retrieve only the first batch.</p>
+</div>
+<div class="exercise">
+<p><strong>Exercise 2:</strong> Try registering a schema with the same name but different features. What error do you get?</p>
+</div>
+<div class="exercise">
+<p><strong>Exercise 3:</strong> Compare <code>get_features()</code> vs <code>get_features_lazy()</code>. When does lazy retrieval provide a meaningful advantage?</p>
+</div>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>FeatureStore centralizes feature definitions and storage, preventing training/serving skew.</li>
+<li><code>compute()</code> validates data against the schema before storage.</li>
+<li><code>get_training_set()</code> provides point-in-time correct retrieval.</li>
+<li><code>get_features_lazy()</code> enables memory-efficient streaming.</li>
+<li>Schema registration is idempotent but rejects conflicting schemas.</li>
+</ul>
+
+<div class="callout">
+<strong>Next chapter:</strong> <a href="06_experiment_tracker.html">ExperimentTracker</a> &mdash; track runs, parameters, step-based metrics, and compare experiments.
+</div>
+
+<footer>
+Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

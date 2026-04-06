@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 4: LLM Providers — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+
+  <h1>Chapter 4: LLM Providers</h1>
+
+  <h2>Overview</h2>
+  <p>Kaizen supports multiple LLM providers through environment-variable-based configuration. This chapter covers provider detection from model name prefixes, API key pairing, cost estimation, and the security pattern for managing secrets.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Provider Detection</h3>
+  <table>
+    <tr><th>Prefix</th><th>Provider</th><th>Required API Key</th></tr>
+    <tr><td><code>claude-</code></td><td>Anthropic</td><td><code>ANTHROPIC_API_KEY</code></td></tr>
+    <tr><td><code>gpt-</code>, <code>o1-</code>, <code>o3-</code>, <code>o4-</code></td><td>OpenAI</td><td><code>OPENAI_API_KEY</code></td></tr>
+    <tr><td><code>gemini-</code></td><td>Google</td><td><code>GOOGLE_API_KEY</code></td></tr>
+  </table>
+
+  <h3>Cost Estimation</h3>
+  <table>
+    <tr><th>Model Prefix</th><th>Input (per 1M)</th><th>Output (per 1M)</th></tr>
+    <tr><td><code>claude-</code></td><td>$3.00</td><td>$15.00</td></tr>
+    <tr><td><code>gpt-4o</code></td><td>$2.50</td><td>$10.00</td></tr>
+    <tr><td><code>gpt-4</code></td><td>$30.00</td><td>$60.00</td></tr>
+    <tr><td><code>gemini-</code></td><td>$1.25</td><td>$5.00</td></tr>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Model from Environment</h3>
+  <pre><code class="language-python">import os
+from dotenv import load_dotenv
+load_dotenv()
+
+model = os.environ.get("DEFAULT_LLM_MODEL", "claude-sonnet-4-20250514")</code></pre>
+
+  <h3>Step 2: Provider Detection</h3>
+  <pre><code class="language-python">def detect_provider(model_name: str) -> str:
+    if model_name.startswith("claude-"):
+        return "anthropic"
+    elif model_name.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    elif model_name.startswith("gemini-"):
+        return "google"
+    return "unknown"
+
+assert detect_provider("claude-sonnet-4-20250514") == "anthropic"
+assert detect_provider("gpt-4o") == "openai"
+assert detect_provider("gemini-pro") == "google"</code></pre>
+
+  <div class="warning">
+    <strong>Security:</strong> API keys must never appear in source code. Always use <code>os.environ</code> with <code>load_dotenv()</code>, and ensure <code>.env</code> is in <code>.gitignore</code>.
+  </div>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li>Provider detected from model name prefix automatically.</li>
+    <li>API keys always from environment variables, never hardcoded.</li>
+    <li><code>.env</code> files must be in <code>.gitignore</code>.</li>
+    <li>Cost estimation uses per-1M-token rates for budget enforcement.</li>
+    <li>The SDK reads keys at runtime, not at import time.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="03_agent_config.html">&larr; Previous: Agent Configuration</a>
+    <a href="05_cost_tracking.html">Next: Cost Tracking &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

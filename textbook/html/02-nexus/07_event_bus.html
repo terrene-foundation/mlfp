@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 7: Event Bus — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+
+  <h1>Chapter 7: Event Bus</h1>
+
+  <h2>Overview</h2>
+  <p>The EventBus is Nexus's internal event system for event-driven architectures. It provides thread-safe publishing, async subscriptions with optional filtering, bounded history with LRU eviction, and round-trip serialization.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Event Types</h3>
+  <table>
+    <tr><th>Event Type</th><th>Value</th><th>When Published</th></tr>
+    <tr><td><code>HANDLER_REGISTERED</code></td><td><code>"handler.registered"</code></td><td>New handler added</td></tr>
+    <tr><td><code>HANDLER_CALLED</code></td><td><code>"handler.called"</code></td><td>Handler begins execution</td></tr>
+    <tr><td><code>HANDLER_COMPLETED</code></td><td><code>"handler.completed"</code></td><td>Handler finishes successfully</td></tr>
+    <tr><td><code>HANDLER_ERROR</code></td><td><code>"handler.error"</code></td><td>Handler throws an error</td></tr>
+    <tr><td><code>HEALTH_CHECK</code></td><td><code>"health.check"</code></td><td>Health check performed</td></tr>
+    <tr><td><code>CUSTOM</code></td><td><code>"custom"</code></td><td>Application-defined</td></tr>
+  </table>
+
+  <h3>Janus Queue Bridge</h3>
+  <p>The EventBus uses <code>janus.Queue</code> to bridge synchronous publishers (any thread) and asynchronous consumers (SSE endpoint, subscribers). <code>publish()</code> writes to the sync side; the dispatch loop reads from the async side.</p>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Create and Serialize Events</h3>
+  <pre><code class="language-python">from nexus.events import EventBus, NexusEvent, NexusEventType
+
+event = NexusEvent(
+    event_type=NexusEventType.HANDLER_CALLED,
+    handler_name="greet",
+    request_id="req-001",
+    data={"input_name": "Alice"},
+)
+
+event_dict = event.to_dict()
+assert event_dict["event_type"] == "handler.called"
+
+restored = NexusEvent.from_dict(event_dict)
+assert restored.event_type == event.event_type</code></pre>
+
+  <h3>Step 2: Publish and Dispatch</h3>
+  <pre><code class="language-python">import asyncio
+
+bus = EventBus(capacity=128)
+
+bus.publish(NexusEvent(
+    event_type=NexusEventType.HANDLER_CALLED,
+    handler_name="add",
+    data={"a": 1, "b": 2},
+))
+
+bus.publish(NexusEvent(
+    event_type=NexusEventType.HANDLER_COMPLETED,
+    handler_name="add",
+    data={"result": 3},
+))
+
+async def run_bus_briefly():
+    await bus.start()
+    await asyncio.sleep(0.1)
+    await bus.stop()
+
+asyncio.run(run_bus_briefly())</code></pre>
+
+  <h3>Step 3: Query History</h3>
+  <pre><code class="language-python">all_history = bus.get_history()
+assert len(all_history) >= 2
+
+called_only = bus.get_history(event_type="handler.called")
+assert all(e["type"] == "handler.called" for e in called_only)
+
+recent_two = bus.get_history(limit=2)
+assert len(recent_two) == 2</code></pre>
+
+  <h3>Step 4: Subscribe with Filters</h3>
+  <pre><code class="language-python">q_all = bus.subscribe()
+assert bus.subscriber_count == 1
+
+q_errors = bus.subscribe_filtered(
+    lambda evt: evt.event_type == NexusEventType.HANDLER_ERROR
+)
+assert bus.subscriber_count == 2</code></pre>
+
+  <h3>Step 5: Bounded History</h3>
+  <pre><code class="language-python">small_bus = EventBus(capacity=3)
+
+for i in range(5):
+    small_bus._history.append(
+        NexusEvent(event_type=NexusEventType.CUSTOM, data={"index": i})
+    )
+
+history = small_bus.get_history()
+assert len(history) == 3
+assert history[0]["data"]["index"] == 2  # Oldest surviving
+assert history[2]["data"]["index"] == 4  # Most recent</code></pre>
+
+  <div class="callout">
+    <strong>Note:</strong> Nexus creates an EventBus internally (capacity=256). The HandlerRegistry publishes <code>HANDLER_REGISTERED</code> events automatically when handlers are added.
+  </div>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Querying history before dispatch loop</td><td>History is empty</td><td>Call <code>bus.start()</code> first</td></tr>
+    <tr><td>Capacity too small</td><td>Events evicted quickly</td><td>Use capacity &ge; 128</td></tr>
+    <tr><td>Forgetting <code>await</code> on start/stop</td><td>Coroutine never runs</td><td>Both are async methods</td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>NexusEventType</code> is a typed enum with dotted string values matching the Rust SDK.</li>
+    <li><code>NexusEvent</code> provides <code>to_dict()</code>/<code>from_dict()</code> for round-trip serialization.</li>
+    <li><code>publish()</code> is sync and thread-safe; works before the async loop starts.</li>
+    <li><code>subscribe()</code> and <code>subscribe_filtered()</code> return async queues.</li>
+    <li><code>get_history()</code> reads from the bounded deque with optional filters.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="06_presets.html">&larr; Previous: Presets</a>
+    <a href="08_openapi.html">Next: OpenAPI &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

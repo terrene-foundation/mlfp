@@ -54,13 +54,13 @@ tests/                  — Exercise validation tests
 ## How to Build a Module (instructor workflow)
 
 ```
-1. Choose workspace:     cd to workspaces/ascentN/
-2. Read the brief:       workspaces/ascentN/briefs/module-brief.md
-3. Write solutions:      modules/ascentN/solutions/ (complete, runnable code)
+1. Choose workspace:     cd to workspaces/ascentNN/
+2. Read the brief:       workspaces/ascentNN/briefs/module-brief.md
+3. Write solutions:      modules/ascentNN/solutions/ (complete, runnable code)
 4. Generate exercises:   /build-exercise (strips solutions → fill-in-blank)
 5. Create 3 formats:     /build-module (local .py + Jupyter .ipynb + Colab .ipynb)
-6. Write quiz:           modules/ascentN/quiz/ (see quiz-designer agent)
-7. Build deck:           decks/ascentN/ (Reveal.js slides from deck brief)
+6. Write quiz:           modules/ascentNN/quiz/ (see quiz-designer agent)
+7. Build deck:           decks/ascentNN/ (Reveal.js slides from deck brief)
 8. Validate:             /validate-notebooks (cross-check all formats)
 9. Red team:             /redteam (SDK correctness, exercise quality)
 ```

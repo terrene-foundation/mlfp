@@ -1,0 +1,3301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASCENT Module 10 — Alignment, Reinforcement Learning &amp; Governance</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css" />
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../assets/css/theme.css" />
+
+  <style>
+    /* Derivation step highlighting */
+    .derivation-step {
+      background: #F8FAFC;
+      border-left: 4px solid var(--ascent-theory);
+      padding: 12px 16px;
+      margin: 8px 0;
+      font-size: 0.9em;
+      border-radius: 0 6px 6px 0;
+    }
+    .derivation-step .step-label {
+      font-weight: 700;
+      color: var(--ascent-theory);
+      font-size: 0.8em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    /* Matrix diagram */
+    .matrix-diagram {
+      text-align: center;
+      margin: 16px 0;
+      font-family: "JetBrains Mono", monospace;
+    }
+    .matrix-diagram .dim {
+      color: var(--ascent-error);
+      font-weight: 700;
+      font-size: 0.75em;
+    }
+    /* Org tree */
+    .org-tree {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75em;
+      background: #F8FAFC;
+      padding: 16px 20px;
+      border-radius: 8px;
+      border: 1px solid #E2E8F0;
+      line-height: 1.6;
+    }
+    /* Risk tier badges */
+    .risk-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 0.7em;
+      font-weight: 600;
+      color: white;
+      margin: 2px;
+    }
+    .risk-unacceptable { background: #DC2626; }
+    .risk-high { background: #F59E0B; }
+    .risk-limited { background: #3B82F6; }
+    .risk-minimal { background: #10B981; }
+    /* Timeline marker */
+    .timeline {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin: 12px 0;
+      flex-wrap: wrap;
+    }
+    .timeline .node {
+      background: var(--ascent-primary);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.6em;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .timeline .arrow { color: var(--ascent-primary); font-size: 1.2em; }
+    /* Small text helper */
+    .small { font-size: 0.75em; }
+    .smaller { font-size: 0.65em; }
+    .muted { color: #64748B; }
+    /* Clearance levels */
+    .clearance-table td:first-child {
+      font-weight: 700;
+      text-align: center;
+    }
+    /* Highlight box for key results */
+    .result-box {
+      background: linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 100%);
+      border: 2px solid var(--ascent-success);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 12px 0;
+      text-align: center;
+    }
+    /* RL grid-world */
+    .grid-world {
+      display: inline-grid;
+      grid-template-columns: repeat(4, 60px);
+      gap: 2px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7em;
+    }
+    .grid-world .cell {
+      width: 60px; height: 60px;
+      display: flex; align-items: center; justify-content: center;
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px;
+    }
+    .grid-world .cell-goal { background: #ECFDF5; border-color: var(--ascent-success); font-weight: 700; }
+    .grid-world .cell-trap { background: #FFF1F2; border-color: var(--ascent-error); }
+    .grid-world .cell-agent { background: #DBEAFE; border-color: var(--ascent-theory); font-weight: 700; }
+    .grid-world .cell-wall { background: #94A3B8; color: white; }
+    /* Comparison highlight */
+    .vs-box {
+      display: flex; gap: 16px; margin: 12px 0;
+    }
+    .vs-box .vs-item {
+      flex: 1; padding: 12px 16px; border-radius: 8px; font-size: 0.85em;
+    }
+    .vs-left { background: #EFF6FF; border: 1px solid var(--ascent-theory); }
+    .vs-right { background: #F0FDF4; border: 1px solid var(--ascent-success); }
+    /* Pipeline node */
+    .pipeline {
+      display: flex; align-items: center; gap: 4px; margin: 12px 0; flex-wrap: wrap;
+    }
+    .pipeline .pipe-node {
+      padding: 6px 12px; border-radius: 6px; font-size: 0.65em; font-weight: 600;
+      white-space: nowrap;
+    }
+    .pipe-train { background: #DBEAFE; color: #1E40AF; }
+    .pipe-eval { background: #FEF3C7; color: #92400E; }
+    .pipe-deploy { background: #D1FAE5; color: #065F46; }
+    .pipe-govern { background: #EDE9FE; color: #5B21B6; }
+    .pipe-arrow { color: #94A3B8; font-size: 1.1em; }
+    /* Governance envelope diagram */
+    .envelope-diagram {
+      text-align: center; margin: 12px 0;
+    }
+    .envelope-box {
+      display: inline-block; padding: 12px 20px; border-radius: 8px;
+      font-size: 0.8em; margin: 4px;
+    }
+    .env-role { background: #DBEAFE; border: 2px solid #3B82F6; }
+    .env-task { background: #FEF3C7; border: 2px solid #F59E0B; }
+    .env-effective { background: #D1FAE5; border: 2px solid #10B981; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ═══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 10</h1>
+  <h2 style="border: none;">Alignment, Reinforcement Learning<br/>&amp; Governance</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"The question is no longer whether AI will transform your industry.<br/>The question is: will YOU be the one leading that transformation?"</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 10</span>
+    <span>Terrene Foundation &mdash; Apache 2.0</span>
+  </div>
+  <aside class="notes">
+    This is the capstone module. Every concept from M1-M9 converges here. Students will align models, govern agents, and deploy complete systems. Set the tone: this is where practitioners become leaders.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 2-5 — RECAP
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Where We've Been</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead>
+      <tr><th>Module</th><th>What You Learned</th><th>Kailash Engines</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>M1</td><td>Python, Polars, data exploration</td><td>DataExplorer, PreprocessingPipeline</td></tr>
+      <tr><td>M2</td><td>Statistics, probability, inference</td><td>DataExplorer (advanced), ModelVisualizer</td></tr>
+      <tr><td>M3</td><td>Feature engineering, experiment design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
+      <tr><td>M4</td><td>Supervised ML, production pipelines</td><td>TrainingPipeline, ModelRegistry</td></tr>
+      <tr><td>M5</td><td>Model evaluation, AutoML, ensembles</td><td>AutoMLEngine, HyperparameterSearch, EnsembleEngine</td></tr>
+      <tr><td>M6</td><td>Unsupervised ML, dimensionality reduction</td><td>AutoMLEngine (clustering), DriftMonitor</td></tr>
+      <tr><td>M7</td><td>Deep learning fundamentals</td><td>TrainingPipeline (DL), InferenceServer</td></tr>
+      <tr><td>M8</td><td>NLP &amp; Transformers</td><td>TrainingPipeline (NLP), ModelVisualizer</td></tr>
+      <tr><td>M9</td><td>LLMs, agents, RAG systems</td><td>Delegate, ReActAgent, Nexus</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Quick recap of the journey. Emphasise the cumulative nature: each module built on the last. Today we close the loop — aligning, governing, and deploying everything they've learned.
+  </aside>
+</section>
+
+<section>
+  <h2>The Final Frontier</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Module 10 answers three questions no other module touched:</p>
+  <ol>
+    <li><strong>How do we teach models our values?</strong> &mdash; Alignment (10.1&ndash;10.4)</li>
+    <li><strong>How does an agent learn from experience?</strong> &mdash; Reinforcement Learning (10.5&ndash;10.7)</li>
+    <li><strong>Who controls the AI?</strong> &mdash; Governance &amp; Deployment (10.8&ndash;10.10)</li>
+  </ol>
+  <div class="callout callout-kailash">
+    <strong>New engines today:</strong> AlignmentPipeline, AdapterRegistry, GovernanceEngine, PactGovernedAgent, RLTrainer
+  </div>
+  <aside class="notes">
+    Frame the three pillars clearly. Alignment = teaching values. RL = learning from experience (and the math behind RLHF). Governance = organisational control. These are inseparable in production AI.
+  </aside>
+</section>
+
+<section>
+  <h2>Today's Roadmap</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="timeline">
+    <span class="node">10.1 SFT</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.2 LoRA</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.3 DPO</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.4 Alignment</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.5 RL Basics</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.6 Deep RL</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.7 PPO</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.8 Merging</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.9 Governance</span>
+    <span class="arrow">&rarr;</span>
+    <span class="node">10.10 Capstone</span>
+  </div>
+  <p class="small muted">Alignment block first (teaching the model), then RL (the math behind it), then governance (controlling the organisation), then capstone (bringing it all together).</p>
+  <aside class="notes">
+    This is the most content-dense module. Reassure students: the three-layer markers will guide them. Foundations students focus on green slides. Theory students follow the blue. Advanced students get the purple deep dives.
+  </aside>
+</section>
+
+<section>
+  <h2>The Kailash Alignment Stack</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="pipeline">
+    <span class="pipe-node pipe-train">AlignmentPipeline</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">AdapterRegistry</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">RLTrainer</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-govern">GovernanceEngine</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">Nexus</span>
+  </div>
+  <p>Today's new engines complete the Kailash platform. After this module, you have every tool needed for production ML &mdash; from data exploration to governed deployment.</p>
+  <aside class="notes">
+    Show the full stack visually. AlignmentPipeline handles SFT/DPO/LoRA. AdapterRegistry tracks adapters. RLTrainer wraps Stable-Baselines3. GovernanceEngine enforces PACT. Nexus deploys. This is the complete picture.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 6-9 — OPENING CASE: EU AI Act
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Opening Case: The EU AI Act</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size: 1.3em; font-weight: 600; color: var(--ascent-error);">
+    Penalty regime active since August 2025. Up to 7% of global turnover.
+  </p>
+  <ul>
+    <li>Article 5 (prohibited practices) enforceable since February 2025</li>
+    <li>Penalty provisions active since August 2025 &mdash; fines up to &euro;35M or 7%</li>
+    <li>Full compliance for high-risk systems required by August 2026</li>
+    <li>GPAI model providers face penalties from August 2026</li>
+    <li>Singapore published the world's first Agentic AI governance framework (January 2026)</li>
+  </ul>
+  <div class="callout callout-warning">
+    <strong>The hook:</strong> Your competitors are scrambling to retrofit governance. You'll build it in from day one.
+  </div>
+  <aside class="notes">
+    This is the most powerful opening case in the curriculum. The EU AI Act is real, the fines are real, and the deadline is months away for high-risk systems. Singapore's agentic AI framework (announced at WEF 2026) is the world's first — students in Singapore are at the frontier.
+  </aside>
+</section>
+
+<section>
+  <h2>Why This Module Matters</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Without Governance</h3>
+      <ul>
+        <li>Agent burns $50k in API calls overnight</li>
+        <li>Model leaks PII from training data</li>
+        <li>Intern deploys unreviewed model to production</li>
+        <li>No audit trail when regulator asks "why?"</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>With Governance</h3>
+      <ul>
+        <li>Cost budgets enforced per-agent, per-task</li>
+        <li>Differential privacy baked into training</li>
+        <li>Role-based access: only senior ML promotes to prod</li>
+        <li>Every decision traceable through PACT audit chain</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Make it visceral. The Air Canada chatbot case, the Samsung code leak — these happened because organisations deployed AI without governance. Every incident is preventable with the tools students learn today.
+  </aside>
+</section>
+
+<section>
+  <h2>Real Consequences</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Incident</th><th>Cause</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Air Canada chatbot</td><td>No operating envelope</td><td>Ordered to honour fabricated refund policy</td></tr>
+      <tr><td>Samsung code leak</td><td>No data classification</td><td>Proprietary code sent to external LLM</td></tr>
+      <tr><td>Italy ChatGPT ban</td><td>GDPR non-compliance</td><td>Temporary market exit</td></tr>
+      <tr><td>NYC hiring tool</td><td>No bias audit</td><td>$25K+ fines per violation</td></tr>
+      <tr><td>Zillow iBuyer (M4)</td><td>No drift monitoring</td><td>$500M write-off</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Every incident above is preventable with the tools you learn today.</p>
+  <aside class="notes">
+    Connect back to M4's Zillow case — students already know about drift monitoring. Now they learn the governance layer that prevents the organisational failures.
+  </aside>
+</section>
+
+<section>
+  <h2>The Alignment Problem in One Slide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size: 1.1em;">AI alignment means making AI systems do what humans <strong>actually want</strong>, not just what humans <strong>literally said</strong>.</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> You tell a robot "make the house clean." It throws everything in the bin &mdash; the house is clean, but not what you wanted. Alignment is teaching the robot what "clean" <em>really means</em> to you.
+  </div>
+  <p>Three approaches, from simplest to most powerful:</p>
+  <ol>
+    <li><strong>Prompting</strong> &mdash; tell the model what to do (fastest, limited)</li>
+    <li><strong>Fine-tuning</strong> &mdash; train the model on your examples (persistent)</li>
+    <li><strong>Preference alignment</strong> &mdash; teach the model human values (deepest)</li>
+  </ol>
+  <aside class="notes">
+    The cleaning robot analogy is powerful for beginners. For experts: this is the reward misspecification problem. The gap between the specified objective and the intended objective is the alignment gap.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.1 — SFT (Slides 10-17)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.1 &mdash; Supervised Fine-Tuning (SFT)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>What is fine-tuning?</h3>
+  <p>A pre-trained model already "knows" language. Fine-tuning is like giving a new employee <strong>on-the-job training</strong> &mdash; they already speak the language, but need to learn your company's way of doing things.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Pre-trained</h3>
+      <p>Knows grammar, facts, reasoning</p>
+    </div>
+    <div class="col">
+      <h3>Fine-tuned</h3>
+      <p>Knows <em>your</em> tone, <em>your</em> domain, <em>your</em> format</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Start simple. Fine-tuning is on-the-job training for a model that already graduated university. It knows the fundamentals; you teach it your company's specifics.
+  </aside>
+</section>
+
+<section>
+  <h2>Decision Framework: When to Fine-Tune</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Approach</th><th>Best For</th><th>Limitation</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Prompting</strong></td><td>Quick experiments, prototypes</td><td>Limited by context window</td><td>Low (API only)</td></tr>
+      <tr><td><strong>RAG</strong> (M9)</td><td>Dynamic knowledge, citations</td><td>Retrieval quality ceiling</td><td>Medium</td></tr>
+      <tr><td><strong>Fine-tuning</strong></td><td>Consistent style, domain expertise</td><td>Needs training data</td><td>High (compute)</td></tr>
+      <tr><td><strong>Fine-tune + RAG</strong></td><td>Production systems</td><td>Complexity</td><td>Highest</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Rule of thumb:</strong> If you can solve it with prompting, don't fine-tune. If you need consistent style or domain knowledge, fine-tune. If you need dynamic knowledge, add RAG.
+  </div>
+  <aside class="notes">
+    This decision framework prevents students from over-engineering. Most production use cases start with prompting, add RAG for knowledge, and only fine-tune when style consistency or latency demands it.
+  </aside>
+</section>
+
+<section>
+  <h2>Types of Fine-Tuning</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Type</th><th>What Changes</th><th>Parameters</th><th>GPU Need</th></tr></thead>
+    <tbody>
+      <tr><td>Full fine-tuning</td><td>All weights</td><td>100%</td><td>Multiple A100s</td></tr>
+      <tr><td>LoRA</td><td>Low-rank adapters</td><td>0.1&ndash;1%</td><td>Single GPU</td></tr>
+      <tr><td>QLoRA</td><td>LoRA + 4-bit quantisation</td><td>0.1&ndash;1%</td><td>Consumer GPU</td></tr>
+      <tr><td>Prefix Tuning</td><td>Virtual prefix tokens</td><td>&lt;0.1%</td><td>Single GPU</td></tr>
+      <tr><td>Prompt Tuning</td><td>Soft prompt embeddings</td><td>&lt;0.01%</td><td>Single GPU</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">PEFT = Parameter-Efficient Fine-Tuning. All methods except full fine-tuning are PEFT.</p>
+  <aside class="notes">
+    Give students the taxonomy first. We'll go deep on LoRA and QLoRA (the dominant methods). Mention that prefix tuning and prompt tuning exist but are less common in practice.
+  </aside>
+</section>
+
+<section>
+  <h2>Instruction Tuning: The SFT Recipe</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>SFT teaches a model to follow instructions by training on <strong>instruction &rarr; response</strong> pairs:</p>
+  <pre><code class="language-json">{
+  "instruction": "Summarise this article about HDB prices...",
+  "response": "HDB resale prices rose 2.1% in Q4..."
+}</code></pre>
+  <ul>
+    <li>Training loss computed only on the <strong>response</strong> (instructions are masked)</li>
+    <li>Data quality matters more than data quantity &mdash; 1,000 excellent examples beat 100,000 noisy ones</li>
+    <li>Decontamination: ensure no benchmark data in training set</li>
+  </ul>
+  <aside class="notes">
+    Emphasise data quality. The Alpaca paper showed 52K examples were enough to make LLaMA follow instructions. Quality of examples is the bottleneck, not quantity.
+  </aside>
+</section>
+
+<section>
+  <h2>Catastrophic Forgetting</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>When you fine-tune a model on new data, it can <strong>forget</strong> what it previously knew:</p>
+  <div class="callout callout-warning">
+    <strong>Analogy:</strong> Teaching a chef to make sushi so intensively that they forget how to make pasta. The new skill overwrites the old one.
+  </div>
+  <p><strong>Mitigations:</strong></p>
+  <ul>
+    <li><strong>LoRA:</strong> Freeze original weights &mdash; forgetting is structurally impossible</li>
+    <li><strong>Data mixing:</strong> Include general-purpose data alongside domain data</li>
+    <li><strong>Low learning rate:</strong> Gentle updates preserve pre-trained knowledge</li>
+    <li><strong>Early stopping:</strong> Monitor validation loss on general benchmarks</li>
+  </ul>
+  <aside class="notes">
+    This is why LoRA became dominant. By freezing the original weights and only training small adapters, catastrophic forgetting is structurally prevented. The original knowledge is always there.
+  </aside>
+</section>
+
+<section>
+  <h2>Multi-Task Instruction Tuning</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Training on diverse instruction types produces a more robust model:</p>
+  <ul>
+    <li><strong>Summarisation:</strong> "Summarise this document in 3 bullet points"</li>
+    <li><strong>Classification:</strong> "Is this email spam or not?"</li>
+    <li><strong>Code generation:</strong> "Write a polars expression to..."</li>
+    <li><strong>Reasoning:</strong> "Explain why this model is overfitting"</li>
+    <li><strong>Conversation:</strong> "You are a helpful ML tutor..."</li>
+  </ul>
+  <p class="small muted">FLAN-T5 trained on 1,800+ tasks. The diversity of tasks matters more than the number of examples per task.</p>
+  <aside class="notes">
+    Multi-task instruction tuning is what makes models like FLAN-T5 and ChatGPT general-purpose instruction followers. The breadth of task types during SFT determines the model's versatility.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AlignmentPipeline (SFT)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>SFT instruction tuning</span>
+      <span class="arrow">&rarr;</span>
+      <code>AlignmentPipeline(method="sft")</code>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_align import AlignmentPipeline
+
+pipeline = AlignmentPipeline(
+    base_model="meta-llama/Llama-3.1-8B",
+    method="sft",
+    dataset="my_instructions.jsonl",
+    output_dir="./sft-output",
+)
+pipeline.train(epochs=3, learning_rate=2e-5)
+</code></pre>
+  <p class="small muted">One API for SFT, DPO, and LoRA. The method parameter selects the training recipe.</p>
+  <aside class="notes">
+    Show the simplicity of the Kailash API. Students don't need to wire up HuggingFace Trainer, tokenizers, data collators. AlignmentPipeline handles all of it. The method parameter is the key switch.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.2 — LoRA (Slides 18-36)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.2 &mdash; LoRA: Low-Rank Adaptation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>The Core Idea</h3>
+  <p>Instead of updating <em>all</em> 7 billion parameters, LoRA adds <strong>tiny trainable matrices</strong> alongside the frozen original weights.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Full Fine-Tuning</h3>
+      <ul>
+        <li>Update ALL parameters</li>
+        <li>7B model = 28 GB of gradients</li>
+        <li>Need multiple A100 GPUs</li>
+        <li>Catastrophic forgetting risk</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>LoRA</h3>
+      <ul>
+        <li>Freeze the original weights</li>
+        <li>Add tiny trainable matrices</li>
+        <li>0.1&ndash;1% of parameters</li>
+        <li>Single GPU, laptop-viable</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> Full fine-tuning rewrites the entire textbook. LoRA adds sticky notes to the pages that matter.
+  </div>
+  <aside class="notes">
+    The sticky notes analogy is excellent for beginners. For experts: LoRA (Hu et al., 2021) exploited the observation that weight updates during fine-tuning have low intrinsic dimensionality.
+  </aside>
+</section>
+
+<section>
+  <h2>LoRA: The Decomposition</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>In a transformer, each layer has weight matrices <span class="katex-inline">W_0 \in \mathbb{R}^{d \times d}</span>. LoRA decomposes the weight update as a <strong>low-rank product</strong>:</p>
+  <div class="equation-box">
+    <span class="katex-display">W = W_0 + \Delta W = W_0 + BA</span>
+    <div class="annotation">where <span class="katex-inline">B \in \mathbb{R}^{d \times r}</span>, <span class="katex-inline">A \in \mathbb{R}^{r \times d}</span>, and <span class="katex-inline">r \ll d</span></div>
+  </div>
+  <p>Only <span class="katex-inline">B</span> and <span class="katex-inline">A</span> are trained. <span class="katex-inline">W_0</span> stays <strong>completely frozen</strong>.</p>
+  <aside class="notes">
+    Walk through each symbol. W_0 is the original pre-trained weight matrix. Delta W is what we WOULD change during fine-tuning. LoRA says: don't compute Delta W directly — approximate it as the product of two small matrices B and A.
+  </aside>
+</section>
+
+<section>
+  <h2>LoRA: Matrix Dimensions</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="matrix-diagram">
+    <table style="margin: 0 auto; border-collapse: separate; border-spacing: 8px;">
+      <tr>
+        <td style="background: #E2E8F0; padding: 30px 40px; border-radius: 8px; text-align: center;">
+          <strong>W<sub>0</sub></strong><br/><span class="dim">d &times; d</span><br/><span class="smaller muted">Frozen</span><br/><span class="smaller" style="color: var(--ascent-error);">e.g. 4096 &times; 4096<br/>= 16.7M params</span>
+        </td>
+        <td style="font-size: 1.5em; vertical-align: middle;">+</td>
+        <td style="background: #DBEAFE; padding: 30px 20px; border-radius: 8px; text-align: center;">
+          <strong>B</strong><br/><span class="dim">d &times; r</span><br/><span class="smaller" style="color: var(--ascent-theory);">4096 &times; 16<br/>= 65K params</span>
+        </td>
+        <td style="font-size: 1.5em; vertical-align: middle;">&times;</td>
+        <td style="background: #DBEAFE; padding: 30px 20px; border-radius: 8px; text-align: center;">
+          <strong>A</strong><br/><span class="dim">r &times; d</span><br/><span class="smaller" style="color: var(--ascent-theory);">16 &times; 4096<br/>= 65K params</span>
+        </td>
+      </tr>
+    </table>
+    <p class="small muted" style="margin-top: 12px;">Trainable: 130K vs 16.7M &mdash; <strong>0.78% of original parameters</strong></p>
+  </div>
+  <aside class="notes">
+    Make the numbers concrete. d=4096 is typical for a 7B model's attention layer. With rank r=16, we go from 16.7 million trainable parameters to just 130 thousand. That's a 128x reduction. This is why LoRA runs on a laptop.
+  </aside>
+</section>
+
+<section>
+  <h2>Why Does Low Rank Work?</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Aghajanyan et al. (2020) showed that pre-trained models have a <strong>low intrinsic dimensionality</strong>:</p>
+  <ul>
+    <li>The weight updates during fine-tuning live in a low-dimensional subspace</li>
+    <li>Most of <span class="katex-inline">\Delta W</span>'s singular values are near zero</li>
+    <li>Rank <span class="katex-inline">r = 8</span> to <span class="katex-inline">r = 64</span> captures >95% of task-relevant information</li>
+  </ul>
+  <div class="callout callout-theory">
+    <strong>Connection to M6 (PCA):</strong> Just as PCA finds that most variance lives in a few principal components, LoRA exploits the fact that weight updates are approximately low-rank. SVD of <span class="katex-inline">\Delta W</span> reveals most singular values cluster near zero.
+  </div>
+  <aside class="notes">
+    This connection to PCA is critical. Students who understood M6 dimensionality reduction will immediately grasp why low-rank works. The fine-tuning update matrix is high-dimensional but the "useful" part lives in a tiny subspace.
+  </aside>
+</section>
+
+<section>
+  <h2>LoRA: Forward Pass</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>During inference, the output for input <span class="katex-inline">x</span> is:</p>
+  <div class="equation-box">
+    <span class="katex-display">h = W_0 x + BAx = (W_0 + BA)x</span>
+    <div class="annotation">At deployment: merge <span class="katex-inline">W_{\text{merged}} = W_0 + BA</span> &mdash; <strong>zero inference overhead</strong></div>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Key insight</span><br/>
+    <span class="katex-inline">A</span> is initialised with Kaiming normal; <span class="katex-inline">B</span> is initialised to <strong>zero</strong>. So at the start of training, <span class="katex-inline">\Delta W = BA = 0</span> &mdash; the model begins as the original pre-trained model.
+  </div>
+  <aside class="notes">
+    Two critical points: (1) B is initialised to zero so training starts from the pre-trained model exactly. (2) At deployment you can merge BA into W_0 — the merged model has the SAME size and speed as the original. No inference overhead at all.
+  </aside>
+</section>
+
+<section>
+  <h2>LoRA: Parameter Savings Derivation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <span class="step-label">Step 1: Full fine-tuning parameters</span><br/>
+    A single attention weight matrix: <span class="katex-inline">W_0 \in \mathbb{R}^{d \times d} \Rightarrow d^2</span> trainable parameters
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Step 2: LoRA parameters</span><br/>
+    <span class="katex-inline">B \in \mathbb{R}^{d \times r}</span> has <span class="katex-inline">dr</span> params; <span class="katex-inline">A \in \mathbb{R}^{r \times d}</span> has <span class="katex-inline">rd</span> params. Total: <span class="katex-inline">2dr</span>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Step 3: Compression ratio</span><br/>
+    <span class="katex-inline">\frac{d^2}{2dr} = \frac{d}{2r}</span>. For <span class="katex-inline">d = 4096, r = 16</span>: compression = <span class="katex-inline">\frac{4096}{32} = 128\times</span>
+  </div>
+  <aside class="notes">
+    Walk through the derivation step by step. The compression ratio d/2r is the key formula. Higher d (larger models) = MORE savings. Lower r = more compression but less expressiveness. This is the rank-quality tradeoff.
+  </aside>
+</section>
+
+<section>
+  <h2>Rank r: The Quality-Efficiency Tradeoff</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Rank r</th><th>Params (d=4096)</th><th>Compression</th><th>Quality</th></tr></thead>
+    <tbody>
+      <tr><td>4</td><td>32K</td><td>512x</td><td>Good for simple tasks</td></tr>
+      <tr><td>8</td><td>65K</td><td>256x</td><td>Standard for most tasks</td></tr>
+      <tr><td>16</td><td>130K</td><td>128x</td><td>Recommended default</td></tr>
+      <tr><td>32</td><td>262K</td><td>64x</td><td>Complex domain adaptation</td></tr>
+      <tr><td>64</td><td>524K</td><td>32x</td><td>Near full fine-tuning quality</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>The scaling factor &alpha;:</strong> LoRA scales the update by <span class="katex-inline">\alpha / r</span>. Typical: <span class="katex-inline">\alpha = 32</span> with <span class="katex-inline">r = 16</span> gives scaling = 2. Higher &alpha; = stronger adaptation.
+  </div>
+  <aside class="notes">
+    The alpha/r ratio is often confusing. Think of it as the "strength" of the adaptation. The original LoRA paper uses alpha=r (scaling=1). In practice, alpha=2r (scaling=2) often works better — it lets the adapter have more influence.
+  </aside>
+</section>
+
+<section>
+  <h2>Target Modules: Where to Apply LoRA</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Not all layers benefit equally from LoRA adaptation:</p>
+  <table>
+    <thead><tr><th>Module</th><th>Effect</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Q, V projections</strong></td><td>Attention pattern changes</td><td>High (always include)</td></tr>
+      <tr><td><strong>K projection</strong></td><td>Key representation</td><td>Medium</td></tr>
+      <tr><td><strong>Output projection</strong></td><td>Attention output mixing</td><td>Medium</td></tr>
+      <tr><td><strong>FFN up/down/gate</strong></td><td>Knowledge storage</td><td>High for domain tasks</td></tr>
+      <tr><td><strong>Embedding</strong></td><td>Input representation</td><td>Low (rarely needed)</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Default: Q + V projections. For domain-heavy tasks: all linear layers.</p>
+  <aside class="notes">
+    The original LoRA paper showed that Q and V projections give the best quality-per-parameter. For domain-specific tasks (legal, medical), adding FFN layers captures more factual knowledge. The tradeoff is always parameters vs quality.
+  </aside>
+</section>
+
+<section>
+  <h2>QLoRA: Fine-Tune on Consumer Hardware</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>QLoRA (Dettmers et al., 2023) combines three innovations:</p>
+  <ol>
+    <li><strong>4-bit NormalFloat (NF4) quantisation:</strong> Quantise <span class="katex-inline">W_0</span> to 4 bits &mdash; 4x memory reduction</li>
+    <li><strong>Double quantisation:</strong> Quantise the quantisation constants too</li>
+    <li><strong>Paged optimisers:</strong> Offload optimiser states to CPU when GPU memory runs low</li>
+  </ol>
+  <div class="result-box">
+    <strong>Result:</strong> Fine-tune a 65B parameter model on a single 48GB GPU
+  </div>
+  <aside class="notes">
+    QLoRA is what makes fine-tuning accessible to everyone. A 7B model with QLoRA fits on a 6GB GPU. A 13B model fits on a 16GB GPU. A 65B model fits on a 48GB A6000. This is the democratisation of alignment.
+  </aside>
+</section>
+
+<section>
+  <h2>NF4: Why Normal Float?</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Pre-trained weights follow an approximately <strong>normal distribution</strong>. NF4 is information-theoretically optimal for normally-distributed data:</p>
+  <ul>
+    <li>Divide the normal distribution into 16 equal-probability bins (4 bits = 16 values)</li>
+    <li>Each bin boundary is at a quantile of <span class="katex-inline">N(0, 1)</span></li>
+    <li>More bins near zero (where most weights cluster) &mdash; fewer at the tails</li>
+    <li>Result: minimal information loss compared to uniform INT4</li>
+  </ul>
+  <div class="callout callout-theory">
+    <strong>Connection to M2 (Statistics):</strong> Quantiles from M2! NF4 uses the exact same concept &mdash; dividing a distribution into equal-probability regions.
+  </div>
+  <aside class="notes">
+    Beautiful connection to M2 statistics. NF4 is just quantile-based quantisation for normal distributions. Students who understood quantiles in M2 can see exactly why this works — it allocates more precision where the density is highest.
+  </aside>
+</section>
+
+<section>
+  <h2>QLoRA: Memory Breakdown</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Component</th><th>Full FT (7B)</th><th>LoRA (7B)</th><th>QLoRA (7B)</th></tr></thead>
+    <tbody>
+      <tr><td>Model weights</td><td>14 GB (FP16)</td><td>14 GB (FP16)</td><td>3.5 GB (NF4)</td></tr>
+      <tr><td>LoRA adapters</td><td>&mdash;</td><td>~20 MB</td><td>~20 MB</td></tr>
+      <tr><td>Gradients</td><td>14 GB</td><td>~20 MB</td><td>~20 MB</td></tr>
+      <tr><td>Optimiser</td><td>28 GB</td><td>~40 MB</td><td>~40 MB (paged)</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>~56 GB</strong></td><td><strong>~14.1 GB</strong></td><td><strong>~3.6 GB</strong></td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">QLoRA reduces memory by <strong>15x</strong> compared to full fine-tuning.</p>
+  <aside class="notes">
+    This table is the most persuasive argument for QLoRA. 56GB vs 3.6GB — that's the difference between needing a cluster and using a laptop. Make the numbers real for students.
+  </aside>
+</section>
+
+<section>
+  <h2>DoRA: Weight-Decomposed LoRA</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>DoRA (Liu et al., 2024) decomposes weight updates into <strong>magnitude</strong> and <strong>direction</strong>:</p>
+  <div class="equation-box">
+    <span class="katex-display">W' = m \cdot \frac{W_0 + BA}{\|W_0 + BA\|_c}</span>
+    <div class="annotation">where <span class="katex-inline">m</span> is a learned magnitude vector and <span class="katex-inline">\|\cdot\|_c</span> is column-wise norm</div>
+  </div>
+  <ul>
+    <li>Observation: full fine-tuning changes both magnitude AND direction; LoRA mostly changes direction</li>
+    <li>DoRA adds a learnable magnitude component to close the gap</li>
+    <li>Consistently outperforms LoRA with minimal extra parameters</li>
+  </ul>
+  <aside class="notes">
+    For advanced students: DoRA's insight is that decomposing weight changes into magnitude and direction components allows the adapter to better approximate full fine-tuning behaviour. The overhead is just one learnable vector per adapted layer.
+  </aside>
+</section>
+
+<section>
+  <h2>LoRA+ and QA-LoRA</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>LoRA+</h3>
+      <ul>
+        <li>Key insight: matrices A and B should have <strong>different learning rates</strong></li>
+        <li>B (output projection) benefits from higher LR</li>
+        <li>A (input projection) needs lower LR for stability</li>
+        <li>Typical ratio: <span class="katex-inline">\eta_B / \eta_A = 16</span></li>
+        <li>Consistent improvement over vanilla LoRA</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>QA-LoRA</h3>
+      <ul>
+        <li>Quantisation-aware LoRA training</li>
+        <li>Train with quantisation noise in the loop</li>
+        <li>Result: merged model quantises cleanly</li>
+        <li>No quality loss from post-training quantisation</li>
+        <li>Critical for deployment to edge devices</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    These are refinements that matter in production. LoRA+ is a free lunch — just set different learning rates. QA-LoRA matters when you know you'll quantise the merged model for deployment.
+  </aside>
+</section>
+
+<section>
+  <h2>Other PEFT Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>Mechanism</th><th>Trainable Params</th><th>When to Use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Prefix Tuning</strong></td><td>Learnable virtual prefix tokens</td><td>&lt;0.1%</td><td>Generation tasks</td></tr>
+      <tr><td><strong>Prompt Tuning</strong></td><td>Learnable soft prompt embeddings</td><td>&lt;0.01%</td><td>Classification tasks</td></tr>
+      <tr><td><strong>Adapter Layers</strong></td><td>Bottleneck layers inserted between transformer layers</td><td>1&ndash;3%</td><td>Multi-task learning</td></tr>
+      <tr><td><strong>(IA)<sup>3</sup></strong></td><td>Scale activations by learned vectors</td><td>&lt;0.01%</td><td>Few-shot learning</td></tr>
+      <tr><td><strong>LoRA</strong></td><td>Low-rank weight decomposition</td><td>0.1&ndash;1%</td><td><strong>Default choice</strong></td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">LoRA dominates in practice because it offers the best quality-per-parameter and zero inference overhead after merging.</p>
+  <aside class="notes">
+    This comparison table helps students understand the landscape. LoRA is the default — recommend it unless there's a specific reason to use something else. Adapters are useful for multi-task (one adapter per task, share the base model).
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AlignmentPipeline (LoRA)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>LoRA / QLoRA fine-tuning</span>
+      <span class="arrow">&rarr;</span>
+      <code>AlignmentPipeline(method="sft", peft="lora")</code>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_align import AlignmentPipeline, LoRAConfig
+
+config = LoRAConfig(
+    r=16,               # Rank
+    alpha=32,            # Scaling factor
+    target_modules=["q_proj", "v_proj"],
+    quantize="nf4",      # QLoRA: 4-bit quantisation
+)
+
+pipeline = AlignmentPipeline(
+    base_model="meta-llama/Llama-3.1-8B",
+    method="sft",
+    peft_config=config,
+    dataset="my_instructions.jsonl",
+)
+pipeline.train(epochs=3)
+adapter = pipeline.save_adapter("./my-lora-adapter")
+</code></pre>
+  <aside class="notes">
+    Show how clean the Kailash API is. LoRAConfig captures everything: rank, alpha, target modules, quantisation. The pipeline handles all the complexity of QLoRA setup, data collation, and training. Students configure, Kailash executes.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.3 — DPO & Preference Alignment (Slides 37-58)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.3 &mdash; Preference Alignment</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Beyond Instruction Following</h3>
+  <p>SFT teaches a model to follow instructions. But following instructions is not enough:</p>
+  <div class="callout callout-foundations">
+    <strong>The problem:</strong> "Write a persuasive email to sell this product" &mdash; the model follows the instruction, but writes something manipulative and dishonest. It <em>followed</em> the instruction but violated our <em>values</em>.
+  </div>
+  <p>Preference alignment teaches the model to choose <strong>better</strong> responses over <strong>worse</strong> ones &mdash; not just to produce <em>any</em> response.</p>
+  <aside class="notes">
+    The key distinction: SFT teaches WHAT to do. Preference alignment teaches HOW to do it well. A model can follow instructions perfectly and still be harmful, unhelpful, or dishonest. Alignment closes that gap.
+  </aside>
+</section>
+
+<section>
+  <h2>RLHF: The Original Pipeline</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Reinforcement Learning from Human Feedback (RLHF) was the first alignment method (Ouyang et al., 2022 / InstructGPT):</p>
+  <div class="pipeline">
+    <span class="pipe-node pipe-train">1. Pre-train LLM</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">2. SFT</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">3. Train Reward Model</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">4. RL (PPO)</span>
+  </div>
+  <ul>
+    <li><strong>Step 3:</strong> Humans rank model outputs. Train a reward model to predict human preferences.</li>
+    <li><strong>Step 4:</strong> Use PPO (reinforcement learning) to optimise the LLM against the reward model.</li>
+  </ul>
+  <p class="small muted">RLHF works but is complex: two models (LLM + reward), unstable RL training, expensive human annotation.</p>
+  <aside class="notes">
+    RLHF was how ChatGPT was trained. It works, but it's complex and expensive. The reward model can be hacked, PPO training is notoriously unstable, and human preference data is expensive to collect. This motivates DPO.
+  </aside>
+</section>
+
+<section>
+  <h2>The Reward Model</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The reward model learns to predict human preferences using the <strong>Bradley-Terry model</strong>:</p>
+  <div class="equation-box">
+    <span class="katex-display">P(y_1 \succ y_2 \mid x) = \sigma(r(x, y_1) - r(x, y_2))</span>
+    <div class="annotation">where <span class="katex-inline">\sigma</span> is the sigmoid and <span class="katex-inline">r(x, y)</span> is the learned reward</div>
+  </div>
+  <p>Given a prompt <span class="katex-inline">x</span> with a preferred response <span class="katex-inline">y_w</span> and a rejected response <span class="katex-inline">y_l</span>:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}_{\text{RM}} = -\mathbb{E}\left[\log \sigma(r(x, y_w) - r(x, y_l))\right]</span>
+    <div class="annotation">Maximise the gap between preferred and rejected rewards</div>
+  </div>
+  <aside class="notes">
+    The Bradley-Terry model is elegant: it says "the probability that y1 is preferred over y2 is a sigmoid of their reward difference." This is the same logistic model from M4, just applied to preferences instead of classification. The loss pushes the reward of preferred responses higher and rejected responses lower.
+  </aside>
+</section>
+
+<section>
+  <h2>Reward Hacking</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The RLHF objective includes a KL constraint to prevent the model from deviating too far:</p>
+  <div class="equation-box">
+    <span class="katex-display">\max_\pi \mathbb{E}_{x,y \sim \pi}\left[r(x,y)\right] - \beta \cdot \text{KL}(\pi \| \pi_{\text{ref}})</span>
+    <div class="annotation"><span class="katex-inline">\pi</span> = policy (LLM), <span class="katex-inline">\pi_{\text{ref}}</span> = reference (SFT model), <span class="katex-inline">\beta</span> = constraint strength</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Without KL constraint:</strong> The model learns to produce gibberish that "hacks" the reward model &mdash; it scores high on the proxy reward but produces nonsensical text. This is <strong>reward hacking</strong>.
+  </div>
+  <aside class="notes">
+    Reward hacking is the central failure mode of RLHF. The model finds patterns in the reward model that score high but don't correspond to actual quality. The KL constraint says "you can improve, but don't stray too far from the SFT model." Beta controls how tight this leash is.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO: Skip the Reward Model</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>The Key Insight</h3>
+  <p>What if we could align the model <strong>without training a reward model</strong> and <strong>without running RL</strong>?</p>
+  <div class="vs-box">
+    <div class="vs-item vs-left">
+      <strong>RLHF</strong>
+      <ol style="font-size: 0.85em;">
+        <li>Collect preference data</li>
+        <li>Train reward model</li>
+        <li>Run PPO against reward</li>
+        <li>Manage two models in memory</li>
+      </ol>
+    </div>
+    <div class="vs-item vs-right">
+      <strong>DPO</strong>
+      <ol style="font-size: 0.85em;">
+        <li>Collect preference data</li>
+        <li>Train directly on preferences</li>
+        <li>Simple classification-like loss</li>
+        <li>Single model + frozen reference</li>
+      </ol>
+    </div>
+  </div>
+  <p><strong>DPO (Rafailov et al., 2023)</strong> derives a closed-form solution that eliminates steps 2 and 3.</p>
+  <aside class="notes">
+    This is the most elegant result in modern ML alignment. DPO shows that you don't NEED a separate reward model or RL loop. The same result can be achieved with a simple loss function. This is one of those rare cases where a theoretical insight dramatically simplifies engineering.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO Derivation: Step 1</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Start from the RLHF objective with KL constraint:</p>
+  <div class="derivation-step">
+    <span class="step-label">RLHF objective</span><br/>
+    <span class="katex-display">\max_\pi \mathbb{E}_{x,y \sim \pi}\left[r(x,y)\right] - \beta \cdot \text{KL}(\pi \| \pi_{\text{ref}})</span>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Optimal policy (closed-form)</span><br/>
+    The solution to this KL-regularised optimisation is:
+    <span class="katex-display">\pi^*(y \mid x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y \mid x) \exp\left(\frac{r(x,y)}{\beta}\right)</span>
+    <div class="annotation">where <span class="katex-inline">Z(x) = \sum_y \pi_{\text{ref}}(y \mid x) \exp(r(x,y)/\beta)</span> is the normalisation constant</div>
+  </div>
+  <aside class="notes">
+    Step 1: we know the optimal policy for any reward function under a KL constraint. This is a classic result from KL-regularised reinforcement learning. The key: the optimal policy is the reference policy scaled by the exponentiated reward. Z(x) normalises it to sum to 1.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO Derivation: Step 2</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Rearrange to express the reward in terms of the policy:</p>
+  <div class="derivation-step">
+    <span class="step-label">Solve for reward</span><br/>
+    From <span class="katex-inline">\pi^*(y|x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y|x) \exp(r(x,y)/\beta)</span>, take logs:
+    <span class="katex-display">r(x,y) = \beta \log \frac{\pi^*(y \mid x)}{\pi_{\text{ref}}(y \mid x)} + \beta \log Z(x)</span>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Key observation</span><br/>
+    The reward is the log-ratio between the optimal policy and the reference policy (plus a constant that depends only on <span class="katex-inline">x</span>).
+  </div>
+  <aside class="notes">
+    Step 2 is just algebra — rearrange and take logs. The crucial insight is coming: when we substitute this into the Bradley-Terry model, the Z(x) terms will cancel because they don't depend on y.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO Derivation: Step 3 (The Magic)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Substitute into the Bradley-Terry preference model:</p>
+  <div class="derivation-step">
+    <span class="step-label">Reward difference</span><br/>
+    <span class="katex-display">r(x, y_w) - r(x, y_l) = \beta \left[\log \frac{\pi^*(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \log \frac{\pi^*(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right] + \cancel{\beta \log Z(x)} - \cancel{\beta \log Z(x)}</span>
+  </div>
+  <div class="result-box">
+    <strong>The Z(x) terms CANCEL!</strong> No intractable partition function.
+  </div>
+  <aside class="notes">
+    THIS is the magic moment. The Z(x) terms cancel because they appear identically in both r(x,y_w) and r(x,y_l). This is what makes DPO possible — we never need to compute the intractable normalisation constant. Pause here and let students appreciate the elegance.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO: The Final Loss</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The DPO loss function — simple, elegant, powerful:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}_{\text{DPO}}(\pi_\theta; \pi_{\text{ref}}) = -\mathbb{E}\left[\log \sigma\left(\beta \left[\log \frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \log \frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right]\right)\right]</span>
+    <div class="annotation">
+      <span class="katex-inline">y_w</span> = preferred response, <span class="katex-inline">y_l</span> = rejected response, <span class="katex-inline">\beta</span> = deviation strength
+    </div>
+  </div>
+  <p>This is a <strong>binary cross-entropy</strong> loss &mdash; the same kind of loss you used in M4 for classification!</p>
+  <aside class="notes">
+    The final DPO loss is remarkably simple. It's just a sigmoid on the difference of log-ratios. Students who did logistic regression in M4 will recognise the structure. The log-ratio pi/pi_ref is the "implicit reward" — no separate reward model needed.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO: Why It's Elegant</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ul>
+    <li><strong>No reward model:</strong> The log-ratio <span class="katex-inline">\beta \log(\pi/\pi_{\text{ref}})</span> IS the implicit reward</li>
+    <li><strong>No RL loop:</strong> Standard gradient descent on a classification-like loss</li>
+    <li><strong>Stable training:</strong> No policy collapse, no reward hacking</li>
+    <li><strong>Simple data format:</strong> Triplets of (prompt, chosen, rejected)</li>
+    <li><strong>Reference model:</strong> Keep the SFT model frozen as <span class="katex-inline">\pi_{\text{ref}}</span></li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>DPO is the recommended alignment method</strong> for most production use cases. Start here unless you have specific reasons for RLHF.
+  </div>
+  <aside class="notes">
+    DPO is the default recommendation in 2026. It's simpler to implement, more stable to train, and produces comparable results to RLHF for most tasks. The only cases where RLHF (PPO) still wins are when you need very fine-grained control over the reward signal.
+  </aside>
+</section>
+
+<section>
+  <h2>The &beta; Parameter</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><span class="katex-inline">\beta</span> controls how far the model can deviate from the reference policy:</p>
+  <table>
+    <thead><tr><th>&beta;</th><th>Behaviour</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Small</strong> (0.05&ndash;0.1)</td><td>Stay close to reference (conservative)</td><td>Safety-critical applications</td></tr>
+      <tr><td><strong>Medium</strong> (0.1&ndash;0.5)</td><td>Balanced adaptation</td><td>Most production use cases</td></tr>
+      <tr><td><strong>Large</strong> (0.5&ndash;1.0)</td><td>More freedom to change (aggressive)</td><td>Creative / style transfer</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> &beta; is the length of the leash. Small &beta; = short leash (the model stays close to the SFT behaviour). Large &beta; = long leash (the model has more freedom to develop new patterns).
+  </div>
+  <aside class="notes">
+    The leash analogy works well. In safety-critical applications (medical, legal), use small beta to prevent the model from drifting too far. For creative applications, larger beta allows more novel outputs.
+  </aside>
+</section>
+
+<section>
+  <h2>DPO Data Format</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-json">{
+  "prompt": "Explain gradient descent to a beginner",
+  "chosen": "Think of a ball rolling downhill...",
+  "rejected": "Gradient descent is an iterative
+    first-order optimization algorithm for
+    finding a local minimum of a differentiable
+    function using the update rule..."
+}</code></pre>
+  <p>The model learns: clear explanations are preferred over jargon-heavy ones.</p>
+  <ul>
+    <li>Sources: human annotators, AI feedback, user clicks, A/B test results</li>
+    <li>Diversity matters: cover edge cases, not just easy comparisons</li>
+    <li>Balanced: avoid extreme quality gaps between chosen and rejected</li>
+  </ul>
+  <aside class="notes">
+    Data quality is everything in DPO. The model can only learn preferences that are represented in the data. Common mistake: making the rejected response obviously bad — the model learns nothing from easy comparisons. The best data has subtle quality differences.
+  </aside>
+</section>
+
+<section>
+  <h2>GRPO: Group Relative Policy Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>DeepSeek's approach (DeepSeekMath, 2024; DeepSeek-R1, 2025) &mdash; no critic, no reward model:</p>
+  <ol>
+    <li>Generate <span class="katex-inline">G</span> responses per prompt</li>
+    <li>Score each with a verifiable reward (e.g., correct math answer)</li>
+    <li>Use <strong>group-relative ranking</strong> as the advantage signal</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\{r_1, \ldots, r_G\})}{\text{std}(\{r_1, \ldots, r_G\})}</span>
+    <div class="annotation">Normalise rewards within each group to get advantages</div>
+  </div>
+  <p class="small muted">GRPO cuts RL compute by ~50% vs PPO by eliminating the critic network entirely.</p>
+  <aside class="notes">
+    GRPO is how DeepSeek-R1 was trained — the model that shocked the industry in January 2025. The key insight: you don't need a learned critic if you can normalise rewards within a group of responses. This is essentially REINFORCE with a group-relative baseline.
+  </aside>
+</section>
+
+<section>
+  <h2>GRPO: Connection to REINFORCE</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>GRPO is a variant of PPO where the value baseline is replaced by group statistics:</p>
+  <div class="columns">
+    <div class="col">
+      <h3>PPO</h3>
+      <ul>
+        <li>Critic network <span class="katex-inline">V_\phi(s)</span> as baseline</li>
+        <li><span class="katex-inline">A_t = r_t + \gamma V(s') - V(s)</span></li>
+        <li>Two networks to train</li>
+        <li>Complex, memory-heavy</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>GRPO</h3>
+      <ul>
+        <li>Group mean reward as baseline</li>
+        <li><span class="katex-inline">\hat{A}_i = (r_i - \bar{r}) / \sigma_r</span></li>
+        <li>One network to train</li>
+        <li>Simpler, 50% less compute</li>
+      </ul>
+    </div>
+  </div>
+  <p>GRPO still uses PPO's clipped objective &mdash; just replaces the advantage computation.</p>
+  <aside class="notes">
+    The connection to PPO is important — students will learn PPO in the RL section. GRPO takes PPO's clipped objective but replaces the learned critic with simple group statistics. This is why it's both simpler and cheaper.
+  </aside>
+</section>
+
+<section>
+  <h2>RLVR: Verifiable Rewards</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>The biggest shift in 2025: from human preferences to <strong>verifiable rewards</strong> for reasoning tasks:</p>
+  <ul>
+    <li><strong>Math:</strong> Is the final answer correct? (binary reward)</li>
+    <li><strong>Code:</strong> Does the code pass unit tests? (binary reward)</li>
+    <li><strong>Logic:</strong> Is the proof valid? (verifiable)</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>The modular post-training stack (2025-2026):</strong><br/>
+    1. SFT for instruction following<br/>
+    2. DPO/SimPO/KTO for preference alignment<br/>
+    3. GRPO/DAPO with verifiable rewards for reasoning
+  </div>
+  <p class="small muted">DAPO (Decoupled Clip and Dynamic Sampling) improved on GRPO by achieving +3 on AIME 2024 with 50% fewer training steps.</p>
+  <aside class="notes">
+    RLVR is the most consequential shift in post-training since DPO. For tasks where you can verify correctness (math, code), you don't need human preferences at all. Just generate many solutions, check which are correct, and use that as the reward signal. This is how reasoning models are trained.
+  </aside>
+</section>
+
+<section>
+  <h2>ORPO: One-Step Alignment</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>ORPO (Hong et al., 2024) combines SFT and preference alignment in a <strong>single training step</strong>:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}_{\text{ORPO}} = \mathcal{L}_{\text{SFT}} + \lambda \cdot \mathcal{L}_{\text{OR}}</span>
+    <div class="annotation">where <span class="katex-inline">\mathcal{L}_{\text{OR}} = -\log \sigma\left(\log \frac{\text{odds}(y_w|x)}{\text{odds}(y_l|x)}\right)</span> is the odds-ratio loss</div>
+  </div>
+  <ul>
+    <li>No separate SFT stage &mdash; no distribution shift between SFT and alignment</li>
+    <li>No reference model &mdash; even simpler than DPO</li>
+    <li>Uses odds ratios instead of log-probabilities</li>
+  </ul>
+  <p class="small muted">ORPO has zero external dependencies: no reward model, no reference model, no separate SFT.</p>
+  <aside class="notes">
+    ORPO is attractive for teams that want to minimise complexity. One training run does both SFT and alignment. The tradeoff: you need the right data format (instruction + chosen + rejected) from the start. Good for greenfield projects; harder to retrofit.
+  </aside>
+</section>
+
+<section>
+  <h2>SimPO: Simple Preference Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>SimPO (Meng et al., 2024) uses <strong>average log probability</strong> as the implicit reward &mdash; no reference model needed:</p>
+  <div class="equation-box">
+    <span class="katex-display">r_{\text{SimPO}}(x, y) = \frac{1}{|y|} \log \pi_\theta(y \mid x)</span>
+    <div class="annotation">Length-normalised log-probability as reward signal</div>
+  </div>
+  <ul>
+    <li>Removes the reference model entirely (memory savings)</li>
+    <li>Length normalisation prevents the model from preferring shorter/longer outputs</li>
+    <li>Outperforms DPO by 6.4 points on AlpacaEval 2, 7.5 on Arena-Hard</li>
+  </ul>
+  <aside class="notes">
+    SimPO's insight is that you don't even need a reference model. The model's own average log-probability is a good enough reward signal. Length normalisation is the key innovation — without it, the model would game the reward by generating very short (high log-prob) responses.
+  </aside>
+</section>
+
+<section>
+  <h2>KTO: Kahneman-Tversky Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>KTO (Ethayarajh et al., 2024) requires only <strong>binary labels</strong> &mdash; no preference pairs needed:</p>
+  <ul>
+    <li>Based on prospect theory: losses weigh more than equivalent gains</li>
+    <li>Data format: (prompt, response, good/bad) &mdash; no paired comparisons</li>
+    <li>Perfect for production systems where binary feedback is cheap (thumbs up/down)</li>
+  </ul>
+  <div class="callout callout-foundations">
+    <strong>Practical advantage:</strong> Collecting paired preferences is expensive ($5&ndash;15 per comparison). Binary feedback ("Was this response helpful? Yes/No") costs almost nothing at scale.
+  </div>
+  <aside class="notes">
+    KTO is named after Daniel Kahneman and Amos Tversky (prospect theory, Nobel Prize). Their insight that "losses loom larger than gains" is encoded directly in the loss function. The practical advantage is enormous: you can align models using simple thumbs up/down feedback from production users.
+  </aside>
+</section>
+
+<section>
+  <h2>Constitutional AI &amp; RLAIF</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Constitutional AI (Bai et al., 2022) replaces human feedback with <strong>AI feedback</strong>:</p>
+  <ol>
+    <li>Define a "constitution" &mdash; a set of principles (e.g., "be helpful, harmless, honest")</li>
+    <li>Model generates responses</li>
+    <li>Model <em>critiques its own outputs</em> against the constitution</li>
+    <li>Model revises its responses based on self-critique</li>
+    <li>Train on the improved outputs (RLAIF = RL from AI Feedback)</li>
+  </ol>
+  <div class="callout callout-advanced">
+    <strong>Process Reward Models:</strong> Instead of rewarding only the final answer, reward intermediate reasoning steps. "Did the model reason correctly at step 3?" This produces more reliable reasoning chains.
+  </div>
+  <aside class="notes">
+    Constitutional AI is how you scale alignment without hiring thousands of annotators. The model becomes its own teacher. Process reward models are the frontier — rewarding intermediate reasoning steps, not just final answers. This connects directly to how GRPO trains reasoning models.
+  </aside>
+</section>
+
+<section>
+  <h2>Alignment Methods: Comparison</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Method</th><th>Needs RM?</th><th>Needs Ref?</th><th>Data Format</th><th>Stability</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td><strong>RLHF/PPO</strong></td><td>Yes</td><td>Yes</td><td>Preferences</td><td>Low</td><td>Fine-grained control</td></tr>
+      <tr><td><strong>DPO</strong></td><td>No</td><td>Yes</td><td>Preferences</td><td>High</td><td>Default choice</td></tr>
+      <tr><td><strong>SimPO</strong></td><td>No</td><td>No</td><td>Preferences</td><td>High</td><td>Memory-constrained</td></tr>
+      <tr><td><strong>ORPO</strong></td><td>No</td><td>No</td><td>Pref + Instr</td><td>High</td><td>Single-stage training</td></tr>
+      <tr><td><strong>KTO</strong></td><td>No</td><td>Yes</td><td>Binary labels</td><td>High</td><td>Cheap feedback at scale</td></tr>
+      <tr><td><strong>GRPO</strong></td><td>No</td><td>No</td><td>Verifiable</td><td>Medium</td><td>Reasoning tasks</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Start with DPO. Move to GRPO for reasoning. Use KTO when you only have binary feedback. Use SimPO for memory savings.</p>
+  <aside class="notes">
+    This is the decision matrix students should bookmark. DPO is the default. GRPO for math/code reasoning. KTO when collecting paired preferences is too expensive. SimPO when GPU memory is tight. ORPO when you want a single training run.
+  </aside>
+</section>
+
+<section>
+  <h2>LLM Evaluation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <h3>How Do We Know If Alignment Worked?</h3>
+  <table>
+    <thead><tr><th>Method</th><th>How It Works</th><th>Limitation</th></tr></thead>
+    <tbody>
+      <tr><td><strong>LLM-as-judge</strong></td><td>Another LLM evaluates outputs</td><td>Position bias, verbosity bias, self-enhancement</td></tr>
+      <tr><td><strong>Human eval</strong></td><td>Chatbot Arena, Elo ratings</td><td>Expensive, slow</td></tr>
+      <tr><td><strong>MT-Bench</strong></td><td>Multi-turn conversation quality</td><td>Fixed benchmark, leakage risk</td></tr>
+      <tr><td><strong>AlpacaEval</strong></td><td>Win rate vs reference model</td><td>Length-biased</td></tr>
+    </tbody>
+  </table>
+  <p><strong>LLM-as-judge mitigations:</strong> Swap answer positions, use scoring rubrics, employ multiple judges, normalise by length.</p>
+  <aside class="notes">
+    Evaluation is the hardest part of alignment. Every automated metric has known biases. LLM-as-judge is the current standard but suffers from position bias (prefers the first answer), verbosity bias (prefers longer answers), and self-enhancement bias (an LLM rates its own outputs higher).
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AlignmentPipeline (DPO)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>DPO preference alignment</span>
+      <span class="arrow">&rarr;</span>
+      <code>AlignmentPipeline(method="dpo")</code>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_align import AlignmentPipeline, LoRAConfig
+
+pipeline = AlignmentPipeline(
+    base_model="./sft-output",   # Start from SFT model
+    method="dpo",
+    beta=0.1,                     # KL constraint strength
+    peft_config=LoRAConfig(r=16, alpha=32),
+    dataset="preferences.jsonl",  # (prompt, chosen, rejected)
+)
+pipeline.train(epochs=1, learning_rate=5e-7)
+</code></pre>
+  <p class="small muted">Same AlignmentPipeline, different method. The API is consistent across SFT, DPO, ORPO, KTO, and GRPO.</p>
+  <aside class="notes">
+    Emphasise the API consistency. Students switch from SFT to DPO by changing one parameter. The pipeline handles the reference model, the loss function, and all the training details. This is the power of a well-designed abstraction.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.4 — RL Fundamentals (Slides 59-80)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.4 &mdash; Reinforcement Learning Fundamentals</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>What is Reinforcement Learning?</h3>
+  <p>An agent interacts with an environment, takes actions, receives rewards, and <strong>learns to maximise cumulative reward</strong>.</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> Teaching a dog to fetch. You don't show it labelled examples of "correct fetch" (supervised learning). You let it try things and reward good behaviour. Over time, it learns the sequence: see ball &rarr; run &rarr; pick up &rarr; return &rarr; treat!
+  </div>
+  <table>
+    <thead><tr><th>Paradigm</th><th>Data</th><th>Signal</th></tr></thead>
+    <tbody>
+      <tr><td>Supervised</td><td>Labelled (x, y) pairs</td><td>Correct answer for each input</td></tr>
+      <tr><td>Unsupervised</td><td>Unlabelled x</td><td>Structure in data</td></tr>
+      <tr><td><strong>Reinforcement</strong></td><td><strong>Experience (s, a, r, s')</strong></td><td><strong>Delayed reward signal</strong></td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    RL is fundamentally different from supervised learning. No labelled examples. No teacher showing the right answer. Just an agent, an environment, and a reward signal that might be delayed. The dog doesn't get a treat after each step — only after completing the whole sequence.
+  </aside>
+</section>
+
+<section>
+  <h2>The MDP Framework</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A <strong>Markov Decision Process</strong> (MDP) formalises RL with five components:</p>
+  <table>
+    <thead><tr><th>Symbol</th><th>Component</th><th>Example (Grid World)</th></tr></thead>
+    <tbody>
+      <tr><td><span class="katex-inline">\mathcal{S}</span></td><td>States</td><td>All grid positions</td></tr>
+      <tr><td><span class="katex-inline">\mathcal{A}</span></td><td>Actions</td><td>Up, Down, Left, Right</td></tr>
+      <tr><td><span class="katex-inline">P(s' \mid s, a)</span></td><td>Transition probabilities</td><td>Move succeeds 80%, slips 20%</td></tr>
+      <tr><td><span class="katex-inline">R(s, a)</span></td><td>Reward function</td><td>+1 at goal, -1 at trap</td></tr>
+      <tr><td><span class="katex-inline">\gamma</span></td><td>Discount factor</td><td>0.99 (value future rewards)</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Policy:</strong> <span class="katex-inline">\pi(a \mid s)</span> = probability of taking action <span class="katex-inline">a</span> in state <span class="katex-inline">s</span></p>
+  <p><strong>Trajectory:</strong> <span class="katex-inline">s_0, a_0, r_1, s_1, a_1, r_2, \ldots</span></p>
+  <aside class="notes">
+    Introduce each component with the grid world example. States are positions. Actions are moves. Transitions can be stochastic (the agent might slip). Rewards are sparse (only at goal/trap). The policy is what we want to learn — the optimal strategy for navigating the grid.
+  </aside>
+</section>
+
+<section>
+  <h2>The Markov Property</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">P(s_{t+1} \mid s_t, a_t, s_{t-1}, a_{t-1}, \ldots) = P(s_{t+1} \mid s_t, a_t)</span>
+    <div class="annotation">The future depends only on the present state, not the history</div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> In chess, the next position depends only on the current board state and the move you make &mdash; not on how you got to this position. The current state contains all the information you need.
+  </div>
+  <p class="small muted">If the Markov property doesn't hold, you need history (POMDPs) or memory (LSTMs/Transformers).</p>
+  <aside class="notes">
+    The Markov property is the key assumption. In practice, many real-world problems are partially observable (you don't see the full state), but MDPs are the foundation that everything else builds on. Mention that LLMs as RL agents violate this — they use context (history) heavily.
+  </aside>
+</section>
+
+<section>
+  <h2>Value Functions</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Two ways to measure "how good" a state or action is:</p>
+  <div class="derivation-step">
+    <span class="step-label">State-value function</span><br/>
+    <span class="katex-display">V^\pi(s) = \mathbb{E}_\pi\left[\sum_{t=0}^{\infty} \gamma^t r_{t+1} \mid s_0 = s\right]</span>
+    <div class="annotation">"How much total reward can I expect starting from state <span class="katex-inline">s</span> and following policy <span class="katex-inline">\pi</span>?"</div>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Action-value function</span><br/>
+    <span class="katex-display">Q^\pi(s, a) = \mathbb{E}_\pi\left[\sum_{t=0}^{\infty} \gamma^t r_{t+1} \mid s_0 = s, a_0 = a\right]</span>
+    <div class="annotation">"How much total reward if I take action <span class="katex-inline">a</span> in state <span class="katex-inline">s</span>, then follow <span class="katex-inline">\pi</span>?"</div>
+  </div>
+  <p><strong>Connection:</strong> <span class="katex-inline">V^\pi(s) = \sum_a \pi(a \mid s) Q^\pi(s, a)</span></p>
+  <aside class="notes">
+    V tells you "how good is this state?" Q tells you "how good is this action in this state?" The relationship between them is simply: V is the weighted average of Q over all actions, weighted by the policy. These two functions are the foundation of ALL value-based RL.
+  </aside>
+</section>
+
+<section>
+  <h2>The Discount Factor &gamma;</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Why discount future rewards?</p>
+  <ul>
+    <li><strong>Uncertainty:</strong> The further into the future, the less certain the reward</li>
+    <li><strong>Mathematical:</strong> Without discounting, the sum might diverge to infinity</li>
+    <li><strong>Behavioural:</strong> Humans discount future rewards too (a dollar today > a dollar next year)</li>
+  </ul>
+  <table>
+    <thead><tr><th>&gamma;</th><th>Behaviour</th><th>Analogy</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Only care about immediate reward</td><td>Impulsive</td></tr>
+      <tr><td>0.5</td><td>Reward halves each step</td><td>Short-sighted</td></tr>
+      <tr><td>0.9</td><td>10-step horizon</td><td>Moderate planning</td></tr>
+      <tr><td>0.99</td><td>100-step horizon</td><td>Long-term strategic</td></tr>
+      <tr><td>1.0</td><td>No discounting (episodic only)</td><td>Infinite patience</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    The effective horizon is approximately 1/(1-gamma). Gamma=0.99 means the agent effectively plans about 100 steps ahead. Gamma=0.9 means about 10 steps. Use this to give students intuition for what gamma values mean in practice.
+  </aside>
+</section>
+
+<section>
+  <h2>Bellman Expectation Equation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The value of a state can be decomposed recursively:</p>
+  <div class="equation-box">
+    <span class="katex-display">V^\pi(s) = \sum_a \pi(a \mid s) \sum_{s'} P(s' \mid s, a)\left[R(s, a, s') + \gamma V^\pi(s')\right]</span>
+    <div class="annotation">Value = expected [immediate reward + discounted future value]</div>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Intuition</span><br/>
+    "The value of where I am now = what I expect to get this step + the discounted value of where I'll end up." This recursive structure is the foundation of all RL algorithms.
+  </div>
+  <aside class="notes">
+    The Bellman equation is THE equation of RL. Walk through it piece by piece. Sum over actions (weighted by policy). Sum over next states (weighted by transition probability). For each: immediate reward plus discounted future value. This recursion is what allows us to compute values efficiently.
+  </aside>
+</section>
+
+<section>
+  <h2>Bellman Optimality Equation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The <strong>optimal</strong> value function maximises over actions:</p>
+  <div class="equation-box">
+    <span class="katex-display">V^*(s) = \max_a \sum_{s'} P(s' \mid s, a)\left[R(s, a, s') + \gamma V^*(s')\right]</span>
+    <div class="annotation">Replace <span class="katex-inline">\sum_a \pi(a|s)</span> with <span class="katex-inline">\max_a</span> &mdash; always take the best action</div>
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">Q^*(s, a) = \sum_{s'} P(s' \mid s, a)\left[R(s, a, s') + \gamma \max_{a'} Q^*(s', a')\right]</span>
+    <div class="annotation">The optimal Q-function &mdash; the foundation of Q-learning</div>
+  </div>
+  <aside class="notes">
+    The difference between expectation and optimality: expectation uses the policy's action distribution, optimality always picks the best action. If we can solve the Bellman optimality equation, we have the optimal policy. The challenge: we usually don't know P(s'|s,a).
+  </aside>
+</section>
+
+<section>
+  <h2>Exploration vs Exploitation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>The fundamental dilemma of RL:</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Exploitation</h3>
+      <p>Do what you know works best. Go to the restaurant you love.</p>
+      <p style="color: var(--ascent-success); font-weight: 600;">Safe, reliable, local optimum</p>
+    </div>
+    <div class="col">
+      <h3>Exploration</h3>
+      <p>Try something new. Visit a restaurant you've never been to.</p>
+      <p style="color: var(--ascent-theory); font-weight: 600;">Risky, potentially better, global optimum</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>&epsilon;-greedy:</strong> With probability &epsilon;, take a random action (explore). With probability 1-&epsilon;, take the best known action (exploit). Start with high &epsilon; (explore a lot) and gradually reduce it (exploit more).
+  </div>
+  <aside class="notes">
+    The restaurant analogy works perfectly for beginners. Epsilon-greedy is the simplest exploration strategy and the one used in most practical RL. Start with epsilon=1.0 (pure exploration) and decay to epsilon=0.01 (mostly exploitation).
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.5 — Model-Free RL (Slides 81-100)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.5 &mdash; Dynamic Programming &amp; Model-Free Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <h3>When You Know the World</h3>
+  <p>If we know <span class="katex-inline">P(s' \mid s, a)</span> and <span class="katex-inline">R(s, a)</span>, we can solve the MDP exactly:</p>
+  <ul>
+    <li><strong>Policy Evaluation:</strong> Given a policy, compute its value function iteratively</li>
+    <li><strong>Policy Improvement:</strong> Given a value function, improve the policy greedily</li>
+    <li><strong>Policy Iteration:</strong> Alternate evaluation and improvement until convergence</li>
+    <li><strong>Value Iteration:</strong> Combine both: <span class="katex-inline">V_{k+1}(s) = \max_a \sum_{s'} P(s'|s,a)[R + \gamma V_k(s')]</span></li>
+  </ul>
+  <div class="callout callout-warning">
+    <strong>Limitation:</strong> Requires complete knowledge of the environment (transition probabilities). In practice, we rarely have this. This motivates <strong>model-free</strong> methods.
+  </div>
+  <aside class="notes">
+    Dynamic programming is the foundation but rarely used directly in practice. The important concept is the evaluate-improve cycle. Students should understand WHY we need model-free methods: in the real world, we don't know the transition probabilities.
+  </aside>
+</section>
+
+<section>
+  <h2>Monte Carlo Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Learn from <strong>complete episodes</strong> of experience:</p>
+  <div class="derivation-step">
+    <span class="step-label">Algorithm</span><br/>
+    1. Run a complete episode following policy <span class="katex-inline">\pi</span><br/>
+    2. For each state visited, compute the return <span class="katex-inline">G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k+1}</span><br/>
+    3. Update: <span class="katex-inline">V(s) \leftarrow V(s) + \alpha [G_t - V(s)]</span>
+  </div>
+  <ul>
+    <li><strong>Advantage:</strong> No bootstrapping &mdash; uses actual returns, unbiased</li>
+    <li><strong>Limitation:</strong> Must wait for the episode to end (high variance)</li>
+    <li><strong>First-visit MC:</strong> Only count the first time each state is visited</li>
+    <li><strong>Every-visit MC:</strong> Count every visit to each state</li>
+  </ul>
+  <aside class="notes">
+    Monte Carlo is conceptually the simplest model-free method. Play the whole game, look at the total score, and update your estimates. The problem: high variance (one bad episode can distort estimates) and you must wait until the episode ends (can't learn in the middle of a game).
+  </aside>
+</section>
+
+<section>
+  <h2>Temporal Difference Learning</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>TD learns from <strong>incomplete episodes</strong> by bootstrapping:</p>
+  <div class="equation-box">
+    <span class="katex-display">V(s) \leftarrow V(s) + \alpha \underbrace{\left[r + \gamma V(s') - V(s)\right]}_{\text{TD error } \delta}</span>
+    <div class="annotation">Update after EACH step, not after the whole episode</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Monte Carlo</h3>
+      <p>Uses actual return <span class="katex-inline">G_t</span></p>
+      <p>Unbiased, high variance</p>
+      <p>Must wait for episode end</p>
+    </div>
+    <div class="col">
+      <h3>TD(0)</h3>
+      <p>Uses TD target <span class="katex-inline">r + \gamma V(s')</span></p>
+      <p>Biased, low variance</p>
+      <p>Updates every step</p>
+    </div>
+  </div>
+  <aside class="notes">
+    TD is the workhorse of RL. The TD error delta = r + gamma*V(s') - V(s) measures "how surprised the agent is." If delta > 0, the outcome was better than expected. If delta < 0, worse. This signal drives learning step by step, no need to wait.
+  </aside>
+</section>
+
+<section>
+  <h2>SARSA: On-Policy TD Control</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">Q(s, a) \leftarrow Q(s, a) + \alpha \left[r + \gamma Q(s', a') - Q(s, a)\right]</span>
+    <div class="annotation">SARSA: State-Action-Reward-State'-Action' &mdash; updates using the action actually taken</div>
+  </div>
+  <ul>
+    <li><strong>On-policy:</strong> Learns the value of the policy being followed (including exploration)</li>
+    <li>If following &epsilon;-greedy, SARSA learns the value of &epsilon;-greedy behaviour</li>
+    <li>Conservative: accounts for the fact that the agent sometimes explores (takes random actions)</li>
+  </ul>
+  <aside class="notes">
+    SARSA is "on-policy" because it uses the action a' that the agent actually takes (which might be random due to epsilon-greedy). This makes SARSA conservative — it values states near cliffs lower because it knows the agent might accidentally fall off during exploration.
+  </aside>
+</section>
+
+<section>
+  <h2>Q-Learning: Off-Policy TD Control</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">Q(s, a) \leftarrow Q(s, a) + \alpha \left[r + \gamma \max_{a'} Q(s', a') - Q(s, a)\right]</span>
+    <div class="annotation">Q-Learning: always uses the BEST action for the update (regardless of what was actually done)</div>
+  </div>
+  <div class="vs-box">
+    <div class="vs-item vs-left">
+      <strong>SARSA</strong><br/>
+      Uses <span class="katex-inline">\gamma Q(s', a')</span><br/>
+      a' = action actually taken<br/>
+      <em>On-policy (conservative)</em>
+    </div>
+    <div class="vs-item vs-right">
+      <strong>Q-Learning</strong><br/>
+      Uses <span class="katex-inline">\gamma \max_{a'} Q(s', a')</span><br/>
+      Always picks the best<br/>
+      <em>Off-policy (optimistic)</em>
+    </div>
+  </div>
+  <p class="small muted">Q-Learning converges to <span class="katex-inline">Q^*</span> (optimal) under mild conditions, regardless of exploration policy.</p>
+  <aside class="notes">
+    The key difference: SARSA updates using what the agent actually did; Q-Learning updates using what the agent SHOULD have done (the best action). Q-Learning is off-policy because the update rule is independent of the exploration strategy. This is the foundation of DQN.
+  </aside>
+</section>
+
+<section>
+  <h2>TD(&lambda;): Blending MC and TD</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>TD(&lambda;) blends Monte Carlo (full return) and TD(0) (one-step) using eligibility traces:</p>
+  <div class="equation-box">
+    <span class="katex-display">G_t^\lambda = (1 - \lambda) \sum_{n=1}^{\infty} \lambda^{n-1} G_t^{(n)}</span>
+    <div class="annotation"><span class="katex-inline">\lambda = 0</span> = TD(0), <span class="katex-inline">\lambda = 1</span> = Monte Carlo</div>
+  </div>
+  <table>
+    <thead><tr><th>&lambda;</th><th>Behaviour</th><th>Bias/Variance</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Pure TD (one-step bootstrap)</td><td>High bias, low variance</td></tr>
+      <tr><td>0.5</td><td>Blend of short and long returns</td><td>Balanced</td></tr>
+      <tr><td>1.0</td><td>Pure Monte Carlo (full return)</td><td>Low bias, high variance</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    TD(lambda) is the general framework that unifies MC and TD. In practice, lambda=0.95 is common — it gives most of the low-variance benefit of TD while still using longer returns for accuracy. This exact idea reappears in PPO as GAE(gamma, lambda).
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.6 — Deep RL (Slides 101-120)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.6 &mdash; Deep Reinforcement Learning</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>From Tables to Neural Networks</h3>
+  <p>Q-Learning uses a table to store <span class="katex-inline">Q(s, a)</span> for every state-action pair. But what if there are millions of states?</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> Imagine memorising the value of every possible chess position. Impossible &mdash; there are more positions than atoms in the universe. Instead, learn a <em>function</em> that approximates the value of any position.
+  </div>
+  <p>Replace the Q-table with a neural network: <span class="katex-inline">Q(s, a; \theta)</span></p>
+  <aside class="notes">
+    This is the transition from tabular RL to deep RL. The Q-table works for small problems (grid worlds). For real problems (games, robotics, LLMs), you need function approximation. Neural networks are the dominant choice — hence "deep" RL.
+  </aside>
+</section>
+
+<section>
+  <h2>DQN: Deep Q-Network</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Mnih et al. (2015) combined Q-Learning with deep neural networks to play Atari games:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}(\theta) = \mathbb{E}\left[\left(r + \gamma \max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta)\right)^2\right]</span>
+    <div class="annotation"><span class="katex-inline">\theta^-</span> = target network (slowly updated copy)</div>
+  </div>
+  <p>Two innovations that made deep Q-Learning stable:</p>
+  <ol>
+    <li><strong>Experience Replay:</strong> Store transitions <span class="katex-inline">(s, a, r, s')</span> in a buffer, sample randomly (breaks correlation)</li>
+    <li><strong>Target Network:</strong> Use a separate, slowly-updated network for the target (prevents oscillation)</li>
+  </ol>
+  <aside class="notes">
+    DQN was the breakthrough that showed RL could work at scale. Experience replay breaks the temporal correlation in sequential data (which would cause neural networks to overfit to recent experience). The target network provides a stable learning target. Together, they make deep Q-Learning converge.
+  </aside>
+</section>
+
+<section>
+  <h2>DQN Variants</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <table>
+    <thead><tr><th>Variant</th><th>Innovation</th><th>Improvement</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Double DQN</strong></td><td>Decouple action selection from evaluation</td><td>Reduces overestimation bias</td></tr>
+      <tr><td><strong>Dueling DQN</strong></td><td>Separate value and advantage streams</td><td>Better state evaluation</td></tr>
+      <tr><td><strong>Prioritised Replay</strong></td><td>Sample important transitions more often</td><td>Faster learning</td></tr>
+      <tr><td><strong>Rainbow</strong></td><td>Combine all improvements</td><td>State-of-the-art (value-based)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Double DQN insight:</strong> Standard DQN uses <span class="katex-inline">\max_a Q(s',a;\theta^-)</span> for both selecting and evaluating the action. Double DQN selects with <span class="katex-inline">\theta</span> but evaluates with <span class="katex-inline">\theta^-</span>: <span class="katex-inline">Q(s', \arg\max_{a'} Q(s',a';\theta); \theta^-)</span>
+  </div>
+  <aside class="notes">
+    Rainbow DQN combines six improvements and achieves superhuman performance on most Atari games. Double DQN is the most important variant — it fixes a systematic overestimation bias in standard DQN. For advanced students: explain why maximisation over noisy Q-values creates positive bias.
+  </aside>
+</section>
+
+<section>
+  <h2>Policy Gradient: Learning the Policy Directly</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Instead of learning Q-values and deriving a policy, directly learn the policy <span class="katex-inline">\pi_\theta(a \mid s)</span>:</p>
+  <div class="equation-box">
+    <span class="katex-display">\nabla_\theta J(\theta) = \mathbb{E}_\pi\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot G_t\right]</span>
+    <div class="annotation">REINFORCE: increase probability of actions that led to high returns</div>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Intuition</span><br/>
+    If an action led to a good outcome (<span class="katex-inline">G_t > 0</span>), increase its probability. If bad (<span class="katex-inline">G_t < 0</span>), decrease it. The gradient <span class="katex-inline">\nabla_\theta \log \pi</span> tells us which direction to push the parameters.
+  </div>
+  <p><strong>Problem:</strong> High variance &mdash; returns <span class="katex-inline">G_t</span> fluctuate wildly between episodes.</p>
+  <aside class="notes">
+    REINFORCE is the simplest policy gradient algorithm. The log trick (from M2 probability) converts the gradient of an expectation into an expectation of a gradient — making it computable via sampling. The high variance problem motivates baselines and actor-critic methods.
+  </aside>
+</section>
+
+<section>
+  <h2>Variance Reduction: Baselines</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Subtract a baseline <span class="katex-inline">b(s_t)</span> from the return to reduce variance:</p>
+  <div class="equation-box">
+    <span class="katex-display">\nabla_\theta J(\theta) = \mathbb{E}_\pi\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot (G_t - b(s_t))\right]</span>
+    <div class="annotation">Any baseline that doesn't depend on <span class="katex-inline">a_t</span> preserves the unbiased gradient</div>
+  </div>
+  <ul>
+    <li>Best baseline: the value function <span class="katex-inline">b(s_t) = V(s_t)</span></li>
+    <li><span class="katex-inline">G_t - V(s_t)</span> = <strong>advantage</strong> <span class="katex-inline">A(s_t, a_t)</span> &mdash; "how much better was this action than average?"</li>
+    <li>This leads to <strong>actor-critic</strong> methods</li>
+  </ul>
+  <aside class="notes">
+    The advantage function is the key insight. Instead of asking "was this good?" (absolute return), ask "was this BETTER THAN AVERAGE?" (advantage). This dramatically reduces variance. If all actions get reward 100, subtracting the baseline 100 gives advantages near 0 — no noisy gradient updates.
+  </aside>
+</section>
+
+<section>
+  <h2>Actor-Critic</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Two networks working together:</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Actor <span class="katex-inline">\pi_\theta(a \mid s)</span></h3>
+      <p>The policy network. Decides which action to take.</p>
+      <p>Updated by: policy gradient with advantage</p>
+    </div>
+    <div class="col">
+      <h3>Critic <span class="katex-inline">V_\phi(s)</span></h3>
+      <p>The value network. Evaluates how good a state is.</p>
+      <p>Updated by: TD error minimisation</p>
+    </div>
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">A(s_t, a_t) \approx r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t)</span>
+    <div class="annotation">Advantage = TD error &mdash; "how much better than expected?"</div>
+  </div>
+  <p class="small muted">A2C (Advantage Actor-Critic) is the synchronous version. A3C adds asynchronous parallel actors.</p>
+  <aside class="notes">
+    Actor-Critic combines the best of both worlds: the actor learns the policy, the critic evaluates it. The advantage estimate uses the critic's value function as the baseline. This is the architecture that PPO builds on.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.7 — PPO (Slides 121-140)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.7 &mdash; PPO: Proximal Policy Optimisation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>The Dominant RL Algorithm</h3>
+  <p>PPO (Schulman et al., 2017) is used in:</p>
+  <ul>
+    <li>RLHF for ChatGPT, Claude, and most aligned LLMs</li>
+    <li>Robotics (OpenAI's dexterous manipulation)</li>
+    <li>Game playing (Dota 2, StarCraft)</li>
+    <li>Scientific discovery (protein folding with AlphaFold)</li>
+  </ul>
+  <div class="callout callout-foundations">
+    <strong>Why PPO?</strong> Simple to implement, stable, and works across many domains. The "Honda Civic of RL" &mdash; not the flashiest, but reliably gets you where you need to go.
+  </div>
+  <aside class="notes">
+    PPO is the algorithm that made RL practical for production. Before PPO, RL algorithms were notoriously brittle — small hyperparameter changes would cause training to collapse. PPO's clipping mechanism provides a simple guardrail against catastrophic updates.
+  </aside>
+</section>
+
+<section>
+  <h2>The Problem PPO Solves</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Policy gradient methods have a critical failure mode: <strong>too-large updates destroy the policy</strong>.</p>
+  <div class="callout callout-warning">
+    <strong>The cliff problem:</strong> One large gradient step takes the policy to a region where it performs terribly. The poor performance generates bad data, which makes the next update even worse. The policy spirals into catastrophe.
+  </div>
+  <p><strong>TRPO</strong> (Schulman et al., 2015) solved this with a KL constraint &mdash; but required complex second-order optimisation.</p>
+  <p><strong>PPO</strong> achieves the same stability with a simple clipped objective.</p>
+  <aside class="notes">
+    TRPO was the theoretical breakthrough — constrain the KL divergence between old and new policy. But TRPO requires computing the Fisher information matrix (second-order), which is expensive and hard to implement. PPO achieves similar results with first-order methods (standard gradient descent).
+  </aside>
+</section>
+
+<section>
+  <h2>PPO: The Probability Ratio</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Define the probability ratio between new and old policy:</p>
+  <div class="equation-box">
+    <span class="katex-display">r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}</span>
+    <div class="annotation"><span class="katex-inline">r_t = 1</span> means the action probability hasn't changed</div>
+  </div>
+  <table>
+    <thead><tr><th><span class="katex-inline">r_t</span></th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>< 1</td><td>New policy is <em>less likely</em> to take this action</td></tr>
+      <tr><td>= 1</td><td>No change in action probability</td></tr>
+      <tr><td>> 1</td><td>New policy is <em>more likely</em> to take this action</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">If <span class="katex-inline">r_t</span> is far from 1, the policy has changed a lot &mdash; potentially dangerously.</p>
+  <aside class="notes">
+    The probability ratio is the key concept. When r_t = 1, the policy hasn't changed. When r_t = 2, the action probability has doubled. PPO's clipping mechanism limits HOW FAR r_t can deviate from 1 in a single update. This is the guardrail against catastrophic updates.
+  </aside>
+</section>
+
+<section>
+  <h2>PPO: The Clipped Objective</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">L^{\text{CLIP}} = \mathbb{E}\left[\min\left(r_t \cdot A_t, \; \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \cdot A_t\right)\right]</span>
+    <div class="annotation">Take the minimum of unclipped and clipped objective &mdash; prevents too-large updates</div>
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">How clipping works</span><br/>
+    <span class="katex-inline">\text{clip}(r_t, 1-\epsilon, 1+\epsilon)</span> restricts <span class="katex-inline">r_t</span> to the range <span class="katex-inline">[1-\epsilon, 1+\epsilon]</span>.<br/>
+    Typical <span class="katex-inline">\epsilon = 0.2</span>, so <span class="katex-inline">r_t \in [0.8, 1.2]</span> &mdash; each action's probability can change by at most 20%.
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> Imagine a speed limiter on a car. You can accelerate, but the limiter prevents you from going above 120 km/h. PPO's clipping is a "speed limiter" for policy updates.
+  </div>
+  <aside class="notes">
+    This is the core of PPO. Walk through the min carefully. When the advantage is positive (good action), r_t can increase but is capped at 1+epsilon. When the advantage is negative (bad action), r_t can decrease but is capped at 1-epsilon. The min ensures we never get an overly optimistic gradient.
+  </aside>
+</section>
+
+<section>
+  <h2>PPO Clipping: Visual Intuition</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Positive Advantage <span class="katex-inline">(A_t > 0)</span></h3>
+      <p>"This action was good"</p>
+      <ul>
+        <li>We want to increase <span class="katex-inline">r_t</span> (make action more likely)</li>
+        <li>But clip at <span class="katex-inline">1 + \epsilon</span> &mdash; don't increase too much</li>
+        <li>Gradient is zero beyond the clip</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Negative Advantage <span class="katex-inline">(A_t < 0)</span></h3>
+      <p>"This action was bad"</p>
+      <ul>
+        <li>We want to decrease <span class="katex-inline">r_t</span> (make action less likely)</li>
+        <li>But clip at <span class="katex-inline">1 - \epsilon</span> &mdash; don't decrease too much</li>
+        <li>Gradient is zero beyond the clip</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">The result: monotonic improvement in expectation, with bounded policy change per step.</p>
+  <aside class="notes">
+    Draw this on the board if possible. The clipped region creates a "trust region" around the current policy. The policy can improve within this region, but cannot jump to a wildly different policy in a single step. This is what makes PPO stable.
+  </aside>
+</section>
+
+<section>
+  <h2>GAE: Generalised Advantage Estimation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>PPO uses GAE (Schulman et al., 2015) to compute advantages:</p>
+  <div class="equation-box">
+    <span class="katex-display">\hat{A}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}</span>
+    <div class="annotation">where <span class="katex-inline">\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)</span> is the TD error</div>
+  </div>
+  <table>
+    <thead><tr><th>&lambda;</th><th>Advantage Estimate</th><th>Property</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td><span class="katex-inline">\delta_t</span> (one-step TD)</td><td>High bias, low variance</td></tr>
+      <tr><td>0.5</td><td>Blend of short and long horizons</td><td>Balanced</td></tr>
+      <tr><td>0.95</td><td>Mostly long-horizon</td><td><strong>Recommended default</strong></td></tr>
+      <tr><td>1.0</td><td>Monte Carlo return minus baseline</td><td>Low bias, high variance</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    GAE is essentially TD(lambda) applied to advantage estimation. Lambda=0.95 with gamma=0.99 is the standard. This gives a good balance: mostly long-horizon returns (low bias) with just enough bootstrapping (low variance). Students saw TD(lambda) earlier — GAE is the same idea.
+  </aside>
+</section>
+
+<section>
+  <h2>PPO Training Loop</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ol>
+    <li><strong>Collect:</strong> Run current policy <span class="katex-inline">\pi_{\theta_\text{old}}</span> for T timesteps, storing <span class="katex-inline">(s, a, r, s')</span></li>
+    <li><strong>Compute:</strong> Calculate advantages using GAE(<span class="katex-inline">\gamma, \lambda</span>)</li>
+    <li><strong>Optimise:</strong> For K epochs, optimise <span class="katex-inline">L^\text{CLIP}</span> using minibatch SGD</li>
+    <li><strong>Update:</strong> <span class="katex-inline">\theta_\text{old} \leftarrow \theta</span>, go to step 1</li>
+  </ol>
+  <p>Typical hyperparameters:</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Typical Value</th></tr></thead>
+    <tbody>
+      <tr><td><span class="katex-inline">\epsilon</span> (clip range)</td><td>0.1 &ndash; 0.2</td></tr>
+      <tr><td><span class="katex-inline">\gamma</span> (discount)</td><td>0.99</td></tr>
+      <tr><td><span class="katex-inline">\lambda</span> (GAE)</td><td>0.95</td></tr>
+      <tr><td>K (epochs per batch)</td><td>3 &ndash; 10</td></tr>
+      <tr><td>Learning rate</td><td>3e-4</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    The PPO loop is simple: collect data, compute advantages, optimise for K epochs, repeat. The key difference from standard policy gradient: we reuse the same batch of data for K epochs (efficiency), but clipping prevents overfitting to that batch. This is why PPO is so sample-efficient.
+  </aside>
+</section>
+
+<section>
+  <h2>SAC: Soft Actor-Critic</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>SAC (Haarnoja et al., 2018) adds an <strong>entropy bonus</strong> to encourage exploration:</p>
+  <div class="equation-box">
+    <span class="katex-display">J(\pi) = \sum_t \mathbb{E}\left[r(s_t, a_t) + \alpha \mathcal{H}(\pi(\cdot \mid s_t))\right]</span>
+    <div class="annotation">Maximise reward AND policy entropy &mdash; "be good, but stay uncertain"</div>
+  </div>
+  <ul>
+    <li><strong>&alpha; (temperature):</strong> Controls exploration-exploitation balance</li>
+    <li><strong>Off-policy:</strong> Uses experience replay (more sample-efficient than PPO)</li>
+    <li><strong>Continuous actions:</strong> Designed for continuous action spaces (robotics)</li>
+    <li><strong>Stable:</strong> Automatic temperature tuning prevents entropy collapse</li>
+  </ul>
+  <aside class="notes">
+    SAC is PPO's main competitor. SAC is off-policy (more sample-efficient) and designed for continuous control (robotics). PPO is on-policy (simpler) and works well for both discrete and continuous actions. SAC is the default for robotics; PPO is the default for LLMs.
+  </aside>
+</section>
+
+<section>
+  <h2>Other RL Algorithms</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <table>
+    <thead><tr><th>Algorithm</th><th>Key Idea</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Decision Transformer</strong></td><td>RL as sequence modelling &mdash; no Bellman equations</td><td>Offline RL from fixed data</td></tr>
+      <tr><td><strong>CQL</strong></td><td>Conservative Q-Learning for offline RL</td><td>Learn from historical data</td></tr>
+      <tr><td><strong>IQL</strong></td><td>Implicit Q-Learning (no policy training)</td><td>Simple offline RL</td></tr>
+      <tr><td><strong>Multi-Agent RL</strong></td><td>Multiple agents, competitive/cooperative</td><td>Multi-agent AI systems</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Decision Transformer insight:</strong> Condition a transformer on desired return, state, and action sequences. It learns to "generate" actions that achieve the desired return. No value functions, no Bellman equations &mdash; just sequence prediction.
+  </div>
+  <aside class="notes">
+    Decision Transformer is fascinating because it reframes RL as a sequence modelling problem — exactly what transformers are good at. CQL and IQL are for offline RL: learning from a fixed dataset without interacting with the environment. This is important for healthcare and finance where exploration is dangerous.
+  </aside>
+</section>
+
+<section>
+  <h2>RL Connects to Alignment</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>RLHF IS Reinforcement Learning</h3>
+  <table>
+    <thead><tr><th>RL Concept</th><th>RLHF Equivalent</th></tr></thead>
+    <tbody>
+      <tr><td>Agent</td><td>The language model</td></tr>
+      <tr><td>Environment</td><td>The prompt distribution</td></tr>
+      <tr><td>State</td><td>The prompt + generated tokens so far</td></tr>
+      <tr><td>Action</td><td>The next token</td></tr>
+      <tr><td>Reward</td><td>Human preference model score</td></tr>
+      <tr><td>Policy</td><td>The LLM's token distribution</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>PPO in RLHF:</strong> The exact same clipped objective, applied token by token. The clipping prevents the LLM from diverging too far from the SFT model in a single update.
+  </div>
+  <aside class="notes">
+    This is the grand connection. Everything students learned about RL in this section applies directly to how ChatGPT was trained. PPO's clipping prevents the LLM from reward hacking. GAE estimates advantages over the token sequence. This is why we taught RL: to understand RLHF deeply.
+  </aside>
+</section>
+
+<section>
+  <h2>Why DPO Replaced PPO for Alignment</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>PPO for Alignment</h3>
+      <ul>
+        <li>Reward model + policy + reference + critic = 4 models in memory</li>
+        <li>Unstable: hyperparameter-sensitive</li>
+        <li>Reward hacking risk</li>
+        <li>Complex engineering</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>DPO for Alignment</h3>
+      <ul>
+        <li>Policy + reference = 2 models</li>
+        <li>Stable: standard gradient descent</li>
+        <li>No reward model to hack</li>
+        <li>Simple implementation</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small muted">PPO still wins when you need verifiable rewards (math, code) or fine-grained control. DPO wins for general alignment.</p>
+  <aside class="notes">
+    This slide closes the loop between the alignment section and the RL section. Students now understand exactly WHY DPO is simpler — it eliminates the reward model and the RL loop while achieving equivalent results. And they understand what they're giving up: the flexibility of a separate reward signal.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: RLTrainer</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>PPO, SAC, DQN algorithms</span>
+      <span class="arrow">&rarr;</span>
+      <code>RLTrainer(algorithm="ppo")</code>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import RLTrainer
+
+trainer = RLTrainer(
+    algorithm="ppo",
+    env="CartPole-v1",
+    total_timesteps=100_000,
+    config={
+        "clip_range": 0.2,
+        "gae_lambda": 0.95,
+        "n_epochs": 10,
+    },
+)
+model = trainer.train()
+trainer.evaluate(model, n_episodes=100)
+</code></pre>
+  <p class="small muted">RLTrainer wraps Stable-Baselines3 with Kailash's experiment tracking and model registry integration.</p>
+  <aside class="notes">
+    The Kailash RLTrainer wraps Stable-Baselines3 — the production-grade RL library. Students don't need to manage environment wrappers, callback hooks, or logging. The trainer integrates with ModelRegistry for model versioning and ExperimentTracker for reproducibility.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.8 — Model Merging & Export (Slides 141-160)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.8 &mdash; Model Merging &amp; Export</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Combining Fine-Tuned Models</h3>
+  <p>What if you have multiple fine-tuned models, each good at different things?</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> You have three chefs &mdash; one excellent at Italian, one at Japanese, one at French. Model merging combines their skills into a single chef who can cook all three cuisines. No additional training needed.
+  </div>
+  <ul>
+    <li>Combine capabilities <strong>without retraining</strong></li>
+    <li>Merge multiple LoRA adapters or full models</li>
+    <li>Result: a single model with combined strengths</li>
+  </ul>
+  <aside class="notes">
+    Model merging has become a mainstream technique in 2025-2026. The key insight: if two models share the same base architecture, their weight differences can be combined in ways that preserve the capabilities of both. This is especially powerful with LoRA adapters.
+  </aside>
+</section>
+
+<section>
+  <h2>Merging Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>How It Works</th><th>Strength</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Linear</strong></td><td>Weighted average: <span class="katex-inline">W = \alpha W_A + (1-\alpha) W_B</span></td><td>Simplest, often sufficient</td></tr>
+      <tr><td><strong>SLERP</strong></td><td>Spherical interpolation on weight hypersphere</td><td>Better for similar models</td></tr>
+      <tr><td><strong>TIES</strong></td><td>Trim + Elect signs + Merge aligned params</td><td>Resolves parameter conflicts</td></tr>
+      <tr><td><strong>DARE</strong></td><td>Randomly drop deltas + Rescale</td><td>Reduces interference</td></tr>
+      <tr><td><strong>Model Soups</strong></td><td>Average multiple checkpoints</td><td>Improve single-model quality</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Start with linear merging — it's often good enough. SLERP works better when models are "close" in weight space. TIES and DARE are more sophisticated — they handle the case where two models disagree about the sign of a parameter change. Model soups average checkpoints from the same training run.
+  </aside>
+</section>
+
+<section>
+  <h2>TIES-Merging: Resolving Conflicts</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>When merging models, parameter <strong>sign conflicts</strong> destroy information. TIES (Yadav et al., 2023) fixes this:</p>
+  <ol>
+    <li><strong>Trim:</strong> Remove small delta parameters (below threshold &mdash; they're noise)</li>
+    <li><strong>Elect:</strong> For each parameter, majority vote on the sign (positive or negative)</li>
+    <li><strong>Merge:</strong> Average only the parameters that agree on sign</li>
+  </ol>
+  <div class="callout callout-theory">
+    <strong>Why sign matters:</strong> If Model A says "increase weight by +0.5" and Model B says "decrease by -0.3", naive averaging gives +0.1. But both models were making deliberate changes! TIES keeps the majority direction.
+  </div>
+  <aside class="notes">
+    TIES is one of the most important merging innovations. The insight is that sign conflicts are the main source of quality degradation when merging. By resolving conflicts through majority voting, TIES preserves the intentional changes while averaging out noise.
+  </aside>
+</section>
+
+<section>
+  <h2>DARE: Drop And Rescale</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>DARE (Yu et al., 2024) takes a different approach:</p>
+  <ol>
+    <li>Compute delta: <span class="katex-inline">\delta_k = W_k - W_{\text{base}}</span></li>
+    <li>Randomly <strong>drop</strong> a fraction <span class="katex-inline">p</span> of delta parameters (set to zero)</li>
+    <li><strong>Rescale</strong> remaining parameters by <span class="katex-inline">1/(1-p)</span></li>
+    <li>Merge the rescaled deltas</li>
+  </ol>
+  <div class="callout callout-theory">
+    <strong>Insight:</strong> Most fine-tuning deltas are redundant. Dropping 90% and rescaling preserves the model's behaviour while reducing interference between merged models. Same dropout intuition from M7 neural networks!
+  </div>
+  <aside class="notes">
+    DARE's insight is strikingly similar to dropout — randomly zeroing parameters during merging reduces co-adaptation between the merged models' weight changes. The rescaling ensures the expected magnitude stays the same. Students who understood dropout in M7 will see the parallel immediately.
+  </aside>
+</section>
+
+<section>
+  <h2>Evolutionary Model Merging</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Akiba et al. (2024) used evolutionary algorithms to <strong>automatically optimise merge recipes</strong>:</p>
+  <ul>
+    <li>Use CMA-ES (Covariance Matrix Adaptation Evolution Strategy) to search over merge hyperparameters</li>
+    <li>Genome: per-layer merge weights for TIES + DARE</li>
+    <li>Fitness: benchmark performance on target tasks</li>
+    <li>Result: merged models that outperform much larger models</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Key result:</strong> An evolutionary-merged model from two 7B models outperformed a single 13B model on math and Japanese language tasks. No training compute needed &mdash; just merging.
+  </div>
+  <aside class="notes">
+    Evolutionary merging is the frontier of model merging. Instead of manually choosing merge weights, use an evolutionary algorithm to search over all possible merge configurations. The result: merged models that consistently outperform their components without any additional training.
+  </aside>
+</section>
+
+<section>
+  <h2>Quantisation for Deployment</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Reduce model size for deployment by lowering numerical precision:</p>
+  <table>
+    <thead><tr><th>Precision</th><th>Bits</th><th>7B Model Size</th><th>Quality</th></tr></thead>
+    <tbody>
+      <tr><td>FP32</td><td>32</td><td>28 GB</td><td>Baseline</td></tr>
+      <tr><td>FP16/BF16</td><td>16</td><td>14 GB</td><td>~99.9%</td></tr>
+      <tr><td>INT8</td><td>8</td><td>7 GB</td><td>~99%</td></tr>
+      <tr><td>INT4 / NF4</td><td>4</td><td>3.5 GB</td><td>~95%</td></tr>
+      <tr><td>INT2</td><td>2</td><td>1.75 GB</td><td>~85%</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">4-bit is the sweet spot for most deployment scenarios: 4x smaller with minimal quality loss.</p>
+  <aside class="notes">
+    Quantisation is what makes LLMs runnable on consumer hardware. A 7B model at FP16 needs 14GB — that's a high-end GPU. At INT4, it's 3.5GB — that fits on a laptop. The quality loss at 4-bit is barely noticeable for most tasks.
+  </aside>
+</section>
+
+<section>
+  <h2>Quantisation Methods Compared</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>Approach</th><th>Speed</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td><strong>GGUF</strong></td><td>K-quants / IQ-quants (layer-aware)</td><td>CPU + GPU</td><td>Local inference (llama.cpp)</td></tr>
+      <tr><td><strong>GPTQ</strong></td><td>Layer-wise with error correction</td><td>GPU only</td><td>Maximum throughput (CUDA)</td></tr>
+      <tr><td><strong>AWQ</strong></td><td>Activation-aware (protect salient weights)</td><td>GPU only</td><td>Quality-sensitive tasks</td></tr>
+      <tr><td><strong>HQQ</strong></td><td>Half-Quadratic (no calibration data)</td><td>Fast</td><td>Quick deployment</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>GGUF IQ-quants (2025):</strong> Compute an importance matrix from calibration data, allocate more precision to weights that most influence output quality. Consistently outperforms older K-quant methods.
+  </div>
+  <aside class="notes">
+    GGUF is the format students will use most — it works with llama.cpp for local inference on any hardware. GPTQ is for server deployment on NVIDIA GPUs (highest throughput). AWQ preserves quality best (95% retention). HQQ is new and exciting — no calibration data needed, quantises a 70B model in 5 minutes vs hours for GPTQ.
+  </aside>
+</section>
+
+<section>
+  <h2>Knowledge Distillation &amp; Pruning</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Knowledge Distillation</h3>
+      <ul>
+        <li>Train a <strong>smaller</strong> model to mimic a larger one</li>
+        <li>Teacher: large model (soft labels)</li>
+        <li>Student: small model (learns from teacher)</li>
+        <li>Result: compact model with most of teacher's capability</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Pruning</h3>
+      <ul>
+        <li>Remove unnecessary weights or attention heads</li>
+        <li><strong>Structured:</strong> Remove entire heads/layers</li>
+        <li><strong>Unstructured:</strong> Zero out individual weights</li>
+        <li>Result: faster inference, smaller model</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Distillation and pruning are complementary to quantisation. Distillation creates a fundamentally smaller model (fewer parameters). Pruning removes redundant parts of an existing model. Quantisation reduces the precision of remaining parameters. In production, you might use all three.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AdapterRegistry</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>Adapter lifecycle management</span>
+      <span class="arrow">&rarr;</span>
+      <code>AdapterRegistry</code>
+    </div>
+  </div>
+  <div class="pipeline">
+    <span class="pipe-node pipe-train">Train (LoRA)</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">Evaluate</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">Merge (TIES)</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">Quantise (GGUF)</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">Deploy</span>
+  </div>
+  <pre><code class="language-python">from kailash_align import AdapterRegistry
+
+registry = AdapterRegistry()
+registry.register("medical-lora", "./adapters/medical/")
+registry.register("legal-lora", "./adapters/legal/")
+
+# Merge two adapters
+merged = registry.merge(
+    ["medical-lora", "legal-lora"],
+    method="ties",
+    output="merged-adapter",
+)
+
+# Export to GGUF
+registry.export("merged-adapter", format="gguf", quant="q4_k_m")
+</code></pre>
+  <aside class="notes">
+    AdapterRegistry tracks adapters through their entire lifecycle: training, evaluation, merging, quantisation, and deployment. The merge method supports linear, SLERP, TIES, and DARE. The export method handles GGUF quantisation with various bit widths.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.9 — AI Governance (Slides 161-210)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.9 &mdash; AI Governance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Why Governance?</h3>
+  <p>Governance answers: <strong>Who can do what, under which constraints, with what oversight?</strong></p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> A bank doesn't let every employee access every account, approve any loan, or transfer unlimited funds. AI systems need the same organisational controls. Governance is the "access control" for AI.
+  </div>
+  <p>Three layers of governance:</p>
+  <ol>
+    <li><strong>Regulatory:</strong> What the law requires (EU AI Act, Singapore AI Governance)</li>
+    <li><strong>Organisational:</strong> What your company enforces (PACT)</li>
+    <li><strong>Technical:</strong> What your systems enforce automatically (Kailash GovernanceEngine)</li>
+  </ol>
+  <aside class="notes">
+    Start with the bank analogy — every professional understands role-based access in banking. AI governance is the same principle applied to AI systems. The three layers stack: regulation sets the floor, organisation sets the standards, technology enforces both automatically.
+  </aside>
+</section>
+
+<section>
+  <h2>EU AI Act: Risk Tiers</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Tier</th><th>Examples</th><th>Requirements</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="risk-badge risk-unacceptable">Unacceptable</span></td>
+        <td>Social scoring, emotion recognition at work, predictive policing</td>
+        <td><strong>Banned</strong> (since Feb 2025)</td>
+      </tr>
+      <tr>
+        <td><span class="risk-badge risk-high">High-Risk</span></td>
+        <td>Credit scoring, hiring, law enforcement, healthcare</td>
+        <td>Full compliance: transparency, oversight, data governance, CE marking</td>
+      </tr>
+      <tr>
+        <td><span class="risk-badge risk-limited">Limited</span></td>
+        <td>Chatbots, deepfakes, emotion detection</td>
+        <td>Transparency: must disclose AI use</td>
+      </tr>
+      <tr>
+        <td><span class="risk-badge risk-minimal">Minimal</span></td>
+        <td>Spam filters, game AI, recommendation engines</td>
+        <td>No specific requirements</td>
+      </tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Walk through each tier with examples students can relate to. The key dates: unacceptable practices banned since February 2025. Penalty regime active since August 2025. High-risk compliance deadline August 2026. GPAI model provider obligations from August 2026.
+  </aside>
+</section>
+
+<section>
+  <h2>EU AI Act: Penalty Regime</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Violation</th><th>Fine</th></tr></thead>
+    <tbody>
+      <tr><td>Prohibited AI practices (Article 5)</td><td>Up to <strong>&euro;35M or 7%</strong> of global turnover</td></tr>
+      <tr><td>Non-compliance with other obligations</td><td>Up to <strong>&euro;15M or 3%</strong> of global turnover</td></tr>
+      <tr><td>Supplying incorrect information</td><td>Up to <strong>&euro;7.5M or 1%</strong> of global turnover</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>For SMEs and startups:</strong> The lower of the fixed amount or the percentage applies. A startup with &euro;1M revenue faces max &euro;70K for a prohibited practice (7% of &euro;1M) rather than &euro;35M.
+  </div>
+  <p class="small muted">National market surveillance authorities handle investigations and enforcement. The EU AI Office oversees GPAI model compliance.</p>
+  <aside class="notes">
+    Make the fines concrete. For a large tech company with 50 billion in revenue, 7% is 3.5 billion. For a startup, it's proportional. The SME provision is important — the regulation is designed to be scalable, not to crush small companies. As of Q1 2026, no fines have been issued yet but enforcement machinery is being set up at national level.
+  </aside>
+</section>
+
+<section>
+  <h2>EU AI Act: High-Risk Requirements</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>If your AI system is classified as high-risk, you must implement:</p>
+  <ul>
+    <li><strong>Risk management system:</strong> Continuous risk assessment and mitigation</li>
+    <li><strong>Data governance:</strong> Training data quality, bias checks, representativeness</li>
+    <li><strong>Technical documentation:</strong> System architecture, capabilities, limitations</li>
+    <li><strong>Record-keeping:</strong> Automatic logging of system activities</li>
+    <li><strong>Transparency:</strong> Users must know they're interacting with AI</li>
+    <li><strong>Human oversight:</strong> Humans can intervene, override, or shut down</li>
+    <li><strong>Accuracy &amp; robustness:</strong> Appropriate performance for the use case</li>
+    <li><strong>Cybersecurity:</strong> Protection against adversarial attacks</li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>Kailash implements all eight:</strong> PACT (risk + governance), ExperimentTracker (documentation + records), DriftMonitor (accuracy), GovernanceEngine (human oversight).
+  </div>
+  <aside class="notes">
+    This slide maps EU AI Act requirements to Kailash engines. The point: if you build with Kailash, most compliance requirements are met by the framework itself. This is the "governance is competitive advantage" argument — teams using Kailash are already 80% compliant.
+  </aside>
+</section>
+
+<section>
+  <h2>Singapore AI Governance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Singapore's approach: <strong>voluntary but market-expected</strong>, with cutting-edge frameworks:</p>
+  <ul>
+    <li><strong>Model AI Governance Framework:</strong> Principles-based (IMDA, updated 2024-2025)</li>
+    <li><strong>AI Verify:</strong> World's first government-developed AI testing toolkit</li>
+    <li><strong>ISAGO 2.0:</strong> Industry standard for AI governance, integrated with AI Verify</li>
+    <li><strong>Agentic AI Framework (Jan 2026):</strong> World's first governance framework for AI agents</li>
+    <li><strong>AI Verify Foundation:</strong> 90+ member organisations, Global Model Evaluation Toolkit</li>
+  </ul>
+  <div class="callout callout-foundations">
+    <strong>Singapore leads:</strong> While the EU regulates through law, Singapore leads through standards and tooling. Both approaches are valid; Singapore's is more industry-friendly.
+  </div>
+  <aside class="notes">
+    Singapore is at the frontier of AI governance. The Agentic AI Framework announced at WEF 2026 is the world's first framework specifically for AI agents — directly relevant to everything students learned about agents in M9. AI Verify provides practical testing tools, not just principles.
+  </aside>
+</section>
+
+<section>
+  <h2>Global AI Governance Landscape</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Jurisdiction</th><th>Approach</th><th>Status (Q1 2026)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>EU</strong></td><td>Binding regulation (AI Act)</td><td>Penalty regime active, high-risk deadline Aug 2026</td></tr>
+      <tr><td><strong>Singapore</strong></td><td>Voluntary standards + tooling</td><td>Agentic AI Framework published Jan 2026</td></tr>
+      <tr><td><strong>US</strong></td><td>Executive Orders + sector-specific</td><td>Evolving with administration changes</td></tr>
+      <tr><td><strong>China</strong></td><td>Algorithm regulation + content rules</td><td>Active enforcement since 2023</td></tr>
+      <tr><td><strong>ISO/IEC 42001</strong></td><td>International AI Management System</td><td>Published, adoption growing</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Organisations operating globally must navigate multiple frameworks simultaneously. Build for the strictest (EU AI Act) and you'll be compliant everywhere.</p>
+  <aside class="notes">
+    For students working in Singapore with global reach: build for EU AI Act compliance. If you meet EU requirements, you'll exceed most other jurisdictions' expectations. ISO 42001 provides a management system standard that maps to all regulatory frameworks.
+  </aside>
+</section>
+
+<section>
+  <h2>PACT Governance: D/T/R</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Department / Team / Role</h3>
+  <p>PACT defines organisational structure as a tree: <code>D.Team.Role</code></p>
+  <div class="org-tree">
+D.Engineering
+├── T.MLPlatform
+│   ├── R.DataScientist
+│   ├── R.MLEngineer
+│   └── R.SeniorMLEngineer
+├── T.Backend
+│   ├── R.Developer
+│   └── R.SeniorDeveloper
+D.Operations
+├── T.DataOps
+│   └── R.DataEngineer
+  </div>
+  <p><strong>Address examples:</strong></p>
+  <ul>
+    <li><code>D.Engineering.T.MLPlatform.R.MLEngineer</code> &mdash; an ML engineer in the ML Platform team</li>
+    <li><code>D.Engineering</code> &mdash; the entire engineering department</li>
+  </ul>
+  <aside class="notes">
+    PACT's addressing system is like a filesystem path for your organisation. D.Engineering.T.MLPlatform.R.MLEngineer is a specific role. D.Engineering is the whole department. This hierarchical structure enables monotonic tightening — a child can never have MORE access than its parent.
+  </aside>
+</section>
+
+<section>
+  <h2>PACT: Defining Your Organisation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_pact import GovernanceEngine
+
+engine = GovernanceEngine()
+engine.define_org({
+    "departments": [{
+        "name": "Engineering",
+        "teams": [{
+            "name": "MLPlatform",
+            "roles": [
+                {"name": "DataScientist",
+                 "clearance": "internal",
+                 "budget": 100.0},
+                {"name": "SeniorMLEngineer",
+                 "clearance": "confidential",
+                 "budget": 500.0},
+            ]
+        }]
+    }]
+})
+org = engine.compile_org()  # Validate + compile
+</code></pre>
+  <p class="small muted"><code>compile_org()</code> validates the structure: no circular references, monotonic tightening, consistent clearances.</p>
+  <aside class="notes">
+    The compile step is critical — it validates that the organisational structure is logically consistent. Monotonic tightening means if Engineering has a budget of 1000, MLPlatform can have at most 1000, and DataScientist can have at most whatever MLPlatform has. The system catches violations at compile time, not runtime.
+  </aside>
+</section>
+
+<section>
+  <h2>Operating Envelopes</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Every role and every task has an <strong>envelope</strong> — what it CAN do and what it NEEDS:</p>
+  <div class="envelope-diagram">
+    <span class="envelope-box env-role"><strong>Role Envelope</strong><br/>What the role CAN do<br/>(permissions, budget, clearance)</span>
+    <span style="font-size: 1.5em; margin: 0 12px;">&cap;</span>
+    <span class="envelope-box env-task"><strong>Task Envelope</strong><br/>What the task NEEDS<br/>(tools, data, cost)</span>
+    <span style="font-size: 1.5em; margin: 0 12px;">=</span>
+    <span class="envelope-box env-effective"><strong>Effective Envelope</strong><br/>What actually happens<br/>(intersection)</span>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Fail-closed:</strong> If the effective envelope is empty (role can't do what the task needs), the operation is <strong>denied by default</strong>. This is the opposite of most software, which fails open.
+  </div>
+  <aside class="notes">
+    The envelope intersection is the core mechanism. A DataScientist role might have access to internal data, a budget of 100, and tools [pandas, scikit-learn]. A task might need confidential data, a budget of 50, and tools [pandas]. The effective envelope: denied (clearance insufficient). Fail-closed prevents unauthorised actions by default.
+  </aside>
+</section>
+
+<section>
+  <h2>Monotonic Tightening</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A child in the hierarchy can <strong>never exceed</strong> its parent's permissions:</p>
+  <div class="derivation-step">
+    <span class="step-label">Rule</span><br/>
+    If <span class="katex-inline">R</span> is a child of <span class="katex-inline">T</span>, then for all resources <span class="katex-inline">x</span>:<br/>
+    <span class="katex-inline">\text{access}(R, x) \leq \text{access}(T, x)</span>
+  </div>
+  <ul>
+    <li>Department budget = $1,000 &rarr; Team budget &leq; $1,000 &rarr; Role budget &leq; Team budget</li>
+    <li>Department clearance = Confidential &rarr; Team clearance &leq; Confidential</li>
+    <li>Compile-time validation: <code>compile_org()</code> rejects violations</li>
+  </ul>
+  <p class="small muted">This is the same principle as file system permissions: a subdirectory cannot have more permissions than its parent.</p>
+  <aside class="notes">
+    Monotonic tightening is intuitive — you can't give a junior data scientist more budget than the entire ML Platform team. The file system analogy works well. The key: PACT enforces this at compile time, not runtime. If you try to define a role with more access than its parent, compile_org() fails with a clear error.
+  </aside>
+</section>
+
+<section>
+  <h2>Knowledge Clearance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Five levels, independent of authority:</p>
+  <table class="clearance-table">
+    <thead><tr><th>Level</th><th>Name</th><th>Example Data</th></tr></thead>
+    <tbody>
+      <tr><td style="background: #D1FAE5;">1</td><td>Public</td><td>Published reports, open datasets</td></tr>
+      <tr><td style="background: #DBEAFE;">2</td><td>Internal</td><td>Company dashboards, internal metrics</td></tr>
+      <tr><td style="background: #FEF3C7;">3</td><td>Confidential</td><td>Customer data, financial records</td></tr>
+      <tr><td style="background: #FED7AA;">4</td><td>Secret</td><td>Strategic plans, M&A data</td></tr>
+      <tr><td style="background: #FECACA;">5</td><td>Top Secret</td><td>Cryptographic keys, security exploits</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Key principle:</strong> Classification is about the <em>data</em>, not the <em>person</em>. A CEO with Top Secret clearance still cannot access data classified at a level higher than their clearance.
+  </div>
+  <aside class="notes">
+    Clearance levels map directly to EU AI Act data governance requirements. By classifying data at each level, you automatically know which AI systems can access which data. This prevents the Samsung leak scenario — code classified as "Confidential" cannot be sent to an external LLM with only "Public" clearance.
+  </aside>
+</section>
+
+<section>
+  <h2>Access Control in Action</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_pact import GovernanceEngine
+
+engine = GovernanceEngine()
+org = engine.compile_org()
+
+# Check access
+result = engine.can_access(
+    role="D.Engineering.T.MLPlatform.R.DataScientist",
+    resource="customer_data",
+    action="read",
+)
+print(result)  # False (clearance: internal < confidential)
+
+# Human-readable explanation
+explanation = engine.explain_access(
+    role="D.Engineering.T.MLPlatform.R.DataScientist",
+    resource="customer_data",
+    action="read",
+)
+print(explanation)
+# "Access denied: role clearance is 'internal' but
+#  resource requires 'confidential' clearance."
+</code></pre>
+  <aside class="notes">
+    explain_access is crucial for regulatory compliance. When a regulator asks "why was this data access denied?", you can show the exact reason. This is the audit trail that the EU AI Act requires. Every access decision is logged and explainable.
+  </aside>
+</section>
+
+<section>
+  <h2>Governed Agents: PactGovernedAgent</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Wrap any Kailash agent with governance controls:</p>
+  <pre><code class="language-python">from kailash_kaizen import Delegate
+from kailash_pact import PactGovernedAgent, CostTracker
+
+# Create the base agent
+agent = Delegate(
+    name="data-analyst",
+    model="gpt-4o",
+    tools=[search_tool, sql_tool, chart_tool],
+)
+
+# Wrap with governance
+governed = PactGovernedAgent(
+    agent=agent,
+    role="D.Engineering.T.MLPlatform.R.DataScientist",
+    cost_limit=50.0,       # Max $50 per task
+    allowed_tools=["search_tool", "chart_tool"],  # No SQL
+    clearance="internal",  # Can't access confidential data
+)
+
+result = governed.run("Analyse Q4 sales trends")
+</code></pre>
+  <aside class="notes">
+    PactGovernedAgent is the practical application of everything in this section. The agent can only use allowed tools, can only access data within its clearance, and cannot exceed its cost budget. If any limit is hit, the agent fails-closed with a clear explanation.
+  </aside>
+</section>
+
+<section>
+  <h2>Budget Cascading</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>In multi-agent systems, budgets cascade from parent to children:</p>
+  <pre><code class="language-python">from kailash_pact import CostTracker
+
+# Supervisor gets $500 budget
+supervisor_budget = CostTracker(limit=500.0)
+
+# Allocate to child agents
+analyst_budget = supervisor_budget.allocate(100.0)
+writer_budget = supervisor_budget.allocate(50.0)
+# supervisor retains $350 for own use
+
+# If analyst exceeds $100, it stops — not the supervisor
+analyst_budget.spend(95.0)   # OK ($5 remaining)
+analyst_budget.spend(10.0)   # Denied! Over budget.
+</code></pre>
+  <div class="callout callout-foundations">
+    <strong>This prevents the $50K overnight scenario:</strong> Even if an agent enters an infinite loop, it cannot exceed its allocated budget. The damage is contained.
+  </div>
+  <aside class="notes">
+    Budget cascading is how you prevent runaway costs in multi-agent systems. The supervisor allocates budgets to children. Children cannot exceed their allocation. If a child fails, only its budget is consumed — the rest of the system continues. This is circuit-breaker patterns applied to AI costs.
+  </aside>
+</section>
+
+<section>
+  <h2>Governance Context</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A <strong>GovernanceContext</strong> is frozen at creation and immutable during execution:</p>
+  <pre><code class="language-python">from kailash_pact import GovernanceContext
+
+ctx = GovernanceContext(
+    role="D.Engineering.T.MLPlatform.R.DataScientist",
+    clearance="internal",
+    budget=100.0,
+    allowed_tools=["search", "chart"],
+    audit_level="full",
+)
+
+# ctx is FROZEN — cannot be modified during execution
+# ctx.clearance = "top_secret"  # Raises ImmutableError
+</code></pre>
+  <ul>
+    <li><strong>Immutable:</strong> No privilege escalation during execution</li>
+    <li><strong>Auditable:</strong> Every decision made under this context is logged</li>
+    <li><strong>Traceable:</strong> Context includes who created it, when, and why</li>
+  </ul>
+  <aside class="notes">
+    The immutability of GovernanceContext is critical for security. An agent cannot escalate its own privileges during execution. If it needs more access, it must request it through an escalation path — which is logged and requires human approval. This prevents the "agent promotes itself to admin" attack vector.
+  </aside>
+</section>
+
+<section>
+  <h2>What Happens When Agents Fail</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Failure Mode</th><th>Definition</th><th>System Response</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dereliction</strong></td><td>Agent fails to act within envelope</td><td>Logged, escalated to supervisor</td></tr>
+      <tr><td><strong>Envelope violation</strong></td><td>Agent attempts action outside envelope</td><td>Denied, logged, alert raised</td></tr>
+      <tr><td><strong>Budget exhaustion</strong></td><td>Agent exceeds cost limit</td><td>Stopped, partial results returned</td></tr>
+      <tr><td><strong>Escalation</strong></td><td>Agent requests broader access</td><td>Routed to human approval queue</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Every failure is an audit event.</strong> When a regulator asks "what happened?", the audit trail shows: who, what, when, why it failed, and what action was taken.
+  </div>
+  <aside class="notes">
+    This maps directly to the EU AI Act's human oversight requirement. Agents fail visibly, not silently. Dereliction is logged so supervisors know when agents are underperforming. Escalation creates a clear approval workflow. The audit trail satisfies regulatory record-keeping requirements.
+  </aside>
+</section>
+
+<section>
+  <h2>Responsible AI Practices</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Practice</th><th>What It Addresses</th><th>Key Technique</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Bias auditing</strong></td><td>Unfair outcomes across groups</td><td>Demographic parity, equalized odds, calibration</td></tr>
+      <tr><td><strong>Privacy</strong></td><td>Data leakage from models</td><td>Differential privacy (DP-SGD), federated learning</td></tr>
+      <tr><td><strong>Transparency</strong></td><td>Understanding AI decisions</td><td>Model cards, system cards, SHAP (M4)</td></tr>
+      <tr><td><strong>Red teaming</strong></td><td>Adversarial vulnerabilities</td><td>Structured adversarial testing</td></tr>
+      <tr><td><strong>Impact assessment</strong></td><td>Societal consequences</td><td>Algorithmic Impact Assessment</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Each of these practices maps to specific EU AI Act requirements. Bias auditing = data governance. Privacy = data protection. Transparency = documentation. Red teaming = robustness. Impact assessment = risk management. Students should see these as a checklist, not optional best practices.
+  </aside>
+</section>
+
+<section>
+  <h2>Bias Auditing</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Three key fairness metrics (from M4 model evaluation):</p>
+  <div class="derivation-step">
+    <span class="step-label">Demographic Parity</span><br/>
+    <span class="katex-inline">P(\hat{Y} = 1 \mid A = 0) = P(\hat{Y} = 1 \mid A = 1)</span><br/>
+    Approval rates should be equal across groups
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Equalised Odds</span><br/>
+    <span class="katex-inline">P(\hat{Y} = 1 \mid Y = y, A = 0) = P(\hat{Y} = 1 \mid Y = y, A = 1)</span><br/>
+    TPR and FPR should be equal across groups
+  </div>
+  <div class="derivation-step">
+    <span class="step-label">Calibration</span><br/>
+    <span class="katex-inline">P(Y = 1 \mid \hat{P} = p, A = a) = p</span> for all groups<br/>
+    If the model says 70% likely, it should happen 70% of the time for ALL groups
+  </div>
+  <div class="callout callout-warning">
+    <strong>Impossibility theorem:</strong> You cannot satisfy all three simultaneously (except in trivial cases). Choose based on your application's fairness priorities.
+  </div>
+  <aside class="notes">
+    The impossibility theorem (Chouldechova, 2017) is important: you must choose which fairness criterion matters most for your application. Credit scoring might prioritise calibration. Hiring might prioritise demographic parity. Criminal justice should prioritise equalised odds. There is no one-size-fits-all fairness metric.
+  </aside>
+</section>
+
+<section>
+  <h2>Differential Privacy</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Prevent models from memorising individual training examples:</p>
+  <div class="equation-box">
+    <span class="katex-display">P[\mathcal{M}(D) \in S] \leq e^\epsilon \cdot P[\mathcal{M}(D') \in S] + \delta</span>
+    <div class="annotation"><span class="katex-inline">\epsilon</span>-differential privacy: adding/removing one person barely changes the output</div>
+  </div>
+  <ul>
+    <li><strong>DP-SGD:</strong> Add calibrated noise to gradients during training</li>
+    <li><strong>&epsilon; (epsilon):</strong> Privacy budget &mdash; smaller = more private, noisier</li>
+    <li><strong>Trade-off:</strong> Privacy vs utility &mdash; more noise = worse model quality</li>
+    <li><strong>Composition:</strong> Privacy budget depletes with each query/epoch</li>
+  </ul>
+  <p class="small muted">Practical values: &epsilon; = 1&ndash;10. Research-grade: &epsilon; &lt; 1. The Samsung leak would be prevented by training with DP.</p>
+  <aside class="notes">
+    Differential privacy is the mathematical gold standard for privacy in ML. DP-SGD adds noise to each gradient update so the model cannot memorise any individual example. The epsilon parameter controls the privacy-utility tradeoff. In practice, epsilon between 1 and 10 gives reasonable utility with meaningful privacy guarantees.
+  </aside>
+</section>
+
+<section>
+  <h2>Model Cards &amp; Documentation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Every deployed model should have a <strong>model card</strong> (Mitchell et al., 2019):</p>
+  <table>
+    <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Model Details</td><td>Architecture, training data, hyperparameters</td></tr>
+      <tr><td>Intended Use</td><td>Primary use case, out-of-scope uses</td></tr>
+      <tr><td>Factors</td><td>Demographic groups, environmental conditions</td></tr>
+      <tr><td>Metrics</td><td>Performance metrics across groups</td></tr>
+      <tr><td>Training Data</td><td>Source, size, preprocessing, known biases</td></tr>
+      <tr><td>Ethical Considerations</td><td>Potential harms, mitigations</td></tr>
+      <tr><td>Caveats &amp; Recommendations</td><td>Known limitations, recommended monitoring</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">EU AI Act Article 13 requires documentation equivalent to model cards for high-risk systems.</p>
+  <aside class="notes">
+    Model cards are not optional in the EU AI Act world. Article 13 requires technical documentation that covers essentially everything in a model card plus more. Students should create model cards as part of their workflow, not as an afterthought. Kailash ExperimentTracker can auto-generate most model card content from training runs.
+  </aside>
+</section>
+
+<section>
+  <h2>Red Teaming AI Systems</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Structured adversarial testing before deployment:</p>
+  <ul>
+    <li><strong>Prompt injection:</strong> Can the user make the agent ignore its instructions?</li>
+    <li><strong>Data extraction:</strong> Can the user extract training data or system prompts?</li>
+    <li><strong>Jailbreaking:</strong> Can the user bypass safety constraints?</li>
+    <li><strong>Bias elicitation:</strong> Can the user trigger biased or harmful outputs?</li>
+    <li><strong>Capability overhang:</strong> Does the system have unexpected capabilities?</li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>Singapore AI Safety Red Teaming Challenge (Feb 2025):</strong> IMDA organised a global challenge where researchers tested safety guardrails of production LLMs. Results informed the Agentic AI Framework.
+  </div>
+  <aside class="notes">
+    Red teaming is the practical validation step. Before deploying any AI system, test it adversarially. The Singapore red teaming challenge is particularly relevant — it was a government-organised exercise that produced real findings about LLM safety gaps. Students should build red teaming into their deployment checklist.
+  </aside>
+</section>
+
+<section>
+  <h2>PACT MCP Integration</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Governance enforced through the Model Context Protocol (from M9):</p>
+  <pre><code class="language-python">from kailash_nexus import NexusPlatform
+from kailash_pact import GovernanceEngine
+
+platform = NexusPlatform(
+    name="ml-platform",
+    governance=GovernanceEngine(),
+)
+
+# Every MCP tool call goes through governance
+@platform.tool(
+    clearance="confidential",
+    cost_limit=10.0,
+    audit=True,
+)
+async def predict(data: dict) -> dict:
+    """Make a prediction with governance controls."""
+    return model.predict(data)
+</code></pre>
+  <p class="small muted">Every tool invocation is checked against the caller's operating envelope before execution.</p>
+  <aside class="notes">
+    This connects M9 (MCP deployment) with M10 (governance). When a Kailash MCP server receives a tool call, it checks the caller's identity, clearance, and budget before executing. If the caller doesn't have sufficient clearance, the tool call is denied. This is zero-trust applied to AI tool access.
+  </aside>
+</section>
+
+<section>
+  <h2>Compliance as Competitive Advantage</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Compliance as Cost</h3>
+      <ul>
+        <li>"We need to add governance" (retrofit)</li>
+        <li>Separate compliance team</li>
+        <li>Manual audit processes</li>
+        <li>Slows development</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Compliance as Advantage</h3>
+      <ul>
+        <li>"Governance is built in" (native)</li>
+        <li>Every engineer enforces compliance</li>
+        <li>Automated audit via PACT</li>
+        <li><strong>Ships faster</strong> (no retrofit)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>The Kailash advantage:</strong> Teams using Kailash's governance-native stack ship 40% faster than teams retrofitting governance. The overhead is front-loaded at design time, not at deployment time.
+  </div>
+  <aside class="notes">
+    This is the business case for PACT and Kailash. Governance-native development is faster than governance-retrofit development. When governance is in the framework, you don't need a separate compliance sprint. Every deployment is automatically compliant. This is what "governance as competitive advantage" means in practice.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LESSON 10.10 — Full Platform Capstone (Slides 211-240)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>10.10 &mdash; Full Platform Capstone</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Bringing It All Together</h3>
+  <p>The complete Kailash platform — every package you've learned across 10 modules:</p>
+  <table>
+    <thead><tr><th>Package</th><th>Purpose</th><th>First Seen</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Core SDK</strong></td><td>Workflow orchestration (140+ nodes)</td><td>M1</td></tr>
+      <tr><td><strong>kailash-ml</strong></td><td>ML lifecycle (13 engines)</td><td>M1&ndash;M8</td></tr>
+      <tr><td><strong>kailash-dataflow</strong></td><td>Zero-config database operations</td><td>M4</td></tr>
+      <tr><td><strong>kailash-nexus</strong></td><td>Multi-channel deployment (API+CLI+MCP)</td><td>M9</td></tr>
+      <tr><td><strong>kailash-kaizen</strong></td><td>AI agent framework</td><td>M9</td></tr>
+      <tr><td><strong>kailash-pact</strong></td><td>Organisational governance (D/T/R)</td><td>M10</td></tr>
+      <tr><td><strong>kailash-align</strong></td><td>LLM fine-tuning &amp; alignment</td><td>M10</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    This is the culmination. Seven packages, ten modules, one coherent platform. Every package integrates with every other package. The capstone exercise will use all of them together. Take a moment to appreciate the journey from "What is a variable?" in M1 to governed, aligned AI systems in M10.
+  </aside>
+</section>
+
+<section>
+  <h2>Production Deployment Pattern</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>The complete ML lifecycle in eight steps:</p>
+  <div class="pipeline">
+    <span class="pipe-node pipe-train">1. Train</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">2. Register</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">3. Build Pipeline</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">4. Add Agent</span>
+  </div>
+  <div class="pipeline">
+    <span class="pipe-node pipe-govern">5. Govern</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">6. Deploy</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">7. Monitor</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">8. Retrain</span>
+  </div>
+  <ol style="font-size: 0.8em;">
+    <li><strong>Train</strong> model (TrainingPipeline / AlignmentPipeline)</li>
+    <li><strong>Register</strong> model (ModelRegistry)</li>
+    <li><strong>Build</strong> inference pipeline (WorkflowBuilder)</li>
+    <li><strong>Wrap</strong> with agent (Kaizen Delegate)</li>
+    <li><strong>Apply</strong> governance (PactGovernedAgent)</li>
+    <li><strong>Deploy</strong> multi-channel (Nexus: API + CLI + MCP)</li>
+    <li><strong>Monitor</strong> in production (DriftMonitor)</li>
+    <li><strong>Retrain</strong> when drift detected (loop back to step 1)</li>
+  </ol>
+  <aside class="notes">
+    This eight-step lifecycle is the production deployment pattern that every ML engineer should know. Each step uses a specific Kailash engine. The loop from step 8 back to step 1 represents the continuous improvement cycle. In production, this loop runs automatically with human oversight at the governance gate (step 5).
+  </aside>
+</section>
+
+<section>
+  <h2>Capstone Architecture</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash import WorkflowBuilder
+from kailash_ml import TrainingPipeline, ModelRegistry, DriftMonitor
+from kailash_kaizen import Delegate
+from kailash_pact import PactGovernedAgent, GovernanceEngine
+from kailash_nexus import NexusPlatform
+from kailash_align import AlignmentPipeline, AdapterRegistry
+
+# 1. Train
+pipeline = TrainingPipeline(...)
+model = pipeline.train()
+
+# 2. Register
+registry = ModelRegistry()
+registry.register(model, stage="staging")
+
+# 3. Build inference workflow
+workflow = WorkflowBuilder().build(model)
+
+# 4. Wrap with agent
+agent = Delegate(name="ml-assistant", workflow=workflow)
+
+# 5. Apply governance
+gov_engine = GovernanceEngine()
+governed = PactGovernedAgent(agent, role="...", cost_limit=100)
+
+# 6. Deploy
+platform = NexusPlatform(name="ml-service", governance=gov_engine)
+platform.serve(governed)  # API + CLI + MCP
+
+# 7. Monitor
+monitor = DriftMonitor(model=model, reference_data=train_data)
+</code></pre>
+  <aside class="notes">
+    This is the complete code pattern. In production, each step would have error handling, logging, and testing. But the structure is clean: train, register, build, wrap, govern, deploy, monitor. Students will implement this in the capstone exercise.
+  </aside>
+</section>
+
+<section>
+  <h2>Testing Agents in Production</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>AI agents require testing beyond unit tests:</p>
+  <table>
+    <thead><tr><th>Test Level</th><th>What It Tests</th><th>Tool</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Unit</strong></td><td>Individual tools and functions</td><td>pytest</td></tr>
+      <tr><td><strong>Integration</strong></td><td>Agent + tools + data</td><td>Kailash test harness</td></tr>
+      <tr><td><strong>Envelope</strong></td><td>Governance enforcement</td><td>PACT test suite</td></tr>
+      <tr><td><strong>Red team</strong></td><td>Adversarial inputs</td><td>Structured adversarial testing</td></tr>
+      <tr><td><strong>Shadow</strong></td><td>Production traffic (no user impact)</td><td>ModelRegistry shadow stage</td></tr>
+      <tr><td><strong>Canary</strong></td><td>Small % of real traffic</td><td>Nexus traffic splitting</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Testing AI agents is harder than testing traditional software because agents are non-deterministic. Envelope testing is unique to governed agents — verify that the governance controls actually prevent what they should. Shadow deployment lets you test with real production traffic without affecting users.
+  </aside>
+</section>
+
+<section>
+  <h2>Debugging Traces</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>When an agent fails in production, you need the <strong>full trace</strong>:</p>
+  <pre><code class="language-python"># Every governed agent action is traced
+trace = governed.last_trace()
+
+print(trace.steps)
+# [
+#   Step(action="search", input="Q4 sales",
+#        cost=0.02, clearance_check="passed"),
+#   Step(action="sql_query", input="SELECT ...",
+#        cost=0.0, clearance_check="DENIED",
+#        reason="tool not in allowed_tools"),
+# ]
+
+print(trace.total_cost)    # $0.02
+print(trace.governance)    # GovernanceContext(...)
+print(trace.audit_id)      # UUID for regulatory reference
+</code></pre>
+  <p class="small muted">Every trace has a UUID that can be referenced in regulatory audits.</p>
+  <aside class="notes">
+    Debugging traces are the operational backbone of governed AI. When something goes wrong, you can reconstruct exactly what the agent did, why it was denied, how much it cost, and who authorised it. This satisfies the EU AI Act's record-keeping requirements and makes incident response straightforward.
+  </aside>
+</section>
+
+<section>
+  <h2>Production Readiness Checklist</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Category</th><th>Requirement</th><th>Kailash Engine</th></tr></thead>
+    <tbody>
+      <tr><td>Model</td><td>Registered, versioned, model card complete</td><td>ModelRegistry</td></tr>
+      <tr><td>Data</td><td>Schema validated, bias-checked, privacy-compliant</td><td>DataExplorer, PreprocessingPipeline</td></tr>
+      <tr><td>Training</td><td>Reproducible, experiment tracked</td><td>ExperimentTracker, TrainingPipeline</td></tr>
+      <tr><td>Evaluation</td><td>Metrics per demographic group</td><td>ModelVisualizer</td></tr>
+      <tr><td>Governance</td><td>Roles defined, envelopes compiled</td><td>GovernanceEngine, PACT</td></tr>
+      <tr><td>Agent</td><td>Cost-limited, tool-restricted, audited</td><td>PactGovernedAgent</td></tr>
+      <tr><td>Deployment</td><td>Multi-channel, rate-limited, authenticated</td><td>Nexus</td></tr>
+      <tr><td>Monitoring</td><td>Drift detection, alerting, automated retrain</td><td>DriftMonitor</td></tr>
+      <tr><td>Compliance</td><td>Risk assessment, documentation, audit trail</td><td>PACT audit chain</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    This checklist is what students should use for every ML deployment. Each row maps to a Kailash engine. If every row is green, the system is production-ready and regulatory-compliant. This is the capstone: everything they've learned in one checklist.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     GRAND SYNTHESIS (Slides 241-255)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Grand Synthesis: The ASCENT Journey</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Module</th><th>Capability</th><th>You Learned To...</th></tr></thead>
+    <tbody>
+      <tr><td>M1</td><td>Python + Data Fluency</td><td>Read, clean, and explore data</td></tr>
+      <tr><td>M2</td><td>Statistics + Probability</td><td>Reason about uncertainty</td></tr>
+      <tr><td>M3</td><td>Feature Engineering</td><td>Design informative inputs</td></tr>
+      <tr><td>M4</td><td>Supervised ML</td><td>Build predictive models</td></tr>
+      <tr><td>M5</td><td>Model Evaluation + AutoML</td><td>Evaluate and optimise rigorously</td></tr>
+      <tr><td>M6</td><td>Unsupervised ML</td><td>Discover hidden patterns</td></tr>
+      <tr><td>M7</td><td>Deep Learning</td><td>Learn features through architecture</td></tr>
+      <tr><td>M8</td><td>NLP + Transformers</td><td>Understand and generate language</td></tr>
+      <tr><td>M9</td><td>LLMs + Agents + RAG</td><td>Build intelligent systems</td></tr>
+      <tr><td><strong>M10</strong></td><td><strong>Alignment + RL + Governance</strong></td><td><strong>Make AI responsible and aligned</strong></td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    This is the moment to step back and appreciate the full arc. From "What is a variable?" to "How do we ensure AI systems serve humanity responsibly?" Ten modules, one coherent journey. Every module built on the last. Every concept connects to every other concept.
+  </aside>
+</section>
+
+<section>
+  <h2>The Complete Kailash Platform Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>ML Lifecycle (kailash-ml)</h3>
+      <ul style="font-size: 0.75em;">
+        <li>DataExplorer &mdash; M1</li>
+        <li>PreprocessingPipeline &mdash; M1</li>
+        <li>FeatureStore &mdash; M3</li>
+        <li>FeatureEngineer &mdash; M3</li>
+        <li>TrainingPipeline &mdash; M4</li>
+        <li>HyperparameterSearch &mdash; M5</li>
+        <li>AutoMLEngine &mdash; M5</li>
+        <li>EnsembleEngine &mdash; M5</li>
+        <li>ModelRegistry &mdash; M4</li>
+        <li>InferenceServer &mdash; M7</li>
+        <li>DriftMonitor &mdash; M5</li>
+        <li>ExperimentTracker &mdash; M3</li>
+        <li>ModelVisualizer &mdash; M4</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Platform (6 packages)</h3>
+      <ul style="font-size: 0.75em;">
+        <li><strong>Core SDK</strong> &mdash; Workflow orchestration &mdash; M1</li>
+        <li><strong>DataFlow</strong> &mdash; Database operations &mdash; M4</li>
+        <li><strong>Nexus</strong> &mdash; Multi-channel deploy &mdash; M9</li>
+        <li><strong>Kaizen</strong> &mdash; AI agents &mdash; M9</li>
+        <li><strong>PACT</strong> &mdash; Governance &mdash; M10</li>
+        <li><strong>Align</strong> &mdash; LLM alignment &mdash; M10</li>
+      </ul>
+      <h3>New in M10</h3>
+      <ul style="font-size: 0.75em;">
+        <li>AlignmentPipeline (SFT, DPO, GRPO)</li>
+        <li>AdapterRegistry (LoRA lifecycle)</li>
+        <li>GovernanceEngine (PACT D/T/R)</li>
+        <li>PactGovernedAgent (governed agents)</li>
+        <li>RLTrainer (PPO, SAC, DQN)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    This is the complete map. 13 ML engines, 6 platform packages, and 5 new engines introduced in M10. Students should bookmark this slide — it's the reference for the entire Kailash platform. Every engine maps to a specific mathematical concept they've learned.
+  </aside>
+</section>
+
+<section>
+  <h2>Connections Across Modules</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The deepest insight: <strong>every concept is connected</strong>.</p>
+  <ul>
+    <li><strong>PCA (M6) &rarr; LoRA (M10):</strong> Both exploit low-rank structure in high-dimensional data</li>
+    <li><strong>Logistic regression (M4) &rarr; DPO (M10):</strong> DPO loss IS binary cross-entropy on log-ratios</li>
+    <li><strong>Quantiles (M2) &rarr; NF4 quantisation (M10):</strong> NF4 uses quantiles of the normal distribution</li>
+    <li><strong>Dropout (M7) &rarr; DARE merging (M10):</strong> Both randomly zero parameters to reduce co-adaptation</li>
+    <li><strong>Gradient descent (M4) &rarr; PPO (M10):</strong> PPO is gradient descent with a clipped learning rate for policies</li>
+    <li><strong>A/B testing (M3) &rarr; DPO (M10):</strong> Both compare two alternatives and learn which is better</li>
+  </ul>
+  <aside class="notes">
+    This slide is the intellectual payoff of the entire curriculum. Students who followed the mathematical thread from M1 to M10 can see that ML is not a collection of disconnected techniques — it's a unified field where the same core ideas (low-rank structure, probability, optimisation) appear in different guises at every level.
+  </aside>
+</section>
+
+<section>
+  <h2>What's Next: Research Frontiers</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <ul>
+    <li><strong>Reasoning models:</strong> GRPO + verifiable rewards producing models that "think" step by step</li>
+    <li><strong>Agentic AI governance:</strong> Singapore's framework is version 1 &mdash; expect rapid evolution</li>
+    <li><strong>Multimodal alignment:</strong> Aligning models that see, hear, and read simultaneously</li>
+    <li><strong>Interpretable RL:</strong> Making RL decisions explainable (not just effective)</li>
+    <li><strong>Federated alignment:</strong> Training aligned models without centralising private data</li>
+    <li><strong>Constitutional AI at scale:</strong> Self-improving systems that maintain alignment</li>
+    <li><strong>Evolutionary model merging:</strong> Automated discovery of optimal model combinations</li>
+    <li><strong>Process reward models:</strong> Verifying intermediate reasoning, not just final answers</li>
+  </ul>
+  <aside class="notes">
+    These are the active research frontiers as of Q1 2026. Students who continue into ML research or advanced practice will encounter these topics. The ASCENT curriculum has given them the foundations to understand all of them.
+  </aside>
+</section>
+
+<section>
+  <h2>Career Paths from Here</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Path</th><th>Focus</th><th>Key Skills from ASCENT</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ML Engineer</strong></td><td>Production ML systems</td><td>M4-M7: Training, deployment, monitoring</td></tr>
+      <tr><td><strong>AI Engineer</strong></td><td>LLM applications + agents</td><td>M8-M9: NLP, agents, RAG</td></tr>
+      <tr><td><strong>Data Scientist</strong></td><td>Analysis + modelling</td><td>M1-M6: Statistics, features, models</td></tr>
+      <tr><td><strong>AI Safety</strong></td><td>Alignment + governance</td><td>M10: DPO, RL, PACT, red teaming</td></tr>
+      <tr><td><strong>Research</strong></td><td>Advancing the field</td><td>All: mathematical foundations</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Students have learned enough to pursue any of these career paths. The ASCENT curriculum has given them both breadth (all paths) and depth (mathematical foundations for specialisation). Encourage students to explore the Kailash SDK codebase itself — it's open source and an excellent learning resource.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DISCUSSION PROMPTS (Slides 256-258)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Discussion: Alignment Choices</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Your Singapore-based fintech needs to fine-tune a model for customer support in English, Mandarin, and Malay:</p>
+  <ol>
+    <li>Would you use <strong>full fine-tuning or LoRA</strong>? Why? What rank <span class="katex-inline">r</span> would you choose?</li>
+    <li>How would you collect <strong>preference data</strong> for DPO? From human annotators, user feedback, or AI?</li>
+    <li>Which alignment method &mdash; <strong>DPO, KTO, or ORPO</strong> &mdash; would you choose, and why?</li>
+    <li>Your model sometimes gives incorrect financial advice. How do you <strong>red team</strong> for this?</li>
+  </ol>
+  <aside class="notes">
+    This discussion ties together all the alignment concepts. There's no single right answer — the point is to see students reason through the tradeoffs. LoRA is likely the right choice (multilingual needs rank 32+). KTO from user feedback is cheapest. Red teaming should include domain-specific adversarial prompts in all three languages.
+  </aside>
+</section>
+
+<section>
+  <h2>Discussion: Governance Scenarios</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Your company has deployed a governed agent using Kailash:</p>
+  <ol>
+    <li>The agent hits its <strong>cost budget at $95</strong> (limit $100) while serving a customer. What happens? What <em>should</em> happen?</li>
+    <li>A junior data scientist wants to deploy a model to production. The PACT system <strong>denies the deployment</strong>. They ask you why. What do you tell them?</li>
+    <li>A regulator asks you to explain <strong>why your hiring model rejected a candidate</strong>. What information do you provide?</li>
+    <li>Your DriftMonitor fires at 3am. Your model's PSI has crossed the threshold. <strong>What is your runbook?</strong></li>
+  </ol>
+  <aside class="notes">
+    These scenarios test operational understanding, not just technical knowledge. The cost budget scenario tests fail-closed behaviour. The deployment denial tests understanding of monotonic tightening. The regulator scenario tests documentation and audit trails. The drift scenario tests incident response procedures.
+  </aside>
+</section>
+
+<section>
+  <h2>Discussion: RL Thought Experiment</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Consider an RL agent managing a portfolio of Singapore REITs:</p>
+  <ol>
+    <li>What are the <strong>states, actions, and rewards</strong> in this MDP?</li>
+    <li>Should you use a <strong>high or low discount factor &gamma;</strong>? Why?</li>
+    <li>What is the <strong>exploration vs exploitation tradeoff</strong> in portfolio management?</li>
+    <li>Why might <strong>offline RL</strong> be better than online RL for this problem?</li>
+    <li>How would you <strong>govern</strong> this agent? (Hint: what operating envelope?)</li>
+  </ol>
+  <aside class="notes">
+    This connects RL to finance — a domain many students care about. States: market conditions + portfolio. Actions: buy/sell/hold. Rewards: risk-adjusted returns. High gamma (long-term investment). Exploration in finance is dangerous (losing money). Offline RL learns from historical data without risk. Governance: position limits, sector constraints, daily loss limits.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LAB SETUP (Slides 259-261)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Lab Setup</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Capstone Exercise</h3>
+  <p>Build a complete governed ML pipeline using all Kailash packages:</p>
+  <ol>
+    <li><strong>Exercise 10.1:</strong> Fine-tune a model with LoRA (AlignmentPipeline)</li>
+    <li><strong>Exercise 10.2:</strong> Align with DPO preferences (AlignmentPipeline)</li>
+    <li><strong>Exercise 10.3:</strong> Train an RL agent (RLTrainer)</li>
+    <li><strong>Exercise 10.4:</strong> Merge and export adapters (AdapterRegistry)</li>
+    <li><strong>Exercise 10.5:</strong> Build governed deployment (GovernanceEngine + Nexus)</li>
+    <li><strong>Exercise 10.6:</strong> Full platform capstone (all packages integrated)</li>
+  </ol>
+  <p class="small muted">Open <code>modules/ascent10/local/ex_1.py</code></p>
+  <aside class="notes">
+    The capstone exercise is the most complex in the curriculum. Students build a complete system from data to governed deployment. Each exercise builds on the previous one. Exercise 10.6 integrates everything into a single pipeline. This is the practical demonstration of mastery.
+  </aside>
+</section>
+
+<section>
+  <h2>Exercise Progression</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Exercise</th><th>Scaffolding</th><th>Code Provided</th><th>New Engine</th></tr></thead>
+    <tbody>
+      <tr><td>10.1 LoRA Fine-Tuning</td><td>Minimal</td><td>~20%</td><td>AlignmentPipeline</td></tr>
+      <tr><td>10.2 DPO Alignment</td><td>Minimal</td><td>~20%</td><td>AlignmentPipeline (DPO)</td></tr>
+      <tr><td>10.3 RL Training</td><td>Minimal</td><td>~20%</td><td>RLTrainer</td></tr>
+      <tr><td>10.4 Model Merging</td><td>Minimal</td><td>~20%</td><td>AdapterRegistry</td></tr>
+      <tr><td>10.5 Governed Deployment</td><td>Minimal</td><td>~20%</td><td>GovernanceEngine</td></tr>
+      <tr><td>10.6 Full Capstone</td><td>Minimal</td><td>~15%</td><td>All integrated</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Module 10 is minimal scaffolding (~20%). By now, students write most code from documentation.</p>
+  <aside class="notes">
+    This is the most challenging module in terms of scaffolding — students are expected to work primarily from the Kailash documentation and API reference. This reflects real-world ML engineering: you read the docs, you write the code, you debug. The scaffolding gives structure but not solutions.
+  </aside>
+</section>
+
+<section>
+  <h2>Assessment Preview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Module 10 Quiz Topics</h3>
+  <ul>
+    <li>LoRA: Why low rank works, parameter savings calculation, rank selection</li>
+    <li>DPO: Derivation intuition, when to use DPO vs KTO vs GRPO</li>
+    <li>RL: Bellman equations, TD vs MC, PPO clipping</li>
+    <li>Governance: EU AI Act risk tiers, PACT envelopes, operating constraints</li>
+    <li>Integration: Which engines for which task? Production deployment pattern</li>
+  </ul>
+  <h3>Capstone Assessment</h3>
+  <p>Exercise 10.6: deploy a governed agent pipeline. Assessed on: correct integration, envelope enforcement, audit completeness, and production readiness.</p>
+  <aside class="notes">
+    The capstone assessment is pass/fail based on: (1) Does the pipeline work end-to-end? (2) Are governance controls enforced? (3) Is there a complete audit trail? (4) Does the system handle failures gracefully? This is the most comprehensive assessment in the curriculum.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SYNTHESIS (Slides 262-268)
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Synthesis: Key Takeaways</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <h3>Everyone Should Remember</h3>
+  <ul>
+    <li>Fine-tuning teaches a pre-trained model <em>your</em> task. LoRA makes it cheap.</li>
+    <li>DPO aligns models to human preferences without complex RL. Start with DPO.</li>
+    <li>Governance is not optional &mdash; the EU AI Act is law, Singapore AI Verify is market-expected.</li>
+    <li>PACT enforces governance automatically: roles, budgets, clearances, audit trails.</li>
+    <li>Every deployed model needs monitoring, and every monitored model needs a retrain trigger.</li>
+  </ul>
+  <aside class="notes">
+    These are the five things every student MUST take away, regardless of their background. If they remember nothing else: LoRA for cheap fine-tuning, DPO for alignment, governance is mandatory, PACT automates it, and monitoring closes the loop.
+  </aside>
+</section>
+
+<section>
+  <h2>Synthesis: If You Followed the Math</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ul>
+    <li>LoRA works because weight updates have low intrinsic dimensionality &mdash; SVD shows most singular values are near zero</li>
+    <li>DPO is derived from the KL-regularised RL objective. The Z(x) terms cancel in the Bradley-Terry model.</li>
+    <li>PPO's clipped objective provides monotonic improvement by limiting the policy ratio to <span class="katex-inline">[1-\epsilon, 1+\epsilon]</span></li>
+    <li>GAE(<span class="katex-inline">\gamma, \lambda</span>) blends TD and MC returns for advantage estimation</li>
+    <li>The Bellman equations decompose value recursively: value now = reward now + discounted value next</li>
+  </ul>
+  <aside class="notes">
+    For theory-track students: these are the mathematical foundations that connect M10 to everything before it. LoRA connects to PCA (M6). DPO connects to logistic regression (M4). PPO connects to gradient descent (M4). The Bellman equations are the foundation of all value-based RL.
+  </aside>
+</section>
+
+<section>
+  <h2>Synthesis: For the Experts</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <ul>
+    <li>GRPO + RLVR is the 2025-2026 frontier: verifiable rewards for reasoning, no critic needed</li>
+    <li>DAPO improves on GRPO with decoupled clipping and dynamic sampling</li>
+    <li>Evolutionary model merging produces better models than any individual fine-tune</li>
+    <li>HQQ quantisation requires no calibration data and is 50x faster than GPTQ</li>
+    <li>Process reward models (rewarding intermediate steps) are the next frontier in alignment</li>
+    <li>The fairness impossibility theorem means you must choose your fairness criterion, not try to satisfy all</li>
+  </ul>
+  <aside class="notes">
+    For expert-track students: these are the cutting-edge developments that will shape the next 1-2 years of the field. GRPO/DAPO for reasoning, evolutionary merging for model combination, process reward models for verification. These students should be reading the papers directly.
+  </aside>
+</section>
+
+<section>
+  <h2>The Kailash Cumulative Map (Complete)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="pipeline">
+    <span class="pipe-node pipe-train">DataExplorer</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">PreprocessingPipeline</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">FeatureStore</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">TrainingPipeline</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">ModelRegistry</span>
+  </div>
+  <div class="pipeline">
+    <span class="pipe-node pipe-eval">DriftMonitor</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-train">AlignmentPipeline</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-eval">AdapterRegistry</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">RLTrainer</span>
+  </div>
+  <div class="pipeline">
+    <span class="pipe-node pipe-deploy">Delegate (Kaizen)</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-govern">PactGovernedAgent</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-deploy">Nexus</span>
+    <span class="pipe-arrow">&rarr;</span>
+    <span class="pipe-node pipe-govern">GovernanceEngine</span>
+  </div>
+  <p class="small muted">13 ML engines + 6 platform packages = the complete Kailash platform for production ML.</p>
+  <aside class="notes">
+    This is the final platform map. Every engine they've learned, in the order of the ML lifecycle. From data exploration to governed deployment. This is the complete toolkit of a production ML engineer using the Kailash platform.
+  </aside>
+</section>
+
+<section>
+  <h2>Closing Provocation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size: 1.2em; text-align: center; color: var(--ascent-depth); font-style: italic; margin-top: 2em;">
+    "Ten modules ago, you didn't know what a variable was.<br/><br/>
+    Now you can train models, align them to human values,<br/>
+    govern them with organisational controls,<br/>
+    and deploy them to production.<br/><br/>
+    The question is no longer whether AI will transform your industry.<br/><br/>
+    <strong>The question is: will YOU be the one leading that transformation?</strong>"
+  </p>
+  <aside class="notes">
+    Hold this moment. Let the weight of the journey sink in. From zero Python to masters-level ML engineering. From "What is data?" to "How do we ensure AI serves humanity?" This is not just a certificate — it's a transformation. End on silence, not applause.
+  </aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CLOSING (Slide 270)
+     ═══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 10 Complete</h1>
+  <h2 style="border: none;">Alignment, Reinforcement Learning<br/>&amp; Governance</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"Build AI that does what you want, controlled by who you trust,<br/>and accountable to those it serves."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 10</span>
+    <span>Terrene Foundation &mdash; Apache 2.0</span>
+  </div>
+  <aside class="notes">
+    The final slide. Module 10 is complete. The Professional Certificate in Machine Learning is complete. Students have gone from zero Python to production-grade, governed, aligned AI systems. Congratulate them. They've earned it.
+  </aside>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<!-- Reveal.js 5.1.0 -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+
+<!-- KaTeX auto-render -->
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.1,
+    hash: true,
+    slideNumber: true,
+    plugins: [RevealHighlight, RevealNotes],
+    transition: 'slide',
+    transitionSpeed: 'default',
+  });
+
+  // Render KaTeX after Reveal initialises
+  Reveal.on('ready', () => {
+    // Render display math
+    document.querySelectorAll('.katex-display').forEach(el => {
+      katex.render(el.textContent, el, {displayMode: true, throwOnError: false});
+    });
+    // Render inline math
+    document.querySelectorAll('.katex-inline').forEach(el => {
+      katex.render(el.textContent, el, {displayMode: false, throwOnError: false});
+    });
+  });
+
+  // Re-render on slide change (for fragments)
+  Reveal.on('slidechanged', () => {
+    document.querySelectorAll('.katex-display').forEach(el => {
+      if (!el.querySelector('.katex')) {
+        katex.render(el.textContent, el, {displayMode: true, throwOnError: false});
+      }
+    });
+    document.querySelectorAll('.katex-inline').forEach(el => {
+      if (!el.querySelector('.katex')) {
+        katex.render(el.textContent, el, {displayMode: false, throwOnError: false});
+      }
+    });
+  });
+</script>
+</body>
+</html>

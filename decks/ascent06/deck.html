@@ -1,0 +1,3418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCENT Module 6: Unsupervised ML &amp; Pattern Discovery</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../assets/css/theme.css">
+
+  <style>
+    /* Slide-specific overrides */
+    .reveal .slides section .fragment.step {
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    .reveal .slides section .fragment.step.visible {
+      opacity: 1;
+    }
+    .derivation-step {
+      background: #F8FAFC;
+      border-left: 3px solid var(--ascent-theory);
+      padding: 8px 16px;
+      margin: 8px 0;
+      font-size: 0.9em;
+    }
+    .derivation-step .step-label {
+      font-weight: 700;
+      color: var(--ascent-theory);
+      font-size: 0.8em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .case-study {
+      background: linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%);
+      border: 2px solid var(--ascent-alert);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    .engine-card {
+      background: linear-gradient(135deg, #F0FDFA 0%, #ECFDF5 100%);
+      border: 1px solid var(--ascent-primary);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 8px 0;
+    }
+    .comparison-table td:first-child {
+      font-weight: 600;
+      color: var(--ascent-depth);
+    }
+    .highlight-box {
+      background: #FFFBEB;
+      border: 2px solid var(--ascent-alert);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      font-size: 1.1em;
+      font-weight: 600;
+    }
+    .bridge-box {
+      background: linear-gradient(135deg, #EFF6FF 0%, #FAF5FF 100%);
+      border: 3px solid var(--ascent-depth);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    .spectrum-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 16px 0;
+      font-size: 0.85em;
+    }
+    .spectrum-node {
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 600;
+      min-width: 180px;
+    }
+    .spectrum-arrow {
+      font-size: 1.5em;
+      color: var(--ascent-depth);
+    }
+    .svg-diagram {
+      text-align: center;
+      margin: 16px 0;
+    }
+    .svg-diagram svg text {
+      font-family: "Inter", system-ui, sans-serif;
+    }
+    .small { font-size: 0.75em; }
+    .smaller { font-size: 0.65em; }
+    .muted { color: #64748B; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ════════════════════════════════════════════════════════════
+     SLIDE 1: TITLE
+     ════════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 6</h1>
+  <h2 style="border: none;">Unsupervised ML &amp; Pattern Discovery</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"The algorithm that found $2 billion in hidden fraud had never seen a single labelled example."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 6</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">
+    Open with the provocative quote. Ask students: "How is it possible to find something you've never been told to look for?" This frames the entire module. Timing: ~1 min.
+  </aside>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SLIDES 2-5: RECAP
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Recap: Your Journey So Far</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Module</th><th>What You Learned</th><th>Kailash Engines</th></tr>
+    <tr><td>M1</td><td>Python fundamentals, Kailash workflows</td><td>Core SDK</td></tr>
+    <tr><td>M2</td><td>Data exploration, profiling, cleaning with Polars</td><td>DataExplorer, PreprocessingPipeline</td></tr>
+    <tr><td>M3</td><td>Statistics, probability, hypothesis testing</td><td>ModelVisualizer</td></tr>
+    <tr><td>M4</td><td>Feature engineering, experiment design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
+    <tr><td>M5</td><td>Supervised ML &mdash; regression, classification, trees, boosting</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
+  </table>
+  <div class="callout callout-foundations" style="margin-top: 12px;">
+    <strong>M3&ndash;M5 gave you features engineered by hand and models trained with labels.</strong> Today: what happens when nobody tells you the right answer &mdash; and the features engineer themselves?
+  </div>
+  <aside class="notes">
+    Walk through the table quickly. Emphasise: "Everything so far needed either a human to craft features (M4) or a target label (M5). Today those constraints vanish." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>What's New in Module 6</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Part A: Clustering</h3>
+      <ul>
+        <li>6.1 The USML Framework</li>
+        <li>6.2 K-Means &amp; K-Medoids</li>
+        <li>6.3 Density-Based Clustering</li>
+        <li>6.4 Hierarchical Clustering</li>
+        <li>6.5 GMM &amp; EM Algorithm</li>
+        <li>6.6 Spectral &amp; Other Methods</li>
+        <li>6.7 Cluster Validation</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Part B: Dim Reduction &amp; Topics</h3>
+      <ul>
+        <li>6.8 PCA</li>
+        <li>6.9 t-SNE &amp; UMAP</li>
+        <li>6.10 Other Dim Reduction</li>
+        <li>6.11 Topic Modeling (LDA, NMF, BERTopic)</li>
+        <li>6.12 Anomaly Detection</li>
+        <li>6.13 Association Rules</li>
+        <li>6.14 Drift Monitoring</li>
+        <li>6.15 Kailash Engines</li>
+      </ul>
+      <div class="engine-card" style="margin-top: 8px;">
+        <strong>New engines:</strong> AutoMLEngine, EnsembleEngine, DriftMonitor
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Emphasise that this is entirely about unsupervised methods. No labels, no target variable. Preview the module arc: clustering, dim reduction, topics, anomalies, association rules, monitoring. Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Cumulative Kailash Engine Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="svg-diagram">
+    <svg width="1100" height="200" viewBox="0 0 1100 200">
+      <rect x="10" y="20" width="150" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="85" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M1-M2: Data</text>
+      <text x="85" y="62" text-anchor="middle" font-size="10" fill="#334155">DataExplorer</text>
+      <text x="85" y="77" text-anchor="middle" font-size="10" fill="#334155">PreprocessingPipeline</text>
+      <rect x="180" y="20" width="150" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="255" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M3: Statistics</text>
+      <text x="255" y="62" text-anchor="middle" font-size="10" fill="#334155">ModelVisualizer</text>
+      <rect x="350" y="20" width="170" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="435" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M4: Features</text>
+      <text x="435" y="62" text-anchor="middle" font-size="10" fill="#334155">FeatureStore, FeatureEngineer</text>
+      <text x="435" y="77" text-anchor="middle" font-size="10" fill="#334155">ExperimentTracker</text>
+      <rect x="540" y="20" width="170" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="625" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M5: Supervised ML</text>
+      <text x="625" y="62" text-anchor="middle" font-size="10" fill="#334155">TrainingPipeline</text>
+      <text x="625" y="77" text-anchor="middle" font-size="10" fill="#334155">HyperparameterSearch</text>
+      <text x="625" y="92" text-anchor="middle" font-size="10" fill="#334155">ModelRegistry</text>
+      <rect x="730" y="10" width="200" height="110" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="3"/>
+      <text x="830" y="35" text-anchor="middle" font-size="11" font-weight="700" fill="#0D9488">M6: Unsupervised (TODAY)</text>
+      <text x="830" y="55" text-anchor="middle" font-size="10" fill="#334155">AutoMLEngine</text>
+      <text x="830" y="70" text-anchor="middle" font-size="10" fill="#334155">EnsembleEngine</text>
+      <text x="830" y="85" text-anchor="middle" font-size="10" fill="#334155">DriftMonitor</text>
+      <text x="830" y="100" text-anchor="middle" font-size="10" fill="#334155">ModelVisualizer</text>
+      <rect x="950" y="40" width="140" height="60" rx="8" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4"/>
+      <text x="1020" y="65" text-anchor="middle" font-size="11" font-weight="600" fill="#94A3B8">M7: Deep Learning</text>
+      <text x="1020" y="82" text-anchor="middle" font-size="10" fill="#94A3B8">InferenceServer, OnnxBridge</text>
+      <line x1="160" y1="60" x2="180" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="330" y1="60" x2="350" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="520" y1="60" x2="540" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="710" y1="60" x2="730" y2="60" stroke="#0D9488" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="930" y1="60" x2="950" y2="60" stroke="#94A3B8" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrow)"/>
+      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8"/></marker></defs>
+    </svg>
+  </div>
+  <aside class="notes">
+    Point to each box. "We've built up from data to stats to features to supervised models. Today we add three powerful engines that work WITHOUT labels. Next module, deep learning builds on what we learn today." Timing: ~1 min.
+  </aside>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════
+     SLIDES 5-7: OPENING CASE
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Opening Case: The 99.9% Accuracy Trap</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="case-study">
+    <h3 style="color: var(--ascent-alert);">Credit Suisse Anti-Money Laundering</h3>
+    <p>A major bank deployed an AML detection system with <strong>99.9% accuracy</strong>.</p>
+    <ul>
+      <li>Only <strong>0.1%</strong> of transactions are actually suspicious</li>
+      <li>The model learned to predict "not suspicious" for everything</li>
+      <li>Compliance officers received <strong>10,000+ false alerts per day</strong></li>
+      <li>Real laundering activity was buried in noise</li>
+    </ul>
+    <p style="margin-top: 8px;"><strong>The fix?</strong> Unsupervised methods: cluster transaction patterns, detect anomalous flows, monitor for drift in criminal behaviour. No labels needed.</p>
+  </div>
+  <p style="font-size: 0.75em; color: #64748B;">Source: FINMA enforcement proceedings; US Senate Permanent Subcommittee on Investigations, 2014</p>
+  <aside class="notes">
+    This case grounds the entire module. "Supervised models NEED labels. When your problem doesn't have clean labels, or when the labels themselves are the problem, unsupervised ML is the answer." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Why This Matters for Module 6</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The real problems</h3>
+      <ul>
+        <li><strong>No labels</strong> &mdash; most transactions have no "suspicious" tag</li>
+        <li><strong>Clusters, not classes</strong> &mdash; suspicious behaviour forms patterns, not categories</li>
+        <li><strong>Drift</strong> &mdash; criminal patterns change every quarter</li>
+        <li><strong>Scale</strong> &mdash; millions of transactions per day</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What you need</h3>
+      <ul>
+        <li><strong>Clustering</strong> to find behavioural groups (6.2&ndash;6.6)</li>
+        <li><strong>Dimensionality reduction</strong> to visualise patterns (6.8&ndash;6.10)</li>
+        <li><strong>Topic modeling</strong> to understand text (6.11)</li>
+        <li><strong>Anomaly detection</strong> to flag outliers (6.12)</li>
+        <li><strong>Drift monitoring</strong> to track changes (6.14)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Map each unsupervised technique to the AML case. "By the end of today, you'll know how to build a system that actually catches suspicious activity instead of crying wolf." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.1 THE USML FRAMEWORK (15-20 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.1 The USML Framework</h1>
+  <p class="subtitle">Unsupervised ML = Automated Feature Engineering</p>
+  <aside class="notes">
+    This is THE organising principle. Take time here. If students leave with one thing, it's this insight. Timing: ~1 min on the title slide.
+  </aside>
+</section>
+
+<section>
+  <h2>The Feature Engineering Spectrum</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="bridge-box">
+    <div class="spectrum-diagram">
+      <div class="spectrum-node" style="background: #FEF3C7; border: 2px solid #F59E0B;">
+        <div>Manual (M4&ndash;M5)</div>
+        <div style="font-weight: 400; font-size: 0.8em;">Human crafts features</div>
+        <div style="font-weight: 400; font-size: 0.75em;">Domain knowledge</div>
+        <div style="font-weight: 400; font-size: 0.75em;">n features &rarr; n features</div>
+      </div>
+      <div class="spectrum-arrow">&rarr;</div>
+      <div class="spectrum-node" style="background: #DBEAFE; border: 2px solid #3B82F6;">
+        <div>USML (THIS MODULE)</div>
+        <div style="font-weight: 400; font-size: 0.8em;">Algorithm discovers features</div>
+        <div style="font-weight: 400; font-size: 0.75em;">Patterns in data</div>
+        <div style="font-weight: 400; font-size: 0.75em;">n features &rarr; 1 or k features</div>
+      </div>
+      <div class="spectrum-arrow">&rarr;</div>
+      <div class="spectrum-node" style="background: #FAF5FF; border: 2px solid #8B5CF6;">
+        <div>Deep Learning (M7)</div>
+        <div style="font-weight: 400; font-size: 0.8em;">Architecture learns features</div>
+        <div style="font-weight: 400; font-size: 0.75em;">Gradient optimisation</div>
+        <div style="font-weight: 400; font-size: 0.75em;">n features &rarr; m features</div>
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-theory" style="margin-top: 12px;">
+    <strong>This is the most important slide in the module.</strong> USML is NOT a separate discipline &mdash; it is the bridge between hand-crafted features and deep-learned representations.
+  </div>
+  <aside class="notes">
+    Spend extra time here. "In M4 and M5, YOU decided what features to create. Today, the ALGORITHM discovers features for you. In M7, the ARCHITECTURE will learn features automatically through backpropagation. This module is the bridge." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>USML = Automated Feature Engineering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Supervised ML (M5)</h3>
+      <p>Discovers combinations of X that predict <strong>y</strong></p>
+      <p style="font-size: 0.85em;">Needs: labelled data, target variable</p>
+      <p style="font-size: 0.85em;">Output: predictions</p>
+    </div>
+    <div class="col">
+      <h3>Unsupervised ML (THIS MODULE)</h3>
+      <p>Discovers patterns <strong>within X</strong> and represents them as new features</p>
+      <p style="font-size: 0.85em;">Needs: data only, no labels</p>
+      <p style="font-size: 0.85em;">Output: <strong>new features</strong></p>
+    </div>
+  </div>
+  <div class="highlight-box" style="margin-top: 16px;">
+    Unsupervised ML creates features that supervised models can consume.
+  </div>
+  <aside class="notes">
+    "SML asks: how do I predict y? USML asks: what structure exists in X? The output of USML is not a prediction, it's a NEW FEATURE that you feed into your supervised pipeline." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Three Pillars of USML</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Pillar</th><th>What It Does</th><th>Feature Output</th><th>Example</th></tr>
+    <tr>
+      <td>Clustering</td>
+      <td>Group similar items</td>
+      <td>n features &rarr; <strong>1</strong> new feature (membership)</td>
+      <td>Customer segments</td>
+    </tr>
+    <tr>
+      <td>Dim Reduction</td>
+      <td>Compress representation</td>
+      <td>n features &rarr; <strong>k</strong> new features (components)</td>
+      <td>PCA for multicollinearity</td>
+    </tr>
+    <tr>
+      <td>Topic Modeling</td>
+      <td>Discover themes in text</td>
+      <td>n documents &rarr; <strong>k</strong> topic features</td>
+      <td>Support ticket categories</td>
+    </tr>
+  </table>
+  <div class="callout callout-foundations" style="margin-top: 12px;">
+    <strong>Each pillar transforms raw data into new, compact features.</strong> These features often capture structure that no human would manually engineer.
+  </div>
+  <aside class="notes">
+    "Three pillars, three ways to automatically create features. Notice the pattern: in every case, n input features become a smaller or different set of output features." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Supervised vs Unsupervised: The Key Shift</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th></th><th>Supervised (M5)</th><th>Unsupervised (M6)</th></tr>
+    <tr><td>Labels</td><td>Yes &mdash; someone told you the answer</td><td>No &mdash; you must discover structure</td></tr>
+    <tr><td>Goal</td><td>Predict y from X</td><td>Find patterns in X alone</td></tr>
+    <tr><td>Evaluation</td><td>Accuracy, F1, AUC</td><td>Silhouette, coherence, domain expert</td></tr>
+    <tr><td>Risk</td><td>Overfitting to labels</td><td>Finding patterns that don't exist</td></tr>
+    <tr><td>Example</td><td>"Is this email spam?"</td><td>"What groups of customers do we have?"</td></tr>
+  </table>
+  <div class="callout callout-warning" style="margin-top: 12px;">
+    <strong>Key insight:</strong> Unsupervised learning has no "right answer" to check against. Validation requires domain expertise and multiple complementary methods.
+  </div>
+  <aside class="notes">
+    "Without labels, you can't just compute accuracy. You need domain experts to validate whether the clusters or topics make sense. This is both the power and the challenge of unsupervised ML." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Engineering Use Cases</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Clustering as features</h3>
+      <ul>
+        <li><strong>Customer segmentation</strong> &rarr; cluster_id as feature for churn prediction</li>
+        <li><strong>Transaction behaviour</strong> &rarr; cluster membership flags fraud patterns</li>
+        <li>Soft clustering &rarr; k probability features per point</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Dim reduction as features</h3>
+      <ul>
+        <li><strong>PCA</strong> for multicollinearity &rarr; orthogonal components replace correlated features</li>
+        <li><strong>UMAP embeddings</strong> as features for downstream models</li>
+        <li>Autoencoder embeddings (bridge to M7!)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-kailash" style="margin-top: 12px;">
+    <strong>Topic features:</strong> LDA topic proportions as features for document classification. A complaint that's 60% "billing" and 30% "technical" gets routed differently than one that's 90% "technical".
+  </div>
+  <aside class="notes">
+    "Every unsupervised method produces features you can feed into your supervised pipeline from M5. This is why USML is a bridge, not a separate island." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Progression: Where This Module Sits</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="bridge-box">
+    <p style="text-align: center; font-size: 1.05em; margin-bottom: 16px;"><strong>Feature Discovery Is a Spectrum</strong></p>
+    <table style="font-size: 0.8em;">
+      <tr><th>Stage</th><th>Method</th><th>Who Decides?</th><th>Flexibility</th></tr>
+      <tr><td>M4</td><td>Manual feature engineering</td><td>Human domain expert</td><td>Limited by imagination</td></tr>
+      <tr><td>M6 (here)</td><td>USML &mdash; clustering, PCA, LDA</td><td>Algorithm + human validation</td><td>Constrained by algorithm assumptions</td></tr>
+      <tr><td>M7</td><td>Deep learning &mdash; autoencoders, embeddings</td><td>Architecture + gradient descent</td><td>Learns any representable function</td></tr>
+    </table>
+  </div>
+  <div class="callout callout-advanced" style="margin-top: 12px;">
+    <strong>The Autoencoder Bridge:</strong> The bottleneck layer of an autoencoder IS dimensionality reduction. It IS USML done by a neural network. This is literally the bridge between M6 and M7 &mdash; we preview it at the end of this module.
+  </div>
+  <aside class="notes">
+    "Notice how autoencoders sit right at the boundary. An autoencoder is a neural network (M7) doing dimensionality reduction (M6). That's why we cover the intuition here and the full implementation in M7." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>When to Use Unsupervised ML</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Use USML when:</h3>
+      <ul>
+        <li>You have <strong>no labels</strong> (or unreliable labels)</li>
+        <li>You need to <strong>discover structure</strong> you didn't know existed</li>
+        <li>You want to <strong>compress features</strong> for a downstream model</li>
+        <li>You need <strong>preprocessing</strong> before supervised learning</li>
+        <li>You want to <strong>visualise</strong> high-dimensional data</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Don't use USML when:</h3>
+      <ul>
+        <li>You have <strong>clean labels</strong> and a clear prediction task</li>
+        <li>You need <strong>interpretable predictions</strong> (use M5 methods)</li>
+        <li>Your data is <strong>too small</strong> for pattern discovery</li>
+        <li>The patterns are <strong>already known</strong> (manual features suffice)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "USML is powerful but not always the right tool. If you have clean labels and a clear target, go straight to supervised methods from M5. Use USML when discovery is the goal." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.2 K-MEANS & K-MEDOIDS (20-25 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.2 K-Means Clustering</h1>
+  <p class="subtitle">Find k centroids that minimise distance to cluster members</p>
+  <aside class="notes">
+    "We begin with the simplest, most widely-used clustering algorithm. K-means is to clustering what linear regression is to supervised learning: the starting point." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>What Is Clustering?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Imagine you have 10,000 customers and no labels. You notice some buy luxury goods, others buy bulk groceries, others only buy on sale days.</p>
+  <p><strong>Clustering</strong> finds these natural groups automatically.</p>
+  <div class="svg-diagram">
+    <svg width="500" height="250" viewBox="0 0 500 250">
+      <circle cx="120" cy="100" r="60" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2" opacity="0.4"/>
+      <circle cx="100" cy="85" r="5" fill="#3B82F6"/><circle cx="130" cy="95" r="5" fill="#3B82F6"/>
+      <circle cx="115" cy="110" r="5" fill="#3B82F6"/><circle cx="140" cy="80" r="5" fill="#3B82F6"/>
+      <circle cx="105" cy="120" r="5" fill="#3B82F6"/><circle cx="125" cy="75" r="5" fill="#3B82F6"/>
+      <text x="120" y="175" text-anchor="middle" font-size="12" fill="#3B82F6" font-weight="600">Luxury buyers</text>
+      <circle cx="300" cy="80" r="55" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2" opacity="0.4"/>
+      <circle cx="285" cy="70" r="5" fill="#F59E0B"/><circle cx="310" cy="85" r="5" fill="#F59E0B"/>
+      <circle cx="295" cy="95" r="5" fill="#F59E0B"/><circle cx="320" cy="65" r="5" fill="#F59E0B"/>
+      <circle cx="280" cy="90" r="5" fill="#F59E0B"/>
+      <text x="300" y="150" text-anchor="middle" font-size="12" fill="#D97706" font-weight="600">Bulk buyers</text>
+      <circle cx="380" cy="190" r="45" fill="#DCFCE7" stroke="#22C55E" stroke-width="2" opacity="0.4"/>
+      <circle cx="370" cy="180" r="5" fill="#22C55E"/><circle cx="395" cy="195" r="5" fill="#22C55E"/>
+      <circle cx="385" cy="205" r="5" fill="#22C55E"/><circle cx="365" cy="200" r="5" fill="#22C55E"/>
+      <text x="380" y="245" text-anchor="middle" font-size="12" fill="#16A34A" font-weight="600">Sale hunters</text>
+    </svg>
+  </div>
+  <aside class="notes">
+    "Think of sorting a box of mixed Lego bricks by colour without being told what the colours are. You just group similar things together." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>K-Means: The Simplest Clustering Algorithm</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Think of it as "musical chairs with data points":</p>
+  <ol>
+    <li><strong>Pick k chairs</strong> (centroids) &mdash; place them randomly</li>
+    <li><strong>Everyone sits at their nearest chair</strong> &mdash; assign each point to the closest centroid</li>
+    <li><strong>Move each chair to the middle of its group</strong> &mdash; recompute centroids</li>
+    <li><strong>Repeat</strong> until nobody changes chairs</li>
+  </ol>
+  <div class="callout callout-foundations">
+    <strong>You choose k.</strong> That's the big decision &mdash; and getting it wrong gives you meaningless groups. We'll see how to choose k shortly.
+  </div>
+  <aside class="notes">
+    Use the musical chairs analogy. If beginners look confused, say: 'Imagine 3 magnets on a table covered with iron filings. Each filing goes to its nearest magnet. Then you move each magnet to the centre of its filings. Repeat.' Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Lloyd's Algorithm: K-Means Formally</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Objective:</strong> Minimise the within-cluster sum of squares (WCSS):</p>
+  <div class="equation-box">
+    <span class="katex-display">$$J = \sum_{k=1}^{K} \sum_{x_i \in C_k} \|x_i - \mu_k\|^2$$</span>
+    <div class="annotation">
+      <span class="term-input">x_i</span> = data point &nbsp;|&nbsp;
+      <span class="term-param">&mu;_k</span> = centroid of cluster k &nbsp;|&nbsp;
+      <span class="term-output">C_k</span> = set of points in cluster k
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">E-step (Assignment)</div>
+    <span class="katex-display">$$c_i = \arg\min_k \|x_i - \mu_k\|^2$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">M-step (Update)</div>
+    <span class="katex-display">$$\mu_k = \frac{1}{|C_k|} \sum_{x_i \in C_k} x_i$$</span>
+  </div>
+  <aside class="notes">
+    "Notice this looks like EM already: assign (E-step), update (M-step). K-means IS a special case of EM for a simplified Gaussian mixture. We'll see the full EM later." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Convergence and Local Minima</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Convergence guarantee</h3>
+      <ul>
+        <li>J is <strong>non-increasing</strong> at each step</li>
+        <li>Finite number of possible assignments</li>
+        <li>Therefore: <strong>always converges</strong></li>
+        <li>But: converges to a <strong>local minimum</strong>, not necessarily the global one</li>
+      </ul>
+      <div class="callout callout-warning" style="margin-top: 8px;">
+        <strong>Bad initialisation &rarr; bad clusters.</strong> The starting positions of centroids determine which local minimum you find.
+      </div>
+    </div>
+    <div class="col">
+      <h3>Why local minima matter</h3>
+      <p style="font-size: 0.85em;">Imagine two well-separated clusters. If both initial centroids land inside one cluster, the algorithm converges with one cluster split in half and the other containing everything else.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);"><strong>Solution:</strong> Smart initialisation (k-means++) or multiple restarts.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "K-means always converges, but it may converge to a terrible solution. Imagine dropping your magnets in the wrong places. The fix: k-means++ gives you smart starting positions." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>K-Means++ Initialisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Arthur &amp; Vassilvitskii (2007):</strong> Spread initial centroids to avoid bad starts.</p>
+  <ol style="font-size: 0.9em;">
+    <li>Pick first centroid uniformly at random</li>
+    <li>For each remaining centroid, pick point with probability proportional to <span class="katex">$D(x)^2$</span></li>
+    <li>Points far from existing centroids are more likely chosen</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">$$P(x) = \frac{D(x)^2}{\sum_{x'} D(x')^2}$$</span>
+    <div class="annotation">D(x) = distance from x to nearest existing centroid. Guarantees O(log k)-competitive with optimal.</div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> "Pick your first centroid randomly. Then pick the next one as far as possible from the first. Repeat. This spreads your centroids across the data."
+  </div>
+  <aside class="notes">
+    "K-means++ is now the default in every library. It makes k-means much more reliable without adding significant computation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Choosing k: The Elbow Method</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Plot WCSS (J) vs k. Look for the "elbow" where adding more clusters gives diminishing returns.</p>
+  <div class="svg-diagram">
+    <svg width="500" height="250" viewBox="0 0 500 250">
+      <line x1="60" y1="220" x2="460" y2="220" stroke="#334155" stroke-width="2"/>
+      <line x1="60" y1="220" x2="60" y2="20" stroke="#334155" stroke-width="2"/>
+      <text x="260" y="248" text-anchor="middle" font-size="12" fill="#334155">k (number of clusters)</text>
+      <text x="30" y="120" text-anchor="middle" font-size="12" fill="#334155" transform="rotate(-90, 30, 120)">WCSS (J)</text>
+      <polyline points="80,40 140,80 200,140 260,170 320,185 380,192 440,196" fill="none" stroke="#3B82F6" stroke-width="3"/>
+      <circle cx="200" cy="140" r="8" fill="none" stroke="#F43F5E" stroke-width="2"/>
+      <text x="220" y="130" font-size="12" fill="#F43F5E" font-weight="600">Elbow?</text>
+      <text x="80" y="238" font-size="11" fill="#64748B">1</text>
+      <text x="140" y="238" font-size="11" fill="#64748B">2</text>
+      <text x="200" y="238" font-size="11" fill="#64748B">3</text>
+      <text x="260" y="238" font-size="11" fill="#64748B">4</text>
+      <text x="320" y="238" font-size="11" fill="#64748B">5</text>
+      <text x="380" y="238" font-size="11" fill="#64748B">6</text>
+      <text x="440" y="238" font-size="11" fill="#64748B">7</text>
+    </svg>
+  </div>
+  <p style="font-size: 0.85em; color: #64748B;"><strong>Problem:</strong> the elbow is often ambiguous. That's why we need additional methods.</p>
+  <aside class="notes">
+    "The elbow method is intuitive but subjective. Two people can look at the same plot and disagree on where the elbow is. We need quantitative alternatives." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Choosing k: Silhouette &amp; Gap Statistic</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Silhouette coefficient</h3>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$s(i) = \frac{b(i) - a(i)}{\max(a(i), b(i))}$$</span>
+        <div class="annotation">a(i) = avg distance to same-cluster points<br>b(i) = avg distance to nearest-other-cluster points</div>
+      </div>
+      <p style="font-size: 0.8em;">Range [-1, 1]. Higher = better separation. Choose k with highest average silhouette.</p>
+    </div>
+    <div class="col">
+      <h3>Gap statistic (Tibshirani et al., 2001)</h3>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$\text{Gap}(k) = E^*[\log W_k] - \log W_k$$</span>
+        <div class="annotation">Compare observed WCSS to WCSS on uniformly distributed reference data</div>
+      </div>
+      <p style="font-size: 0.8em;">Choose smallest k where: <span class="katex">$\text{Gap}(k) \geq \text{Gap}(k+1) - s_{k+1}$</span></p>
+    </div>
+  </div>
+  <aside class="notes">
+    "Silhouette gives you an intuitive score: how well does each point fit its cluster versus the next best cluster? Gap statistic compares your clustering to what you'd get from random noise." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Choosing k: Information-Theoretic Methods</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>X-means (Pelleg &amp; Moore, 2000)</h3>
+      <p style="font-size: 0.85em;">Run k-means, then test whether each cluster should be split using <strong>BIC</strong>:</p>
+      <div class="equation-box" style="font-size: 0.85em;">
+        <span class="katex-display">$$\text{BIC} = -2 \ln \hat{L} + p \ln n$$</span>
+        <div class="annotation">Penalise model complexity. Split only if BIC improves.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3>G-means (Hamerly &amp; Elkan, 2004)</h3>
+      <p style="font-size: 0.85em;">Test whether each cluster's data is Gaussian using the <strong>Anderson-Darling test</strong>. If not, split it.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Key idea: k-means assumes Gaussian clusters. G-means tests that assumption and increases k where it fails.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "For experts: X-means and G-means automatically determine k without you having to run k-means repeatedly. X-means uses BIC, G-means uses a normality test. Both are principled alternatives to the elbow method." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>K-Means Limitations</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Assumes:</h3>
+      <ul>
+        <li><strong>Spherical clusters</strong> &mdash; equal in all directions</li>
+        <li><strong>Equal-size clusters</strong> &mdash; small clusters absorbed by large ones</li>
+        <li><strong>No outliers</strong> &mdash; outliers pull centroids away</li>
+        <li><strong>Convex shapes</strong> &mdash; cannot handle crescents, rings, etc.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>When it fails:</h3>
+      <ul>
+        <li>Elongated clusters &rarr; use GMM</li>
+        <li>Varying density &rarr; use HDBSCAN</li>
+        <li>Arbitrary shapes &rarr; use spectral clustering</li>
+        <li>Many outliers &rarr; use K-medoids or DBSCAN</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>K-means is a starting point, not a destination.</strong> When it fails, the failure mode tells you which algorithm to try next.
+  </div>
+  <aside class="notes">
+    "K-means is like a hammer: excellent for nails, terrible for screws. The key is recognising when your data is a screw." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Mini-Batch K-Means</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>For large datasets, update centroids using <strong>random subsets</strong> (mini-batches) instead of the full dataset:</p>
+  <ol style="font-size: 0.9em;">
+    <li>Sample a mini-batch B of b points</li>
+    <li>Assign each to nearest centroid</li>
+    <li>Update centroids using streaming average: <span class="katex">$\mu_k \leftarrow (1-\eta)\mu_k + \eta \bar{x}_{B,k}$</span></li>
+  </ol>
+  <div class="callout callout-foundations">
+    <strong>Tradeoff:</strong> Slightly worse clustering quality for dramatically faster runtime. On 1M points, mini-batch can be 100x faster than standard k-means.
+  </div>
+  <aside class="notes">
+    "When your dataset has millions of rows, standard k-means is too slow. Mini-batch k-means gives you 95% of the quality in 1% of the time." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>K-Medoids / PAM</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Key difference:</strong> Use actual data points (medoids) instead of means as cluster centres.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>PAM Algorithm</h3>
+      <ol style="font-size: 0.85em;">
+        <li>Select k initial medoids</li>
+        <li>Assign each point to nearest medoid</li>
+        <li>For each medoid, try swapping with each non-medoid</li>
+        <li>Keep the swap if total cost decreases</li>
+        <li>Repeat until no swap improves cost</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h3>Advantages over K-means</h3>
+      <ul style="font-size: 0.85em;">
+        <li><strong>Robust to outliers</strong> &mdash; medoid is an actual point, not pulled by extreme values</li>
+        <li><strong>Works with any distance</strong> &mdash; not just Euclidean (Manhattan, cosine, etc.)</li>
+        <li><strong>Interpretable</strong> &mdash; the medoid IS a real example</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-theory" style="margin-top: 8px;">
+    <strong>Scalability:</strong> PAM is O(n&sup2;k). For large datasets, use <strong>CLARA</strong> (subsample + PAM) or <strong>CLARANS</strong> (randomised swaps).
+  </div>
+  <aside class="notes">
+    "K-medoids: instead of computing the mean (which might be in empty space), use a real data point as the centre. More robust, more interpretable, but slower." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Clustering as Feature Engineering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>This is the bridge.</strong> Cluster labels ARE features for supervised models.</p>
+  <pre><code class="language-python">from kailash_ml import AutoMLEngine, AutoMLConfig, TrainingPipeline
+
+# Step 1: Cluster customers (unsupervised)
+cluster_config = AutoMLConfig(task="clustering", algorithms=["kmeans"], n_clusters=5)
+engine = AutoMLEngine(cluster_config)
+result = engine.fit(customer_df)
+
+# Step 2: Add cluster_id as a feature (bridge to supervised)
+customer_df = customer_df.with_columns(
+    pl.Series("cluster_id", result.labels)
+)
+
+# Step 3: Predict churn using cluster_id + other features (supervised)
+pipeline = TrainingPipeline(model="xgboost", target="churned")
+pipeline.fit(customer_df)  # cluster_id is now a powerful feature</code></pre>
+  <div class="callout callout-kailash">
+    <strong>n features &rarr; 1 new feature.</strong> The cluster label compresses all the information from n original features into a single categorical feature that captures group membership.
+  </div>
+  <aside class="notes">
+    "This is the core insight: cluster the data, take the cluster ID, and feed it as a feature into your XGBoost model from M5. You just did automated feature engineering." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.3 DENSITY-BASED CLUSTERING (20-25 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.3 Density-Based Clustering</h1>
+  <p class="subtitle">DBSCAN and HDBSCAN &mdash; clusters of any shape, automatic noise detection</p>
+  <aside class="notes">
+    "K-means assumes spherical clusters. Real-world data rarely cooperates. Density-based methods find clusters of ANY shape and automatically identify noise." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>DBSCAN: Core Concepts</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Key idea:</strong> Clusters are dense regions separated by sparse regions.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Three types of points</h3>
+      <ul>
+        <li><strong style="color: #3B82F6;">Core point</strong> &mdash; has at least minPts neighbours within radius &epsilon;</li>
+        <li><strong style="color: #F59E0B;">Border point</strong> &mdash; within &epsilon; of a core point but not core itself</li>
+        <li><strong style="color: #F43F5E;">Noise point</strong> &mdash; neither core nor border</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Two parameters</h3>
+      <ul>
+        <li><strong>&epsilon;</strong> (epsilon) &mdash; radius of the neighbourhood</li>
+        <li><strong>minPts</strong> &mdash; minimum density threshold</li>
+      </ul>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">No k! The number of clusters is discovered automatically.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "DBSCAN asks: is this area of space crowded or empty? Crowded areas are clusters. Empty areas are boundaries. Points in the void are noise. You don't need to specify k." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>DBSCAN Algorithm</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ol>
+    <li>Pick an unvisited point p</li>
+    <li>Find all points within &epsilon; of p (<strong>neighbourhood query</strong>)</li>
+    <li>If |neighbourhood| &ge; minPts, p is <strong>core</strong> &mdash; create or expand cluster</li>
+    <li><strong>Density-reachable expansion:</strong> recursively add all core-reachable points</li>
+    <li>If |neighbourhood| &lt; minPts and p is not reachable from any core &rarr; <strong>noise</strong></li>
+  </ol>
+  <div class="callout callout-foundations" style="margin-top: 12px;">
+    <strong>Advantages:</strong> Arbitrary cluster shapes (crescents, rings, spirals). Automatic k. Built-in noise detection. No assumption about cluster size or shape.
+  </div>
+  <div class="callout callout-warning" style="margin-top: 8px;">
+    <strong>Limitations:</strong> Struggles with <strong>varying density</strong> (one &epsilon; cannot fit both dense and sparse clusters). Sensitive to parameter choice.
+  </div>
+  <aside class="notes">
+    "DBSCAN's weakness: one epsilon for the whole dataset. If your data has both tightly packed clusters and loose clusters, no single epsilon works. Enter HDBSCAN." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Choosing &epsilon;: The k-Distance Plot</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>For each point, compute the distance to its k-th nearest neighbour. Sort in descending order and plot.</p>
+  <div class="svg-diagram">
+    <svg width="500" height="220" viewBox="0 0 500 220">
+      <line x1="60" y1="200" x2="460" y2="200" stroke="#334155" stroke-width="2"/>
+      <line x1="60" y1="200" x2="60" y2="20" stroke="#334155" stroke-width="2"/>
+      <text x="260" y="218" text-anchor="middle" font-size="11" fill="#334155">Points (sorted)</text>
+      <text x="30" y="110" text-anchor="middle" font-size="11" fill="#334155" transform="rotate(-90, 30, 110)">k-distance</text>
+      <polyline points="80,30 120,35 160,42 200,55 240,75 280,100 320,140 360,170 400,185 440,192" fill="none" stroke="#3B82F6" stroke-width="3"/>
+      <line x1="60" y1="100" x2="460" y2="100" stroke="#F43F5E" stroke-width="1" stroke-dasharray="6"/>
+      <text x="465" y="96" font-size="11" fill="#F43F5E" font-weight="600">&epsilon;</text>
+      <circle cx="280" cy="100" r="6" fill="none" stroke="#F43F5E" stroke-width="2"/>
+      <text x="300" y="92" font-size="11" fill="#F43F5E">Elbow = &epsilon;</text>
+    </svg>
+  </div>
+  <p style="font-size: 0.85em;">The "elbow" in the k-distance plot gives a good &epsilon;. Points above the elbow are noise; points below are in clusters.</p>
+  <aside class="notes">
+    "The k-distance plot is to DBSCAN what the elbow plot is to k-means. Find the sharp bend, that's your epsilon." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>HDBSCAN: Hierarchical DBSCAN</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>HDBSCAN</strong> removes the biggest weakness of DBSCAN: you don't need to choose &epsilon;.</p>
+  <div class="highlight-box">
+    HDBSCAN runs DBSCAN at every possible &epsilon; simultaneously and picks the most stable clusters.
+  </div>
+  <div class="callout callout-foundations" style="margin-top: 16px;">
+    <strong>Key advantage:</strong> Handles <strong>varying density</strong>. A dense urban cluster and a sparse rural cluster can coexist. Points that don't belong to any cluster are labelled as noise (-1).
+  </div>
+  <aside class="notes">
+    "HDBSCAN is the 'just do the right thing' version of DBSCAN. Instead of you choosing epsilon, it tries all possible values and picks the clusters that persist across the widest range." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>HDBSCAN: The Algorithm</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Core distance:</strong> distance to the k-th nearest neighbour: <span class="katex">$\text{core}_k(x)$</span></li>
+    <li><strong>Mutual reachability distance:</strong>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$d_{\text{mreach}}(a,b) = \max\{\text{core}_k(a), \text{core}_k(b), d(a,b)\}$$</span>
+        <div class="annotation">Smooths out density: no two points are "closer" than their core distances allow</div>
+      </div>
+    </li>
+    <li><strong>Minimum spanning tree</strong> on mutual reachability graph</li>
+    <li><strong>Build condensed cluster tree</strong> by cutting MST edges in order</li>
+    <li><strong>Extract clusters</strong> using excess of mass (stability-based selection)</li>
+  </ol>
+  <aside class="notes">
+    "Step by step: compute a smoothed distance, build a tree, and extract the most stable clusters. The key insight is mutual reachability distance: it ensures sparse regions don't artificially connect dense clusters." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>HDBSCAN: Cluster Stability</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The <strong>condensed cluster tree</strong> shows how clusters merge as &epsilon; increases. Stability measures how long a cluster persists:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{stability}(C) = \sum_{x \in C} \left(\frac{1}{\lambda_{\min}(x, C)} - \frac{1}{\lambda_{\max}(C)}\right)$$</span>
+    <div class="annotation">&lambda; = 1/distance. Larger stability = cluster persists over a wider range of scales</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Cluster selection</h3>
+      <p style="font-size: 0.85em;">Walk up the tree. At each split, keep the children if their combined stability exceeds the parent's. Otherwise, keep the parent.</p>
+    </div>
+    <div class="col">
+      <h3>Soft clustering</h3>
+      <p style="font-size: 0.85em;">HDBSCAN provides <strong>membership probabilities</strong> &mdash; how confident is the assignment? Low probability = borderline point.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Soft clustering &rarr; k probability features per point.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "Stability is the key concept. A cluster that only exists at one specific epsilon is fragile. A cluster that persists across many epsilon values is real." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>HDBSCAN*: Flat Clustering Extraction</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p><strong>HDBSCAN*</strong> adds a flat clustering mode via the <code>cluster_selection_epsilon</code> parameter:</p>
+  <ul style="font-size: 0.9em;">
+    <li>If a cluster would split at a distance below the threshold, keep it merged</li>
+    <li>Produces clusters similar to DBSCAN at a given epsilon, but with hierarchical noise handling</li>
+    <li>Useful when you want "DBSCAN-like" output with HDBSCAN's robustness</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Computational advances (2025):</strong> LSH-based approximate HDBSCAN achieves subquadratic runtime on high-dimensional data. Hybrid methods like FLASC (flare-sensitive clustering) extend HDBSCAN to detect elongated structures within clusters.
+  </div>
+  <aside class="notes">
+    "For experts: the original HDBSCAN paper used excess-of-mass. The asterisk variant adds the ability to enforce a minimum cluster separation distance. Recent work on approximate HDBSCAN makes it feasible for truly massive datasets." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>DBSCAN vs HDBSCAN: When to Use Which</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Feature</th><th>DBSCAN</th><th>HDBSCAN</th></tr>
+    <tr><td>Parameters</td><td>&epsilon;, minPts</td><td>min_cluster_size only</td></tr>
+    <tr><td>Varying density</td><td>Struggles</td><td>Handles well</td></tr>
+    <tr><td>Noise detection</td><td>Yes</td><td>Yes (with probabilities)</td></tr>
+    <tr><td>Soft clustering</td><td>No</td><td>Yes (membership probability)</td></tr>
+    <tr><td>Scalability</td><td>O(n log n) with tree</td><td>O(n log n) with tree</td></tr>
+    <tr><td>Use case</td><td>Uniform density, known &epsilon;</td><td>General-purpose density clustering</td></tr>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Recommendation:</strong> Default to HDBSCAN. Use DBSCAN only when you have domain knowledge suggesting a specific &epsilon;.
+  </div>
+  <aside class="notes">
+    "In practice, HDBSCAN is almost always the better choice. DBSCAN is taught because HDBSCAN builds on it, and understanding the limitations of DBSCAN motivates HDBSCAN's design." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.4 HIERARCHICAL CLUSTERING (10-15 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.4 Hierarchical Clustering</h1>
+  <p class="subtitle">Build a tree of clusters &mdash; cut at the level that makes sense</p>
+  <aside class="notes">
+    "Hierarchical clustering gives you a dendrogram: a tree that shows how clusters merge from individual points up to a single cluster. You choose where to cut." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Agglomerative Clustering (Bottom-Up)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ol>
+    <li>Start with every point as its own cluster</li>
+    <li>Find the two closest clusters and merge them</li>
+    <li>Repeat until everything is one cluster</li>
+    <li>Cut the dendrogram at the desired level</li>
+  </ol>
+  <p style="margin-top: 12px;"><strong>The key question:</strong> how do you measure "distance between clusters"?</p>
+  <table style="font-size: 0.8em;">
+    <tr><th>Linkage</th><th>Distance Between Clusters</th><th>Behaviour</th></tr>
+    <tr><td>Single</td><td>Minimum distance (closest pair)</td><td>Chaining effect &mdash; elongated clusters</td></tr>
+    <tr><td>Complete</td><td>Maximum distance (farthest pair)</td><td>Compact, equal-size clusters</td></tr>
+    <tr><td>Average</td><td>Average of all pairwise distances</td><td>Compromise between single and complete</td></tr>
+    <tr><td>Ward</td><td>Minimise within-cluster variance</td><td>Similar to k-means; compact, spherical</td></tr>
+  </table>
+  <aside class="notes">
+    "Four linkage methods, four different behaviours. Ward linkage is the most popular because it minimises variance, just like k-means. Single linkage chains clusters together, which can be useful or problematic depending on your data." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Dendrogram</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A <strong>dendrogram</strong> is a tree that shows the merge history. The y-axis is the distance at which clusters merge.</p>
+  <div class="svg-diagram">
+    <svg width="600" height="280" viewBox="0 0 600 280">
+      <line x1="50" y1="260" x2="550" y2="260" stroke="#334155" stroke-width="1"/>
+      <line x1="50" y1="260" x2="50" y2="30" stroke="#334155" stroke-width="1"/>
+      <text x="25" y="150" text-anchor="middle" font-size="11" fill="#334155" transform="rotate(-90, 25, 150)">Distance</text>
+      <!-- Leaves -->
+      <line x1="100" y1="260" x2="100" y2="200" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="160" y1="260" x2="160" y2="200" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="100" y1="200" x2="160" y2="200" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="130" y1="200" x2="130" y2="120" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="240" y1="260" x2="240" y2="220" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="300" y1="260" x2="300" y2="220" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="240" y1="220" x2="300" y2="220" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="270" y1="220" x2="270" y2="120" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="130" y1="120" x2="270" y2="120" stroke="#8B5CF6" stroke-width="2"/>
+      <line x1="200" y1="120" x2="200" y2="60" stroke="#8B5CF6" stroke-width="2"/>
+      <line x1="420" y1="260" x2="420" y2="160" stroke="#22C55E" stroke-width="2"/>
+      <line x1="480" y1="260" x2="480" y2="160" stroke="#22C55E" stroke-width="2"/>
+      <line x1="420" y1="160" x2="480" y2="160" stroke="#22C55E" stroke-width="2"/>
+      <line x1="450" y1="160" x2="450" y2="60" stroke="#22C55E" stroke-width="2"/>
+      <line x1="200" y1="60" x2="450" y2="60" stroke="#F43F5E" stroke-width="2"/>
+      <!-- Cut line -->
+      <line x1="50" y1="140" x2="550" y2="140" stroke="#F43F5E" stroke-width="2" stroke-dasharray="8"/>
+      <text x="555" y="138" font-size="11" fill="#F43F5E" font-weight="600">Cut here = 3 clusters</text>
+      <!-- Labels -->
+      <text x="100" y="275" text-anchor="middle" font-size="10" fill="#64748B">A</text>
+      <text x="160" y="275" text-anchor="middle" font-size="10" fill="#64748B">B</text>
+      <text x="240" y="275" text-anchor="middle" font-size="10" fill="#64748B">C</text>
+      <text x="300" y="275" text-anchor="middle" font-size="10" fill="#64748B">D</text>
+      <text x="420" y="275" text-anchor="middle" font-size="10" fill="#64748B">E</text>
+      <text x="480" y="275" text-anchor="middle" font-size="10" fill="#64748B">F</text>
+    </svg>
+  </div>
+  <p style="font-size: 0.85em;">Cut horizontally at any height to get clusters. Higher cut = fewer, larger clusters. Lower cut = more, smaller clusters.</p>
+  <aside class="notes">
+    "The dendrogram is the most informative visualisation in clustering. You can see the hierarchy: which points merged first (most similar), which last. You choose the granularity by choosing where to cut." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Ward Linkage and the K-Means Connection</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Ward's method</strong> merges clusters that cause the smallest increase in total within-cluster variance:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\Delta(A, B) = \frac{|A| \cdot |B|}{|A| + |B|} \|\mu_A - \mu_B\|^2$$</span>
+    <div class="annotation">Merge cost proportional to cluster sizes and centroid distance</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Connection to K-means:</strong> Ward linkage minimises the same WCSS objective as k-means. The difference: Ward builds a hierarchy (try all k at once), k-means optimises for a fixed k.
+  </div>
+  <aside class="notes">
+    "Ward linkage and k-means are cousins. They optimise the same objective, but Ward gives you the entire hierarchy. You can read off the k-means-like solution for any k from the dendrogram." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Cophenetic Correlation</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>How well does the dendrogram preserve the original pairwise distances?</p>
+  <div class="equation-box">
+    <span class="katex-display">$$c = \text{corr}(d(x_i, x_j), \hat{d}(x_i, x_j))$$</span>
+    <div class="annotation">d = original distance, d-hat = cophenetic distance (height where x_i and x_j first merge)</div>
+  </div>
+  <ul style="font-size: 0.85em;">
+    <li><strong>c close to 1:</strong> dendrogram faithfully represents the data</li>
+    <li><strong>c below 0.7:</strong> dendrogram is distorting distances significantly</li>
+    <li>Use to compare linkage methods: which one preserves your data's structure best?</li>
+  </ul>
+  <aside class="notes">
+    "For experts: cophenetic correlation is a diagnostic tool. If it's low, your dendrogram is lying to you about which points are similar. Try a different linkage." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Divisive Clustering: DIANA</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Top-down approach:</strong> Start with all data as one cluster, recursively split.</p>
+  <ol style="font-size: 0.9em;">
+    <li>Start with everything in one cluster</li>
+    <li>Find the cluster with highest diameter (most dissimilar pair)</li>
+    <li>Split it using the point most different from the rest</li>
+    <li>Repeat until desired number of clusters</li>
+  </ol>
+  <div class="callout callout-theory">
+    <strong>When to prefer divisive:</strong> When you expect a small number of large clusters. Divisive makes the most important splits first, while agglomerative makes the smallest merges first.
+  </div>
+  <aside class="notes">
+    "Divisive is the opposite of agglomerative: top-down instead of bottom-up. Less commonly used in practice, but can be better when you have a few well-separated groups." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.5 GMM & EM ALGORITHM (18-22 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.5 Gaussian Mixture Models &amp; EM</h1>
+  <p class="subtitle">Soft clustering &mdash; when points belong to multiple groups with different probabilities</p>
+  <aside class="notes">
+    "K-means says 'you belong to cluster 3.' GMM says 'you're 70% cluster 3, 25% cluster 1, 5% cluster 2.' Much more realistic for real-world data." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Hard vs Soft Clustering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>K-means (hard)</h3>
+      <p>Every point belongs to <strong>exactly one</strong> cluster.</p>
+      <p>"This customer IS a luxury buyer."</p>
+      <p style="color: var(--ascent-error);">But what about the customer who buys luxury items on weekdays and bulk groceries on weekends?</p>
+    </div>
+    <div class="col">
+      <h3>GMM (soft)</h3>
+      <p>Every point has a <strong>probability</strong> of belonging to each cluster.</p>
+      <p>"This customer is 70% luxury buyer, 25% bulk buyer, 5% sale hunter."</p>
+      <p style="color: var(--ascent-success);">Captures the real-world ambiguity in group membership.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Gaussian Mixture Model</strong> assumes data comes from a mix of bell curves (Gaussians). Each cluster is one bell curve with its own centre, spread, and weight.
+  </div>
+  <aside class="notes">
+    "Soft clustering is more honest about reality. Most things don't belong neatly to one category. The probabilities from GMM are powerful features for downstream models." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>GMM: The Generative Model</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A GMM assumes each data point is generated by:</p>
+  <ol>
+    <li>Pick a component k with probability <span class="katex">$\pi_k$</span> (mixing weight)</li>
+    <li>Draw from that component's Gaussian: <span class="katex">$x \sim \mathcal{N}(\mu_k, \Sigma_k)$</span></li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">$$p(x) = \sum_{k=1}^{K} \pi_k \; \mathcal{N}(x \mid \mu_k, \Sigma_k)$$</span>
+    <div class="annotation">
+      <span class="term-param">&pi;_k</span> = mixing weight (sums to 1) &nbsp;|&nbsp;
+      <span class="term-input">&mu;_k</span> = mean of component k &nbsp;|&nbsp;
+      <span class="term-output">&Sigma;_k</span> = covariance of component k
+    </div>
+  </div>
+  <p style="font-size: 0.85em;"><strong>Parameters to learn:</strong> <span class="katex">$\theta = \{\pi_k, \mu_k, \Sigma_k\}_{k=1}^K$</span></p>
+  <p style="font-size: 0.85em;"><strong>Problem:</strong> We can't directly maximise the log-likelihood because we don't know which component generated each point.</p>
+  <aside class="notes">
+    "Imagine K bell curves superimposed on each other. Each data point was generated by ONE of these curves, but we don't know which one. The EM algorithm figures this out." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Log-Likelihood Problem</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>The log-likelihood we want to maximise:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\ell(\theta) = \sum_{i=1}^{N} \log \left[ \sum_{k=1}^{K} \pi_k \; \mathcal{N}(x_i \mid \mu_k, \Sigma_k) \right]$$</span>
+    <div class="annotation">The log of a sum has no closed-form MLE solution</div>
+  </div>
+  <p>Setting <span class="katex">$\frac{\partial \ell}{\partial \mu_k} = 0$</span> gives:</p>
+  <div class="equation-box" style="font-size: 0.9em;">
+    <span class="katex-display">$$\mu_k = \frac{\sum_{i=1}^{N} \gamma_{ik} \, x_i}{\sum_{i=1}^{N} \gamma_{ik}} \quad \text{where} \quad \gamma_{ik} = \frac{\pi_k \, \mathcal{N}(x_i \mid \mu_k, \Sigma_k)}{\sum_{j} \pi_j \, \mathcal{N}(x_i \mid \mu_j, \Sigma_j)}$$</span>
+    <div class="annotation">Circular: <span class="term-param">&mu;_k</span> depends on <span class="term-output">&gamma;_ik</span>, which depends on <span class="term-param">&mu;_k</span>. EM breaks this circularity.</div>
+  </div>
+  <aside class="notes">
+    "This is the chicken-and-egg problem. To compute the means, we need the responsibilities. To compute the responsibilities, we need the means. EM solves this by alternating." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>EM Algorithm: E-Step</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">E-step: Compute Responsibilities (Posterior)</div>
+    <p>For each point <span class="katex">$x_i$</span> and component k, compute the posterior probability that component k generated <span class="katex">$x_i$</span>:</p>
+    <div class="equation-box">
+      <span class="katex-display">$$\gamma_{ik} = \frac{\pi_k \; \mathcal{N}(x_i \mid \mu_k, \Sigma_k)}{\sum_{j=1}^{K} \pi_j \; \mathcal{N}(x_i \mid \mu_j, \Sigma_j)}$$</span>
+      <div class="annotation">Bayes' rule: <span class="term-param">prior</span> &times; <span class="term-input">likelihood</span> / <span class="term-output">evidence</span></div>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> "Given our current best guess of the bell curves, how likely is it that this particular point came from bell curve k?" A point sitting between two bell curves gets partial credit from both.
+  </div>
+  <aside class="notes">
+    "The E-step is just Bayes' rule. Given our current parameters, compute the probability that each point belongs to each cluster. This gives us soft assignments." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>EM Algorithm: M-Step</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">M-step: MLE Updates for Gaussian Mixture</div>
+    <p>Using the responsibilities from the E-step, update all parameters:</p>
+  </div>
+  <div class="equation-box">
+    <p style="text-align: left; font-size: 0.9em;"><strong>Effective count:</strong></p>
+    <span class="katex-display">$$N_k = \sum_{i=1}^{N} \gamma_{ik}$$</span>
+  </div>
+  <div class="columns" style="font-size: 0.85em;">
+    <div class="col">
+      <div class="equation-box">
+        <p><strong>Updated mean:</strong></p>
+        <span class="katex-display">$$\mu_k^{\text{new}} = \frac{1}{N_k} \sum_{i=1}^{N} \gamma_{ik} \, x_i$$</span>
+      </div>
+    </div>
+    <div class="col">
+      <div class="equation-box">
+        <p><strong>Updated mixing weight:</strong></p>
+        <span class="katex-display">$$\pi_k^{\text{new}} = \frac{N_k}{N}$$</span>
+      </div>
+    </div>
+  </div>
+  <div class="equation-box" style="margin-top: 8px;">
+    <p style="text-align: left; font-size: 0.9em;"><strong>Updated covariance:</strong></p>
+    <span class="katex-display">$$\Sigma_k^{\text{new}} = \frac{1}{N_k} \sum_{i=1}^{N} \gamma_{ik} \, (x_i - \mu_k^{\text{new}})(x_i - \mu_k^{\text{new}})^T$$</span>
+  </div>
+  <aside class="notes">
+    "The M-step is weighted MLE. Every formula is the same as the normal MLE for a Gaussian, except each point is weighted by its responsibility. More responsible = more influence on the parameter update." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>EM Convergence</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Guarantee</h3>
+      <p>EM <strong>monotonically increases</strong> the log-likelihood:</p>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$\ell(\theta^{(t+1)}) \geq \ell(\theta^{(t)})$$</span>
+      </div>
+      <ul style="font-size: 0.85em;">
+        <li>Proof: EM maximises a lower bound (ELBO) on <span class="katex">$\ell(\theta)$</span></li>
+        <li>Converges to a <strong>local maximum</strong></li>
+        <li>Multiple random restarts help find global</li>
+        <li>BIC/AIC for model selection (choosing K)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>EM as a Template</h3>
+      <p>The EM pattern works beyond GMMs:</p>
+      <table style="font-size: 0.8em;">
+        <tr><th>Application</th><th>Latent Variable</th></tr>
+        <tr><td>GMM</td><td>Component membership</td></tr>
+        <tr><td>Hidden Markov Model</td><td>Hidden states</td></tr>
+        <tr><td>Factor Analysis</td><td>Latent factors</td></tr>
+        <tr><td>LDA (Topic Models)</td><td>Topic assignments</td></tr>
+      </table>
+    </div>
+  </div>
+  <aside class="notes">
+    "EM is not just for GMMs. It's a general template for any model with hidden variables. We'll see it again when we cover topic models (LDA uses a variant of EM)." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>EM and ELBO</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>EM maximises the <strong>Evidence Lower Bound</strong> (ELBO):</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\log p(X|\theta) \geq \underbrace{\mathbb{E}_{q}[\log p(X, Z|\theta)]}_{\text{expected complete-data log-lik}} - \underbrace{\mathbb{E}_{q}[\log q(Z)]}_{\text{entropy of q}} = \text{ELBO}(q, \theta)$$</span>
+    <div class="annotation">E-step optimises q (tightens the bound). M-step optimises &theta; (pushes the bound up).</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Connection to variational inference:</strong> EM is a special case where the E-step uses the exact posterior. When the exact posterior is intractable, we use variational inference (approximate q). This is how modern deep generative models (VAEs) work &mdash; preview of M7.
+  </div>
+  <aside class="notes">
+    "For experts: the ELBO perspective unifies EM with variational autoencoders. In VAEs, you can't compute the exact posterior, so you use a neural network to approximate it. Same principle, different implementation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Covariance Types</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <tr><th>Type</th><th>Shape</th><th>Parameters per Component</th><th>When to Use</th></tr>
+    <tr><td>Full</td><td>Arbitrary ellipsoid</td><td>d(d+1)/2</td><td>Default; most flexible</td></tr>
+    <tr><td>Diagonal</td><td>Axis-aligned ellipsoid</td><td>d</td><td>Assumed feature independence</td></tr>
+    <tr><td>Spherical</td><td>Sphere (isotropic)</td><td>1</td><td>Equivalent to k-means</td></tr>
+    <tr><td>Tied</td><td>All components share one covariance</td><td>d(d+1)/2 total</td><td>When clusters differ only in location</td></tr>
+  </table>
+  <div class="callout callout-theory">
+    <strong>GMM with spherical covariance = k-means.</strong> K-means is a GMM where all components have equal, identity covariance. This is the formal connection between the two.
+  </div>
+  <aside class="notes">
+    "Covariance type controls how many parameters the model has. More flexible = better fit but more data needed. Spherical covariance reduces GMM to k-means exactly." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Model Selection: BIC for Choosing K</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{BIC} = -2 \ln \hat{L} + p \ln n$$</span>
+    <div class="annotation">p = number of parameters, n = number of data points. Lower BIC = better model.</div>
+  </div>
+  <p>Plot BIC vs K. Choose the K that <strong>minimises BIC</strong>.</p>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> BIC balances two things: how well the model fits (log-likelihood) vs how complex the model is (number of parameters). Adding more components always fits better, but BIC penalises the complexity. The best K is the sweet spot.
+  </div>
+  <aside class="notes">
+    "BIC is the principled way to choose K for GMMs. Unlike the elbow method, BIC has a clear minimum. The penalty term prevents overfitting by discouraging too many components." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>GMM vs K-Means: Summary</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Feature</th><th>K-Means</th><th>GMM</th></tr>
+    <tr><td>Assignment</td><td>Hard (one cluster)</td><td>Soft (probabilities)</td></tr>
+    <tr><td>Cluster shape</td><td>Spherical only</td><td>Elliptical (any covariance)</td></tr>
+    <tr><td>Model selection</td><td>Elbow, silhouette, gap</td><td>BIC, AIC</td></tr>
+    <tr><td>Speed</td><td>Faster</td><td>Slower (more parameters)</td></tr>
+    <tr><td>Feature engineering</td><td>1 categorical feature</td><td>K probability features</td></tr>
+    <tr><td>Interpretation</td><td>Centroid = cluster summary</td><td>Mean + covariance = full description</td></tr>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Feature engineering insight:</strong> GMM gives you K features (one probability per component) instead of K-means' single categorical feature. More information for your downstream model.
+  </div>
+  <aside class="notes">
+    "Use k-means when you want speed and simplicity. Use GMM when you want soft assignments, elliptical clusters, or probability features for downstream models." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.6 SPECTRAL & OTHER CLUSTERING (12-15 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.6 Spectral &amp; Other Clustering Methods</h1>
+  <p class="subtitle">Graph-based clustering, mean shift, and beyond</p>
+  <aside class="notes">
+    "Spectral clustering uses the mathematics of graphs to find clusters of arbitrary shape. It's the most theoretically elegant clustering method." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Spectral Clustering: The Idea</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Transform data into a graph, then use eigenvalues to find clusters:</p>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Build similarity graph</strong> &mdash; connect nearby points (k-NN or &epsilon;-ball)</li>
+    <li><strong>Compute graph Laplacian</strong>: <span class="katex">$L = D - W$</span> where D is degree matrix, W is adjacency</li>
+    <li><strong>Eigendecompose L</strong> &mdash; take the k smallest eigenvectors</li>
+    <li><strong>Run k-means in eigenspace</strong> &mdash; clusters now linearly separable</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">$$L_{\text{norm}} = D^{-1/2} L \, D^{-1/2} = I - D^{-1/2} W \, D^{-1/2}$$</span>
+    <div class="annotation">Normalised Laplacian &mdash; invariant to cluster size differences</div>
+  </div>
+  <aside class="notes">
+    "Think of it this way: your data points are nodes in a graph, connected by edges weighted by similarity. Spectral clustering finds the best way to cut the graph into pieces by analysing its eigenvalues." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Graph Laplacian</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Properties of L = D - W</h3>
+      <ul style="font-size: 0.85em;">
+        <li>Symmetric, positive semi-definite</li>
+        <li>Smallest eigenvalue is always 0</li>
+        <li><strong>k connected components &rarr; k eigenvalues = 0</strong></li>
+        <li>Eigenvectors encode cluster structure</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Eigengap heuristic</h3>
+      <p style="font-size: 0.85em;">The eigenvalues of L reveal the number of clusters. Look for the largest <strong>gap</strong> between consecutive eigenvalues.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Eigengap at position k means k is the right number of clusters.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "The graph Laplacian encodes the connectivity structure of your data. Its eigenvalues tell you how many natural clusters exist. This is mathematically beautiful and practically useful." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Normalised Cuts (Shi &amp; Malik, 2000)</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Spectral clustering minimises the normalised cut:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{Ncut}(A,B) = \frac{\text{cut}(A,B)}{\text{vol}(A)} + \frac{\text{cut}(A,B)}{\text{vol}(B)}$$</span>
+    <div class="annotation">vol(A) = sum of edge weights in A. This balances cluster sizes.</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Why normalise?</strong> Minimum cut trivially isolates single outlier points. Normalised cut balances cluster sizes by dividing by volume. The relaxed optimisation leads to the eigenvector solution.
+  </div>
+  <aside class="notes">
+    "For experts: the connection between normalised cuts and eigenvectors of the Laplacian is one of the most elegant results in spectral graph theory. The NP-hard discrete problem has a beautiful continuous relaxation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Other Clustering Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table style="font-size: 0.8em;">
+    <tr><th>Method</th><th>Key Idea</th><th>Parameters</th><th>Best For</th></tr>
+    <tr><td>Mean Shift</td><td>Mode-seeking via kernel density</td><td>Bandwidth</td><td>Blob detection, no k needed</td></tr>
+    <tr><td>BIRCH</td><td>Incremental, CF-trees</td><td>Threshold, branching</td><td>Very large datasets, streaming</td></tr>
+    <tr><td>Affinity Propagation</td><td>Message passing, exemplars</td><td>Damping, preference</td><td>Finding representative examples</td></tr>
+    <tr><td>OPTICS</td><td>Density reachability ordering</td><td>min_samples</td><td>Understanding cluster hierarchy</td></tr>
+    <tr><td>SOM</td><td>Neural network on grid</td><td>Grid size, learning rate</td><td>Topology-preserving visualisation</td></tr>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Mean Shift</strong> is worth understanding: it finds cluster centres by repeatedly moving toward the densest region. Like climbing a hill in the dark &mdash; you always step uphill until you reach the peak.
+  </div>
+  <aside class="notes">
+    "These are specialised methods. Mean Shift is mode-finding, BIRCH handles streaming data, Affinity Propagation finds representative examples. Know when each one is the right tool." Timing: ~3 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.7 CLUSTER VALIDATION (12-15 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.7 Cluster Validation</h1>
+  <p class="subtitle">How do you know your clusters are real?</p>
+  <aside class="notes">
+    "Without labels, how do you evaluate clustering? This is the hardest part of unsupervised ML. We need both internal metrics (no ground truth) and external metrics (when we have labels)." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Internal Validation: No Ground Truth</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <tr><th>Metric</th><th>Formula</th><th>Interpretation</th></tr>
+    <tr>
+      <td>Silhouette</td>
+      <td><span class="katex">$s(i) = \frac{b(i)-a(i)}{\max(a(i),b(i))}$</span></td>
+      <td>[-1, 1]. Higher = better separation</td>
+    </tr>
+    <tr>
+      <td>Calinski-Harabasz</td>
+      <td><span class="katex">$\frac{\text{tr}(B_k)}{\text{tr}(W_k)} \cdot \frac{N-k}{k-1}$</span></td>
+      <td>Higher = more separated clusters</td>
+    </tr>
+    <tr>
+      <td>Davies-Bouldin</td>
+      <td><span class="katex">$\frac{1}{k}\sum_i \max_{j\neq i} \frac{\sigma_i + \sigma_j}{d(\mu_i,\mu_j)}$</span></td>
+      <td>Lower = better (less overlap)</td>
+    </tr>
+    <tr>
+      <td>Dunn Index</td>
+      <td><span class="katex">$\frac{\min_{i\neq j} d(C_i, C_j)}{\max_k \text{diam}(C_k)}$</span></td>
+      <td>Higher = compact, well-separated</td>
+    </tr>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> Silhouette asks "is each point closer to its own cluster than to the next nearest cluster?" Calinski-Harabasz asks "are the clusters compact internally and spread apart from each other?"
+  </div>
+  <aside class="notes">
+    "Use silhouette as your default metric. It's intuitive, works with any algorithm, and gives per-point scores so you can identify borderline assignments." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>External Validation: With Ground Truth</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <tr><th>Metric</th><th>Measures</th><th>Range</th><th>Adjusted for Chance?</th></tr>
+    <tr><td>Adjusted Rand Index (ARI)</td><td>Pairwise agreement</td><td>[-1, 1]</td><td>Yes</td></tr>
+    <tr><td>Normalised Mutual Info (NMI)</td><td>Shared information</td><td>[0, 1]</td><td>Yes</td></tr>
+    <tr><td>V-measure</td><td>Homogeneity + completeness</td><td>[0, 1]</td><td>No</td></tr>
+    <tr><td>Fowlkes-Mallows</td><td>Geometric mean of precision/recall</td><td>[0, 1]</td><td>No</td></tr>
+  </table>
+  <div class="callout callout-warning" style="margin-top: 12px;">
+    <strong>When do you have ground truth?</strong> When evaluating clustering algorithms on labelled datasets (e.g., Iris). In production, you rarely have ground truth &mdash; that's why you're using unsupervised methods in the first place.
+  </div>
+  <aside class="notes">
+    "External metrics are for algorithm development and benchmarking. In production, you rely on internal metrics plus domain expert validation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Stability-Based Validation</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Are your clusters <strong>reproducible</strong> or artifacts of random noise?</p>
+  <ol style="font-size: 0.9em;">
+    <li>Subsample or bootstrap the data multiple times</li>
+    <li>Run clustering on each subsample</li>
+    <li>Measure agreement across runs (using ARI or NMI)</li>
+    <li>Stable k = high agreement. Unstable k = clusters are noise</li>
+  </ol>
+  <div class="callout callout-advanced">
+    <strong>Prediction strength (Tibshirani &amp; Walther, 2005):</strong> Split data in half. Cluster one half. Use those clusters to "predict" the other half. If the prediction is good, the clusters are real.
+  </div>
+  <aside class="notes">
+    "For experts: stability-based validation is the gold standard. If your clusters change dramatically when you remove 10% of the data, they're not real. If they're stable across subsamples, you can trust them." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: AutoMLEngine for Clustering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>K-means, GMM, HDBSCAN, Spectral, Hierarchical</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>AutoMLEngine</code></span>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import AutoMLEngine, AutoMLConfig
+
+config = AutoMLConfig(
+    task="clustering",
+    algorithms=["kmeans", "gmm", "hdbscan", "spectral"],
+    metric="silhouette",
+    n_trials=50
+)
+
+engine = AutoMLEngine(config)
+results = engine.fit(df)
+
+# Compare all algorithms programmatically
+best = results.best_model
+print(f"Best: {best.algorithm}, Silhouette: {best.score:.3f}")
+
+# Access cluster assignments
+labels = best.labels           # Hard assignments
+probabilities = best.probas    # Soft assignments (if available)</code></pre>
+  <aside class="notes">
+    "AutoMLEngine compares clustering algorithms for you. It runs each one, computes validation metrics, and reports the best. No manual tuning needed." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.8 PCA (18-22 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.8 Principal Component Analysis</h1>
+  <p class="subtitle">Find the directions of maximum variance</p>
+  <aside class="notes">
+    "PCA is the most important dimensionality reduction technique. It finds the 'best angles' to project your data so you lose as little information as possible." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Curse of Dimensionality</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Your e-commerce dataset has 200 features: purchase history, browsing time, click patterns, demographics...</p>
+  <div class="highlight-box">
+    You cannot visualise 200 dimensions. You cannot compute distances reliably in 200 dimensions.
+  </div>
+  <p style="margin-top: 16px;"><strong>Dimensionality reduction</strong> = finding a smaller set of "super-features" that capture most of the information.</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> A shadow is a 2D projection of a 3D object. You lose some information (depth), but a good shadow preserves the shape. PCA finds the best "angle" to cast the shadow.
+  </div>
+  <aside class="notes">
+    "200 features means 200 dimensions. Humans can visualise 2 or 3. Algorithms struggle with 200 because most of the space is empty. PCA compresses 200 dimensions to a handful that capture the important patterns." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>PCA: The Mathematical Formulation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Goal:</strong> Find the direction that maximises variance of projected data.</p>
+  <div class="derivation-step">
+    <div class="step-label">Step 1: Centre the data</div>
+    <span class="katex-display">$$\tilde{X} = X - \bar{X}$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 2: Compute covariance matrix</div>
+    <span class="katex-display">$$C = \frac{1}{n-1} \tilde{X}^T \tilde{X}$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 3: Eigendecomposition</div>
+    <span class="katex-display">$$C v = \lambda v$$</span>
+    <p style="font-size: 0.85em;">Eigenvectors <span class="katex">$v$</span> = principal directions. Eigenvalues <span class="katex">$\lambda$</span> = variance along each direction.</p>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 4: Project</div>
+    <span class="katex-display">$$X_{\text{proj}} = \tilde{X} V_k$$</span>
+    <p style="font-size: 0.85em;">Keep top k eigenvectors (largest eigenvalues).</p>
+  </div>
+  <aside class="notes">
+    "Four steps: centre, covariance, eigendecompose, project. The eigenvectors are the new axes. The eigenvalues tell you how much variance each axis captures." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>PCA and SVD</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>PCA is equivalent to Singular Value Decomposition of the centred data matrix:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\tilde{X} = U \Sigma V^T$$</span>
+    <div class="annotation">
+      <span class="term-input">U</span> = left singular vectors (scores) &nbsp;|&nbsp;
+      <span class="term-param">&Sigma;</span> = singular values (related to eigenvalues: &lambda;_k = &sigma;_k&sup2;/(n-1)) &nbsp;|&nbsp;
+      <span class="term-output">V</span> = right singular vectors = principal components
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>SVD is preferred computationally.</strong> Eigendecomposition of the covariance matrix can be numerically unstable. SVD of the data matrix directly is faster and more stable for tall matrices (n >> d).
+  </div>
+  <aside class="notes">
+    "In practice, every PCA implementation uses SVD under the hood. The eigendecomposition formulation is for understanding; SVD is for computing." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Variance Explained &amp; the Scree Plot</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Variance explained ratio</h3>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$\text{VER}_k = \frac{\lambda_k}{\sum_i \lambda_i}$$</span>
+      </div>
+      <p style="font-size: 0.85em;">Cumulative variance explained: choose k where cumulative VER exceeds 90-95%.</p>
+    </div>
+    <div class="col">
+      <h3>Scree plot</h3>
+      <p style="font-size: 0.85em;">Plot eigenvalues in decreasing order. The "elbow" indicates the right number of components.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Rule of thumb: keep components until adding one more captures less than 5% additional variance.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Example:</strong> 200 features, first 10 PCs explain 95% of variance. You've compressed 200 dimensions to 10 with only 5% information loss. Those 10 PCs are your new features.
+  </div>
+  <aside class="notes">
+    "The scree plot tells you how many components matter. If the first 3 components explain 95% of variance, the remaining 197 are noise. Compression achieved." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Reconstruction and Loadings</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Reconstruction</h3>
+      <div class="equation-box" style="font-size: 0.9em;">
+        <span class="katex-display">$$\hat{X} = X_{\text{proj}} V_k^T + \bar{X}$$</span>
+      </div>
+      <p style="font-size: 0.85em;">Reconstruction error measures information loss.</p>
+    </div>
+    <div class="col">
+      <h3>Loadings</h3>
+      <p style="font-size: 0.85em;">Each PC is a <strong>linear combination</strong> of original features. Loadings tell you which features contribute to each PC.</p>
+      <p style="font-size: 0.85em;">PC1 = 0.8 &times; income + 0.5 &times; spending &mdash; this PC captures "financial capacity".</p>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Biplot:</strong> Plot observations AND loadings together. Observations as points, loadings as arrows. Direction of arrow = which PC the feature contributes to. Length = contribution strength.
+  </div>
+  <aside class="notes">
+    "Loadings are the key to interpretation. Without them, PCs are abstract numbers. With them, you can name your components: 'PC1 = financial capacity', 'PC2 = risk appetite'." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Standardisation for PCA</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="highlight-box">
+    You MUST standardise features before PCA (unless they share the same unit and scale).
+  </div>
+  <p style="margin-top: 16px;"><strong>Why?</strong> PCA maximises variance. If "income" ranges 0&ndash;1,000,000 and "age" ranges 0&ndash;100, income will dominate the first PC purely because of scale, not because it's more important.</p>
+  <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
+
+# Always standardise before PCA
+pipeline = PreprocessingPipeline()
+pipeline.add_step("standardize", method="z_score")
+df_scaled = pipeline.fit_transform(df)</code></pre>
+  <aside class="notes">
+    "This is a common mistake. Without standardisation, PCA captures scale differences, not structural differences. Always standardise unless your features are already on the same scale." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>PCA Variants</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Probabilistic PCA</h3>
+      <p style="font-size: 0.85em;">Latent variable model: <span class="katex">$x = Wz + \mu + \epsilon$</span> where z ~ N(0,I). MLE of W recovers PCA. Enables missing data handling and Bayesian model selection.</p>
+      <h3>Incremental PCA</h3>
+      <p style="font-size: 0.85em;">Process data in mini-batches. Never loads full dataset into memory. For streaming or very large datasets.</p>
+    </div>
+    <div class="col">
+      <h3>Sparse PCA</h3>
+      <p style="font-size: 0.85em;">Add L1 penalty: <span class="katex">$\max_{v} v^T C v - \alpha \|v\|_1$</span>. Forces loadings to be sparse (mostly zero). More interpretable components.</p>
+      <h3>Kernel PCA</h3>
+      <p style="font-size: 0.85em;">PCA in high-dimensional feature space via kernel trick. Handles non-linear structure. Kernels: RBF, polynomial, sigmoid.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "For experts: Probabilistic PCA gives a principled way to handle missing data and choose the number of components via BIC. Sparse PCA trades some variance explained for interpretability. Kernel PCA handles non-linear manifolds." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>PCA as Feature Engineering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-kailash">
+    <strong>n features &rarr; k new features (orthogonal components)</strong>
+  </div>
+  <ul>
+    <li><strong>Multicollinearity:</strong> PCA produces orthogonal components &mdash; zero correlation between PCs. Eliminates multicollinearity for linear models.</li>
+    <li><strong>Noise reduction:</strong> Drop low-variance components that capture noise, not signal.</li>
+    <li><strong>Visualisation:</strong> Project to 2D for scatter plots and cluster inspection.</li>
+    <li><strong>Speed:</strong> Fewer features = faster training for downstream models.</li>
+  </ul>
+  <pre><code class="language-python"># PCA as preprocessing for TrainingPipeline
+from kailash_ml import TrainingPipeline, ModelSpec
+
+spec = ModelSpec(
+    preprocessors=["standardize", "pca:10"],  # Keep top 10 PCs
+    model="xgboost",
+    target="default_risk"
+)
+pipeline = TrainingPipeline(spec)
+pipeline.fit(df)  # Internally: standardize -> PCA(10) -> XGBoost</code></pre>
+  <aside class="notes">
+    "PCA as a preprocessing step: standardise, extract top k components, feed into your supervised model. This is the USML-as-feature-engineering pattern in action." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.9 t-SNE & UMAP (18-22 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.9 t-SNE &amp; UMAP</h1>
+  <p class="subtitle">Non-linear dimensionality reduction for visualisation</p>
+  <aside class="notes">
+    "PCA is linear: it finds straight axes. t-SNE and UMAP are non-linear: they can unravel complex manifolds. They're primarily used for visualisation." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>t-SNE: Intuition</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>t-SNE</strong> preserves <strong>local structure</strong>: neighbours in high-D stay neighbours in 2D.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>How it works (simplified)</h3>
+      <ol style="font-size: 0.85em;">
+        <li>Compute pairwise similarities in high-D (using Gaussian)</li>
+        <li>Place points randomly in 2D</li>
+        <li>Compute pairwise similarities in 2D (using Student's t)</li>
+        <li>Move points in 2D to match the high-D similarities</li>
+      </ol>
+    </div>
+    <div class="col">
+      <h3>Result</h3>
+      <p style="font-size: 0.85em;">Clusters that are close in high-D appear as visible clusters in 2D. The MNIST digits dataset, visualised with t-SNE, shows clear digit groups.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "t-SNE is like crumpling a piece of paper: nearby points stay nearby, but the overall shape changes. It's brilliant for seeing clusters in 2D." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>t-SNE: The Mathematics</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>High-dimensional similarities</strong> (Gaussian kernel):</p>
+  <div class="equation-box" style="font-size: 0.9em;">
+    <span class="katex-display">$$p_{j|i} = \frac{\exp(-\|x_i - x_j\|^2 / 2\sigma_i^2)}{\sum_{k \neq i} \exp(-\|x_i - x_k\|^2 / 2\sigma_i^2)}$$</span>
+    <div class="annotation">Symmetrised: <span class="katex">$p_{ij} = \frac{p_{j|i} + p_{i|j}}{2n}$</span></div>
+  </div>
+  <p><strong>Low-dimensional similarities</strong> (Student's t with 1 degree of freedom):</p>
+  <div class="equation-box" style="font-size: 0.9em;">
+    <span class="katex-display">$$q_{ij} = \frac{(1 + \|y_i - y_j\|^2)^{-1}}{\sum_{k \neq l} (1 + \|y_k - y_l\|^2)^{-1}}$$</span>
+    <div class="annotation">Student's t has heavier tails than Gaussian: allows moderate distances in 2D for points that are far in high-D</div>
+  </div>
+  <aside class="notes">
+    "Two key ideas: Gaussian in high-D (local neighbourhood), Student's t in low-D (prevents crowding). The heavy tails of the t-distribution are what make t-SNE work where SNE failed." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>t-SNE: Objective and Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Objective:</strong> Minimise KL divergence between P and Q:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{KL}(P \| Q) = \sum_{i \neq j} p_{ij} \log \frac{p_{ij}}{q_{ij}}$$</span>
+    <div class="annotation">Make the 2D similarities (Q) match the high-D similarities (P)</div>
+  </div>
+  <p><strong>Optimisation:</strong> Gradient descent on the positions <span class="katex">$y_i$</span> in 2D.</p>
+  <div class="callout callout-theory">
+    <strong>Perplexity:</strong> Controls the effective number of neighbours. Low perplexity (5) = very local. High perplexity (50) = considers more neighbours. Typical range: 5&ndash;50. Always try multiple values.
+  </div>
+  <aside class="notes">
+    "KL divergence measures how different two probability distributions are. We want the 2D similarities to be as close as possible to the high-D similarities. The gradient tells us which direction to move each point." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>t-SNE: Critical Warnings</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-error">
+    <strong>t-SNE is for VISUALISATION ONLY.</strong> Do not use t-SNE embeddings as features.
+  </div>
+  <ul>
+    <li><strong>Cluster sizes are MEANINGLESS</strong> &mdash; a large cluster in t-SNE may be smaller than a tiny one in reality</li>
+    <li><strong>Distances between clusters are MEANINGLESS</strong> &mdash; two far-apart clusters might be closer in reality than two nearby ones</li>
+    <li><strong>Different runs give DIFFERENT results</strong> &mdash; stochastic algorithm, non-convex objective</li>
+    <li><strong>Perplexity changes everything</strong> &mdash; same data, different perplexity = completely different plot</li>
+  </ul>
+  <div class="callout callout-warning">
+    <strong>Only trust local structure.</strong> Neighbours in t-SNE are likely real neighbours. Everything else (cluster size, inter-cluster distance) is an artifact.
+  </div>
+  <aside class="notes">
+    "This is the most common mistake with t-SNE. Students see beautiful clusters and conclude they're well-separated. But t-SNE can create fake clusters and hide real distances. Use it for exploration, never for modelling." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Barnes-Hut t-SNE</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Standard t-SNE is O(n&sup2;). <strong>Barnes-Hut approximation</strong> reduces this to O(n log n):</p>
+  <ul style="font-size: 0.9em;">
+    <li>Build a quad-tree (2D) or oct-tree (3D) over the low-dimensional space</li>
+    <li>For distant point groups, approximate the repulsive force as if the group were a single point</li>
+    <li>Same trick used in N-body simulations in physics</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Practical impact:</strong> Standard t-SNE handles ~5,000 points. Barnes-Hut handles ~100,000. For larger datasets, use UMAP.
+  </div>
+  <aside class="notes">
+    "For experts: Barnes-Hut is the standard implementation now. But for datasets larger than 100K points, UMAP is preferred because it scales better and preserves global structure." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>UMAP: Intuition</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>UMAP</strong> = Uniform Manifold Approximation and Projection (McInnes et al., 2018)</p>
+  <div class="columns">
+    <div class="col">
+      <h3>What UMAP does better</h3>
+      <ul>
+        <li><strong>Preserves global structure</strong> better than t-SNE</li>
+        <li><strong>Much faster</strong> (scales to millions of points)</li>
+        <li><strong>Deterministic</strong> with fixed random seed</li>
+        <li><strong>Arbitrary output dimensions</strong> (not just 2D)</li>
+        <li><strong>Usable as features</strong> (unlike t-SNE)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Key parameters</h3>
+      <ul>
+        <li><strong>n_neighbors</strong> &mdash; local vs global (like perplexity). Low = more local detail. High = more global structure.</li>
+        <li><strong>min_dist</strong> &mdash; how tightly points are packed. Low = tighter clusters. High = more spread.</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "UMAP is the modern replacement for t-SNE in most cases. Faster, better global structure preservation, and the embeddings can actually be used as features for downstream models." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>UMAP: Theoretical Foundation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>UMAP is grounded in <strong>topological data analysis</strong>:</p>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Assumptions:</strong> Data is uniformly distributed on a Riemannian manifold; the metric is locally constant; the manifold is locally connected.</li>
+    <li><strong>Build fuzzy simplicial set:</strong> Construct k-nearest neighbour graph. Assign fuzzy membership using exponential decay.</li>
+    <li><strong>Fuzzy union:</strong> Combine local fuzzy sets into a global topological representation.</li>
+    <li><strong>Optimise:</strong> Find low-dimensional embedding that minimises cross-entropy between the high-D and low-D fuzzy graphs.</li>
+  </ol>
+  <div class="equation-box" style="font-size: 0.9em;">
+    <span class="katex-display">$$\text{CE} = \sum_{e} \left[ \mu_h(e) \log\frac{\mu_h(e)}{\mu_l(e)} + (1-\mu_h(e))\log\frac{1-\mu_h(e)}{1-\mu_l(e)} \right]$$</span>
+    <div class="annotation">&mu;_h = high-D fuzzy membership, &mu;_l = low-D fuzzy membership</div>
+  </div>
+  <aside class="notes">
+    "UMAP's theoretical grounding in Riemannian geometry and algebraic topology is what makes it work better than t-SNE for global structure. The cross-entropy objective is symmetric, unlike t-SNE's KL divergence." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Supervised and Parametric UMAP</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Supervised UMAP</h3>
+      <p style="font-size: 0.85em;">Incorporate label information to influence the embedding. Points with the same label are pulled closer, different labels pushed apart.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Use case: Semi-supervised clustering where you have partial labels.</p>
+    </div>
+    <div class="col">
+      <h3>Parametric UMAP</h3>
+      <p style="font-size: 0.85em;">Replace the direct optimisation with a <strong>neural network encoder</strong>. The network learns the UMAP mapping, which can then be applied to new data without re-fitting.</p>
+      <p style="font-size: 0.85em; color: var(--ascent-depth);">Bridge to M7: this IS a neural network doing dimensionality reduction.</p>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Curvature-adaptive UMAP (2025):</strong> Recent work adjusts the UMAP distance metric based on local manifold curvature, improving embeddings on data with varying intrinsic dimensionality.
+  </div>
+  <aside class="notes">
+    "For experts: Parametric UMAP is a neural network that learns the UMAP embedding function. This bridges directly to autoencoders in M7. Same idea, different formalisms." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>t-SNE vs UMAP: When to Use Which</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Feature</th><th>t-SNE</th><th>UMAP</th></tr>
+    <tr><td>Speed</td><td>Slow (O(n log n) Barnes-Hut)</td><td>Fast (handles millions)</td></tr>
+    <tr><td>Global structure</td><td>Poor</td><td>Better</td></tr>
+    <tr><td>Reproducibility</td><td>Non-deterministic</td><td>Deterministic (with seed)</td></tr>
+    <tr><td>Output dims</td><td>2-3 only</td><td>Arbitrary</td></tr>
+    <tr><td>As features</td><td>No (unstable)</td><td>Yes (with caveats)</td></tr>
+    <tr><td>Use case</td><td>Publication-quality 2D plots</td><td>General-purpose reduction</td></tr>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Recommendation:</strong> Default to UMAP. Use t-SNE only when you need the specific visual aesthetics for a publication or when comparing against prior work that used t-SNE.
+  </div>
+  <aside class="notes">
+    "In 2026, UMAP has largely replaced t-SNE in practice. It's faster, more informative, and the embeddings can actually be used as features." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.10 OTHER DIM REDUCTION (10-12 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.10 Other Dimensionality Reduction Methods</h1>
+  <p class="subtitle">Factor Analysis, ICA, MDS, and the Autoencoder Bridge</p>
+  <aside class="notes">
+    "Beyond PCA and UMAP, several specialised methods exist for specific types of data and problems." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Factor Analysis</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Latent factor model:</strong> <span class="katex">$x = \Lambda f + \epsilon$</span></p>
+  <div class="columns">
+    <div class="col">
+      <h3>Difference from PCA</h3>
+      <ul style="font-size: 0.85em;">
+        <li>PCA: no noise model. Variance = signal.</li>
+        <li>FA: <strong>separates signal from noise</strong>. <span class="katex">$\epsilon \sim \mathcal{N}(0, \Psi)$</span> where &Psi; is diagonal.</li>
+        <li>FA recovers latent factors; PCA recovers directions of max variance.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>When to use</h3>
+      <ul style="font-size: 0.85em;">
+        <li>Psychometrics (intelligence, personality tests)</li>
+        <li>Survey data (latent constructs like "satisfaction")</li>
+        <li>When you believe features are driven by hidden causes</li>
+      </ul>
+      <p style="font-size: 0.85em;"><strong>Rotation:</strong> Varimax (orthogonal) or promax (oblique) to improve interpretability.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "Factor Analysis is PCA's philosophical cousin. PCA says 'find the axes of maximum variance.' FA says 'find the hidden causes that generated the data, separating signal from noise.'" Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Independent Component Analysis (ICA)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Blind source separation:</strong> Unmix mixed signals.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>The cocktail party problem</h3>
+      <p style="font-size: 0.85em;">Three microphones record three people talking simultaneously. Each microphone captures a different mix. ICA recovers the individual voices.</p>
+    </div>
+    <div class="col">
+      <h3>Key assumptions</h3>
+      <ul style="font-size: 0.85em;">
+        <li>Sources are <strong>statistically independent</strong></li>
+        <li>Sources are <strong>non-Gaussian</strong> (at most one can be Gaussian)</li>
+        <li>FastICA: maximise non-Gaussianity (negentropy)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Difference from PCA:</strong> PCA finds uncorrelated components (2nd-order). ICA finds independent components (all orders). Independence is stronger than uncorrelation.
+  </div>
+  <aside class="notes">
+    "ICA goes beyond PCA: uncorrelated is not the same as independent. ICA separates sources that PCA cannot. Applications: EEG signal processing, audio separation, financial signal extraction." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Manifold Learning: MDS, Isomap, LLE</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table style="font-size: 0.8em;">
+    <tr><th>Method</th><th>Preserves</th><th>How</th><th>Best For</th></tr>
+    <tr><td>MDS</td><td>Pairwise distances</td><td>Minimise stress function</td><td>Pre-computed distance matrices</td></tr>
+    <tr><td>Isomap</td><td>Geodesic distances</td><td>Shortest path on k-NN graph + MDS</td><td>Data on a curved manifold</td></tr>
+    <tr><td>LLE</td><td>Local neighbourhoods</td><td>Reconstruct each point from neighbours</td><td>Smooth manifolds (Swiss roll)</td></tr>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Manifold learning</strong> assumes data lies on a curved surface embedded in high-D space. These methods "unroll" the surface to reveal its intrinsic structure.
+  </div>
+  <aside class="notes">
+    "Think of the Swiss roll: a 2D surface rolled up in 3D. MDS, Isomap, and LLE try to unroll it. These methods preceded UMAP but are less practical for large datasets." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Autoencoder Bridge to M7</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="bridge-box">
+    <p style="text-align: center; font-size: 1.05em; margin-bottom: 12px;"><strong>Autoencoder = Neural Dimensionality Reduction</strong></p>
+    <div class="svg-diagram">
+      <svg width="700" height="180" viewBox="0 0 700 180">
+        <rect x="10" y="40" width="120" height="100" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <text x="70" y="80" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Encoder</text>
+        <text x="70" y="100" text-anchor="middle" font-size="10" fill="#64748B">n dims &rarr; k dims</text>
+        <rect x="180" y="60" width="100" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="230" y="85" text-anchor="middle" font-size="12" font-weight="700" fill="#D97706">Bottleneck</text>
+        <text x="230" y="105" text-anchor="middle" font-size="10" fill="#64748B">k dims</text>
+        <rect x="330" y="40" width="120" height="100" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+        <text x="390" y="80" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Decoder</text>
+        <text x="390" y="100" text-anchor="middle" font-size="10" fill="#64748B">k dims &rarr; n dims</text>
+        <text x="530" y="90" font-size="12" fill="#334155">Objective: minimise</text>
+        <text x="530" y="110" font-size="12" fill="#334155">reconstruction error</text>
+        <line x1="130" y1="90" x2="180" y2="90" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="280" y1="90" x2="330" y2="90" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      </svg>
+    </div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>The bottleneck IS the learned representation.</strong> An autoencoder compresses n features to k latent features, then reconstructs. The bottleneck layer is equivalent to PCA when the encoder/decoder are linear. With non-linear activations, it's more powerful than PCA. Full implementation in M7.
+  </div>
+  <aside class="notes">
+    "This is THE bridge between M6 and M7. An autoencoder does dimensionality reduction with a neural network. The bottleneck layer IS the PCA-like compression, but non-linear. We'll build one from scratch in M7." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Dim Reduction as Feature Engineering: Summary</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Method</th><th>n features &rarr; k features</th><th>Use As Features?</th><th>Best For</th></tr>
+    <tr><td>PCA</td><td>Linear projection</td><td>Yes (always)</td><td>Multicollinearity, compression</td></tr>
+    <tr><td>Kernel PCA</td><td>Non-linear projection</td><td>Yes</td><td>Non-linear structure</td></tr>
+    <tr><td>UMAP</td><td>Manifold embedding</td><td>Yes (with caveats)</td><td>Non-linear structure, large data</td></tr>
+    <tr><td>t-SNE</td><td>2D visualisation</td><td>No (unstable)</td><td>Visualisation only</td></tr>
+    <tr><td>Autoencoder</td><td>Learned compression</td><td>Yes (powerful)</td><td>Complex non-linear (M7)</td></tr>
+  </table>
+  <aside class="notes">
+    "Know when to use each method as a feature generator. PCA for linear, UMAP for non-linear, autoencoders for complex. t-SNE is visualisation only, never as features." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.11 TOPIC MODELING (35-45 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.11 Topic Modeling</h1>
+  <p class="subtitle">Discover themes in text &mdash; LDA, NMF, BERTopic</p>
+  <aside class="notes">
+    "Topic modeling is USML applied to text. Instead of numerical features, we have documents. Instead of clusters, we have topics. The output: topic proportions as features. This section was notably missing from the old M4 deck." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Text Preprocessing: The Pipeline</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ol>
+    <li><strong>Tokenisation</strong> &mdash; split text into words (or subwords or characters)</li>
+    <li><strong>Lowercasing</strong> &mdash; "The" = "the"</li>
+    <li><strong>Stop word removal</strong> &mdash; remove "the", "is", "at" (common but uninformative)</li>
+    <li><strong>Stemming</strong> &mdash; "running", "runs", "ran" &rarr; "run" (Porter/Snowball)</li>
+    <li><strong>Lemmatisation</strong> &mdash; "better" &rarr; "good" (dictionary-based, more accurate)</li>
+    <li><strong>N-grams</strong> &mdash; "machine learning" as a single token (bigram)</li>
+  </ol>
+  <div class="callout callout-warning">
+    <strong>For classical topic models (LDA, NMF):</strong> preprocessing matters enormously. For BERTopic, the embedding model handles most of this internally.
+  </div>
+  <aside class="notes">
+    "Preprocessing is the unsung hero of NLP. Garbage in, garbage out. For LDA and NMF, the quality of your term-document matrix depends entirely on how well you preprocess." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>TF-IDF: Words That Matter</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{TF-IDF}(t, d) = \underbrace{\frac{f_{t,d}}{\sum_{t'} f_{t',d}}}_{\text{Term Frequency (TF)}} \times \underbrace{\log \frac{N}{|\{d : t \in d\}|}}_{\text{Inverse Document Frequency (IDF)}}$$</span>
+    <div class="annotation">
+      <span class="term-input">TF</span>: how often this word appears in this document &nbsp;|&nbsp;
+      <span class="term-output">IDF</span>: how rare this word is across all documents
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> A word is important to a document if it appears frequently in that document but rarely in others. "The" appears everywhere (low IDF). "Reinforcement" appears only in RL papers (high IDF).
+  </div>
+  <p style="font-size: 0.85em;"><strong>Why IDF?</strong> Without it, common words like "the" dominate. IDF downweights words that appear in many documents.</p>
+  <aside class="notes">
+    "TF-IDF is the foundation of classical topic modeling. It converts raw text into a numerical matrix where each cell represents how important a word is to a document." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Term-Document Matrix</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>After TF-IDF, your text data looks like a regular matrix:</p>
+  <table style="font-size: 0.8em;">
+    <tr><th></th><th>clustering</th><th>gradient</th><th>Bayesian</th><th>neural</th><th>...</th></tr>
+    <tr><td>Doc 1 (ML paper)</td><td>0.8</td><td>0.6</td><td>0.3</td><td>0.7</td><td>...</td></tr>
+    <tr><td>Doc 2 (Stats paper)</td><td>0.1</td><td>0.0</td><td>0.9</td><td>0.1</td><td>...</td></tr>
+    <tr><td>Doc 3 (DL paper)</td><td>0.2</td><td>0.9</td><td>0.1</td><td>0.9</td><td>...</td></tr>
+  </table>
+  <div class="callout callout-foundations" style="margin-top: 12px;">
+    <strong>This is just a feature matrix!</strong> Documents are rows. Words are features. Topic modeling = unsupervised learning on this matrix. Everything we learned about clustering and dim reduction applies.
+  </div>
+  <aside class="notes">
+    "Once you see text as a matrix, topic modeling is just USML on that matrix. LDA is like a probabilistic clustering. NMF is like matrix factorisation (dim reduction). BERTopic combines UMAP + HDBSCAN." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Latent Semantic Analysis (LSA/LSI)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Apply <strong>SVD</strong> to the term-document matrix:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$X \approx U_k \Sigma_k V_k^T$$</span>
+    <div class="annotation">
+      <span class="term-input">U_k</span> = term-topic matrix &nbsp;|&nbsp;
+      <span class="term-param">&Sigma;_k</span> = topic importance &nbsp;|&nbsp;
+      <span class="term-output">V_k</span> = document-topic matrix
+    </div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>What LSA gives you</h3>
+      <ul style="font-size: 0.85em;">
+        <li>Documents as vectors in k-dimensional topic space</li>
+        <li>Handles synonymy ("car" and "automobile" in same topic)</li>
+        <li>Simple: just truncated SVD</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Limitations</h3>
+      <ul style="font-size: 0.85em;">
+        <li>No probabilistic interpretation</li>
+        <li>Components can have negative values (hard to interpret)</li>
+        <li>Topics are orthogonal (real topics overlap)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Historical importance:</strong> LSA (Deerwester et al., 1990) was the first topic model. It showed that SVD on term-document matrices captures semantic structure. This insight led to LDA.
+  </div>
+  <aside class="notes">
+    "LSA is PCA for text. Simple and fast, but no probabilistic foundation. LDA fixed this by providing a generative model." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Latent Dirichlet Allocation (LDA): The Generative Model</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>LDA</strong> (Blei, Ng, Jordan, 2003) tells a story about how documents are "created":</p>
+  <ol style="font-size: 0.9em;">
+    <li>For each document d, draw topic proportions: <span class="katex">$\theta_d \sim \text{Dir}(\alpha)$</span></li>
+    <li>For each word position n in document d:
+      <ol style="font-size: 0.9em;">
+        <li>Draw a topic: <span class="katex">$z_n \sim \text{Multinomial}(\theta_d)$</span></li>
+        <li>Draw a word: <span class="katex">$w_n \sim \text{Multinomial}(\beta_{z_n})$</span></li>
+      </ol>
+    </li>
+  </ol>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> Each document is a mix of topics (e.g., 60% politics, 30% economics, 10% sports). Each topic is a distribution over words (e.g., "politics" = high probability for "election", "vote", "parliament"). To "write" a document, pick a topic for each word, then pick the word from that topic.
+  </div>
+  <aside class="notes">
+    "LDA is a generative model: it describes how documents could have been generated. Inference reverses the process: given the words, infer the topics. This is the same E-step/M-step pattern from EM." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>LDA: Plate Notation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="svg-diagram">
+    <svg width="600" height="300" viewBox="0 0 600 300">
+      <!-- Alpha -->
+      <circle cx="100" cy="80" r="25" fill="none" stroke="#3B82F6" stroke-width="2"/>
+      <text x="100" y="85" text-anchor="middle" font-size="14" fill="#3B82F6" font-weight="600">&alpha;</text>
+      <!-- Theta -->
+      <circle cx="220" cy="80" r="25" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="220" y="85" text-anchor="middle" font-size="14" fill="#334155" font-weight="600">&theta;_d</text>
+      <!-- Z -->
+      <circle cx="340" cy="80" r="25" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="340" y="85" text-anchor="middle" font-size="14" fill="#334155" font-weight="600">z_n</text>
+      <!-- W (observed) -->
+      <circle cx="340" cy="190" r="25" fill="#94A3B8" stroke="#334155" stroke-width="2"/>
+      <text x="340" y="195" text-anchor="middle" font-size="14" fill="white" font-weight="600">w_n</text>
+      <!-- Beta -->
+      <circle cx="500" cy="80" r="25" fill="none" stroke="#F59E0B" stroke-width="2"/>
+      <text x="500" y="85" text-anchor="middle" font-size="14" fill="#D97706" font-weight="600">&beta;_k</text>
+      <!-- Eta -->
+      <circle cx="500" cy="190" r="25" fill="none" stroke="#F59E0B" stroke-width="2"/>
+      <text x="500" y="195" text-anchor="middle" font-size="14" fill="#D97706" font-weight="600">&eta;</text>
+      <!-- Arrows -->
+      <line x1="125" y1="80" x2="195" y2="80" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="245" y1="80" x2="315" y2="80" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="340" y1="105" x2="340" y2="165" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="475" y1="80" x2="365" y2="166" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="500" y1="165" x2="500" y2="105" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <!-- Plates -->
+      <rect x="300" y="40" width="90" height="180" rx="6" fill="none" stroke="#64748B" stroke-width="1" stroke-dasharray="4"/>
+      <text x="380" y="210" font-size="10" fill="#64748B">N words</text>
+      <rect x="170" y="30" width="240" height="200" rx="8" fill="none" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="6"/>
+      <text x="400" y="225" font-size="11" fill="#3B82F6" font-weight="600">D documents</text>
+      <rect x="460" y="50" width="80" height="170" rx="6" fill="none" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4"/>
+      <text x="540" y="215" font-size="10" fill="#D97706">K topics</text>
+    </svg>
+  </div>
+  <p style="font-size: 0.8em; text-align: center;">Shaded = observed (words). Unshaded = latent (topics, proportions). Plates = repetition.</p>
+  <aside class="notes">
+    "Plate notation is compact: the D plate means 'repeat for D documents', the N plate 'for N words in each document', K plate 'for K topics'. Only w is observed. Everything else must be inferred." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>LDA Inference: Collapsed Gibbs Sampling</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Collapsed Gibbs:</strong> Integrate out &theta; and &beta;. Sample only the topic assignments z:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$p(z_i = k \mid z_{-i}, w, \alpha, \eta) \propto \underbrace{(n_{dk}^{-i} + \alpha_k)}_{\text{doc-topic count}} \times \underbrace{\frac{n_{kw}^{-i} + \eta}{n_{k\cdot}^{-i} + V\eta}}_{\text{topic-word proportion}}$$</span>
+    <div class="annotation">n_dk = count of topic k in document d (excluding current word). n_kw = count of word w in topic k.</div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> For each word, ask: "What topic should this word belong to?" The answer depends on: (1) what topics are common in this document, and (2) how common this word is in each topic. Repeat for every word, many times, until stable.
+  </div>
+  <aside class="notes">
+    "Collapsed Gibbs sampling is the most common inference method for LDA. It's simple to implement and scales reasonably well. For very large corpora, use online variational inference instead." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>LDA Hyperparameters</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <tr><th>Parameter</th><th>Controls</th><th>Low Value</th><th>High Value</th></tr>
+    <tr><td>&alpha; (alpha)</td><td>Document-topic sparsity</td><td>Few topics per document</td><td>Many topics per document</td></tr>
+    <tr><td>&eta; (eta / &beta;)</td><td>Topic-word sparsity</td><td>Few words per topic (focused)</td><td>Many words per topic (diffuse)</td></tr>
+    <tr><td>K (num topics)</td><td>Number of topics</td><td>Coarse-grained</td><td>Fine-grained</td></tr>
+  </table>
+  <div class="callout callout-warning" style="margin-top: 12px;">
+    <strong>Choosing K:</strong> Use <strong>coherence score</strong> (higher = better). Do NOT use perplexity alone &mdash; perplexity can improve while topic quality degrades (Chang et al., 2009: "Reading Tea Leaves").
+  </div>
+  <aside class="notes">
+    "Alpha and eta control how 'pure' documents and topics are. Low alpha = each document is about one or two topics. High alpha = each document mixes many topics. The number of topics K is the most impactful choice." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>LDA Variants</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Online LDA (Hoffman et al., 2010)</h3>
+      <p style="font-size: 0.85em;">Stochastic variational inference. Process documents in mini-batches. Scales to millions of documents.</p>
+      <h3>Hierarchical LDA</h3>
+      <p style="font-size: 0.85em;">Topics form a tree: broad topics at the top, specific sub-topics below. Number of topics learned automatically (nonparametric Bayesian).</p>
+    </div>
+    <div class="col">
+      <h3>Correlated Topic Model (CTM)</h3>
+      <p style="font-size: 0.85em;">LDA assumes topics are independent. CTM models topic correlations using a logistic normal distribution instead of Dirichlet.</p>
+      <h3>Dynamic Topic Models</h3>
+      <p style="font-size: 0.85em;">Track how topics evolve over time. Each time slice has its own topic distributions, linked to adjacent slices.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "For experts: Online LDA is the production version. Hierarchical LDA is elegant but computationally expensive. CTM models topic correlations that LDA misses." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Non-Negative Matrix Factorisation (NMF)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Factor the term-document matrix into non-negative parts:</strong></p>
+  <div class="equation-box">
+    <span class="katex-display">$$X \approx WH \quad \text{where} \quad W, H \geq 0$$</span>
+    <div class="annotation">
+      <span class="term-input">X</span> (n&times;d) = term-document matrix &nbsp;|&nbsp;
+      <span class="term-param">W</span> (n&times;k) = document-topic matrix &nbsp;|&nbsp;
+      <span class="term-output">H</span> (k&times;d) = topic-word matrix
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Key insight: non-negativity means "parts-based".</strong> Each topic is an additive combination of words (no subtraction). This makes NMF topics naturally interpretable: a topic IS a weighted list of words.
+  </div>
+  <aside class="notes">
+    "NMF's constraint of non-negativity is what makes it interpretable. You can't subtract a word from a topic. Topics are purely additive collections of words. This matches human intuition about what a topic is." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>NMF: Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Objective:</strong> Minimise reconstruction error:</p>
+  <div class="equation-box">
+    <span class="katex-display">$$\min_{W,H \geq 0} \|X - WH\|_F^2$$</span>
+    <div class="annotation">Frobenius norm. Alternative: KL divergence <span class="katex">$D_{\text{KL}}(X \| WH)$</span></div>
+  </div>
+  <p><strong>Multiplicative update rules</strong> (Lee &amp; Seung, 2001):</p>
+  <div class="derivation-step">
+    <div class="step-label">Update H</div>
+    <span class="katex-display">$$H \leftarrow H \circ \frac{W^T X}{W^T W H}$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Update W</div>
+    <span class="katex-display">$$W \leftarrow W \circ \frac{X H^T}{W H H^T}$$</span>
+  </div>
+  <p style="font-size: 0.8em; color: #64748B;">&circ; = element-wise multiplication. Non-negativity preserved by construction.</p>
+  <aside class="notes">
+    "The multiplicative updates are elegant: they guarantee non-negativity because you're multiplying positive numbers. No projection step needed." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>NMF vs LDA</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <tr><th>Feature</th><th>NMF</th><th>LDA</th></tr>
+    <tr><td>Model type</td><td>Matrix factorisation</td><td>Probabilistic generative</td></tr>
+    <tr><td>Inference</td><td>Deterministic (optimisation)</td><td>Stochastic (sampling or variational)</td></tr>
+    <tr><td>Speed</td><td>Faster</td><td>Slower</td></tr>
+    <tr><td>Interpretability</td><td>Parts-based (additive)</td><td>Probabilistic (topic proportions)</td></tr>
+    <tr><td>Short text</td><td>Better</td><td>Struggles (few words)</td></tr>
+    <tr><td>Long text</td><td>Less robust</td><td>Better (more words = more signal)</td></tr>
+    <tr><td>Feature output</td><td>W matrix rows</td><td>&theta;_d vectors</td></tr>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>When to use which:</strong> NMF for short text (tweets, titles, support tickets). LDA for long documents (articles, papers, reports). BERTopic for either.
+  </div>
+  <aside class="notes">
+    "NMF is faster and more predictable. LDA has a principled probabilistic foundation. In practice, try both and compare coherence scores." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Sparse and Semi-Supervised NMF</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Sparse NMF</h3>
+      <p style="font-size: 0.85em;">Add L1 regularisation to encourage sparsity:</p>
+      <div class="equation-box" style="font-size: 0.85em;">
+        <span class="katex-display">$$\min_{W,H \geq 0} \|X - WH\|_F^2 + \alpha \|H\|_1$$</span>
+      </div>
+      <p style="font-size: 0.85em;">Result: each document activates only a few topics. Each topic uses only a few words. More interpretable.</p>
+    </div>
+    <div class="col">
+      <h3>Semi-supervised NMF</h3>
+      <p style="font-size: 0.85em;">Seed some topics with known keywords. The algorithm respects these seeds while discovering the rest.</p>
+      <p style="font-size: 0.85em;">Useful when you know some topics should exist (e.g., "billing", "technical") but want to discover others.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    "For experts: Sparse NMF produces cleaner topics by forcing most weights to zero. Semi-supervised NMF lets you guide the algorithm with domain knowledge." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>BERTopic: The Modern Pipeline</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>BERTopic (Grootendorst, 2022) combines three techniques from this module:</p>
+  <div class="svg-diagram">
+    <svg width="800" height="120" viewBox="0 0 800 120">
+      <rect x="10" y="30" width="160" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="90" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Sentence Embeddings</text>
+      <text x="90" y="72" text-anchor="middle" font-size="10" fill="#64748B">(BERT/all-MiniLM)</text>
+      <rect x="220" y="30" width="140" height="60" rx="8" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="290" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">UMAP</text>
+      <text x="290" y="72" text-anchor="middle" font-size="10" fill="#64748B">(reduce dims)</text>
+      <rect x="410" y="30" width="140" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="480" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">HDBSCAN</text>
+      <text x="480" y="72" text-anchor="middle" font-size="10" fill="#64748B">(cluster)</text>
+      <rect x="600" y="30" width="160" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="680" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">c-TF-IDF</text>
+      <text x="680" y="72" text-anchor="middle" font-size="10" fill="#64748B">(topic representation)</text>
+      <line x1="170" y1="60" x2="220" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="360" y1="60" x2="410" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="550" y1="60" x2="600" y2="60" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+    </svg>
+  </div>
+  <div class="callout callout-theory">
+    <strong>c-TF-IDF</strong> (class-based TF-IDF) treats each cluster as a single "document" and computes TF-IDF to find the most representative words per topic:
+    <span class="katex">$\text{c-TF-IDF}(t, c) = \frac{f_{t,c}}{|c|} \times \log\frac{A}{f_t}$</span>
+  </div>
+  <aside class="notes">
+    "BERTopic is brilliant because it composes tools we already know: UMAP (6.9) + HDBSCAN (6.3) + a TF-IDF variant. It uses semantic embeddings instead of bag-of-words, which means it understands meaning, not just word co-occurrence." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>BERTopic: Advanced Features</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ul>
+    <li><strong>Guided topics:</strong> Seed with keywords to steer topic discovery</li>
+    <li><strong>Dynamic topics:</strong> Track topic evolution over time</li>
+    <li><strong>Hierarchical topics:</strong> Merge or split topics at different granularities</li>
+    <li><strong>Online learning:</strong> Update topics as new documents arrive</li>
+    <li><strong>Multi-aspect representation:</strong> LLM, KeyBERT, or MMR for topic labels</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Recent advances (2025):</strong> Fuzzy BERTopic allows documents to belong to multiple topics with different degrees of membership. Domain-specific embeddings (e.g., financial transformers) yield 80%+ improvement in topic coherence over generic models. Zero-shot topic modelling with LLMs allows topic discovery without any training.
+  </div>
+  <aside class="notes">
+    "BERTopic continues to evolve rapidly. The fuzzy variant addresses a key limitation: documents usually ARE about multiple topics. Domain-specific embeddings show the importance of choosing the right embedding model." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Topic Coherence and Evaluation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table style="font-size: 0.8em;">
+    <tr><th>Metric</th><th>Formula (simplified)</th><th>Interpretation</th></tr>
+    <tr><td>NPMI</td><td><span class="katex">$\frac{\log P(w_i, w_j) / P(w_i)P(w_j)}{-\log P(w_i, w_j)}$</span></td><td>[-1, 1]. Higher = top words co-occur more</td></tr>
+    <tr><td>C_V</td><td>Sliding window + NPMI + cosine</td><td>[0, 1]. Most reliable metric</td></tr>
+    <tr><td>UMass</td><td><span class="katex">$\sum \log \frac{D(w_i, w_j) + 1}{D(w_j)}$</span></td><td>Negative. Higher (less negative) = better</td></tr>
+    <tr><td>Perplexity</td><td><span class="katex">$\exp\{-\frac{\ell(\theta|w)}{N}\}$</span></td><td>Lower = better held-out likelihood</td></tr>
+  </table>
+  <div class="callout callout-error" style="margin-top: 12px;">
+    <strong>Why perplexity is DANGEROUS:</strong> Chang et al. (2009) showed that models with lower perplexity can produce LESS interpretable topics. Perplexity measures prediction, not understanding. Always use coherence (NPMI or C_V) instead.
+  </div>
+  <aside class="notes">
+    "Use C_V or NPMI coherence to evaluate topics. Never rely on perplexity alone. A model can predict well while producing garbage topics." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Topic Proportions as Features</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-kailash">
+    <strong>n documents &rarr; k topic features</strong>
+  </div>
+  <ul>
+    <li><strong>Document classification:</strong> Topic proportions as features for supervised models</li>
+    <li><strong>Document similarity:</strong> Compare documents by their topic distributions</li>
+    <li><strong>Recommendation:</strong> Recommend articles with similar topic profiles</li>
+    <li><strong>Trend analysis:</strong> Track topic proportions over time</li>
+  </ul>
+  <pre><code class="language-python"># Topic proportions as features
+from kailash_ml import TrainingPipeline
+
+# LDA gives theta_d (topic proportions) for each document
+# These become features for a downstream classifier
+df = df.with_columns([
+    pl.Series(f"topic_{i}", topic_proportions[:, i])
+    for i in range(n_topics)
+])
+
+pipeline = TrainingPipeline(model="xgboost", target="complaint_category")
+pipeline.fit(df)  # Topic proportions help predict categories</code></pre>
+  <aside class="notes">
+    "Topic proportions are the text equivalent of cluster membership. A complaint that's 60% billing and 30% technical gets routed differently than one that's 90% technical. These topic features add powerful signal to your supervised models." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.12 ANOMALY DETECTION (25-35 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.12 Anomaly Detection</h1>
+  <p class="subtitle">Finding the unusual &mdash; statistical, tree-based, and density-based methods</p>
+  <aside class="notes">
+    "Anomaly detection is unsupervised by nature: you learn what 'normal' looks like and flag anything that doesn't fit. This brings us back to our opening case: detecting suspicious transactions without labels." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Statistical Methods</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Method</th><th>How It Works</th><th>Assumption</th><th>When to Use</th></tr>
+    <tr><td>Z-score</td><td>|z| > 3 is anomalous</td><td>Gaussian data</td><td>Simple, single feature</td></tr>
+    <tr><td>IQR</td><td>&lt; Q1-1.5IQR or &gt; Q3+1.5IQR</td><td>None (distribution-free)</td><td>Robust, any distribution</td></tr>
+    <tr><td>Grubbs' test</td><td>Single extreme value test</td><td>Gaussian, single outlier</td><td>Testing one suspect point</td></tr>
+    <tr><td>Mahalanobis</td><td>Distance accounting for correlations</td><td>Gaussian multivariate</td><td>Multivariate outliers</td></tr>
+  </table>
+  <div class="equation-box" style="margin-top: 12px;">
+    <span class="katex-display">$$D_M(x) = \sqrt{(x - \mu)^T \Sigma^{-1} (x - \mu)}$$</span>
+    <div class="annotation">Mahalanobis distance: scales by covariance. A point can be normal in each feature but anomalous in their combination.</div>
+  </div>
+  <aside class="notes">
+    "Statistical methods are the foundation. Z-score is simplest but assumes normality. IQR is robust. Mahalanobis handles correlations between features. For complex data, we need model-based methods." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Isolation Forest</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Key insight:</strong> Anomalies are easier to isolate (fewer random splits needed).</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> Imagine playing "20 questions" with data points. Normal points need many questions to isolate (they're in crowded areas). Anomalies need very few (they're alone in sparse areas).
+  </div>
+  <aside class="notes">
+    "Isolation Forest is elegant in its simplicity. Instead of modelling what 'normal' looks like (hard), it measures how easy each point is to isolate (simple). Anomalies are isolated quickly." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Isolation Forest: Algorithm</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ol style="font-size: 0.9em;">
+    <li>Randomly select a feature and a split value</li>
+    <li>Partition the data</li>
+    <li>Repeat recursively until each point is isolated</li>
+    <li>Record the <strong>path length</strong> (number of splits to isolate each point)</li>
+    <li>Build many trees (forest). Average the path lengths.</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">$$s(x, n) = 2^{-\frac{E[h(x)]}{c(n)}}$$</span>
+    <div class="annotation">
+      h(x) = path length &nbsp;|&nbsp; c(n) = average path length in BST: <span class="katex">$c(n) = 2H(n-1) - 2(n-1)/n$</span> &nbsp;|&nbsp; Score near 1 = anomaly. Score near 0.5 = normal.
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Contamination parameter:</strong> Expected fraction of anomalies. Sets the score threshold. Typical: 0.01-0.1 (1-10% anomalies).
+  </div>
+  <aside class="notes">
+    "The score formula normalises path length against what you'd expect for a binary search tree. Short paths (easy isolation) get scores near 1. Average paths get scores near 0.5." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Extended Isolation Forest</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Standard Isolation Forest uses <strong>axis-aligned splits</strong>. Extended Isolation Forest uses <strong>random hyperplanes</strong>:</p>
+  <ul style="font-size: 0.9em;">
+    <li>Random direction (slope) instead of single feature</li>
+    <li>Eliminates bias from axis-aligned splits</li>
+    <li>Better for correlated features</li>
+  </ul>
+  <div class="callout callout-advanced">
+    <strong>Deep anomaly detection (2025):</strong> Reconstruction-based methods using autoencoders are now a major paradigm. Normal data reconstructs well; anomalies have high reconstruction error. Foundation models for anomaly detection enable cross-domain generalisation without task-specific training.
+  </div>
+  <aside class="notes">
+    "For experts: Extended Isolation Forest fixes the axis-alignment bias. Autoencoder-based anomaly detection is gaining ground because it naturally handles high-dimensional, complex data." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Local Outlier Factor (LOF)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Key idea:</strong> Compare a point's local density to its neighbours' densities.</p>
+  <div class="derivation-step">
+    <div class="step-label">Step 1: Reachability distance</div>
+    <span class="katex-display">$$\text{reach-dist}_k(A, B) = \max\{k\text{-dist}(B), d(A, B)\}$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 2: Local reachability density</div>
+    <span class="katex-display">$$\text{lrd}_k(A) = \left(\frac{\sum_{B \in N_k(A)} \text{reach-dist}_k(A,B)}{|N_k(A)|}\right)^{-1}$$</span>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 3: Local Outlier Factor</div>
+    <span class="katex-display">$$\text{LOF}_k(A) = \frac{\sum_{B \in N_k(A)} \text{lrd}_k(B) / \text{lrd}_k(A)}{|N_k(A)|}$$</span>
+  </div>
+  <p style="font-size: 0.85em;">LOF &asymp; 1: normal density. LOF >> 1: much less dense than neighbours = anomaly.</p>
+  <aside class="notes">
+    "LOF is the density-based approach. It doesn't ask 'is this point isolated?' (Isolation Forest), but 'is this point in a much sparser region than its neighbours?' This makes it robust to varying-density data." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>LOF: Connection to DBSCAN</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="callout callout-theory">
+    <strong>LOF and DBSCAN share the same intuition:</strong> both use local density and reachability distance. DBSCAN uses density for clustering (dense = cluster, sparse = noise). LOF uses density ratio for anomaly scoring (much sparser than neighbours = anomaly).
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Advantages of LOF</h3>
+      <ul style="font-size: 0.85em;">
+        <li>Scores, not binary labels</li>
+        <li>Works with varying density</li>
+        <li>Identifies <strong>local</strong> anomalies</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Limitations</h3>
+      <ul style="font-size: 0.85em;">
+        <li>O(n&sup2;) without spatial indexing</li>
+        <li>Sensitive to k (number of neighbours)</li>
+        <li>Not great for high dimensions</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "LOF and DBSCAN are siblings. LOF gives continuous scores, DBSCAN gives binary noise labels. Use LOF when you want ranked anomaly scores rather than hard labels." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>One-Class SVM</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Idea:</strong> Learn a boundary around "normal" data in feature space.</p>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size: 0.85em;">
+        <li>Map data to high-dimensional space via kernel</li>
+        <li>Find a hyperplane that separates data from the origin with maximum margin</li>
+        <li>Points on the wrong side of the boundary = anomalies</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="equation-box" style="font-size: 0.85em;">
+        <span class="katex-display">$$\min_{w, \rho, \xi} \frac{1}{2}\|w\|^2 + \frac{1}{\nu n}\sum_i \xi_i - \rho$$</span>
+        <div class="annotation">&nu; = expected fraction of anomalies. Controls the tightness of the boundary.</div>
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>&nu; parameter:</strong> Upper bound on the fraction of anomalies and lower bound on the fraction of support vectors. Set it to your expected anomaly rate.
+  </div>
+  <aside class="notes">
+    "One-Class SVM is useful when you can only train on normal data (no anomaly examples). It learns the 'shape' of normality and flags anything outside. The kernel trick lets it handle non-linear boundaries." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Ensemble Anomaly Detection</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Combine multiple detectors for robustness:</strong></p>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Run multiple detectors:</strong> Isolation Forest + LOF + One-Class SVM</li>
+    <li><strong>Normalise scores:</strong> Each detector has different scales</li>
+    <li><strong>Aggregate:</strong> Average, max, or weighted combination</li>
+  </ol>
+  <pre><code class="language-python">from kailash_ml import EnsembleEngine
+
+engine = EnsembleEngine(strategy="blend")
+result = engine.blend(
+    models=[isolation_forest, lof_model, ocsvm_model],
+    weights=[0.4, 0.3, 0.3],
+    data=df
+)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Anomaly score as feature engineering:</strong> The anomaly score itself is a powerful feature for downstream models. "How unusual is this transaction?" is a great predictor of fraud.
+  </div>
+  <aside class="notes">
+    "Ensemble anomaly detection: the same principle as ensemble supervised learning. Different detectors catch different types of anomalies. Combining them reduces false positives." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.13 ASSOCIATION RULES (15-20 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.13 Association Rules</h1>
+  <p class="subtitle">Market basket analysis &mdash; "customers who bought X also bought Y"</p>
+  <aside class="notes">
+    "Association rules discover relationships between items. The classic example: diapers and beer are bought together on Friday evenings. This is pattern discovery in transaction data." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Support, Confidence, and Lift</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="equation-box">
+    <p style="text-align: left;"><strong>Support:</strong> How often do X and Y appear together?</p>
+    <span class="katex-display">$$\text{Support}(X \cup Y) = \frac{|\text{transactions containing } X \text{ and } Y|}{|\text{all transactions}|}$$</span>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <div class="equation-box" style="font-size: 0.9em;">
+        <p style="text-align: left;"><strong>Confidence:</strong> If X, how likely Y?</p>
+        <span class="katex-display">$$\text{Conf}(X \Rightarrow Y) = \frac{P(X \cup Y)}{P(X)}$$</span>
+      </div>
+    </div>
+    <div class="col">
+      <div class="equation-box" style="font-size: 0.9em;">
+        <p style="text-align: left;"><strong>Lift:</strong> Does X actually help predict Y?</p>
+        <span class="katex-display">$$\text{Lift}(X \Rightarrow Y) = \frac{P(Y|X)}{P(Y)}$$</span>
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-foundations" style="margin-top: 8px;">
+    Lift > 1: X and Y are positively associated. Lift = 1: independent. Lift < 1: negatively associated.
+  </div>
+  <aside class="notes">
+    "Support is frequency. Confidence is conditional probability. Lift is the key metric: does knowing X actually tell you anything about Y beyond base rate?" Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Additional Interestingness Measures</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <table style="font-size: 0.8em;">
+    <tr><th>Measure</th><th>Formula</th><th>Advantage</th></tr>
+    <tr><td>Conviction</td><td><span class="katex">$\frac{1 - P(Y)}{1 - \text{Conf}(X \Rightarrow Y)}$</span></td><td>Directional; infinity = X always predicts Y</td></tr>
+    <tr><td>Leverage</td><td><span class="katex">$P(X \cup Y) - P(X)P(Y)$</span></td><td>Absolute difference from independence</td></tr>
+    <tr><td>Cosine</td><td><span class="katex">$\frac{P(X \cup Y)}{\sqrt{P(X) \cdot P(Y)}}$</span></td><td>Symmetric, bounded [0,1]</td></tr>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Why not just confidence?</strong> Confidence can be misleading. If Y is very common (e.g., bread), confidence for any X &rarr; Y will be high even if X and Y are independent. Lift and conviction correct for this.
+  </div>
+  <aside class="notes">
+    "For experts: conviction is especially useful because it's asymmetric and handles the case where confidence is misleading due to high base rates of the consequent." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Apriori Algorithm</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Key insight:</strong> If an itemset is infrequent, all its supersets are also infrequent (anti-monotone property).</p>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Pass 1:</strong> Count single items. Prune items below minimum support.</li>
+    <li><strong>Generate C_2:</strong> All pairs of frequent items.</li>
+    <li><strong>Pass 2:</strong> Count pairs. Prune pairs below minimum support.</li>
+    <li><strong>Generate C_3:</strong> All triples from frequent pairs. And so on.</li>
+    <li><strong>Stop:</strong> When no new frequent itemsets are found.</li>
+  </ol>
+  <div class="callout callout-theory">
+    <strong>Anti-monotone property:</strong> If {A, B} is infrequent, then {A, B, C} is also infrequent. This prunes the search space dramatically &mdash; no need to check any superset of an infrequent itemset.
+  </div>
+  <aside class="notes">
+    "Apriori is a breadth-first algorithm: single items, then pairs, then triples. The anti-monotone property is the key pruning mechanism that makes it tractable." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>FP-Growth: Faster Than Apriori</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>No candidate generation.</strong> Compress the database into an FP-tree, then mine directly.</p>
+  <ol style="font-size: 0.9em;">
+    <li><strong>Build FP-tree:</strong> Compressed representation of all transactions. Shared prefixes save space.</li>
+    <li><strong>Header table:</strong> Links all nodes with the same item.</li>
+    <li><strong>Conditional FP-trees:</strong> For each item, build a sub-tree of transactions containing that item.</li>
+    <li><strong>Recursively mine</strong> conditional FP-trees for frequent patterns.</li>
+  </ol>
+  <div class="callout callout-theory">
+    <strong>Advantage:</strong> Only two passes over the database (build tree, mine). Apriori needs one pass per itemset size. FP-Growth is 10-100x faster on large datasets.
+  </div>
+  <aside class="notes">
+    "FP-Growth is the modern standard for association rule mining. It avoids the expensive candidate generation and counting steps of Apriori." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Association Rules: Applications Beyond Retail</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <ul>
+        <li><strong>Cross-selling:</strong> Recommend products bought together</li>
+        <li><strong>Web usage mining:</strong> Pages visited together &rarr; navigation design</li>
+        <li><strong>Bioinformatics:</strong> Gene co-expression patterns</li>
+      </ul>
+    </div>
+    <div class="col">
+      <ul>
+        <li><strong>Medical diagnosis:</strong> Symptom combinations &rarr; disease patterns</li>
+        <li><strong>Cybersecurity:</strong> Alert combinations that indicate attacks</li>
+        <li><strong>Manufacturing:</strong> Defect patterns across production lines</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "Association rules go far beyond 'diapers and beer'. Any domain where you're looking for co-occurrence patterns in discrete events benefits from this technique." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.14 DRIFT MONITORING (15-20 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.14 Drift Monitoring</h1>
+  <p class="subtitle">Your model in production &mdash; detecting when the world changes</p>
+  <aside class="notes">
+    "You've deployed your unsupervised model. Clusters were perfect last month. But the data is shifting. Without monitoring, your clusters silently become meaningless." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Why Models Degrade</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>You deploy your model on Monday. By Friday, it's giving worse predictions. What happened?</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Data drift: P(X) changes</h3>
+      <p style="font-size: 0.85em;">The <strong>input distribution</strong> shifted.</p>
+      <p style="font-size: 0.85em;">Example: Your customer segmentation was trained on 2023 data. In 2024, a new competitor changed buying patterns.</p>
+    </div>
+    <div class="col">
+      <h3>Concept drift: P(Y|X) changes</h3>
+      <p style="font-size: 0.85em;">The <strong>relationship</strong> between inputs and outputs changed.</p>
+      <p style="font-size: 0.85em;">Example: During a recession, the relationship between spending patterns and default risk inverts.</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Models don't know they're wrong.</strong> Without monitoring, they silently degrade until someone notices the business impact &mdash; which could be months later.
+  </div>
+  <aside class="notes">
+    "This connects directly to our opening case. The AML model's 99.9% accuracy was useless because it didn't detect when criminal patterns shifted. Monitoring would have caught the degradation early." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>PSI: Population Stability Index</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">$$\text{PSI} = \sum_{i=1}^{B} (p_i^{\text{actual}} - p_i^{\text{expected}}) \times \ln\frac{p_i^{\text{actual}}}{p_i^{\text{expected}}}$$</span>
+    <div class="annotation">Bin the feature into B buckets. Compare proportions in each bucket.</div>
+  </div>
+  <table>
+    <tr><th>PSI Value</th><th>Interpretation</th><th>Action</th></tr>
+    <tr><td>&lt; 0.1</td><td>No significant shift</td><td>Continue monitoring</td></tr>
+    <tr><td>0.1 - 0.25</td><td>Moderate shift</td><td>Investigate, consider retraining</td></tr>
+    <tr><td>&gt; 0.25</td><td>Significant shift</td><td>Retrain immediately</td></tr>
+  </table>
+  <aside class="notes">
+    "PSI is the industry standard for credit risk. It's simple, interpretable, and every regulator understands it. The thresholds (0.1 and 0.25) are well-established conventions." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>KS Test for Drift Detection</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">$$D = \sup_x |F_{\text{ref}}(x) - F_{\text{prod}}(x)|$$</span>
+    <div class="annotation">Maximum vertical distance between two cumulative distribution functions</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Advantages over PSI</h3>
+      <ul style="font-size: 0.85em;">
+        <li>No binning required</li>
+        <li>Distribution-free (non-parametric)</li>
+        <li>Exact p-value available</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>When to use which</h3>
+      <ul style="font-size: 0.85em;">
+        <li><strong>PSI</strong>: industry dashboards, regulatory reporting</li>
+        <li><strong>KS</strong>: automated drift detection, statistical rigour</li>
+        <li><strong>Both</strong>: belt and braces for critical models</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "PSI needs binning (which introduces choices). KS is distribution-free and gives a proper p-value. Use PSI for communication, KS for automation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Multivariate Drift and Concept Drift</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Multivariate drift</h3>
+      <p style="font-size: 0.85em;">PSI and KS are univariate. Multivariate drift can occur even when each feature individually looks stable.</p>
+      <p style="font-size: 0.85em;"><strong>Methods:</strong> Maximum Mean Discrepancy (MMD), domain classifier (train a model to distinguish old vs new data).</p>
+    </div>
+    <div class="col">
+      <h3>Concept drift detection</h3>
+      <ul style="font-size: 0.85em;">
+        <li><strong>DDM</strong> (Drift Detection Method): monitor error rate, trigger when increase exceeds threshold</li>
+        <li><strong>ADWIN</strong> (Adaptive Windowing): maintain a window of recent observations, shrink when drift detected</li>
+        <li><strong>Page-Hinkley</strong>: sequential analysis for detecting mean shifts</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    "For experts: univariate drift detection is necessary but not sufficient. Correlations can change even when marginals stay the same. DDM and ADWIN are online methods for streaming concept drift." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge: DriftMonitor</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>PSI, KS Test, Performance Tracking</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>DriftMonitor</code></span>
+    </div>
+  </div>
+  <pre><code class="language-python">from kailash_ml import DriftMonitor, DriftSpec
+
+spec = DriftSpec(
+    features=["spending_score", "frequency", "recency"],
+    methods=["psi", "ks"],
+    psi_threshold=0.2,
+    ks_alpha=0.05
+)
+
+monitor = DriftMonitor(spec)
+monitor.set_reference(training_df)
+
+# Check production data
+report = monitor.check_drift(production_df)
+print(report.summary())  # Which features drifted and by how much
+
+# Schedule continuous monitoring
+monitor.schedule_monitoring(interval="daily", alert_on="drift")</code></pre>
+  <aside class="notes">
+    "DriftMonitor wraps PSI and KS into a production-ready API. Set your reference data once, then check new batches as they arrive. Automated alerting for when features drift beyond your thresholds." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     6.15 KAILASH ENGINE DEEP DIVE (15-20 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>6.15 Kailash Engines for Unsupervised ML</h1>
+  <p class="subtitle">Theory &rarr; Engine mapping for every concept in this module</p>
+  <aside class="notes">
+    "Everything we learned has a Kailash engine. This section maps theory to production code." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Theory-to-Engine Mapping</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size: 0.8em;">
+    <tr><th>Theory Concept</th><th>Kailash Engine</th><th>Key Methods</th></tr>
+    <tr><td>K-Means, GMM, HDBSCAN, Spectral</td><td>AutoMLEngine (task="clustering")</td><td>fit(), predict(), best_model</td></tr>
+    <tr><td>Algorithm comparison</td><td>AutoMLEngine</td><td>compare(), results.ranking</td></tr>
+    <tr><td>Ensemble anomaly detection</td><td>EnsembleEngine</td><td>blend(), stack()</td></tr>
+    <tr><td>PSI, KS drift detection</td><td>DriftMonitor</td><td>set_reference(), check_drift()</td></tr>
+    <tr><td>Cluster visualisation, PCA plots</td><td>ModelVisualizer</td><td>plot_clusters(), plot_pca()</td></tr>
+    <tr><td>Preprocessing, standardisation</td><td>PreprocessingPipeline</td><td>standardize(), fit_transform()</td></tr>
+  </table>
+  <aside class="notes">
+    "Every concept has a Kailash engine. You don't need to implement k-means from scratch (though you should understand it). The engine handles the production concerns: serialisation, monitoring, versioning." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>AutoMLEngine: Clustering Comparison</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_ml import AutoMLEngine, AutoMLConfig
+
+config = AutoMLConfig(
+    task="clustering",
+    algorithms=["kmeans", "gmm", "hdbscan", "spectral", "hierarchical"],
+    metric="silhouette",
+    n_trials=100,
+    k_range=(2, 15)  # Try k from 2 to 15 for parametric methods
+)
+
+engine = AutoMLEngine(config)
+results = engine.fit(df)
+
+# Results include:
+# - Best algorithm and its hyperparameters
+# - Ranking of all algorithms by silhouette score
+# - Cluster assignments for the best model
+# - Validation metrics (silhouette, calinski_harabasz, davies_bouldin)
+
+print(results.summary())
+print(f"Best: {results.best_model.algorithm} with k={results.best_model.n_clusters}")
+print(f"Silhouette: {results.best_model.metrics['silhouette']:.3f}")</code></pre>
+  <aside class="notes">
+    "AutoMLEngine for clustering is like AutoML for supervised learning: try multiple algorithms, compare metrics, report the best. It handles k selection, hyperparameter tuning, and validation automatically." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>EnsembleEngine: Combining Anomaly Detectors</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_ml import EnsembleEngine
+
+engine = EnsembleEngine(strategy="blend")
+
+# Blend multiple anomaly detectors
+result = engine.blend(
+    models=[isolation_forest, lof_model, ocsvm_model],
+    weights=[0.4, 0.3, 0.3],
+    data=df
+)
+
+# Stack with a meta-learner (if partial labels available)
+result = engine.stack(
+    base_models=[if_model, lof_model, ocsvm_model],
+    meta_model="logistic_regression",
+    data=df, labels=partial_labels
+)
+
+# Access combined anomaly scores
+anomaly_scores = result.scores
+anomaly_labels = result.labels</code></pre>
+  <aside class="notes">
+    "EnsembleEngine combines anomaly detectors the same way it combines supervised models. Blending averages scores. Stacking uses a meta-learner to learn the optimal combination." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>ModelVisualizer: Cluster and Dim Reduction Plots</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+# Cluster visualisation (uses UMAP internally for high-dim data)
+viz.plot_clusters(df, labels=cluster_labels, method="umap")
+
+# PCA scree plot
+viz.plot_scree(df, n_components=20)
+
+# Silhouette plot (per-cluster breakdown)
+viz.plot_silhouette(df, labels=cluster_labels)
+
+# Dendrogram for hierarchical clustering
+viz.plot_dendrogram(df, linkage="ward", cut_height=5.0)
+
+# t-SNE / UMAP comparison
+viz.plot_embedding(df, method="tsne", perplexity=30)
+viz.plot_embedding(df, method="umap", n_neighbors=15)</code></pre>
+  <aside class="notes">
+    "ModelVisualizer produces publication-quality plots for every USML method. The silhouette plot is especially useful: it shows per-cluster quality, helping you identify problematic clusters." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Full USML Pipeline in Kailash</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <pre><code class="language-python">from kailash_ml import (
+    PreprocessingPipeline, AutoMLEngine, AutoMLConfig,
+    DriftMonitor, DriftSpec, ModelVisualizer, TrainingPipeline
+)
+import polars as pl
+
+# 1. Preprocess
+pipeline = PreprocessingPipeline()
+pipeline.add_step("standardize", method="z_score")
+df_clean = pipeline.fit_transform(raw_df)
+
+# 2. Cluster (USML = automated feature engineering)
+config = AutoMLConfig(task="clustering", metric="silhouette")
+engine = AutoMLEngine(config)
+cluster_result = engine.fit(df_clean)
+
+# 3. Add cluster features (THE BRIDGE)
+df_features = df_clean.with_columns(
+    pl.Series("cluster_id", cluster_result.best_model.labels)
+)
+
+# 4. Use cluster features in supervised model
+sup_pipeline = TrainingPipeline(model="xgboost", target="churn")
+sup_pipeline.fit(df_features)
+
+# 5. Monitor for drift
+monitor = DriftMonitor(DriftSpec(features=df_clean.columns))
+monitor.set_reference(df_clean)
+# Later: monitor.check_drift(new_data)</code></pre>
+  <aside class="notes">
+    "This is the complete USML pipeline: preprocess, cluster, extract features, use in supervised model, monitor for drift. Five steps, all with Kailash engines. This IS the automated feature engineering workflow." Timing: ~3 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     LAB SETUP (3-5 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>Lab: Unsupervised ML in Practice</h1>
+  <p class="subtitle">Customer segmentation, topic discovery, anomaly detection</p>
+  <aside class="notes">
+    "Time for hands-on work. Three exercises that combine everything from this module." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Exercise Overview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <tr><th>Exercise</th><th>Dataset</th><th>Techniques</th><th>Feature Output</th></tr>
+    <tr><td>6.1: Customer Segmentation</td><td>E-commerce transactions</td><td>K-Means, GMM, HDBSCAN</td><td>Cluster ID &rarr; churn model</td></tr>
+    <tr><td>6.2: Topic Discovery</td><td>Support tickets</td><td>LDA, NMF, BERTopic</td><td>Topic proportions &rarr; routing</td></tr>
+    <tr><td>6.3: Anomaly Detection</td><td>Network traffic</td><td>Isolation Forest, LOF</td><td>Anomaly scores &rarr; alerting</td></tr>
+    <tr><td>6.4: Dim Reduction</td><td>Gene expression</td><td>PCA, UMAP, t-SNE</td><td>Embeddings &rarr; visualisation</td></tr>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Open:</strong> <code>modules/ascent06/local/ex_1.py</code> &mdash; or <code>modules/ascent06/notebooks/ex_1.ipynb</code> for Jupyter.
+  </div>
+  <aside class="notes">
+    "Four exercises covering the four pillars. Each exercise produces features that feed into a downstream supervised model. This is the USML-as-feature-engineering workflow." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     DISCUSSION PROMPTS (3-4 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Discussion: When Clusters Lie</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="case-study">
+    <p>Your clustering algorithm finds 5 customer segments. Marketing builds 5 campaigns. Three months later, two segments have identical response rates.</p>
+    <p style="margin-top: 12px;"><strong>Questions:</strong></p>
+    <ul>
+      <li>Were those two segments ever truly different?</li>
+      <li>How would you validate clusters before acting on them?</li>
+      <li>What stability checks would you run?</li>
+      <li>Your DriftMonitor fires &mdash; what's your runbook?</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    "This discussion forces students to think about validation. Clusters can be statistical artifacts. Silhouette score of 0.3 is mediocre. Did marketing waste money on fake segments? How would you prevent this?" Timing: ~5 min discussion.
+  </aside>
+</section>
+
+<section>
+  <h2>Discussion: The Ethics of Unsupervised Discovery</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="case-study">
+    <p>Your clustering algorithm discovers a customer segment that correlates strongly with ethnicity. The segment predicts loan default risk.</p>
+    <p style="margin-top: 12px;"><strong>Questions:</strong></p>
+    <ul>
+      <li>Is this cluster a legitimate risk factor or a proxy for protected attributes?</li>
+      <li>Should you use it as a feature in your credit scoring model?</li>
+      <li>How does this relate to the EU AI Act's requirements for high-risk AI systems?</li>
+      <li>What governance controls (PACT) would you apply?</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    "Unsupervised models can discover patterns we didn't ask for, including discriminatory ones. This is a real risk in production. The EU AI Act requires impact assessments for credit scoring. Preview of M10 governance content." Timing: ~5 min discussion.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     SYNTHESIS (8-12 slides)
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h1>Synthesis</h1>
+  <p class="subtitle">The bridge is built</p>
+  <aside class="notes">
+    "Synthesis time. Let's consolidate everything and connect it to what comes next." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Key Takeaways by Level</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-foundations">
+    <strong>Everyone should remember:</strong>
+    <ul>
+      <li>USML discovers patterns WITHOUT labels and produces NEW FEATURES</li>
+      <li>Clustering: n features &rarr; 1 new feature (cluster membership)</li>
+      <li>Dim reduction: n features &rarr; k new features (components)</li>
+      <li>Topic modeling: n documents &rarr; k topic features</li>
+      <li>Always validate: silhouette, coherence, domain expert</li>
+      <li>Always monitor: PSI and KS detect when your world changes</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    "The foundation-level takeaway: USML is automated feature engineering. Every technique produces features that feed into supervised models." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Key Takeaways: Theory Level</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="callout callout-theory">
+    <strong>If you followed the math:</strong>
+    <ul>
+      <li>K-means is a special case of EM with spherical, equal covariance</li>
+      <li>EM monotonically increases the ELBO &mdash; local convergence guaranteed</li>
+      <li>PCA = eigendecomposition of covariance = truncated SVD of centred data</li>
+      <li>t-SNE minimises KL(P||Q); UMAP minimises cross-entropy of fuzzy sets</li>
+      <li>LDA is a generative model with Dirichlet priors; NMF is non-negative matrix factorisation</li>
+      <li>Isolation Forest measures path length; LOF measures density ratio</li>
+      <li>PSI is a symmetric KL-like divergence; KS is supremum of CDF difference</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    "The theory-level takeaway: understand the connections. K-means, GMM, LDA, and PCA are all connected through the EM algorithm and matrix factorisation." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Key Takeaways: Advanced Level</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="callout callout-advanced">
+    <strong>For the experts:</strong>
+    <ul>
+      <li>EM &rarr; ELBO &rarr; Variational Inference &rarr; VAEs (M7 bridge)</li>
+      <li>Parametric UMAP is a neural network doing dim reduction (M7 bridge)</li>
+      <li>Autoencoder bottleneck IS learned PCA (non-linear generalisation)</li>
+      <li>BERTopic = UMAP + HDBSCAN + c-TF-IDF &mdash; modular and extensible</li>
+      <li>Stability-based validation is the gold standard for real-world clustering</li>
+      <li>Multivariate drift requires domain classifiers or MMD, not just univariate PSI</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    "The expert takeaway: every USML method has a deep learning generalisation. This is the bridge to M7. Autoencoders generalise PCA. VAEs generalise EM. Neural topic models generalise LDA." Timing: ~2 min.
+  </aside>
+</section>
+
+<section>
+  <h2>The Bridge Synthesis</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="bridge-box">
+    <p style="text-align: center; font-size: 1.1em; margin-bottom: 16px;"><strong>You've now seen how algorithms discover features automatically.</strong></p>
+    <div class="spectrum-diagram">
+      <div class="spectrum-node" style="background: #FEF3C7; border: 2px solid #F59E0B;">
+        <div>M4&ndash;M5: Manual</div>
+        <div style="font-size: 0.75em; font-weight: 400;">Human crafts features</div>
+      </div>
+      <div class="spectrum-arrow">&rarr;</div>
+      <div class="spectrum-node" style="background: #DBEAFE; border: 3px solid #3B82F6;">
+        <div>M6: USML (DONE)</div>
+        <div style="font-size: 0.75em; font-weight: 400;">Algorithm discovers features</div>
+      </div>
+      <div class="spectrum-arrow">&rarr;</div>
+      <div class="spectrum-node" style="background: #FAF5FF; border: 2px solid #8B5CF6;">
+        <div>M7: Deep Learning (NEXT)</div>
+        <div style="font-size: 0.75em; font-weight: 400;">Architecture LEARNS features</div>
+      </div>
+    </div>
+    <p style="text-align: center; margin-top: 16px; font-size: 0.95em;">
+      In M7, you'll see how neural networks <strong>learn to engineer features through architecture</strong> &mdash; not through human design (M4) or through algorithm assumptions (M6), but through <strong>gradient optimisation</strong>.
+    </p>
+  </div>
+  <aside class="notes">
+    "This is the punchline. M6 showed you automated feature discovery with mathematical assumptions (Gaussian, density, distance). M7 removes those assumptions. Neural networks learn ANY feature representation through backpropagation." Timing: ~3 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Updated Kailash Engine Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="svg-diagram">
+    <svg width="1100" height="200" viewBox="0 0 1100 200">
+      <rect x="10" y="30" width="150" height="70" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="85" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#15803D">M1-M2: Data</text>
+      <text x="85" y="72" text-anchor="middle" font-size="9" fill="#334155">DataExplorer, PreprocessingPipeline</text>
+      <rect x="175" y="30" width="130" height="70" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="240" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#15803D">M3: Statistics</text>
+      <text x="240" y="72" text-anchor="middle" font-size="9" fill="#334155">ModelVisualizer</text>
+      <rect x="320" y="30" width="150" height="70" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="395" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#15803D">M4: Features</text>
+      <text x="395" y="72" text-anchor="middle" font-size="9" fill="#334155">FeatureStore, FeatureEngineer</text>
+      <rect x="485" y="30" width="150" height="70" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="560" y="55" text-anchor="middle" font-size="10" font-weight="700" fill="#15803D">M5: Supervised</text>
+      <text x="560" y="72" text-anchor="middle" font-size="9" fill="#334155">TrainingPipeline, ModelRegistry</text>
+      <rect x="650" y="20" width="180" height="100" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="3"/>
+      <text x="740" y="45" text-anchor="middle" font-size="10" font-weight="700" fill="#0D9488">M6: Unsupervised (DONE)</text>
+      <text x="740" y="62" text-anchor="middle" font-size="9" fill="#334155">AutoMLEngine</text>
+      <text x="740" y="76" text-anchor="middle" font-size="9" fill="#334155">EnsembleEngine</text>
+      <text x="740" y="90" text-anchor="middle" font-size="9" fill="#334155">DriftMonitor</text>
+      <text x="740" y="104" text-anchor="middle" font-size="9" fill="#334155">ModelVisualizer</text>
+      <rect x="845" y="30" width="170" height="70" rx="8" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="2" stroke-dasharray="4"/>
+      <text x="930" y="55" text-anchor="middle" font-size="10" font-weight="600" fill="#8B5CF6">M7: Deep Learning (NEXT)</text>
+      <text x="930" y="72" text-anchor="middle" font-size="9" fill="#94A3B8">InferenceServer, OnnxBridge</text>
+      <line x1="160" y1="65" x2="175" y2="65" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="305" y1="65" x2="320" y2="65" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="470" y1="65" x2="485" y2="65" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="635" y1="65" x2="650" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="830" y1="65" x2="845" y2="65" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrow)"/>
+    </svg>
+  </div>
+  <aside class="notes">
+    "The cumulative engine map now includes three new engines from M6. AutoMLEngine for clustering, EnsembleEngine for anomaly detection, DriftMonitor for production monitoring. Next module adds InferenceServer and OnnxBridge for deploying deep learning models." Timing: ~1 min.
+  </aside>
+</section>
+
+<section>
+  <h2>Preview: Module 7 &mdash; Deep Learning</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Neural Networks from First Principles</h3>
+      <ul>
+        <li>Universal approximation theorem</li>
+        <li>Backpropagation derivation</li>
+        <li>CNNs: convolution as learned feature extraction</li>
+        <li>Autoencoders: the M6&rarr;M7 bridge</li>
+        <li>Attention mechanism</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-kailash">
+        <strong>Connection to M6:</strong>
+        <ul style="font-size: 0.85em;">
+          <li>Autoencoders = neural PCA (non-linear dim reduction)</li>
+          <li>VAEs = neural EM (generative model with neural inference)</li>
+          <li>Neural topic models = neural LDA</li>
+          <li>Learned embeddings = neural feature engineering</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p style="text-align: center; margin-top: 20px; font-size: 1.1em; color: var(--ascent-depth); font-weight: 600;">
+    "In M7, the architecture itself learns the features. No assumptions. No human design. Just data and gradients."
+  </p>
+  <aside class="notes">
+    "Every M6 method has a deep learning generalisation. Autoencoders generalise PCA. VAEs generalise EM. This is why M6 is the bridge module: you cannot understand deep learning representations without understanding what they replace." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     ASSESSMENT PREVIEW
+     ════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Assessment Preview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Quiz Topics</h3>
+      <ul style="font-size: 0.85em;">
+        <li>When to use k-means vs GMM vs HDBSCAN</li>
+        <li>Interpreting silhouette scores</li>
+        <li>PCA variance explained and standardisation</li>
+        <li>t-SNE warnings (cluster size, distance)</li>
+        <li>LDA vs NMF vs BERTopic tradeoffs</li>
+        <li>PSI threshold interpretation</li>
+        <li>Isolation Forest path length</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Assignment</h3>
+      <p style="font-size: 0.85em;">Build a complete USML-to-supervised pipeline:</p>
+      <ol style="font-size: 0.85em;">
+        <li>Cluster a dataset and validate</li>
+        <li>Use cluster labels as features in a supervised model</li>
+        <li>Compare performance with and without cluster features</li>
+        <li>Set up drift monitoring</li>
+        <li>Run topic modeling on text data and extract topic features</li>
+      </ol>
+    </div>
+  </div>
+  <aside class="notes">
+    "The assignment tests the core insight: USML as feature engineering. Students must show that cluster features and topic features improve their supervised model." Timing: ~2 min.
+  </aside>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     CLOSING
+     ════════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 6 Complete</h1>
+  <h2 style="border: none;">Unsupervised ML &amp; Pattern Discovery</h2>
+  <p class="subtitle">You now know how to make algorithms discover features for you.</p>
+  <p class="provocation">"Next module: the architecture learns the features. No assumptions. No human design. Just data and gradients."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 6</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">
+    "Close with the bridge forward. M6 showed them algorithmic feature discovery with assumptions. M7 removes those assumptions entirely through neural networks. The bridge is built." Timing: ~1 min.
+  </aside>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<!-- Reveal.js 5.1.0 -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.1,
+    hash: true,
+    slideNumber: 'c/t',
+    showSlideNumber: 'all',
+    navigationMode: 'default',
+    transition: 'slide',
+    transitionSpeed: 'default',
+
+    // PDF export
+    pdfMaxPagesPerSlide: 1,
+    pdfSeparateFragments: false,
+
+    // Math (KaTeX)
+    math: {
+      mathjax: null,
+      katex: 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist',
+      config: 'TeX-AMS_HTML-full',
+    },
+
+    plugins: [
+      RevealNotes,
+      RevealHighlight,
+      RevealMath.KaTeX,
+    ]
+  });
+</script>
+</body>
+</html>

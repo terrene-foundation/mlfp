@@ -11,7 +11,7 @@
 
 ## Module Quizzes
 
-Each module has a quiz in `modules/ascentN/quiz/` with 10-15 questions:
+Each module has a quiz in `modules/ascentNN/quiz/` with 10-15 questions:
 - 5-7 multiple choice (pattern recognition, framework selection)
 - 3-5 short code (complete the import, debug this code)
 - 2-3 open interpretation (what does this output mean?)

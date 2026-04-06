@@ -112,12 +112,12 @@ These are starting points, not prescriptions. The best portfolios define a clear
 
 | Module | Dataset                 | Example Portfolio Direction                                                                                                    |
 | ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| ASCENT1  | HDB Resale Prices       | Price prediction with spatial features, temporal drift analysis, calibrated confidence intervals for valuation                 |
-| ASCENT2  | A/B Testing Dataset     | Causal inference pipeline: propensity score matching, CUPED variance reduction, heterogeneous treatment effects                |
-| ASCENT3  | Credit Risk / Fraud     | End-to-end credit scoring: regulatory-compliant features, calibrated default probabilities, fairness audit across demographics |
-| ASCENT4  | Customer Reviews (NLP)  | BERTopic-based topic modelling with sentiment overlay, UMAP visualisation, topic drift monitoring for brand health             |
-| ASCENT5  | Multi-source Urban Data | RAG-augmented property advisor: agent-based retrieval over planning documents, grounded in structured data                     |
-| ASCENT6  | Policy / Governance     | RL-based resource allocation with PACT governance constraints, alignment evaluation, deployment with Nexus                     |
+| ASCENT01  | HDB Resale Prices       | Price prediction with spatial features, temporal drift analysis, calibrated confidence intervals for valuation                 |
+| ASCENT02  | A/B Testing Dataset     | Causal inference pipeline: propensity score matching, CUPED variance reduction, heterogeneous treatment effects                |
+| ASCENT03  | Credit Risk / Fraud     | End-to-end credit scoring: regulatory-compliant features, calibrated default probabilities, fairness audit across demographics |
+| ASCENT04  | Customer Reviews (NLP)  | BERTopic-based topic modelling with sentiment overlay, UMAP visualisation, topic drift monitoring for brand health             |
+| ASCENT05  | Multi-source Urban Data | RAG-augmented property advisor: agent-based retrieval over planning documents, grounded in structured data                     |
+| ASCENT06  | Policy / Governance     | RL-based resource allocation with PACT governance constraints, alignment evaluation, deployment with Nexus                     |
 
 ---
 

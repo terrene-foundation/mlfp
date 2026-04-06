@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: Built-in Node Types &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code, td code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">00-core</a></p>
+  </header>
+
+  <h1>Chapter 2: Built-in Node Types</h1>
+
+  <h2>Overview</h2>
+  <p>Kailash ships with a registry of built-in node types covering common processing tasks. This chapter teaches you how to discover available nodes through the <code>NodeRegistry</code>, inspect their metadata and parameters, and use them in workflows.</p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li><a href="01_workflow_builder.html">Chapter 1: WorkflowBuilder Basics</a></li>
+    <li>Kailash SDK installed</li>
+  </ul>
+
+  <h2>Concepts</h2>
+
+  <h3>NodeRegistry</h3>
+  <p>The <code>NodeRegistry</code> is a global dictionary that maps string names to <code>Node</code> classes. When you call <code>add_node("PythonCodeNode", ...)</code>, the builder looks up <code>"PythonCodeNode"</code> in the registry. Built-in nodes are registered automatically at import time via the <code>@register_node</code> decorator.</p>
+  <div class="callout"><strong>Import path:</strong> <code>from kailash.nodes.base import NodeRegistry</code></div>
+
+  <h3>NodeMetadata</h3>
+  <p>Every node class carries metadata: a human-readable name, description, version, and tags for categorization. This metadata powers tooling such as visual editors and documentation generators.</p>
+
+  <h3>NodeParameter</h3>
+  <p><code>NodeParameter</code> describes a single input or output &mdash; its name, type, whether it is required, a description, and an optional default value. The collection of parameters defines the node's data contract.</p>
+
+  <h3>Key API</h3>
+  <table>
+    <thead><tr><th>Method / Class</th><th>Parameters</th><th>Returns</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>NodeRegistry.list()</code></td><td>&mdash;</td><td><code>list</code> or <code>dict</code></td><td>All registered node names</td></tr>
+      <tr><td><code>NodeRegistry.get()</code></td><td><code>name: str</code></td><td><code>Node class</code> or <code>None</code></td><td>Look up a node class by name</td></tr>
+      <tr><td><code>NodeMetadata()</code></td><td><code>name</code>, <code>description</code>, <code>version</code>, <code>tags</code></td><td><code>NodeMetadata</code></td><td>Node metadata descriptor</td></tr>
+      <tr><td><code>NodeParameter()</code></td><td><code>name</code>, <code>type</code>, <code>description</code>, <code>required</code>, <code>default</code></td><td><code>NodeParameter</code></td><td>Input/output parameter descriptor</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+  <pre><code class="language-python">from kailash.nodes.base import Node, NodeMetadata, NodeParameter, NodeRegistry
+
+# 1. Discover available nodes
+registered_names = NodeRegistry.list()
+print(f"Registered node types: {len(registered_names)}")
+
+# PythonCodeNode is always available
+python_code_cls = NodeRegistry.get("PythonCodeNode")
+assert python_code_cls is not None
+assert issubclass(python_code_cls, Node)
+
+# 2. NodeMetadata
+metadata = NodeMetadata(
+    name="ExampleNode", description="A test node", version="1.0.0"
+)
+assert metadata.name == "ExampleNode"
+assert isinstance(metadata.tags, set)  # Defaults to empty set
+
+# 3. NodeParameter
+param = NodeParameter(
+    name="input_data", type="str",
+    description="The input string to process", required=True,
+)
+optional_param = NodeParameter(
+    name="separator", type="str",
+    description="Optional separator", required=False, default=",",
+)
+
+# 4. Using PythonCodeNode in a workflow
+from kailash import WorkflowBuilder, LocalRuntime
+
+builder = WorkflowBuilder()
+builder.add_node("PythonCodeNode", "make_list",
+    {"code": "output = [1, 2, 3, 4, 5]", "output_type": "list"})
+builder.add_node("PythonCodeNode", "sum_it",
+    {"code": "output = sum(numbers)", "inputs": {"numbers": "list"},
+     "output_type": "int"})
+builder.connect("make_list", "sum_it", mapping={"output": "numbers"})
+
+workflow = builder.build(name="node-types-demo")
+runtime = LocalRuntime()
+results, run_id = runtime.execute(workflow)
+runtime.close()
+
+print(f"Sum result: {results.get('sum_it', {})}")</code></pre>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <thead><tr><th>Mistake</th><th>Correct Pattern</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Misspelled node name</td><td><code>NodeRegistry.get("PythonCodeNode")</code></td><td><code>get()</code> returns <code>None</code> for unknown names</td></tr>
+      <tr><td>Ignoring required parameters</td><td>Connect or provide defaults for all required inputs</td><td>Missing inputs cause <code>NodeExecutionError</code></td></tr>
+      <tr><td>Assuming all nodes are loaded</td><td>Import relevant modules first</td><td>Nodes register at import time</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Exercises</h2>
+  <ol>
+    <li>Call <code>NodeRegistry.list()</code> and count available node types. Import additional submodules and check if the count increases.</li>
+    <li>Create a <code>NodeParameter</code> with <code>required=False</code> and no default. What value does the node receive?</li>
+    <li>Build a workflow that generates a dictionary and extracts a specific key from it.</li>
+  </ol>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>NodeRegistry</code> is the global catalog of all available node types</li>
+    <li>Built-in nodes register automatically via <code>@register_node</code> at import time</li>
+    <li><code>NodeMetadata</code> provides human-readable node descriptions for introspection</li>
+    <li><code>NodeParameter</code> defines the input/output contract: name, type, required, default</li>
+    <li>Results from <code>runtime.execute()</code> are returned as a <code>(dict, run_id)</code> tuple</li>
+  </ul>
+
+  <div class="nav">
+    <a href="01_workflow_builder.html">&larr; Chapter 1: WorkflowBuilder</a>
+    <a href="03_custom_nodes.html">Chapter 3: Custom Nodes &rarr;</a>
+  </div>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

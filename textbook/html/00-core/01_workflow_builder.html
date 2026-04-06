@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: WorkflowBuilder Basics &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">00-core</a></p>
+  </header>
+
+  <h1>Chapter 1: WorkflowBuilder Basics</h1>
+
+  <h2>Overview</h2>
+  <p>Every Kailash application begins with a <strong>workflow</strong> &mdash; a directed graph of processing nodes wired together to form a data pipeline. The <code>WorkflowBuilder</code> is your entry point: it provides a fluent API for adding nodes, connecting them, and compiling the graph into an immutable <code>Workflow</code> object ready for execution. This chapter teaches you how to create, wire, validate, and inspect workflows from scratch.</p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li>Python 3.10+ installed</li>
+    <li>Kailash SDK installed (<code>pip install kailash</code>)</li>
+    <li>No prior Kailash knowledge required &mdash; this is where you start</li>
+  </ul>
+
+  <h2>Concepts</h2>
+
+  <h3>The Builder Pattern</h3>
+  <p>WorkflowBuilder uses the <strong>builder pattern</strong> &mdash; you accumulate configuration (nodes, connections) through method calls, then finalize everything with a single <code>.build()</code> call. This separates construction from validation: you can add nodes in any order, wire them up, and the builder only checks the graph's validity when you call <code>build()</code>.</p>
+  <ul>
+    <li><strong>What</strong>: A mutable container that collects nodes and connections before producing an immutable workflow</li>
+    <li><strong>Why</strong>: Separating construction from validation lets you build workflows incrementally without worrying about ordering constraints</li>
+    <li><strong>How</strong>: Internally, the builder maintains two lists &mdash; <code>nodes</code> and <code>connections</code> &mdash; that are validated and frozen into a <code>Workflow</code> object on <code>build()</code></li>
+    <li><strong>When</strong>: Use WorkflowBuilder whenever you need a multi-step processing pipeline. For simple single-record CRUD, use DataFlow Express instead</li>
+  </ul>
+
+  <h3>Nodes</h3>
+  <p>Nodes are the processing units in a workflow. Each node has a <strong>type</strong> (what it does), a <strong>node ID</strong> (a unique string identifier), and a <strong>configuration dictionary</strong> (parameters that control its behavior). The simplest built-in node type is <code>PythonCodeNode</code>, which executes a Python code string.</p>
+
+  <h3>Connections</h3>
+  <p>Connections define how data flows between nodes. A connection maps an <strong>output port</strong> of one node to an <strong>input port</strong> of another. The default port name is <code>"data"</code>, but you can use explicit port names via the <code>mapping</code> parameter or the <code>from_output</code>/<code>to_input</code> keyword arguments.</p>
+
+  <h3>The Workflow Object</h3>
+  <p>The <code>Workflow</code> returned by <code>build()</code> is <strong>immutable</strong> &mdash; it cannot be modified after creation. It contains the validated graph (node instances and connections) plus optional metadata (name, description, version).</p>
+
+  <h3>Key API</h3>
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>WorkflowBuilder()</code></td><td>&mdash;</td><td><code>WorkflowBuilder</code></td><td>Create an empty builder</td></tr>
+      <tr><td><code>add_node()</code></td><td><code>node_type: str</code>, <code>node_id: str</code>, <code>config: dict</code></td><td><code>str</code></td><td>Add a node to the builder</td></tr>
+      <tr><td><code>connect()</code></td><td><code>source: str</code>, <code>target: str</code>, <code>mapping: dict</code></td><td><code>None</code></td><td>Wire an output port to an input port</td></tr>
+      <tr><td><code>build()</code></td><td><code>name</code>, <code>description</code>, <code>version</code>, <code>workflow_id</code></td><td><code>Workflow</code></td><td>Validate and compile the graph</td></tr>
+      <tr><td><code>builder.nodes</code></td><td>&mdash;</td><td><code>list</code></td><td>Current list of added nodes</td></tr>
+      <tr><td><code>builder.connections</code></td><td>&mdash;</td><td><code>list</code></td><td>Current list of connections</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+  <pre><code class="language-python">from __future__ import annotations
+
+from kailash import WorkflowBuilder
+from kailash.workflow.graph import Workflow
+
+# 1. Create an empty builder
+builder = WorkflowBuilder()
+assert len(builder.nodes) == 0, "Builder should start empty"
+assert len(builder.connections) == 0, "No connections yet"
+
+# 2. Add nodes
+node_id_1 = builder.add_node(
+    "PythonCodeNode",
+    "generate",
+    {
+        "code": "output = 'Hello from Kailash!'",
+        "output_type": "str",
+    },
+)
+
+node_id_2 = builder.add_node(
+    "PythonCodeNode",
+    "transform",
+    {
+        "code": "output = text.upper()",
+        "inputs": {"text": "str"},
+        "output_type": "str",
+    },
+)
+
+assert node_id_1 == "generate", "add_node returns the node_id"
+
+# 3. Connect nodes
+builder.connect("generate", "transform", mapping={"output": "text"})
+assert len(builder.connections) == 1
+
+# 4. Build the workflow
+workflow = builder.build(
+    name="hello-workflow",
+    description="A minimal two-node workflow",
+    version="1.0.0",
+)
+
+assert isinstance(workflow, Workflow)
+assert workflow.name == "hello-workflow"
+assert workflow.version == "1.0.0"
+
+# 5. Inspect the workflow
+assert len(workflow.node_instances) == 2
+assert "generate" in workflow.node_instances
+assert "transform" in workflow.node_instances
+
+# 6. Edge case: duplicate node IDs raise WorkflowValidationError
+from kailash.sdk_exceptions import WorkflowValidationError
+
+try:
+    builder.add_node("PythonCodeNode", "generate", {"code": "x = 1"})
+except WorkflowValidationError:
+    pass  # Expected: duplicate node ID
+
+# 7. Edge case: connecting non-existent nodes
+try:
+    builder.connect("nonexistent", "transform")
+except WorkflowValidationError:
+    pass  # Expected: source node not found
+
+# 8. Empty workflow is valid
+empty_builder = WorkflowBuilder()
+empty_wf = empty_builder.build(name="empty")
+assert len(empty_wf.node_instances) == 0</code></pre>
+
+  <h3>Step-by-Step Explanation</h3>
+  <ol>
+    <li><strong>Import</strong>: <code>WorkflowBuilder</code> is the primary import from <code>kailash</code>. The <code>Workflow</code> class lives in <code>kailash.workflow.graph</code>.</li>
+    <li><strong>Empty builder</strong>: A fresh <code>WorkflowBuilder()</code> has zero nodes and zero connections.</li>
+    <li><strong>Adding nodes</strong>: <code>add_node("PythonCodeNode", "generate", {...})</code> adds a node and returns the node ID string.</li>
+    <li><strong>Connecting nodes</strong>: The <code>mapping</code> parameter routes the <code>"output"</code> port of <code>"generate"</code> to the <code>"text"</code> input of <code>"transform"</code>.</li>
+    <li><strong>Building</strong>: <code>build()</code> validates the graph and returns an immutable <code>Workflow</code> with metadata.</li>
+    <li><strong>Duplicate IDs</strong>: Caught immediately at <code>add_node()</code> time, not deferred to <code>build()</code>.</li>
+    <li><strong>Non-existent connections</strong>: Caught immediately at <code>connect()</code> time.</li>
+    <li><strong>Empty workflows</strong>: Valid &mdash; <code>build()</code> succeeds with zero nodes.</li>
+  </ol>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <thead>
+      <tr><th>Mistake</th><th>Correct Pattern</th><th>Why</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>runtime.execute(builder)</code></td><td><code>runtime.execute(builder.build())</code></td><td>The runtime expects a <code>Workflow</code>, not a <code>WorkflowBuilder</code>. Missing <code>.build()</code> skips validation.</td></tr>
+      <tr><td>Using variables for node IDs</td><td><code>add_node("PythonCodeNode", "my_node", {...})</code></td><td>Dynamic node IDs break graph analysis and checkpoint recovery.</td></tr>
+      <tr><td>Forgetting <code>mapping</code></td><td><code>connect("a", "b", mapping={"output": "text"})</code></td><td>Without <code>mapping</code>, default ports <code>"data"</code> are used, which may not match your node's ports.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Exercises</h2>
+  <ol>
+    <li>Create a three-node workflow: generate a list of numbers, filter for even numbers, then sum them.</li>
+    <li>What happens if you call <code>build()</code> twice on the same builder?</li>
+    <li>Try connecting two nodes with <code>connect("a", "b")</code> (no mapping) when the source node's output is named <code>"output"</code>. What error do you get?</li>
+  </ol>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>WorkflowBuilder</code> is the entry point for all workflow construction in Kailash</li>
+    <li>The builder pattern separates construction from validation &mdash; <code>build()</code> is where validation happens</li>
+    <li><code>add_node()</code> takes a type string, a node ID string, and a config dict</li>
+    <li><code>connect()</code> wires output ports to input ports with <code>mapping</code> for explicit routing</li>
+    <li>The resulting <code>Workflow</code> is immutable and can be executed repeatedly</li>
+    <li>Duplicate node IDs and references to non-existent nodes are caught immediately</li>
+  </ul>
+
+  <div class="nav">
+    <span>&mdash;</span>
+    <a href="02_node_types.html">Chapter 2: Node Types &rarr;</a>
+  </div>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

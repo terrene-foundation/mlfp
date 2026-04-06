@@ -1,0 +1,3526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASCENT Module 2 — Feature Engineering &amp; Experiment Design</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css" />
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../assets/css/theme.css" />
+
+  <style>
+    /* Supplemental styles for M2 deck */
+    .timeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 20px 0;
+      font-size: 0.75em;
+    }
+    .timeline .event {
+      background: #EFF6FF;
+      border: 2px solid var(--ascent-theory);
+      border-radius: 8px;
+      padding: 8px 14px;
+      text-align: center;
+      min-width: 110px;
+    }
+    .timeline .event.danger {
+      background: #FFF1F2;
+      border-color: var(--ascent-error);
+    }
+    .timeline .event.success {
+      background: #F0FDF4;
+      border-color: var(--ascent-success);
+    }
+    .timeline .arrow-right {
+      font-size: 1.8em;
+      color: var(--ascent-primary);
+      margin: 0 4px;
+    }
+    .dag-node {
+      display: inline-block;
+      background: #EFF6FF;
+      border: 2px solid var(--ascent-theory);
+      border-radius: 50%;
+      width: 48px; height: 48px;
+      line-height: 44px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.85em;
+    }
+    .dag-node.treatment { background: #F0FDF4; border-color: var(--ascent-success); }
+    .dag-node.outcome   { background: #FAF5FF; border-color: var(--ascent-advanced); }
+    .dag-node.confounder { background: #FFFBEB; border-color: var(--ascent-alert); }
+    .dag-node.instrument { background: #EFF6FF; border-color: var(--ascent-theory); }
+    .dag-arrow { font-size: 1.4em; margin: 0 6px; color: #64748B; }
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px; height: 32px;
+      background: var(--ascent-primary);
+      color: white;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.8em;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .step-row {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .highlight-box {
+      background: #FFFBEB;
+      border: 2px solid var(--ascent-alert);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.85em;
+    }
+    .comparison-table td:first-child {
+      font-weight: 600;
+      color: var(--ascent-primary);
+    }
+    .fragment-list li { opacity: 1; }
+    .leakage-box {
+      background: #FFF1F2;
+      border: 2px solid var(--ascent-error);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.85em;
+    }
+    .safe-box {
+      background: #F0FDF4;
+      border: 2px solid var(--ascent-success);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.85em;
+    }
+    .method-card {
+      background: white;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 8px 0;
+      font-size: 0.85em;
+    }
+    .method-card h4 {
+      margin: 0 0 4px 0;
+      color: var(--ascent-primary);
+      font-size: 1em;
+    }
+    .vs-box {
+      display: flex;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .vs-box .vs-left, .vs-box .vs-right {
+      flex: 1;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.82em;
+    }
+    .vs-box .vs-left {
+      background: #FFF1F2;
+      border: 1px solid var(--ascent-error);
+    }
+    .vs-box .vs-right {
+      background: #F0FDF4;
+      border: 1px solid var(--ascent-success);
+    }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 2</h1>
+  <h2 style="border:none;">Feature Engineering &amp; Experiment Design</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning — Terrene Open Academy</p>
+  <p class="provocation">"The feature that killed a clinical trial looked perfect in every metric."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 2</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Open with the provocation — let it sink in. "By the end of today, you will understand exactly how a perfectly-looking feature can destroy a model, and how to prevent it." For beginners: this sets up why we care about feature quality. For experts: hint that we will go deep into point-in-time correctness and causal inference.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDES 2-6 — RECAP (Module 1)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Recap: Where We Are</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>In Module 1, you learned to <strong>see data</strong>. Now you will learn to <strong>transform</strong> it and <strong>reason about cause and effect</strong>.</p>
+  <table>
+    <thead><tr><th>M1 Concept</th><th>Engine</th><th>What You Did</th></tr></thead>
+    <tbody>
+      <tr><td>Load &amp; filter data</td><td><code>polars</code></td><td>HDB resale transactions, millions of rows</td></tr>
+      <tr><td>Automated profiling</td><td><code>DataExplorer</code></td><td>Distributions, outliers, alerts</td></tr>
+      <tr><td>Data cleaning</td><td><code>PreprocessingPipeline</code></td><td>Auto-detect, impute, encode, scale</td></tr>
+      <tr><td>Visualisation</td><td><code>ModelVisualizer</code></td><td>Interactive Plotly charts</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. Quick recap — students should remember these engines. If beginners look lost, remind them: "DataExplorer is the engine that profiles your data automatically." For experts: "Today we go from exploratory to engineered features."
+  </aside>
+</section>
+
+<section>
+  <h2>Module 1 Engines — Cumulative Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Kailash Engines Used So Far</h3>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:0.85em;">
+      <div style="background:white;border-radius:8px;padding:12px 18px;border:1px solid #E2E8F0;">
+        <strong>DataExplorer</strong><br/>Profile, alert, compare
+      </div>
+      <div style="background:white;border-radius:8px;padding:12px 18px;border:1px solid #E2E8F0;">
+        <strong>PreprocessingPipeline</strong><br/>Auto-detect, transform
+      </div>
+      <div style="background:white;border-radius:8px;padding:12px 18px;border:1px solid #E2E8F0;">
+        <strong>ModelVisualizer</strong><br/>Histogram, scatter, line
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-kailash" style="margin-top:16px;">
+    <strong>Today we add:</strong> FeatureEngineer, FeatureSchema, FeatureStore, ExperimentTracker
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Show the cumulative map — this builds session by session. "By the end of this programme, this map will have 13 engines. Today we add 4 more."
+  </aside>
+</section>
+
+<section>
+  <h2>What Is New Today</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Feature Engineering</h3>
+      <ul>
+        <li>What is a feature?</li>
+        <li>Transforming raw data into model inputs</li>
+        <li>Selecting the best features</li>
+        <li>Encoding categorical data</li>
+        <li>Temporal features &amp; leakage</li>
+        <li>Feature contracts &amp; stores</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Experiment Design</h3>
+      <ul>
+        <li>Causation vs correlation</li>
+        <li>A/B testing from scratch</li>
+        <li>Causal inference methods</li>
+        <li>CUPED variance reduction</li>
+        <li>Difference-in-Differences</li>
+        <li>Bayesian experimentation</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Two big pillars today. "Feature engineering is about making your data better BEFORE you train a model. Experiment design is about proving that something CAUSED a change, not just correlated with it."
+  </aside>
+</section>
+
+<section>
+  <h2>Module 2 Roadmap</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Section</th><th>Topic</th><th>Key Engine</th></tr></thead>
+    <tbody>
+      <tr><td>A</td><td>What Is a Feature?</td><td>FeatureSchema</td></tr>
+      <tr><td>B</td><td>Feature Transformation</td><td>FeatureEngineer</td></tr>
+      <tr><td>C</td><td>Feature Selection</td><td>FeatureEngineer</td></tr>
+      <tr><td>D</td><td>Feature Extraction</td><td>FeatureEngineer</td></tr>
+      <tr><td>E</td><td>Data Leakage</td><td>FeatureStore</td></tr>
+      <tr><td>F</td><td>Missing Data</td><td>PreprocessingPipeline</td></tr>
+      <tr><td>G</td><td>Experiment Design &amp; A/B Testing</td><td>ExperimentTracker</td></tr>
+      <tr><td>H</td><td>Causal Inference</td><td>ExperimentTracker</td></tr>
+      <tr><td>I</td><td>Feature Stores at Scale</td><td>FeatureStore</td></tr>
+      <tr><td>J</td><td>Kailash Engine Deep Dive</td><td>All M2 Engines</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~1 min. "This is a big module — we cover the two most impactful skills in applied ML. Andrew Ng famously said that better features matter more than better algorithms. And experiment design is how you prove your model actually works."
+  </aside>
+</section>
+
+<section>
+  <h2>Three Depth Layers — How to Follow</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-foundations"><strong>FOUNDATIONS</strong> — Everyone follows. Plain English, no maths. If you are new to ML, focus here.</div>
+  <div class="callout callout-theory"><strong>THEORY</strong> — Full mathematical derivation. Follow if you can; beginners see the shape of the maths.</div>
+  <div class="callout callout-advanced"><strong>ADVANCED</strong> — Cutting-edge insight, production nuance, research connections. For practitioners.</div>
+  <p style="font-size:0.85em;color:#64748B;margin-top:16px;">Look for the coloured marker in the top-right corner of each slide. Navigate horizontally for main flow, vertically for deeper dives.</p>
+  <aside class="notes">
+    Time: ~1 min. Remind students they can self-navigate. "If a blue slide feels overwhelming, skip it — you will still follow the green slides perfectly. If the green slides feel too basic, jump to the purple callouts."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDES 7-9 — OPENING CASE
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Opening Case: The Feature That Killed a Clinical Trial</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>The Story</h3>
+      <p>A pharmaceutical company built a model to predict patient outcomes in a cancer drug trial. The model achieved <strong>98.7% accuracy</strong> on historical data.</p>
+      <p>They used it to select patients for Phase III. The trial failed catastrophically — the drug showed <strong>no effect</strong>.</p>
+      <p>Cost: <strong>$2.1 billion</strong> and 4 years.</p>
+    </div>
+    <div class="col">
+      <h3>What Happened?</h3>
+      <div class="leakage-box">
+        <strong>Feature leakage.</strong> One feature — "days since last blood test" — encoded information about whether the patient had already started responding to treatment. The model was not predicting outcomes. It was reading the answer sheet.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. Tell this story slowly. Let the cost sink in. "This is not hypothetical. Feature leakage is the single most expensive mistake in applied ML. By the end of today, you will know exactly how to detect and prevent it." Beginners: "Think of it like taking a test where someone accidentally left the answer key on the desk." Experts: "We will formalize point-in-time correctness and show how FeatureStore makes this structurally impossible."
+  </aside>
+</section>
+
+<section>
+  <h2>The Leakage Timeline</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="timeline">
+    <div class="event success">Patient<br/>Enrolled</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">Treatment<br/>Begins</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event danger">Blood Test<br/>(response signal)</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">Feature<br/>Computed</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event danger">Model Uses<br/>Future Info</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event danger">Wrong<br/>Prediction</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>The problem:</strong> The feature was computed using data that would NOT have been available at prediction time. The model was seeing the future — and the team did not notice because the accuracy was <em>too good</em>.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. Walk through the timeline step by step. "Notice how the blood test happens AFTER treatment begins. But the model was trained on data that included this information. So it was cheating." Key insight: suspiciously high accuracy is a WARNING, not a success.
+  </aside>
+</section>
+
+<section>
+  <h2>Why This Module Matters</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Feature Engineering</h3>
+      <ul>
+        <li><strong>80% of ML impact</strong> comes from feature quality, not algorithm choice (Ng, 2017)</li>
+        <li>Garbage in, garbage out — no algorithm rescues bad features</li>
+        <li>Features determine what the model CAN learn</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Experiment Design</h3>
+      <ul>
+        <li><strong>Correlation is not causation</strong> — but business decisions require causation</li>
+        <li>"Did our new feature actually help?" requires an experiment</li>
+        <li>Bad experiments waste money and mislead strategy</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Kailash gives you guardrails:</strong> FeatureStore enforces point-in-time correctness. ExperimentTracker logs every decision. These are structural safety nets, not optional best practices.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Andrew Ng has said repeatedly: spend 80% of your time on data and features, 20% on algorithms. Most teams do the opposite." For experts: "Feature stores exist because manual discipline fails at scale. We will see exactly how."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION A: WHAT IS A FEATURE? (Slides 10-28)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>A. What Is a Feature?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.3em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:60px;">"A feature is a measurable property of the thing you are trying to predict."</p>
+  <p style="text-align:center;margin-top:40px;">In a spreadsheet: a feature is a <strong>column</strong>.<br/>In ML: a feature is an <strong>input variable</strong> to your model.</p>
+  <aside class="notes">
+    Time: ~2 min. Start from absolute zero. "If you have a spreadsheet of houses with columns for size, number of bedrooms, and price — size and bedrooms are features. Price is what you are predicting." For experts: "We will formalise this with FeatureSchema shortly."
+  </aside>
+</section>
+
+<section>
+  <h2>Features: A Visual Example</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Floor Area (sqm)</th><th>Bedrooms</th><th>Town</th><th>Floor Level</th><th style="background:var(--ascent-depth);">Price ($)</th></tr></thead>
+    <tbody>
+      <tr><td>85</td><td>3</td><td>Tampines</td><td>12</td><td style="background:#FAF5FF;">450,000</td></tr>
+      <tr><td>110</td><td>4</td><td>Bishan</td><td>5</td><td style="background:#FAF5FF;">680,000</td></tr>
+      <tr><td>67</td><td>2</td><td>Woodlands</td><td>22</td><td style="background:#FAF5FF;">320,000</td></tr>
+    </tbody>
+  </table>
+  <div class="columns" style="margin-top:16px;">
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Features (inputs):</strong> Floor Area, Bedrooms, Town, Floor Level — these are what the model uses to make predictions.
+      </div>
+    </div>
+    <div class="col">
+      <div class="callout callout-theory">
+        <strong>Target (output):</strong> Price — this is what the model tries to predict. Never use the target as a feature.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. Point at the table. "The coloured column is the target — what we predict. Every other column is a feature. The model's job is to learn the relationship between features and target." Beginners: "Think of features as clues and the target as the answer."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Types</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Type</th><th>Description</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Numeric (continuous)</strong></td><td>Any number on a scale</td><td>Temperature: 23.5, Price: $450,000</td></tr>
+      <tr><td><strong>Numeric (discrete)</strong></td><td>Whole numbers, counts</td><td>Bedrooms: 3, Clicks: 47</td></tr>
+      <tr><td><strong>Categorical (nominal)</strong></td><td>Categories with no order</td><td>Town: Tampines, Colour: Red</td></tr>
+      <tr><td><strong>Categorical (ordinal)</strong></td><td>Categories with order</td><td>Education: Primary &lt; Secondary &lt; Tertiary</td></tr>
+      <tr><td><strong>Binary</strong></td><td>Two values only</td><td>Has_garden: Yes/No</td></tr>
+      <tr><td><strong>Temporal</strong></td><td>Dates and times</td><td>Sale_date: 2024-03-15</td></tr>
+      <tr><td><strong>Text</strong></td><td>Free-form text</td><td>Review: "Great location..."</td></tr>
+      <tr><td><strong>Spatial</strong></td><td>Geographic coordinates</td><td>Lat: 1.35, Lon: 103.82</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Each type requires different treatment. You cannot feed the word 'Tampines' directly into a mathematical model — you need to convert it to numbers. That is what feature engineering does." For experts: "We will cover every encoding method and when each fails."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Quality: What Makes a Good Feature?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Good Features Are:</h3>
+      <ul>
+        <li><strong>Informative</strong> — correlated with the target</li>
+        <li><strong>Non-redundant</strong> — each adds unique information</li>
+        <li><strong>Stable</strong> — consistent meaning over time</li>
+        <li><strong>Available</strong> — accessible at prediction time</li>
+        <li><strong>Interpretable</strong> — humans can explain them</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Red Flags:</h3>
+      <ul>
+        <li><strong>Leaky</strong> — encodes future information</li>
+        <li><strong>Noisy</strong> — mostly random</li>
+        <li><strong>Highly correlated with another feature</strong> — redundant</li>
+        <li><strong>Missing 90%+ of values</strong> — unreliable</li>
+        <li><strong>Changes meaning over time</strong> — concept drift</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "A feature that perfectly predicts the target is suspicious — it might be leaking. A feature that correlates 0.99 with another feature is redundant — keep one, drop the other." Beginners: "Think of features like witnesses in court. You want witnesses who saw different things, not witnesses who all saw the same thing."
+  </aside>
+</section>
+
+<section>
+  <h2>The Feature Engineering Spectrum</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="display:flex;align-items:center;gap:0;margin:30px 0;">
+    <div style="flex:1;background:#F0FDF4;border:2px solid var(--ascent-success);border-radius:8px 0 0 8px;padding:16px;text-align:center;">
+      <strong>Manual</strong><br/><span style="font-size:0.8em;">Domain expert creates features by hand</span>
+    </div>
+    <div style="flex:0 0 40px;text-align:center;font-size:1.5em;color:var(--ascent-primary);">&rarr;</div>
+    <div style="flex:1;background:#EFF6FF;border:2px solid var(--ascent-theory);padding:16px;text-align:center;">
+      <strong>Automated</strong><br/><span style="font-size:0.8em;">Algorithms generate &amp; select features</span>
+    </div>
+    <div style="flex:0 0 40px;text-align:center;font-size:1.5em;color:var(--ascent-primary);">&rarr;</div>
+    <div style="flex:1;background:#FAF5FF;border:2px solid var(--ascent-advanced);border-radius:0 8px 8px 0;padding:16px;text-align:center;">
+      <strong>Learned</strong><br/><span style="font-size:0.8em;">Deep learning discovers features from raw data</span>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Today we focus on manual + automated.</strong> Learned features (deep learning) come in Module 4. Even with deep learning, manual feature engineering still improves performance on tabular data.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "In 2026, the state of the art for tabular data is still manual + automated feature engineering with gradient boosting. Deep learning wins for images, text, and audio — but for spreadsheet-like data, features you engineer by hand still matter enormously."
+  </aside>
+</section>
+
+<section>
+  <h2>Why Features Matter More Than Algorithms</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-warning" style="font-size:1.1em;text-align:center;">
+    "Coming up with features is difficult, time-consuming, requires expert knowledge. Applied machine learning is basically feature engineering."<br/>
+    <span style="font-size:0.8em;color:#64748B;">— Andrew Ng</span>
+  </div>
+  <div class="columns" style="margin-top:16px;">
+    <div class="col">
+      <h3>The Evidence</h3>
+      <ul>
+        <li>Kaggle competitions are won by feature engineering, not algorithm innovation</li>
+        <li>Same algorithm + better features consistently beats better algorithm + same features</li>
+        <li>Features define the <em>ceiling</em> of model performance</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>The 80/20 Rule</h3>
+      <ul>
+        <li><strong>80%</strong> of ML impact comes from data and features</li>
+        <li><strong>20%</strong> comes from algorithm choice and tuning</li>
+        <li>Most teams spend their time on the 20%</li>
+        <li>This module teaches you the 80%</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you take away one thing from today: spend more time on your features, less time trying different algorithms. A logistic regression with great features will beat a neural network with bad features."
+  </aside>
+</section>
+
+<section>
+  <h2>Raw Data vs Engineered Features</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="vs-box">
+    <div class="vs-left">
+      <h3 style="color:var(--ascent-error);margin-top:0;">Raw Data</h3>
+      <ul style="font-size:0.9em;">
+        <li>sale_date: "2024-03-15"</li>
+        <li>town: "Tampines"</li>
+        <li>flat_type: "4 ROOM"</li>
+        <li>lease_commence: 1985</li>
+      </ul>
+    </div>
+    <div class="vs-right">
+      <h3 style="color:var(--ascent-success);margin-top:0;">Engineered Features</h3>
+      <ul style="font-size:0.9em;">
+        <li>sale_month: 3, sale_year: 2024</li>
+        <li>is_mature_estate: 1</li>
+        <li>num_rooms: 4</li>
+        <li>remaining_lease_years: 62</li>
+        <li>price_psm_last_3_months: 5,200</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations" style="margin-top:12px;">
+    <strong>Feature engineering</strong> = turning raw data into numbers a model can learn from. Every raw column can spawn multiple engineered features.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Look at the difference. Raw data has dates as strings, town names, flat types. The model cannot use any of that directly. Engineered features extract the signal: remaining lease years, whether it is a mature estate, recent price trends." Beginners: "This is like translating from English to the language the model speaks: numbers."
+  </aside>
+</section>
+
+<section>
+  <h2>The Feature Engineering Workflow</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="margin:20px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Understand the data</strong> — use DataExplorer to profile every column</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Transform</strong> — scale, encode, create new features from existing ones</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Select</strong> — keep only features that help the model, remove redundant ones</span></div>
+    <div class="step-row"><span class="step-number">4</span><span><strong>Validate</strong> — check for leakage, drift, and missing values</span></div>
+    <div class="step-row"><span class="step-number">5</span><span><strong>Store</strong> — register features in FeatureStore for reuse and governance</span></div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Kailash handles steps 2-5:</strong> FeatureEngineer transforms and selects. FeatureStore validates and stores. You focus on step 1 — understanding your domain.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the workflow you will follow in every ML project. Step 1 is the most important — and it is the one no tool can fully automate. Domain knowledge is your superpower."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Contracts: Declaring What You Expect</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A <strong>feature contract</strong> declares the expected type, range, and meaning of each feature. If reality violates the contract, the system raises an alert.</p>
+  <pre><code class="language-python">from kailash_ml import FeatureSchema, FeatureField
+
+schema = FeatureSchema(
+    name="hdb_resale_features_v1",
+    features=[
+        FeatureField("floor_area_sqm", dtype="float", min_val=20, max_val=300),
+        FeatureField("num_rooms", dtype="int", allowed_values=[1,2,3,4,5]),
+        FeatureField("town", dtype="category", allowed_values=["Tampines","Bishan",...]),
+        FeatureField("remaining_lease_years", dtype="float", min_val=0, max_val=99),
+    ]
+)
+schema.validate(df)  # raises if data violates contract</code></pre>
+  <div class="callout callout-theory">
+    <strong>Why contracts?</strong> Without them, a column could silently change meaning (e.g., "floor_area" switches from sqm to sqft). The model trains on garbage and nobody notices until production fails.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Feature contracts are like data types in programming. They catch errors early instead of late. This is especially important in teams where multiple people create features." For beginners: "Think of it like a form that rejects invalid entries." For experts: "This is the typed, versioned, auditable feature definition that FeatureStore enforces."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Engineering in Kailash</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: Features</h3>
+    <table>
+      <thead><tr><th>Concept</th><th>Kailash Engine</th><th>Key Method</th></tr></thead>
+      <tbody>
+        <tr><td>Define feature types &amp; constraints</td><td>FeatureSchema</td><td><code>.validate(df)</code></td></tr>
+        <tr><td>Generate new features</td><td>FeatureEngineer</td><td><code>.generate(df)</code></td></tr>
+        <tr><td>Select best features</td><td>FeatureEngineer</td><td><code>.select(df, target)</code></td></tr>
+        <tr><td>Store &amp; version features</td><td>FeatureStore</td><td><code>.register(df, schema)</code></td></tr>
+        <tr><td>Track experiments</td><td>ExperimentTracker</td><td><code>.log_metric(name, value)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "This is your Kailash map for today. Every concept we learn will connect back to one of these engines." Quick bridge slide — move on.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION B: FEATURE TRANSFORMATION (Slides 29-60)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>B. Feature Transformation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"Transformation is translation — converting raw data into the language models speak."</p>
+  <p style="text-align:center;margin-top:20px;">We will cover: numeric scaling, categorical encoding, text features, temporal features, interaction features, and binning.</p>
+  <aside class="notes">
+    Time: ~1 min. Section header. "This is the largest section of today's module. We will go through every major transformation technique, with the math for each, and when to use each one."
+  </aside>
+</section>
+
+<!-- Numeric Scaling -->
+<section>
+  <h2>Numeric Scaling: Why Scale at All?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Without Scaling</h3>
+      <ul>
+        <li>Floor area: 20–300 sqm</li>
+        <li>Price: $100,000–$2,000,000</li>
+        <li>Bedrooms: 1–5</li>
+      </ul>
+      <p style="font-size:0.85em;">The model thinks price is "more important" because its numbers are bigger. That is wrong.</p>
+    </div>
+    <div class="col">
+      <h3>With Scaling</h3>
+      <ul>
+        <li>Floor area: -1.2 to 2.1</li>
+        <li>Price: -1.5 to 1.8</li>
+        <li>Bedrooms: -1.0 to 1.5</li>
+      </ul>
+      <p style="font-size:0.85em;">All features on the same scale. The model can compare them fairly.</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Required for:</strong> linear regression, logistic regression, SVM, k-NN, neural networks, PCA.<br/>
+    <strong>Not required for:</strong> tree-based models (random forest, XGBoost) — they split on thresholds, not magnitudes.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Scaling does not change the information in your data — it changes the representation so that algorithms treat all features equally." Beginners: "Imagine measuring one thing in millimetres and another in kilometres — the model thinks the kilometre feature is more important just because the number is bigger."
+  </aside>
+</section>
+
+<section>
+  <h2>Scaling Methods: Standardization (Z-Score)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$z = \frac{x - \mu}{\sigma}$$
+    <div class="annotation">
+      <span class="term-input">$x$</span> = original value,
+      <span class="term-param">$\mu$</span> = mean,
+      <span class="term-param">$\sigma$</span> = standard deviation
+    </div>
+  </div>
+  <div class="columns" style="margin-top:12px;">
+    <div class="col">
+      <h3>Result</h3>
+      <ul>
+        <li>Mean becomes 0</li>
+        <li>Standard deviation becomes 1</li>
+        <li>Values typically range -3 to +3</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>When to Use</h3>
+      <ul>
+        <li>Data is approximately normal</li>
+        <li>No extreme outliers</li>
+        <li>Default choice for most algorithms</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Z-score standardization is the most common scaling method. It centres data at zero and scales by spread. After standardization, a value of +2 means 'two standard deviations above average'." Walk through an example: if mean price is $500k and std is $200k, a $700k flat has z = (700-500)/200 = 1.0.
+  </aside>
+</section>
+
+<section>
+  <h2>Scaling Methods: Min-Max, Robust, MaxAbs</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>Formula</th><th>Range</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Min-Max</strong></td>
+        <td>$\frac{x - x_{\min}}{x_{\max} - x_{\min}}$</td>
+        <td>[0, 1]</td>
+        <td>Bounded data, neural networks</td>
+      </tr>
+      <tr>
+        <td><strong>Robust</strong></td>
+        <td>$\frac{x - Q_2}{Q_3 - Q_1}$</td>
+        <td>Unbounded</td>
+        <td>Data with outliers</td>
+      </tr>
+      <tr>
+        <td><strong>MaxAbs</strong></td>
+        <td>$\frac{x}{|x_{\max}|}$</td>
+        <td>[-1, 1]</td>
+        <td>Sparse data, centred around 0</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Robust scaling</strong> uses the median ($Q_2$) and interquartile range ($Q_3 - Q_1$) instead of mean and standard deviation. Outliers affect mean/std but NOT median/IQR — so robust scaling is resistant to outliers.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you have outliers, use Robust. If you need [0,1] range, use Min-Max. If your data is mostly zeros with a few non-zero values (sparse), use MaxAbs." For experts: "Robust scaling is essentially the same as standardisation but with median and IQR replacing mean and std — giving breakdown point of 25%."
+  </aside>
+</section>
+
+<section>
+  <h2>Power Transforms: Box-Cox and Yeo-Johnson</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Box-Cox Transform</h3>
+      <div class="equation-box">
+        $$y^{(\lambda)} = \begin{cases} \frac{y^\lambda - 1}{\lambda} & \lambda \neq 0 \\ \ln(y) & \lambda = 0 \end{cases}$$
+      </div>
+      <p style="font-size:0.82em;"><strong>Requires:</strong> strictly positive values ($y > 0$).<br/>$\lambda$ is found by maximum likelihood.</p>
+    </div>
+    <div class="col">
+      <h3>Yeo-Johnson Transform</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        $$y^{(\lambda)} = \begin{cases} \frac{(y+1)^\lambda - 1}{\lambda} & y \geq 0, \lambda \neq 0 \\ \ln(y+1) & y \geq 0, \lambda = 0 \\ \frac{-((-y+1)^{2-\lambda}-1)}{2-\lambda} & y < 0, \lambda \neq 2 \\ -\ln(-y+1) & y < 0, \lambda = 2 \end{cases}$$
+      </div>
+      <p style="font-size:0.82em;"><strong>Handles:</strong> positive AND negative values.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> Power transforms make skewed data more symmetric (closer to a bell curve). Many algorithms work better with bell-shaped data. Use Box-Cox for positive data, Yeo-Johnson for any data.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Many real-world features — like income, house prices, transaction amounts — are right-skewed. Power transforms pull in the long tail and make the data more symmetric." Beginners: "Do not memorise the formula. Remember: skewed data -> power transform -> more symmetric." Experts: "The optimal lambda is found via profile likelihood. In practice, Yeo-Johnson almost always works and handles zeros and negatives."
+  </aside>
+</section>
+
+<section>
+  <h2>Log and Quantile Transforms</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Log Transform</h3>
+      <div class="equation-box">
+        $$x' = \ln(x + 1)$$
+      </div>
+      <ul style="font-size:0.85em;">
+        <li>Special case of Box-Cox ($\lambda = 0$)</li>
+        <li>Compresses large values, expands small ones</li>
+        <li>Perfect for: prices, counts, populations</li>
+        <li>$+1$ handles zeros (log1p)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Quantile Transform</h3>
+      <div class="equation-box">
+        $$x' = \Phi^{-1}(F_n(x))$$
+      </div>
+      <ul style="font-size:0.85em;">
+        <li>Maps to uniform or Gaussian distribution</li>
+        <li>$F_n(x)$ = empirical CDF</li>
+        <li>$\Phi^{-1}$ = Gaussian inverse CDF</li>
+        <li>Handles ANY distribution shape</li>
+        <li>Destroys outlier information</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Caution:</strong> Quantile transform is aggressive — it forces ANY distribution into a bell curve. Use sparingly. Information about outliers is lost permanently.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Log transform is the most common — if you have prices or counts, try log first. Quantile transform is the nuclear option — forces everything into a bell curve, but at the cost of losing outlier information." For experts: "Quantile transform is non-parametric and handles multimodal distributions, but beware of information loss and overfitting on small datasets."
+  </aside>
+</section>
+
+<!-- Categorical Encoding -->
+<section>
+  <h2>Categorical Encoding: The Challenge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Models require numbers. Categories are words. <strong>Encoding</strong> converts categories to numbers.</p>
+  <div class="callout callout-warning">
+    <strong>The trap:</strong> Assigning Tampines = 1, Bishan = 2, Woodlands = 3 implies Woodlands > Bishan > Tampines. That ordering is <em>false</em> and will mislead the model. This is called <strong>ordinal encoding for non-ordinal data</strong> — a common mistake.
+  </div>
+  <p>We will cover <strong>9 encoding methods</strong>. Each has specific use cases and failure modes.</p>
+  <aside class="notes">
+    Time: ~2 min. "This is one of the most important practical skills in ML. Wrong encoding is silent — the model trains fine but learns the wrong thing. We will go through every method so you know exactly when to use each one."
+  </aside>
+</section>
+
+<section>
+  <h2>One-Hot Encoding</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Before</h3>
+      <table style="font-size:0.8em;">
+        <thead><tr><th>Town</th></tr></thead>
+        <tbody><tr><td>Tampines</td></tr><tr><td>Bishan</td></tr><tr><td>Woodlands</td></tr></tbody>
+      </table>
+    </div>
+    <div class="col">
+      <h3>After</h3>
+      <table style="font-size:0.8em;">
+        <thead><tr><th>Town_Tampines</th><th>Town_Bishan</th><th>Town_Woodlands</th></tr></thead>
+        <tbody><tr><td>1</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>0</td></tr><tr><td>0</td><td>0</td><td>1</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="columns" style="margin-top:12px;">
+    <div class="col">
+      <div class="safe-box"><strong>Use when:</strong> Few categories (&lt;20), no natural order, linear models</div>
+    </div>
+    <div class="col">
+      <div class="leakage-box"><strong>Avoid when:</strong> High cardinality (100+ categories) — creates 100+ sparse columns</div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "One-hot is the safest default for low-cardinality categorical data. Each category gets its own column — 1 if present, 0 if not. No false ordering." Tip: "Drop one column to avoid the dummy variable trap (perfect multicollinearity)."
+  </aside>
+</section>
+
+<section>
+  <h2>Ordinal, Binary, and Frequency Encoding</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>How It Works</th><th>Use When</th><th>Risk</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Ordinal</strong></td>
+        <td>Map to integers: Low=1, Medium=2, High=3</td>
+        <td>Natural ordering exists</td>
+        <td>False ordering for nominal data</td>
+      </tr>
+      <tr>
+        <td><strong>Binary</strong></td>
+        <td>Integer code &rarr; binary digits as columns</td>
+        <td>Medium cardinality (10-100)</td>
+        <td>Arbitrary bit patterns</td>
+      </tr>
+      <tr>
+        <td><strong>Frequency</strong></td>
+        <td>Replace category with its count/frequency</td>
+        <td>High cardinality, tree models</td>
+        <td>Ties: different categories same count</td>
+      </tr>
+      <tr>
+        <td><strong>Count</strong></td>
+        <td>Replace with raw count in training data</td>
+        <td>Same as frequency</td>
+        <td>Scale-sensitive, ties</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Quick rule:</strong> Has natural order? Use ordinal. Low cardinality? Use one-hot. High cardinality? Use frequency or target encoding (next slide).
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Binary encoding is a clever compromise between one-hot (too many columns) and ordinal (false ordering). It uses binary representation — 5 columns can represent 32 categories." For experts: "Frequency encoding works well with tree-based models because they can split on the frequency threshold."
+  </aside>
+</section>
+
+<section>
+  <h2>Target Encoding</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Replace each category with the <strong>mean of the target variable</strong> for that category.</p>
+  <div class="equation-box">
+    $$\text{encoded}(c) = \frac{\sum_{i: x_i = c} y_i}{|\{i: x_i = c\}|}$$
+    <div class="annotation">For category $c$: average target value of all rows where feature equals $c$</div>
+  </div>
+  <div class="leakage-box">
+    <strong>DANGER: Overfitting.</strong> Naive target encoding uses the target to create a feature — this leaks target information into the features. A rare category with 2 observations gets a near-perfect encoding.
+  </div>
+  <div class="callout callout-theory">
+    <strong>Solutions:</strong> (1) K-fold target encoding — encode using out-of-fold target means. (2) Smoothing — blend category mean with global mean. (3) Add noise — Gaussian noise proportional to 1/count.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Target encoding is powerful for high-cardinality categoricals but it is the most dangerous encoding method. Without regularisation, you are literally using the answer to create the question." Walk through the smoothing formula next slide.
+  </aside>
+</section>
+
+<section>
+  <h2>Target Encoding: Smoothing and Regularisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\text{smoothed}(c) = \frac{n_c \cdot \bar{y}_c + m \cdot \bar{y}_{\text{global}}}{n_c + m}$$
+    <div class="annotation">
+      <span class="term-input">$n_c$</span> = count for category $c$,
+      <span class="term-param">$\bar{y}_c$</span> = category mean,
+      <span class="term-param">$m$</span> = smoothing factor,
+      <span class="term-output">$\bar{y}_{\text{global}}$</span> = global mean
+    </div>
+  </div>
+  <p style="font-size:0.85em;">When $n_c$ is large, the encoding approaches the category mean. When $n_c$ is small, it approaches the global mean. The parameter $m$ controls how much data you need before trusting the category mean.</p>
+  <div class="callout callout-advanced">
+    <strong>James-Stein Shrinkage:</strong> A Bayesian formulation — the optimal shrinkage is $B = \frac{\sigma^2_{\text{within}}}{\sigma^2_{\text{within}} + \sigma^2_{\text{between}}}$. Categories with high within-group variance shrink more toward the global mean. This is the theoretically optimal approach but is rarely implemented in practice.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The smoothing parameter m is like a prior sample size. Setting m=30 means you need at least 30 observations in a category before you start trusting its own mean over the global mean." For experts: "James-Stein is the admissible estimator here — it dominates the MLE for 3+ categories (Stein's paradox)."
+  </aside>
+</section>
+
+<section>
+  <h2>Leave-One-Out and CatBoost Encoding</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Leave-One-Out (LOO)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$\text{LOO}_i = \frac{\sum_{j \neq i, x_j = c} y_j}{n_c - 1}$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Excludes current row from the mean</li>
+        <li>Reduces leakage vs naive target encoding</li>
+        <li>Still leaks for small categories</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>CatBoost Encoding</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$\text{CB}_i = \frac{\sum_{j < i, x_j = c} y_j + a \cdot p}{|\{j < i: x_j = c\}| + a}$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Only uses rows BEFORE current row (ordered)</li>
+        <li>$a$ = smoothing, $p$ = prior (global mean)</li>
+        <li>Most leakage-resistant target encoding</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "LOO helps but does not fully solve leakage. CatBoost encoding is the state of the art — it processes data in order and only uses previously seen rows, which prevents any target leakage." Expert tangent: "CatBoost uses random permutations of the data order to reduce variance from the ordering."
+  </aside>
+</section>
+
+<section>
+  <h2>Weight of Evidence (WoE) Encoding</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\text{WoE}(c) = \ln\left(\frac{P(X=c|Y=1)}{P(X=c|Y=0)}\right) = \ln\left(\frac{\text{Distribution of Events}_c}{\text{Distribution of Non-Events}_c}\right)$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.85em;">
+        <li>Originated in credit scoring (Basel regulations)</li>
+        <li>Only for <strong>binary classification</strong></li>
+        <li>Positive WoE = higher proportion of events</li>
+        <li>Negative WoE = higher proportion of non-events</li>
+      </ul>
+    </div>
+    <div class="col">
+      <ul style="font-size:0.85em;">
+        <li>Handles categories and continuous (binned)</li>
+        <li>Monotonic relationship with log odds</li>
+        <li>Often paired with <strong>Information Value (IV)</strong></li>
+        <li>IV > 0.3 = strong predictor, IV < 0.02 = useless</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "WoE comes from the banking industry where it has been a regulatory standard for decades. It directly measures how much each category separates events from non-events." For experts: "IV = sum of (Distribution of Events - Distribution of Non-Events) * WoE across all categories. It is essentially the KL divergence between the event and non-event distributions."
+  </aside>
+</section>
+
+<section>
+  <h2>Hash Encoding</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>For <strong>very high cardinality</strong> (millions of categories — user IDs, product SKUs, IP addresses).</p>
+  <div class="equation-box">
+    $$\text{column}_j = \text{hash}(x) \bmod n_{\text{components}},\quad j = 1, \ldots, n_{\text{components}}$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <div class="safe-box">
+        <strong>Advantages:</strong>
+        <ul style="font-size:0.9em;margin:4px 0;">
+          <li>Fixed dimensionality regardless of cardinality</li>
+          <li>Handles unseen categories at inference</li>
+          <li>Very fast, low memory</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="leakage-box">
+        <strong>Disadvantages:</strong>
+        <ul style="font-size:0.9em;margin:4px 0;">
+          <li>Hash collisions — different categories, same bucket</li>
+          <li>Not interpretable</li>
+          <li>Cannot recover original categories</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Hash encoding is the go-to for production systems with millions of categories. It is the backbone of many recommendation systems." Expert tangent: "The feature hashing trick (Weinberger et al., 2009) uses signed hashes to reduce collision bias."
+  </aside>
+</section>
+
+<section>
+  <h2>Encoding Decision Guide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Scenario</th><th>Encoding</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Ordered categories</td><td>Ordinal</td><td>Preserves natural order</td></tr>
+      <tr><td>&lt;15 unordered categories</td><td>One-Hot</td><td>Safe, no information loss</td></tr>
+      <tr><td>15-100 categories</td><td>Binary or Frequency</td><td>Compact, works with trees</td></tr>
+      <tr><td>100+ categories, regression</td><td>Target (smoothed)</td><td>Informative, compact</td></tr>
+      <tr><td>100+ categories, classification</td><td>WoE or Target</td><td>Directly measures separability</td></tr>
+      <tr><td>Millions of categories</td><td>Hash</td><td>Fixed dimensions, handles unseen</td></tr>
+      <tr><td>Tree-based model only</td><td>Frequency or CatBoost</td><td>Trees handle non-linear naturally</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "This is your cheat sheet. Photograph it. When you encounter a categorical feature, look up the cardinality, check what model you are using, and pick the right encoding." Keep this slide up during labs.
+  </aside>
+</section>
+
+<!-- Temporal Features -->
+<section>
+  <h2>Temporal Feature Engineering</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Time-based data is rich with patterns — but also the <strong>primary source of data leakage</strong>.</p>
+  <table>
+    <thead><tr><th>Feature Type</th><th>Example</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Date parts</strong></td><td>year, month, day_of_week, hour</td><td>Seasonality, weekly patterns</td></tr>
+      <tr><td><strong>Lag features</strong></td><td>price_1_month_ago, sales_7_days_ago</td><td>Autoregressive patterns</td></tr>
+      <tr><td><strong>Rolling aggregates</strong></td><td>rolling_mean_30d, rolling_std_7d</td><td>Trends, volatility</td></tr>
+      <tr><td><strong>Expanding aggregates</strong></td><td>cumulative_sum, running_average</td><td>Cumulative behaviour</td></tr>
+      <tr><td><strong>Time since event</strong></td><td>days_since_last_purchase</td><td>Recency effects</td></tr>
+      <tr><td><strong>Cyclical encoding</strong></td><td>sin(2&pi;h/24), cos(2&pi;h/24)</td><td>Hours, months (circular)</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Temporal features are the most powerful feature type for any time-series or event-based problem. But they are also the easiest place to introduce leakage."
+  </aside>
+</section>
+
+<section>
+  <h2>Cyclical Encoding: Why sin/cos?</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$x_{\sin} = \sin\left(\frac{2\pi \cdot h}{H}\right), \quad x_{\cos} = \cos\left(\frac{2\pi \cdot h}{H}\right)$$
+    <div class="annotation">
+      <span class="term-input">$h$</span> = hour (0-23),
+      <span class="term-param">$H$</span> = period (24 for hours, 12 for months, 7 for days of week)
+    </div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <div class="leakage-box">
+        <strong>Without cyclical:</strong> hour 23 and hour 0 appear maximally different (23 vs 0), but they are actually adjacent.
+      </div>
+    </div>
+    <div class="col">
+      <div class="safe-box">
+        <strong>With cyclical:</strong> sin/cos encoding preserves the circular nature. 11pm and midnight are close in both features.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you encode hour as a simple number (0-23), the model thinks midnight (0) and 11pm (23) are far apart. But they are one hour apart! Sin/cos encoding wraps the number line into a circle." Draw a clock on the board.
+  </aside>
+</section>
+
+<section>
+  <h2>Fourier Features for Seasonality</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="equation-box">
+    $$f(t) = a_0 + \sum_{k=1}^{K}\left[a_k \cos\left(\frac{2\pi k t}{P}\right) + b_k \sin\left(\frac{2\pi k t}{P}\right)\right]$$
+    <div class="annotation">
+      $P$ = period, $K$ = number of harmonics (complexity control), $a_k, b_k$ = amplitudes
+    </div>
+  </div>
+  <p style="font-size:0.85em;">Fourier features capture <strong>complex seasonality</strong> — weekly, monthly, and yearly patterns simultaneously. More harmonics ($K$) = more flexible but higher overfit risk.</p>
+  <div class="callout callout-advanced">
+    <strong>Production tip:</strong> Start with K=3 Fourier pairs for each known period. Use cross-validation to select K. Too many harmonics overfit; too few underfit the seasonal pattern.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Fourier features are how Prophet and other forecasting tools model seasonality. They decompose complex periodic patterns into a sum of simple sine and cosine waves." Expert tangent: "For irregular time series, consider using wavelet features instead of Fourier."
+  </aside>
+</section>
+
+<!-- Interaction Features -->
+<section>
+  <h2>Interaction Features</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Sometimes the effect of one feature <strong>depends on another</strong>. Interaction features capture this.</p>
+  <table>
+    <thead><tr><th>Type</th><th>Formula</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Cross-product</strong></td><td>$x_1 \times x_2$</td><td>floor_area * floor_level</td></tr>
+      <tr><td><strong>Polynomial</strong></td><td>$x_1^2, x_1 x_2, x_2^2$</td><td>Quadratic interactions</td></tr>
+      <tr><td><strong>Ratio</strong></td><td>$x_1 / x_2$</td><td>price_per_sqm = price / area</td></tr>
+      <tr><td><strong>Difference</strong></td><td>$x_1 - x_2$</td><td>actual_price - estimated_price</td></tr>
+      <tr><td><strong>Domain-specific</strong></td><td>Custom logic</td><td>BMI = weight / height&sup2;</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Explosion warning:</strong> With 100 features, degree-2 polynomial features create $\binom{100}{2} + 100 = 5,150$ new features. Always use feature selection after generating interactions.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Interaction features are where domain knowledge shines. Price-per-square-metre is more informative than price and area separately. The model can learn this on its own with enough data, but giving it the ratio directly is faster and more robust." For experts: "Tree-based models learn interactions implicitly through sequential splits, but explicit interactions still help linear models enormously."
+  </aside>
+</section>
+
+<!-- Binning -->
+<section>
+  <h2>Binning (Discretisation)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Convert continuous features into discrete bins. Useful when the relationship is non-linear and you want to capture thresholds.</p>
+  <table>
+    <thead><tr><th>Method</th><th>How</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Equal-width</strong></td><td>Divide range into N equal intervals</td><td>Uniform-ish distributions</td></tr>
+      <tr><td><strong>Equal-frequency</strong></td><td>Each bin has same number of observations</td><td>Skewed distributions</td></tr>
+      <tr><td><strong>Decision tree-based</strong></td><td>Find optimal splits using target variable</td><td>Supervised binning</td></tr>
+      <tr><td><strong>Domain-specific</strong></td><td>Expert-defined thresholds</td><td>Regulatory/business rules</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>When to bin:</strong> (1) Linear model with non-linear relationships. (2) Feature has natural thresholds (age groups, income brackets). (3) Robustness to outliers needed. <strong>When NOT to bin:</strong> tree-based models already find optimal splits — binning loses information for no benefit.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Binning is a trade-off: you lose fine-grained information but gain robustness and interpretability. Decision tree-based binning is the most principled approach because it uses the target to find meaningful thresholds."
+  </aside>
+</section>
+
+<section>
+  <h2>Missing Value Indicators as Features</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Sometimes the <strong>fact that data is missing</strong> is itself informative.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>The Pattern</h3>
+      <pre><code class="language-python"># Create missing indicator
+df = df.with_columns(
+    pl.col("income").is_null()
+      .alias("income_is_missing")
+)
+# Then impute the original column
+df = df.with_columns(
+    pl.col("income").fill_null(
+        pl.col("income").median()
+    )
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>When It Helps</h3>
+      <ul>
+        <li><strong>MNAR data:</strong> High earners refuse to disclose income</li>
+        <li><strong>System signals:</strong> Missing lab test = doctor did not order it</li>
+        <li><strong>Behavioural:</strong> Missing field = user skipped the question</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top:8px;">
+        The missingness pattern carries signal about the target.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you just impute missing values without recording which values were missing, you lose information. The fact that income is missing might be the most predictive feature." Beginners: "Think of it like marking 'no answer' on a survey — that is an answer in itself."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Transformation: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: Transformations</h3>
+    <pre><code class="language-python">from kailash_ml import FeatureEngineer
+
+fe = FeatureEngineer()
+
+# Generate features: scaling, encoding, temporal, interactions
+result = fe.generate(
+    df,
+    numeric_scaling="standardize",       # or "minmax", "robust"
+    categorical_encoding="target",        # or "onehot", "frequency", "woe"
+    temporal_features=True,               # auto-detect date columns
+    interaction_features=["floor_area * floor_level"],
+    polynomial_degree=2,
+)
+
+# Result: transformed DataFrame + feature metadata
+print(result.feature_names)
+print(result.transformations_applied)</code></pre>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "FeatureEngineer handles all the transformations we just discussed in a single call. You specify what you want; it handles the implementation, including proper fit-on-train and transform-on-test." Bridge slide — connect theory to engine.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION C: FEATURE SELECTION (Slides 61-88)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>C. Feature Selection</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"Not all features help. Some hurt. Selection finds the ones that matter."</p>
+  <div class="columns" style="margin-top:30px;">
+    <div class="col">
+      <h3>Why Select?</h3>
+      <ul>
+        <li>Reduce overfitting</li>
+        <li>Speed up training</li>
+        <li>Improve interpretability</li>
+        <li>Reduce serving costs</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Three Families</h3>
+      <ul>
+        <li><strong>Filter</strong> — statistical test, fast, model-agnostic</li>
+        <li><strong>Wrapper</strong> — train models, slow, powerful</li>
+        <li><strong>Embedded</strong> — built into model training</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "We generated many features in Section B. Now we need to prune. More features is not always better — the curse of dimensionality means more features can actually hurt performance." Section header.
+  </aside>
+</section>
+
+<!-- Filter Methods -->
+<section>
+  <h2>Filter: Variance Threshold</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="equation-box">
+    $$\text{Var}(X) = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
+  </div>
+  <p>If a feature has <strong>zero or near-zero variance</strong>, it provides no information. A column that is 99.9% constant tells the model nothing.</p>
+  <div class="callout callout-foundations">
+    <strong>Rule of thumb:</strong> Drop features with variance below a threshold (e.g., 0.01 after standardisation). This is the cheapest, fastest filter — do it first.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "This is the simplest feature selection method. If a column barely changes, it cannot help distinguish between outcomes. Drop it." Quick slide.
+  </aside>
+</section>
+
+<section>
+  <h2>Filter: Correlation Threshold</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$r_{xy} = \frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum(x_i - \bar{x})^2 \sum(y_i - \bar{y})^2}}$$
+    <div class="annotation">Pearson correlation coefficient: ranges from -1 (perfect negative) to +1 (perfect positive)</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Feature-Target Correlation</h3>
+      <p style="font-size:0.85em;">Keep features with |r| > threshold with the target. Low correlation = likely uninformative.</p>
+    </div>
+    <div class="col">
+      <h3>Feature-Feature Correlation</h3>
+      <p style="font-size:0.85em;">If two features correlate > 0.95, drop one. They carry the same information — keeping both wastes capacity and can cause instability.</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Limitation:</strong> Pearson correlation only measures <em>linear</em> relationships. A feature with a U-shaped relationship to the target has correlation near zero but is highly informative. Use mutual information instead.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Correlation is fast and intuitive, but it only catches linear relationships. Always pair with mutual information for a more complete picture."
+  </aside>
+</section>
+
+<section>
+  <h2>Filter: Mutual Information</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$I(X; Y) = \sum_{x}\sum_{y} p(x, y) \log\frac{p(x, y)}{p(x)p(y)}$$
+    <div class="annotation">Mutual information: measures ANY dependency (linear or non-linear) between feature X and target Y</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.85em;">
+        <li>$I(X;Y) = 0$ &rArr; X and Y are independent</li>
+        <li>$I(X;Y) > 0$ &rArr; X carries information about Y</li>
+        <li>Captures non-linear relationships</li>
+        <li>Works for continuous and categorical</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-advanced">
+        <strong>Connection:</strong> $I(X;Y) = H(Y) - H(Y|X)$ where $H$ is entropy. Mutual information tells you how much knowing X reduces your uncertainty about Y.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Mutual information is strictly more powerful than correlation — it captures any relationship, not just linear ones. The cost is slightly more computation and the need for binning or KDE for continuous variables." For experts: "MI estimation for continuous variables uses k-nearest neighbours (Kraskov estimator). The bin-based estimator is biased downward."
+  </aside>
+</section>
+
+<section>
+  <h2>Filter: Chi-Squared and ANOVA F-Test</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Chi-Squared ($\chi^2$)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$\chi^2 = \sum\frac{(O_i - E_i)^2}{E_i}$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Tests independence of categorical feature vs categorical target</li>
+        <li>$O_i$ = observed count, $E_i$ = expected count</li>
+        <li>Higher $\chi^2$ = more dependent = better feature</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>ANOVA F-Test</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$F = \frac{\text{Between-group variance}}{\text{Within-group variance}}$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Tests if numeric feature differs across target classes</li>
+        <li>Higher F = more separation = better feature</li>
+        <li>Assumes normality (robust to violations)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Quick guide:</strong> Categorical feature + categorical target &rarr; Chi-squared. Numeric feature + categorical target &rarr; ANOVA F-test. Both numeric &rarr; correlation or MI.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These are classical statistical tests repurposed for feature selection. They are fast and well-understood. The p-value tells you if the association is statistically significant." For experts: "Note that chi-squared requires non-negative features and assumes no ordering."
+  </aside>
+</section>
+
+<!-- Wrapper Methods -->
+<section>
+  <h2>Wrapper: Forward, Backward, and RFE</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>How</th><th>Complexity</th><th>When</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Forward Selection</strong></td>
+        <td>Start empty, add best feature each step</td>
+        <td>$O(p^2)$ model fits</td>
+        <td>Small feature set expected</td>
+      </tr>
+      <tr>
+        <td><strong>Backward Elimination</strong></td>
+        <td>Start full, remove worst feature each step</td>
+        <td>$O(p^2)$ model fits</td>
+        <td>Most features relevant</td>
+      </tr>
+      <tr>
+        <td><strong>RFE (Recursive Feature Elimination)</strong></td>
+        <td>Train model, remove least important, repeat</td>
+        <td>$O(p \cdot \log p)$</td>
+        <td>Model has feature importance (trees, linear)</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Wrapper methods are expensive.</strong> Each step trains a full model. With 500 features, forward selection trains ~125,000 models. Use filters first to reduce the candidate set, then wrappers for fine-tuning.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Wrappers are the most accurate selection method because they evaluate features in the context of the actual model. The price is computational cost." For experts: "Sequential Feature Selector with cross-validation is the production-grade version — it prevents overfitting the feature selection to a single train/test split."
+  </aside>
+</section>
+
+<!-- Embedded Methods -->
+<section>
+  <h2>Embedded: L1 (Lasso) Regularisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\hat{\beta}_{\text{Lasso}} = \arg\min_\beta \left\{\sum_{i=1}^{n}(y_i - x_i^T\beta)^2 + \lambda\sum_{j=1}^{p}|\beta_j|\right\}$$
+    <div class="annotation">
+      L1 penalty ($\lambda|\beta_j|$) drives coefficients to <strong>exactly zero</strong> — automatic feature selection
+    </div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Why L1 selects features</h3>
+      <p style="font-size:0.85em;">The diamond-shaped constraint region of L1 has corners on the axes. The optimal solution is more likely to hit a corner, setting some coefficients to exactly zero.</p>
+    </div>
+    <div class="col">
+      <h3>L2 (Ridge) does NOT select</h3>
+      <p style="font-size:0.85em;">The circular constraint region of L2 has no corners. Coefficients shrink toward zero but never reach it. All features remain.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Lasso is the only linear model that does feature selection and prediction simultaneously. The lambda parameter controls how aggressively features are eliminated." Draw the diamond vs circle geometry on the board. "Imagine a ball rolling downhill (loss function) hitting a diamond-shaped wall (constraint). It hits a corner — that corner means some coefficients are zero."
+  </aside>
+</section>
+
+<section>
+  <h2>Embedded: Tree-Based Feature Importance</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Gini Importance (MDI)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$\text{Imp}(j) = \sum_{t \in T_j} \frac{n_t}{n}\Delta \text{Gini}(t)$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Sum of impurity decrease across all splits using feature $j$</li>
+        <li>Fast — computed during training</li>
+        <li><strong>Biased toward high-cardinality features</strong></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Permutation Importance</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        $$\text{PI}(j) = \text{Score} - \text{Score}(\text{shuffle } j)$$
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Shuffle one feature, measure accuracy drop</li>
+        <li>Model-agnostic — works with any model</li>
+        <li><strong>Unbiased but slower</strong></li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Key insight:</strong> Gini importance and permutation importance can disagree. A feature may have high Gini importance because it has many unique values (more split opportunities) but low permutation importance because those splits do not actually help prediction. <strong>Always use permutation importance for final decisions.</strong>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Tree-based importance is the most commonly used feature selection method in practice because tree models (Random Forest, XGBoost) are the most commonly used models for tabular data." For experts: "Gini importance is biased toward features with more categories or more unique values — this is a well-documented problem (Strobl et al., 2007)."
+  </aside>
+</section>
+
+<section>
+  <h2>Boruta Algorithm</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Boruta is a wrapper around random forest that creates <strong>shadow features</strong> — randomised copies of each real feature — and tests whether real features outperform their shadows.</p>
+  <div style="margin:16px 0;">
+    <div class="step-row"><span class="step-number">1</span><span>For each feature, create a "shadow" by shuffling its values randomly</span></div>
+    <div class="step-row"><span class="step-number">2</span><span>Train a random forest on real + shadow features</span></div>
+    <div class="step-row"><span class="step-number">3</span><span>Compare each real feature's importance against the best shadow feature</span></div>
+    <div class="step-row"><span class="step-number">4</span><span>Use a statistical test (binomial) to decide: confirmed, rejected, or tentative</span></div>
+    <div class="step-row"><span class="step-number">5</span><span>Repeat until all features are decided</span></div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Why Boruta works:</strong> The shadow features represent the null hypothesis — "this feature is no better than random." If a real feature consistently beats the best shadow, it is genuinely informative, not just noise.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Boruta answers a different question than most methods. Instead of 'rank features by importance,' it asks 'is this feature more important than random?' That is a much more useful question." Expert tangent: "The binomial test gives a p-value for each feature. The default uses Bonferroni correction for multiple testing."
+  </aside>
+</section>
+
+<section>
+  <h2>Stability Selection</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="equation-box">
+    $$\hat{\Pi}_j = \frac{1}{K}\sum_{k=1}^{K}\mathbb{1}[\text{feature } j \text{ selected in subsample } k]$$
+    <div class="annotation">Selection probability: how often feature $j$ is selected across $K$ random subsamples</div>
+  </div>
+  <p style="font-size:0.85em;">Run Lasso (or any selector) on many random subsamples of your data. Features that are consistently selected are robust; features selected only sometimes are unstable.</p>
+  <div class="columns">
+    <div class="col">
+      <div class="safe-box"><strong>Stable feature:</strong> Selected in 90/100 subsamples &rarr; genuinely important</div>
+    </div>
+    <div class="col">
+      <div class="leakage-box"><strong>Unstable feature:</strong> Selected in 15/100 subsamples &rarr; likely noise</div>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Theorem (Meinshausen &amp; Buhlmann, 2010):</strong> With stability selection, the expected number of false positives is bounded by $\frac{q^2}{(2\pi_{\text{thr}} - 1) \cdot p}$ where $q$ is the expected number selected and $\pi_{\text{thr}}$ is the threshold. This gives finite-sample false positive control.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Stability selection adds a layer of statistical rigour on top of any selection method. If a feature is only important on one particular subset of your data, you should not trust it." For experts: "The key insight is that subsampling + thresholding gives error control even when the base method (Lasso) has none."
+  </aside>
+</section>
+
+<section>
+  <h2>SHAP-Based Feature Selection</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>SHAP (SHapley Additive exPlanations) values measure each feature's contribution to each individual prediction. Aggregate SHAP values across the dataset for selection.</p>
+  <div class="equation-box">
+    $$\text{SHAP Importance}(j) = \frac{1}{n}\sum_{i=1}^{n}|\phi_j^{(i)}|$$
+    <div class="annotation">Mean absolute SHAP value for feature $j$ across all $n$ observations</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>SHAP vs Permutation Importance:</strong> Permutation importance measures how much accuracy drops when you destroy a feature's information. SHAP measures how much each feature contributes to each prediction. SHAP is more fine-grained — it tells you which features matter FOR WHICH OBSERVATIONS, not just overall.
+  </div>
+  <p style="font-size:0.85em;">We will derive SHAP axioms fully in Module 3. For now: use mean absolute SHAP as a feature importance metric.</p>
+  <aside class="notes">
+    Time: ~2 min. "SHAP is the gold standard for feature importance in 2026. It is the only method that satisfies all four Shapley axioms — efficiency, symmetry, dummy, and linearity." Preview of M3 content.
+  </aside>
+</section>
+
+<section>
+  <h2>Multicollinearity: VIF</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\text{VIF}_j = \frac{1}{1 - R_j^2}$$
+    <div class="annotation">$R_j^2$ = R-squared from regressing feature $j$ on ALL other features</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Interpretation</h3>
+      <ul style="font-size:0.85em;">
+        <li>VIF = 1: no multicollinearity</li>
+        <li>VIF = 5: moderately correlated</li>
+        <li>VIF > 10: <strong>severely</strong> multicollinear — drop one</li>
+        <li>VIF = &infin;: perfect collinearity</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Why It Matters</h3>
+      <ul style="font-size:0.85em;">
+        <li>Inflates standard errors of coefficients</li>
+        <li>Coefficients become unstable</li>
+        <li>Model appears to have no significant features</li>
+        <li>Critical for linear/logistic regression</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> VIF measures how much one feature can be predicted by all others. If VIF is high, the feature is redundant — other features already contain its information.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "VIF is essential for linear models. Tree models are immune to multicollinearity but still benefit from removing redundant features for speed and interpretability." Walk through: "If floor_area and num_rooms have VIF > 10, they share so much information that keeping both confuses the linear model."
+  </aside>
+</section>
+
+<section>
+  <h2>The Curse of Dimensionality</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>As the number of features grows, the amount of data needed to cover the feature space grows <strong>exponentially</strong>.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Hughes Phenomenon</h3>
+      <ul style="font-size:0.85em;">
+        <li>With fixed sample size $n$, adding features initially <strong>improves</strong> performance</li>
+        <li>Past a critical point, adding features <strong>degrades</strong> performance</li>
+        <li>The model overfits the noise in the extra dimensions</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Geometric Intuition</h3>
+      <ul style="font-size:0.85em;">
+        <li>In 1D: 10 data points cover a line well</li>
+        <li>In 2D: 10 points are sparse on a plane</li>
+        <li>In 100D: 10 points are isolated in a vast void</li>
+        <li>In high dimensions, <strong>all points are far from each other</strong></li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Volume of a hypersphere:</strong> As dimensions increase, the volume concentrates in a thin shell near the surface. The ratio $V_{\text{sphere}}/V_{\text{cube}} \to 0$. This means distance-based methods (k-NN, SVM with RBF kernel) break down in high dimensions.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the fundamental reason feature selection matters. More features is not always better. At some point, you are just adding noise dimensions that drown out the signal." For beginners: "Imagine trying to find a needle in a room. Now imagine the room is the size of a football field. Now imagine it is the size of the universe. That is what happens in high dimensions."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Selection Decision Guide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Situation</th><th>Method</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Quick first pass (any model)</td><td>Variance threshold + correlation</td><td>Fast, removes obvious redundancy</td></tr>
+      <tr><td>Non-linear relationships</td><td>Mutual information</td><td>Catches what correlation misses</td></tr>
+      <tr><td>Linear model</td><td>Lasso (L1) + VIF</td><td>Built-in selection + collinearity check</td></tr>
+      <tr><td>Tree model</td><td>Permutation importance</td><td>Unbiased, model-specific</td></tr>
+      <tr><td>Maximum rigour</td><td>Boruta or Stability Selection</td><td>Statistical guarantee, false positive control</td></tr>
+      <tr><td>Explanation needed</td><td>SHAP values</td><td>Per-observation importance</td></tr>
+      <tr><td>Small dataset (&lt;1000 rows)</td><td>Forward selection with CV</td><td>Evaluates feature combinations</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Another cheat sheet to photograph. In practice, use a pipeline: variance threshold first, then mutual information or correlation filter, then permutation importance or Boruta for final selection."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Selection: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: Selection</h3>
+    <pre><code class="language-python">from kailash_ml import FeatureEngineer
+
+fe = FeatureEngineer()
+
+# Select features using multiple methods
+selected = fe.select(
+    df,
+    target="price",
+    methods=["variance", "correlation", "mutual_info", "boruta"],
+    correlation_threshold=0.95,
+    variance_threshold=0.01,
+    n_features=20,                # target number of features
+)
+
+print(selected.selected_features)     # list of selected column names
+print(selected.importance_scores)     # dict of feature -> score
+print(selected.eliminated_features)   # list of dropped columns + reason</code></pre>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "FeatureEngineer runs all selection methods and gives you a unified view: which features survived, which were eliminated, and why." Bridge slide.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION D: FEATURE EXTRACTION (Slides 89-100)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>D. Feature Extraction</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.1em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:30px;">Feature extraction <strong>creates new features</strong> that did not exist in the original data — by combining, transforming, or compressing existing features.</p>
+  <div class="callout callout-foundations" style="margin-top:20px;">
+    <strong>Extraction vs Selection:</strong> Selection keeps/removes existing features. Extraction creates entirely new ones. Both reduce dimensionality, but extraction can capture patterns that no single original feature contains.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Section header. "Selection chooses from what you have. Extraction creates something new."
+  </aside>
+</section>
+
+<section>
+  <h2>PCA as Feature Extraction (Preview)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\mathbf{Z} = \mathbf{X}\mathbf{W}, \quad \text{where } \mathbf{W} = [\mathbf{w}_1, \mathbf{w}_2, \ldots, \mathbf{w}_k]$$
+    <div class="annotation">$\mathbf{w}_i$ are eigenvectors of the covariance matrix, ordered by eigenvalue (variance explained)</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>What PCA Does</h3>
+      <ul style="font-size:0.85em;">
+        <li>Finds directions of maximum variance</li>
+        <li>Projects data onto those directions</li>
+        <li>First PC captures most variance, second captures next most, etc.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>When to Use</h3>
+      <ul style="font-size:0.85em;">
+        <li>Many correlated features</li>
+        <li>Visualisation (project to 2D/3D)</li>
+        <li>Pre-processing for linear models</li>
+        <li>NOT for tree-based models</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.82em;color:#64748B;">Full PCA derivation in Module 4. For now: PCA creates new features that are linear combinations of original features, ordered by information content.</p>
+  <aside class="notes">
+    Time: ~2 min. "PCA is a preview of Module 4. We mention it here because it is the most common feature extraction method. Full derivation — eigendecomposition, scree plots, variance explained — comes in the unsupervised ML module."
+  </aside>
+</section>
+
+<section>
+  <h2>Domain-Specific Feature Extraction</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Domain</th><th>Features</th><th>Components</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Retail / CRM</strong></td><td>RFM features</td><td>Recency (days since last purchase), Frequency (purchases per period), Monetary (total spend)</td></tr>
+      <tr><td><strong>Finance</strong></td><td>CLV features</td><td>Customer Lifetime Value, churn probability, average order value</td></tr>
+      <tr><td><strong>Real Estate</strong></td><td>Location features</td><td>Distance to MRT, school density, green space ratio</td></tr>
+      <tr><td><strong>Healthcare</strong></td><td>Clinical scores</td><td>BMI, Charlson comorbidity index, lab value ratios</td></tr>
+      <tr><td><strong>NLP (preview)</strong></td><td>TF-IDF, topic features</td><td>Term importance, document-topic distribution</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Domain knowledge is your biggest advantage.</strong> No automated tool will create "remaining_lease_years" from "lease_commence_date" unless you tell it the formula. This is where human expertise adds the most value.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "RFM features are the canonical example of domain-specific extraction. Three simple features — recency, frequency, monetary — capture most of the signal in customer behaviour data. These are features that a model COULD learn but would need 10x more data to discover."
+  </aside>
+</section>
+
+<section>
+  <h2>Polynomial Features</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\text{degree 2: } [x_1, x_2] \to [x_1, x_2, x_1^2, x_1 x_2, x_2^2]$$
+    <div class="annotation">$p$ features &rarr; $\binom{p + d}{d}$ features for degree $d$</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.85em;">
+        <li><strong>interaction_only=True:</strong> only cross-products ($x_1 x_2$), no powers ($x_1^2$)</li>
+        <li>Useful when interaction effects are expected but not quadratic</li>
+        <li>Generates $\binom{p}{2}$ features for degree 2</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-warning" style="font-size:0.9em;">
+        <strong>Feature explosion:</strong> 50 features at degree 3 = 23,426 new features. Always follow with feature selection. In practice, degree 2 is almost always sufficient.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Polynomial features are how linear models capture non-linear relationships. By adding x-squared and x1*x2, a linear model can learn curves and interactions." For experts: "Polynomial features are the basis of kernel trick intuition — the kernel maps data to this higher-dimensional space implicitly."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Extraction vs Selection vs Engineering</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Approach</th><th>What It Does</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Feature Engineering</strong></td><td>Creates new features using domain knowledge</td><td>remaining_lease = 99 - (2024 - lease_start)</td></tr>
+      <tr><td><strong>Feature Selection</strong></td><td>Keeps/removes existing features</td><td>Drop "block_number" (uninformative)</td></tr>
+      <tr><td><strong>Feature Extraction</strong></td><td>Creates new features by mathematical transform</td><td>PCA: PC1 = 0.7*area + 0.3*rooms + ...</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations" style="margin-top:12px;">
+    <strong>Typical workflow:</strong> Engineer domain features &rarr; Generate interaction/polynomial features &rarr; Select the best subset &rarr; Optionally extract (PCA) for visualisation or compression.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "These three approaches complement each other. In a production pipeline, you typically do all three, in this order."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION E: DATA LEAKAGE (Slides 101-118)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>E. Data Leakage</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.3em;color:var(--ascent-error);font-style:italic;text-align:center;margin-top:40px;">"Data leakage is the single most dangerous mistake in applied ML."</p>
+  <p style="text-align:center;margin-top:20px;">It makes your model look brilliant in evaluation and <strong>worthless in production</strong>.</p>
+  <aside class="notes">
+    Time: ~1 min. Section header — connect back to the opening case. "Remember the clinical trial? That was data leakage. We are now going to formalize exactly what leakage is, how it happens, and how to prevent it."
+  </aside>
+</section>
+
+<section>
+  <h2>What Is Data Leakage?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-error">
+    <strong>Definition:</strong> Data leakage occurs when information from outside the training dataset is used to create the model. This includes using the target variable (or proxies for it) as features, or using future data that would not be available at prediction time.
+  </div>
+  <div class="columns" style="margin-top:16px;">
+    <div class="col">
+      <h3>Two Main Types</h3>
+      <ul>
+        <li><strong>Target leakage:</strong> A feature is derived from or correlated with the target in a way that would not be available at prediction time</li>
+        <li><strong>Train-test contamination:</strong> Information from the test set leaks into training (e.g., fitting scaler on all data before splitting)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>The Tell-Tale Sign</h3>
+      <div class="highlight-box">
+        <strong>Suspiciously high accuracy.</strong><br/>
+        If your model achieves 99%+ accuracy on a real-world problem, your first reaction should be <em>suspicion</em>, not celebration.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Leakage is invisible in your metrics. The model looks great on evaluation data. It only fails in production where the leaked information is not available." Beginners: "Imagine studying for a test with the answer key. You score 100%. Does that mean you learned the material? No."
+  </aside>
+</section>
+
+<section>
+  <h2>Target Leakage: Examples</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Problem</th><th>Leaked Feature</th><th>Why It Leaks</th></tr></thead>
+    <tbody>
+      <tr><td>Predict loan default</td><td>account_closed_date</td><td>Only exists for defaults</td></tr>
+      <tr><td>Predict patient readmission</td><td>discharge_medication_count</td><td>Determined by knowing outcome</td></tr>
+      <tr><td>Predict fraud</td><td>investigation_status</td><td>Only investigated after fraud detected</td></tr>
+      <tr><td>Predict churn</td><td>cancellation_reason</td><td>Only exists if churned</td></tr>
+      <tr><td>Predict HDB price</td><td>valuation_price</td><td>Available only after sale</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Pattern:</strong> If a feature only exists (or has a specific value) BECAUSE of the target outcome, it is leaking. Ask: "Would I have this information BEFORE making the prediction?"
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "For each example, ask yourself: would this information be available when I need to make the prediction? If the answer is no, it is leakage." Go through each row.
+  </aside>
+</section>
+
+<section>
+  <h2>Temporal Leakage: Point-in-Time Correctness</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="timeline">
+    <div class="event success">Feature<br/>Available</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event success">Prediction<br/>Made</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">Outcome<br/>Observed</div>
+  </div>
+  <p style="text-align:center;font-size:0.85em;color:var(--ascent-success);">Correct: features computed BEFORE prediction time</p>
+  <div class="timeline">
+    <div class="event danger">Prediction<br/>Made</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event danger">Feature<br/>Computed</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">Outcome<br/>Observed</div>
+  </div>
+  <p style="text-align:center;font-size:0.85em;color:var(--ascent-error);">LEAKAGE: feature uses data from AFTER prediction time</p>
+  <div class="callout callout-error">
+    <strong>Point-in-time correctness:</strong> Every feature value must be computed using ONLY information available at or before the prediction timestamp. No exceptions.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "This is the most important concept in this entire module. Draw a timeline on the board. Everything to the left of 'prediction made' is fair game. Everything to the right is leakage." For experts: "Point-in-time correctness is structurally enforced by FeatureStore — you literally cannot access future data."
+  </aside>
+</section>
+
+<section>
+  <h2>Train-Test Contamination</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="vs-box">
+    <div class="vs-left">
+      <h3 style="color:var(--ascent-error);margin-top:0;">Wrong (Leakage)</h3>
+      <pre style="font-size:0.75em;border-color:var(--ascent-error);"><code class="language-python"># Fit scaler on ALL data
+scaler.fit(all_data)
+all_data = scaler.transform(all_data)
+# THEN split
+train, test = split(all_data)
+# Test set statistics leaked
+# into training via the scaler</code></pre>
+    </div>
+    <div class="vs-right">
+      <h3 style="color:var(--ascent-success);margin-top:0;">Correct (No Leakage)</h3>
+      <pre style="font-size:0.75em;border-color:var(--ascent-success);"><code class="language-python"># Split FIRST
+train, test = split(all_data)
+# Fit scaler on TRAIN only
+scaler.fit(train)
+train = scaler.transform(train)
+test = scaler.transform(test)
+# Test remains unseen</code></pre>
+    </div>
+  </div>
+  <div class="callout callout-warning" style="margin-top:12px;">
+    <strong>This applies to ALL preprocessing:</strong> scaling, encoding, imputation, feature selection, PCA. Everything must be fit on training data only, then applied to test data with the same parameters.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the most common form of leakage and the easiest to make. The rule is simple: SPLIT FIRST, then preprocess." Show both code blocks side by side.
+  </aside>
+</section>
+
+<section>
+  <h2>Detecting Leakage</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div style="margin:12px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Suspiciously high accuracy</strong> — real-world problems rarely exceed 95%. If yours does, investigate.</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Feature importance analysis</strong> — if one feature dominates, ask "why?" It may be a proxy for the target.</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Temporal validation</strong> — train on past, test on future. If accuracy drops dramatically, you have temporal leakage.</span></div>
+    <div class="step-row"><span class="step-number">4</span><span><strong>Feature audit</strong> — for each feature, ask: "Would this be available at prediction time?"</span></div>
+    <div class="step-row"><span class="step-number">5</span><span><strong>Adversarial validation</strong> — train a model to distinguish train from test. If it can (AUC > 0.8), the splits are contaminated.</span></div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Adversarial validation is a clever technique: you label train data as 0 and test data as 1, then train a classifier. If it can distinguish them, your train and test are drawn from different distributions — which means contamination."
+  </aside>
+</section>
+
+<section>
+  <h2>Prevention: The Feature Pipeline</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div style="margin:16px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Define prediction time</strong> — the exact moment the prediction is needed</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Split BEFORE preprocessing</strong> — temporal split for time-series, random for i.i.d.</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Fit on training data only</strong> — scalers, encoders, imputers, selectors</span></div>
+    <div class="step-row"><span class="step-number">4</span><span><strong>Apply to test with fitted parameters</strong> — no recomputing statistics</span></div>
+    <div class="step-row"><span class="step-number">5</span><span><strong>Use FeatureStore</strong> — point-in-time correctness is structural, not manual discipline</span></div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Kailash FeatureStore</strong> enforces point-in-time correctness by design. When you request features for a given timestamp, only data available at that timestamp is used. Leakage is structurally impossible.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The key word is STRUCTURAL. Manual discipline fails — someone forgets, someone is tired, someone does not know. FeatureStore makes it impossible to leak, the same way a compiler makes it impossible to assign a string to an integer in a typed language."
+  </aside>
+</section>
+
+<section>
+  <h2>Opening Case Revisited</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What Went Wrong</h3>
+      <ul style="font-size:0.85em;">
+        <li>"Days since last blood test" was computed using treatment response data</li>
+        <li>Patients who responded had more frequent tests</li>
+        <li>The feature was a <strong>proxy for the outcome</strong></li>
+        <li>98.7% accuracy = reading the answer key</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>How to Prevent It</h3>
+      <ul style="font-size:0.85em;">
+        <li>Define prediction time: "at enrollment, before treatment"</li>
+        <li>Feature audit: only use pre-enrollment data</li>
+        <li>FeatureStore: enforce point-in-time correctness</li>
+        <li>Adversarial validation: detect train/test differences</li>
+        <li>Domain expert review: "could we know this before treating?"</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Full circle back to the opening case. The team was brilliant — their model was state of the art. But one leaked feature destroyed $2.1 billion in value." Let this sink in.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION F: MISSING DATA (Slides 119-136)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>F. Missing Data</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.1em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"Missing data is not an inconvenience — it is information about your data collection process."</p>
+  <aside class="notes">
+    Time: ~1 min. Section header. "Missing data is everywhere in real-world datasets. How you handle it can dramatically affect your model's performance and fairness."
+  </aside>
+</section>
+
+<section>
+  <h2>Why Is Data Missing? Three Mechanisms</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Mechanism</th><th>Definition</th><th>Example</th><th>Implication</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>MCAR</strong></td>
+        <td>Missing Completely At Random — missingness unrelated to any data</td>
+        <td>Lab sample accidentally dropped</td>
+        <td>Safe to drop or impute simply</td>
+      </tr>
+      <tr>
+        <td><strong>MAR</strong></td>
+        <td>Missing At Random — missingness depends on <em>observed</em> data</td>
+        <td>Young people skip income question more often</td>
+        <td>Impute using observed variables</td>
+      </tr>
+      <tr>
+        <td><strong>MNAR</strong></td>
+        <td>Missing Not At Random — missingness depends on the <em>missing value itself</em></td>
+        <td>High earners refuse to report income</td>
+        <td>Imputation biased; model the missingness</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>MNAR is the dangerous case.</strong> If high incomes are missing because people with high incomes refuse to answer, imputing with the median will systematically underestimate their income. The missingness pattern itself is informative — add a missing indicator feature.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "The mechanism determines the correct response. MCAR is rare in practice — most real-world missing data is MAR or MNAR." For experts: "Little's MCAR test: a chi-squared test on the pattern of missingness. If it rejects, data is not MCAR."
+  </aside>
+</section>
+
+<section>
+  <h2>Simple Imputation Methods</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Method</th><th>Formula</th><th>Best For</th><th>Danger</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Mean</strong></td><td>$\bar{x} = \frac{1}{n}\sum x_i$</td><td>Symmetric numeric data</td><td>Distorts variance, sensitive to outliers</td></tr>
+      <tr><td><strong>Median</strong></td><td>Middle value</td><td>Skewed numeric data</td><td>Still distorts variance</td></tr>
+      <tr><td><strong>Mode</strong></td><td>Most frequent value</td><td>Categorical data</td><td>Dominates if mode is rare</td></tr>
+      <tr><td><strong>Constant</strong></td><td>Fixed value (e.g., 0, -999)</td><td>Explicit "unknown" category</td><td>Model may learn artefact</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>All simple methods share one flaw:</strong> they do not use the relationships between features. If income is missing but you know the person's job title and education, those should inform the imputation. That requires advanced methods.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Mean/median imputation is the most common approach. It is fast and easy. But it underestimates variance — all imputed values are identical, which makes the feature look more concentrated than it really is."
+  </aside>
+</section>
+
+<section>
+  <h2>Advanced Imputation: KNN and MICE</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>KNN Imputation</h3>
+      <ul style="font-size:0.85em;">
+        <li>Find K nearest neighbours (using non-missing features)</li>
+        <li>Impute with neighbours' average value</li>
+        <li>Captures local patterns</li>
+        <li>Slow for large datasets</li>
+        <li>Sensitive to scale — always standardise first</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>MICE (Multiple Imputation by Chained Equations)</h3>
+      <ul style="font-size:0.85em;">
+        <li>Each feature with missing values gets its own imputation model</li>
+        <li>Models are conditional on all other features</li>
+        <li>Iterate: impute all &rarr; re-impute using updated values &rarr; repeat</li>
+        <li>Produces multiple datasets (captures uncertainty)</li>
+        <li>Gold standard for MAR data</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "MICE is the most principled imputation method. It creates multiple imputed datasets and combines them using Rubin's rules — this properly accounts for the uncertainty introduced by imputation." For experts: "MissForest uses random forests as the conditional model in MICE, which handles non-linear relationships."
+  </aside>
+</section>
+
+<section>
+  <h2>Multiple Imputation: Rubin's Rules</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="equation-box">
+    $$\bar{Q} = \frac{1}{M}\sum_{m=1}^{M} \hat{Q}_m$$
+    <div class="annotation">Final estimate = average across $M$ imputed datasets</div>
+  </div>
+  <div class="equation-box">
+    $$T = \bar{U} + \left(1 + \frac{1}{M}\right)B$$
+    <div class="annotation">
+      Total variance = <span class="term-bias">within-imputation variance ($\bar{U}$)</span> +
+      <span class="term-variance">between-imputation variance ($B$)</span>
+    </div>
+  </div>
+  <p style="font-size:0.85em;">Multiple imputation creates $M$ complete datasets (typically $M = 5$-$20$). Analyse each separately, then combine using Rubin's rules. The between-imputation variance captures the <strong>additional uncertainty</strong> from the missing data.</p>
+  <aside class="notes">
+    Time: ~2 min. "The beauty of Rubin's rules is that they properly account for the fact that imputed values are uncertain. Single imputation pretends the imputed values are real. Multiple imputation says 'I am not sure what the missing value was — here are my best guesses, and here is how uncertain I am.'" For experts: "M=5 is sufficient for point estimates. M=20+ is needed for confidence interval coverage."
+  </aside>
+</section>
+
+<section>
+  <h2>When to Drop vs Impute</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Situation</th><th>Action</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>Feature missing &gt;70% of values</td><td>Drop feature (usually)</td><td>Too little signal remaining</td></tr>
+      <tr><td>Row missing &gt;50% of features</td><td>Drop row (usually)</td><td>Not enough information for reliable imputation</td></tr>
+      <tr><td>Feature missing &lt;5%, MCAR</td><td>Simple imputation (mean/median)</td><td>Minimal impact on distribution</td></tr>
+      <tr><td>Feature missing 5-30%, MAR</td><td>KNN or MICE</td><td>Use relationships between features</td></tr>
+      <tr><td>Feature missing, MNAR suspected</td><td>Impute + add missing indicator</td><td>Missingness pattern is informative</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Production concern:</strong> Whatever imputation you use in training, you must use the SAME method at inference time. If you impute with training set mean, store that mean and use it for new data.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "There is no universal answer. The right approach depends on how much is missing, why it is missing, and what your model needs."
+  </aside>
+</section>
+
+<section>
+  <h2>Missing Data: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: Missing Data</h3>
+    <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
+
+pipeline = PreprocessingPipeline()
+
+# Handles missing data as part of the pipeline
+result = pipeline.fit_transform(
+    df,
+    imputation_strategy="auto",   # auto-selects based on missingness pattern
+    add_missing_indicators=True,   # binary columns for MNAR features
+)
+
+# The pipeline stores all imputation parameters
+# Apply same logic to new data:
+new_result = pipeline.transform(new_df)</code></pre>
+  </div>
+  <div class="callout callout-kailash" style="margin-top:8px;">
+    <strong>Fit-then-transform:</strong> PreprocessingPipeline stores imputation parameters during <code>.fit_transform()</code> and applies them consistently during <code>.transform()</code>. No train-test contamination.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "PreprocessingPipeline handles missing data as part of a unified pipeline. The key is fit_transform on training data, then transform on test data with the same stored parameters." Bridge slide.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION G: EXPERIMENT DESIGN (Slides 137-175)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>G. Experiment Design</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.3em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"Correlation tells you what happened. Experiments tell you WHY."</p>
+  <p style="text-align:center;margin-top:20px;">This section teaches you to design, run, and analyse experiments that prove causation.</p>
+  <aside class="notes">
+    Time: ~1 min. "We now shift gears from feature engineering to experiment design. These are complementary skills: features help your model learn, experiments prove your model works." Section header.
+  </aside>
+</section>
+
+<section>
+  <h2>Causation vs Correlation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Correlation</h3>
+      <ul>
+        <li>Ice cream sales and drownings both increase in summer</li>
+        <li>Does ice cream cause drowning? <strong>No.</strong></li>
+        <li>Both are caused by a third variable: <strong>hot weather</strong></li>
+        <li>Correlation cannot distinguish cause from confounding</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Causation</h3>
+      <ul>
+        <li>Requires <strong>intervention</strong>: change X, observe Y</li>
+        <li>Hold everything else constant</li>
+        <li>The gold standard: <strong>Randomized Controlled Trial</strong></li>
+        <li>Random assignment eliminates confounders</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Business decisions require causation.</strong> "Should we spend $10M on this new feature?" requires knowing it CAUSES improvement, not just correlates with it.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is perhaps the most important distinction in all of data science. Billions of dollars are wasted every year because teams confuse correlation with causation." Use the ice cream example — it is memorable.
+  </aside>
+</section>
+
+<section>
+  <h2>The Randomized Controlled Trial (RCT)</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="margin:20px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Define hypothesis:</strong> "The new checkout flow increases conversion rate"</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Randomly assign:</strong> 50% of users see old flow (control), 50% see new flow (treatment)</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Measure outcome:</strong> Conversion rate in each group</span></div>
+    <div class="step-row"><span class="step-number">4</span><span><strong>Compare:</strong> Is the difference statistically significant?</span></div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Why random assignment works:</strong> Because users are randomly assigned, the two groups are (on average) identical in every way EXCEPT the treatment. Any difference in outcomes must be caused by the treatment.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "RCTs are the gold standard in medicine (drug trials), tech (A/B tests), and social science. The key insight is that randomisation makes the groups comparable on ALL variables — even ones you did not measure."
+  </aside>
+</section>
+
+<section>
+  <h2>A/B Testing: The Tech Industry RCT</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>How A/B Tests Work</h3>
+      <ul style="font-size:0.85em;">
+        <li>User visits website/app</li>
+        <li>System randomly assigns to variant A (control) or B (treatment)</li>
+        <li>User experience differs ONLY in the tested element</li>
+        <li>System logs behaviour (clicks, purchases, time on page)</li>
+        <li>After enough data, compare groups statistically</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What Makes a Good A/B Test</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Single variable:</strong> change only ONE thing</li>
+        <li><strong>Sufficient sample size:</strong> calculated in advance</li>
+        <li><strong>Random assignment:</strong> no self-selection</li>
+        <li><strong>Adequate duration:</strong> capture weekly cycles</li>
+        <li><strong>Pre-registered metrics:</strong> define success before running</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "A/B testing is the most common form of experimentation in tech. Every major tech company runs thousands of A/B tests simultaneously. Google alone runs over 10,000 experiments per year."
+  </aside>
+</section>
+
+<section>
+  <h2>Sample Size Calculation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$n = \frac{(z_{\alpha/2} + z_\beta)^2 \cdot 2\sigma^2}{\delta^2}$$
+    <div class="annotation">
+      <span class="term-input">$n$</span> = sample size per group,
+      <span class="term-param">$z_{\alpha/2}$</span> = critical value for significance (1.96 for 5%),
+      <span class="term-param">$z_\beta$</span> = critical value for power (0.84 for 80%),
+      <span class="term-variance">$\sigma^2$</span> = variance of metric,
+      <span class="term-bias">$\delta$</span> = minimum detectable effect (MDE)
+    </div>
+  </div>
+  <div class="columns" style="margin-top:12px;">
+    <div class="col">
+      <h3>Inputs You Need</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Significance level ($\alpha$):</strong> usually 0.05 (5% false positive rate)</li>
+        <li><strong>Power ($1-\beta$):</strong> usually 0.80 (80% chance of detecting real effect)</li>
+        <li><strong>MDE ($\delta$):</strong> smallest effect worth detecting</li>
+        <li><strong>Baseline variance ($\sigma^2$):</strong> from historical data</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Key Insight</h3>
+      <div class="callout callout-theory">
+        Halving the MDE <strong>quadruples</strong> the required sample size. If you want to detect smaller effects, you need exponentially more data.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Always calculate sample size BEFORE running the experiment. Running until you see significance is called p-hacking — and it inflates your false positive rate far above 5%." Walk through the formula with real numbers.
+  </aside>
+</section>
+
+<section>
+  <h2>Minimum Detectable Effect (MDE)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\text{MDE} = (z_{\alpha/2} + z_\beta) \cdot \sqrt{\frac{2\sigma^2}{n}}$$
+    <div class="annotation">Given your sample size, what is the smallest effect you can reliably detect?</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Business Translation</h3>
+      <p style="font-size:0.85em;">"With 10,000 users per group and 80% power, we can detect a <strong>0.5 percentage point</strong> change in conversion rate. If the true effect is smaller, we will miss it."</p>
+    </div>
+    <div class="col">
+      <h3>Why MDE Matters</h3>
+      <p style="font-size:0.85em;">An underpowered test that shows "no significant difference" does NOT mean there is no effect. It means the effect (if any) is smaller than your MDE. This distinction is critical for decision-making.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "'No significant effect' and 'no effect' are completely different statements. If your MDE is 5% but the true effect is 2%, a non-significant result is expected — not evidence of no effect."
+  </aside>
+</section>
+
+<section>
+  <h2>Randomisation Strategies</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Strategy</th><th>How</th><th>When</th><th>Risk</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Simple</strong></td><td>Coin flip per unit</td><td>Large samples, no subgroups</td><td>Imbalance in small samples</td></tr>
+      <tr><td><strong>Stratified</strong></td><td>Randomise within strata (e.g., country, device)</td><td>Known confounders</td><td>Cannot stratify on unknown variables</td></tr>
+      <tr><td><strong>Cluster</strong></td><td>Randomise at cluster level (e.g., city, school)</td><td>Network effects, contamination risk</td><td>Reduced effective sample size</td></tr>
+      <tr><td><strong>Block</strong></td><td>Randomise within blocks of similar units</td><td>Covariates predict outcome</td><td>Block size limits</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Stratified randomisation</strong> reduces variance by ensuring treatment and control groups are balanced on key covariates. This is especially important when sample sizes are small or treatment effects interact with subgroups.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Simple randomisation is fine for large experiments (10,000+ users). For smaller experiments, stratified randomisation ensures balance on important variables."
+  </aside>
+</section>
+
+<section>
+  <h2>Multiple Treatment Arms and Factorial Designs</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Multiple Arms (A/B/C/D)</h3>
+      <ul style="font-size:0.85em;">
+        <li>Test multiple variants simultaneously</li>
+        <li>Control group shared across all treatments</li>
+        <li>Requires multiple comparison correction (Bonferroni, Holm, FDR)</li>
+        <li>More efficient than sequential A/B tests</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Factorial Design (2x2)</h3>
+      <table style="font-size:0.75em;">
+        <thead><tr><th></th><th>Blue Button</th><th>Green Button</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Short Copy</strong></td><td>Group 1</td><td>Group 2</td></tr>
+          <tr><td><strong>Long Copy</strong></td><td>Group 3</td><td>Group 4</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:0.82em;">Tests <strong>two factors simultaneously</strong> + their interaction. More efficient than testing each factor separately.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Factorial designs are underutilised in industry. A 2x2 factorial gives you the effect of colour, the effect of copy length, AND their interaction — all in one experiment with the same sample size."
+  </aside>
+</section>
+
+<section>
+  <h2>Multi-Armed Bandits</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>A/B tests allocate traffic equally. Bandits <strong>adaptively</strong> shift traffic to better-performing variants during the experiment.</p>
+  <table>
+    <thead><tr><th>Algorithm</th><th>How</th><th>Trade-off</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Epsilon-Greedy</strong></td>
+        <td>With probability $\epsilon$, explore randomly; otherwise exploit best arm</td>
+        <td>Simple but wastes $\epsilon$ of traffic exploring</td>
+      </tr>
+      <tr>
+        <td><strong>UCB (Upper Confidence Bound)</strong></td>
+        <td>Choose arm with highest $\bar{x}_a + c\sqrt{\frac{\ln t}{n_a}}$</td>
+        <td>Optimistic — explores uncertain arms; reliable</td>
+      </tr>
+      <tr>
+        <td><strong>Thompson Sampling</strong></td>
+        <td>Sample from posterior of each arm's reward, choose highest</td>
+        <td>Best asymptotic performance; Bayesian</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Bandit vs A/B test:</strong> A/B tests maximise statistical rigour (unbiased effect estimate). Bandits maximise cumulative reward (less regret). Use A/B tests when you need a precise effect estimate. Use bandits when you just want to find the winner quickly and minimise lost conversions.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Thompson sampling is generally considered the best bandit algorithm as of 2026. It naturally balances exploration and exploitation through Bayesian posterior sampling." For experts: "The regret bound for Thompson sampling matches the Lai-Robbins lower bound asymptotically."
+  </aside>
+</section>
+
+<section>
+  <h2>Experiment Metrics</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Metric Type</th><th>Purpose</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Primary</strong></td><td>The ONE metric that determines success/failure</td><td>Conversion rate</td></tr>
+      <tr><td><strong>Secondary</strong></td><td>Supporting evidence, context</td><td>Revenue per user, page views</td></tr>
+      <tr><td><strong>Guardrail</strong></td><td>Must NOT degrade — safety check</td><td>Page load time, error rate, retention</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Pre-register your metrics.</strong> Define primary, secondary, and guardrail metrics BEFORE the experiment starts. Choosing metrics after seeing results is cherry-picking — it inflates false positive rates.
+  </div>
+  <div class="callout callout-advanced" style="margin-top:8px;">
+    <strong>SRM (Sample Ratio Mismatch):</strong> Check that the actual split ratio matches the intended ratio. If you expect 50/50 but observe 52/48, something is wrong with your randomisation. Run a chi-squared test: $\chi^2 = \sum\frac{(O_i - E_i)^2}{E_i}$. SRM invalidates the entire experiment.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "SRM is the first check before analysing any experiment. If the split ratio is wrong, your randomisation is broken, and no amount of statistical analysis can save the results." For experts: "Common SRM causes: bot traffic, caching, redirect issues, session boundary problems."
+  </aside>
+</section>
+
+<section>
+  <h2>Common A/B Testing Mistakes</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Mistake</th><th>Consequence</th><th>Prevention</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Peeking</strong> (checking results early)</td><td>Inflated false positive rate (up to 30%!)</td><td>Fixed sample size or sequential testing</td></tr>
+      <tr><td><strong>Underpowered test</strong></td><td>"No effect" when there is one</td><td>Calculate sample size in advance</td></tr>
+      <tr><td><strong>Multiple comparisons</strong></td><td>False positives from testing many metrics</td><td>Bonferroni/FDR correction</td></tr>
+      <tr><td><strong>Novelty effect</strong></td><td>Short-term boost that fades</td><td>Run for full business cycle (2+ weeks)</td></tr>
+      <tr><td><strong>Contamination</strong></td><td>Users see both variants</td><td>User-level (not session-level) assignment</td></tr>
+      <tr><td><strong>SUTVA violation</strong></td><td>Users influence each other</td><td>Cluster randomisation</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Peeking is the number one mistake. If you check your experiment daily and stop when you see p < 0.05, your actual false positive rate can be 30% or higher — not 5%." Use this to motivate sequential testing (next section).
+  </aside>
+</section>
+
+<section>
+  <h2>Novelty, Primacy, and Network Effects</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Novelty Effect</h3>
+      <p style="font-size:0.85em;">Users engage more with something new simply because it IS new. Metrics inflate initially, then decay to true level. <strong>Mitigation:</strong> run experiments for 2+ weeks, analyse time-decayed effects.</p>
+    </div>
+    <div class="col">
+      <h3>Primacy Effect</h3>
+      <p style="font-size:0.85em;">Users prefer what they are used to. A change looks bad initially because users resist change, not because it IS bad. <strong>Mitigation:</strong> analyse new users separately (no prior exposure).</p>
+    </div>
+  </div>
+  <div class="callout callout-advanced" style="margin-top:12px;">
+    <strong>Network Effects (SUTVA Violation):</strong> If treated users interact with control users (social networks, marketplaces), treatment effects "leak" across groups. The Stable Unit Treatment Value Assumption (SUTVA) is violated. <strong>Solutions:</strong> cluster randomisation (randomise by city/network), switchback experiments (alternate treatment over time), ego-network randomisation.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Network effects are the biggest challenge in modern A/B testing. If you show a new feature to half your marketplace sellers but they compete with the control sellers, you cannot cleanly separate the effects." For experts: "Graph cluster randomisation (GCR) partitions the social graph into clusters and randomises at the cluster level."
+  </aside>
+</section>
+
+<section>
+  <h2>Switchback and Geo Experiments</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Switchback Experiments</h3>
+      <ul style="font-size:0.85em;">
+        <li>Alternate between treatment and control over <strong>time periods</strong></li>
+        <li>Same population, different times</li>
+        <li>Used for marketplace/network effects</li>
+        <li>Example: Uber uses switchback for pricing experiments</li>
+        <li>Requires careful carryover analysis</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Geo Experiments</h3>
+      <ul style="font-size:0.85em;">
+        <li>Randomise at the <strong>geographic level</strong> (city, region)</li>
+        <li>Entire cities are treatment or control</li>
+        <li>Eliminates within-market contamination</li>
+        <li>Small sample size (few cities) = low power</li>
+        <li>Often combined with synthetic control for analysis</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Switchback and geo experiments are the industry solutions for situations where user-level randomisation is impossible — marketplaces, ride-sharing, content platforms where users interact."
+  </aside>
+</section>
+
+<section>
+  <h2>Experiment Design: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: ExperimentTracker</h3>
+    <pre><code class="language-python">from kailash_ml import ExperimentTracker
+
+tracker = ExperimentTracker()
+
+# Create and track an experiment
+with tracker.create_experiment("checkout_flow_v2") as exp:
+    exp.log_param("treatment", "new_checkout")
+    exp.log_param("control", "old_checkout")
+    exp.log_param("sample_size_per_group", 10000)
+    exp.log_param("mde", 0.005)  # 0.5 percentage point
+
+    # After running the experiment
+    exp.log_metric("control_conversion", 0.032)
+    exp.log_metric("treatment_conversion", 0.038)
+    exp.log_metric("p_value", 0.003)
+    exp.log_metric("effect_size", 0.006)
+
+# Compare across experiments
+tracker.compare_runs(["checkout_v1", "checkout_v2", "checkout_v3"])</code></pre>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "ExperimentTracker gives you a structured record of every experiment: parameters, metrics, and comparison tools. Every decision is logged, comparable, and reproducible." Bridge slide.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION H: CAUSAL INFERENCE (Slides 176-215)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>H. Causal Inference</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.1em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:30px;">"When you cannot run an experiment, causal inference lets you reason about cause and effect from observational data."</p>
+  <p style="text-align:center;margin-top:16px;">This section covers the two major frameworks (Rubin and Pearl) and the key methods used in industry.</p>
+  <aside class="notes">
+    Time: ~1 min. Section header. "A/B tests are the gold standard, but you cannot always randomise. You cannot randomly assign people to smoke or not smoke. You cannot randomly assign cities to get a new policy. Causal inference methods let you estimate causal effects from observational data."
+  </aside>
+</section>
+
+<section>
+  <h2>Rubin's Potential Outcomes Framework</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\tau_i = Y_i(1) - Y_i(0)$$
+    <div class="annotation">
+      Individual treatment effect = outcome under treatment minus outcome under control<br/>
+      <strong>The Fundamental Problem:</strong> We can NEVER observe both $Y_i(1)$ and $Y_i(0)$ for the same individual
+    </div>
+  </div>
+  <div class="columns" style="margin-top:12px;">
+    <div class="col">
+      <h3>Key Estimands</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>ATE</strong> = $E[\tau_i]$ — Average Treatment Effect (everyone)</li>
+        <li><strong>ATT</strong> = $E[\tau_i | D_i=1]$ — Effect on the Treated</li>
+        <li><strong>ATU</strong> = $E[\tau_i | D_i=0]$ — Effect on the Untreated</li>
+        <li><strong>CATE</strong> = $E[\tau_i | X_i = x]$ — Conditional (heterogeneous)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-foundations">
+        <strong>Plain English:</strong> For each person, there are two possible futures — one where they get the treatment, one where they do not. The treatment effect is the difference. But we can only see ONE future — the one that actually happened. Causal inference estimates the unseen future.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "This is the foundational framework of modern causal inference. The fundamental problem is that we never see the counterfactual — what WOULD have happened if we had done something different." Beginners: "Imagine two parallel universes — in one you took the medicine, in the other you didn't. The treatment effect is the difference. But you only live in one universe."
+  </aside>
+</section>
+
+<section>
+  <h2>Propensity Score Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$e(X) = P(D = 1 | X) \quad \text{(Propensity Score)}$$
+    <div class="annotation">Probability of receiving treatment, given observed covariates $X$</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Propensity Score Matching</h3>
+      <ul style="font-size:0.85em;">
+        <li>Estimate $e(X)$ with logistic regression</li>
+        <li>Match treated units with control units that have similar $e(X)$</li>
+        <li>Compare outcomes within matched pairs</li>
+        <li>Intuition: "apples to apples" comparison</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Inverse Propensity Weighting (IPW)</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        $$\hat{\tau}_{\text{IPW}} = \frac{1}{n}\sum_{i=1}^{n}\left[\frac{D_i Y_i}{e(X_i)} - \frac{(1-D_i)Y_i}{1-e(X_i)}\right]$$
+      </div>
+      <p style="font-size:0.82em;">Weight each observation by the inverse of its probability of receiving the treatment it actually received. Upweights rare treatment assignments.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Propensity score methods answer: what if treatment and control groups were comparable? By matching on the probability of treatment, we create a pseudo-randomised comparison." For experts: "IPW is unbiased if the propensity model is correct. Matching is biased but more robust to misspecification."
+  </aside>
+</section>
+
+<section>
+  <h2>Doubly Robust Estimation</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\hat{\tau}_{\text{DR}} = \frac{1}{n}\sum_{i=1}^{n}\left[\hat{\mu}_1(X_i) - \hat{\mu}_0(X_i) + \frac{D_i(Y_i - \hat{\mu}_1(X_i))}{e(X_i)} - \frac{(1-D_i)(Y_i - \hat{\mu}_0(X_i))}{1-e(X_i)}\right]$$
+    <div class="annotation">
+      <span class="term-output">$\hat{\mu}_d(X)$</span> = outcome model, <span class="term-param">$e(X)$</span> = propensity model
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Doubly robust = consistent if EITHER model is correct.</strong> If the propensity model is wrong but the outcome model is right, the estimate is still valid. If the outcome model is wrong but the propensity model is right, still valid. Both wrong = biased. This is the recommended approach in practice.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Doubly robust estimation is the state of the art for observational causal inference. It gives you two chances to be right." For experts: "The DR estimator also achieves the semiparametric efficiency bound when both models are correct."
+  </aside>
+</section>
+
+<section>
+  <h2>Pearl's Causal DAGs</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Directed Acyclic Graphs (DAGs) represent causal relationships visually.</p>
+  <div style="text-align:center;margin:20px 0;font-size:0.95em;">
+    <span class="dag-node confounder">Z</span>
+    <span class="dag-arrow">&rarr;</span>
+    <span class="dag-node treatment">T</span>
+    <span class="dag-arrow">&rarr;</span>
+    <span class="dag-node outcome">Y</span>
+    <br/><br/>
+    <span style="color:#64748B;">Z also &rarr; Y (confounder creates back-door path)</span>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Backdoor Criterion</h3>
+      <p style="font-size:0.85em;">To identify the causal effect of T on Y, block all <strong>backdoor paths</strong> (paths from T to Y through common causes) by conditioning on the right variables.</p>
+    </div>
+    <div class="col">
+      <h3>d-Separation</h3>
+      <p style="font-size:0.85em;">Two variables are d-separated if all paths between them are blocked. Conditioning on a collider <strong>opens</strong> a path (do not condition on colliders!).</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Pearl's framework gives a visual language for causal reasoning. Draw the DAG, identify backdoor paths, condition on the right variables." Beginners: "Think of the DAG as a map showing which things cause which other things. The arrows show the direction of causation." For experts: "The front-door criterion is useful when you cannot observe the confounder but can observe a mediator."
+  </aside>
+</section>
+
+<section>
+  <h2>Difference-in-Differences (DiD)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\hat{\tau}_{\text{DiD}} = (\bar{Y}_{T,\text{post}} - \bar{Y}_{T,\text{pre}}) - (\bar{Y}_{C,\text{post}} - \bar{Y}_{C,\text{pre}})$$
+    <div class="annotation">Treatment effect = (change in treatment group) - (change in control group)</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>How It Works</h3>
+      <ul style="font-size:0.85em;">
+        <li>Compare <strong>two groups</strong> (treatment vs control)</li>
+        <li>At <strong>two time points</strong> (before vs after intervention)</li>
+        <li>Subtract the time trend (captured by control)</li>
+        <li>What remains = causal effect of treatment</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Key Assumption</h3>
+      <div class="callout callout-warning" style="font-size:0.9em;">
+        <strong>Parallel Trends:</strong> Absent treatment, both groups would have followed the same trend. If trends diverge pre-treatment, DiD is invalid. Visualise pre-treatment trends to check.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "DiD is the workhorse of policy evaluation. Did a new law reduce crime? Compare the treated state with untreated states, before and after the law." Draw the classic DiD diagram on the board — two parallel lines, one gets a treatment, measure the gap. "The parallel trends assumption is crucial. Always plot pre-treatment data to verify."
+  </aside>
+</section>
+
+<section>
+  <h2>DiD: Regression Formulation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$Y_{it} = \beta_0 + \beta_1 \text{Treat}_i + \beta_2 \text{Post}_t + \beta_3 (\text{Treat}_i \times \text{Post}_t) + \epsilon_{it}$$
+    <div class="annotation">
+      <span class="term-param">$\beta_3$</span> = DiD estimator = causal effect of treatment
+    </div>
+  </div>
+  <table style="font-size:0.82em;">
+    <thead><tr><th>Coefficient</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>$\beta_0$</td><td>Control group, pre-period baseline</td></tr>
+      <tr><td>$\beta_1$</td><td>Baseline difference between treatment and control</td></tr>
+      <tr><td>$\beta_2$</td><td>Time trend (common to both groups)</td></tr>
+      <tr><td>$\beta_3$</td><td><strong>Treatment effect</strong> — the causal parameter of interest</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Placebo tests:</strong> Run DiD on pre-treatment periods (where there should be no effect). If $\beta_3 \neq 0$ in the pre-period, parallel trends is violated. Also test with fake treatment dates and alternative control groups.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The regression formulation is more flexible — you can add covariates, fixed effects, and cluster standard errors." For experts: "For staggered treatment adoption, use the Callaway-Sant'Anna estimator to avoid negative weighting bias."
+  </aside>
+</section>
+
+<section>
+  <h2>Regression Discontinuity Design (RDD)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$\tau_{\text{RDD}} = \lim_{x \downarrow c} E[Y|X=x] - \lim_{x \uparrow c} E[Y|X=x]$$
+    <div class="annotation">Treatment effect = jump in outcome at the threshold $c$</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Sharp RDD</h3>
+      <ul style="font-size:0.85em;">
+        <li>Treatment assigned if $X \geq c$ (deterministic)</li>
+        <li>Example: scholarship if GPA &geq; 3.5</li>
+        <li>Compare outcomes just above and just below cutoff</li>
+        <li>Units near cutoff are "as-if" randomly assigned</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Fuzzy RDD</h3>
+      <ul style="font-size:0.85em;">
+        <li>Cutoff changes <em>probability</em> of treatment</li>
+        <li>Example: recommended (not required) programme</li>
+        <li>Uses cutoff as instrumental variable</li>
+        <li>Estimates LATE (Local Average Treatment Effect)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "RDD exploits an arbitrary threshold. Students with GPA 3.49 and 3.51 are essentially identical — but one gets a scholarship and the other doesn't. That threshold creates a natural experiment." For experts: "Bandwidth selection is crucial. Too narrow = high variance. Too wide = bias from non-comparable units."
+  </aside>
+</section>
+
+<section>
+  <h2>Instrumental Variables</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div style="text-align:center;margin:16px 0;">
+    <span class="dag-node instrument">Z</span>
+    <span class="dag-arrow">&rarr;</span>
+    <span class="dag-node treatment">T</span>
+    <span class="dag-arrow">&rarr;</span>
+    <span class="dag-node outcome">Y</span>
+    <span style="display:block;margin-top:8px;font-size:0.8em;color:#64748B;">Z &rarr; T &rarr; Y (but Z does NOT directly affect Y)</span>
+  </div>
+  <div class="equation-box">
+    $$\hat{\tau}_{\text{2SLS}} = \frac{\text{Cov}(Y, Z)}{\text{Cov}(T, Z)} = \frac{\text{Reduced form}}{\text{First stage}}$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Two Conditions</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Relevance:</strong> Z affects T ($\text{Cov}(Z,T) \neq 0$)</li>
+        <li><strong>Exclusion:</strong> Z affects Y ONLY through T</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Classic Example</h3>
+      <p style="font-size:0.85em;">Effect of education on earnings. Instrument: proximity to college. Living near a college increases education (relevance) but does not directly affect earnings (exclusion — debatable).</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Finding a valid instrument is the hardest part of IV. The exclusion restriction is untestable — it requires domain knowledge and argumentation." For experts: "Weak instruments (F-stat < 10) produce biased estimates. Use Anderson-Rubin confidence intervals for robust inference."
+  </aside>
+</section>
+
+<section>
+  <h2>Synthetic Control Method</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>When you have <strong>one treated unit</strong> (a country, a city, a company), construct a "synthetic" control by optimally weighting multiple untreated units.</p>
+  <div class="equation-box">
+    $$\hat{Y}_{1t}^{N} = \sum_{j=2}^{J+1} w_j^* Y_{jt}, \quad \text{s.t. } w_j \geq 0, \sum w_j = 1$$
+    <div class="annotation">Synthetic control = weighted average of donor units that best matches treated unit pre-treatment</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.85em;">
+        <li>Weights chosen to match pre-treatment outcomes</li>
+        <li>Treatment effect = actual minus synthetic post-treatment</li>
+        <li>Inference via permutation: apply to each donor unit</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-advanced" style="font-size:0.85em;">
+        <strong>Abadie et al. (2010):</strong> Estimated the effect of California's tobacco control programme using a synthetic California constructed from other states. This method is now standard for policy evaluation with a single treated unit.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Synthetic control is brilliant when you cannot randomise and only have one treated unit. You build a counterfactual by combining untreated units." For experts: "Recent work combines DiD and synthetic control in a doubly robust framework (Arkhangelsky et al.)."
+  </aside>
+</section>
+
+<section>
+  <h2>CUPED: Variance Reduction for Experiments</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    $$Y_{\text{adj}} = Y - \theta(X - \bar{X})$$
+    <div class="annotation">
+      $Y$ = post-experiment metric, $X$ = pre-experiment metric (covariate), $\theta = \text{Cov}(Y,X)/\text{Var}(X)$
+    </div>
+  </div>
+  <div class="equation-box">
+    $$\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)(1 - \rho^2)$$
+    <div class="annotation">
+      <span class="term-param">$\rho$</span> = correlation between Y and X. If $\rho = 0.7$, variance reduced by $1 - 0.49 = 51\%$
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Plain English:</strong> CUPED uses pre-experiment data (what users did BEFORE the experiment) to reduce noise in the experiment measurement. If a user was already a heavy spender before the test, CUPED adjusts for that, making the treatment effect easier to detect.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "CUPED is one of the most impactful innovations in A/B testing. By using pre-experiment behaviour as a covariate, it can cut variance by 50% or more — which means you need half the sample size." Walk through the proof: $\text{Var}(Y - \theta X) = \text{Var}(Y) - 2\theta\text{Cov}(Y,X) + \theta^2\text{Var}(X)$. Setting derivative to zero: $\theta^* = \text{Cov}(Y,X)/\text{Var}(X)$.
+  </aside>
+</section>
+
+<section>
+  <h2>CUPED: Derivation of Optimal Theta</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\text{Var}(Y_{\text{adj}}) = \text{Var}(Y) - 2\theta\text{Cov}(Y,X) + \theta^2\text{Var}(X)$$
+  </div>
+  <p style="font-size:0.85em;">Take the derivative with respect to $\theta$ and set to zero:</p>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\frac{d}{d\theta}\text{Var}(Y_{\text{adj}}) = -2\text{Cov}(Y,X) + 2\theta\text{Var}(X) = 0$$
+    $$\theta^* = \frac{\text{Cov}(Y,X)}{\text{Var}(X)}$$
+  </div>
+  <p style="font-size:0.85em;">Substituting back:</p>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)\left(1 - \frac{\text{Cov}(Y,X)^2}{\text{Var}(Y)\text{Var}(X)}\right) = \text{Var}(Y)(1 - \rho^2)$$
+  </div>
+  <div class="callout callout-advanced">
+    <strong>CUPAC extension:</strong> CUPAC (Controlled-experiment Using Predictions as Covariates) replaces $X$ with ML model predictions, achieving even greater variance reduction when the model is predictive.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is one of the cleanest derivations in statistics. The optimal theta is exactly the OLS coefficient. The variance reduction is exactly one minus r-squared." For experts: "Recent work (2025) combines pre-experiment and in-experiment data for even greater variance reduction."
+  </aside>
+</section>
+
+<section>
+  <h2>Double/Debiased Machine Learning</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Chernozhukov et al. (2018): Use ML to estimate nuisance parameters, then use residuals for causal estimation.</p>
+  <div style="margin:12px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Partial out X from Y:</strong> $\tilde{Y} = Y - \hat{m}(X)$ using ML model for $E[Y|X]$</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Partial out X from D:</strong> $\tilde{D} = D - \hat{e}(X)$ using ML model for $E[D|X]$</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Regress residuals:</strong> $\hat{\tau} = \frac{\sum \tilde{D}_i \tilde{Y}_i}{\sum \tilde{D}_i^2}$</span></div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Key innovation:</strong> Cross-fitting. Split data into K folds. For each fold, train ML models on the other K-1 folds and predict on the held-out fold. This prevents overfitting bias and ensures $\sqrt{n}$-consistency of $\hat{\tau}$ even though the ML nuisance estimates converge at slower rates.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Double ML allows you to use ANY ML model (random forests, neural nets, boosting) for the nuisance estimation while still getting valid confidence intervals for the causal parameter. This is the bridge between ML and causal inference." For experts: "The Neyman orthogonality condition ensures that the estimation error in the nuisance parameters does not contaminate the causal estimate."
+  </aside>
+</section>
+
+<section>
+  <h2>Causal Forests for Heterogeneous Effects</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Wager &amp; Athey (2018): Estimate <strong>CATE</strong> — how treatment effects vary across subgroups.</p>
+  <div class="equation-box">
+    $$\hat{\tau}(x) = E[Y(1) - Y(0) | X = x]$$
+    <div class="annotation">Conditional Average Treatment Effect: the treatment effect for individuals with characteristics $x$</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>How It Works</h3>
+      <ul style="font-size:0.85em;">
+        <li>Modified random forest: splits to maximise treatment effect heterogeneity</li>
+        <li>Honest estimation: separate sample for splitting and estimation</li>
+        <li>Pointwise confidence intervals via infinitesimal jackknife</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Business Application</h3>
+      <p style="font-size:0.85em;"><strong>"Who benefits most from this treatment?"</strong> Instead of one average effect, get personalised treatment effects. Example: which customers respond to a discount? Target only those customers — save money and increase impact.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Causal forests are the state of the art for personalised treatment effect estimation. They answer not just 'does it work?' but 'for WHOM does it work?'" For experts: "The honesty condition ensures that the trees are not overfitting to the treatment assignment. Use the grf package in R or EconML in Python."
+  </aside>
+</section>
+
+<section>
+  <h2>Bayesian A/B Testing</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="equation-box">
+    $$P(\theta_B > \theta_A | \text{data}) = \int_0^1 \int_0^{\theta_B} p(\theta_A | \text{data}) \, d\theta_A \, p(\theta_B | \text{data}) \, d\theta_B$$
+    <div class="annotation">Posterior probability that treatment B is better than A</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Bayesian Approach</h3>
+      <ul style="font-size:0.85em;">
+        <li>Prior: Beta(1,1) for conversion rates</li>
+        <li>Posterior: Beta($\alpha + s$, $\beta + f$)</li>
+        <li>Decision: $P(B > A) > 0.95$</li>
+        <li>Natural stopping: compute probability at any time</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Advantages over Frequentist</h3>
+      <ul style="font-size:0.85em;">
+        <li>No peeking problem — posterior valid at any point</li>
+        <li>Direct probability statements ("95% chance B is better")</li>
+        <li>Expected loss: "how much do we lose by choosing wrong?"</li>
+        <li>Natural incorporation of prior knowledge</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Bayesian A/B testing is gaining rapid adoption because it solves the peeking problem. You can check results at any time without inflating false positive rates." For experts: "The expected loss criterion — 'choose B if expected loss from choosing B is below threshold' — is often more actionable than the posterior probability."
+  </aside>
+</section>
+
+<section>
+  <h2>Sequential Testing: Always-Valid P-Values</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Sequential testing provides valid inference <strong>at every point in time</strong> — you can check your experiment daily without inflating false positives.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>The Peeking Problem</h3>
+      <p style="font-size:0.85em;">With fixed-horizon tests, checking daily inflates false positive rate from 5% to 30%+. Sequential tests construct confidence sequences that are valid at <strong>every sample size</strong>.</p>
+    </div>
+    <div class="col">
+      <h3>Methods</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>mSPRT:</strong> Mixture Sequential Probability Ratio Test (Johari et al.)</li>
+        <li><strong>Alpha spending:</strong> O'Brien-Fleming, Pocock boundaries</li>
+        <li><strong>Confidence sequences:</strong> Time-uniform confidence intervals</li>
+        <li><strong>E-values:</strong> Measure of evidence (Grunwald et al.)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Industry adoption (2025-2026):</strong> Always-valid inference is now standard in major experimentation platforms. It is the recommended approach for any experiment where you want to monitor results before the planned end date.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Sequential testing is the modern solution to the peeking problem. It lets you have your cake and eat it too — continuous monitoring with valid inference." For experts: "mSPRT uses a mixture of likelihood ratios over the effect size parameter, producing an anytime-valid p-value."
+  </aside>
+</section>
+
+<section>
+  <h2>Causal Inference Decision Guide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Situation</th><th>Method</th><th>Key Assumption</th></tr></thead>
+    <tbody>
+      <tr><td>Can randomise</td><td>A/B test (RCT)</td><td>Proper randomisation</td></tr>
+      <tr><td>Cannot randomise, rich covariates</td><td>Propensity score / Doubly Robust</td><td>No unmeasured confounders</td></tr>
+      <tr><td>Policy change, before/after data</td><td>Difference-in-Differences</td><td>Parallel trends</td></tr>
+      <tr><td>Arbitrary threshold determines treatment</td><td>Regression Discontinuity</td><td>No manipulation at cutoff</td></tr>
+      <tr><td>Have instrument</td><td>Instrumental Variables</td><td>Exclusion restriction</td></tr>
+      <tr><td>Single treated unit</td><td>Synthetic Control</td><td>Pre-treatment fit</td></tr>
+      <tr><td>High-dimensional confounders</td><td>Double ML</td><td>Sparsity or smoothness</td></tr>
+      <tr><td>Heterogeneous effects</td><td>Causal Forests</td><td>Unconfoundedness</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "This is your decision tree for causal inference. Start at the top: can you randomise? If yes, run an RCT. If no, work down the list based on your data structure and assumptions." Cheat sheet slide.
+  </aside>
+</section>
+
+<section>
+  <h2>Causal Inference: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: Causal Experiments</h3>
+    <pre><code class="language-python">from kailash_ml import ExperimentTracker
+
+tracker = ExperimentTracker()
+
+# Log a causal analysis
+with tracker.create_experiment("pricing_did_analysis") as exp:
+    exp.log_param("method", "difference_in_differences")
+    exp.log_param("treatment_group", "singapore")
+    exp.log_param("control_group", "synthetic_control")
+    exp.log_param("pre_period", "2023-01 to 2023-06")
+    exp.log_param("post_period", "2023-07 to 2024-01")
+
+    # Log causal estimates
+    exp.log_metric("att_estimate", 0.034)
+    exp.log_metric("att_se", 0.012)
+    exp.log_metric("att_pvalue", 0.004)
+    exp.log_metric("parallel_trends_pvalue", 0.72)  # good
+
+# Compare methods on the same question
+tracker.compare_runs(["pricing_did", "pricing_sc", "pricing_dml"])</code></pre>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "ExperimentTracker logs causal analyses the same way it logs A/B tests. You can compare different causal methods on the same question and see which assumptions hold." Bridge slide.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION I: FEATURE STORES AT SCALE (Slides 216-228)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>I. Feature Stores &amp; Engineering at Scale</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.1em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"A feature store is to ML what a database is to applications — the single source of truth."</p>
+  <aside class="notes">
+    Time: ~1 min. Section header. "We have been engineering features all session. Now: how do you manage them in production? How do you ensure consistency, reuse, and correctness at scale?"
+  </aside>
+</section>
+
+<section>
+  <h2>Why Feature Stores?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Without a Feature Store</h3>
+      <ul style="font-size:0.85em;">
+        <li>Every team computes features independently</li>
+        <li>Same feature, different definitions</li>
+        <li>"customer_lifetime_value" means 3 different things</li>
+        <li>Training uses one pipeline, serving uses another</li>
+        <li>Point-in-time correctness? Manual discipline (fails)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>With a Feature Store</h3>
+      <ul style="font-size:0.85em;">
+        <li>Single source of truth for all features</li>
+        <li>Compute once, reuse across teams/models</li>
+        <li>Consistent definitions via FeatureSchema</li>
+        <li>Same pipeline for training and serving</li>
+        <li>Point-in-time correctness enforced structurally</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The feature store solves the 'works in training, fails in production' problem. If training and serving use different feature computation logic, your model is serving on data it was never trained on."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Store Architecture</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div style="display:flex;align-items:center;gap:0;margin:20px 0;font-size:0.85em;">
+    <div style="flex:1;background:#EFF6FF;border:2px solid var(--ascent-theory);border-radius:8px;padding:14px;text-align:center;">
+      <strong>Feature Pipelines</strong><br/>Transform raw data &rarr; features
+    </div>
+    <div style="flex:0 0 40px;text-align:center;font-size:1.5em;color:var(--ascent-primary);">&rarr;</div>
+    <div style="flex:1;background:#F0FDFA;border:2px solid var(--ascent-primary);border-radius:8px;padding:14px;text-align:center;">
+      <strong>Offline Store</strong><br/>Historical features for training<br/>(data warehouse)
+    </div>
+    <div style="flex:0 0 40px;text-align:center;font-size:1.5em;color:var(--ascent-primary);">&rarr;</div>
+    <div style="flex:1;background:#F0FDF4;border:2px solid var(--ascent-success);border-radius:8px;padding:14px;text-align:center;">
+      <strong>Online Store</strong><br/>Latest features for serving<br/>(low-latency cache)
+    </div>
+  </div>
+  <div class="columns" style="margin-top:12px;">
+    <div class="col">
+      <h3>Feature Registry</h3>
+      <ul style="font-size:0.82em;">
+        <li>Catalogue of all features</li>
+        <li>Owner, description, schema</li>
+        <li>Lineage: what raw data created this feature?</li>
+        <li>Usage: which models use this feature?</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Feature Monitoring</h3>
+      <ul style="font-size:0.82em;">
+        <li>Detect feature drift over time</li>
+        <li>Alert on schema violations</li>
+        <li>Track feature freshness</li>
+        <li>Monitor serving latency</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The dual-store architecture (offline + online) serves two different use cases. Training needs historical data with point-in-time correctness. Serving needs the latest values with low latency."
+  </aside>
+</section>
+
+<section>
+  <h2>Point-in-Time Correctness in Feature Stores</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="timeline">
+    <div class="event success">t=Jan</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event success">t=Feb</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event" style="background:#FAF5FF;border-color:var(--ascent-advanced);">t=Mar<br/>(prediction)</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">t=Apr</div>
+    <span class="arrow-right">&rarr;</span>
+    <div class="event">t=May</div>
+  </div>
+  <div class="callout callout-foundations" style="margin-top:12px;">
+    <strong>When requesting features for a prediction at t=March:</strong>
+    <ul style="margin:4px 0;">
+      <li>Feature store returns values as they were known at March</li>
+      <li>April and May data is excluded — even though it exists now</li>
+      <li>This prevents temporal leakage automatically</li>
+    </ul>
+  </div>
+  <div class="callout callout-kailash" style="margin-top:8px;">
+    <strong>Kailash FeatureStore</strong> timestamps every feature value. When you call <code>store.get_features(entity_id, timestamp)</code>, only values available at that timestamp are returned.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the feature store's killer feature — pun intended. Point-in-time correctness is enforced by the system, not by developer discipline." Connect back to Section E on leakage.
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Versioning and Lineage</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Versioning</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>v1:</strong> remaining_lease = 99 - (year - lease_commence)</li>
+        <li><strong>v2:</strong> remaining_lease = lease_end_date - today</li>
+        <li>Model A uses v1, Model B uses v2</li>
+        <li>Both versions coexist — no breaking changes</li>
+        <li>Gradual migration: new models use v2, old models keep v1</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Lineage</h3>
+      <ul style="font-size:0.85em;">
+        <li>Track: raw data &rarr; transformation &rarr; feature</li>
+        <li>Upstream change? Know which features and models are affected</li>
+        <li>Feature breaks? Trace back to the raw data change</li>
+        <li>Audit: who created this feature, when, why?</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Versioning prevents breaking changes. Lineage enables debugging. Together they give you governance over your feature ecosystem."
+  </aside>
+</section>
+
+<section>
+  <h2>Feature Stores: Kailash Bridge</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory to Engine: FeatureStore</h3>
+    <pre><code class="language-python">from kailash_ml import FeatureStore, FeatureSchema, FeatureField
+
+# Define and register a feature set
+schema = FeatureSchema(
+    name="hdb_features_v2",
+    features=[
+        FeatureField("remaining_lease_years", dtype="float"),
+        FeatureField("price_psm_rolling_3m", dtype="float"),
+        FeatureField("is_mature_estate", dtype="bool"),
+    ]
+)
+
+store = FeatureStore()
+store.register(df, schema, timestamp_col="transaction_date")
+
+# Retrieve with point-in-time correctness
+features = store.get_features(
+    entity_ids=["flat_001", "flat_002"],
+    timestamp="2024-03-15",    # only data available at this date
+    feature_names=["remaining_lease_years", "price_psm_rolling_3m"],
+)</code></pre>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "FeatureStore is the engine that makes everything we discussed structural. Define your schema, register your features, and let the store handle versioning, point-in-time correctness, and governance." Bridge slide.
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION J: KAILASH ENGINE DEEP DIVE (Slides 229-248)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>J. Kailash Engine Deep Dive</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.1em;color:var(--ascent-depth);font-style:italic;text-align:center;margin-top:40px;">"Every concept today maps to a Kailash engine. Let us see how."</p>
+  <aside class="notes">
+    Time: ~1 min. "This section consolidates all the theory-to-engine connections into a comprehensive reference."
+  </aside>
+</section>
+
+<section>
+  <h2>FeatureEngineer: Generate + Select</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>.generate() — Feature Creation</h3>
+      <pre><code class="language-python">fe = FeatureEngineer()
+
+result = fe.generate(
+    df,
+    numeric_scaling="robust",
+    categorical_encoding="target",
+    temporal_features=True,
+    cyclical_encoding=["hour", "month"],
+    interaction_features=[
+        "area * floor",
+        "rooms / area",
+    ],
+    missing_indicators=True,
+)</code></pre>
+    </div>
+    <div class="col">
+      <h3>.select() — Feature Selection</h3>
+      <pre><code class="language-python">selected = fe.select(
+    df,
+    target="price",
+    methods=[
+        "variance",
+        "mutual_info",
+        "permutation",
+        "boruta",
+    ],
+    n_features=25,
+    cv_folds=5,
+)
+
+# Ranked features with scores
+selected.ranking</code></pre>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "FeatureEngineer is your two-in-one tool: generate features from raw data, then select the best ones. Both methods return rich metadata about what was done and why."
+  </aside>
+</section>
+
+<section>
+  <h2>FeatureSchema + FeatureField</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash_ml import FeatureSchema, FeatureField
+
+schema = FeatureSchema(
+    name="hdb_resale_v3",
+    description="HDB resale transaction features for price prediction",
+    features=[
+        FeatureField("floor_area_sqm", dtype="float", min_val=20, max_val=300,
+                     description="Floor area in square metres"),
+        FeatureField("remaining_lease", dtype="float", min_val=0, max_val=99,
+                     description="Remaining lease in years"),
+        FeatureField("town", dtype="category",
+                     allowed_values=["Tampines", "Bishan", "Woodlands", ...],
+                     description="HDB town"),
+        FeatureField("storey_range", dtype="ordinal",
+                     ordered_values=["01 TO 03", "04 TO 06", "07 TO 09", ...]),
+    ]
+)
+
+# Validate data against schema
+validation_report = schema.validate(df)
+print(validation_report.violations)  # list of constraint violations</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Typed contracts:</strong> FeatureSchema catches data quality issues at definition time, not after the model has trained on garbage.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "FeatureSchema is the contract between data producers and data consumers. It declares what a feature should look like, and validates that reality matches the contract."
+  </aside>
+</section>
+
+<section>
+  <h2>FeatureStore: Full Lifecycle</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div style="margin:12px 0;">
+    <div class="step-row"><span class="step-number">1</span><span><strong>Register:</strong> <code>store.register(df, schema)</code> — define features and ingest data</span></div>
+    <div class="step-row"><span class="step-number">2</span><span><strong>Retrieve:</strong> <code>store.get_features(ids, timestamp)</code> — point-in-time correct</span></div>
+    <div class="step-row"><span class="step-number">3</span><span><strong>Version:</strong> <code>store.register(df, schema_v2)</code> — new version, old coexists</span></div>
+    <div class="step-row"><span class="step-number">4</span><span><strong>Monitor:</strong> <code>store.check_drift(feature, window)</code> — detect distribution changes</span></div>
+    <div class="step-row"><span class="step-number">5</span><span><strong>Serve:</strong> <code>store.get_online_features(ids)</code> — low-latency for inference</span></div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>The FeatureStore enforces:</strong> point-in-time correctness, schema validation, version management, and drift monitoring. These are structural guarantees, not manual discipline.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the full lifecycle. Register once, retrieve many times, version as definitions evolve, monitor for drift, serve in production."
+  </aside>
+</section>
+
+<section>
+  <h2>ExperimentTracker: Full API</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+
+tracker = ExperimentTracker()
+
+# Create experiment with context manager
+with tracker.create_experiment("feature_engineering_v3") as exp:
+    # Log parameters (what you did)
+    exp.log_param("encoding", "target_smoothed")
+    exp.log_param("selection_method", "boruta")
+    exp.log_param("n_features_selected", 25)
+
+    # Log metrics (what happened)
+    exp.log_metric("rmse", 45200)
+    exp.log_metric("r2", 0.89)
+    exp.log_metric("mae", 32100)
+
+    # Log artifacts (supporting evidence)
+    exp.log_artifact("feature_importance.html")
+    exp.log_artifact("shap_summary.html")
+
+# Compare across experiments
+comparison = tracker.compare_runs(
+    ["feature_eng_v1", "feature_eng_v2", "feature_eng_v3"]
+)
+print(comparison.best_run)   # best by primary metric
+print(comparison.table)      # side-by-side metrics</code></pre>
+  <aside class="notes">
+    Time: ~2 min. "ExperimentTracker is your lab notebook for ML. Every experiment is logged, comparable, and reproducible. When someone asks 'why did you choose target encoding over one-hot?', you can show them the experiment comparison."
+  </aside>
+</section>
+
+<section>
+  <h2>Theory-to-Engine Mapping: Complete Reference</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead><tr><th>Theory Concept</th><th>Engine</th><th>Method</th></tr></thead>
+    <tbody>
+      <tr><td>Feature type contracts</td><td>FeatureSchema</td><td><code>.validate(df)</code></td></tr>
+      <tr><td>Numeric scaling</td><td>FeatureEngineer</td><td><code>.generate(numeric_scaling=...)</code></td></tr>
+      <tr><td>Categorical encoding</td><td>FeatureEngineer</td><td><code>.generate(categorical_encoding=...)</code></td></tr>
+      <tr><td>Temporal features</td><td>FeatureEngineer</td><td><code>.generate(temporal_features=True)</code></td></tr>
+      <tr><td>Interaction features</td><td>FeatureEngineer</td><td><code>.generate(interaction_features=[...])</code></td></tr>
+      <tr><td>Variance/correlation filter</td><td>FeatureEngineer</td><td><code>.select(methods=["variance"])</code></td></tr>
+      <tr><td>Boruta / MI selection</td><td>FeatureEngineer</td><td><code>.select(methods=["boruta"])</code></td></tr>
+      <tr><td>Point-in-time retrieval</td><td>FeatureStore</td><td><code>.get_features(ids, timestamp)</code></td></tr>
+      <tr><td>Feature versioning</td><td>FeatureStore</td><td><code>.register(df, schema_v2)</code></td></tr>
+      <tr><td>Feature drift monitoring</td><td>FeatureStore</td><td><code>.check_drift(feature, window)</code></td></tr>
+      <tr><td>Experiment logging</td><td>ExperimentTracker</td><td><code>.log_param(), .log_metric()</code></td></tr>
+      <tr><td>Experiment comparison</td><td>ExperimentTracker</td><td><code>.compare_runs(ids)</code></td></tr>
+      <tr><td>Missing data handling</td><td>PreprocessingPipeline</td><td><code>.fit_transform(imputation=...)</code></td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "This is your complete cheat sheet for Module 2. Every row shows: the theory you learned, the engine that implements it, and the specific method call." Students should photograph this.
+  </aside>
+</section>
+
+<section>
+  <h2>ModelVisualizer: Experiment Insights</h2>
+  <span class="marker marker-theory">Theory</span>
+  <pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+# Visualise feature importance
+viz.feature_importance(model, feature_names, method="permutation")
+
+# Visualise experiment comparison
+viz.experiment_comparison(
+    tracker,
+    runs=["v1", "v2", "v3"],
+    metrics=["rmse", "r2", "mae"],
+)
+
+# Visualise feature distributions before/after engineering
+viz.distribution_comparison(
+    original_df, engineered_df,
+    features=["floor_area", "remaining_lease"],
+)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>ModelVisualizer</strong> generates interactive Plotly charts for feature importance, experiment comparison, and distribution analysis. Same engine from Module 1, new capabilities for Module 2.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "ModelVisualizer grows with you. In M1 it did histograms and scatter plots. Now it does feature importance charts and experiment comparisons."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION K: SYNTHESIS & CLOSING (Slides 249-264)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>K. Discussion Prompts</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="method-card">
+    <h4>Prompt 1: Feature Leakage Detection</h4>
+    <p>You are building a model to predict credit card fraud. Your model achieves 99.8% accuracy. One feature — "transaction_dispute_filed" — has the highest importance score. What do you do?</p>
+  </div>
+  <div class="method-card">
+    <h4>Prompt 2: Experiment Design</h4>
+    <p>Your company wants to test a new pricing strategy. But you operate in a marketplace where sellers interact with each other. A standard A/B test is proposed. What problems do you foresee, and how would you redesign the experiment?</p>
+  </div>
+  <div class="method-card">
+    <h4>Prompt 3: Feature Store Justification</h4>
+    <p>Your team lead says "we do not need a feature store — we have Jupyter notebooks." How would you explain the value of a feature store in business terms?</p>
+  </div>
+  <aside class="notes">
+    Time: ~5 min. Let students discuss in pairs. These prompts test whether students have internalised the key concepts: leakage detection (Prompt 1), SUTVA violation (Prompt 2), and operational ML (Prompt 3).
+  </aside>
+</section>
+
+<section>
+  <h2>Discussion Prompt: Causal Thinking</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="method-card">
+    <h4>Prompt 4: Correlation vs Causation</h4>
+    <p>Data shows that employees who use the company gym have 30% lower healthcare costs. The CEO wants to build a bigger gym to reduce costs. As the data scientist, what would you say? What analysis would you propose?</p>
+  </div>
+  <div class="method-card">
+    <h4>Prompt 5: Method Selection</h4>
+    <p>Singapore introduces a new public housing policy in January 2024. You want to measure its effect on resale prices. You cannot randomise. You have monthly data from 26 towns going back to 2020. Which causal inference method(s) would you use, and why?</p>
+  </div>
+  <aside class="notes">
+    Time: ~5 min. Prompt 4 tests causal thinking (selection bias — healthy people choose to exercise AND have lower costs). Prompt 5 tests method selection (DiD or synthetic control, depending on how many towns were affected).
+  </aside>
+</section>
+
+<section>
+  <h2>Lab Setup</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Dataset</h3>
+      <p style="font-size:0.85em;">Singapore HDB resale transactions — the same dataset from Module 1, now with feature engineering challenges.</p>
+      <pre><code class="language-python">from shared import ASCENTDataLoader
+loader = ASCENTDataLoader()
+df = loader.load("ascent02", "hdbprices.csv")</code></pre>
+    </div>
+    <div class="col">
+      <h3>Exercises</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Ex 1:</strong> Feature transformation (scaling, encoding)</li>
+        <li><strong>Ex 2:</strong> Feature selection (filter + wrapper)</li>
+        <li><strong>Ex 3:</strong> Data leakage detection</li>
+        <li><strong>Ex 4:</strong> A/B test design and analysis</li>
+        <li><strong>Ex 5:</strong> Causal inference (DiD)</li>
+        <li><strong>Ex 6:</strong> Feature Store lifecycle</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.85em;margin-top:12px;"><code>Open modules/ascent02/local/ex_1.py</code></p>
+  <aside class="notes">
+    Time: ~2 min. "Open your exercise files. Each exercise builds on the concepts we covered. Exercise 3 is especially important — you will identify and fix data leakage in a realistic scenario."
+  </aside>
+</section>
+
+<section>
+  <h2>Synthesis: What Everyone Should Remember</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="callout callout-foundations">
+    <strong>FOUNDATIONS — Everyone:</strong>
+    <ul>
+      <li>A feature is a column — an input to your model. Feature quality > algorithm choice.</li>
+      <li>Different feature types (numeric, categorical, temporal) require different treatments.</li>
+      <li>Data leakage makes models look perfect in testing and useless in production.</li>
+      <li>Point-in-time correctness: only use information available at prediction time.</li>
+      <li>Correlation is not causation. Proving causation requires experiments or causal inference.</li>
+      <li>Calculate sample size BEFORE running an experiment. Never peek without sequential testing.</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These six points are the foundation. If you remember nothing else from today, remember these."
+  </aside>
+</section>
+
+<section>
+  <h2>Synthesis: If You Followed the Maths</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="callout callout-theory">
+    <strong>THEORY — If you followed the maths:</strong>
+    <ul>
+      <li>Target encoding needs regularisation (smoothing, LOO, CatBoost) to prevent leakage.</li>
+      <li>Mutual information captures non-linear dependencies that correlation misses.</li>
+      <li>L1 (Lasso) drives coefficients to exactly zero — L2 (Ridge) does not. The geometry explains why.</li>
+      <li>CUPED reduces variance by $(1 - \rho^2)$ — the derivation is clean OLS.</li>
+      <li>DiD identifies causal effects under parallel trends; RDD under continuity at the cutoff.</li>
+      <li>Propensity score methods reweight observations to simulate randomisation.</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you followed the mathematical derivations, these are the key results. Each formula we derived has a direct implementation in Kailash."
+  </aside>
+</section>
+
+<section>
+  <h2>Synthesis: For the Experts</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="callout callout-advanced">
+    <strong>ADVANCED — For the experts:</strong>
+    <ul>
+      <li>Double ML uses cross-fitting to achieve $\sqrt{n}$-consistency despite slow ML nuisance estimation.</li>
+      <li>Causal forests estimate CATE with honest splitting — separate samples for tree structure and leaf estimation.</li>
+      <li>Always-valid p-values (mSPRT) solve the peeking problem with mixture sequential probability ratio tests.</li>
+      <li>Stability selection provides finite-sample false positive control over any base selector.</li>
+      <li>Doubly robust estimation is consistent if EITHER the propensity or outcome model is correct.</li>
+      <li>James-Stein shrinkage is the admissible target encoding estimator for 3+ categories (Stein's paradox).</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These are the cutting-edge insights. If you want to go deeper, the references are in the course materials."
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Cumulative Map — After Module 2</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>All Engines Used So Far</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.8em;">
+      <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;">
+        <strong>DataExplorer</strong><br/><span style="color:#64748B;">M1</span>
+      </div>
+      <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;">
+        <strong>PreprocessingPipeline</strong><br/><span style="color:#64748B;">M1, M2</span>
+      </div>
+      <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;">
+        <strong>ModelVisualizer</strong><br/><span style="color:#64748B;">M1, M2</span>
+      </div>
+      <div style="background:#F0FDFA;border-radius:8px;padding:10px 14px;border:2px solid var(--ascent-primary);">
+        <strong>FeatureEngineer</strong><br/><span style="color:var(--ascent-primary);">NEW in M2</span>
+      </div>
+      <div style="background:#F0FDFA;border-radius:8px;padding:10px 14px;border:2px solid var(--ascent-primary);">
+        <strong>FeatureSchema</strong><br/><span style="color:var(--ascent-primary);">NEW in M2</span>
+      </div>
+      <div style="background:#F0FDFA;border-radius:8px;padding:10px 14px;border:2px solid var(--ascent-primary);">
+        <strong>FeatureStore</strong><br/><span style="color:var(--ascent-primary);">NEW in M2</span>
+      </div>
+      <div style="background:#F0FDFA;border-radius:8px;padding:10px 14px;border:2px solid var(--ascent-primary);">
+        <strong>ExperimentTracker</strong><br/><span style="color:var(--ascent-primary);">NEW in M2</span>
+      </div>
+    </div>
+  </div>
+  <div class="callout callout-kailash" style="margin-top:12px;">
+    <strong>Next module (M3):</strong> TrainingPipeline, HyperparameterSearch, ModelRegistry — supervised ML from theory to production.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "Seven engines now. Four new this module. By the end of the programme, you will have used all 13 Kailash ML engines."
+  </aside>
+</section>
+
+<section>
+  <h2>Preview: Module 3 — Supervised ML</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What Is Coming</h3>
+      <ul>
+        <li>Bias-variance trade-off — full derivation</li>
+        <li>Decision trees &rarr; Random Forest &rarr; XGBoost</li>
+        <li>Class imbalance and calibration</li>
+        <li>SHAP: Shapley axioms from game theory</li>
+        <li>Model cards and responsible ML</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>New Engines</h3>
+      <ul>
+        <li><strong>TrainingPipeline</strong> — one-config model training</li>
+        <li><strong>HyperparameterSearch</strong> — Bayesian optimisation</li>
+        <li><strong>ModelRegistry</strong> — staging &rarr; shadow &rarr; production</li>
+        <li><strong>EnsembleEngine</strong> — combine multiple models</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.85em;margin-top:16px;color:var(--ascent-depth);font-style:italic;">"You now know how to prepare the data and design the experiments. Next: how to build and evaluate the models."</p>
+  <aside class="notes">
+    Time: ~1 min. "Module 3 builds directly on Module 2. The features you engineer become inputs to TrainingPipeline. The experiments you design validate whether the model actually works." Preview to create anticipation.
+  </aside>
+</section>
+
+<section>
+  <h2>Assessment Preview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Quiz Topics</h3>
+      <ul style="font-size:0.85em;">
+        <li>Identify data leakage in a feature pipeline</li>
+        <li>Choose the right encoding for a given scenario</li>
+        <li>Calculate sample size for an A/B test</li>
+        <li>Select appropriate causal inference method</li>
+        <li>Interpret FeatureStore point-in-time query</li>
+        <li>Debug a feature engineering pipeline</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Assignment</h3>
+      <ul style="font-size:0.85em;">
+        <li>Build a complete feature engineering pipeline for HDB data</li>
+        <li>Register features in FeatureStore</li>
+        <li>Design and analyse an A/B test</li>
+        <li>Apply DiD to a policy evaluation</li>
+        <li>Compare feature sets using ExperimentTracker</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning" style="margin-top:12px;">
+    <strong>Assessment approach:</strong> Questions require running your code and interpreting YOUR outputs — not generic answers. AI-generated responses without your specific outputs will be detected.
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "The assessment tests practical application, not memorisation. You need to run the code, generate outputs, and interpret them in context."
+  </aside>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE — CLOSING
+     ══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 2 Complete</h1>
+  <h2 style="border:none;">Feature Engineering &amp; Experiment Design</h2>
+  <p class="subtitle">You now engineer features, design experiments, and reason about cause and effect.</p>
+  <p class="provocation">"Point-in-time correctness is non-negotiable."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 2 &mdash; Terrene Open Academy</span>
+    <span>Terrene Foundation &mdash; Apache 2.0</span>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Close with the provocation. "Remember the clinical trial. Point-in-time correctness is not a nice-to-have — it is the difference between a model that works and a model that destroys value. See you in Module 3."
+  </aside>
+</section>
+
+</div><!-- .slides -->
+</div><!-- .reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.1,
+    hash: true,
+    history: true,
+    transition: 'slide',
+    transitionSpeed: 'default',
+    center: false,
+    slideNumber: true,
+    pdfSeparateFragments: false,
+    pdfMaxPagesPerSlide: 1,
+  });
+</script>
+</body>
+</html>

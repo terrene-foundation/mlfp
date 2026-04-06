@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 2: PreprocessingPipeline — Kailash ML Textbook</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+h2 { color: #1E293B; margin-top: 2em; }
+h3 { color: #4F46E5; }
+pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+tr:hover { background: #F8FAFC; }
+.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
+.nav a { color: #0D9488; text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+<span><a href="01_data_explorer.html">&larr; Prev: DataExplorer</a></span>
+<span><a href="03_model_visualizer.html">Next: ModelVisualizer &rarr;</a></span>
+</nav>
+
+<h1>Chapter 2: PreprocessingPipeline</h1>
+
+<h2>Overview</h2>
+<p>PreprocessingPipeline transforms raw data into ML-ready features with a single <code>setup()</code> call. It auto-detects whether your task is classification or regression, identifies column types, imputes missing values, encodes categoricals, scales numerics, removes outliers, and splits into train/test sets. At inference time, <code>transform()</code> applies the exact same transformations learned during training.</p>
+
+<h2>Prerequisites</h2>
+<table>
+<tr><th>Requirement</th><th>Details</th></tr>
+<tr><td>Python</td><td>3.10+</td></tr>
+<tr><td>kailash-ml</td><td><code>pip install kailash-ml</code></td></tr>
+<tr><td>Prior chapter</td><td>Chapter 1 (DataExplorer)</td></tr>
+<tr><td>Level</td><td>Basic</td></tr>
+</table>
+
+<h2>Concepts</h2>
+
+<h3>Task Type Detection</h3>
+<p>PreprocessingPipeline examines the target column to determine task type. If the target has few unique values relative to the dataset size, it is classified as <strong>classification</strong>. If the target has many unique continuous values, it is <strong>regression</strong>.</p>
+
+<h3>Imputation Strategies</h3>
+<table>
+<tr><th>Strategy</th><th>Behavior</th></tr>
+<tr><td><code>mean</code></td><td>Replace nulls with the column mean (numeric) or mode (categorical)</td></tr>
+<tr><td><code>median</code></td><td>Replace nulls with the column median (numeric) or mode (categorical)</td></tr>
+<tr><td><code>drop</code></td><td>Remove rows containing any null value</td></tr>
+</table>
+
+<h3>Categorical Encoding</h3>
+<table>
+<tr><th>Encoding</th><th>Behavior</th><th>Output</th></tr>
+<tr><td><code>onehot</code></td><td>Creates binary columns for each category</td><td>Expands column count; original removed</td></tr>
+<tr><td><code>ordinal</code></td><td>Maps categories to integers</td><td>Same column, Float64 dtype</td></tr>
+<tr><td><code>target</code></td><td>Replaces categories with mean target value</td><td>Same column, Float64 dtype</td></tr>
+</table>
+
+<h3>Normalization &amp; Outlier Removal</h3>
+<p>When <code>normalize=True</code>, StandardScaler is applied to numeric columns. When <code>remove_outliers=True</code>, extreme rows are dropped based on the <code>outlier_threshold</code> percentile.</p>
+
+<h2>Key API Reference</h2>
+<table>
+<tr><th>Class / Method</th><th>Purpose</th></tr>
+<tr><td><code>PreprocessingPipeline()</code></td><td>Instantiate the pipeline</td></tr>
+<tr><td><code>pipeline.setup(df, target, ...)</code></td><td>Fit and transform: detect types, impute, encode, scale, split</td></tr>
+<tr><td><code>pipeline.transform(new_data)</code></td><td>Apply fitted transformations to new data</td></tr>
+<tr><td><code>pipeline.inverse_transform(data)</code></td><td>Reverse scaling for interpretability</td></tr>
+<tr><td><code>pipeline.get_config()</code></td><td>Inspect fitted configuration as a dict</td></tr>
+<tr><td><code>SetupResult</code></td><td>Fields: <code>task_type</code>, <code>target_column</code>, <code>numeric_columns</code>, <code>categorical_columns</code>, <code>train_data</code>, <code>test_data</code>, <code>transformers</code>, <code>summary</code></td></tr>
+</table>
+
+<h2>Code Walkthrough</h2>
+
+<h3>Step 1: Create Data with Missing Values</h3>
+<pre><code class="language-python">import polars as pl
+
+df = pl.DataFrame({
+    "age": [25.0, 30.0, None, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0],
+    "income": [30000.0, 45000.0, 55000.0, None, 70000.0, 80000.0,
+               90000.0, 100000.0, 110000.0, 120000.0],
+    "department": ["eng", "eng", "sales", "sales", "hr", None,
+                   "eng", "sales", "hr", "eng"],
+    "churned": [0, 0, 1, 0, 1, 0, 1, 1, 0, 0],
+})</code></pre>
+
+<h3>Step 2: Setup with One-Hot Encoding</h3>
+<pre><code class="language-python">from kailash_ml.engines.preprocessing import PreprocessingPipeline, SetupResult
+
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    df,
+    target="churned",
+    train_size=0.8,
+    seed=42,
+    normalize=True,
+    categorical_encoding="onehot",
+    imputation_strategy="mean",
+)
+
+assert result.task_type == "classification"
+assert result.train_data.height == 8
+assert result.test_data.height == 2</code></pre>
+
+<div class="callout">
+<strong>Sync by design:</strong> Unlike DataExplorer, <code>setup()</code> is synchronous &mdash; no <code>await</code> needed. All computation happens in-memory with polars.
+</div>
+
+<h3>Step 3: Verify One-Hot Encoding</h3>
+<pre><code class="language-python">train_cols = result.train_data.columns
+assert "department" not in train_cols  # Original column removed
+onehot_cols = [c for c in train_cols if c.startswith("department_")]
+assert len(onehot_cols) >= 2</code></pre>
+
+<h3>Step 4: Transform New Data at Inference Time</h3>
+<pre><code class="language-python">new_data = pl.DataFrame({
+    "age": [33.0, None],
+    "income": [52000.0, 68000.0],
+    "department": ["eng", "hr"],
+    "churned": [0, 1],
+})
+
+transformed = pipeline.transform(new_data)
+assert "department" not in transformed.columns</code></pre>
+
+<div class="warning">
+<strong>Order matters:</strong> You must call <code>setup()</code> before <code>transform()</code> or <code>get_config()</code>. Calling them on an unfitted pipeline raises <code>RuntimeError</code>.
+</div>
+
+<h3>Step 5: Regression Task Detection</h3>
+<pre><code class="language-python">regression_df = pl.DataFrame({
+    "sqft": [800.0, 1200.0, 1500.0, 1800.0, 2200.0, 2600.0, 3000.0, 3500.0],
+    "bedrooms": [1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0],
+    "price": [200000.0, 350000.0, 420000.0, 510000.0,
+              620000.0, 730000.0, 850000.0, 980000.0],
+})
+
+pipeline_reg = PreprocessingPipeline()
+result_reg = pipeline_reg.setup(regression_df, target="price", normalize=True)
+assert result_reg.task_type == "regression"</code></pre>
+
+<h2>Common Mistakes</h2>
+<table>
+<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
+<tr><td>Calling <code>transform()</code> before <code>setup()</code></td><td><code>RuntimeError</code></td><td>Always call <code>setup()</code> first</td></tr>
+<tr><td>Setting <code>train_size</code> outside (0, 1)</td><td><code>ValueError</code></td><td>Keep between 0 and 1</td></tr>
+<tr><td>Using an invalid encoding name</td><td><code>ValueError</code></td><td>Use <code>onehot</code>, <code>ordinal</code>, or <code>target</code></td></tr>
+<tr><td>Specifying a non-existent target</td><td><code>ValueError</code></td><td>Verify column exists in the DataFrame</td></tr>
+<tr><td>Passing an empty DataFrame</td><td><code>ValueError</code></td><td>Ensure data has at least one row</td></tr>
+</table>
+
+<h2>Exercises</h2>
+<div class="exercise">
+<p><strong>Exercise 1:</strong> Run <code>setup()</code> three times with <code>mean</code>, <code>median</code>, and <code>drop</code> imputation. Compare resulting <code>train_data.height</code> and the values filled in for formerly-null cells.</p>
+</div>
+<div class="exercise">
+<p><strong>Exercise 2:</strong> Start with a categorical column that has 8 unique values. Run <code>setup()</code> with <code>onehot</code> vs <code>ordinal</code>. How does <code>transformed_shape[1]</code> differ?</p>
+</div>
+<div class="exercise">
+<p><strong>Exercise 3:</strong> Apply <code>setup()</code> with <code>normalize=True</code>, then call <code>inverse_transform()</code> on the training data. Verify values are close to the originals.</p>
+</div>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>PreprocessingPipeline automates imputation, encoding, scaling, and splitting.</li>
+<li>Task type is auto-detected from the target column.</li>
+<li>Three imputation strategies and three encoding modes cover common needs.</li>
+<li>Fitted transformers ensure identical processing at inference time via <code>transform()</code>.</li>
+<li><code>inverse_transform()</code> reverses scaling for human-readable interpretation.</li>
+</ul>
+
+<div class="callout">
+<strong>Next chapter:</strong> <a href="03_model_visualizer.html">ModelVisualizer</a> &mdash; interactive Plotly visualizations for confusion matrices, ROC curves, feature importance, and more.
+</div>
+
+<footer>
+Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

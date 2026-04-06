@@ -126,7 +126,7 @@ Each module deck is **self-contained** — a student who missed prior modules ca
 9. LAB SETUP (3-5 slides)
    Problem statement, dataset description, expected outputs
    Exercise progression overview
-   "Open modules/ascentN/local/01_exercise.py"
+   "Open modules/ascentNN/local/01_exercise.py"
 
 10. DISCUSSION PROMPTS (2-3 slides)
     "Given this SHAP output, would you approve this loan?"
@@ -398,7 +398,7 @@ decks/
 
 ## Build Process
 
-1. Session design in `workspaces/ascentN/02-plans/` (content outline)
+1. Session design in `workspaces/ascentNN/02-plans/` (content outline)
 2. `/build-deck` generates deck from session plan + module brief
 3. Review: does every concept have 3 layers (intuition → math → advanced)?
 4. Review: is Kailash bridged on every theory section?

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 6: Presets — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+
+  <h1>Chapter 6: Presets</h1>
+
+  <h2>Overview</h2>
+  <p>Presets provide one-line middleware configuration for common deployment scenarios. Choose from five presets (<code>none</code>, <code>lightweight</code>, <code>standard</code>, <code>saas</code>, <code>enterprise</code>) or use the <code>NexusEngine</code> builder for production deployments.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Progressive Presets</h3>
+  <table>
+    <tr><th>Preset</th><th>Middleware</th><th>Plugins</th><th>Includes</th></tr>
+    <tr><td><code>none</code></td><td>0</td><td>0</td><td>Nothing</td></tr>
+    <tr><td><code>lightweight</code></td><td>2</td><td>0</td><td>CORS + Security Headers</td></tr>
+    <tr><td><code>standard</code></td><td>5</td><td>0</td><td>+ CSRF + Rate Limit + Error Handler</td></tr>
+    <tr><td><code>saas</code></td><td>5</td><td>4</td><td>+ JWT + RBAC + Tenant + Audit</td></tr>
+    <tr><td><code>enterprise</code></td><td>5</td><td>6</td><td>+ SSO + Feature Flags</td></tr>
+  </table>
+
+  <h3>NexusConfig</h3>
+  <p><code>NexusConfig</code> centralizes all settings that preset factories need. Secrets are redacted in <code>__repr__()</code> for safety.</p>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Explore Presets</h3>
+  <pre><code class="language-python">from nexus.presets import PRESETS, get_preset
+
+lightweight = get_preset("lightweight")
+assert lightweight.name == "lightweight"
+assert len(lightweight.middleware_factories) == 2
+
+# Unknown preset raises ValueError
+try:
+    get_preset("nonexistent")
+except ValueError as e:
+    assert "Unknown preset" in str(e)</code></pre>
+
+  <h3>Step 2: NexusConfig</h3>
+  <pre><code class="language-python">from nexus.presets import NexusConfig
+
+config = NexusConfig(
+    cors_origins=["https://app.example.com"],
+    jwt_secret="super-secret-key",
+    rate_limit=200,
+    environment="production",
+)
+
+# Secrets are redacted in repr
+repr_str = repr(config)
+assert "[REDACTED]" in repr_str
+assert "super-secret-key" not in repr_str</code></pre>
+
+  <div class="callout">
+    <strong>Security:</strong> <code>NexusConfig.__repr__()</code> automatically redacts sensitive fields like <code>jwt_secret</code>, preventing accidental exposure in logs.
+  </div>
+
+  <h3>Step 3: Preset via Constructor</h3>
+  <pre><code class="language-python">from nexus import Nexus
+
+app = Nexus(
+    preset="lightweight",
+    cors_origins=["https://app.example.com"],
+    enable_durability=False,
+)
+assert app._active_preset == "lightweight"</code></pre>
+
+  <h3>Step 4: NexusEngine Builder</h3>
+  <pre><code class="language-python">from nexus import NexusEngine, Preset
+
+engine = (
+    NexusEngine.builder()
+    .preset(Preset.SAAS)
+    .bind("0.0.0.0:8080")
+    .config(enable_durability=False)
+    .build()
+)
+
+assert isinstance(engine.nexus, Nexus)
+assert engine.bind_addr == "0.0.0.0:8080"</code></pre>
+
+  <h3>Step 5: EnterpriseMiddlewareConfig</h3>
+  <pre><code class="language-python">from nexus.engine import EnterpriseMiddlewareConfig
+
+enterprise_config = EnterpriseMiddlewareConfig(
+    enable_csrf=True,
+    enable_audit=True,
+    enable_metrics=True,
+    enable_rate_limiting=True,
+    rate_limit_rpm=500,
+    enable_cors=True,
+    cors_origins=["https://api.example.com"],
+)
+
+engine2 = (
+    NexusEngine.builder()
+    .enterprise(enterprise_config)
+    .bind("0.0.0.0:9090")
+    .config(enable_durability=False)
+    .build()
+)</code></pre>
+
+  <h3>Step 6: Register on Engine</h3>
+  <pre><code class="language-python">from kailash import WorkflowBuilder
+
+wb = WorkflowBuilder()
+wb.add_node("PythonCodeNode", "double", {
+    "code": "output = n * 2",
+    "inputs": {"n": "int"},
+    "output_type": "int",
+})
+engine.register("double", wb.build(name="double"))
+assert "double" in engine.nexus._workflows</code></pre>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Using <code>saas</code> without JWT secret</td><td>JWT middleware fails at runtime</td><td>Set <code>jwt_secret</code> in NexusConfig</td></tr>
+    <tr><td>Misspelling preset name</td><td><code>ValueError</code></td><td>Check <code>PRESETS.keys()</code></td></tr>
+    <tr><td>Logging NexusConfig with secrets</td><td>Security leak</td><td>Use <code>repr()</code> which redacts</td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li>Five presets provide progressive middleware stacks.</li>
+    <li><code>NexusConfig</code> centralizes settings with secret redaction.</li>
+    <li><code>Nexus(preset="lightweight")</code> is the simplest setup.</li>
+    <li><code>NexusEngine.builder()</code> provides a fluent builder for production.</li>
+    <li>The <code>Preset</code> enum maintains cross-SDK parity with Rust.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="05_middleware.html">&larr; Previous: Middleware</a>
+    <a href="07_event_bus.html">Next: Event Bus &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

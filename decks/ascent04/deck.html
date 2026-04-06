@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCENT Module 4 — Supervised ML: The Complete Model Zoo</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../assets/css/theme.css">
+
+  <!-- Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+
+  <style>
+    /* Slide-local overrides */
+    .reveal .slides section .fragment.step { opacity: 0; }
+    .reveal .slides section .fragment.step.visible { opacity: 1; }
+    .derivation-step {
+      background: #F8FAFC;
+      border-left: 3px solid var(--ascent-theory);
+      padding: 10px 16px;
+      margin: 8px 0;
+      font-size: 0.9em;
+    }
+    .derivation-step .step-label {
+      font-weight: 700;
+      color: var(--ascent-theory);
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .case-stat {
+      font-size: 2.4em;
+      font-weight: 700;
+      color: var(--ascent-error);
+      text-align: center;
+      margin: 24px 0 8px;
+    }
+    .case-caption {
+      text-align: center;
+      color: #64748B;
+      font-size: 0.85em;
+    }
+    .axiom-box {
+      background: #EFF6FF;
+      border: 1px solid var(--ascent-theory);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      font-size: 0.82em;
+    }
+    .axiom-box strong { color: var(--ascent-depth); }
+    .lifecycle-stage {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.8em;
+      margin: 4px;
+    }
+    .stage-staging { background: #FEF3C7; color: #92400E; }
+    .stage-shadow { background: #DBEAFE; color: #1E40AF; }
+    .stage-production { background: #D1FAE5; color: #065F46; }
+    .stage-archived { background: #F1F5F9; color: #475569; }
+    .comparison-table td:first-child { font-weight: 600; color: var(--ascent-depth); }
+    .svg-diagram { text-align: center; margin: 16px 0; }
+    .svg-diagram svg { max-width: 100%; }
+    .equation-box .katex { font-size: 1.15em; }
+    .flowchart-box {
+      background: #F0FDFA;
+      border: 2px solid var(--ascent-primary);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 8px 0;
+      font-size: 0.85em;
+    }
+    .model-card {
+      background: var(--ascent-bg-alt);
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 6px 0;
+    }
+    .model-card h4 { color: var(--ascent-primary); margin: 0 0 4px 0; font-size: 0.95em; }
+    .verdict { font-weight: 700; }
+    .verdict-good { color: var(--ascent-success); }
+    .verdict-bad { color: var(--ascent-error); }
+    .verdict-ok { color: var(--ascent-alert); }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ═══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 4</h1>
+  <h2 style="border: none;">Supervised ML: The Complete Model Zoo</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"Would YOU trust a system that cries wolf 10,000 times a day?"</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 4</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">Time: ~2 min. Open with the provocation. Let it land. This is about Credit Suisse AML — we will return to it. Today is the deep dive into every supervised learning model you will encounter in production. Three layers as always: green for everyone, blue for the math, purple for the cutting edge.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 2-5 — RECAP
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Where We Are</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Module 1 &mdash; Data Fluency</h3>
+      <ul>
+        <li>Polars for data manipulation</li>
+        <li><code>DataExplorer</code> for automated profiling</li>
+        <li><code>PreprocessingPipeline</code> for cleaning</li>
+        <li><code>ModelVisualizer</code> for charts</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Module 2 &mdash; Experiment Design</h3>
+      <ul>
+        <li><code>FeatureStore</code> with point-in-time correctness</li>
+        <li><code>FeatureEngineer</code> for selection &amp; generation</li>
+        <li><code>ExperimentTracker</code> for reproducibility</li>
+        <li>Hypothesis testing, CUPED, causal inference</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~1 min. Quick recap. Students who missed prior modules get oriented. Don't linger — just enough to connect the thread.</aside>
+</section>
+
+<section>
+  <h2>Module 3 Recap</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Theory</h3>
+      <ul>
+        <li>Bias-variance trade-off</li>
+        <li>Regularisation (L1, L2)</li>
+        <li>Gradient boosting intuition</li>
+        <li>XGBoost objective function</li>
+        <li>SHAP explainability</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Production</h3>
+      <ul>
+        <li><code>TrainingPipeline</code> + <code>ModelSpec</code></li>
+        <li><code>HyperparameterSearch</code></li>
+        <li><code>ModelRegistry</code> lifecycle</li>
+        <li><code>WorkflowBuilder</code> orchestration</li>
+        <li><code>DataFlow</code> persistence</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~1 min. M3 introduced the supervised ML framework and one boosting algorithm. Today we cover EVERY supervised model — the complete model zoo — from linear regression to Gaussian Processes.</aside>
+</section>
+
+<section>
+  <h2>What Is New Today</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ul>
+    <li><strong>Complete model zoo</strong> &mdash; every supervised algorithm from linear regression to Gaussian Processes</li>
+    <li><strong>Full evaluation toolkit</strong> &mdash; metrics, calibration, conformal prediction, statistical model comparison</li>
+    <li><strong>Class imbalance</strong> &mdash; SMOTE, focal loss, threshold moving, balanced ensembles</li>
+    <li><strong>Preprocessing to postprocessing</strong> &mdash; the complete supervised pipeline</li>
+    <li><strong>New engines</strong> &mdash; <code>AutoMLEngine</code>, <code>EnsembleEngine</code>, kailash_ml interop</li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>By the end of today:</strong> You will know when to use which model, how to evaluate it honestly, and how to handle every production complication from imbalance to miscalibration.
+  </div>
+  <aside class="notes">Time: ~2 min. Emphasise: M3 gave the framework. Today fills in every model. By the end of today, students can pick the right model for any tabular problem.</aside>
+</section>
+
+<section>
+  <h2>Kailash Engines &mdash; Cumulative Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table>
+    <thead>
+      <tr><th>Module</th><th>Engines</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
+      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
+      <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
+      <tr><td style="color:var(--ascent-primary);font-weight:700;">M4</td>
+          <td style="color:var(--ascent-primary);">AutoMLEngine, EnsembleEngine, ModelVisualizer (advanced)</td>
+          <td style="color:var(--ascent-primary);">Compare, ensemble, evaluate</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">Time: ~1 min. Show the cumulative build-up. Each module adds engines. By M4, students have a full supervised ML toolkit.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SLIDES 6-9 — OPENING CASE: CREDIT SUISSE AML
+     ═══════════════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>Opening Case: Credit Suisse AML</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="case-stat">99.9% accuracy</div>
+    <div class="case-caption">Anti-money-laundering model, production deployment</div>
+    <p style="margin-top:24px;">Credit Suisse deployed an ML model to flag suspicious financial transactions. The model achieved <strong>99.9% accuracy</strong> on test data.</p>
+    <p><strong>The compliance team called it useless.</strong></p>
+    <aside class="notes">Time: ~2 min. Let the paradox land. 99.9% accuracy sounds perfect. Ask: "Raise your hand if you'd approve a model with 99.9% accuracy for production." Most will raise. Then reveal why it failed.</aside>
+  </section>
+
+  <section>
+    <h2>Why 99.9% Was Useless</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="columns">
+      <div class="col">
+        <h3>The Numbers</h3>
+        <ul>
+          <li>10 million transactions per day</li>
+          <li>Only ~100 are truly suspicious (~0.001%)</li>
+          <li>A model that says "everything is fine" is 99.99% accurate</li>
+          <li>The 0.1% false positive rate = <strong>10,000 false alerts daily</strong></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>The Impact</h3>
+        <ul>
+          <li>Compliance officers overwhelmed by false alerts</li>
+          <li>Real suspicious transactions buried in noise</li>
+          <li>Regulatory fines: CHF 2 billion (FINMA 2024)</li>
+          <li>Accuracy was the <strong>wrong metric</strong></li>
+        </ul>
+      </div>
+    </div>
+    <aside class="notes">Time: ~2 min. Walk through the math slowly. When 0.001% of data is positive, accuracy is meaningless. This motivates our entire evaluation section and class imbalance section.</aside>
+  </section>
+
+  <section>
+    <h2>The Lesson</h2>
+    <span class="marker marker-foundations">Foundations</span>
+    <div class="callout callout-error">
+      <strong>Accuracy is not enough.</strong> With imbalanced data, you need precision, recall, F1, PR curves, and calibration. The right metric depends on the business cost of each type of error.
+    </div>
+    <p>Today we learn:</p>
+    <ul>
+      <li>Every supervised model and when to use it</li>
+      <li>How to evaluate models <em>honestly</em> (not just accurately)</li>
+      <li>How to handle class imbalance without fooling yourself</li>
+      <li>How to calibrate model confidence so decisions are trustworthy</li>
+    </ul>
+    <p style="color:#64748B; font-size:0.8em;">Sources: FINMA enforcement actions 2022-2024; industry case studies in financial crime detection.</p>
+    <aside class="notes">Time: ~1 min. Transition to the supervised learning framework. Everything today connects back to this case: picking the right model, measuring it correctly, handling imbalance, and calibrating confidence.</aside>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION A — THE SUPERVISED LEARNING FRAMEWORK (Slides 10-19)
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 10: What is Supervised Learning? -->
+<section>
+  <h2>What Is Supervised Learning?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Given <strong>inputs</strong> (features X) and known <strong>outputs</strong> (target y), learn a function that maps X to y.</p>
+  <div class="callout callout-foundations">
+    <strong>Analogy:</strong> A tutor shows a student 1,000 solved math problems (X = problem, y = answer). The student learns the pattern. Then we give the student NEW problems and see if they can solve them.
+  </div>
+  <div class="equation-box">
+    <span class="katex-display">\hat{y} = f(X) + \varepsilon</span>
+    <div class="annotation">f is the true relationship; our model learns an approximation f&#770;; &epsilon; is irreducible noise</div>
+  </div>
+  <aside class="notes">Time: ~2 min. This is review from M3. Reinforce: "supervised" means we have labelled examples. The goal is generalisation — performing well on data the model has never seen.</aside>
+</section>
+
+<!-- SLIDE 11: Regression vs Classification -->
+<section>
+  <h2>Regression vs Classification</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Regression</h3>
+      <p>Output is a <em>continuous number</em></p>
+      <ul>
+        <li>HDB resale price: S$580,000</li>
+        <li>Tomorrow's temperature: 31.2&deg;C</li>
+        <li>Customer lifetime value: S$4,200</li>
+      </ul>
+      <p style="font-size:0.8em; color:#64748B;">Loss: MSE, MAE, Huber</p>
+    </div>
+    <div class="col">
+      <h3>Classification</h3>
+      <p>Output is a <em>category</em></p>
+      <ul>
+        <li>Loan default: Yes / No (binary)</li>
+        <li>Product category: A / B / C (multi-class)</li>
+        <li>Tags: [urgent, billing, refund] (multi-label)</li>
+      </ul>
+      <p style="font-size:0.8em; color:#64748B;">Loss: cross-entropy, hinge</p>
+    </div>
+  </div>
+  <aside class="notes">Time: ~1 min. Use Singapore examples. HDB prices are relatable. Point out multi-label as a separate case from multi-class.</aside>
+</section>
+
+<!-- SLIDE 12: Train / Validation / Test -->
+<section>
+  <h2>Training, Validation, and Test Splits</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Three sets, three purposes.</strong></p>
+  <table>
+    <thead><tr><th>Set</th><th>Purpose</th><th>Typical Size</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Training</strong></td><td>Model learns parameters from this data</td><td>60-80%</td></tr>
+      <tr><td><strong>Validation</strong></td><td>Tune hyperparameters, compare models</td><td>10-20%</td></tr>
+      <tr><td><strong>Test</strong></td><td>Final unbiased evaluation &mdash; touch ONCE</td><td>10-20%</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Rule:</strong> Never tune on the test set. If you look at test results and go back to adjust, you have <em>leaked</em> test information and your reported performance is optimistic.
+  </div>
+  <aside class="notes">Time: ~2 min. Emphasise the discipline: test set is sacred. If beginners look confused, use the exam analogy — training = textbook, validation = practice exams, test = final exam you only take once.</aside>
+</section>
+
+<!-- SLIDE 13: Overfitting vs Underfitting — Visual -->
+<section>
+  <h2>Overfitting vs Underfitting</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col" style="text-align:center;">
+      <svg width="700" height="200" viewBox="0 0 700 200">
+        <!-- Underfitting -->
+        <text x="110" y="20" text-anchor="middle" font-size="13" fill="#1E293B" font-weight="600">Underfitting (degree 1)</text>
+        <circle cx="40" cy="100" r="4" fill="#94A3B8"/><circle cx="60" cy="70" r="4" fill="#94A3B8"/>
+        <circle cx="80" cy="110" r="4" fill="#94A3B8"/><circle cx="100" cy="60" r="4" fill="#94A3B8"/>
+        <circle cx="120" cy="80" r="4" fill="#94A3B8"/><circle cx="140" cy="50" r="4" fill="#94A3B8"/>
+        <circle cx="160" cy="90" r="4" fill="#94A3B8"/><circle cx="180" cy="40" r="4" fill="#94A3B8"/>
+        <line x1="30" y1="110" x2="190" y2="45" stroke="#DC2626" stroke-width="2"/>
+        <text x="110" y="160" text-anchor="middle" font-size="11" fill="#DC2626">Too simple</text>
+        <text x="110" y="175" text-anchor="middle" font-size="10" fill="#64748B">High bias, low variance</text>
+        <!-- Just Right -->
+        <text x="350" y="20" text-anchor="middle" font-size="13" fill="#1E293B" font-weight="600">Just Right (degree 3)</text>
+        <circle cx="280" cy="100" r="4" fill="#94A3B8"/><circle cx="300" cy="70" r="4" fill="#94A3B8"/>
+        <circle cx="320" cy="110" r="4" fill="#94A3B8"/><circle cx="340" cy="60" r="4" fill="#94A3B8"/>
+        <circle cx="360" cy="80" r="4" fill="#94A3B8"/><circle cx="380" cy="50" r="4" fill="#94A3B8"/>
+        <circle cx="400" cy="90" r="4" fill="#94A3B8"/><circle cx="420" cy="40" r="4" fill="#94A3B8"/>
+        <path d="M270 105 Q310 50 350 85 Q390 30 430 38" fill="none" stroke="#10B981" stroke-width="2"/>
+        <text x="350" y="160" text-anchor="middle" font-size="11" fill="#10B981">Good fit</text>
+        <text x="350" y="175" text-anchor="middle" font-size="10" fill="#64748B">Balanced bias-variance</text>
+        <!-- Overfitting -->
+        <text x="590" y="20" text-anchor="middle" font-size="13" fill="#1E293B" font-weight="600">Overfitting (degree 15)</text>
+        <circle cx="520" cy="100" r="4" fill="#94A3B8"/><circle cx="540" cy="70" r="4" fill="#94A3B8"/>
+        <circle cx="560" cy="110" r="4" fill="#94A3B8"/><circle cx="580" cy="60" r="4" fill="#94A3B8"/>
+        <circle cx="600" cy="80" r="4" fill="#94A3B8"/><circle cx="620" cy="50" r="4" fill="#94A3B8"/>
+        <circle cx="640" cy="90" r="4" fill="#94A3B8"/><circle cx="660" cy="40" r="4" fill="#94A3B8"/>
+        <path d="M515 102 Q525 95 535 70 Q540 65 545 80 Q550 115 560 110 Q565 100 575 60 Q580 55 585 70 Q595 85 600 80 Q605 75 615 50 Q620 45 625 60 Q635 95 640 90 Q645 85 655 40 Q660 35 665 45" fill="none" stroke="#F43F5E" stroke-width="2"/>
+        <text x="590" y="160" text-anchor="middle" font-size="11" fill="#F43F5E">Memorising noise</text>
+        <text x="590" y="175" text-anchor="middle" font-size="10" fill="#64748B">Low bias, high variance</text>
+      </svg>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Key insight:</strong> More complex is not always better. The goal is to capture the <em>signal</em> (the real pattern) without memorising the <em>noise</em> (random variation).
+  </div>
+  <aside class="notes">Time: ~2 min. Walk through each panel slowly. Underfitting = straight line through a curve. Overfitting = wiggly line through every point. Goldilocks = smooth curve that follows the trend. If beginners look confused: "Think of it like writing. Too short (underfit) misses the point. Too long (overfit) includes every random thought. Just right captures the key ideas."</aside>
+</section>
+
+<!-- SLIDE 14: Learning Curves -->
+<section>
+  <h2>The Learning Curve</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Plot training and test error as you increase model complexity (or data size).</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Reading a Learning Curve</h3>
+      <ul>
+        <li><strong>Training error low, test error high</strong> &rarr; overfitting</li>
+        <li><strong>Both errors high</strong> &rarr; underfitting</li>
+        <li><strong>Both errors converge low</strong> &rarr; good fit</li>
+        <li><strong>Gap between curves</strong> &rarr; generalisation gap</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What To Do</h3>
+      <ul>
+        <li>Overfitting &rarr; more data, simpler model, regularisation</li>
+        <li>Underfitting &rarr; more complex model, more features</li>
+        <li>Good fit &rarr; ship it (after calibration!)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~2 min. Learning curves are the diagnostic tool students will use most. Show how to read the gap between train and test.</aside>
+</section>
+
+<!-- SLIDE 15: No Free Lunch -->
+<section>
+  <h2>No Free Lunch Theorem</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>There is no single model that is best for all problems.</p>
+  <div class="callout callout-theory">
+    <strong>Wolpert &amp; Macready (1997):</strong> Averaged over ALL possible data distributions, every learning algorithm performs equally well. Any advantage on one class of problems is paid for by disadvantage on another.
+  </div>
+  <p><strong>What this means in practice:</strong></p>
+  <ul>
+    <li>You MUST try multiple models on YOUR data</li>
+    <li>"Always use XGBoost" is wrong (even though it wins many competitions)</li>
+    <li>The best model depends on: data size, feature types, noise level, interpretability requirements</li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>Kailash bridge:</strong> <code>AutoMLEngine</code> compares multiple models systematically, so you do not have to guess.
+  </div>
+  <aside class="notes">Time: ~2 min. No Free Lunch is why we need this module. We must know all the models to pick the right one. For experts: mention that NFL has interesting caveats — in practice, real-world data has structure that some algorithms exploit better than others.</aside>
+</section>
+
+<!-- SLIDE 16: Bias-Variance — Darts Analogy -->
+<section>
+  <h2>Bias and Variance &mdash; The Darts Analogy</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col" style="text-align:center;">
+      <svg width="440" height="260" viewBox="0 0 440 260">
+        <!-- Low bias, low variance -->
+        <circle cx="80" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="80" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="80" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="78" cy="76" r="3" fill="#0D9488"/><circle cx="82" cy="83" r="3" fill="#0D9488"/>
+        <circle cx="79" cy="79" r="3" fill="#0D9488"/><circle cx="81" cy="78" r="3" fill="#0D9488"/>
+        <text x="80" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">Low Bias, Low Var</text>
+        <text x="80" y="166" text-anchor="middle" font-size="11" fill="#10B981">IDEAL</text>
+        <!-- High bias, low variance -->
+        <circle cx="220" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="220" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="220" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="240" cy="62" r="3" fill="#F59E0B"/><circle cx="243" cy="65" r="3" fill="#F59E0B"/>
+        <circle cx="238" cy="60" r="3" fill="#F59E0B"/><circle cx="241" cy="64" r="3" fill="#F59E0B"/>
+        <text x="220" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">High Bias, Low Var</text>
+        <text x="220" y="166" text-anchor="middle" font-size="11" fill="#F59E0B">CONSISTENTLY WRONG</text>
+        <!-- Low bias, high variance -->
+        <circle cx="360" cy="80" r="50" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="360" cy="80" r="25" fill="none" stroke="#CBD5E1" stroke-width="1.5"/>
+        <circle cx="360" cy="80" r="4" fill="#DC2626"/>
+        <circle cx="345" cy="60" r="3" fill="#3B82F6"/><circle cx="380" cy="95" r="3" fill="#3B82F6"/>
+        <circle cx="355" cy="105" r="3" fill="#3B82F6"/><circle cx="370" cy="65" r="3" fill="#3B82F6"/>
+        <text x="360" y="150" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="600">Low Bias, High Var</text>
+        <text x="360" y="166" text-anchor="middle" font-size="11" fill="#3B82F6">RIGHT ON AVERAGE</text>
+      </svg>
+    </div>
+  </div>
+  <p><span class="term-bias">Bias</span> = how far the centre of your throws is from the bullseye. <span class="term-variance">Variance</span> = how spread out your throws are.</p>
+  <aside class="notes">Time: ~2 min. Review from M3 but critical context for model comparison. Every model in today's zoo has a different bias-variance profile.</aside>
+</section>
+
+<!-- SLIDE 17: BV Decomposition -->
+<section>
+  <h2>Bias-Variance Decomposition</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Target: <span class="katex-inline">y = f(x) + \varepsilon</span> where <span class="katex-inline">\varepsilon \sim \mathcal{N}(0, \sigma^2)</span>. Our model <span class="katex-inline">\hat{f}(x)</span> is trained on random sample D.</p>
+  <div class="derivation-step">
+    <div class="step-label">Step 1: Expected prediction error</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\text{EPE}(x) = \mathbb{E}_{D,\varepsilon}\!\left[(y - \hat{f}(x))^2\right]</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 2: Substitute y = f(x) + &epsilon; and add/subtract E[f&#770;(x)]</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">= \mathbb{E}\!\left[\bigl(\underbrace{f(x) - \mathbb{E}[\hat{f}]}_{\text{bias}} + \underbrace{\mathbb{E}[\hat{f}] - \hat{f}}_{\text{variance}} + \underbrace{\varepsilon}_{\text{noise}}\bigr)^2\right]</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 3: Cross terms vanish &mdash; result</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\text{EPE}(x) = \underbrace{(f(x) - \mathbb{E}[\hat{f}])^2}_{\color{#DC2626}{\textbf{Bias}^2}} + \underbrace{\mathbb{E}[(\hat{f} - \mathbb{E}[\hat{f}])^2]}_{\color{#2563EB}{\textbf{Variance}}} + \underbrace{\sigma^2}_{\color{#6B7280}{\textbf{Noise}}}</span>
+    </div>
+  </div>
+  <aside class="notes">Time: ~3 min. Full derivation. Cross terms vanish because noise is zero-mean and independent, and variance term is zero-mean by definition. For beginners: "We split the total error into three parts: how wrong we are on average, how much our predictions wobble, and unavoidable noise."</aside>
+</section>
+
+<!-- SLIDE 18: BV — Annotated Result -->
+<section>
+  <h2>The Three Terms</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Term</th><th>What It Measures</th><th>You Control It By</th></tr></thead>
+    <tbody>
+      <tr><td><span class="term-bias">Bias&sup2;</span></td><td>Systematic error &mdash; model's average is off-target</td><td>More complex model</td></tr>
+      <tr><td><span class="term-variance">Variance</span></td><td>Sensitivity to training set &mdash; predictions fluctuate</td><td>Simpler model, more data, ensembles</td></tr>
+      <tr><td><span class="term-noise">&sigma;&sup2;</span></td><td>Irreducible randomness in the data</td><td>Nothing &mdash; this is the floor</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>The trade-off:</strong> Reducing bias (more complex model) typically increases variance. Reducing variance (simpler model) typically increases bias. The art of ML is finding the sweet spot.
+  </div>
+  <aside class="notes">Time: ~2 min. This is the most important equation in supervised ML. Every model choice is a bias-variance trade-off.</aside>
+</section>
+
+<!-- SLIDE 19: Double Descent -->
+<section>
+  <h2>Double Descent &mdash; When the Trade-off Breaks</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Classical wisdom: more parameters = more overfitting. But modern over-parameterised models generalise well.</p>
+  <div class="callout callout-advanced">
+    <strong>Belkin et al. (2019):</strong> Test error first decreases, then increases at the <em>interpolation threshold</em> (classical overfitting), then <strong>decreases again</strong> in the over-parameterised regime &mdash; the "double descent" curve.
+  </div>
+  <ul style="font-size:0.85em;">
+    <li><strong>Under-parameterised</strong>: classical bias-variance applies</li>
+    <li><strong>Interpolation threshold</strong>: just enough params to memorise = worst generalisation</li>
+    <li><strong>Over-parameterised</strong>: many solutions fit perfectly; gradient descent finds the smoothest one (implicit regularisation)</li>
+  </ul>
+  <p style="font-size:0.8em; color:#64748B;">This does NOT mean "just make everything bigger." The classical picture is incomplete for modern architectures.</p>
+  <aside class="notes">Time: ~3 min. For experts only. Mention epoch-wise double descent (Nakkiran et al. 2021). For beginners: "The takeaway is that the simple story has exceptions for very large models."</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION B — LINEAR MODELS (Slides 20-37)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section B: Linear Models</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"The most important models in all of ML. Not because they are the best, but because everything else is built on them."</p>
+  <ul>
+    <li>Simple &amp; Multiple Linear Regression (OLS)</li>
+    <li>Ridge (L2), Lasso (L1), ElasticNet</li>
+    <li>Polynomial Regression</li>
+    <li>Logistic Regression (binary, multinomial, ordinal)</li>
+    <li>Generalised Linear Models (GLMs)</li>
+    <li>Bayesian Linear Regression</li>
+  </ul>
+  <aside class="notes">Time: ~1 min. Linear models are the foundation. Understanding them is essential for interpretability, baselines, and understanding regularisation.</aside>
+</section>
+
+<section>
+  <h2>Simple Linear Regression</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>The simplest model: draw a straight line through data.</p>
+  <div class="callout callout-foundations">
+    <strong>Example:</strong> How does floor area affect HDB resale price?<br>
+    <em>Price = &beta;&#8320; + &beta;&#8321; &times; floor_area + noise</em><br>
+    &beta;&#8320; is the base price (intercept). &beta;&#8321; is the price per square metre (slope).
+  </div>
+  <p><strong>OLS:</strong> Find the line that minimises the sum of squared distances.</p>
+  <div class="equation-box">
+    <span class="katex-display">\min_{\beta_0, \beta_1} \sum_{i=1}^{n} \left(y_i - (\beta_0 + \beta_1 x_i)\right)^2</span>
+    <div class="annotation">Sum of squared residuals &mdash; penalises large errors quadratically</div>
+  </div>
+  <aside class="notes">Time: ~2 min. Use the HDB example throughout. Ask: "Why squared? Why not absolute value?" Squared is differentiable everywhere.</aside>
+</section>
+
+<section>
+  <h2>OLS Solution &mdash; Normal Equations</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>In matrix form: <span class="katex-inline">y = X\beta + \varepsilon</span>. Minimise <span class="katex-inline">\|y - X\beta\|^2</span>.</p>
+  <div class="derivation-step">
+    <div class="step-label">Step 1: Expand the loss</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">L(\beta) = (y - X\beta)^T(y - X\beta) = y^Ty - 2\beta^TX^Ty + \beta^TX^TX\beta</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 2: Differentiate and set to zero</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\frac{\partial L}{\partial \beta} = -2X^Ty + 2X^TX\beta = 0</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Step 3: Solve for &beta;</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\boxed{\hat{\beta} = (X^TX)^{-1}X^Ty}</span>
+    </div>
+  </div>
+  <aside class="notes">Time: ~3 min. Walk through each step. Closed-form solution — no iterative optimisation. For beginners: "We found the exact best line using calculus." For experts: "Requires X'X invertible — when it is not, Ridge saves us."</aside>
+</section>
+
+<section>
+  <h2>Geometric Interpretation &amp; R&sup2;</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><span class="katex-inline">\hat{y} = X(X^TX)^{-1}X^Ty = Hy</span> &mdash; projection onto the column space of X.</p>
+  <ul>
+    <li>The hat matrix <strong>H</strong> projects y onto the space that X can describe</li>
+    <li>Residuals <span class="katex-inline">e = y - \hat{y}</span> are orthogonal to the column space</li>
+    <li><strong>R&sup2;</strong> = <span class="katex-inline">1 - \text{SS}_\text{res}/\text{SS}_\text{tot}</span> &mdash; proportion of variance explained</li>
+    <li><strong>Adjusted R&sup2;</strong> penalises adding useless features: <span class="katex-inline">\bar{R}^2 = 1 - \frac{(1-R^2)(n-1)}{n-p-1}</span></li>
+  </ul>
+  <aside class="notes">Time: ~2 min. The geometric view: OLS is just projection. If students have linear algebra: "The best prediction lives in the world X can describe." Cook's distance, leverage (h_ii), and VIF > 10 for multicollinearity are the key diagnostic measures.</aside>
+</section>
+
+<section>
+  <h2>OLS Assumptions &mdash; LINE</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Letter</th><th>Assumption</th><th>What Breaks If Violated</th></tr></thead>
+    <tbody>
+      <tr><td><strong>L</strong></td><td><strong>Linearity</strong>: E[y|X] is linear in X</td><td>Biased estimates, wrong predictions</td></tr>
+      <tr><td><strong>I</strong></td><td><strong>Independence</strong>: errors are independent</td><td>Standard errors wrong, p-values unreliable</td></tr>
+      <tr><td><strong>N</strong></td><td><strong>Normality</strong>: errors ~ N(0, &sigma;&sup2;)</td><td>Inference invalid; predictions still OK</td></tr>
+      <tr><td><strong>E</strong></td><td><strong>Equal variance</strong> (homoscedasticity)</td><td>OLS still unbiased but inefficient</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>In practice:</strong> Linearity and independence matter most. Normality matters least (CLT rescues us for large n). Always check residual plots.
+  </div>
+  <aside class="notes">Time: ~2 min. Diagnostics: residuals vs fitted (patterns), Q-Q plot (normality), Cook's distance > 1 (influential points), VIF > 10 (multicollinearity).</aside>
+</section>
+
+<section>
+  <h2>Ridge Regression (L2)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Problem:</strong> When features are correlated, <span class="katex-inline">(X^TX)</span> is nearly singular and estimates explode.</p>
+  <div class="equation-box">
+    <span class="katex-display">\hat{\beta}_\text{ridge} = (X^TX + \lambda I)^{-1}X^Ty</span>
+    <div class="annotation">&lambda;I adds a positive value to the diagonal &mdash; always invertible. Bayesian interpretation: Gaussian prior on &beta;.</div>
+  </div>
+  <ul style="font-size:0.85em;">
+    <li>Shrinks all coefficients toward zero, but never exactly to zero</li>
+    <li>Effect on eigenvalues: shrinks poorly determined directions most &mdash; <span class="katex-inline">d_j^2/(d_j^2 + \lambda)</span></li>
+    <li>Adds bias but dramatically reduces variance &mdash; often reduces total error</li>
+  </ul>
+  <aside class="notes">Time: ~3 min. The lambda-I trick stabilises an unstable matrix. For experts: Ridge shrinks coefficients along the eigenvectors of X'X. Effective degrees of freedom: df(lambda) = sum d_j^2/(d_j^2 + lambda).</aside>
+</section>
+
+<section>
+  <h2>Lasso (L1) &amp; ElasticNet</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Lasso (L1)</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\min_\beta \|y - X\beta\|^2 + \lambda \sum_{j}|\beta_j|</span>
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>No closed form (|&beta;| not differentiable at 0)</li>
+        <li>Solved by coordinate descent</li>
+        <li>Produces <strong>sparse</strong> solutions (automatic feature selection)</li>
+        <li>Diamond constraint meets loss contours at <strong>corners</strong></li>
+        <li>Bayesian: Laplace prior (sharp peak at 0)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>ElasticNet</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\lambda[\alpha\|\beta\|_1 + (1\!-\!\alpha)\|\beta\|_2^2]</span>
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>&alpha; = 1: pure Lasso; &alpha; = 0: pure Ridge</li>
+        <li>Groups correlated features (Lasso picks one arbitrarily)</li>
+        <li>Practical default: &alpha; = 0.5</li>
+        <li>Feature selection + stability</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~3 min. The geometry is the key: L1 constraint is a diamond with corners on axes. Loss contours (ellipses) touch the corners where parameters = 0. L2 circle has no corners, so no exact zeros. ElasticNet combines both for correlated features. For experts: LARS algorithm computes the entire Lasso path efficiently.</aside>
+</section>
+
+<section>
+  <h2>Polynomial Regression</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Linear in <em>parameters</em>, not in features. Add polynomial features for non-linearity.</p>
+  <div class="equation-box">
+    <span class="katex-display">y = \beta_0 + \beta_1 x + \beta_2 x^2 + \beta_3 x^3 + \varepsilon</span>
+    <div class="annotation">Still a linear model! Linear in the parameters &beta;.</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Danger:</strong> High-degree polynomials overfit catastrophically. Degree 2 or 3 is usually enough. Beyond that, use trees or splines.
+  </div>
+  <aside class="notes">Time: ~2 min. The key insight: "linear model" means linear in parameters, not in x. A degree-10 polynomial is still a linear model. For beginners: "We give the model more building blocks to draw curves instead of just straight lines."</aside>
+</section>
+
+<section>
+  <h2>Logistic Regression &mdash; From Log-Odds to Sigmoid</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="derivation-step">
+    <div class="step-label">Model log-odds as linear</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\log\!\left(\frac{p}{1-p}\right) = X\beta</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">Solve for p &mdash; get the sigmoid</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">p = \frac{1}{1 + e^{-X\beta}} = \sigma(X\beta)</span>
+    </div>
+  </div>
+  <div class="derivation-step">
+    <div class="step-label">MLE &rarr; Cross-entropy loss</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">\mathcal{L} = -\sum_{i=1}^{n}\!\left[y_i \log \hat{p}_i + (1\!-\!y_i)\log(1\!-\!\hat{p}_i)\right]</span>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Beautiful fact:</strong> The gradient is <span class="katex-inline">\nabla_\beta \mathcal{L} = X^T(\hat{y} - y)</span> &mdash; same form as OLS! Decision boundary: where <span class="katex-inline">X\beta = 0</span> (a hyperplane).
+  </div>
+  <aside class="notes">Time: ~3 min. Derive the sigmoid from log-odds — it is not arbitrary. The cross-entropy loss comes from maximum likelihood. Multinomial extension: softmax with K weight vectors. Ordinal: cumulative link model.</aside>
+</section>
+
+<section>
+  <h2>Multinomial &amp; Generalised Linear Models</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Multinomial logistic:</strong> <span class="katex-inline">P(Y\!=\!k) = e^{X\beta_k} / \sum_j e^{X\beta_j}</span> (softmax)</p>
+  <p><strong>GLMs unify linear and logistic regression</strong> via the exponential family:</p>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Distribution</th><th>Link Function</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td>Normal</td><td>Identity</td><td>Continuous (OLS)</td></tr>
+      <tr><td>Bernoulli</td><td>Logit</td><td>Binary (logistic)</td></tr>
+      <tr><td>Poisson</td><td>Log</td><td>Count data (claims, events)</td></tr>
+      <tr><td>Neg. Binomial</td><td>Log</td><td>Overdispersed counts</td></tr>
+      <tr><td>Gamma</td><td>Inverse</td><td>Positive continuous (amounts)</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">Time: ~2 min. GLMs are essential for insurance/finance. Poisson for counts, Gamma for positive amounts. Singapore context: MAS risk models commonly use GLMs.</aside>
+</section>
+
+<section>
+  <h2>Bayesian Linear Regression</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Full posterior distribution over &beta; instead of a single point estimate:</p>
+  <div class="equation-box">
+    <span class="katex-display">p(\beta|y,X) \propto p(y|X,\beta) \cdot p(\beta)</span>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Conjugate Gaussian</h3>
+      <ul style="font-size:0.82em;">
+        <li>Prior: <span class="katex-inline">\beta \sim \mathcal{N}(\mu_0, \Sigma_0)</span></li>
+        <li>Posterior: <span class="katex-inline">\beta|y \sim \mathcal{N}(\mu_n, \Sigma_n)</span></li>
+        <li><span class="katex-inline">\Sigma_n = (\Sigma_0^{-1} + \sigma^{-2}X^TX)^{-1}</span></li>
+        <li>With <span class="katex-inline">\mu_0\!=\!0, \Sigma_0\!=\!\tau^2 I</span> &rarr; reduces to Ridge</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Why Bayesian?</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Uncertainty</strong>: credible intervals on every prediction</li>
+        <li><strong>Prior knowledge</strong>: encode domain expertise</li>
+        <li><strong>Small data</strong>: priors regularise naturally</li>
+        <li><strong>Predictive:</strong> <span class="katex-inline">p(y^*|y)</span> includes parameter uncertainty</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~3 min. Bayesian linear regression is the principled version of Ridge. Ridge = MAP estimate with Gaussian prior. Full Bayesian gives you the entire distribution. For experts: predictive distribution naturally includes both parameter uncertainty and noise.</aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge &mdash; Linear Models</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelSpec
+
+# Ridge regression
+spec = ModelSpec(algorithm="ridge", hyperparameters={"alpha": 1.0})
+
+# Logistic with ElasticNet
+spec = ModelSpec(
+    algorithm="logistic_regression",
+    hyperparameters={"penalty": "elasticnet", "l1_ratio": 0.5, "C": 1.0},
+)
+
+# Every linear model: OLS, Ridge, Lasso, ElasticNet, logistic, Poisson
+pipeline = TrainingPipeline(model_spec=spec)
+result = await pipeline.train(X_train, y_train)</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. All the math maps to a simple API call. The theory gives you understanding of WHAT to tune.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION C — TREE-BASED MODELS (Slides 33-60)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section C: Tree-Based Models</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"If you can only learn one family of models, make it trees. They dominate tabular data."</p>
+  <ul>
+    <li>Decision Trees (CART, splitting criteria, pruning)</li>
+    <li>Random Forest (bagging, decorrelation, OOB, feature importance)</li>
+    <li>Gradient Boosting (function-space gradient descent)</li>
+    <li>XGBoost, LightGBM, CatBoost (the big three)</li>
+  </ul>
+  <aside class="notes">Time: ~1 min. Trees are the workhorses of industry ML. This is the densest section.</aside>
+</section>
+
+<section>
+  <h2>Decision Trees &mdash; How They Work</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>A flowchart for predictions. At each step, ask one question about the data.</p>
+  <div class="callout callout-foundations">
+    <strong>Example &mdash; "Should I approve this HDB loan?"</strong><br>
+    1. Income &gt; S$5,000? &rarr; Yes &rarr; Debt &lt; 40%? &rarr; Yes &rarr; <strong style="color:var(--ascent-success);">Approve</strong> / No &rarr; <strong style="color:var(--ascent-alert);">Review</strong><br>
+    &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; &rarr; No &rarr; CPF &gt; S$50K? &rarr; Yes &rarr; <strong style="color:var(--ascent-alert);">Review</strong> / No &rarr; <strong style="color:var(--ascent-error);">Deny</strong>
+  </div>
+  <p style="font-size:0.85em;">The algorithm automatically finds the best questions and thresholds.</p>
+  <aside class="notes">Time: ~2 min. Singapore-specific example. Trees are the most interpretable ML model.</aside>
+</section>
+
+<section>
+  <h2>Splitting Criteria &mdash; Gini &amp; Entropy</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Gini Impurity</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\text{Gini}(t) = 1 - \sum_{k=1}^K p_k^2</span>
+      </div>
+      <p style="font-size:0.82em;">Probability of misclassification. Gini = 0 means pure node.</p>
+    </div>
+    <div class="col">
+      <h3>Entropy / Information Gain</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">H(t) = -\sum_{k=1}^K p_k \log_2 p_k</span>
+      </div>
+      <p style="font-size:0.82em;">IG = H(parent) &minus; weighted H(children). Gain Ratio (C4.5) normalises by split info.</p>
+    </div>
+  </div>
+  <p><strong>Regression trees:</strong> split by MSE/MAE reduction. Leaf prediction = mean of samples in leaf.</p>
+  <div class="callout callout-theory">
+    <strong>Gini vs Entropy:</strong> Almost always select the same splits. Gini is slightly faster (no logarithm).
+  </div>
+  <aside class="notes">Time: ~2 min. Example: node with 70% approve, 30% deny: Gini = 1 - (0.49 + 0.09) = 0.42. For beginners: "Both measure how mixed the classes are."</aside>
+</section>
+
+<section>
+  <h2>Pruning &mdash; Controlling Tree Complexity</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Pre-Pruning</h3>
+      <ul style="font-size:0.85em;">
+        <li><code>max_depth</code>, <code>min_samples_leaf</code></li>
+        <li><code>min_samples_split</code></li>
+        <li><code>min_impurity_decrease</code></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Post-Pruning (Cost-Complexity)</h3>
+      <ul style="font-size:0.85em;">
+        <li><span class="katex-inline">R_\alpha(T) = R(T) + \alpha|T|</span></li>
+        <li>Grow full tree, then prune branches</li>
+        <li>Select &alpha; by cross-validation</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Unpruned trees:</strong> Low bias but VERY high variance. This is why single trees are weak learners &mdash; ensembles fix this.
+  </div>
+  <aside class="notes">Time: ~2 min. Advantages of trees: interpretable, handles mixed types, no scaling. Disadvantages: high variance, greedy, axis-aligned splits.</aside>
+</section>
+
+<section>
+  <h2>Random Forest &mdash; Wisdom of the Crowd</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>Train hundreds of trees and let them vote. Two sources of randomness:</p>
+  <ol>
+    <li><strong>Bootstrap sampling:</strong> each tree gets a random sample with replacement</li>
+    <li><strong>Feature randomness:</strong> at each split, only consider a random subset of features</li>
+  </ol>
+  <div class="equation-box">
+    <span class="katex-display">\text{Var}\!\left(\frac{1}{B}\sum T_b\right) = \rho\sigma^2 + \frac{1-\rho}{B}\sigma^2</span>
+    <div class="annotation">As B &rarr; &infin;, variance &rarr; &rho;&sigma;&sup2;. Feature randomness reduces &rho;. Defaults: max_features = &radic;p (class), p/3 (reg).</div>
+  </div>
+  <aside class="notes">Time: ~3 min. The variance formula is the key: averaging helps but correlation rho sets the floor. Feature randomness decorrelates trees. OOB error gives free validation (~36.8% of data unused per tree).</aside>
+</section>
+
+<section>
+  <h2>Feature Importance &mdash; Three Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table>
+    <thead><tr><th>Method</th><th>How</th><th>Bias?</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Gini (MDI)</strong></td><td>Sum of impurity reductions across trees</td><td><span class="verdict verdict-bad">Biased</span> toward high-cardinality</td></tr>
+      <tr><td><strong>Permutation</strong></td><td>Shuffle feature, measure performance drop</td><td><span class="verdict verdict-good">Unbiased</span>, slower</td></tr>
+      <tr><td><strong>Drop-column</strong></td><td>Retrain without feature</td><td><span class="verdict verdict-good">Gold standard</span>, expensive</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Default <code>feature_importances_</code> uses Gini.</strong> It overestimates high-cardinality features. Prefer permutation importance.
+  </div>
+  <p style="font-size:0.85em;"><strong>ExtraTrees:</strong> Even MORE randomness (random thresholds, no bootstrap). Lower variance, higher bias. Good when features are noisy.</p>
+  <aside class="notes">Time: ~2 min. Gini importance bias is a common trap. Always use permutation importance in production.</aside>
+</section>
+
+<section>
+  <h2>Gradient Boosting &mdash; The Algorithm</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Key insight: gradient descent in <strong>function space</strong>. Each tree fits the <strong>negative gradients</strong> (pseudo-residuals).</p>
+  <div class="derivation-step">
+    <div class="step-label">The boosting loop (m = 1 to M)</div>
+    <ol style="font-size:0.85em;">
+      <li>Pseudo-residuals: <span class="katex-inline">r_{im} = -\partial L(y_i, F_{m-1}(x_i))/\partial F_{m-1}</span></li>
+      <li>Fit tree h<sub>m</sub> to pseudo-residuals</li>
+      <li>Find optimal leaf values: <span class="katex-inline">\gamma_{jm} = \arg\min_\gamma \sum_{x_i \in R_j} L(y_i, F_{m-1}(x_i) + \gamma)</span></li>
+      <li>Update: <span class="katex-inline">F_m = F_{m-1} + \eta \cdot h_m</span></li>
+    </ol>
+  </div>
+  <p style="font-size:0.85em;"><strong>Shrinkage:</strong> Learning rate &eta; &lt; 1 with more trees generalises better. Stochastic GB: subsample rows and columns.</p>
+  <aside class="notes">Time: ~3 min. For MSE loss, pseudo-residuals = actual residuals. For other losses, they are the gradients. For beginners: "Each tree learns the mistakes of the previous ensemble." Loss functions: squared, absolute, Huber, logistic, exponential.</aside>
+</section>
+
+<section>
+  <h2>XGBoost &mdash; Second-Order Optimisation</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>2nd-order Taylor expansion with regularised tree structure:</p>
+  <div class="equation-box">
+    <span class="katex-display">\mathcal{L}^{(t)} \approx \sum_{i}\!\left[g_i f_t(x_i) + \tfrac{1}{2}h_i f_t(x_i)^2\right] + \gamma T + \tfrac{1}{2}\lambda\sum_{j=1}^T w_j^2</span>
+    <div class="annotation">g<sub>i</sub> = first derivative, h<sub>i</sub> = second derivative, T = leaves, w<sub>j</sub> = leaf weights</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Optimal Leaf Weight</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">w_j^* = -\frac{G_j}{H_j + \lambda}</span>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Split Gain</h3>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\frac{1}{2}\!\left[\frac{G_L^2}{H_L\!+\!\lambda} + \frac{G_R^2}{H_R\!+\!\lambda} - \frac{(G_L\!+\!G_R)^2}{H_L\!+\!H_R\!+\!\lambda}\right] - \gamma</span>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:0.85em;">&gamma; = minimum gain to split. Sparsity-aware splits handle missing values. Weighted quantile sketch for approximate split finding.</p>
+  <aside class="notes">Time: ~3 min. Newton's method (2nd order) converges faster than gradient descent (1st order). XGBoost 2.0: vector-leaf trees for multi-target. XGBoost 3.x: SYCL device support. Key hyperparameters: n_estimators, learning_rate, max_depth, min_child_weight, gamma, lambda, alpha, subsample, colsample_bytree.</aside>
+</section>
+
+<section>
+  <h2>LightGBM &mdash; Speed Through Cleverness</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Three Key Ideas</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Histogram-based splitting:</strong> 256 bins &rarr; O(bins &times; features) not O(n &times; features)</li>
+        <li><strong>GOSS:</strong> keep all high-gradient (hard) samples, sample low-gradient (easy) ones</li>
+        <li><strong>EFB:</strong> bundle mutually exclusive features to reduce dimensionality</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Leaf-Wise Growth</h3>
+      <ul style="font-size:0.82em;">
+        <li>XGBoost: level-wise (all nodes at same depth)</li>
+        <li>LightGBM: leaf-wise (split leaf with highest gain)</li>
+        <li>Faster convergence, lower error with fewer leaves</li>
+        <li>Risk of overfitting on small data &mdash; control with <code>num_leaves</code></li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.85em;"><strong>Native categorical features:</strong> optimal subset splits using gradient statistics (Fisher's theorem for binary). 5-10x faster than XGBoost on large data.</p>
+  <aside class="notes">Time: ~3 min. Histogram binning is the biggest speedup. GOSS is elegant: most learning happens from hard examples. For beginners: "LightGBM does the same thing as XGBoost but with tricks to make it much faster."</aside>
+</section>
+
+<section>
+  <h2>CatBoost &mdash; Robustness by Design</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ul>
+    <li><strong>Ordered Target Statistics:</strong> encode categoricals using target mean with permutations to prevent leakage &mdash; for sample i, use only samples BEFORE i in a random permutation</li>
+    <li><strong>Ordered Boosting:</strong> random permutations for unbiased gradient estimates</li>
+    <li><strong>Symmetric (oblivious) trees:</strong> same split condition at each level &mdash; faster inference, natural regularisation</li>
+    <li><strong>Best out-of-box:</strong> needs less tuning than XGBoost or LightGBM</li>
+  </ul>
+  <aside class="notes">Time: ~2 min. CatBoost addresses a subtle bias in standard gradient boosting. Its ordered boosting is theoretically principled. For beginners: "CatBoost works well straight out of the box."</aside>
+</section>
+
+<section>
+  <h2>The Big Three &mdash; Comparison</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.68em;">
+    <thead><tr><th>Feature</th><th>XGBoost</th><th>LightGBM</th><th>CatBoost</th></tr></thead>
+    <tbody>
+      <tr><td>Tree growth</td><td>Level-wise</td><td>Leaf-wise</td><td>Symmetric</td></tr>
+      <tr><td>Speed (large data)</td><td>Good</td><td><span class="verdict verdict-good">Fastest</span></td><td>Good</td></tr>
+      <tr><td>Categorical handling</td><td>Ordinal only</td><td>Native subset</td><td><span class="verdict verdict-good">Best</span></td></tr>
+      <tr><td>Out-of-box accuracy</td><td>Good</td><td>Good</td><td><span class="verdict verdict-good">Best</span></td></tr>
+      <tr><td>Tuning needed</td><td>Moderate</td><td>Moderate</td><td><span class="verdict verdict-good">Least</span></td></tr>
+      <tr><td>Community</td><td><span class="verdict verdict-good">Largest</span></td><td>Large</td><td>Growing</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Rule of thumb:</strong> LightGBM for speed. CatBoost for categoricals or minimal tuning. XGBoost for ecosystem support.
+  </div>
+  <aside class="notes">Time: ~2 min. All three are excellent and often produce similar results.</aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge &mdash; Tree-Based Models</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelSpec, AutoMLEngine
+
+# LightGBM
+spec = ModelSpec(algorithm="lightgbm", hyperparameters={
+    "num_leaves": 31, "learning_rate": 0.05, "n_estimators": 500,
+})
+
+# Compare all three
+engine = AutoMLEngine(algorithms=["xgboost", "lightgbm", "catboost"])
+comparison = await engine.compare(X_train, y_train)</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. Switching between models is a one-line change. AutoMLEngine compares all three systematically.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION D — OTHER SUPERVISED MODELS (Slides 47-60)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section D: Beyond Trees and Lines</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"Every model has a situation where it is the best choice."</p>
+  <ul>
+    <li>K-Nearest Neighbours (KNN) &mdash; simplest non-parametric</li>
+    <li>Support Vector Machines (SVM) &mdash; maximum margin</li>
+    <li>Naive Bayes &mdash; text classification champion</li>
+    <li>Gaussian Processes &mdash; uncertainty quantification</li>
+    <li>TabPFN &mdash; foundation models for tabular data</li>
+  </ul>
+  <aside class="notes">Time: ~1 min. Each model has a niche. KNN for prototyping, SVM for high-dimensional data, NB for text, GPs for uncertainty-critical problems.</aside>
+</section>
+
+<section>
+  <h2>K-Nearest Neighbours</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>To predict: find the k closest points in training data, average (regression) or vote (classification).</p>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Distance</th><th>Formula</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Euclidean</td><td><span class="katex-inline">\sqrt{\sum(x_i-y_i)^2}</span></td><td>Default</td></tr>
+      <tr><td>Manhattan</td><td><span class="katex-inline">\sum|x_i-y_i|</span></td><td>Sparse features</td></tr>
+      <tr><td>Mahalanobis</td><td><span class="katex-inline">\sqrt{(x-y)^T\Sigma^{-1}(x-y)}</span></td><td>Correlated features</td></tr>
+      <tr><td>Cosine</td><td><span class="katex-inline">1 - \frac{x \cdot y}{\|x\|\|y\|}</span></td><td>Text, high-dim</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Feature scaling is critical!</strong> Distance-based models require it. <strong>Curse of dimensionality:</strong> KNN fails above ~20-50 features &mdash; all points become equidistant. Use PCA first.
+  </div>
+  <aside class="notes">Time: ~2 min. KNN is a lazy learner — no training phase. KD-tree and Ball-tree accelerate search. Choosing k: cross-validation, sqrt(n) heuristic. For beginners: "Find the most similar examples."</aside>
+</section>
+
+<section>
+  <h2>Support Vector Machines</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p>Find the hyperplane that separates classes with the <strong>widest margin</strong>.</p>
+  <div class="equation-box">
+    <span class="katex-display">\min_{w,b,\xi} \frac{1}{2}\|w\|^2 + C\sum\xi_i \quad \text{s.t.} \;\; y_i(w\!\cdot\!x_i + b) \geq 1 - \xi_i</span>
+    <div class="annotation">C controls tolerance: high C = narrow margin, low training error; low C = wide margin, more tolerance.</div>
+  </div>
+  <p><strong>Kernel trick:</strong> compute inner products in high-dimensional space WITHOUT explicit mapping.</p>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Kernel</th><th>Formula</th><th>Effective Dim</th></tr></thead>
+    <tbody>
+      <tr><td>Linear</td><td><span class="katex-inline">x_i \cdot x_j</span></td><td>p</td></tr>
+      <tr><td>Polynomial</td><td><span class="katex-inline">(x_i\!\cdot\!x_j + c)^d</span></td><td><span class="katex-inline">\binom{p+d}{d}</span></td></tr>
+      <tr><td>RBF</td><td><span class="katex-inline">\exp(-\gamma\|x_i - x_j\|^2)</span></td><td><strong>Infinite</strong></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">Guide: features &gt; samples &rarr; linear. Default &rarr; RBF. <strong>Limitation:</strong> O(n&sup2;)-O(n&sup3;) training &mdash; impractical for n &gt; 100K.</p>
+  <aside class="notes">Time: ~3 min. The kernel trick is beautiful: RBF maps to infinite dimensions with one exponential. SVR uses epsilon-insensitive tube. SVMs were dominant 2000-2012; gradient boosting has largely replaced them for tabular data.</aside>
+</section>
+
+<section>
+  <h2>Naive Bayes</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">P(y|x_1,...,x_p) \propto P(y)\prod_{j=1}^{p}P(x_j|y)</span>
+    <div class="annotation">"Naive" = features independent given class. Wrong but works (Zhang, 2004).</div>
+  </div>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Variant</th><th>P(x<sub>j</sub>|y)</th><th>Best For</th></tr></thead>
+    <tbody>
+      <tr><td>Gaussian</td><td><span class="katex-inline">\mathcal{N}(\mu_{jy}, \sigma^2_{jy})</span></td><td>Continuous features</td></tr>
+      <tr><td>Multinomial</td><td>Count-based</td><td>Text (bag of words)</td></tr>
+      <tr><td>Bernoulli</td><td>Binary</td><td>Binary features</td></tr>
+      <tr><td>Complement</td><td>Complement of class</td><td>Imbalanced text</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.85em;"><strong>Laplace smoothing (&alpha;):</strong> prevents zero probabilities. <strong>When to use:</strong> baselines, text, small data, real-time (extremely fast).</p>
+  <aside class="notes">Time: ~2 min. NB only needs the ranking of class probabilities to be correct, not exact values. That is why the independence assumption matters less than you think. NB is a linear classifier in log-probability space.</aside>
+</section>
+
+<section>
+  <h2>Gaussian Processes</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>A distribution over ALL possible functions. Predict both mean AND variance.</p>
+  <div class="equation-box">
+    <span class="katex-display">f \sim \mathcal{GP}(m(x), k(x, x'))</span>
+    <div class="annotation">m(x) = mean function, k(x, x') = kernel (RBF, Matern, periodic). Built-in uncertainty quantification.</div>
+  </div>
+  <ul style="font-size:0.85em;">
+    <li><strong>Non-parametric:</strong> complexity grows with data</li>
+    <li><strong>Bayesian Optimisation:</strong> GP surrogate + acquisition function (EI, UCB) &mdash; efficient hyperparameter tuning</li>
+    <li><strong>Connection:</strong> infinite-width neural networks are GPs (Neal, 1996)</li>
+    <li><strong>Limitation:</strong> O(n&sup3;) &mdash; practical for n &lt; 10,000</li>
+  </ul>
+  <div class="callout callout-kailash">
+    <strong>Kailash bridge:</strong> <code>HyperparameterSearch(config=SearchConfig(method="bayesian"))</code> uses Bayesian Optimisation under the hood.
+  </div>
+  <aside class="notes">Time: ~3 min. GPs are the gold standard for uncertainty quantification on small data. For beginners: "GPs tell you not just 'what is my prediction' but 'how confident am I.'" Common kernels: RBF (smooth), Matern v=3/2 (realistic for physical data), periodic (repeating patterns).</aside>
+</section>
+
+<section>
+  <h2>TabPFN &mdash; Foundation Models for Tabular Data</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="callout callout-advanced">
+    <strong>TabPFN:</strong> A transformer pre-trained on millions of synthetic datasets. Given your training data as context, it produces predictions in a single forward pass &mdash; no training needed.
+  </div>
+  <ul style="font-size:0.85em;">
+    <li><strong>TabPFN v2.5 (Nov 2025):</strong> up to 50K samples, 2K features</li>
+    <li>100% win rate vs default XGBoost on small-medium classification (&le;10K samples)</li>
+    <li>87% win rate on larger datasets up to 100K samples</li>
+    <li><strong>Distillation:</strong> convert to compact MLP or tree for fast inference</li>
+    <li><strong>Paradigm shift:</strong> treats tabular ML as in-context learning</li>
+  </ul>
+  <p style="font-size:0.8em; color:#64748B;">Source: Hollmann et al. (2024), Nature; PriorLabs TabPFN v2.5, 2025.</p>
+  <aside class="notes">Time: ~2 min. TabPFN is cutting-edge. It implicitly performs Bayesian model selection during pre-training. Best for small data where gradient boosting struggles.</aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge &mdash; All Models</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <pre><code class="language-python">from kailash_ml import AutoMLEngine
+
+# Compare ALL models
+engine = AutoMLEngine(
+    algorithms=["logistic_regression", "ridge", "lasso",
+                 "knn", "svm", "naive_bayes",
+                 "random_forest", "xgboost", "lightgbm", "catboost"],
+)
+comparison = await engine.compare(X_train, y_train)
+print(comparison.leaderboard)</code></pre>
+  </div>
+  <aside class="notes">Time: ~1 min. Every model maps to one ModelSpec. AutoMLEngine compares them all.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION E — MODEL EVALUATION (Slides 55-75)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section E: Model Evaluation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"A model is only as good as its evaluation. Choose the wrong metric and you will confidently deploy a useless system."</p>
+  <aside class="notes">Time: ~1 min. This section is critical. The Credit Suisse case is the motivating example.</aside>
+</section>
+
+<section>
+  <h2>Regression Metrics</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.68em;">
+    <thead><tr><th>Metric</th><th>Formula</th><th>When to Use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MSE</strong></td><td><span class="katex-inline">\frac{1}{n}\sum(y_i\!-\!\hat{y}_i)^2</span></td><td>Default, penalises large errors</td></tr>
+      <tr><td><strong>RMSE</strong></td><td><span class="katex-inline">\sqrt{\text{MSE}}</span></td><td>Same units as y</td></tr>
+      <tr><td><strong>MAE</strong></td><td><span class="katex-inline">\frac{1}{n}\sum|y_i\!-\!\hat{y}_i|</span></td><td>Robust to outliers</td></tr>
+      <tr><td><strong>MAPE</strong></td><td><span class="katex-inline">\frac{100}{n}\sum|{(y_i\!-\!\hat{y}_i)}/{y_i}|</span></td><td>Percentage-based (undefined at y=0)</td></tr>
+      <tr><td><strong>R&sup2;</strong></td><td><span class="katex-inline">1 - \text{SS}_\text{res}/\text{SS}_\text{tot}</span></td><td>Overall goodness of fit. Adjusted R&sup2; penalises useless features.</td></tr>
+      <tr><td><strong>Median AE</strong></td><td>Median of |y&minus;y&#770;|</td><td>Most robust single-number metric</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Business context matters!</strong> S$50K MAE on a S$500K flat (10%) is bad. Same MAE on a S$2M condo (2.5%) is acceptable.
+  </div>
+  <aside class="notes">Time: ~2 min. No single metric tells the whole story. Always report multiple. MSE penalises outliers; MAE treats all errors equally.</aside>
+</section>
+
+<section>
+  <h2>Confusion Matrix &amp; Precision, Recall, F1</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <table style="font-size:0.78em;">
+        <thead><tr><th></th><th>Pred +</th><th>Pred &minus;</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Actual +</strong></td><td style="background:#D1FAE5;"><strong>TP</strong></td><td style="background:#FFF1F2;"><strong>FN</strong></td></tr>
+          <tr><td><strong>Actual &minus;</strong></td><td style="background:#FFF1F2;"><strong>FP</strong></td><td style="background:#D1FAE5;"><strong>TN</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{Precision} = \frac{TP}{TP+FP}</span>
+      </div>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">\text{Recall} = \frac{TP}{TP+FN}</span>
+      </div>
+      <div class="equation-box" style="font-size:0.85em;">
+        <span class="katex-display">F_1 = \frac{2PR}{P+R} \quad F_\beta = \frac{(1+\beta^2)PR}{\beta^2 P + R}</span>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:0.85em;">Precision: "Of those I flagged, how many are real?" Recall: "Of all positives, how many did I find?" F1: harmonic mean (penalises imbalance). &beta;=2 weights recall; &beta;=0.5 weights precision.</p>
+  <aside class="notes">Time: ~3 min. Use Credit Suisse: P = 1% means 99% false alarms. Which error is worse depends on the domain: medical (FN worse), spam (FP worse), fraud (FN worse).</aside>
+</section>
+
+<section>
+  <h2>ROC vs PR Curves</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>ROC Curve</h3>
+      <ul style="font-size:0.82em;">
+        <li>TPR vs FPR as threshold varies</li>
+        <li>AUC = P(positive scores &gt; negative)</li>
+        <li><span class="verdict verdict-bad">Misleading with severe imbalance</span></li>
+        <li>FPR denominator (FP+TN) dominated by TN</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>PR Curve</h3>
+      <ul style="font-size:0.82em;">
+        <li>Precision vs Recall as threshold varies</li>
+        <li>AP = area under PR curve</li>
+        <li><span class="verdict verdict-good">Honest with imbalanced data</span></li>
+        <li>Precision directly measures false alarm rate</li>
+      </ul>
+    </div>
+  </div>
+  <p><strong>More metrics:</strong> Log loss (penalises confident wrong predictions), Cohen's &kappa; (chance-adjusted), <strong>MCC</strong> = <span class="katex-inline">\frac{TP\!\cdot\!TN - FP\!\cdot\!FN}{\sqrt{(TP\!+\!FP)(TP\!+\!FN)(TN\!+\!FP)(TN\!+\!FN)}}</span> &mdash; most informative single metric for imbalanced data (&minus;1 to +1).</p>
+  <p style="font-size:0.82em;"><strong>Multi-class:</strong> macro (unweighted avg), micro (aggregate TP/FP/FN), weighted (by class support).</p>
+  <aside class="notes">Time: ~3 min. MCC is underused. Chicco & Jurman (2020) showed MCC is more informative than F1 and accuracy for imbalanced data. Use ROC for balanced data, PR for imbalanced.</aside>
+</section>
+
+<section>
+  <h2>Cross-Validation Strategies</h2>
+  <span class="marker marker-theory">Theory</span>
+  <table style="font-size:0.68em;">
+    <thead><tr><th>Strategy</th><th>How</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td><strong>K-Fold</strong></td><td>K folds, rotate test fold</td><td>Default (K=5 or K=10)</td></tr>
+      <tr><td><strong>Stratified K-Fold</strong></td><td>Preserves class proportions</td><td>Classification with imbalance</td></tr>
+      <tr><td><strong>Leave-One-Out</strong></td><td>K = n, test on each sample</td><td>Very small data (&lt;50)</td></tr>
+      <tr><td><strong>Time Series Split</strong></td><td>Expanding window, never peek future</td><td>Temporal data</td></tr>
+      <tr><td><strong>Group K-Fold</strong></td><td>Groups stay in same fold</td><td>Grouped data (patients, users)</td></tr>
+      <tr><td><strong>Nested CV</strong></td><td>Outer for evaluation, inner for tuning</td><td>Unbiased model comparison</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Nested CV:</strong> 5&times;5 nested CV is the gold standard for rigorous model comparison. Non-nested CV overestimates performance by 2-5% (Varma &amp; Simon, 2006).
+  </div>
+  <p style="font-size:0.82em;"><strong>Model selection:</strong> AIC = 2k &minus; 2ln(L), BIC = k&middot;ln(n) &minus; 2ln(L). For non-parametric models, CV error is the practical standard. Statistical comparison: corrected resampled t-test, Friedman + Nemenyi post-hoc.</p>
+  <aside class="notes">Time: ~3 min. Stratified K-Fold should be default for classification. Time Series Split is mandatory for temporal data. K=5 is usually sufficient; K=10 for critical decisions.</aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge &mdash; Evaluation</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <pre><code class="language-python">from kailash_ml import ModelVisualizer, EvalSpec
+
+eval_spec = EvalSpec(
+    metrics=["precision", "recall", "f1", "auc",
+             "average_precision", "mcc", "brier_score"],
+    cv_strategy="stratified_kfold", cv_folds=5,
+)
+
+viz = ModelVisualizer()
+await viz.precision_recall_curve(result)
+await viz.learning_curve(result)
+await viz.feature_importance(result, method="permutation")</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. EvalSpec configures metrics and CV strategy. ModelVisualizer handles all plots.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION F — CLASS IMBALANCE (Slides 63-72)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section F: Class Imbalance</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"In the real world, the interesting things are rare."</p>
+  <ul>
+    <li>Fraud: 0.1% | Disease: 0.01% | Defects: 0.5% | Money laundering: 0.001%</li>
+  </ul>
+  <p>A model that always predicts "normal" gets 99.9%+ accuracy. <strong>This is the Credit Suisse problem.</strong></p>
+  <aside class="notes">Time: ~1 min. Every interesting ML problem involves imbalance.</aside>
+</section>
+
+<section>
+  <h2>SMOTE &amp; Resampling</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="equation-box">
+    <span class="katex-display">x_\text{new} = x_i + \lambda(x_\text{nn} - x_i), \quad \lambda \sim U(0,1)</span>
+    <div class="annotation">SMOTE: interpolate between minority sample and its nearest neighbour</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>SMOTE Failure Modes</h3>
+      <ul style="font-size:0.82em;">
+        <li>Noisy features &rarr; unrealistic samples</li>
+        <li>High dimensionality &rarr; meaningless neighbours</li>
+        <li>Overlapping classes &rarr; samples in wrong territory</li>
+        <li>Categorical features &rarr; interpolation meaningless</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Better Alternatives</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>ADASYN:</strong> more samples near decision boundary</li>
+        <li><strong>Tomek links:</strong> clean boundary (remove close opposite pairs)</li>
+        <li><strong>ENN:</strong> remove misclassified majority samples</li>
+        <li><strong>Combined:</strong> SMOTE + Tomek or SMOTE + ENN</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.85em;">Undersampling: random (discards info but fast), Tomek (cleans boundary), ENN (removes noise).</p>
+  <aside class="notes">Time: ~3 min. SMOTE is not a magic bullet. Always compare with simpler approaches. For beginners: "Instead of copying examples, SMOTE creates new synthetic examples by blending."</aside>
+</section>
+
+<section>
+  <h2>Algorithmic Approaches</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Class Weights</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">w_k = \frac{n}{K \cdot n_k}</span>
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Rare classes get higher weight</li>
+        <li><code>class_weight="balanced"</code></li>
+        <li>No risk of overfitting to synthetic samples</li>
+        <li><strong>Try this FIRST</strong></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Focal Loss</h3>
+      <div class="equation-box" style="font-size:0.9em;">
+        <span class="katex-display">\text{FL}(p_t) = -\alpha_t(1-p_t)^\gamma\log(p_t)</span>
+      </div>
+      <ul style="font-size:0.82em;">
+        <li>Downweights easy examples (&gamma; = 2 recommended)</li>
+        <li>At p<sub>t</sub> = 0.9: 100x lower loss than CE</li>
+        <li>Focuses learning on hard examples</li>
+        <li>Lin et al. (2017), originally for object detection</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">Time: ~3 min. Class weights are the simplest fix. Focal loss is elegant: the modulating factor (1-p_t)^gamma automatically downweights easy examples. For experts: focal loss addresses the same problem as hard negative mining but in a differentiable way.</aside>
+</section>
+
+<section>
+  <h2>Threshold Moving &amp; Ensemble Approaches</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Threshold moving:</strong> change decision threshold from 0.5 to match business capacity.</p>
+  <ul style="font-size:0.85em;">
+    <li>Lower threshold (0.1) &rarr; higher recall, more false alarms</li>
+    <li>Higher threshold (0.9) &rarr; higher precision, misses more positives</li>
+    <li>Choose based on business constraint (e.g. "max 50 alerts/day")</li>
+  </ul>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Ensemble Method</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td><strong>BalancedRandomForest</strong></td><td>Balanced bootstrap per tree &mdash; uses all majority data across forest</td></tr>
+      <tr><td><strong>EasyEnsemble</strong></td><td>Multiple classifiers on different undersampled subsets</td></tr>
+      <tr><td><strong>RUSBoost</strong></td><td>AdaBoost with random undersampling each round</td></tr>
+    </tbody>
+  </table>
+  <div class="flowchart-box">
+    <strong>Decision guide:</strong> Mild (10:1) &rarr; class weights. Moderate (100:1) &rarr; weights + threshold. Severe (1000:1+) &rarr; resampling + focal loss + ensembles. <strong>Always:</strong> stratified CV, PR curve, MCC.
+  </div>
+  <aside class="notes">Time: ~3 min. Threshold moving is free — no retraining. The flowchart is the practical summary. Start simple (class weights), add complexity only if needed.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION G — MODEL CALIBRATION (Slides 69-80)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section G: Model Calibration</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>When your model says "70% chance of default," does it actually default 70% of the time?</strong></p>
+  <div class="callout callout-foundations">
+    <strong>Why it matters:</strong> If a model says "90% chance of cancer" but the real probability is 30%, you perform unnecessary surgery. If an insurance model says "5% risk" but reality is 20%, you underprice the policy.
+  </div>
+  <p>Most models are NOT well-calibrated out of the box. Logistic regression is often OK. Random Forests push probabilities toward 0.5. Gradient boosting is often over-confident.</p>
+  <aside class="notes">Time: ~2 min. Connect to Zillow: uncalibrated predictions without uncertainty led to overpaying for houses.</aside>
+</section>
+
+<section>
+  <h2>Reliability Diagram &amp; Calibration Methods</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p><strong>Reliability diagram:</strong> bin predictions, plot predicted vs observed frequency. Perfect = diagonal.</p>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Method</th><th>How</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Platt scaling</strong></td><td><span class="katex-inline">P_\text{cal} = \sigma(Af(x) + B)</span></td><td>Small calibration set (&lt;1K), sigmoid-shaped miscalibration</td></tr>
+      <tr><td><strong>Isotonic regression</strong></td><td>Monotonic step function fit to reliability diagram</td><td>Large calibration set (&gt;1K), non-sigmoid patterns</td></tr>
+      <tr><td><strong>Temperature scaling</strong></td><td><span class="katex-inline">P_k = e^{z_k/T}/\sum e^{z_j/T}</span></td><td>Multi-class, preserves accuracy (only changes confidence)</td></tr>
+    </tbody>
+  </table>
+  <div class="equation-box">
+    <span class="katex-display">\text{ECE} = \sum_{b=1}^{B}\frac{n_b}{n}|\text{acc}(b) - \text{conf}(b)|</span>
+    <div class="annotation">Expected Calibration Error: average gap between accuracy and confidence across bins</div>
+  </div>
+  <aside class="notes">Time: ~3 min. Platt scaling fits a logistic on model outputs. Isotonic regression is non-parametric. Temperature scaling is the go-to for deep learning (Guo et al. 2017). Always evaluate calibration on a held-out set.</aside>
+</section>
+
+<section>
+  <h2>Proper Scoring Rules</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>A scoring rule is <strong>proper</strong> if it is minimised when predicted probabilities equal true probabilities.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Proper (honest)</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Brier:</strong> <span class="katex-inline">\frac{1}{n}\sum(y_i - \hat{p}_i)^2</span></li>
+        <li><strong>Log loss:</strong> cross-entropy</li>
+        <li>Both minimised at <span class="katex-inline">\hat{p} = P(Y\!=\!1|X)</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Not Proper (gameable)</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Accuracy:</strong> incentivises over-confidence</li>
+        <li>Report extreme probabilities (0 or 1) and still score well</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Proof Brier is proper:</strong> <span class="katex-inline">\partial \mathbb{E}[(Y\!-\!\hat{p})^2]/\partial\hat{p} = 2(\hat{p}-p) = 0</span> at <span class="katex-inline">\hat{p} = p</span>. QED.
+  </div>
+  <aside class="notes">Time: ~2 min. Proper scoring rules reward honesty. Brier decomposes into calibration + refinement. Log loss is more sensitive to confident wrong predictions.</aside>
+</section>
+
+<section>
+  <h2>Conformal Prediction &mdash; Guaranteed Coverage</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p>Instead of point predictions, produce <strong>prediction sets</strong> with finite-sample coverage guarantee:</p>
+  <div class="equation-box">
+    <span class="katex-display">P(y \in C(x)) \geq 1 - \alpha</span>
+    <div class="annotation">No distribution assumptions needed! Works with ANY model.</div>
+  </div>
+  <ol style="font-size:0.85em;">
+    <li>Train model, compute nonconformity scores on calibration set: <span class="katex-inline">s_i = 1 - \hat{p}(y_i|x_i)</span></li>
+    <li>Find threshold <span class="katex-inline">\hat{q}</span> = (1&minus;&alpha;)-quantile of scores</li>
+    <li>Prediction set: <span class="katex-inline">C(x) = \{y : s(x,y) \leq \hat{q}\}</span></li>
+  </ol>
+  <p style="font-size:0.85em;"><strong>Properties:</strong> distribution-free, finite-sample, adaptive (smaller sets where model is confident), model-agnostic. Recent: Tail-Aware CP (AAAI 2025), Adaptive CI for distribution shift (Gibbs &amp; Candes, 2021).</p>
+  <aside class="notes">Time: ~3 min. Conformal prediction is one of the most exciting recent developments. For beginners: "Instead of 'this is category A,' the model says 'it is one of {A, B}' and guarantees the answer is in that set 95% of the time."</aside>
+</section>
+
+<section>
+  <h2>Kailash Bridge &mdash; Calibration</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <pre><code class="language-python">from kailash_ml import ModelVisualizer, TrainingPipeline
+
+# Calibration curve (reliability diagram)
+viz = ModelVisualizer()
+await viz.calibration_curve(result, n_bins=10)
+
+# Train with Platt scaling
+pipeline = TrainingPipeline(
+    model_spec=spec,
+    calibration="platt",  # or "isotonic"
+)
+
+# Calibration metrics
+print(f"ECE: {result.metrics['ece']:.4f}")
+print(f"Brier: {result.metrics['brier_score']:.4f}")</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. Calibration integrates into the pipeline with one parameter.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION H — PREPROCESSING AND POSTPROCESSING (Slides 77-82)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section H: Preprocessing Pipeline</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Scaler</th><th>Formula</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>StandardScaler</td><td><span class="katex-inline">(x - \mu)/\sigma</span></td><td>Default (roughly Gaussian)</td></tr>
+      <tr><td>MinMaxScaler</td><td><span class="katex-inline">(x - x_\min)/(x_\max - x_\min)</span></td><td>[0,1] range, no outliers</td></tr>
+      <tr><td>RobustScaler</td><td><span class="katex-inline">(x - Q_2)/(Q_3 - Q_1)</span></td><td>Outliers (median/IQR)</td></tr>
+      <tr><td>PowerTransformer</td><td>Box-Cox / Yeo-Johnson</td><td>Skewed data</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Need scaling:</strong> KNN, SVM, linear models with regularisation, neural networks.<br>
+    <strong>Do NOT need:</strong> Trees, Random Forest, gradient boosting (split-based, scale-invariant).
+  </div>
+  <p><strong>Encoding:</strong> One-hot (safe, high-cardinality expensive), ordinal (implies order), target (powerful but leaks &mdash; use smoothing). <strong>Missing:</strong> Tree models handle natively; others need imputation + missing indicator.</p>
+  <div class="callout callout-warning">
+    <strong>Pipeline hygiene:</strong> Fit on train ONLY. Transform test/production with fitted parameters. Otherwise: data leakage.
+  </div>
+  <aside class="notes">Time: ~3 min. The pipeline hygiene rule is the most important practical lesson. If you fit StandardScaler on the full dataset, the test set's statistics influence training data scaling.</aside>
+</section>
+
+<section>
+  <h2>Postprocessing &mdash; Ensemble &amp; Deploy</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p>After training: <strong>calibrate</strong> &rarr; <strong>threshold optimise</strong> &rarr; <strong>ensemble</strong>.</p>
+  <div class="kailash-bridge">
+    <h3>EnsembleEngine</h3>
+    <pre><code class="language-python">from kailash_ml import EnsembleEngine
+
+ensemble = EnsembleEngine()
+
+# Stacking (meta-learner on base predictions)
+result = await ensemble.stack(
+    models=[lgbm_result, xgb_result, cat_result],
+    meta_learner="logistic_regression",
+)
+
+# Blending (weighted average)
+result = await ensemble.blend(
+    models=[lgbm_result, xgb_result], weights=[0.6, 0.4],
+)</code></pre>
+  </div>
+  <p style="font-size:0.85em;"><code>blend()</code> = simple weighted average. <code>stack()</code> = meta-learner on predictions (best accuracy). <code>bag()</code> = bootstrap aggregation. <code>boost()</code> = sequential error correction.</p>
+  <aside class="notes">Time: ~2 min. Stacking with out-of-fold predictions is the competition gold standard. Blending is simpler and more stable for production.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION I — KAILASH ENGINE DEEP DIVE (Slides 80-90)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Section I: Kailash Engine Deep Dive</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p style="font-size:1.2em; color:var(--ascent-depth); font-style:italic;">"Every concept you learned today maps to a single engine call."</p>
+  <aside class="notes">Time: ~1 min. This section connects ALL the theory to practice.</aside>
+</section>
+
+<section>
+  <h2>TrainingPipeline + ModelSpec + EvalSpec</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>One config describes the entire experiment</h3>
+    <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelSpec, EvalSpec
+
+spec = ModelSpec(
+    algorithm="lightgbm", task="classification",
+    hyperparameters={
+        "num_leaves": 31, "learning_rate": 0.05,
+        "n_estimators": 500, "class_weight": "balanced",
+    },
+)
+eval_spec = EvalSpec(
+    metrics=["f1", "auc", "average_precision", "mcc", "brier_score"],
+    cv_strategy="stratified_kfold", cv_folds=5,
+    calibration="platt",
+)
+pipeline = TrainingPipeline(model_spec=spec, eval_spec=eval_spec)
+result = await pipeline.train(X_train, y_train)</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. ModelSpec = WHAT. EvalSpec = HOW to evaluate. TrainingPipeline orchestrates both.</aside>
+</section>
+
+<section>
+  <h2>HyperparameterSearch</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Bayesian Optimisation finds the best model</h3>
+    <pre><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig, ParamDistribution
+
+search_space = SearchSpace(parameters=[
+    ParamDistribution("num_leaves", "int", low=15, high=127),
+    ParamDistribution("learning_rate", "log_uniform", low=0.005, high=0.3),
+    ParamDistribution("n_estimators", "int", low=100, high=2000),
+    ParamDistribution("subsample", "uniform", low=0.5, high=1.0),
+])
+config = SearchConfig(method="bayesian", n_trials=100, metric="average_precision")
+search = HyperparameterSearch(model_spec=spec, search_space=search_space, config=config)
+best = await search.run(X_train, y_train)</code></pre>
+  </div>
+  <aside class="notes">Time: ~2 min. The GP surrogate and EI acquisition function (from Bayesian Optimisation theory) run inside method="bayesian".</aside>
+</section>
+
+<section>
+  <h2>ModelRegistry &amp; AutoMLEngine</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>ModelRegistry Lifecycle</h3>
+      <div style="text-align:center; margin:12px 0;">
+        <span class="lifecycle-stage stage-staging">Staging</span>
+        <span style="color:var(--ascent-primary);">&rarr;</span>
+        <span class="lifecycle-stage stage-shadow">Shadow</span>
+        <span style="color:var(--ascent-primary);">&rarr;</span>
+        <span class="lifecycle-stage stage-production">Production</span>
+        <span style="color:var(--ascent-primary);">&rarr;</span>
+        <span class="lifecycle-stage stage-archived">Archived</span>
+      </div>
+      <pre><code class="language-python" style="font-size:0.82em;">registry = ModelRegistry()
+model_id = await registry.register(result)
+await registry.promote(model_id, "shadow")
+await registry.promote(model_id, "production")</code></pre>
+    </div>
+    <div class="col">
+      <h3>AutoMLEngine</h3>
+      <pre><code class="language-python" style="font-size:0.82em;">engine = AutoMLEngine(
+    algorithms=["ridge", "knn", "svm",
+        "rf", "xgb", "lgbm", "catboost"],
+    metric="average_precision",
+    time_budget=600,
+)
+comparison = await engine.compare(
+    X_train, y_train
+)
+print(comparison.leaderboard)</code></pre>
+      <p style="font-size:0.78em;">Agent-assisted: double opt-in, LLMCostTracker budget.</p>
+    </div>
+  </div>
+  <aside class="notes">Time: ~2 min. Shadow mode = A/B test without affecting real decisions. AutoMLEngine compares everything.</aside>
+</section>
+
+<section>
+  <h2>Theory &rarr; Engine Mapping</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.65em;">
+    <thead><tr><th>Theory Concept</th><th>Engine</th><th>API Call</th></tr></thead>
+    <tbody>
+      <tr><td>OLS, Ridge, Lasso, ElasticNet, Logistic, GLMs</td><td>TrainingPipeline</td><td><code>ModelSpec(algorithm="...")</code></td></tr>
+      <tr><td>RF, XGBoost, LightGBM, CatBoost</td><td>TrainingPipeline</td><td><code>ModelSpec(algorithm="lightgbm")</code></td></tr>
+      <tr><td>KNN, SVM, Naive Bayes</td><td>TrainingPipeline</td><td><code>ModelSpec(algorithm="svm")</code></td></tr>
+      <tr><td>Bayesian Optimisation</td><td>HyperparameterSearch</td><td><code>SearchConfig(method="bayesian")</code></td></tr>
+      <tr><td>Calibration (Platt, isotonic)</td><td>TrainingPipeline</td><td><code>EvalSpec(calibration="platt")</code></td></tr>
+      <tr><td>Stacking, blending, bagging</td><td>EnsembleEngine</td><td><code>engine.stack()</code></td></tr>
+      <tr><td>ROC, PR, learning curves</td><td>ModelVisualizer</td><td><code>viz.precision_recall_curve()</code></td></tr>
+      <tr><td>Model comparison</td><td>AutoMLEngine</td><td><code>engine.compare()</code></td></tr>
+      <tr><td>Model lifecycle</td><td>ModelRegistry</td><td><code>registry.promote()</code></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.85em;"><strong>Interop:</strong> <code>kailash_ml.interop.to_sklearn_input()</code> / <code>from_sklearn_output()</code> bridges polars to any sklearn-compatible library.</p>
+  <aside class="notes">Time: ~2 min. This table is the reference card. Every row connects theory to practice.</aside>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SECTION J — SYNTHESIS AND CLOSING (Slides 88-100)
+     ═══════════════════════════════════════════════════════════ -->
+
+<section>
+  <h2>Lab &mdash; Exercise Setup</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p><strong>Problem:</strong> Build a credit scoring model for a Singapore lending institution.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Dataset</h3>
+      <ul style="font-size:0.85em;">
+        <li>50,000 loan applications</li>
+        <li>Mixed features: numeric, categorical, temporal</li>
+        <li>Target: default (Yes/No), ~20:1 imbalance</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>What You Will Do</h3>
+      <ol style="font-size:0.85em;">
+        <li>Preprocess (scale, encode, handle missing)</li>
+        <li>Train multiple models</li>
+        <li>Evaluate with proper metrics (PR, MCC)</li>
+        <li>Handle class imbalance</li>
+        <li>Calibrate and select threshold</li>
+      </ol>
+    </div>
+  </div>
+  <pre><code class="language-python">from shared import ASCENTDataLoader
+loader = ASCENTDataLoader()
+df = loader.load("ascent04", "sg_credit.csv")</code></pre>
+  <aside class="notes">Time: ~2 min. The lab ties everything together. Open modules/ascent04/local/ex_1.py.</aside>
+</section>
+
+<section>
+  <h2>Discussion &mdash; Back to Credit Suisse</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="text-align:center; margin:24px 0;">
+    <p style="font-size:1.3em; font-style:italic; color:var(--ascent-depth);">
+      "Your AML model has AUC = 0.95 and precision = 3%.<br>
+      The compliance team asks: 'Can we use this?'<br><br>
+      <strong>What do you tell them?</strong>"
+    </p>
+  </div>
+  <aside class="notes">Time: ~5 min discussion. Good answers: check PR curve not just ROC; P=3% means 97 false alarms per real alert; compliance can only review ~50/day; threshold optimisation; use MCC; calibrate probabilities.</aside>
+</section>
+
+<section>
+  <h2>Discussion &mdash; Which Model?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.72em;">
+    <thead><tr><th>Scenario</th><th>Recommendation</th></tr></thead>
+    <tbody>
+      <tr><td>100 samples, need uncertainty</td><td style="color:#64748B;">GP / Bayesian LR / TabPFN</td></tr>
+      <tr><td>10M rows, 200 features, need speed</td><td style="color:#64748B;">LightGBM</td></tr>
+      <tr><td>Text classification, 50K documents</td><td style="color:#64748B;">NB baseline, fine-tuned transformer</td></tr>
+      <tr><td>MAS regulatory, must explain every decision</td><td style="color:#64748B;">Logistic regression / decision tree</td></tr>
+      <tr><td>Insurance pricing, count data</td><td style="color:#64748B;">Poisson GLM / tweedie regression</td></tr>
+      <tr><td>Real-time fraud, &lt;1ms latency</td><td style="color:#64748B;">Linear model / ONNX-optimised small tree</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">Time: ~3 min. Have students discuss before revealing answers. There are no wrong answers — only poorly reasoned ones.</aside>
+</section>
+
+<section>
+  <h2>Synthesis &mdash; What Everyone Should Remember</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ul>
+    <li><strong>No single best model</strong> &mdash; try multiple, compare with proper metrics</li>
+    <li><strong>Accuracy is misleading</strong> with imbalanced data &mdash; use PR curve, F1, MCC</li>
+    <li><strong>Class weights first</strong> &mdash; simplest fix for imbalance</li>
+    <li><strong>Calibrate before deploying</strong> &mdash; uncalibrated probabilities mislead decisions</li>
+    <li><strong>Fit on train, transform on test</strong> &mdash; never leak test information</li>
+    <li><strong>Gradient boosting</strong> (LightGBM/XGBoost/CatBoost) is the default for tabular data</li>
+    <li><strong>Linear models</strong> remain best when interpretability is required</li>
+  </ul>
+  <aside class="notes">Time: ~2 min. Non-negotiable takeaways. Even students who forget the math should remember these.</aside>
+</section>
+
+<section>
+  <h2>Synthesis &mdash; If You Followed the Math</h2>
+  <span class="marker marker-theory">Theory</span>
+  <ul>
+    <li><strong>Bias-variance decomposition</strong> explains model selection</li>
+    <li><strong>L1 sparsity from geometry</strong> &mdash; diamond corners</li>
+    <li><strong>XGBoost 2nd-order expansion</strong> gives Newton-step split finding</li>
+    <li><strong>RF variance = &rho;&sigma;&sup2; + (1-&rho;)&sigma;&sup2;/B</strong> &mdash; decorrelation is everything</li>
+    <li><strong>MLE gives cross-entropy</strong> &mdash; gradient same form as OLS</li>
+    <li><strong>Proper scoring rules</strong> &mdash; Brier/log loss minimised at true probabilities</li>
+    <li><strong>Conformal prediction</strong> &mdash; distribution-free coverage guarantees</li>
+  </ul>
+  <aside class="notes">Time: ~2 min. The math tells you WHAT to tune and WHY.</aside>
+</section>
+
+<section>
+  <h2>Synthesis &mdash; For the Experts</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <ul>
+    <li><strong>Double descent</strong> breaks classical bias-variance for over-parameterised models</li>
+    <li><strong>Ridge eigenvalue shrinkage</strong> &mdash; poorly determined directions shrunk most</li>
+    <li><strong>CatBoost ordered boosting</strong> addresses gradient estimation bias</li>
+    <li><strong>Bayesian LR</strong> generalises Ridge (MAP) to full posterior</li>
+    <li><strong>GP &harr; infinite-width NN</strong> connection (Neal 1996)</li>
+    <li><strong>TabPFN</strong> treats tabular ML as in-context learning &mdash; no training needed</li>
+    <li><strong>Conformal prediction</strong> with adaptive sets and distribution shift</li>
+  </ul>
+  <aside class="notes">Time: ~2 min. Each point is a research rabbit hole worth exploring.</aside>
+</section>
+
+<section>
+  <h2>Model Selection &mdash; Decision Guide</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="flowchart-box">
+    <ul style="font-size:0.8em;">
+      <li><strong>Interpretability required</strong> &rarr; Logistic regression, linear regression, decision tree</li>
+      <li><strong>Best accuracy, tabular</strong> &rarr; LightGBM or XGBoost + tuning</li>
+      <li><strong>Minimal tuning</strong> &rarr; CatBoost</li>
+      <li><strong>Very small data (&lt;100)</strong> &rarr; GP, Bayesian LR, TabPFN</li>
+      <li><strong>Text data</strong> &rarr; Naive Bayes (baseline), transformer (best)</li>
+      <li><strong>High-dimensional, few samples</strong> &rarr; Linear SVM, Lasso, ElasticNet</li>
+      <li><strong>Uncertainty critical</strong> &rarr; GP, Bayesian methods, conformal prediction</li>
+      <li><strong>Real-time (&lt;1ms)</strong> &rarr; Linear model, ONNX-optimised small tree</li>
+    </ul>
+  </div>
+  <aside class="notes">Time: ~2 min. Bookmark this slide. For every new project, start here.</aside>
+</section>
+
+<section>
+  <h2>Kailash Engines &mdash; Updated Map</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size:0.68em;">
+    <thead><tr><th>Module</th><th>Engines</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
+      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
+      <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
+      <tr><td>M4</td><td>AutoMLEngine, EnsembleEngine, interop</td><td>Compare, ensemble, bridge</td></tr>
+      <tr><td style="color:#64748B;">M5</td><td style="color:#64748B;">DriftMonitor, InferenceServer, Nexus</td><td style="color:#64748B;">ML engineering &amp; production</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-kailash">
+    <strong>Next:</strong> M5 takes these models into production &mdash; drift monitoring, A/B testing, serving, and full MLOps.
+  </div>
+  <aside class="notes">Time: ~1 min. M1-M2 = data, M3-M4 = models, M5 = production.</aside>
+</section>
+
+<section>
+  <h2>Assessment Preview</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <ul>
+    <li>Given a scenario, select the appropriate model and justify</li>
+    <li>Interpret a confusion matrix and compute precision/recall/F1</li>
+    <li>Read a reliability diagram and diagnose miscalibration</li>
+    <li>Debug a Kailash pipeline (missing <code>.build()</code>, wrong loss)</li>
+    <li>Explain why SMOTE fails in a specific scenario</li>
+    <li>Derive the bias-variance decomposition</li>
+  </ul>
+  <p><strong>Assignment:</strong> Full credit scoring pipeline (data &rarr; model &rarr; evaluation &rarr; calibration) using Kailash engines. Submit all three formats.</p>
+  <aside class="notes">Time: ~1 min. Point to exercise files. The assignment is the full supervised pipeline.</aside>
+</section>
+
+<section>
+  <h2>The Final Question</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div style="text-align:center; margin:40px 0;">
+    <p style="font-size:1.4em; font-style:italic; color:var(--ascent-depth);">
+      "Your model has 99.9% accuracy.<br>
+      Your compliance team calls it useless.<br><br>
+      <strong>Now you know why &mdash; and what to do about it.</strong>"
+    </p>
+  </div>
+  <div class="callout callout-kailash">
+    If you can explain why accuracy fails, pick the right metric, handle imbalance, and calibrate your model &mdash; you have understood Module 4.
+  </div>
+  <aside class="notes">Time: ~1 min. Full circle from the opening case.</aside>
+</section>
+
+<section class="title-slide">
+  <h1>Module 4 Complete</h1>
+  <h2 style="border: none;">Supervised ML: The Complete Model Zoo</h2>
+  <p class="subtitle">Next: Module 5 &mdash; ML Engineering &amp; Production</p>
+  <p style="margin-top:40px; color:#64748B; font-size:0.8em;">
+    Professional Certificate in Machine Learning &mdash; Terrene Open Academy<br>
+    Powered by Kailash Python SDK &mdash; Terrene Foundation
+  </p>
+  <div class="slide-footer">
+    <span>ASCENT Module 4</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">Time: ~1 min. Thank students. Remind them of exercises (three formats) and assignment. See you in M5.</aside>
+</section>
+
+</div><!-- .slides -->
+</div><!-- .reveal -->
+
+<!-- Reveal.js 5.1.0 -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+
+<!-- KaTeX -->
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.1,
+    hash: true,
+    slideNumber: true,
+    history: true,
+    center: false,
+    transition: 'slide',
+    plugins: [RevealHighlight, RevealNotes],
+  });
+
+  // Render KaTeX after Reveal initialises
+  Reveal.on('ready', () => {
+    // Render display-mode equations
+    document.querySelectorAll('.katex-display').forEach(el => {
+      katex.render(el.textContent, el, { displayMode: true, throwOnError: false });
+    });
+    // Render inline equations
+    document.querySelectorAll('.katex-inline').forEach(el => {
+      katex.render(el.textContent, el, { displayMode: false, throwOnError: false });
+    });
+  });
+</script>
+</body>
+</html>

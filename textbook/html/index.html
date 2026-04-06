@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Kailash SDK Textbook — Terrene Open Academy</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; font-size: 2em; }
+    h2 { color: #1E293B; margin-top: 2em; border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; }
+    h3 { color: #4F46E5; margin-top: 1.5em; }
+    a { color: #0D9488; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .package { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    .package h3 { margin-top: 0; }
+    .package p { color: #64748B; margin: 4px 0 12px; }
+    .chapter-list { list-style: none; padding: 0; margin: 0; }
+    .chapter-list li { padding: 4px 0; }
+    .chapter-list li a { display: flex; gap: 8px; }
+    .chapter-num { color: #94A3B8; font-family: monospace; min-width: 24px; }
+    .badge { display: inline-block; font-size: 0.7em; padding: 2px 8px; border-radius: 10px; color: white; margin-left: 8px; vertical-align: middle; }
+    .badge-basic { background: #22C55E; }
+    .badge-intermediate { background: #3B82F6; }
+    .badge-advanced { background: #8B5CF6; }
+    .stats { display: flex; gap: 32px; margin: 24px 0; }
+    .stat { text-align: center; }
+    .stat-num { font-size: 2em; font-weight: 700; color: #0D9488; }
+    .stat-label { font-size: 0.85em; color: #64748B; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+</head>
+<body>
+
+<h1>Kailash SDK Textbook</h1>
+<p>Complete reference for the Kailash Python SDK. 83 tutorials across 9 packages, from workflow basics to production deployment. Each chapter includes working code, API reference, common mistakes, and exercises.</p>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">83</div><div class="stat-label">Tutorials</div></div>
+  <div class="stat"><div class="stat-num">9</div><div class="stat-label">Packages</div></div>
+  <div class="stat"><div class="stat-num">140+</div><div class="stat-label">Nodes</div></div>
+  <div class="stat"><div class="stat-num">13</div><div class="stat-label">ML Engines</div></div>
+</div>
+
+<h2>Packages</h2>
+
+<div class="package">
+  <h3>00 — Core SDK <span class="badge badge-basic">10 chapters</span></h3>
+  <p>Workflow orchestration: WorkflowBuilder, nodes, connections, runtime execution, custom nodes, async patterns.</p>
+  <ul class="chapter-list">
+    <li><a href="00-core/01_workflow_builder.html"><span class="chapter-num">01</span> WorkflowBuilder Basics</a></li>
+    <li><a href="00-core/02_node_types.html"><span class="chapter-num">02</span> Node Types and Configuration</a></li>
+    <li><a href="00-core/03_custom_nodes.html"><span class="chapter-num">03</span> Writing Custom Nodes</a></li>
+    <li><a href="00-core/04_connections.html"><span class="chapter-num">04</span> Node Connections and Data Flow</a></li>
+    <li><a href="00-core/05_runtime.html"><span class="chapter-num">05</span> LocalRuntime Execution</a></li>
+    <li><a href="00-core/06_conditional.html"><span class="chapter-num">06</span> Conditional Branching</a></li>
+    <li><a href="00-core/07_value_types.html"><span class="chapter-num">07</span> Value Type System</a></li>
+    <li><a href="00-core/08_error_handling.html"><span class="chapter-num">08</span> Error Handling Patterns</a></li>
+    <li><a href="00-core/09_async_patterns.html"><span class="chapter-num">09</span> Async Execution</a></li>
+    <li><a href="00-core/10_connection_manager.html"><span class="chapter-num">10</span> ConnectionManager</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>01 — DataFlow <span class="badge badge-basic">9 chapters</span></h3>
+  <p>Zero-config database operations: models, express CRUD, filters, transactions, validators, multi-tenant, provenance.</p>
+  <ul class="chapter-list">
+    <li><a href="01-dataflow/01_dataflow_model.html"><span class="chapter-num">01</span> DataFlow Models</a></li>
+    <li><a href="01-dataflow/02_express_crud.html"><span class="chapter-num">02</span> Express CRUD Operations</a></li>
+    <li><a href="01-dataflow/03_list_filters.html"><span class="chapter-num">03</span> List Filters and Queries</a></li>
+    <li><a href="01-dataflow/04_sync_express.html"><span class="chapter-num">04</span> Sync Express Operations</a></li>
+    <li><a href="01-dataflow/05_validators.html"><span class="chapter-num">05</span> Field Validators</a></li>
+    <li><a href="01-dataflow/06_classification.html"><span class="chapter-num">06</span> Data Classification</a></li>
+    <li><a href="01-dataflow/07_transactions.html"><span class="chapter-num">07</span> Transaction Management</a></li>
+    <li><a href="01-dataflow/08_multi_tenant.html"><span class="chapter-num">08</span> Multi-Tenant Operations</a></li>
+    <li><a href="01-dataflow/09_provenance.html"><span class="chapter-num">09</span> Data Provenance</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>02 — Nexus <span class="badge badge-intermediate">9 chapters</span></h3>
+  <p>Multi-channel deployment: API + CLI + MCP simultaneously. HTTP/SSE/MCP transports, middleware, presets.</p>
+  <ul class="chapter-list">
+    <li><a href="02-nexus/01_hello_nexus.html"><span class="chapter-num">01</span> Hello Nexus</a></li>
+    <li><a href="02-nexus/02_http_transport.html"><span class="chapter-num">02</span> HTTP Transport</a></li>
+    <li><a href="02-nexus/03_mcp_transport.html"><span class="chapter-num">03</span> MCP Transport</a></li>
+    <li><a href="02-nexus/04_sse_transport.html"><span class="chapter-num">04</span> SSE Transport</a></li>
+    <li><a href="02-nexus/05_middleware.html"><span class="chapter-num">05</span> Middleware Stack</a></li>
+    <li><a href="02-nexus/06_presets.html"><span class="chapter-num">06</span> Configuration Presets</a></li>
+    <li><a href="02-nexus/07_event_bus.html"><span class="chapter-num">07</span> Event Bus</a></li>
+    <li><a href="02-nexus/08_openapi.html"><span class="chapter-num">08</span> OpenAPI Generation</a></li>
+    <li><a href="02-nexus/09_probes.html"><span class="chapter-num">09</span> Health and Readiness Probes</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>03 — Kaizen <span class="badge badge-intermediate">6 chapters</span></h3>
+  <p>AI agent framework: signatures, structured output, Delegate pattern, cost tracking, multi-provider LLM.</p>
+  <ul class="chapter-list">
+    <li><a href="03-kaizen/01_signatures.html"><span class="chapter-num">01</span> Signatures and Fields</a></li>
+    <li><a href="03-kaizen/02_delegate.html"><span class="chapter-num">02</span> Delegate Pattern</a></li>
+    <li><a href="03-kaizen/03_agent_config.html"><span class="chapter-num">03</span> Agent Configuration</a></li>
+    <li><a href="03-kaizen/04_llm_providers.html"><span class="chapter-num">04</span> LLM Providers</a></li>
+    <li><a href="03-kaizen/05_cost_tracking.html"><span class="chapter-num">05</span> Cost Tracking</a></li>
+    <li><a href="03-kaizen/06_structured_output.html"><span class="chapter-num">06</span> Structured Output</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>04 — Agents <span class="badge badge-intermediate">10 chapters</span></h3>
+  <p>Specialized agents: Delegate, SimpleQA, ReAct, Chain-of-Thought, RAG, streaming, orchestration patterns.</p>
+  <ul class="chapter-list">
+    <li><a href="04-agents/01_delegate.html"><span class="chapter-num">01</span> Delegate Agent</a></li>
+    <li><a href="04-agents/02_simple_qa.html"><span class="chapter-num">02</span> SimpleQA Agent</a></li>
+    <li><a href="04-agents/03_react_agent.html"><span class="chapter-num">03</span> ReAct Agent</a></li>
+    <li><a href="04-agents/04_chain_of_thought.html"><span class="chapter-num">04</span> Chain-of-Thought</a></li>
+    <li><a href="04-agents/05_rag_research.html"><span class="chapter-num">05</span> RAG Research Agent</a></li>
+    <li><a href="04-agents/06_streaming_chat.html"><span class="chapter-num">06</span> Streaming Chat</a></li>
+    <li><a href="04-agents/07_governed_supervisor.html"><span class="chapter-num">07</span> Governed Supervisor</a></li>
+    <li><a href="04-agents/08_pipeline.html"><span class="chapter-num">08</span> Pipeline Routing</a></li>
+    <li><a href="04-agents/09_tree_of_thoughts.html"><span class="chapter-num">09</span> Tree of Thoughts</a></li>
+    <li><a href="04-agents/10_orchestration_patterns.html"><span class="chapter-num">10</span> Orchestration Patterns</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>05 — ML <span class="badge badge-advanced">16 chapters</span></h3>
+  <p>Complete ML lifecycle: 13 engines covering data exploration through production inference, plus ML agents and RL.</p>
+  <ul class="chapter-list">
+    <li><a href="05-ml/01_data_explorer.html"><span class="chapter-num">01</span> DataExplorer</a></li>
+    <li><a href="05-ml/02_preprocessing.html"><span class="chapter-num">02</span> PreprocessingPipeline</a></li>
+    <li><a href="05-ml/03_model_visualizer.html"><span class="chapter-num">03</span> ModelVisualizer</a></li>
+    <li><a href="05-ml/04_feature_engineer.html"><span class="chapter-num">04</span> FeatureEngineer</a></li>
+    <li><a href="05-ml/05_feature_store.html"><span class="chapter-num">05</span> FeatureStore</a></li>
+    <li><a href="05-ml/06_experiment_tracker.html"><span class="chapter-num">06</span> ExperimentTracker</a></li>
+    <li><a href="05-ml/07_training_pipeline.html"><span class="chapter-num">07</span> TrainingPipeline</a></li>
+    <li><a href="05-ml/08_hyperparameter_search.html"><span class="chapter-num">08</span> HyperparameterSearch</a></li>
+    <li><a href="05-ml/09_automl_engine.html"><span class="chapter-num">09</span> AutoMLEngine</a></li>
+    <li><a href="05-ml/10_ensemble_engine.html"><span class="chapter-num">10</span> EnsembleEngine</a></li>
+    <li><a href="05-ml/11_model_registry.html"><span class="chapter-num">11</span> ModelRegistry</a></li>
+    <li><a href="05-ml/12_drift_monitor.html"><span class="chapter-num">12</span> DriftMonitor</a></li>
+    <li><a href="05-ml/13_inference_server.html"><span class="chapter-num">13</span> InferenceServer</a></li>
+    <li><a href="05-ml/14_onnx_bridge.html"><span class="chapter-num">14</span> OnnxBridge</a></li>
+    <li><a href="05-ml/15_ml_agents.html"><span class="chapter-num">15</span> ML Agents</a></li>
+    <li><a href="05-ml/16_rl_trainer.html"><span class="chapter-num">16</span> RLTrainer</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>06 — PACT <span class="badge badge-advanced">9 chapters</span></h3>
+  <p>Organizational governance: D/T/R addressing, operating envelopes, knowledge clearance, GovernanceEngine.</p>
+  <ul class="chapter-list">
+    <li><a href="06-pact/01_addressing.html"><span class="chapter-num">01</span> D/T/R Addressing</a></li>
+    <li><a href="06-pact/02_compile_org.html"><span class="chapter-num">02</span> Organization Compilation</a></li>
+    <li><a href="06-pact/03_clearance.html"><span class="chapter-num">03</span> Knowledge Clearance</a></li>
+    <li><a href="06-pact/04_envelopes.html"><span class="chapter-num">04</span> Operating Envelopes</a></li>
+    <li><a href="06-pact/05_access.html"><span class="chapter-num">05</span> Access Control</a></li>
+    <li><a href="06-pact/06_knowledge.html"><span class="chapter-num">06</span> Knowledge Management</a></li>
+    <li><a href="06-pact/07_bridges.html"><span class="chapter-num">07</span> Trust Bridges</a></li>
+    <li><a href="06-pact/08_governance_engine.html"><span class="chapter-num">08</span> GovernanceEngine</a></li>
+    <li><a href="06-pact/09_governed_agents.html"><span class="chapter-num">09</span> Governed Agents</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>07 — Align <span class="badge badge-advanced">9 chapters</span></h3>
+  <p>LLM fine-tuning and alignment: SFT, DPO, LoRA/QLoRA, adapter registry, model merging, evaluation, serving.</p>
+  <ul class="chapter-list">
+    <li><a href="07-align/01_alignment_config.html"><span class="chapter-num">01</span> AlignmentConfig</a></li>
+    <li><a href="07-align/02_lora_config.html"><span class="chapter-num">02</span> LoRA Configuration</a></li>
+    <li><a href="07-align/03_sft_config.html"><span class="chapter-num">03</span> SFT Configuration</a></li>
+    <li><a href="07-align/04_dpo_config.html"><span class="chapter-num">04</span> DPO Configuration</a></li>
+    <li><a href="07-align/05_advanced_methods.html"><span class="chapter-num">05</span> Advanced Methods</a></li>
+    <li><a href="07-align/06_adapter_registry.html"><span class="chapter-num">06</span> Adapter Registry</a></li>
+    <li><a href="07-align/07_merge.html"><span class="chapter-num">07</span> Model Merging</a></li>
+    <li><a href="07-align/08_evaluation.html"><span class="chapter-num">08</span> Evaluation</a></li>
+    <li><a href="07-align/09_serving.html"><span class="chapter-num">09</span> Model Serving</a></li>
+  </ul>
+</div>
+
+<div class="package">
+  <h3>08 — Integration <span class="badge badge-advanced">5 chapters</span></h3>
+  <p>Cross-package patterns: ML to registry, ML to Nexus, agents with tools, governed pipelines, full platform.</p>
+  <ul class="chapter-list">
+    <li><a href="08-integration/01_ml_to_registry.html"><span class="chapter-num">01</span> ML to ModelRegistry</a></li>
+    <li><a href="08-integration/02_ml_to_nexus.html"><span class="chapter-num">02</span> ML to Nexus Deployment</a></li>
+    <li><a href="08-integration/03_agent_with_tools.html"><span class="chapter-num">03</span> Agents with ML Tools</a></li>
+    <li><a href="08-integration/04_governed_pipeline.html"><span class="chapter-num">04</span> Governed ML Pipeline</a></li>
+    <li><a href="08-integration/05_full_platform.html"><span class="chapter-num">05</span> Full Platform Integration</a></li>
+  </ul>
+</div>
+
+<footer>
+  <p>Kailash SDK Textbook -- Terrene Open Academy -- Terrene Foundation</p>
+  <p>License: Apache 2.0 | <a href="https://github.com/terrene-foundation/ascent">GitHub</a></p>
+</footer>
+
+</body>
+</html>

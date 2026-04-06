@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 8: OpenAPI — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+
+  <h1>Chapter 8: OpenAPI</h1>
+
+  <h2>Overview</h2>
+  <p>Nexus auto-generates OpenAPI 3.0.3 specifications from registered handlers and workflows. The <code>OpenApiGenerator</code> derives request schemas from function type annotations, maps Python types to OpenAPI types, and produces a complete spec with paths, schemas, and server information.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Python-to-OpenAPI Type Mapping</h3>
+  <table>
+    <tr><th>Python Type</th><th>OpenAPI Type</th></tr>
+    <tr><td><code>str</code></td><td><code>string</code></td></tr>
+    <tr><td><code>int</code></td><td><code>integer</code></td></tr>
+    <tr><td><code>float</code></td><td><code>number</code></td></tr>
+    <tr><td><code>bool</code></td><td><code>boolean</code></td></tr>
+    <tr><td><code>list</code></td><td><code>array</code></td></tr>
+    <tr><td><code>dict</code></td><td><code>object</code></td></tr>
+    <tr><td><code>bytes</code></td><td><code>string</code> (format: binary)</td></tr>
+  </table>
+
+  <h3>Handler vs Workflow Paths</h3>
+  <p>Handlers create <code>POST /workflows/{name}/execute</code>. Workflows additionally create <code>GET /workflows/{name}/workflow/info</code>.</p>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Configure Info</h3>
+  <pre><code class="language-python">from nexus.openapi import OpenApiGenerator, OpenApiInfo
+
+info = OpenApiInfo(
+    title="My ML Platform API",
+    version="2.0.0",
+    description="Production ML inference endpoints",
+    contact_name="Platform Team",
+    contact_email="platform@example.com",
+    license_name="Apache-2.0",
+)
+
+gen = OpenApiGenerator(
+    info=info,
+    servers=[
+        {"url": "https://api.example.com", "description": "Production"},
+        {"url": "http://localhost:8000", "description": "Development"},
+    ],
+)</code></pre>
+
+  <h3>Step 2: Register a Handler</h3>
+  <pre><code class="language-python">async def predict(model_name: str, features: list, threshold: float = 0.5) -> dict:
+    """Run inference on a trained model."""
+    return {"prediction": 1, "confidence": 0.95}
+
+gen.add_handler(
+    name="predict",
+    handler_func=predict,
+    description="Run model inference",
+    tags=["inference"],
+)</code></pre>
+  <p>The generator inspects <code>predict</code>'s annotations: <code>model_name</code> and <code>features</code> become required; <code>threshold</code> becomes optional with default <code>0.5</code>.</p>
+
+  <h3>Step 3: Generate Spec</h3>
+  <pre><code class="language-python">spec = gen.generate()
+
+assert spec["openapi"] == "3.0.3"
+assert "/workflows/predict/execute" in spec["paths"]
+
+# Verify schema
+schemas = spec["components"]["schemas"]
+predict_schema = schemas["predict_input"]
+assert predict_schema["properties"]["threshold"]["default"] == 0.5
+assert "model_name" in predict_schema["required"]
+assert "threshold" not in predict_schema["required"]</code></pre>
+
+  <h3>Step 4: JSON Output</h3>
+  <pre><code class="language-python">import json
+
+json_str = gen.generate_json(indent=2)
+parsed = json.loads(json_str)
+assert parsed["openapi"] == "3.0.3"</code></pre>
+
+  <div class="callout">
+    <strong>Shorthand:</strong> <code>OpenApiGenerator(title="Simple API", version="0.1.0")</code> works without creating an <code>OpenApiInfo</code> object separately.
+  </div>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Missing type annotations</td><td>Parameters default to <code>string</code></td><td>Always annotate parameters</td></tr>
+    <tr><td>Forgetting to register handlers</td><td>Empty paths in spec</td><td>Register all handlers first</td></tr>
+    <tr><td>Complex nested types</td><td>Mapped to <code>string</code> fallback</td><td>Use simple types</td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>OpenApiGenerator</code> builds OpenAPI 3.0.3 specs automatically.</li>
+    <li><code>add_handler()</code> derives schemas from Python function signatures.</li>
+    <li>Handlers create POST execute paths; workflows also get GET info paths.</li>
+    <li><code>generate()</code> returns a dict; <code>generate_json()</code> returns formatted JSON.</li>
+    <li>Python types map directly to OpenAPI types.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="07_event_bus.html">&larr; Previous: Event Bus</a>
+    <a href="09_probes.html">Next: Probes &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

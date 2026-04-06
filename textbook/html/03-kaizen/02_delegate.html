@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 2: Delegate — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+
+  <h1>Chapter 2: Delegate</h1>
+
+  <h2>Overview</h2>
+  <p>Delegate is the single entry point for autonomous AI execution in Kaizen. It composes an AgentLoop with optional governance and provides both streaming (<code>run()</code>) and synchronous (<code>run_sync()</code>) interfaces.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Progressive Disclosure</h3>
+  <table>
+    <tr><th>Layer</th><th>What You Provide</th><th>What You Get</th></tr>
+    <tr><td>Layer 1</td><td><code>model</code></td><td>Basic AI execution</td></tr>
+    <tr><td>Layer 2</td><td>+ <code>tools</code>, <code>system_prompt</code>, <code>max_turns</code></td><td>Customized behavior</td></tr>
+    <tr><td>Layer 3</td><td>+ <code>budget_usd</code></td><td>Cost-controlled execution</td></tr>
+  </table>
+
+  <h3>Event Stream</h3>
+  <table>
+    <tr><th>Event Type</th><th>When Yielded</th><th>Key Fields</th></tr>
+    <tr><td><code>TextDelta</code></td><td>Incremental text</td><td><code>text</code></td></tr>
+    <tr><td><code>TurnComplete</code></td><td>Model finished</td><td><code>prompt_tokens</code>, <code>completion_tokens</code></td></tr>
+    <tr><td><code>BudgetExhausted</code></td><td>Budget exceeded</td><td><code>budget_usd</code>, <code>consumed_usd</code></td></tr>
+    <tr><td><code>ErrorEvent</code></td><td>Error occurred</td><td><code>error</code>, <code>details</code></td></tr>
+  </table>
+
+  <h3>Cost Estimation</h3>
+  <table>
+    <tr><th>Model Prefix</th><th>Input (per 1M)</th><th>Output (per 1M)</th></tr>
+    <tr><td><code>claude-</code></td><td>$3.00</td><td>$15.00</td></tr>
+    <tr><td><code>gpt-4o</code></td><td>$2.50</td><td>$10.00</td></tr>
+    <tr><td><code>gemini-</code></td><td>$1.25</td><td>$5.00</td></tr>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Minimal Delegate</h3>
+  <pre><code class="language-python">import os
+from dotenv import load_dotenv
+load_dotenv()
+
+from kaizen_agents import Delegate
+
+model = os.environ.get("DEFAULT_LLM_MODEL", "claude-sonnet-4-20250514")
+delegate = Delegate(model=model)
+
+assert delegate._budget_usd is None  # No budget cap</code></pre>
+
+  <div class="warning">
+    <strong>Important:</strong> Model names must come from environment variables, never hardcoded. Call <code>load_dotenv()</code> before any <code>os.environ</code> access.
+  </div>
+
+  <h3>Step 2: Configured Delegate</h3>
+  <pre><code class="language-python">configured = Delegate(
+    model=model,
+    tools=[],
+    system_prompt="You are a helpful code reviewer.",
+    max_turns=20,
+)
+assert configured._config.max_turns == 20</code></pre>
+
+  <h3>Step 3: Governed Delegate</h3>
+  <pre><code class="language-python">governed = Delegate(model=model, budget_usd=5.0)
+
+assert governed._budget_usd == 5.0
+assert governed._consumed_usd == 0.0</code></pre>
+
+  <h3>Step 4: Event Consumption Pattern</h3>
+  <pre><code class="language-python"># Production pattern (requires LLM API key):
+# async for event in delegate.run("What is Kailash?"):
+#     if isinstance(event, TextDelta):
+#         print(event.text, end="")
+#     elif isinstance(event, TurnComplete):
+#         print(f"\nTokens: {event.prompt_tokens}")
+#     elif isinstance(event, BudgetExhausted):
+#         print("Budget exceeded")
+#     elif isinstance(event, ErrorEvent):
+#         print(f"Error: {event.error}")</code></pre>
+
+  <h3>Step 5: Budget Validation</h3>
+  <pre><code class="language-python">try:
+    Delegate(model=model, budget_usd=-1.0)
+except ValueError as e:
+    assert "non-negative" in str(e).lower()
+
+try:
+    Delegate(model=model, budget_usd=float("inf"))
+except ValueError as e:
+    assert "finite" in str(e).lower()</code></pre>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Hardcoding model names</td><td>Breaks on provider changes</td><td>Use <code>os.environ.get()</code></td></tr>
+    <tr><td>Forgetting <code>load_dotenv()</code></td><td>Env vars not loaded</td><td>Call before <code>os.environ</code></td></tr>
+    <tr><td>Ignoring <code>BudgetExhausted</code></td><td>Agent exceeds budget</td><td>Handle in event loop</td></tr>
+    <tr><td>Using <code>run()</code> without async</td><td>Async generator error</td><td>Use <code>async for</code> or <code>run_sync()</code></td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li>Delegate is the single entry point with three layers of progressive disclosure.</li>
+    <li><code>run()</code> yields typed <code>DelegateEvent</code> instances for pattern matching.</li>
+    <li><code>run_sync()</code> provides synchronous convenience for scripts.</li>
+    <li><code>budget_usd</code> enables automatic cost tracking.</li>
+    <li>Model names always come from environment variables.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="01_signatures.html">&larr; Previous: Signatures</a>
+    <a href="03_agent_config.html">Next: Agent Configuration &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

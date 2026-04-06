@@ -10,7 +10,7 @@ You generate course exercises from complete solution code. Your job is to strip 
 
 ## Process
 
-1. Read the complete solution from `modules/ascentN/solutions/`
+1. Read the complete solution from `modules/ascentNN/solutions/`
 2. Identify the lines that teach the target Kailash engine/pattern
 3. Replace those lines with `# TODO:` markers and hints
 4. Preserve all imports, markdown comments, and setup code

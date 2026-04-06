@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 9: Probes — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+
+  <h1>Chapter 9: Probes</h1>
+
+  <h2>Overview</h2>
+  <p>Kubernetes probes determine whether a container is alive, ready to serve traffic, and finished starting up. Nexus provides a <code>ProbeManager</code> that models the Kubernetes probe lifecycle with thread-safe, atomic state transitions.</p>
+
+  <h2>Concepts</h2>
+
+  <h3>Probe State Machine</h3>
+  <pre><code>STARTING  --&gt;  READY  --&gt;  DRAINING
+    |            |            |
+    +-----+------+-----+------+
+          |            |
+          v            v
+        FAILED  &lt;------+</code></pre>
+
+  <h3>Three Probe Types</h3>
+  <table>
+    <tr><th>Probe</th><th>Endpoint</th><th>Passes When</th><th>Purpose</th></tr>
+    <tr><td>Liveness</td><td><code>/healthz</code></td><td>Not FAILED</td><td>Should container be restarted?</td></tr>
+    <tr><td>Readiness</td><td><code>/readyz</code></td><td>READY + callbacks pass</td><td>Should traffic be sent?</td></tr>
+    <tr><td>Startup</td><td><code>/startup</code></td><td>Past STARTING</td><td>Has initial boot completed?</td></tr>
+  </table>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Initial State</h3>
+  <pre><code class="language-python">from nexus.probes import ProbeManager, ProbeResponse, ProbeState
+
+probes = ProbeManager()
+assert probes.state == ProbeState.STARTING
+assert probes.is_alive is True
+assert probes.is_ready is False</code></pre>
+
+  <h3>Step 2: Transition to READY</h3>
+  <pre><code class="language-python">probes.mark_ready()
+
+assert probes.check_liveness().http_status == 200
+assert probes.check_readiness().http_status == 200
+assert probes.check_startup().http_status == 200</code></pre>
+
+  <h3>Step 3: Custom Readiness Checks</h3>
+  <pre><code class="language-python">def check_database_connection() -> bool:
+    return True
+
+def check_model_loaded() -> bool:
+    return True
+
+probes.add_readiness_check(check_database_connection)
+probes.add_readiness_check(check_model_loaded)
+assert probes.check_readiness().http_status == 200</code></pre>
+
+  <h3>Step 4: Failing Callback</h3>
+  <pre><code class="language-python">probes2 = ProbeManager()
+probes2.mark_ready()
+
+def always_fails() -> bool:
+    return False
+
+probes2.add_readiness_check(always_fails)
+
+readiness = probes2.check_readiness()
+assert readiness.http_status == 503
+assert "always_fails" in readiness.details["failed_checks"]</code></pre>
+
+  <h3>Step 5: DRAINING</h3>
+  <pre><code class="language-python">probes.mark_draining()
+
+assert probes.is_alive is True    # Don't restart
+assert probes.is_ready is False   # Stop sending traffic
+assert probes.check_liveness().http_status == 200
+assert probes.check_readiness().http_status == 503</code></pre>
+
+  <h3>Step 6: FAILED and Recovery</h3>
+  <pre><code class="language-python">probes3 = ProbeManager()
+probes3.mark_ready()
+probes3.mark_failed(reason="Out of memory")
+
+assert probes3.is_alive is False
+assert probes3.check_liveness().http_status == 503
+
+# Recovery via reset
+probes3.reset()
+assert probes3.state == ProbeState.STARTING
+probes3.mark_ready()
+assert probes3.state == ProbeState.READY</code></pre>
+
+  <h3>Step 7: Invalid Transitions</h3>
+  <pre><code class="language-python">probes4 = ProbeManager()
+
+# Can't skip STARTING -> DRAINING
+assert probes4.mark_draining() is False
+
+# FAILED is terminal (without reset)
+probes4.mark_failed(reason="crash")
+assert probes4.mark_ready() is False</code></pre>
+
+  <div class="warning">
+    <strong>Important:</strong> Invalid state transitions return <code>False</code> without changing state. Always check the return value to confirm the transition succeeded.
+  </div>
+
+  <h2>Common Mistakes</h2>
+  <table>
+    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
+    <tr><td>Skipping STARTING &rarr; READY</td><td><code>mark_draining()</code> returns False</td><td>Must go through READY first</td></tr>
+    <tr><td>Expecting recovery from FAILED</td><td><code>mark_ready()</code> returns False</td><td>Use <code>reset()</code> first</td></tr>
+    <tr><td>Readiness callback that raises</td><td>Unexpected behavior</td><td>Callbacks must return bool</td></tr>
+    <tr><td>Forgetting <code>mark_ready()</code></td><td>Readiness always 503</td><td>Transition after init</td></tr>
+  </table>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>ProbeState</code>: STARTING &rarr; READY &rarr; DRAINING (FAILED is terminal).</li>
+    <li><code>ProbeManager</code> is thread-safe with atomic state transitions.</li>
+    <li>Liveness: 200 unless FAILED. Readiness: 200 only in READY + callbacks pass.</li>
+    <li>Custom readiness checks via <code>add_readiness_check(callback)</code>.</li>
+    <li>Invalid transitions return <code>False</code> without changing state.</li>
+    <li><code>reset()</code> is the only recovery from FAILED.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="08_openapi.html">&larr; Previous: OpenAPI</a>
+    <a href="../03-kaizen/01_signatures.html">Next: Kaizen &mdash; Signatures &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

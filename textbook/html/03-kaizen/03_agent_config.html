@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chapter 3: Agent Configuration — Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+
+  <h1>Chapter 3: Agent Configuration</h1>
+
+  <h2>Overview</h2>
+  <p>Kaizen provides framework-wide configuration through <code>KaizenConfig</code> and <code>kaizen.configure()</code>, lifecycle management via <code>AgentManager</code>, and environment-based configuration loading.</p>
+
+  <h2>Code Walkthrough</h2>
+
+  <h3>Step 1: Global Configuration</h3>
+  <pre><code class="language-python">import kaizen
+from kaizen import KaizenConfig, AgentManager
+
+kaizen.configure(
+    signature_programming_enabled=True,
+    mcp_integration_enabled=False,
+    multi_agent_coordination=True,
+    transparency_enabled=True,
+)</code></pre>
+
+  <h3>Step 2: AgentManager</h3>
+  <pre><code class="language-python">manager = AgentManager()
+assert isinstance(manager, AgentManager)</code></pre>
+
+  <h3>Step 3: Environment Loading</h3>
+  <pre><code class="language-python">env_config = kaizen.load_config_from_env(prefix="KAIZEN_")
+assert isinstance(env_config, dict)</code></pre>
+
+  <div class="callout">
+    <strong>Note:</strong> Environment variables use the <code>KAIZEN_</code> prefix, e.g., <code>KAIZEN_SIGNATURE_PROGRAMMING_ENABLED=true</code>.
+  </div>
+
+  <h3>Step 4: Framework Entry Point</h3>
+  <pre><code class="language-python">from kaizen import Kaizen, Framework
+
+assert Kaizen is Framework  # Alias
+
+framework = Kaizen()
+assert isinstance(framework, Kaizen)</code></pre>
+
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li><code>kaizen.configure()</code> sets framework-wide defaults.</li>
+    <li><code>AgentManager</code> provides lifecycle management and agent discovery.</li>
+    <li><code>load_config_from_env("KAIZEN_")</code> reads from environment variables.</li>
+    <li><code>Kaizen</code> and <code>Framework</code> are the same class.</li>
+    <li>Configure before creating agents &mdash; settings do not apply retroactively.</li>
+  </ul>
+
+  <div class="nav">
+    <a href="02_delegate.html">&larr; Previous: Delegate</a>
+    <a href="04_llm_providers.html">Next: LLM Providers &rarr;</a>
+  </div>
+
+  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

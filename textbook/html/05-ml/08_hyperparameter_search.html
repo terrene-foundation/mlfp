@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 8: HyperparameterSearch — Kailash ML Textbook</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+h2 { color: #1E293B; margin-top: 2em; }
+h3 { color: #4F46E5; }
+pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+tr:hover { background: #F8FAFC; }
+.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
+.nav a { color: #0D9488; text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+<span><a href="07_training_pipeline.html">&larr; Prev: TrainingPipeline</a></span>
+<span><a href="09_automl_engine.html">Next: AutoMLEngine &rarr;</a></span>
+</nav>
+
+<h1>Chapter 8: HyperparameterSearch</h1>
+
+<h2>Overview</h2>
+<p>HyperparameterSearch wraps TrainingPipeline to systematically explore hyperparameter combinations. Define a <code>SearchSpace</code>, choose a strategy (grid, random, Bayesian), and call <code>search()</code>. The engine runs multiple trials and identifies the best configuration.</p>
+
+<h2>Concepts</h2>
+
+<h3>ParamDistribution Types</h3>
+<table>
+<tr><th>Type</th><th>Behavior</th><th>Use Case</th></tr>
+<tr><td><code>uniform</code></td><td>Continuous float [low, high]</td><td>General hyperparameters</td></tr>
+<tr><td><code>log_uniform</code></td><td>Log-scale sampling [low, high]</td><td>Learning rates</td></tr>
+<tr><td><code>int_uniform</code></td><td>Integer [low, high]</td><td>n_estimators, max_depth</td></tr>
+<tr><td><code>categorical</code></td><td>Draws from choices list</td><td>Solvers, activations</td></tr>
+</table>
+
+<h3>Search Strategies</h3>
+<table>
+<tr><th>Strategy</th><th>Behavior</th></tr>
+<tr><td><code>grid</code></td><td>Exhaustive enumeration (ignores n_trials)</td></tr>
+<tr><td><code>random</code></td><td>Samples n_trials random combinations</td></tr>
+<tr><td><code>bayesian</code></td><td>Past results guide future sampling</td></tr>
+</table>
+
+<div class="callout">
+<strong>Grid vs random:</strong> Grid search is exhaustive but expensive. Research shows random search often finds equally good results with fewer trials, especially when only a few parameters matter.
+</div>
+
+<h2>Key API Reference</h2>
+<table>
+<tr><th>Class / Method</th><th>Purpose</th></tr>
+<tr><td><code>HyperparameterSearch(pipeline)</code></td><td>Create with a TrainingPipeline</td></tr>
+<tr><td><code>search.search(...)</code></td><td>Run the search (async)</td></tr>
+<tr><td><code>SearchSpace(params)</code></td><td>Define parameter space</td></tr>
+<tr><td><code>ParamDistribution(name, type, ...)</code></td><td>Single parameter definition</td></tr>
+<tr><td><code>SearchConfig(strategy, n_trials, ...)</code></td><td>Search configuration</td></tr>
+<tr><td><code>SearchResult</code></td><td>All trials, best params/metrics</td></tr>
+<tr><td><code>TrialResult</code></td><td>Per-trial params, metrics, time</td></tr>
+</table>
+
+<h2>Code Walkthrough</h2>
+
+<h3>Step 1: Define SearchSpace</h3>
+<pre><code class="language-python">from kailash_ml.engines.hyperparameter_search import (
+    SearchSpace, ParamDistribution, SearchConfig,
+)
+
+space = SearchSpace(params=[
+    ParamDistribution(name="n_estimators", type="int_uniform", low=5, high=30),
+    ParamDistribution(name="max_depth", type="categorical", choices=[3, 5, 7]),
+])</code></pre>
+
+<h3>Step 2: Preview Samples</h3>
+<pre><code class="language-python"># Exhaustive grid
+grid = space.sample_grid()
+
+# Random samples
+random_samples = space.sample_random(n=10)
+for s in random_samples:
+    assert 5 &lt;= s["n_estimators"] &lt;= 30
+    assert s["max_depth"] in [3, 5, 7]</code></pre>
+
+<h3>Step 3: Run Random Search</h3>
+<pre><code class="language-python">config = SearchConfig(
+    strategy="random", n_trials=3,
+    metric_to_optimize="accuracy",
+    direction="maximize",
+)
+
+result = await search.search(
+    data=df, schema=schema,
+    base_model_spec=base_model_spec,
+    search_space=space, config=config,
+    eval_spec=eval_spec,
+    experiment_name="random_search",
+)
+
+assert len(result.all_trials) == 3
+assert "accuracy" in result.best_metrics</code></pre>
+
+<h3>Step 4: Grid Search</h3>
+<pre><code class="language-python">grid_config = SearchConfig(
+    strategy="grid", n_trials=10,  # Ignored for grid
+    metric_to_optimize="accuracy", direction="maximize",
+)
+
+grid_result = await search.search(
+    data=df, schema=schema,
+    base_model_spec=base_model_spec,
+    search_space=small_space,
+    config=grid_config, eval_spec=eval_spec,
+    experiment_name="grid_search",
+)</code></pre>
+
+<h2>Common Mistakes</h2>
+<table>
+<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
+<tr><td>Grid with continuous params</td><td>Enormous grid</td><td>Use categorical or switch to random</td></tr>
+<tr><td>Invalid strategy name</td><td><code>ValueError</code></td><td>Use grid, random, or bayesian</td></tr>
+<tr><td>Mixing up maximize/minimize</td><td>Worst trial selected as best</td><td>Match direction to metric semantics</td></tr>
+</table>
+
+<h2>Exercises</h2>
+<div class="exercise"><p><strong>Exercise 1:</strong> Compare grid vs random search with 10 trials on a 27-point grid. How do results compare?</p></div>
+<div class="exercise"><p><strong>Exercise 2:</strong> Use <code>log_uniform</code> for learning rate (0.0001 to 0.1). Sample 20 values and verify they span orders of magnitude.</p></div>
+<div class="exercise"><p><strong>Exercise 3:</strong> Run 20-trial random search. Plot trial number vs metric. Is there a pattern?</p></div>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>Four distribution types cover numeric and categorical parameters.</li>
+<li>Grid search is exhaustive; random search is often more efficient.</li>
+<li><code>sample_grid()</code> and <code>sample_random()</code> let you preview before committing.</li>
+<li>Direction (maximize/minimize) determines best trial selection.</li>
+<li>Grid search ignores <code>n_trials</code> &mdash; it always evaluates the full grid.</li>
+</ul>
+
+<div class="callout">
+<strong>Next chapter:</strong> <a href="09_automl_engine.html">AutoMLEngine</a> &mdash; automated model selection with optional agent augmentation.
+</div>
+
+<footer>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

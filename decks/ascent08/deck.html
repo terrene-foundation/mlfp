@@ -1,0 +1,3618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASCENT Module 8 — NLP &amp; Transformers</title>
+
+  <!-- Reveal.js 5.1.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css" />
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+
+  <!-- ASCENT Theme -->
+  <link rel="stylesheet" href="../../assets/css/theme.css" />
+
+  <style>
+    /* Supplemental styles for M8 deck */
+    .token-stream {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+      font-size: 0.8em;
+    }
+    .token-stream .token {
+      background: #EFF6FF;
+      border: 1px solid var(--ascent-theory);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-family: "JetBrains Mono", monospace;
+    }
+    .token-stream .token.merged {
+      background: #F0FDF4;
+      border-color: var(--ascent-success);
+    }
+    .token-stream .token.special {
+      background: #FAF5FF;
+      border-color: var(--ascent-advanced);
+    }
+    .token-stream .arrow {
+      align-self: center;
+      color: var(--ascent-primary);
+      font-size: 1.4em;
+    }
+    .arch-block {
+      background: #EFF6FF;
+      border: 2px solid var(--ascent-theory);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      text-align: center;
+      font-size: 0.82em;
+    }
+    .arch-block.encoder { border-color: var(--ascent-primary); background: #F0FDFA; }
+    .arch-block.decoder { border-color: var(--ascent-advanced); background: #FAF5FF; }
+    .arch-block.attention { border-color: var(--ascent-alert); background: #FFFBEB; }
+    .arch-arrow {
+      text-align: center;
+      font-size: 1.2em;
+      color: #64748B;
+      margin: 2px 0;
+    }
+    .gate-box {
+      background: white;
+      border: 2px solid var(--ascent-theory);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      font-size: 0.8em;
+    }
+    .gate-box.forget { border-color: #F43F5E; }
+    .gate-box.input  { border-color: #22C55E; }
+    .gate-box.output { border-color: #3B82F6; }
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px; height: 32px;
+      background: var(--ascent-primary);
+      color: white;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.8em;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .step-row {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .evolution-bar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 16px 0;
+      font-size: 0.72em;
+    }
+    .evolution-bar .era {
+      padding: 8px 14px;
+      text-align: center;
+      border: 2px solid var(--ascent-theory);
+      background: #EFF6FF;
+      min-width: 100px;
+    }
+    .evolution-bar .era.current {
+      background: #F0FDF4;
+      border-color: var(--ascent-success);
+      font-weight: 700;
+    }
+    .evolution-bar .arrow {
+      font-size: 1.6em;
+      color: var(--ascent-primary);
+      margin: 0 2px;
+    }
+    .highlight-box {
+      background: #FFFBEB;
+      border: 2px solid var(--ascent-alert);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.85em;
+    }
+    .comparison-table td:first-child {
+      font-weight: 600;
+      color: var(--ascent-primary);
+    }
+    .vocab-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+      gap: 4px;
+      font-size: 0.7em;
+      font-family: monospace;
+    }
+    .vocab-grid .cell {
+      background: var(--ascent-bg-alt);
+      border: 1px solid #E2E8F0;
+      border-radius: 4px;
+      padding: 3px 6px;
+      text-align: center;
+    }
+    .vocab-grid .cell.highlight {
+      background: #EFF6FF;
+      border-color: var(--ascent-theory);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 8</h1>
+  <h2 style="border:none;">NLP &amp; Transformers</h2>
+  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="provocation">"How do we teach machines to read?"</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 8</span>
+    <span>Terrene Foundation</span>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Open with the provocation. Pause. Let it land. "Reading is the most natural thing humans do, yet it took sixty years of AI research to crack it. Today we trace the entire journey &mdash; from counting words to the architecture that changed everything."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDES 2-3 — RECAP / BRIDGE FROM M7
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Recap: Where We Are</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>In Module 7, you learned that <strong>deep learning discovers features automatically</strong>. Now we apply that idea to the hardest data type: <strong>human language</strong>.</p>
+  <table>
+    <thead><tr><th>M7 Concept</th><th>What You Learned</th><th>M8 Connection</th></tr></thead>
+    <tbody>
+      <tr><td>Neural networks</td><td>Layers of learned transformations</td><td>Same architecture, new data type</td></tr>
+      <tr><td>Backpropagation</td><td>Gradient-based learning</td><td>Gradients through sequences</td></tr>
+      <tr><td>CNNs</td><td>Spatial feature hierarchies</td><td>Sequential feature hierarchies</td></tr>
+      <tr><td>Regularisation</td><td>Dropout, batch norm</td><td>Same tools, new challenges</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. Bridge from M7 explicitly. "Deep learning gave us learned features for images. Language is sequential, ambiguous, and context-dependent &mdash; which demands new architectures. That is our journey today."
+  </aside>
+</section>
+
+<section>
+  <h2>The NLP Revolution Timeline</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="evolution-bar">
+    <div class="era">BoW<br/>2000s</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era">Word2Vec<br/>2013</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era">RNNs/LSTM<br/>2014</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era">Attention<br/>2015</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era current">Transformers<br/>2017</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era current">BERT/GPT<br/>2018+</div>
+  </div>
+  <p>Each step solved a limitation of the previous one. By the end of this module, you will understand <strong>why</strong> each transition happened and <strong>how</strong> each architecture works.</p>
+  <aside class="notes">
+    Time: ~2 min. Walk through the timeline. "We are going to live through 20 years of NLP progress in one module. Each era solved a real problem with the previous approach."
+  </aside>
+</section>
+
+<section>
+  <h2>Module 8 Roadmap</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>First Half</h3>
+      <ul>
+        <li>A. Text Preprocessing</li>
+        <li>B. BoW &amp; TF-IDF</li>
+        <li>C. Word Embeddings</li>
+        <li>D. Recurrent Neural Networks</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Second Half</h3>
+      <ul>
+        <li>E. Attention Mechanisms</li>
+        <li>F. The Transformer</li>
+        <li>G. Pre-training (BERT/GPT)</li>
+        <li>H. NLP Tasks &amp; Decoding</li>
+        <li>I. Kailash + Synthesis</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Overview of the module sections. "Think of it as a journey: we start with the simplest possible representation of text and build up to the most powerful architecture in AI."
+  </aside>
+</section>
+
+<section>
+  <h2>The Bridge: DL &rarr; Language</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="kailash-bridge">
+    <h3>From M7 to M8</h3>
+    <div class="columns">
+      <div class="col">
+        <strong>M7: Images</strong>
+        <ul>
+          <li>Fixed-size grid input</li>
+          <li>Spatial locality (pixels)</li>
+          <li>Translation invariance</li>
+          <li>CNNs exploit structure</li>
+        </ul>
+      </div>
+      <div class="col">
+        <strong>M8: Language</strong>
+        <ul>
+          <li>Variable-length sequences</li>
+          <li>Long-range dependencies</li>
+          <li>Word order matters</li>
+          <li>Need new architectures</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Images are grids. Language is sequences. That single difference drives everything we build today. A word at position 1 can change the meaning of a word at position 100. CNNs cannot handle that."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     OPENING CASE — BloombergGPT (3 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Case Study: BloombergGPT</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="callout callout-foundations">
+    <strong>The Question:</strong> Can a domain-specific language model beat general-purpose models on financial tasks?
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>The Setup</h3>
+      <ul>
+        <li>Bloomberg trained a 50B parameter model</li>
+        <li>363B tokens of financial data + 345B general</li>
+        <li>Tested on finance NLP benchmarks</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>The Result</h3>
+      <ul>
+        <li>Beat GPT-3 on financial sentiment</li>
+        <li>Beat GPT-3 on NER for financial entities</li>
+        <li>Competitive on general NLP tasks</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Bloomberg had decades of financial text. They asked: what if we train a language model that actually understands finance? The answer reshaped how industries think about NLP."
+  </aside>
+</section>
+
+<section>
+  <h2>Why Domain-Specific Models Win</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>General models see "bond" as a common English word. BloombergGPT understands:</p>
+  <ul>
+    <li><strong>Bond</strong> &rarr; fixed-income instrument with yield, duration, credit rating</li>
+    <li><strong>Put</strong> &rarr; option contract, not "to place"</li>
+    <li><strong>Bull spread</strong> &rarr; options strategy, not an animal</li>
+    <li><strong>Hawkish</strong> &rarr; monetary policy stance, not a bird</li>
+  </ul>
+  <div class="callout callout-theory">
+    <strong>Key insight:</strong> Language is not just syntax &mdash; it carries domain knowledge. The same word means different things in different contexts. This is the core challenge of NLP.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is why NLP is hard. Words are ambiguous. Context is everything. And the model needs to learn that context from data. Today we learn how."
+  </aside>
+</section>
+
+<section>
+  <h2>What You Will Build</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>By the end of Module 8, you will understand every layer of a system like BloombergGPT:</p>
+  <div class="step-row"><span class="step-number">1</span><span>How text becomes numbers (preprocessing, tokenization)</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>How numbers capture meaning (embeddings)</span></div>
+  <div class="step-row"><span class="step-number">3</span><span>How sequences learn patterns (RNNs, LSTMs)</span></div>
+  <div class="step-row"><span class="step-number">4</span><span>How attention solves long-range dependencies</span></div>
+  <div class="step-row"><span class="step-number">5</span><span>How transformers combine everything (the architecture)</span></div>
+  <div class="step-row"><span class="step-number">6</span><span>How pre-training creates foundation models (BERT, GPT)</span></div>
+  <aside class="notes">
+    Time: ~1 min. "Six layers of understanding. Each builds on the last. Let us begin with the most basic question: how do you turn a sentence into something a computer can process?"
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION A — TEXT PREPROCESSING (20 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>A. Text Preprocessing</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"Raw text is the messiest data type in machine learning."</p>
+  <p>Before any model can learn from text, we must transform unstructured character sequences into structured numerical representations.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "Every NLP pipeline starts here. Get this wrong, and nothing downstream works."
+  </aside>
+</section>
+
+<section>
+  <h2>Text as Data: The Challenge</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Structured Data (M1-M7)</h3>
+      <ul>
+        <li>Fixed number of columns</li>
+        <li>Each column has a type</li>
+        <li>Rows are independent</li>
+        <li>Numbers are numbers</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Text Data (M8)</h3>
+      <ul>
+        <li>Variable length</li>
+        <li>Words are symbols, not numbers</li>
+        <li>Order matters enormously</li>
+        <li>"Not bad" &ne; "bad" + "not"</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Core problem:</strong> ML models need fixed-size numerical inputs. Text is variable-length symbolic sequences. The entire field of NLP is about bridging this gap.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Think about what you did in M1: load a CSV, each row has the same columns. Text is nothing like that. A tweet has 20 words, a legal document has 20,000. How do you feed both to the same model?"
+  </aside>
+</section>
+
+<section>
+  <h2>The NLP Pipeline</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Raw text</strong> &rarr; "The HDB flat in Ang Mo Kio costs $450,000!!!"</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Normalise</strong> &rarr; "the hdb flat in ang mo kio costs $450,000"</span></div>
+  <div class="step-row"><span class="step-number">3</span><span><strong>Tokenise</strong> &rarr; ["the", "hdb", "flat", "in", "ang", "mo", "kio", "costs", "$450,000"]</span></div>
+  <div class="step-row"><span class="step-number">4</span><span><strong>Remove stops</strong> &rarr; ["hdb", "flat", "ang", "mo", "kio", "costs", "$450,000"]</span></div>
+  <div class="step-row"><span class="step-number">5</span><span><strong>Stem/lemmatise</strong> &rarr; ["hdb", "flat", "ang", "mo", "kio", "cost", "$450,000"]</span></div>
+  <div class="step-row"><span class="step-number">6</span><span><strong>Vectorise</strong> &rarr; [0, 1, 0, 0, 1, 1, ...] (numbers!)</span></div>
+  <aside class="notes">
+    Time: ~2 min. "This is the full pipeline. We will spend the next 15 slides understanding each step. Notice the Singapore context &mdash; HDB, Ang Mo Kio. Real-world text is messy."
+  </aside>
+</section>
+
+<section>
+  <h2>Tokenisation: Word-Level</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>The simplest approach: split on whitespace and punctuation.</p>
+  <pre><code class="language-python">text = "The cat sat on the mat."
+tokens = text.lower().split()
+# ["the", "cat", "sat", "on", "the", "mat."]</code></pre>
+  <div class="callout callout-warning">
+    <strong>Problems with word tokenisation:</strong>
+    <ul>
+      <li>Vocabulary explodes (English: 170,000+ words)</li>
+      <li>Out-of-vocabulary (OOV) words: "unfriending", "GPT-4o"</li>
+      <li>Morphological variants: "run", "runs", "running", "ran"</li>
+      <li>Multi-word expressions: "New York", "ice cream"</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Word tokenisation is where everyone starts. It is also where the first problems appear. What do you do with a word you have never seen before?"
+  </aside>
+</section>
+
+<section>
+  <h2>Tokenisation: Character-Level</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>The other extreme: every character is a token.</p>
+  <div class="token-stream">
+    <span class="token">T</span><span class="token">h</span><span class="token">e</span>
+    <span class="token special">_</span>
+    <span class="token">c</span><span class="token">a</span><span class="token">t</span>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Advantages</h3>
+      <ul>
+        <li>Tiny vocabulary (~100 chars)</li>
+        <li>No OOV problem ever</li>
+        <li>Handles any language</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Disadvantages</h3>
+      <ul>
+        <li>Sequences become very long</li>
+        <li>Characters carry little meaning</li>
+        <li>Hard to learn word-level semantics</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Character-level solves OOV but creates a new problem: your sequences are 5-10x longer, and each token is nearly meaningless on its own. We need a middle ground."
+  </aside>
+</section>
+
+<section>
+  <h2>Subword Tokenisation: The Middle Ground</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Modern NLP uses <strong>subword</strong> tokens: smaller than words, larger than characters.</p>
+  <div class="token-stream">
+    <span class="token merged">un</span><span class="token merged">friend</span><span class="token merged">ing</span>
+  </div>
+  <p style="font-size:0.85em;color:#64748B;">The word "unfriending" is split into meaningful subunits.</p>
+  <div class="callout callout-foundations">
+    <strong>Why subwords?</strong>
+    <ul>
+      <li>Manageable vocabulary (30K-50K tokens)</li>
+      <li>No OOV: any word can be decomposed</li>
+      <li>Morphological structure preserved: "un" + "friend" + "ing"</li>
+      <li>All modern LLMs use subword tokenisation</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is the breakthrough insight: you do not need to choose between words and characters. Subwords give you the best of both. Every transformer you have heard of uses this."
+  </aside>
+</section>
+
+<section>
+  <h2>BPE Algorithm: Step by Step</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>Byte Pair Encoding</strong> (Sennrich et al., 2016) &mdash; the most common subword method.</p>
+  <div class="step-row"><span class="step-number">1</span><span>Start with character-level vocabulary: {a, b, c, d, ...}</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>Count all adjacent character pairs in training corpus</span></div>
+  <div class="step-row"><span class="step-number">3</span><span>Merge the most frequent pair into a new token</span></div>
+  <div class="step-row"><span class="step-number">4</span><span>Repeat steps 2-3 until desired vocabulary size reached</span></div>
+  <div class="callout callout-theory">
+    <strong>Example corpus:</strong> "low lower lowest low"<br/>
+    Iteration 1: most frequent pair = (l, o) &rarr; merge to "lo"<br/>
+    Iteration 2: most frequent pair = (lo, w) &rarr; merge to "low"<br/>
+    Common substrings emerge as tokens.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "BPE is beautifully simple: start with characters, keep merging the most common pairs. Frequent words become single tokens. Rare words stay decomposed. Walk through the example on the board."
+  </aside>
+</section>
+
+<section>
+  <h2>BPE: Detailed Merge Example</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Corpus: ["hug", "pug", "pun", "bun", "hugs"]</p>
+  <table>
+    <thead><tr><th>Step</th><th>Most Frequent Pair</th><th>New Token</th><th>Vocab Addition</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>&mdash;</td><td>&mdash;</td><td>b, g, h, n, p, s, u</td></tr>
+      <tr><td>1</td><td>(u, g) &rarr; 3 times</td><td>"ug"</td><td>+ ug</td></tr>
+      <tr><td>2</td><td>(h, ug) &rarr; 2 times</td><td>"hug"</td><td>+ hug</td></tr>
+      <tr><td>3</td><td>(p, ug) &rarr; 1 time</td><td>"pug"</td><td>+ pug</td></tr>
+      <tr><td>4</td><td>(u, n) &rarr; 2 times</td><td>"un"</td><td>+ un</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">After 4 merges: "hugs" &rarr; ["hug", "s"], "bun" &rarr; ["b", "un"]</p>
+  <aside class="notes">
+    Time: ~2 min. "Walk through each merge step. Notice how frequent combinations get their own token first. This is data-driven tokenisation &mdash; no linguistic rules needed."
+  </aside>
+</section>
+
+<section>
+  <h2>WordPiece and Unigram</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>WordPiece (BERT)</h3>
+      <ul>
+        <li>Similar to BPE but uses likelihood</li>
+        <li>Merge pair that maximises training data likelihood</li>
+        <li>Score: $\frac{P(\text{ab})}{P(\text{a}) \cdot P(\text{b})}$</li>
+        <li>Uses "##" prefix for continuation</li>
+        <li>"playing" &rarr; ["play", "##ing"]</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Unigram (T5, XLNet)</h3>
+      <ul>
+        <li>Starts with large vocabulary</li>
+        <li>Iteratively removes tokens</li>
+        <li>Keeps tokens that minimise loss</li>
+        <li>Probabilistic: multiple segmentations</li>
+        <li>Scores: $P(\mathbf{x}) = \prod P(x_i)$</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>SentencePiece:</strong> Language-agnostic framework that implements both BPE and Unigram. Treats input as raw bytes &mdash; no pre-tokenisation needed. Used by T5, LLaMA, and many multilingual models.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "BPE merges bottom-up, Unigram prunes top-down. WordPiece uses likelihood instead of frequency. SentencePiece wraps both in a language-agnostic package. In practice, the differences are small &mdash; all produce good subword tokenisations."
+  </aside>
+</section>
+
+<section>
+  <h2>Stop Words</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p><strong>Stop words</strong> are high-frequency words that carry little semantic content on their own.</p>
+  <div class="token-stream">
+    <span class="token" style="opacity:0.4">the</span>
+    <span class="token">cat</span>
+    <span class="token" style="opacity:0.4">is</span>
+    <span class="token" style="opacity:0.4">on</span>
+    <span class="token" style="opacity:0.4">the</span>
+    <span class="token">mat</span>
+  </div>
+  <p>Common English stop words: the, is, at, which, on, a, an, and, or, but, in, ...</p>
+  <div class="callout callout-warning">
+    <strong>When NOT to remove stop words:</strong>
+    <ul>
+      <li><strong>Sentiment analysis:</strong> "not good" &ne; "good" &mdash; "not" is a stop word!</li>
+      <li><strong>Question answering:</strong> "what", "where", "who" are stop words</li>
+      <li><strong>Machine translation:</strong> every word matters for fluency</li>
+      <li><strong>Modern transformers:</strong> learn to ignore irrelevant words themselves</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Stop word removal was standard practice for 20 years. Modern models with attention often do not need it &mdash; they learn which words to ignore. But for BoW and TF-IDF, it still matters."
+  </aside>
+</section>
+
+<section>
+  <h2>Stemming</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p><strong>Stemming</strong> reduces words to their root form using rule-based suffix stripping.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Porter Stemmer (1980)</h3>
+      <table>
+        <thead><tr><th>Input</th><th>Stem</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>running</td><td>run</td><td>-ning &rarr; -n</td></tr>
+          <tr><td>cats</td><td>cat</td><td>-s &rarr; &empty;</td></tr>
+          <tr><td>studies</td><td>studi</td><td>-ies &rarr; -i</td></tr>
+          <tr><td>caresses</td><td>caress</td><td>-es &rarr; &empty;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <h3>Limitations</h3>
+      <ul>
+        <li>"studies" &rarr; "studi" (not a word!)</li>
+        <li>"university" &rarr; "univers"</li>
+        <li>Over-stemming: "organization", "organ" &rarr; same stem</li>
+        <li>Under-stemming: "alumnus", "alumni" &rarr; different stems</li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:0.82em;"><strong>Snowball Stemmer:</strong> improved version with support for 20+ languages, fewer errors.</p>
+  <aside class="notes">
+    Time: ~2 min. "Stemming is fast and crude. It does not care about meaning &mdash; it applies rules to strip suffixes. Sometimes it produces nonsense. That is why we also have lemmatisation."
+  </aside>
+</section>
+
+<section>
+  <h2>Lemmatisation</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p><strong>Lemmatisation</strong> reduces words to their dictionary form (lemma) using morphological analysis.</p>
+  <table>
+    <thead><tr><th>Word</th><th>Stem</th><th>Lemma</th></tr></thead>
+    <tbody>
+      <tr><td>better</td><td>better</td><td>good</td></tr>
+      <tr><td>studies</td><td>studi</td><td>study</td></tr>
+      <tr><td>ran</td><td>ran</td><td>run</td></tr>
+      <tr><td>mice</td><td>mice</td><td>mouse</td></tr>
+      <tr><td>are</td><td>are</td><td>be</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Stemming vs Lemmatisation:</strong> Stemming is fast, rule-based, and sometimes wrong. Lemmatisation is slower, uses a dictionary, and always produces real words. For bag-of-words models, stemming is often good enough. For anything semantic, use lemmatisation.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Notice 'better' &rarr; 'good'. A stemmer cannot do that &mdash; it needs to know English morphology. spaCy does this well. But again, modern transformers learn morphology implicitly through subword tokens."
+  </aside>
+</section>
+
+<section>
+  <h2>N-grams</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p><strong>N-grams</strong> capture local word order by grouping consecutive tokens.</p>
+  <p style="font-size:0.85em;">Sentence: "the cat sat on the mat"</p>
+  <table>
+    <thead><tr><th>Type</th><th>N-grams</th></tr></thead>
+    <tbody>
+      <tr><td>Unigrams (n=1)</td><td>the, cat, sat, on, the, mat</td></tr>
+      <tr><td>Bigrams (n=2)</td><td>the cat, cat sat, sat on, on the, the mat</td></tr>
+      <tr><td>Trigrams (n=3)</td><td>the cat sat, cat sat on, sat on the, on the mat</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Skip-grams:</strong> Allow gaps between words. "the __ sat" captures (the, sat) with skip=1. This is the key idea behind Word2Vec's skip-gram model (Section C).
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "N-grams add local context to bag-of-words models. 'New York' as a bigram is much more useful than 'New' and 'York' separately. But the vocabulary explodes: bigrams give V-squared possible tokens."
+  </aside>
+</section>
+
+<section>
+  <h2>Text Normalisation</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Cleaning raw text before tokenisation:</p>
+  <pre><code class="language-python">import re
+
+text = "Check out https://t.co/abc!!! 😊 #NLP @user"
+
+# Lowercase
+text = text.lower()
+
+# Remove URLs
+text = re.sub(r'https?://\S+', '', text)
+
+# Remove mentions and hashtags
+text = re.sub(r'[@#]\w+', '', text)
+
+# Remove extra whitespace
+text = re.sub(r'\s+', ' ', text).strip()
+
+# Result: "check out  !!!"</code></pre>
+  <div class="callout callout-warning">
+    <strong>Context matters:</strong> Do not blindly lowercase if case carries meaning (e.g., "US" vs "us"). Do not remove numbers if they are informative (e.g., "$450,000"). Every preprocessing decision is a modelling decision.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Normalisation is where you make your first modelling choices. Remove too much and you lose signal. Remove too little and you add noise. There is no universal right answer &mdash; it depends on your task."
+  </aside>
+</section>
+
+<section>
+  <h2>Regex Patterns for NLP</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Pattern</th><th>Matches</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td><code>\b\w+\b</code></td><td>Whole words</td><td>Basic tokenisation</td></tr>
+      <tr><td><code>[^\w\s]</code></td><td>Punctuation</td><td>Punctuation removal</td></tr>
+      <tr><td><code>\d+</code></td><td>Numbers</td><td>Number normalisation</td></tr>
+      <tr><td><code>(.)\1{2,}</code></td><td>Repeated chars</td><td>"loooove" &rarr; "love"</td></tr>
+      <tr><td><code>https?://\S+</code></td><td>URLs</td><td>URL removal</td></tr>
+      <tr><td><code>[^\x00-\x7F]+</code></td><td>Non-ASCII</td><td>Emoji/special chars</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Regex is the workhorse of text preprocessing. These six patterns handle 80% of cleaning tasks. The repeated character pattern is especially useful for social media text."
+  </aside>
+</section>
+
+<section>
+  <h2>Preprocessing Pipeline Summary</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="kailash-bridge">
+    <h3>Complete Pipeline</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.78em;align-items:center;">
+      <div class="arch-block">Raw Text</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block">Normalise</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block">Tokenise</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block">Stop Words</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block">Stem/Lemma</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block">N-grams</div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-block encoder">Vectorise</div>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Approach</th><th>Preprocessing Needed</th></tr></thead>
+    <tbody>
+      <tr><td>BoW / TF-IDF</td><td>Full pipeline (all steps)</td></tr>
+      <tr><td>Word2Vec / GloVe</td><td>Tokenise + normalise (less aggressive)</td></tr>
+      <tr><td>BERT / GPT</td><td>Subword tokeniser only (model handles the rest)</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "As models get more powerful, preprocessing gets simpler. BERT's tokeniser does everything. But understanding the full pipeline matters &mdash; you need to know what the model is doing for you."
+  </aside>
+</section>
+
+<section>
+  <h2>Preprocessing: Common Mistakes</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="callout callout-warning">
+    <strong>Mistake 1: Fit tokeniser on test data</strong><br/>
+    Vocabulary must be built on training data only. If test words leak into vocabulary, you have data leakage.
+  </div>
+  <div class="callout callout-warning">
+    <strong>Mistake 2: Over-aggressive cleaning</strong><br/>
+    Removing all punctuation destroys "don't" &rarr; "dont" and "$100" &rarr; "100". Be deliberate.
+  </div>
+  <div class="callout callout-warning">
+    <strong>Mistake 3: Ignoring encoding</strong><br/>
+    UTF-8 vs Latin-1 mismatches corrupt text silently. Always specify encoding when loading text.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These three mistakes account for most text preprocessing bugs. The first one &mdash; tokeniser leakage &mdash; is especially insidious because your metrics look great until you deploy."
+  </aside>
+</section>
+
+<section>
+  <h2>Section A: Key Takeaways</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <ul>
+    <li><strong>Text &rarr; numbers</strong> is the fundamental NLP challenge</li>
+    <li><strong>Subword tokenisation</strong> (BPE, WordPiece) is the modern standard</li>
+    <li><strong>Preprocessing choices are modelling choices</strong> &mdash; there is no universal pipeline</li>
+    <li><strong>Modern transformers</strong> need minimal preprocessing &mdash; just their tokeniser</li>
+    <li><strong>Data leakage</strong> via tokeniser fitting is a real risk</li>
+  </ul>
+  <p>Next: How do we turn tokens into numerical representations a model can learn from?</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section B. "We can now break text into tokens. But tokens are still symbols. We need numbers. Section B gives us the simplest approach."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION B — BOW AND TF-IDF (15 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>B. Bag of Words &amp; TF-IDF</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"Throw away word order and you still capture surprisingly much."</p>
+  <p>The simplest way to convert text to numbers: count the words.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "BoW is from the 1950s and it still works for many tasks. Understanding it deeply helps you appreciate why we needed something better."
+  </aside>
+</section>
+
+<section>
+  <h2>Bag of Words: The Idea</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Represent each document as a vector of word counts.</p>
+  <p style="font-size:0.82em;">Doc 1: "the cat sat on the mat"<br/>Doc 2: "the dog sat on the log"</p>
+  <table>
+    <thead><tr><th></th><th>the</th><th>cat</th><th>sat</th><th>on</th><th>mat</th><th>dog</th><th>log</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Doc 1</strong></td><td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td></tr>
+      <tr><td><strong>Doc 2</strong></td><td>2</td><td>0</td><td>1</td><td>1</td><td>0</td><td>1</td><td>1</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    This is a <strong>term-document matrix</strong>. Each row is a document, each column is a word in the vocabulary. The values can be:
+    <ul>
+      <li><strong>Binary:</strong> 1 if word appears, 0 otherwise</li>
+      <li><strong>Count:</strong> number of occurrences (shown above)</li>
+      <li><strong>Normalised:</strong> count / document length</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This is surprisingly powerful. You lose word order entirely &mdash; 'dog bites man' and 'man bites dog' get the same vector. But for topic classification, it often works."
+  </aside>
+</section>
+
+<section>
+  <h2>BoW: Limitations</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>What BoW Ignores</h3>
+      <ul>
+        <li><strong>Word order:</strong> "dog bites man" = "man bites dog"</li>
+        <li><strong>Semantics:</strong> "happy" and "joyful" are unrelated vectors</li>
+        <li><strong>Context:</strong> "bank" (river) = "bank" (finance)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Practical Problems</h3>
+      <ul>
+        <li><strong>High dimensionality:</strong> V can be 100K+</li>
+        <li><strong>Extreme sparsity:</strong> most entries are 0</li>
+        <li><strong>Common words dominate:</strong> "the" has highest counts</li>
+      </ul>
+    </div>
+  </div>
+  <p>The last problem is exactly what TF-IDF solves.</p>
+  <aside class="notes">
+    Time: ~2 min. "BoW gives every word equal importance. But 'the' appearing 50 times tells you nothing. A rare domain-specific word appearing once tells you everything. TF-IDF captures this intuition."
+  </aside>
+</section>
+
+<section>
+  <h2>TF-IDF: The Formula</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>Term Frequency &ndash; Inverse Document Frequency</strong></p>
+  <div class="equation-box">
+    $$\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Term Frequency</h3>
+      <div class="equation-box">
+        $$\text{TF}(t, d) = \frac{\text{count}(t, d)}{|d|}$$
+      </div>
+      <p style="font-size:0.82em;">How often does term $t$ appear in document $d$, normalised by document length?</p>
+    </div>
+    <div class="col">
+      <h3>Inverse Document Frequency</h3>
+      <div class="equation-box">
+        $$\text{IDF}(t) = \log \frac{N}{\text{df}(t)}$$
+      </div>
+      <p style="font-size:0.82em;">$N$ = total documents, $\text{df}(t)$ = documents containing $t$. Rare words get high IDF.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "TF-IDF is elegant: words that appear often in one document but rarely across all documents get the highest scores. 'The' gets a near-zero IDF because it appears everywhere."
+  </aside>
+</section>
+
+<section>
+  <h2>TF-IDF: Worked Example</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p style="font-size:0.82em;">Corpus of 10,000 documents. Document $d$ has 200 words.</p>
+  <table>
+    <thead><tr><th>Term</th><th>Count in $d$</th><th>TF</th><th>df</th><th>IDF</th><th>TF-IDF</th></tr></thead>
+    <tbody>
+      <tr><td>"the"</td><td>15</td><td>0.075</td><td>10,000</td><td>$\log(1) = 0$</td><td><strong>0</strong></td></tr>
+      <tr><td>"machine"</td><td>5</td><td>0.025</td><td>500</td><td>$\log(20) = 3.0$</td><td><strong>0.075</strong></td></tr>
+      <tr><td>"transformer"</td><td>3</td><td>0.015</td><td>50</td><td>$\log(200) = 5.3$</td><td><strong>0.079</strong></td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Interpretation:</strong> "the" is zeroed out (appears everywhere). "transformer" gets the highest score despite appearing fewer times than "machine" &mdash; because it is much rarer across the corpus.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Walk through each row. The key insight: rarity matters. A word that appears in only 50 out of 10,000 documents is highly discriminative. TF-IDF captures this automatically."
+  </aside>
+</section>
+
+<section>
+  <h2>Sublinear TF</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Problem: raw TF grows linearly. A word appearing 20 times is not 20x more important than appearing once.</p>
+  <div class="equation-box">
+    $$\text{TF}_{\text{sublinear}}(t, d) = 1 + \log(\text{count}(t, d)) \quad \text{if count} > 0$$
+  </div>
+  <table>
+    <thead><tr><th>Count</th><th>Raw TF (count/|d|)</th><th>Sublinear TF</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>0.005</td><td>1.0</td></tr>
+      <tr><td>5</td><td>0.025</td><td>2.6</td></tr>
+      <tr><td>20</td><td>0.100</td><td>4.0</td></tr>
+      <tr><td>100</td><td>0.500</td><td>5.6</td></tr>
+    </tbody>
+  </table>
+  <p>Sublinear TF compresses the scale: 100 occurrences are only ~5.6x more important than 1 occurrence.</p>
+  <aside class="notes">
+    Time: ~2 min. "This is a practical improvement. In long documents, some words repeat heavily due to topic, not importance. Logarithmic compression prevents these from dominating the vector."
+  </aside>
+</section>
+
+<section>
+  <h2>BM25: The Search Engine Standard</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>BM25</strong> (Best Matching 25) improves TF-IDF with two key innovations:</p>
+  <div class="equation-box">
+    $$\text{BM25}(q, d) = \sum_{t \in q} \text{IDF}(t) \cdot \frac{\text{TF}(t,d) \cdot (k_1 + 1)}{\text{TF}(t,d) + k_1 \cdot \left(1 - b + b \cdot \frac{|d|}{\text{avgdl}}\right)}$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>TF Saturation ($k_1$)</h3>
+      <p style="font-size:0.82em;">TF has diminishing returns. As $\text{TF} \to \infty$, the score approaches $(k_1 + 1)$, not infinity. Typical $k_1 = 1.2$.</p>
+    </div>
+    <div class="col">
+      <h3>Length Normalisation ($b$)</h3>
+      <p style="font-size:0.82em;">Long documents score higher just by having more words. $b$ penalises length relative to average. $b = 0.75$ is standard.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "BM25 is what Google used for years. It is still the baseline for information retrieval. Two parameters, both well-understood. k1 controls TF saturation, b controls length normalisation. This formula powers most search engines."
+  </aside>
+</section>
+
+<section>
+  <h2>BM25 vs TF-IDF: Saturation</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>The key difference: BM25's term frequency <strong>saturates</strong>.</p>
+  <table>
+    <thead><tr><th>TF</th><th>Raw TF-IDF</th><th>Sublinear TF-IDF</th><th>BM25 ($k_1=1.2$)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>1.0</td><td>1.0</td><td>1.0</td></tr>
+      <tr><td>5</td><td>5.0</td><td>2.6</td><td>1.9</td></tr>
+      <tr><td>20</td><td>20.0</td><td>4.0</td><td>2.1</td></tr>
+      <tr><td>100</td><td>100.0</td><td>5.6</td><td>2.2</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Intuition:</strong> A word appearing 100 times is evidence it is relevant. But it is barely more evidence than 20 times. BM25 captures this &mdash; TF-IDF does not.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Look at the BM25 column: it flattens quickly. 100 occurrences give you only 10% more score than 20 occurrences. This is closer to how humans judge relevance."
+  </aside>
+</section>
+
+<section>
+  <h2>BoW/TF-IDF in Practice</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <pre><code class="language-python">from kailash_ml import AutoMLEngine
+import polars as pl
+
+# AutoMLEngine handles text vectorisation internally
+engine = AutoMLEngine()
+engine.configure(task="classification", text_columns=["review"])
+
+# TF-IDF is often the default text representation
+# for classical ML models in AutoMLEngine
+results = engine.fit(df_train)
+predictions = engine.predict(df_test)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Kailash Bridge:</strong> AutoMLEngine automatically applies TF-IDF when it detects text columns, then feeds the sparse vectors into classical classifiers. You do not need to build the pipeline manually.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "In Kailash, you do not manually create TF-IDF matrices. AutoMLEngine detects text and applies the right vectorisation. But knowing what it does under the hood is essential for debugging."
+  </aside>
+</section>
+
+<section>
+  <h2>When BoW Still Wins</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Scenario</th><th>Best Approach</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Small dataset (&lt;1K docs)</td><td>TF-IDF + SVM</td><td>Too little data for embeddings</td></tr>
+      <tr><td>High interpretability</td><td>TF-IDF</td><td>Feature weights are transparent</td></tr>
+      <tr><td>Fast prototyping</td><td>TF-IDF</td><td>No training needed</td></tr>
+      <tr><td>Information retrieval</td><td>BM25</td><td>Battle-tested for search</td></tr>
+      <tr><td>Rich data, complex tasks</td><td>Transformers</td><td>Capture semantics and context</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Rule of thumb:</strong> Start with TF-IDF. If it gets 80%+ accuracy, consider whether a transformer is worth the compute cost. If it does not, you probably need embeddings.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Do not reach for BERT when TF-IDF solves your problem. Especially in production where latency and cost matter. Many deployed NLP systems still use TF-IDF."
+  </aside>
+</section>
+
+<section>
+  <h2>Section B: Key Takeaways</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <ul>
+    <li><strong>BoW</strong> converts text to fixed-size vectors by counting words</li>
+    <li><strong>TF-IDF</strong> weights words by rarity &mdash; discriminative words score highest</li>
+    <li><strong>BM25</strong> adds TF saturation and length normalisation</li>
+    <li><strong>Limitations:</strong> no word order, no semantics, no context</li>
+    <li><strong>Still useful</strong> for small data, fast prototyping, and search</li>
+  </ul>
+  <p>Next: What if vectors could capture <em>meaning</em>?</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section C. "BoW and TF-IDF treat words as independent symbols. But 'king' and 'queen' are clearly related. Word embeddings capture these relationships in vector space."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION C — WORD EMBEDDINGS (30 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>C. Word Embeddings</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"You shall know a word by the company it keeps." &mdash; J.R. Firth, 1957</p>
+  <p>The idea that changed NLP: represent words as dense vectors where <strong>similar words have similar vectors</strong>.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "This quote is the entire theoretical foundation of word embeddings. Firth said it in 1957. It took until 2013 to make it computationally practical."
+  </aside>
+</section>
+
+<section>
+  <h2>The Distributional Hypothesis</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Words that appear in similar <strong>contexts</strong> have similar <strong>meanings</strong>.</p>
+  <div class="columns">
+    <div class="col">
+      <p style="font-size:0.82em;">"I had a glass of <strong>___</strong> with dinner."</p>
+      <ul style="font-size:0.82em;">
+        <li>wine</li>
+        <li>water</li>
+        <li>juice</li>
+        <li>beer</li>
+      </ul>
+    </div>
+    <div class="col">
+      <p style="font-size:0.82em;">"The <strong>___</strong> chased the mouse."</p>
+      <ul style="font-size:0.82em;">
+        <li>cat</li>
+        <li>dog</li>
+        <li>kitten</li>
+        <li>terrier</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Key insight:</strong> We never tell the model that wine and water are beverages. It learns this because they appear in the same contexts. Meaning emerges from usage patterns.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you replace every word in a sentence with a blank and ask what fits, you are defining that word's meaning through its context. That is the distributional hypothesis. It is the foundation of all embedding methods."
+  </aside>
+</section>
+
+<section>
+  <h2>From Sparse to Dense</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>One-Hot / BoW (Sparse)</h3>
+      <p style="font-size:0.8em;">dim = |V| (e.g., 100,000)</p>
+      <pre><code>"cat"  = [0, 0, 1, 0, ..., 0]
+"dog"  = [0, 0, 0, 1, ..., 0]
+"kitten"= [0, 0, 0, 0, ..., 1]</code></pre>
+      <p style="font-size:0.8em;">cat &middot; dog = 0 (orthogonal!)<br/>No notion of similarity.</p>
+    </div>
+    <div class="col">
+      <h3>Embeddings (Dense)</h3>
+      <p style="font-size:0.8em;">dim = d (e.g., 300)</p>
+      <pre><code>"cat"   = [0.2, -0.4, 0.7, ...]
+"dog"   = [0.3, -0.3, 0.6, ...]
+"kitten" = [0.2, -0.5, 0.8, ...]</code></pre>
+      <p style="font-size:0.8em;">cat &middot; dog = 0.95 (similar!)<br/>Similarity is meaningful.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "In one-hot space, every word is equally different from every other word. Cat and dog are as different as cat and democracy. That is clearly wrong. Dense embeddings fix this by placing similar words near each other."
+  </aside>
+</section>
+
+<section>
+  <h2>Word2Vec: Skip-gram</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Given a center word, predict the surrounding context words.</p>
+  <div class="token-stream">
+    <span class="token" style="opacity:0.4">the</span>
+    <span class="token" style="opacity:0.4">cat</span>
+    <span class="token" style="border-color:#F43F5E;background:#FFF1F2;font-weight:700;">sat</span>
+    <span class="token" style="opacity:0.4">on</span>
+    <span class="token" style="opacity:0.4">the</span>
+  </div>
+  <p style="font-size:0.82em;">Center word: "sat" (window = 2) &rarr; Predict: "the", "cat", "on", "the"</p>
+  <div class="equation-box">
+    $$P(o \mid c) = \frac{\exp(\mathbf{u}_o^\top \mathbf{v}_c)}{\sum_{w \in V} \exp(\mathbf{u}_w^\top \mathbf{v}_c)}$$
+    <div class="annotation">
+      $\mathbf{v}_c$ = center word vector, $\mathbf{u}_o$ = context word vector, denominator = softmax over entire vocabulary
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Skip-gram asks: given the word 'sat', what words are likely to appear nearby? It learns two vectors per word: one for when the word is the center, one for when it is the context. The softmax normalises over the entire vocabulary."
+  </aside>
+</section>
+
+<section>
+  <h2>Skip-gram: The Objective</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Maximise the probability of observing the actual context words:</p>
+  <div class="equation-box">
+    $$J(\theta) = \frac{1}{T} \sum_{t=1}^{T} \sum_{\substack{-m \leq j \leq m \\ j \neq 0}} \log P(w_{t+j} \mid w_t)$$
+    <div class="annotation">$T$ = corpus length, $m$ = window size, $w_t$ = word at position $t$</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Problem:</strong> The softmax denominator sums over the <em>entire vocabulary</em> (e.g., 100K words). Computing this for every training example is prohibitively expensive.
+  </div>
+  <p><strong>Solution:</strong> Negative sampling &mdash; turn a V-class softmax into binary classification.</p>
+  <aside class="notes">
+    Time: ~2 min. "The objective is beautiful in theory: maximise the log probability of context words given center words. But that denominator requires summing over every word in the vocabulary for every single training step. Negative sampling is the breakthrough that made Word2Vec practical."
+  </aside>
+</section>
+
+<section>
+  <h2>Negative Sampling</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Instead of a full softmax, sample $k$ negative (random) words and train binary classifiers.</p>
+  <div class="equation-box">
+    $$J = \log \sigma(\mathbf{u}_o^\top \mathbf{v}_c) + \sum_{i=1}^{k} \mathbb{E}_{w_i \sim P_n(w)} \left[ \log \sigma(-\mathbf{u}_{w_i}^\top \mathbf{v}_c) \right]$$
+    <div class="annotation">$\sigma$ = sigmoid, $P_n(w) \propto f(w)^{3/4}$ = noise distribution, $k$ = 5-20 negatives</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Positive pair</h3>
+      <p style="font-size:0.82em;">("sat", "cat") &rarr; push vectors together</p>
+    </div>
+    <div class="col">
+      <h3>Negative pairs</h3>
+      <p style="font-size:0.82em;">("sat", "elephant") &rarr; push apart<br/>("sat", "quantum") &rarr; push apart</p>
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Why $f(w)^{3/4}$?</strong> Raises the probability of sampling rare words. Without this, common words like "the" would be sampled too often as negatives.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Negative sampling is genius in its simplicity. Instead of asking 'which word is it?' (100K-way classification), ask 'is it this word or not?' (binary). Sample 5-20 random words as negatives. Training becomes 1000x faster."
+  </aside>
+</section>
+
+<section>
+  <h2>Word2Vec: CBOW</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>Continuous Bag of Words:</strong> the reverse of skip-gram. Predict the center word from the context.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Skip-gram</h3>
+      <p>Input: center word<br/>Output: context words</p>
+      <p style="font-size:0.82em;">"sat" &rarr; {"the", "cat", "on", "the"}</p>
+      <p style="font-size:0.82em;">Better for rare words. Slower to train.</p>
+    </div>
+    <div class="col">
+      <h3>CBOW</h3>
+      <p>Input: context words<br/>Output: center word</p>
+      <p style="font-size:0.82em;">{"the", "cat", "on", "the"} &rarr; "sat"</p>
+      <p style="font-size:0.82em;">Better for frequent words. Faster to train.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>In practice:</strong> Skip-gram with negative sampling is the most widely used configuration because it handles rare words better.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "CBOW averages the context vectors and predicts the center word. It is faster because each training example updates fewer weights. But skip-gram generally produces better embeddings, especially for rare words."
+  </aside>
+</section>
+
+<section>
+  <h2>GloVe: Global Vectors</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>GloVe</strong> (Pennington et al., 2014) learns embeddings from the <strong>co-occurrence matrix</strong>.</p>
+  <div class="step-row"><span class="step-number">1</span><span>Build co-occurrence matrix $X$ where $X_{ij}$ = how often word $i$ appears near word $j$</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>Learn vectors such that $\mathbf{w}_i^\top \mathbf{w}_j + b_i + b_j \approx \log X_{ij}$</span></div>
+  <div class="equation-box">
+    $$J = \sum_{i,j=1}^{V} f(X_{ij}) \left( \mathbf{w}_i^\top \mathbf{w}_j + b_i + b_j - \log X_{ij} \right)^2$$
+    <div class="annotation">$f(X_{ij})$ = weighting function that caps very frequent co-occurrences</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Word2Vec vs GloVe:</strong> Word2Vec learns from local contexts (windows). GloVe learns from global co-occurrence statistics. In practice, they produce similar quality embeddings.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "GloVe's insight is that co-occurrence ratios encode meaning. The ratio P(solid|ice)/P(solid|steam) is large, telling us ice is solid. GloVe captures this in the vector geometry."
+  </aside>
+</section>
+
+<section>
+  <h2>FastText: Subword Embeddings</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>FastText</strong> (Bojanowski et al., 2017) extends Word2Vec with character n-grams.</p>
+  <div class="token-stream">
+    <span class="token">&lt;wh</span>
+    <span class="token">whe</span>
+    <span class="token">her</span>
+    <span class="token">ere</span>
+    <span class="token">re&gt;</span>
+    <span class="token special">&lt;where&gt;</span>
+  </div>
+  <p style="font-size:0.82em;">"where" = sum of character 3-gram vectors + whole word vector</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Key Advantage</h3>
+      <p style="font-size:0.82em;">Handles <strong>out-of-vocabulary</strong> words! If "unhappily" is OOV, its character n-grams ("un", "hap", "app", "ppi", "pil", "ily") still produce a meaningful vector.</p>
+    </div>
+    <div class="col">
+      <h3>Works Well For</h3>
+      <ul style="font-size:0.82em;">
+        <li>Morphologically rich languages</li>
+        <li>Misspellings ("teh" &asymp; "the")</li>
+        <li>Domain jargon and neologisms</li>
+        <li>Small training corpora</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "FastText solves the OOV problem that plagues Word2Vec and GloVe. It is especially valuable for languages like Turkish or Finnish where a single root can have hundreds of inflected forms."
+  </aside>
+</section>
+
+<section>
+  <h2>The Magic of Vector Arithmetic</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>The most famous result in NLP: <strong>king &minus; man + woman &asymp; queen</strong></p>
+  <div class="equation-box">
+    $$\vec{\text{king}} - \vec{\text{man}} + \vec{\text{woman}} \approx \vec{\text{queen}}$$
+  </div>
+  <p>More examples of emergent semantic relationships:</p>
+  <table>
+    <thead><tr><th>Relationship</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Gender</td><td>king &minus; man + woman = queen</td></tr>
+      <tr><td>Tense</td><td>walking &minus; walk + swim = swimming</td></tr>
+      <tr><td>Country-Capital</td><td>Paris &minus; France + Japan = Tokyo</td></tr>
+      <tr><td>Comparative</td><td>bigger &minus; big + small = smaller</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Why this works:</strong> The "man&rarr;woman" direction in vector space encodes the concept of gender. Subtracting "man" and adding "woman" moves along this direction, transforming "king" to "queen".
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This blew people's minds in 2013. Nobody told the model about gender or geography. These relationships emerged purely from reading text. It showed that word vectors capture structured knowledge about the world."
+  </aside>
+</section>
+
+<section>
+  <h2>Embedding Similarity: Cosine</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>How do we measure "closeness" in embedding space?</p>
+  <div class="equation-box">
+    $$\cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a} \cdot \mathbf{b}}{||\mathbf{a}|| \cdot ||\mathbf{b}||} = \frac{\sum_i a_i b_i}{\sqrt{\sum_i a_i^2} \cdot \sqrt{\sum_i b_i^2}}$$
+  </div>
+  <table>
+    <thead><tr><th>Word Pair</th><th>Cosine Similarity</th><th>Interpretation</th></tr></thead>
+    <tbody>
+      <tr><td>cat, kitten</td><td>0.89</td><td>Very similar</td></tr>
+      <tr><td>cat, dog</td><td>0.76</td><td>Same domain (animals)</td></tr>
+      <tr><td>cat, car</td><td>0.21</td><td>Unrelated</td></tr>
+      <tr><td>good, bad</td><td>0.72</td><td>Similar contexts (antonyms!)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>Gotcha:</strong> Antonyms have high cosine similarity because they appear in identical contexts ("the movie was good/bad"). Embeddings capture <em>relatedness</em>, not <em>sentiment direction</em>.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Cosine similarity ranges from -1 to 1. Notice that good and bad are similar &mdash; they are used in the same contexts. This is a limitation of static embeddings and one reason we need contextual models later."
+  </aside>
+</section>
+
+<section>
+  <h2>Bias in Word Embeddings</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Word embeddings trained on real-world text inherit real-world biases.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Documented Biases</h3>
+      <ul>
+        <li><strong>Gender:</strong> "doctor" closer to "man", "nurse" closer to "woman"</li>
+        <li><strong>Racial:</strong> Names associated with different sentiments</li>
+        <li><strong>Age:</strong> "elderly" associated with negative terms</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Measurement</h3>
+      <p style="font-size:0.82em;">WEAT (Word Embedding Association Test):</p>
+      <ul style="font-size:0.82em;">
+        <li>Compare cosine similarity of target words (careers) to attribute words (male/female names)</li>
+        <li>Statistically significant differences indicate bias</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Consequence:</strong> A hiring system using biased embeddings will rank "he is a doctor" higher than "she is a doctor" even if the embedding is never explicitly told about gender roles.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Embeddings mirror their training data. If the internet says 'doctor' near 'he' more often than 'she', the embedding learns that. This is not a theoretical concern &mdash; biased embeddings have been deployed in hiring, loan, and criminal justice systems."
+  </aside>
+</section>
+
+<section>
+  <h2>Debiasing Approaches</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Method</th><th>Approach</th><th>Limitation</th></tr></thead>
+    <tbody>
+      <tr><td>Hard debiasing</td><td>Identify gender direction, project it out</td><td>Only handles binary gender</td></tr>
+      <tr><td>Counterfactual augmentation</td><td>Swap "he"&harr;"she" in training data</td><td>Requires extensive manual effort</td></tr>
+      <tr><td>Adversarial training</td><td>Train to be unable to predict protected attributes</td><td>May degrade overall quality</td></tr>
+      <tr><td>Contextual embeddings</td><td>Use BERT-style models that adjust per sentence</td><td>Bias can still persist in context</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>No silver bullet:</strong> Debiasing is an active research area. Current methods reduce measured bias but do not eliminate it. The safest approach combines debiasing with careful evaluation on your specific task.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "None of these methods fully solve the problem. Hard debiasing removes the most obvious gender associations but leaves subtler biases intact. The field is still working on this."
+  </aside>
+</section>
+
+<section>
+  <h2>ELMo: Contextual Embeddings</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p><strong>ELMo</strong> (Peters et al., 2018): the first major <strong>contextual</strong> embedding model.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Static (Word2Vec/GloVe)</h3>
+      <p style="font-size:0.82em;">"bank" always has the same vector, whether it means:</p>
+      <ul style="font-size:0.82em;">
+        <li>"river bank" (geography)</li>
+        <li>"bank account" (finance)</li>
+        <li>"bank shot" (billiards)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Contextual (ELMo)</h3>
+      <p style="font-size:0.82em;">"bank" gets a <em>different</em> vector depending on the sentence:</p>
+      <ul style="font-size:0.82em;">
+        <li>Bidirectional LSTM reads full sentence</li>
+        <li>Combines representations from all layers</li>
+        <li>Each word's vector is context-dependent</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>ELMo architecture:</strong> 2-layer bidirectional LSTM. The embedding for word $k$ is a learned weighted combination of all layer outputs: $\mathbf{e}_k = \gamma \sum_j s_j \mathbf{h}_k^j$. This was the precursor to BERT.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "ELMo was the bridge between static embeddings and transformers. It showed that contextual representations massively outperform static ones. But it used LSTMs, which we had not discussed yet. Let us fix that in Section D."
+  </aside>
+</section>
+
+<section>
+  <h2>Embedding Dimensions: What They Encode</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Individual dimensions are not interpretable, but <strong>directions</strong> in the space encode concepts.</p>
+  <table>
+    <thead><tr><th>Property</th><th>Typical Dimension</th></tr></thead>
+    <tbody>
+      <tr><td>Word2Vec</td><td>100-300</td></tr>
+      <tr><td>GloVe</td><td>50-300</td></tr>
+      <tr><td>FastText</td><td>100-300</td></tr>
+      <tr><td>BERT (base)</td><td>768</td></tr>
+      <tr><td>GPT-3</td><td>12,288</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Trade-off:</strong> More dimensions capture finer distinctions but require more data and compute. For most tasks, 300-dimensional Word2Vec/GloVe embeddings are sufficient. Transformers use higher dimensions because they have more parameters to fill.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Notice the jump from 300 to 12,288. Transformer models use much higher dimensional embeddings because they have billions of parameters that need information-rich inputs."
+  </aside>
+</section>
+
+<section>
+  <h2>Training Word2Vec: Practical Details</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Hyperparameter</th><th>Typical Value</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Embedding dim</td><td>100-300</td><td>Higher = more expressive, needs more data</td></tr>
+      <tr><td>Window size</td><td>5-10</td><td>Larger = more syntactic, smaller = more semantic</td></tr>
+      <tr><td>Negative samples ($k$)</td><td>5-20</td><td>More = better for small data, slower</td></tr>
+      <tr><td>Min count</td><td>5-10</td><td>Remove rare words from vocabulary</td></tr>
+      <tr><td>Subsampling</td><td>$10^{-3}$ to $10^{-5}$</td><td>Randomly drop frequent words during training</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Window size insight:</strong> Small windows (2-5) produce embeddings where similar words are functionally interchangeable ("dog"&asymp;"cat"). Large windows (10+) group thematically related words ("dog"&asymp;"leash"&asymp;"walk").
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These hyperparameters matter more than people think. Window size is especially important: it determines whether your embeddings capture syntactic or semantic similarity. Experiment with both."
+  </aside>
+</section>
+
+<section>
+  <h2>GloVe: Co-occurrence Ratios</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>GloVe's insight: <strong>ratios of co-occurrence probabilities</strong> encode meaning.</p>
+  <table>
+    <thead><tr><th>Probe word $k$</th><th>$P(k \mid \text{ice})$</th><th>$P(k \mid \text{steam})$</th><th>Ratio</th></tr></thead>
+    <tbody>
+      <tr><td>solid</td><td>$1.9 \times 10^{-4}$</td><td>$2.2 \times 10^{-5}$</td><td><strong>8.9</strong> (ice-related)</td></tr>
+      <tr><td>gas</td><td>$6.6 \times 10^{-5}$</td><td>$7.8 \times 10^{-4}$</td><td><strong>0.085</strong> (steam-related)</td></tr>
+      <tr><td>water</td><td>$3.0 \times 10^{-3}$</td><td>$2.2 \times 10^{-3}$</td><td><strong>1.36</strong> (both)</td></tr>
+      <tr><td>fashion</td><td>$1.1 \times 10^{-5}$</td><td>$1.8 \times 10^{-5}$</td><td><strong>0.96</strong> (neither)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Key:</strong> The ratio distinguishes four relationships: related to ice only (large), related to steam only (small), related to both (near 1), related to neither (near 1 but small probabilities). GloVe learns vectors that encode these ratios.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "This table is the motivation for GloVe. Individual co-occurrence probabilities are noisy, but their ratios are meaningful and stable. GloVe's objective function directly models these ratios in vector space."
+  </aside>
+</section>
+
+<section>
+  <h2>Evaluating Embeddings</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Intrinsic Evaluation</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Analogy test:</strong> king:queen :: man:? &rarr; woman</li>
+        <li><strong>Similarity:</strong> cosine sim vs human ratings (SimLex-999)</li>
+        <li><strong>Categorisation:</strong> cluster words and check semantic groups</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Extrinsic Evaluation</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Downstream task:</strong> use embeddings as features for classification, NER, etc.</li>
+        <li><strong>A/B test:</strong> compare embeddings by task performance</li>
+        <li>More reliable but more expensive</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Caution:</strong> Good intrinsic scores do not guarantee good downstream performance. Always validate embeddings on your actual task, not just analogy benchmarks.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Analogy tests are fun but unreliable as a sole metric. A word embedding that aces analogies might fail at sentiment analysis. Always evaluate on your downstream task."
+  </aside>
+</section>
+
+<section>
+  <h2>Pre-trained Embeddings: When and How</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Scenario</th><th>Recommendation</th></tr></thead>
+    <tbody>
+      <tr><td>Small dataset, general domain</td><td>Use pre-trained GloVe/FastText directly</td></tr>
+      <tr><td>Small dataset, specialised domain</td><td>Fine-tune pre-trained embeddings on domain text</td></tr>
+      <tr><td>Large dataset</td><td>Train from scratch or fine-tune</td></tr>
+      <tr><td>Multilingual</td><td>FastText (covers 157 languages)</td></tr>
+      <tr><td>Need contextual meaning</td><td>Use BERT/GPT embeddings (Section G)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Available pre-trained embeddings:</strong> GloVe (6B, 42B, 840B tokens), FastText (157 languages, Wikipedia+CommonCrawl), Word2Vec (Google News, 3M words). All free to download and use.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Do not train embeddings from scratch unless you have millions of sentences. Pre-trained embeddings from GloVe or FastText are an excellent starting point. Fine-tuning on your domain data adds specialised knowledge."
+  </aside>
+</section>
+
+<section>
+  <h2>Section C: Key Takeaways</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <ul>
+    <li><strong>Distributional hypothesis:</strong> meaning comes from context</li>
+    <li><strong>Word2Vec (Skip-gram):</strong> predict context from center word, negative sampling for efficiency</li>
+    <li><strong>GloVe:</strong> learns from global co-occurrence ratios</li>
+    <li><strong>FastText:</strong> character n-grams solve OOV</li>
+    <li><strong>Vector arithmetic</strong> reveals structured knowledge</li>
+    <li><strong>Bias</strong> is inherited from training data &mdash; measure and mitigate</li>
+    <li><strong>ELMo</strong> showed contextual &gt; static embeddings</li>
+  </ul>
+  <p>Next: How do we process <em>sequences</em> of embeddings? We need architectures that understand order.</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section D. "We can now represent words as meaningful vectors. But language is a sequence, and the order matters. RNNs are the first architecture designed to process sequences."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION D — RNNs (30 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>D. Recurrent Neural Networks</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"To understand a sentence, you must remember the beginning while reading the end."</p>
+  <p>RNNs process sequences one element at a time, maintaining a <strong>hidden state</strong> that carries information forward.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "This is the first architecture designed for sequences. The hidden state is the key idea: it is the model's memory of what it has read so far."
+  </aside>
+</section>
+
+<section>
+  <h2>Vanilla RNN: The Equation</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>At each time step $t$, the RNN reads input $\mathbf{x}_t$ and updates its hidden state:</p>
+  <div class="equation-box">
+    $$\mathbf{h}_t = \tanh(\mathbf{W}_{hh} \mathbf{h}_{t-1} + \mathbf{W}_{xh} \mathbf{x}_t + \mathbf{b})$$
+    <div class="annotation">$\mathbf{h}_t$ = hidden state, $\mathbf{W}_{hh}$ = recurrent weights, $\mathbf{W}_{xh}$ = input weights</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;justify-content:center;font-size:0.82em;margin:16px 0;">
+    <div class="arch-block">$\mathbf{x}_1$</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block" style="border-color:var(--ascent-primary);">$\mathbf{h}_1$</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block">$\mathbf{x}_2$</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block" style="border-color:var(--ascent-primary);">$\mathbf{h}_2$</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block">$\mathbf{x}_3$</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block" style="border-color:var(--ascent-primary);">$\mathbf{h}_3$</div>
+  </div>
+  <p style="font-size:0.82em;">The <strong>same weights</strong> $\mathbf{W}_{hh}$ and $\mathbf{W}_{xh}$ are shared across all time steps (weight sharing).</p>
+  <aside class="notes">
+    Time: ~3 min. "The hidden state is the memory. At each step, it combines new input with the previous memory. The tanh squashes values to [-1, 1]. Weight sharing means the network can handle sequences of any length."
+  </aside>
+</section>
+
+<section>
+  <h2>RNN Types</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Type</th><th>Input &rarr; Output</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>One-to-one</td><td>Single &rarr; Single</td><td>Standard neural net (not really an RNN)</td></tr>
+      <tr><td>One-to-many</td><td>Single &rarr; Sequence</td><td>Image captioning (image &rarr; sentence)</td></tr>
+      <tr><td>Many-to-one</td><td>Sequence &rarr; Single</td><td>Sentiment analysis (review &rarr; positive/negative)</td></tr>
+      <tr><td>Many-to-many (equal)</td><td>Sequence &rarr; Sequence</td><td>Named Entity Recognition (word &rarr; label)</td></tr>
+      <tr><td>Many-to-many (unequal)</td><td>Sequence &rarr; Sequence</td><td>Translation (English &rarr; Chinese)</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "The RNN architecture is flexible. By choosing when to read input and when to produce output, you can handle any sequence task. Many-to-one is the most common for classification."
+  </aside>
+</section>
+
+<section>
+  <h2>Backpropagation Through Time (BPTT)</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>To train an RNN, we <strong>unroll</strong> it across time steps and apply backpropagation.</p>
+  <div class="step-row"><span class="step-number">1</span><span>Forward pass: compute $\mathbf{h}_1, \mathbf{h}_2, \ldots, \mathbf{h}_T$ and loss $L$</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>Backward pass: compute $\frac{\partial L}{\partial \mathbf{W}_{hh}}$ using chain rule through time</span></div>
+  <div class="equation-box">
+    $$\frac{\partial L}{\partial \mathbf{W}_{hh}} = \sum_{t=1}^{T} \frac{\partial L}{\partial \mathbf{h}_t} \prod_{k=t+1}^{T} \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}} \frac{\partial \mathbf{h}_t}{\partial \mathbf{W}_{hh}}$$
+  </div>
+  <div class="callout callout-warning">
+    <strong>The product of derivatives</strong> $\prod \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}}$ is the source of RNNs' biggest problem. When this product involves many multiplications of values &lt; 1, the gradient vanishes.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "BPTT is just backpropagation applied to the unrolled computation graph. The gradient flows backwards through every time step. That product of Jacobians is the crux of the vanishing gradient problem."
+  </aside>
+</section>
+
+<section>
+  <h2>The Vanishing Gradient Problem</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>For a vanilla RNN, each $\frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}}$ involves:</p>
+  <div class="equation-box">
+    $$\frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}} = \text{diag}(\tanh'(\cdot)) \cdot \mathbf{W}_{hh}$$
+  </div>
+  <p>Since $|\tanh'(x)| \leq 1$ and if $||\mathbf{W}_{hh}|| < 1$:</p>
+  <div class="equation-box">
+    $$\prod_{k=t+1}^{T} \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}} \to 0 \quad \text{as } (T-t) \to \infty$$
+  </div>
+  <div class="callout callout-theory">
+    <strong>Consequence:</strong> The gradient from time step $T$ to time step $1$ goes to zero exponentially. The RNN <em>cannot learn long-range dependencies</em>. If "the cat, which sat on the mat, <em>was</em> fluffy", the RNN struggles to connect "cat" (subject) to "was" (verb) because they are too far apart.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "This is the fundamental limitation of vanilla RNNs. The gradient signal dies as it flows backwards through time. In practice, vanilla RNNs can only learn dependencies spanning about 10-20 time steps. The LSTM was invented specifically to solve this."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Long Short-Term Memory</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Hochreiter &amp; Schmidhuber (1997) introduced the LSTM with a <strong>cell state</strong> $\mathbf{c}_t$ that provides a highway for gradient flow.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Key Idea</h3>
+      <p style="font-size:0.82em;">Three <strong>gates</strong> control information flow:</p>
+      <ul style="font-size:0.82em;">
+        <li><span style="color:#F43F5E;font-weight:700;">Forget gate:</span> what to discard</li>
+        <li><span style="color:#22C55E;font-weight:700;">Input gate:</span> what to write</li>
+        <li><span style="color:#3B82F6;font-weight:700;">Output gate:</span> what to reveal</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Why It Works</h3>
+      <p style="font-size:0.82em;">The cell state $\mathbf{c}_t$ is updated <strong>additively</strong>, not multiplicatively. Gradients flow through addition without vanishing:</p>
+      <p style="font-size:0.82em;">$\frac{\partial \mathbf{c}_t}{\partial \mathbf{c}_{t-1}} = \mathbf{f}_t$ (the forget gate)</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The LSTM is one of the most important architectures in deep learning history. The key insight is the cell state: it acts like a conveyor belt that carries information unchanged through time, with gates controlling what gets added or removed."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Forget Gate</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="gate-box forget">
+    <h3 style="color:#F43F5E;margin-top:0;">Forget Gate $\mathbf{f}_t$</h3>
+    <div class="equation-box">
+      $$\mathbf{f}_t = \sigma(\mathbf{W}_f [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_f)$$
+    </div>
+    <p style="font-size:0.85em;"><strong>What it does:</strong> Decides what information to <em>discard</em> from the cell state. $\sigma$ outputs values in [0, 1].</p>
+    <ul style="font-size:0.82em;">
+      <li>$f_t = 0$ &rarr; completely forget this information</li>
+      <li>$f_t = 1$ &rarr; completely keep this information</li>
+    </ul>
+    <p style="font-size:0.82em;"><strong>Example:</strong> When the subject changes from "she" to "he", the forget gate discards the old gender information so the model can generate the correct pronoun.</p>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The forget gate looks at the previous hidden state and current input, and outputs a value between 0 and 1 for each element of the cell state. Zero means forget, one means keep. This is element-wise multiplication."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Input Gate &amp; Candidate</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="gate-box input">
+    <h3 style="color:#22C55E;margin-top:0;">Input Gate $\mathbf{i}_t$ + Candidate $\tilde{\mathbf{c}}_t$</h3>
+    <div class="equation-box">
+      $$\mathbf{i}_t = \sigma(\mathbf{W}_i [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_i)$$
+      $$\tilde{\mathbf{c}}_t = \tanh(\mathbf{W}_c [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_c)$$
+    </div>
+    <p style="font-size:0.85em;"><strong>Two steps:</strong></p>
+    <ol style="font-size:0.82em;">
+      <li>$\mathbf{i}_t$ decides <em>which values to update</em> (0 = skip, 1 = update)</li>
+      <li>$\tilde{\mathbf{c}}_t$ proposes <em>new candidate values</em> to add</li>
+    </ol>
+    <p style="font-size:0.82em;"><strong>Example:</strong> When the model reads "she is a doctor", the input gate writes "female" and "doctor" into the cell state.</p>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The input gate is like a write filter. The candidate is what we want to write. The input gate decides how much of each candidate value actually gets written. This two-step process gives fine-grained control."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Cell State Update</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\mathbf{c}_t = \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t$$
+    <div class="annotation">$\odot$ = element-wise (Hadamard) product</div>
+  </div>
+  <div class="step-row"><span class="step-number">1</span><span><span style="color:#F43F5E;font-weight:700;">Forget:</span> $\mathbf{f}_t \odot \mathbf{c}_{t-1}$ &mdash; selectively erase old information</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><span style="color:#22C55E;font-weight:700;">Add:</span> $\mathbf{i}_t \odot \tilde{\mathbf{c}}_t$ &mdash; selectively write new information</span></div>
+  <div class="callout callout-theory">
+    <strong>This is the magic.</strong> The cell state update is <strong>additive</strong>. Compare with the vanilla RNN where $\mathbf{h}_t = \tanh(\mathbf{W}\mathbf{h}_{t-1} + \ldots)$ is <em>multiplicative</em>. Addition preserves gradients &mdash; the gradient of $c_t$ w.r.t. $c_{t-1}$ is simply $f_t$, not a product of many small numbers.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "This is the single most important equation in the LSTM. It is addition, not matrix multiplication. That is why gradients can flow across hundreds of time steps without vanishing. The forget gate controls how much old information to keep."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Output Gate &amp; Hidden State</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="gate-box output">
+    <h3 style="color:#3B82F6;margin-top:0;">Output Gate $\mathbf{o}_t$ + Hidden State $\mathbf{h}_t$</h3>
+    <div class="equation-box">
+      $$\mathbf{o}_t = \sigma(\mathbf{W}_o [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_o)$$
+      $$\mathbf{h}_t = \mathbf{o}_t \odot \tanh(\mathbf{c}_t)$$
+    </div>
+    <p style="font-size:0.85em;"><strong>What it does:</strong> The cell state $\mathbf{c}_t$ contains everything the LSTM remembers. The output gate decides what to <em>reveal</em> as the hidden state $\mathbf{h}_t$.</p>
+    <p style="font-size:0.82em;"><strong>Example:</strong> The cell state remembers both "female" and "doctor". When predicting the next word after "She works as a", the output gate reveals the "doctor" information.</p>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The cell state is the long-term memory. The hidden state is the working memory &mdash; what the LSTM chooses to expose at this particular time step. Not everything remembered needs to be relevant right now."
+  </aside>
+</section>
+
+<section>
+  <h2>LSTM: Complete Equations</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div style="font-size:0.9em;">
+    <div class="equation-box">
+      $$\mathbf{f}_t = \sigma(\mathbf{W}_f [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_f) \quad \text{(forget)}$$
+      $$\mathbf{i}_t = \sigma(\mathbf{W}_i [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_i) \quad \text{(input)}$$
+      $$\tilde{\mathbf{c}}_t = \tanh(\mathbf{W}_c [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_c) \quad \text{(candidate)}$$
+      $$\mathbf{c}_t = \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t \quad \text{(cell update)}$$
+      $$\mathbf{o}_t = \sigma(\mathbf{W}_o [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_o) \quad \text{(output)}$$
+      $$\mathbf{h}_t = \mathbf{o}_t \odot \tanh(\mathbf{c}_t) \quad \text{(hidden state)}$$
+    </div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Parameters:</strong> 4 weight matrices (W_f, W_i, W_c, W_o), each of size $[h+x, h]$, plus 4 bias vectors. Total: $\approx 4 \times (d_h + d_x) \times d_h$ parameters per layer.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "All six equations on one slide for reference. Students should be able to trace the flow: input and previous hidden state go through four parallel transformations, which then interact to update the cell state and produce the output."
+  </aside>
+</section>
+
+<section>
+  <h2>GRU: Gated Recurrent Unit</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>The GRU (Cho et al., 2014) simplifies the LSTM with only <strong>two gates</strong>.</p>
+  <div class="equation-box">
+    $$\mathbf{z}_t = \sigma(\mathbf{W}_z [\mathbf{h}_{t-1}, \mathbf{x}_t]) \quad \text{(update gate)}$$
+    $$\mathbf{r}_t = \sigma(\mathbf{W}_r [\mathbf{h}_{t-1}, \mathbf{x}_t]) \quad \text{(reset gate)}$$
+    $$\tilde{\mathbf{h}}_t = \tanh(\mathbf{W} [\mathbf{r}_t \odot \mathbf{h}_{t-1}, \mathbf{x}_t]) \quad \text{(candidate)}$$
+    $$\mathbf{h}_t = (1 - \mathbf{z}_t) \odot \mathbf{h}_{t-1} + \mathbf{z}_t \odot \tilde{\mathbf{h}}_t \quad \text{(interpolation)}$$
+  </div>
+  <table>
+    <thead><tr><th>Property</th><th>LSTM</th><th>GRU</th></tr></thead>
+    <tbody>
+      <tr><td>Gates</td><td>3 (forget, input, output)</td><td>2 (update, reset)</td></tr>
+      <tr><td>Cell state</td><td>Separate $\mathbf{c}_t$</td><td>No &mdash; only $\mathbf{h}_t$</td></tr>
+      <tr><td>Parameters</td><td>~4dh(dh+dx)</td><td>~3dh(dh+dx)</td></tr>
+      <tr><td>Performance</td><td>Slightly better on long seq</td><td>Faster, competitive</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~3 min. "GRU merges the forget and input gates into a single update gate, and removes the separate cell state. It has 25% fewer parameters. In practice, LSTM and GRU perform similarly on most tasks. GRU is preferred when compute is limited."
+  </aside>
+</section>
+
+<section>
+  <h2>Bidirectional RNNs</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>A forward-only RNN at position $t$ only knows words $1, \ldots, t$. But future context matters too!</p>
+  <div class="equation-box">
+    $$\overrightarrow{\mathbf{h}}_t = \text{RNN}_{\text{fwd}}(\mathbf{x}_t, \overrightarrow{\mathbf{h}}_{t-1})$$
+    $$\overleftarrow{\mathbf{h}}_t = \text{RNN}_{\text{bwd}}(\mathbf{x}_t, \overleftarrow{\mathbf{h}}_{t+1})$$
+    $$\mathbf{h}_t = [\overrightarrow{\mathbf{h}}_t; \overleftarrow{\mathbf{h}}_t] \quad \text{(concatenation)}$$
+  </div>
+  <div class="callout callout-theory">
+    <strong>Use case:</strong> "The bank by the river" vs "The bank approved the loan." A bidirectional RNN at "bank" sees both the preceding and following words, disambiguating the meaning. Essential for classification and NER, but <strong>cannot be used for generation</strong> (you cannot see the future while generating).
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Two RNNs: one reads left-to-right, one reads right-to-left. Concatenate their hidden states. This doubles the representation size but captures both past and future context. BERT uses bidirectional attention for the same reason."
+  </aside>
+</section>
+
+<section>
+  <h2>Multi-Layer and Deep RNNs</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Stack RNN layers to learn hierarchical representations:</p>
+  <div style="display:flex;flex-direction:column;gap:4px;align-items:center;font-size:0.82em;">
+    <div class="arch-block" style="width:300px;">Layer 3: Semantic meaning</div>
+    <div class="arch-arrow">&uarr;</div>
+    <div class="arch-block" style="width:300px;">Layer 2: Syntactic patterns</div>
+    <div class="arch-arrow">&uarr;</div>
+    <div class="arch-block" style="width:300px;">Layer 1: Local features</div>
+    <div class="arch-arrow">&uarr;</div>
+    <div class="arch-block encoder" style="width:300px;">Input embeddings</div>
+  </div>
+  <p style="font-size:0.82em;">Typical depth: 2-4 layers for RNNs (vs 12-96 for transformers). Deeper RNNs are hard to train due to vanishing gradients across <em>both</em> time and depth.</p>
+  <aside class="notes">
+    Time: ~2 min. "Each layer learns more abstract features. Layer 1 might capture word-level patterns, layer 2 phrase-level, layer 3 sentence-level. But stacking RNN layers has diminishing returns &mdash; 2-4 layers is typical."
+  </aside>
+</section>
+
+<section>
+  <h2>Seq2Seq: Encoder-Decoder</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>For tasks where input and output lengths differ (translation, summarisation):</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Encoder</h3>
+      <p style="font-size:0.82em;">Read the entire input sequence, compress into a single <strong>context vector</strong> $\mathbf{c} = \mathbf{h}_T^{\text{enc}}$</p>
+    </div>
+    <div class="col">
+      <h3>Decoder</h3>
+      <p style="font-size:0.82em;">Generate output sequence one token at a time, initialised with context vector $\mathbf{c}$</p>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;justify-content:center;font-size:0.78em;margin:12px 0;">
+    <div class="arch-block encoder">x1</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block encoder">x2</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block encoder">x3</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block" style="border-color:#F59E0B;background:#FFFBEB;font-weight:700;">c</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block decoder">y1</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block decoder">y2</div>
+    <div class="arch-arrow">&rarr;</div>
+    <div class="arch-block decoder">y3</div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Bottleneck:</strong> The entire input must be compressed into a single fixed-size vector $\mathbf{c}$. For long sequences, information is inevitably lost. This is exactly the problem that <strong>attention</strong> solves.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Seq2seq was the state of the art for machine translation from 2014-2017. But imagine compressing a 500-word paragraph into a single vector. The decoder has to reconstruct everything from that one vector. The bottleneck is real, and attention is the solution."
+  </aside>
+</section>
+
+<section>
+  <h2>RNNs in Practice: Sentiment Analysis</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>A many-to-one LSTM for sentiment classification:</p>
+  <pre><code class="language-python"># Conceptual architecture (Kailash handles this via TrainingPipeline)
+# 1. Embedding layer: word indices -> dense vectors
+# 2. LSTM layer(s): process sequence, produce hidden states
+# 3. Take final hidden state h_T
+# 4. Linear layer: h_T -> [positive, negative]
+# 5. Softmax: probabilities
+
+# Input: "This movie was absolutely brilliant"
+# Embeddings: [0.2, -0.1, ...], [0.5, 0.3, ...], ...
+# LSTM processes left to right
+# h_T captures full sequence meaning
+# Output: [0.92, 0.08] -> Positive (92%)</code></pre>
+  <div class="callout callout-foundations">
+    <strong>Key insight:</strong> The final hidden state $\mathbf{h}_T$ is a fixed-size summary of the entire variable-length input. This is how RNNs convert sequences into classification decisions.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Sentiment analysis is the 'hello world' of NLP deep learning. The LSTM reads the review word by word, building up a representation. The final hidden state encodes 'what this review is about and whether it is positive or negative'."
+  </aside>
+</section>
+
+<section>
+  <h2>Teacher Forcing</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>During seq2seq training, what input does the decoder get at each step?</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Without Teacher Forcing</h3>
+      <p style="font-size:0.82em;">Decoder feeds its own previous prediction as input. If it predicts wrong early, all subsequent tokens are conditioned on the mistake.</p>
+      <p style="font-size:0.82em;"><strong>Result:</strong> Error accumulation, slow convergence.</p>
+    </div>
+    <div class="col">
+      <h3>With Teacher Forcing</h3>
+      <p style="font-size:0.82em;">Decoder receives the <em>ground truth</em> previous token as input, regardless of its own prediction.</p>
+      <p style="font-size:0.82em;"><strong>Result:</strong> Faster convergence, but train-test mismatch.</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Exposure bias:</strong> During inference, the model must use its own predictions (no teacher). This mismatch between training and inference is called exposure bias. <strong>Scheduled sampling</strong> gradually shifts from teacher forcing to self-generated tokens during training.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Teacher forcing is a training trick: give the decoder the right answer at each step so it learns faster. But it creates a gap between training and inference. Scheduled sampling helps bridge this gap."
+  </aside>
+</section>
+
+<section>
+  <h2>Gradient Clipping for RNNs</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>While vanishing gradients kill learning, <strong>exploding gradients</strong> destabilise training:</p>
+  <div class="equation-box">
+    $$\text{if } ||\mathbf{g}|| > \theta: \quad \mathbf{g} \leftarrow \frac{\theta}{||\mathbf{g}||} \mathbf{g}$$
+    <div class="annotation">$\mathbf{g}$ = gradient vector, $\theta$ = max norm threshold (typically 1.0-5.0)</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>Why gradients explode:</strong> If $||\mathbf{W}_{hh}|| > 1$, the product $\prod \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}}$ grows exponentially instead of shrinking. Gradient clipping caps the maximum gradient norm, preventing parameter updates from being catastrophically large.
+  </div>
+  <p style="font-size:0.82em;">Vanishing gradients are structural (need LSTM/attention). Exploding gradients are a practical nuisance (clipping suffices).</p>
+  <aside class="notes">
+    Time: ~2 min. "Exploding gradients are the mirror problem of vanishing gradients. One drives gradients to zero, the other to infinity. Clipping is a simple fix: if the gradient is too large, rescale it. This is standard practice for all RNN training."
+  </aside>
+</section>
+
+<section>
+  <h2>RNN Limitations Summary</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Limitation</th><th>Consequence</th><th>Solution</th></tr></thead>
+    <tbody>
+      <tr><td>Sequential processing</td><td>Cannot parallelise</td><td>Transformers</td></tr>
+      <tr><td>Vanishing gradients</td><td>Cannot learn long-range dependencies</td><td>LSTM/GRU (partial), Transformers (full)</td></tr>
+      <tr><td>Context bottleneck</td><td>Information loss in seq2seq</td><td>Attention mechanism</td></tr>
+      <tr><td>Fixed context window</td><td>Cannot access arbitrary positions</td><td>Self-attention</td></tr>
+    </tbody>
+  </table>
+  <p>Every limitation in this table motivated the development of attention and transformers.</p>
+  <aside class="notes">
+    Time: ~2 min. "RNNs are elegant but fundamentally limited. They process sequentially, so they cannot be parallelised on GPUs. They struggle with long sequences. And the bottleneck in seq2seq loses information. Attention solves all three problems."
+  </aside>
+</section>
+
+<section>
+  <h2>Section D: Key Takeaways</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <ul>
+    <li><strong>RNNs</strong> process sequences with a hidden state that carries memory forward</li>
+    <li><strong>Vanishing gradients</strong> prevent learning long-range dependencies</li>
+    <li><strong>LSTMs</strong> solve this with a cell state updated additively (forget/input/output gates)</li>
+    <li><strong>GRUs</strong> simplify to two gates with competitive performance</li>
+    <li><strong>Bidirectional</strong> RNNs see both past and future context</li>
+    <li><strong>Seq2seq</strong> encodes, then decodes &mdash; but the context bottleneck limits quality</li>
+  </ul>
+  <p>Next: How do we let the decoder <em>look back</em> at the entire input?</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section E. "The context bottleneck is the direct motivation for attention. Instead of compressing everything into one vector, let the decoder attend to any part of the input at each step."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION E — ATTENTION (30 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>E. Attention Mechanisms</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"Instead of compressing everything into one vector, let the model look where it needs to."</p>
+  <p>Attention is the single most important idea in modern NLP.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "Attention was introduced for machine translation but it turned out to be so powerful that it replaced RNNs entirely. The transformer is attention without recurrence."
+  </aside>
+</section>
+
+<section>
+  <h2>Bahdanau Attention (2015)</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Instead of using just the final encoder state, the decoder can <strong>attend to all encoder states</strong>.</p>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Alignment score:</strong> How relevant is encoder state $j$ to decoder state $i$?</span></div>
+  <div class="equation-box">
+    $$e_{ij} = \mathbf{v}^\top \tanh(\mathbf{W}_1 \mathbf{s}_{i-1} + \mathbf{W}_2 \mathbf{h}_j)$$
+  </div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Attention weights:</strong> Softmax over all encoder positions</span></div>
+  <div class="equation-box">
+    $$\alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k=1}^{T} \exp(e_{ik})}$$
+  </div>
+  <div class="step-row"><span class="step-number">3</span><span><strong>Context vector:</strong> Weighted sum of encoder states</span></div>
+  <div class="equation-box">
+    $$\mathbf{c}_i = \sum_{j=1}^{T} \alpha_{ij} \mathbf{h}_j$$
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Bahdanau attention computes a separate context vector for each decoder step. The alignment score measures relevance. The softmax normalises. The weighted sum creates a focused representation. When translating, the model can focus on the relevant source words."
+  </aside>
+</section>
+
+<section>
+  <h2>Attention Visualised</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>The attention weights $\alpha_{ij}$ form a matrix showing which source words the decoder focuses on:</p>
+  <table style="font-size:0.72em;">
+    <thead><tr><th></th><th>The</th><th>cat</th><th>sat</th><th>on</th><th>the</th><th>mat</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Le</strong></td><td style="background:#D1FAE5;">0.82</td><td>0.05</td><td>0.03</td><td>0.04</td><td>0.03</td><td>0.03</td></tr>
+      <tr><td><strong>chat</strong></td><td>0.02</td><td style="background:#D1FAE5;">0.88</td><td>0.04</td><td>0.02</td><td>0.02</td><td>0.02</td></tr>
+      <tr><td><strong>s'est</strong></td><td>0.03</td><td>0.05</td><td style="background:#D1FAE5;">0.79</td><td>0.05</td><td>0.04</td><td>0.04</td></tr>
+      <tr><td><strong>assis</strong></td><td>0.03</td><td>0.04</td><td style="background:#BBF7D0;">0.40</td><td style="background:#BBF7D0;">0.35</td><td>0.10</td><td>0.08</td></tr>
+      <tr><td><strong>sur</strong></td><td>0.02</td><td>0.03</td><td>0.05</td><td style="background:#D1FAE5;">0.78</td><td>0.06</td><td>0.06</td></tr>
+      <tr><td><strong>le</strong></td><td>0.03</td><td>0.03</td><td>0.04</td><td>0.05</td><td style="background:#D1FAE5;">0.75</td><td>0.10</td></tr>
+      <tr><td><strong>tapis</strong></td><td>0.02</td><td>0.02</td><td>0.03</td><td>0.04</td><td>0.05</td><td style="background:#D1FAE5;">0.84</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">The near-diagonal pattern shows word alignment, but notice "assis" attends to both "sat" and "on" &mdash; attention captures many-to-many alignments naturally.</p>
+  <aside class="notes">
+    Time: ~2 min. "This attention matrix is interpretable. You can see exactly which source words influenced each output word. The diagonal pattern emerges for languages with similar word order. For languages with different word order, you see cross-diagonal patterns."
+  </aside>
+</section>
+
+<section>
+  <h2>Self-Attention: Q, K, V</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>What if a sequence attends <strong>to itself</strong>? This is self-attention &mdash; the foundation of transformers.</p>
+  <p>Each token produces three vectors from its embedding $\mathbf{x}$:</p>
+  <div class="columns">
+    <div class="col">
+      <ul>
+        <li><strong>Query (Q):</strong> "What am I looking for?"<br/>$\mathbf{q} = \mathbf{x} \mathbf{W}^Q$</li>
+        <li><strong>Key (K):</strong> "What do I contain?"<br/>$\mathbf{k} = \mathbf{x} \mathbf{W}^K$</li>
+        <li><strong>Value (V):</strong> "What do I provide?"<br/>$\mathbf{v} = \mathbf{x} \mathbf{W}^V$</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="callout callout-theory">
+        <strong>Analogy:</strong> Think of a library. You have a query (your question). Each book has a key (its title/index). The attention score is how well your query matches each key. The value is the book's content. You read a weighted combination of the most relevant books.
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Q, K, V is the most important abstraction in modern deep learning. Each token asks a question (Q), advertises what it knows (K), and offers its information (V). The dot product of Q and K determines relevance."
+  </aside>
+</section>
+
+<section>
+  <h2>Scaled Dot-Product Attention</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}$$
+  </div>
+  <div class="step-row"><span class="step-number">1</span><span>Compute dot products: $\mathbf{Q}\mathbf{K}^\top$ gives an $n \times n$ score matrix</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>Scale by $\sqrt{d_k}$ to stabilise gradients</span></div>
+  <div class="step-row"><span class="step-number">3</span><span>Softmax: normalise each row to a probability distribution</span></div>
+  <div class="step-row"><span class="step-number">4</span><span>Multiply by $\mathbf{V}$: weighted sum of value vectors</span></div>
+  <aside class="notes">
+    Time: ~3 min. "This is the equation. QK-transpose gives the attention scores. Scale. Softmax. Multiply by V. The output is a weighted combination of value vectors, where the weights come from Q-K similarity. Beautiful in its simplicity."
+  </aside>
+</section>
+
+<section>
+  <h2>Why Scale by $\sqrt{d_k}$?</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>If $\mathbf{q}, \mathbf{k} \sim \mathcal{N}(0, 1)$ are independent with dimension $d_k$:</p>
+  <div class="equation-box">
+    $$\mathbf{q} \cdot \mathbf{k} = \sum_{i=1}^{d_k} q_i k_i \sim \mathcal{N}(0, d_k)$$
+    <div class="annotation">The dot product has variance $d_k$, so standard deviation $\sqrt{d_k}$</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Without scaling ($d_k = 512$)</h3>
+      <p style="font-size:0.82em;">Dot products range ~$[-45, 45]$<br/>Softmax saturates &rarr; gradients &asymp; 0<br/>Model cannot learn</p>
+    </div>
+    <div class="col">
+      <h3>With scaling ($\div\sqrt{512} \approx 22.6$)</h3>
+      <p style="font-size:0.82em;">Scaled scores range ~$[-2, 2]$<br/>Softmax stays in informative region<br/>Healthy gradients</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Without scaling, the dot products grow with dimension. Large values push softmax into saturation where all probability goes to one element and gradients vanish. Dividing by root-dk normalises the variance back to 1."
+  </aside>
+</section>
+
+<section>
+  <h2>Self-Attention: Worked Example</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p style="font-size:0.85em;">Sentence: "The cat sat"</p>
+  <p style="font-size:0.82em;">After computing $\mathbf{Q}\mathbf{K}^\top / \sqrt{d_k}$ and softmax:</p>
+  <table style="font-size:0.8em;">
+    <thead><tr><th></th><th>The</th><th>cat</th><th>sat</th></tr></thead>
+    <tbody>
+      <tr><td><strong>The</strong></td><td>0.10</td><td>0.50</td><td>0.40</td></tr>
+      <tr><td><strong>cat</strong></td><td>0.25</td><td>0.15</td><td>0.60</td></tr>
+      <tr><td><strong>sat</strong></td><td>0.20</td><td>0.65</td><td>0.15</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">Output for "sat" = 0.20 &middot; $\mathbf{v}_{\text{The}}$ + 0.65 &middot; $\mathbf{v}_{\text{cat}}$ + 0.15 &middot; $\mathbf{v}_{\text{sat}}$</p>
+  <div class="callout callout-foundations">
+    <strong>Key insight:</strong> "sat" attends strongly to "cat" (0.65) because it needs to know <em>who</em> sat. Self-attention creates context-aware representations where each word's output depends on the entire sentence.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Each row is a probability distribution. The output for each word is a weighted average of all value vectors. 'sat' looks mostly at 'cat' because the cat is the one doing the sitting. This is how context gets injected into every token's representation."
+  </aside>
+</section>
+
+<section>
+  <h2>Multi-Head Attention</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>One attention head captures one type of relationship. <strong>Multiple heads</strong> capture multiple types simultaneously.</p>
+  <div class="equation-box">
+    $$\text{head}_i = \text{Attention}(\mathbf{Q}\mathbf{W}_i^Q, \mathbf{K}\mathbf{W}_i^K, \mathbf{V}\mathbf{W}_i^V)$$
+    $$\text{MultiHead}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h) \mathbf{W}^O$$
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>What heads learn</h3>
+      <ul style="font-size:0.82em;">
+        <li>Head 1: syntactic (subject-verb)</li>
+        <li>Head 2: positional (adjacent words)</li>
+        <li>Head 3: semantic (coreference)</li>
+        <li>Head 4: punctuation patterns</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Typical configurations</h3>
+      <table style="font-size:0.78em;">
+        <thead><tr><th>Model</th><th>Heads</th><th>$d_k$</th></tr></thead>
+        <tbody>
+          <tr><td>BERT-base</td><td>12</td><td>64</td></tr>
+          <tr><td>BERT-large</td><td>16</td><td>64</td></tr>
+          <tr><td>GPT-3</td><td>96</td><td>128</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Each head has its own W_Q, W_K, W_V projections. They attend to different things. One head might focus on syntax, another on semantics. The outputs are concatenated and projected. This is why transformers are so expressive."
+  </aside>
+</section>
+
+<section>
+  <h2>Attention vs RNN: The Key Advantages</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Property</th><th>RNN</th><th>Self-Attention</th></tr></thead>
+    <tbody>
+      <tr><td>Parallelisable</td><td>No (sequential)</td><td>Yes (all positions at once)</td></tr>
+      <tr><td>Long-range paths</td><td>$O(n)$ steps</td><td>$O(1)$ (direct connection)</td></tr>
+      <tr><td>Compute per layer</td><td>$O(n \cdot d^2)$</td><td>$O(n^2 \cdot d)$</td></tr>
+      <tr><td>Memory</td><td>$O(1)$ per step</td><td>$O(n^2)$ attention matrix</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>The trade-off:</strong> Self-attention is $O(n^2)$ in sequence length (vs $O(n)$ for RNNs). For short sequences (&lt;2K tokens), this is fine. For long sequences, it becomes expensive &mdash; motivating sparse attention and Flash Attention (Section F).
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Attention connects any two positions in one step, while RNNs need n steps for information to flow from position 1 to position n. This is why attention handles long-range dependencies so much better. But the n-squared cost is the Achilles heel."
+  </aside>
+</section>
+
+<section>
+  <h2>Cross-Attention vs Self-Attention</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Self-Attention</h3>
+      <p style="font-size:0.82em;">Q, K, V all come from the <strong>same sequence</strong>.</p>
+      <p style="font-size:0.82em;">Used in: encoder, decoder (masked)</p>
+      <p style="font-size:0.82em;">"How does each word in this sentence relate to every other word?"</p>
+    </div>
+    <div class="col">
+      <h3>Cross-Attention</h3>
+      <p style="font-size:0.82em;">Q from decoder, K and V from <strong>encoder output</strong>.</p>
+      <p style="font-size:0.82em;">Used in: decoder (encoder-decoder attention)</p>
+      <p style="font-size:0.82em;">"Which parts of the input are relevant to generating this output word?"</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Cross-attention is Bahdanau attention generalised.</strong> In Bahdanau, the decoder attends to encoder states. In the transformer, cross-attention does the same thing, but using Q/K/V and multi-head projections.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Self-attention is a sequence looking at itself. Cross-attention is one sequence looking at another. The decoder uses both: masked self-attention for its own tokens, cross-attention to look at the encoder output."
+  </aside>
+</section>
+
+<section>
+  <h2>Attention Types: A Taxonomy</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Type</th><th>Score Function</th><th>Parameters</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dot-product</strong></td><td>$\mathbf{q}^\top \mathbf{k}$</td><td>None (fastest)</td></tr>
+      <tr><td><strong>Scaled dot-product</strong></td><td>$\mathbf{q}^\top \mathbf{k} / \sqrt{d_k}$</td><td>None (standard in transformers)</td></tr>
+      <tr><td><strong>Additive (Bahdanau)</strong></td><td>$\mathbf{v}^\top \tanh(\mathbf{W}_1\mathbf{q} + \mathbf{W}_2\mathbf{k})$</td><td>$\mathbf{W}_1, \mathbf{W}_2, \mathbf{v}$</td></tr>
+      <tr><td><strong>Multiplicative (Luong)</strong></td><td>$\mathbf{q}^\top \mathbf{W} \mathbf{k}$</td><td>$\mathbf{W}$</td></tr>
+      <tr><td><strong>Location-based</strong></td><td>$\text{softmax}(\mathbf{W}\mathbf{q})$</td><td>$\mathbf{W}$ (query-only)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>In practice:</strong> Scaled dot-product dominates because it has no learnable parameters in the score function (the parameters are in the Q, K, V projections). It is also the most GPU-friendly since it reduces to matrix multiplication.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "There are many ways to compute attention scores. Additive attention was first (Bahdanau). Scaled dot-product won because it is faster and just as good. The other types are historically important but rarely used in modern systems."
+  </aside>
+</section>
+
+<section>
+  <h2>Attention as Soft Dictionary Lookup</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Hard Lookup (Dictionary)</h3>
+      <p style="font-size:0.82em;">Given a query key, find the exact match and return its value.</p>
+      <pre><code class="language-python">d = {"cat": [0.8, 0.1], "dog": [0.7, 0.2]}
+result = d["cat"]  # exact match</code></pre>
+      <p style="font-size:0.82em;">Returns one value. Fails if key missing.</p>
+    </div>
+    <div class="col">
+      <h3>Soft Lookup (Attention)</h3>
+      <p style="font-size:0.82em;">Given a query, compute similarity to all keys, return weighted average of values.</p>
+      <pre><code class="language-python"># query similar to "cat" (0.9) and "dog" (0.1)
+result = 0.9 * v_cat + 0.1 * v_dog</code></pre>
+      <p style="font-size:0.82em;">Returns blended value. Always works.</p>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>This is why it is called Q, K, V:</strong> The terminology comes directly from database/dictionary lookups. Attention is a differentiable, soft version of key-value retrieval.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "If you struggle with Q, K, V, think of a dictionary. Your query matches against all keys with varying degrees of similarity. The output is a weighted blend of all values. That is all attention does."
+  </aside>
+</section>
+
+<section>
+  <h2>Attention Complexity Analysis</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\text{Self-Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}): \quad O(n^2 \cdot d)$$
+    <div class="annotation">$n$ = sequence length, $d$ = model dimension</div>
+  </div>
+  <table>
+    <thead><tr><th>Sequence Length</th><th>Attention Matrix Size</th><th>Memory (FP16)</th></tr></thead>
+    <tbody>
+      <tr><td>512 (BERT)</td><td>262K entries</td><td>0.5 MB</td></tr>
+      <tr><td>2,048 (GPT-2)</td><td>4.2M entries</td><td>8 MB</td></tr>
+      <tr><td>8,192</td><td>67M entries</td><td>128 MB</td></tr>
+      <tr><td>128,000 (GPT-4)</td><td>16.4B entries</td><td>31 GB</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warning">
+    <strong>The quadratic wall:</strong> At 128K tokens, the attention matrix alone consumes 31 GB per layer per head. This is why Flash Attention (Section F) and KV caching are essential for long-context models.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The n-squared scaling is the Achilles heel of transformers. Doubling the sequence length quadruples the memory and compute. This is why context length was limited to 512-2048 tokens for years, and why Flash Attention was transformative."
+  </aside>
+</section>
+
+<section>
+  <h2>Section E: Key Takeaways</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <ul>
+    <li><strong>Bahdanau attention</strong> solved the seq2seq bottleneck by attending to all encoder states</li>
+    <li><strong>Self-attention</strong> (Q, K, V) lets every position attend to every other position</li>
+    <li><strong>Scaling by $\sqrt{d_k}$</strong> prevents softmax saturation</li>
+    <li><strong>Multi-head attention</strong> captures multiple relationship types in parallel</li>
+    <li><strong>$O(1)$ path length</strong> vs $O(n)$ for RNNs &mdash; much better for long-range dependencies</li>
+    <li><strong>$O(n^2)$ cost</strong> is the main limitation</li>
+  </ul>
+  <p>Next: Combine attention with everything else to build the full Transformer.</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section F. "You now understand attention. The transformer is just attention plus a few other components: positional encoding, feed-forward networks, residual connections, and layer normalisation. Let us build it."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION F — THE TRANSFORMER (40 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>F. The Transformer</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"Attention Is All You Need" &mdash; Vaswani et al., 2017</p>
+  <p>The architecture that replaced RNNs, CNNs, and everything else. The foundation of all modern language models.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "This is the paper that changed AI. Eight authors at Google Brain wrote it in 2017. Its title was provocative and turned out to be exactly right. Everything since &mdash; BERT, GPT, LLaMA &mdash; is a variant of this architecture."
+  </aside>
+</section>
+
+<section>
+  <h2>Transformer: High-Level Architecture</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Encoder (left)</h3>
+      <div class="arch-block encoder">Self-Attention</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block encoder">Add &amp; LayerNorm</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block encoder">Feed-Forward Network</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block encoder">Add &amp; LayerNorm</div>
+      <p style="font-size:0.78em;text-align:center;">&times; N layers</p>
+    </div>
+    <div class="col">
+      <h3>Decoder (right)</h3>
+      <div class="arch-block decoder">Masked Self-Attention</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block decoder">Add &amp; LayerNorm</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block attention">Cross-Attention</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block decoder">Add &amp; LayerNorm</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block decoder">Feed-Forward Network</div>
+      <div class="arch-arrow">&darr;</div>
+      <div class="arch-block decoder">Add &amp; LayerNorm</div>
+      <p style="font-size:0.78em;text-align:center;">&times; N layers</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "The encoder has two sub-layers per block: self-attention and FFN, each with residual connections and layer norm. The decoder has three: masked self-attention, cross-attention, and FFN. The original paper uses N=6 layers."
+  </aside>
+</section>
+
+<section>
+  <h2>Encoder Block: Detailed</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Multi-Head Self-Attention:</strong> Each token attends to all other tokens</span></div>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\mathbf{z} = \text{MultiHead}(\mathbf{x}, \mathbf{x}, \mathbf{x})$$
+  </div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Add &amp; LayerNorm:</strong> Residual connection + normalisation</span></div>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\mathbf{x}' = \text{LayerNorm}(\mathbf{x} + \mathbf{z})$$
+  </div>
+  <div class="step-row"><span class="step-number">3</span><span><strong>Feed-Forward Network:</strong> Two linear layers with ReLU</span></div>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\text{FFN}(\mathbf{x}') = \max(0, \mathbf{x}'\mathbf{W}_1 + \mathbf{b}_1)\mathbf{W}_2 + \mathbf{b}_2$$
+  </div>
+  <div class="step-row"><span class="step-number">4</span><span><strong>Add &amp; LayerNorm:</strong> Another residual connection</span></div>
+  <div class="equation-box" style="font-size:0.9em;">
+    $$\text{output} = \text{LayerNorm}(\mathbf{x}' + \text{FFN}(\mathbf{x}'))$$
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Four steps per encoder block. Self-attention mixes information across positions. The FFN processes each position independently. Residual connections allow gradient flow. LayerNorm stabilises training. Simple, but the combination is incredibly powerful."
+  </aside>
+</section>
+
+<section>
+  <h2>Residual Connections</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\text{output} = \mathbf{x} + f(\mathbf{x})$$
+    <div class="annotation">$f$ = any sub-layer (attention or FFN)</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Why residuals?</h3>
+      <ul style="font-size:0.82em;">
+        <li>Gradient flows directly through addition</li>
+        <li>Deep networks (12-96 layers) can train</li>
+        <li>Each layer only needs to learn the <em>residual</em> change</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Same idea as</h3>
+      <ul style="font-size:0.82em;">
+        <li>ResNet (M7) for images</li>
+        <li>LSTM cell state for sequences</li>
+        <li>Highway networks</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Pattern:</strong> Every successful deep architecture uses some form of skip/residual connection. Without them, gradients vanish after a few layers.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "You saw this in M7 with ResNets. Same principle: let gradients bypass transformations through a shortcut. Without residuals, a 12-layer transformer would be untrainable."
+  </aside>
+</section>
+
+<section>
+  <h2>Layer Normalisation</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\text{LayerNorm}(\mathbf{x}) = \gamma \odot \frac{\mathbf{x} - \mu}{\sigma + \epsilon} + \beta$$
+    <div class="annotation">$\mu, \sigma$ computed across the feature dimension for each token independently</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Batch Norm (M7)</h3>
+      <p style="font-size:0.82em;">Normalise across the batch dimension. Depends on batch size. Problematic for variable-length sequences.</p>
+    </div>
+    <div class="col">
+      <h3>Layer Norm (Transformers)</h3>
+      <p style="font-size:0.82em;">Normalise across the feature dimension for each sample. Independent of batch size. Works naturally with sequences.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Layer norm normalises each token's feature vector independently. It does not depend on the batch, so it works the same during training and inference. This is why transformers use layer norm instead of batch norm."
+  </aside>
+</section>
+
+<section>
+  <h2>Decoder Block: Masked Self-Attention</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>The decoder must not see future tokens during training (that would be cheating!).</p>
+  <div class="equation-box">
+    $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M}\right)\mathbf{V}$$
+  </div>
+  <p>Mask matrix $\mathbf{M}$:</p>
+  <table style="font-size:0.78em;">
+    <thead><tr><th></th><th>pos 1</th><th>pos 2</th><th>pos 3</th><th>pos 4</th></tr></thead>
+    <tbody>
+      <tr><td><strong>pos 1</strong></td><td>0</td><td>$-\infty$</td><td>$-\infty$</td><td>$-\infty$</td></tr>
+      <tr><td><strong>pos 2</strong></td><td>0</td><td>0</td><td>$-\infty$</td><td>$-\infty$</td></tr>
+      <tr><td><strong>pos 3</strong></td><td>0</td><td>0</td><td>0</td><td>$-\infty$</td></tr>
+      <tr><td><strong>pos 4</strong></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">$-\infty$ before softmax &rarr; 0 after softmax. Position 3 can attend to positions 1, 2, 3 but not 4.</p>
+  <aside class="notes">
+    Time: ~3 min. "The causal mask is crucial. During training, we process all positions in parallel, but each position must only attend to previous positions. Adding negative infinity before softmax ensures those positions get zero attention weight."
+  </aside>
+</section>
+
+<section>
+  <h2>Positional Encoding: Why We Need It</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="callout callout-warning">
+    <strong>Problem:</strong> Self-attention is permutation-invariant. Without position information, "dog bites man" and "man bites dog" produce identical attention patterns. We must inject position information.
+  </div>
+  <p><strong>Sinusoidal positional encoding</strong> (Vaswani et al., 2017):</p>
+  <div class="equation-box">
+    $$\text{PE}(\text{pos}, 2i) = \sin\left(\frac{\text{pos}}{10000^{2i/d_{\text{model}}}}\right)$$
+    $$\text{PE}(\text{pos}, 2i+1) = \cos\left(\frac{\text{pos}}{10000^{2i/d_{\text{model}}}}\right)$$
+  </div>
+  <p style="font-size:0.82em;">Each dimension oscillates at a different frequency. Even dimensions use sin, odd dimensions use cos.</p>
+  <aside class="notes">
+    Time: ~3 min. "Without positional encoding, the transformer sees a bag of tokens &mdash; just like BoW but fancier. The sinusoidal encoding creates unique position signatures and has a beautiful property: relative positions can be represented as linear transformations."
+  </aside>
+</section>
+
+<section>
+  <h2>Positional Encoding: Why Sin/Cos?</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Sinusoidal encoding allows the model to attend to <strong>relative positions</strong>:</p>
+  <div class="callout callout-theory">
+    <strong>Key property:</strong> For any fixed offset $k$, there exists a linear transformation $M$ such that:<br/>
+    $\text{PE}(\text{pos} + k) = M \cdot \text{PE}(\text{pos})$<br/><br/>
+    This means relative position information is accessible via linear operations, which attention can learn.
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Low dimensions</h3>
+      <p style="font-size:0.82em;">High frequency oscillation &rarr; fine-grained position (nearby words)</p>
+    </div>
+    <div class="col">
+      <h3>High dimensions</h3>
+      <p style="font-size:0.82em;">Low frequency oscillation &rarr; coarse position (distant words)</p>
+    </div>
+  </div>
+  <p style="font-size:0.82em;">In practice, most modern models use <strong>learned positional embeddings</strong> instead, which perform similarly.</p>
+  <aside class="notes">
+    Time: ~2 min. "Think of binary counting: the least significant bit oscillates fastest, the most significant bit slowest. Sinusoidal encoding is analogous but continuous. Each dimension carries position information at a different scale."
+  </aside>
+</section>
+
+<section>
+  <h2>RoPE: Rotary Position Embeddings</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p><strong>RoPE</strong> (Su et al., 2021) encodes position by rotating Q and K vectors.</p>
+  <div class="equation-box">
+    $$\mathbf{q}_m = R_{\theta, m} \mathbf{W}^Q \mathbf{x}_m, \quad \mathbf{k}_n = R_{\theta, n} \mathbf{W}^K \mathbf{x}_n$$
+    <div class="annotation">$R_{\theta, m}$ is a block-diagonal rotation matrix with angles $m\theta_i$</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Why RoPE wins:</strong>
+    <ul style="font-size:0.82em;">
+      <li>The dot product $\mathbf{q}_m^\top \mathbf{k}_n$ depends only on relative position $(m-n)$, not absolute</li>
+      <li>No separate position embedding needed &mdash; position is baked into Q and K</li>
+      <li>Extrapolates to longer sequences better than learned embeddings</li>
+      <li>Used by: LLaMA, Mistral, Gemma, and most modern LLMs</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "RoPE is elegant: instead of adding position vectors, rotate the query and key. The dot product between rotated vectors naturally depends on their distance. This is why modern LLMs can generalise to longer contexts than they were trained on."
+  </aside>
+</section>
+
+<section>
+  <h2>ALiBi: Attention with Linear Biases</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p><strong>ALiBi</strong> (Press et al., 2022) adds a linear position-dependent bias to attention scores.</p>
+  <div class="equation-box">
+    $$\text{softmax}\left(\mathbf{q}_i^\top \mathbf{k}_j - m \cdot |i - j|\right)$$
+    <div class="annotation">$m$ is a head-specific slope (geometric sequence across heads)</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>How it works:</strong> Instead of adding position embeddings to the input, ALiBi subtracts a penalty proportional to distance directly from attention scores. Nearby tokens get higher scores, distant tokens get lower scores.
+    <ul style="font-size:0.82em;">
+      <li>No position embeddings needed at all</li>
+      <li>Trains on short sequences, generalises to long ones</li>
+      <li>Different heads use different slopes &rarr; multi-scale attention</li>
+      <li>Used by: BLOOM, MPT</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "ALiBi is the simplest position method: just penalise distant tokens. Different heads use different penalty rates, so some heads look nearby and others look far away. It trains fast and generalises well."
+  </aside>
+</section>
+
+<section>
+  <h2>Feed-Forward Network (FFN)</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Each transformer block contains a position-wise feed-forward network:</p>
+  <div class="equation-box">
+    $$\text{FFN}(\mathbf{x}) = \text{GELU}(\mathbf{x}\mathbf{W}_1 + \mathbf{b}_1)\mathbf{W}_2 + \mathbf{b}_2$$
+    <div class="annotation">$\mathbf{W}_1 \in \mathbb{R}^{d \times 4d}$, $\mathbf{W}_2 \in \mathbb{R}^{4d \times d}$ (typical expansion factor = 4)</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>What the FFN does:</strong> Self-attention mixes information <em>across positions</em>. The FFN processes each position <em>independently</em>, applying the same transformation to every token. Recent research suggests FFNs act as key-value memories that store factual knowledge.
+  </div>
+  <p style="font-size:0.82em;">Modern models use <strong>SwiGLU</strong> instead of GELU: $\text{SwiGLU}(\mathbf{x}) = (\mathbf{x}\mathbf{W}_1 \odot \text{swish}(\mathbf{x}\mathbf{V}))\mathbf{W}_2$</p>
+  <aside class="notes">
+    Time: ~2 min. "The FFN is surprisingly important. It has 2/3 of the parameters in each block. Research has shown that factual knowledge (like 'Paris is the capital of France') is stored in FFN weights, while attention handles relational reasoning."
+  </aside>
+</section>
+
+<section>
+  <h2>Parameter Count</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>For a transformer with $L$ layers, model dimension $d$, and $h$ heads:</p>
+  <div class="equation-box">
+    $$\text{Params per layer} \approx 12d^2$$
+    <div class="annotation">4d&sup2; for attention (Q, K, V, O projections) + 8d&sup2; for FFN (up + down projections)</div>
+  </div>
+  <table>
+    <thead><tr><th>Model</th><th>$d$</th><th>$L$</th><th>$h$</th><th>Total Params</th></tr></thead>
+    <tbody>
+      <tr><td>BERT-base</td><td>768</td><td>12</td><td>12</td><td>110M</td></tr>
+      <tr><td>BERT-large</td><td>1024</td><td>24</td><td>16</td><td>340M</td></tr>
+      <tr><td>GPT-2</td><td>1600</td><td>48</td><td>25</td><td>1.5B</td></tr>
+      <tr><td>GPT-3</td><td>12288</td><td>96</td><td>96</td><td>175B</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Parameters scale quadratically with model dimension. Doubling d quadruples the parameters. GPT-3 has 175 billion parameters &mdash; most of them in FFN weights. Understanding this helps you estimate compute requirements."
+  </aside>
+</section>
+
+<section>
+  <h2>Training: Warmup + Cosine Decay</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Transformers use a specific learning rate schedule:</p>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Linear warmup:</strong> LR increases linearly from 0 to peak over first ~2K-10K steps</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Cosine decay:</strong> LR decreases following a cosine curve to near zero</span></div>
+  <div class="equation-box">
+    $$\text{lr}(t) = \begin{cases} \text{lr}_{\max} \cdot \frac{t}{t_{\text{warmup}}} & t < t_{\text{warmup}} \\ \text{lr}_{\min} + \frac{1}{2}(\text{lr}_{\max} - \text{lr}_{\min})(1 + \cos(\pi \cdot \frac{t - t_{\text{warmup}}}{t_{\max} - t_{\text{warmup}}})) & t \geq t_{\text{warmup}} \end{cases}$$
+  </div>
+  <div class="callout callout-theory">
+    <strong>Why warmup?</strong> Early in training, gradients are noisy. A high learning rate causes divergence. Warming up stabilises the Adam optimiser's variance estimates before ramping up the learning rate.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Every transformer uses this schedule. Without warmup, training often diverges in the first few hundred steps. The cosine decay smoothly reduces the learning rate, allowing fine-grained convergence in the later stages."
+  </aside>
+</section>
+
+<section>
+  <h2>Training Techniques</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Technique</th><th>Purpose</th><th>Typical Value</th></tr></thead>
+    <tbody>
+      <tr><td>Label smoothing</td><td>Prevent overconfident predictions</td><td>$\epsilon = 0.1$</td></tr>
+      <tr><td>Dropout</td><td>Regularisation (attention + FFN)</td><td>$p = 0.1$</td></tr>
+      <tr><td>Gradient clipping</td><td>Prevent gradient explosion</td><td>max norm = 1.0</td></tr>
+      <tr><td>Weight decay</td><td>L2 regularisation (AdamW)</td><td>$\lambda = 0.01$</td></tr>
+      <tr><td>Mixed precision</td><td>Speed up training, reduce memory</td><td>BF16 / FP16</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Label smoothing:</strong> Instead of training with hard targets [0, 0, 1, 0], use soft targets [0.033, 0.033, 0.9, 0.033]. This prevents the model from becoming too confident and improves generalisation.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These techniques are standard across all transformer training. Label smoothing is often overlooked but makes a significant difference. Mixed precision is now universal &mdash; most models train in BF16."
+  </aside>
+</section>
+
+<section>
+  <h2>Flash Attention</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p>Standard attention materialises the $n \times n$ attention matrix &mdash; <strong>Flash Attention</strong> never does.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Standard Attention</h3>
+      <ul style="font-size:0.82em;">
+        <li>Compute $\mathbf{S} = \mathbf{Q}\mathbf{K}^\top$ ($n \times n$ matrix)</li>
+        <li>Store in GPU HBM</li>
+        <li>Apply softmax</li>
+        <li>Multiply by $\mathbf{V}$</li>
+        <li>Memory: $O(n^2)$</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Flash Attention</h3>
+      <ul style="font-size:0.82em;">
+        <li>Tile Q, K, V into blocks</li>
+        <li>Compute attention per block in SRAM</li>
+        <li>Accumulate output with online softmax</li>
+        <li>Never materialise full $n \times n$ matrix</li>
+        <li>Memory: $O(n)$</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>IO-aware:</strong> Flash Attention is not mathematically different &mdash; it computes the exact same result. The innovation is <em>how</em> it schedules computation to minimise reads/writes between GPU SRAM (fast, small) and HBM (slow, large). 2-4x speedup, enabling longer contexts.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "Flash Attention is a systems innovation, not an algorithmic one. It produces identical results but uses tiling and online softmax to avoid materialising the huge attention matrix. This is why modern models can handle 100K+ token contexts."
+  </aside>
+</section>
+
+<section>
+  <h2>Grouped-Query Attention (GQA)</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p>In standard multi-head attention, each head has its own Q, K, V projections. GQA shares K and V across groups of Q heads.</p>
+  <table>
+    <thead><tr><th>Method</th><th>Q heads</th><th>K,V heads</th><th>KV Cache Size</th></tr></thead>
+    <tbody>
+      <tr><td>Multi-Head (MHA)</td><td>$h$</td><td>$h$</td><td>$h \times d_k \times n$</td></tr>
+      <tr><td>Multi-Query (MQA)</td><td>$h$</td><td>1</td><td>$1 \times d_k \times n$</td></tr>
+      <tr><td>Grouped-Query (GQA)</td><td>$h$</td><td>$g$ (groups)</td><td>$g \times d_k \times n$</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Why GQA matters:</strong> During inference, K and V are cached for all previous tokens (KV cache). With 96 heads and long contexts, this cache becomes enormous. GQA reduces KV cache by $h/g$ with minimal quality loss. Used by LLaMA 2, Mistral, Gemma.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "GQA is critical for inference efficiency. The KV cache for a 70B model with 128K context can be 50+ GB. Sharing K,V across Q head groups reduces this dramatically. It is a practical necessity for deployment."
+  </aside>
+</section>
+
+<section>
+  <h2>Sparse Attention</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p>Full attention is $O(n^2)$. For very long sequences, sparse patterns reduce this.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Longformer</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Local:</strong> sliding window of size $w$</li>
+        <li><strong>Global:</strong> selected tokens attend to all</li>
+        <li>Complexity: $O(n \cdot w)$</li>
+        <li>Good for: document classification</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>BigBird</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Local:</strong> sliding window</li>
+        <li><strong>Global:</strong> special tokens</li>
+        <li><strong>Random:</strong> random connections</li>
+        <li>Proven: Turing-complete like full attention</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>In practice:</strong> Flash Attention has largely reduced the need for sparse attention patterns. Most modern models use full attention with Flash Attention rather than designing custom sparse patterns.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Sparse attention was a big research area in 2020-2021. Longformer and BigBird showed you can handle very long documents with linear-time attention. But Flash Attention's efficiency gains have made full attention practical up to 100K+ tokens."
+  </aside>
+</section>
+
+<section>
+  <h2>Pre-LayerNorm vs Post-LayerNorm</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Post-LN (Original)</h3>
+      <p style="font-size:0.82em;">$\text{LN}(x + \text{Attn}(x))$</p>
+      <p style="font-size:0.82em;">Requires warmup. Training less stable.</p>
+    </div>
+    <div class="col">
+      <h3>Pre-LN (Modern)</h3>
+      <p style="font-size:0.82em;">$x + \text{Attn}(\text{LN}(x))$</p>
+      <p style="font-size:0.82em;">Gradient flows directly through residual. More stable, no warmup needed.</p>
+    </div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Most modern LLMs use Pre-LN</strong> (GPT-2+, LLaMA, Mistral). Some use <strong>RMSNorm</strong> instead of LayerNorm, which removes the mean-centering step: $\text{RMSNorm}(\mathbf{x}) = \gamma \odot \frac{\mathbf{x}}{\text{RMS}(\mathbf{x})}$.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Pre-LN is one of those small changes that made a big difference. By normalising before the sub-layer, the residual path is cleaner and gradients flow more easily. RMSNorm saves a bit of compute by skipping the mean subtraction."
+  </aside>
+</section>
+
+<section>
+  <h2>The Transformer: Why It Won</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Property</th><th>RNN/LSTM</th><th>CNN</th><th>Transformer</th></tr></thead>
+    <tbody>
+      <tr><td>Parallelisable</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Long-range</td><td>Poor</td><td>Limited</td><td>Excellent</td></tr>
+      <tr><td>Scalability</td><td>Hard &gt;4 layers</td><td>Moderate</td><td>96+ layers</td></tr>
+      <tr><td>Pre-training</td><td>Limited</td><td>ImageNet</td><td>Massive text corpora</td></tr>
+      <tr><td>Transfer learning</td><td>Weak</td><td>Good (features)</td><td>Excellent (fine-tuning)</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>The transformer won because it scales.</strong> More data, more parameters, more compute &mdash; transformers keep improving. RNNs and CNNs plateau. This is the scaling hypothesis that drives modern AI.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The transformer dominates not because it is theoretically superior in every way, but because it scales better than anything else. It can absorb more data and more parameters, and keep getting better. That is the fundamental reason for its dominance."
+  </aside>
+</section>
+
+<section>
+  <h2>Encoder-Only vs Decoder-Only vs Full</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Encoder-Only</h3>
+      <p style="font-size:0.82em;"><strong>BERT, RoBERTa, DeBERTa</strong></p>
+      <ul style="font-size:0.82em;">
+        <li>Bidirectional self-attention</li>
+        <li>Produces contextual embeddings</li>
+        <li>Best for: classification, NER, QA</li>
+        <li>Cannot generate text</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Decoder-Only</h3>
+      <p style="font-size:0.82em;"><strong>GPT, LLaMA, Mistral</strong></p>
+      <ul style="font-size:0.82em;">
+        <li>Causal (masked) self-attention</li>
+        <li>Autoregressive generation</li>
+        <li>Best for: generation, few-shot</li>
+        <li>With scale, can do everything</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>Full encoder-decoder</strong> (T5, BART): Uses both with cross-attention. Best for: translation, summarisation. More parameters but naturally handles input/output asymmetry. The original transformer architecture.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "The original 2017 transformer was encoder-decoder for translation. BERT stripped the decoder. GPT stripped the encoder. T5 kept both. In 2024, decoder-only dominates because it scales best and can do everything with enough parameters."
+  </aside>
+</section>
+
+<section>
+  <h2>KV Cache: Why Transformers Are Fast at Inference</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>During autoregressive generation, each new token reuses all previous K and V computations.</p>
+  <div class="step-row"><span class="step-number">1</span><span>Generate token 1: compute Q1, K1, V1, attention, output</span></div>
+  <div class="step-row"><span class="step-number">2</span><span>Generate token 2: compute Q2, reuse K1, V1, add K2, V2</span></div>
+  <div class="step-row"><span class="step-number">3</span><span>Generate token $n$: compute Q$n$, reuse K$_{1:n-1}$, V$_{1:n-1}$, add K$n$, V$n$</span></div>
+  <div class="callout callout-theory">
+    <strong>Without KV cache:</strong> Each new token requires recomputing attention over all previous tokens &mdash; $O(n^2)$ total for $n$ tokens.<br/>
+    <strong>With KV cache:</strong> Each new token computes attention with one new Q against cached K,V &mdash; $O(n)$ per token, $O(n^2)$ total but with much better constants.
+  </div>
+  <p style="font-size:0.82em;">KV cache memory grows linearly with sequence length. For GPT-3 at 2K tokens: ~3 GB of KV cache.</p>
+  <aside class="notes">
+    Time: ~2 min. "KV caching is why LLMs can generate tokens quickly. Without it, generating each token would require reprocessing the entire context from scratch. The trade-off is memory: the cache grows with each token."
+  </aside>
+</section>
+
+<section>
+  <h2>Transformer Training at Scale</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <table>
+    <thead><tr><th>Technique</th><th>Purpose</th><th>Used By</th></tr></thead>
+    <tbody>
+      <tr><td>Data parallelism</td><td>Same model, different data batches on each GPU</td><td>All large models</td></tr>
+      <tr><td>Tensor parallelism</td><td>Split individual layers across GPUs</td><td>Megatron-LM, GPT-3</td></tr>
+      <tr><td>Pipeline parallelism</td><td>Different layers on different GPUs</td><td>GPipe, PaLM</td></tr>
+      <tr><td>ZeRO (DeepSpeed)</td><td>Shard optimiser states across GPUs</td><td>BLOOM, LLaMA</td></tr>
+      <tr><td>Gradient checkpointing</td><td>Trade compute for memory (recompute activations)</td><td>Most large models</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced">
+    <strong>Scale of training:</strong> GPT-3 was trained on ~1,000 NVIDIA V100 GPUs for ~34 days. LLaMA 2 70B was trained on ~2,000 A100 GPUs for ~35 days. The compute cost for a single training run is $2-10 million.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Training a large transformer is a distributed systems problem as much as a machine learning problem. The model does not fit on one GPU, so you must split it across hundreds or thousands. Each technique handles a different bottleneck."
+  </aside>
+</section>
+
+<section>
+  <h2>The Original Transformer: "Attention Is All You Need"</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Authors</td><td>Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez, Kaiser, Polosukhin</td></tr>
+      <tr><td>Published</td><td>June 2017 (NeurIPS)</td></tr>
+      <tr><td>Layers</td><td>6 encoder + 6 decoder</td></tr>
+      <tr><td>Model dimension</td><td>512</td></tr>
+      <tr><td>Heads</td><td>8</td></tr>
+      <tr><td>Parameters</td><td>~65M</td></tr>
+      <tr><td>Task</td><td>English-German / English-French translation</td></tr>
+      <tr><td>Training</td><td>8 P100 GPUs, 3.5 days</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Impact:</strong> The original transformer was tiny by today's standards (65M params, 8 GPUs, 3.5 days). Its importance was the architecture, not the scale. Every model since &mdash; BERT, GPT, T5, LLaMA &mdash; is a direct descendant.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Compare 65 million parameters on 8 GPUs to GPT-3's 175 billion on 1,000 GPUs. The architecture stayed the same; only the scale changed. That is the power of the transformer: it scales."
+  </aside>
+</section>
+
+<section>
+  <h2>Section F: Key Takeaways</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <ul>
+    <li><strong>Encoder:</strong> self-attention + FFN + residual + LayerNorm, repeated N times</li>
+    <li><strong>Decoder:</strong> masked self-attention + cross-attention + FFN</li>
+    <li><strong>Positional encoding:</strong> sinusoidal, learned, RoPE, or ALiBi</li>
+    <li><strong>~12d&sup2; params per layer</strong> &mdash; scales quadratically with dimension</li>
+    <li><strong>Flash Attention:</strong> exact same result, O(n) memory via tiling</li>
+    <li><strong>GQA:</strong> shares K,V to reduce inference memory</li>
+    <li><strong>The transformer wins because it scales</strong></li>
+  </ul>
+  <p>Next: How do you train a transformer on massive data before seeing any task?</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section G. "You now understand the full transformer architecture. Section G is about what you do with it: pre-train on enormous corpora, then fine-tune for specific tasks."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION G — PRE-TRAINING (25 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>G. Pre-training Paradigms</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"Train once on everything, then fine-tune for anything."</p>
+  <p>Pre-training on massive unlabelled text creates <strong>foundation models</strong> that can be adapted to any downstream task.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "Pre-training is what makes modern NLP practical. Instead of training a model from scratch for every task, you train one massive model and then adapt it. This is the most important paradigm shift in ML."
+  </aside>
+</section>
+
+<section>
+  <h2>The Three Paradigms</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Paradigm</th><th>Architecture</th><th>Pre-training Task</th><th>Key Model</th></tr></thead>
+    <tbody>
+      <tr><td>Encoder-only</td><td>Bidirectional</td><td>Masked Language Model (MLM)</td><td>BERT</td></tr>
+      <tr><td>Decoder-only</td><td>Causal (left-to-right)</td><td>Causal Language Model (CLM)</td><td>GPT</td></tr>
+      <tr><td>Encoder-decoder</td><td>Full transformer</td><td>Span corruption</td><td>T5</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Rule of thumb:</strong>
+    <ul style="font-size:0.82em;">
+      <li><strong>Understanding tasks</strong> (classification, NER, QA): encoder-only (BERT)</li>
+      <li><strong>Generation tasks</strong> (text completion, dialogue): decoder-only (GPT)</li>
+      <li><strong>Both</strong> (translation, summarisation): encoder-decoder (T5) or decoder-only with enough scale</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Three families, three pre-training objectives, three strengths. BERT sees everything and understands. GPT generates fluently. T5 converts any task to text-to-text. In practice, decoder-only models at sufficient scale can do everything."
+  </aside>
+</section>
+
+<section>
+  <h2>BERT: Masked Language Model</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>BERT</strong> (Devlin et al., 2019) masks 15% of input tokens and predicts them.</p>
+  <div class="token-stream">
+    <span class="token">The</span>
+    <span class="token special">[MASK]</span>
+    <span class="token">sat</span>
+    <span class="token">on</span>
+    <span class="token">the</span>
+    <span class="token special">[MASK]</span>
+    <span class="token arrow">&rarr;</span>
+    <span class="token merged">cat</span>
+    <span class="token merged">mat</span>
+  </div>
+  <div class="callout callout-theory">
+    <strong>The 15% masking strategy:</strong>
+    <ul style="font-size:0.82em;">
+      <li>80% of selected tokens: replace with [MASK]</li>
+      <li>10%: replace with a random word</li>
+      <li>10%: keep original word</li>
+    </ul>
+    <strong>Why not 100% [MASK]?</strong> The model never sees [MASK] during fine-tuning, creating a train-test mismatch. Random replacement and keeping the original reduce this mismatch.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "BERT's MLM is like a fill-in-the-blank test. The model reads the entire sentence bidirectionally and predicts the masked words. The 80/10/10 split is a clever trick to avoid train-test mismatch."
+  </aside>
+</section>
+
+<section>
+  <h2>BERT: Fine-tuning</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>After pre-training, add a task-specific head and fine-tune on labelled data:</p>
+  <table>
+    <thead><tr><th>Task</th><th>Input</th><th>Head</th></tr></thead>
+    <tbody>
+      <tr><td>Classification</td><td>[CLS] + sentence</td><td>Linear on [CLS] output</td></tr>
+      <tr><td>NER</td><td>Token sequence</td><td>Linear on each token output</td></tr>
+      <tr><td>QA</td><td>[CLS] + question + [SEP] + context</td><td>Start/end span prediction</td></tr>
+      <tr><td>Sentence pair</td><td>[CLS] + sent A + [SEP] + sent B</td><td>Linear on [CLS] output</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>The breakthrough:</strong> BERT pre-trained on 3.3B words achieved state-of-the-art on 11 NLP benchmarks simultaneously, often with just a few thousand labelled examples for fine-tuning. Pre-training amortises the cost of learning language across all tasks.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "BERT's power is in fine-tuning. The pre-trained model already understands language. You just add a thin layer on top and train it on your specific task. A few hundred labelled examples can be enough."
+  </aside>
+</section>
+
+<section>
+  <h2>BERT Variants</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Model</th><th>Key Innovation</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td><strong>RoBERTa</strong></td><td>More data, longer training, dynamic masking, no NSP</td><td>Consistently better than BERT</td></tr>
+      <tr><td><strong>ALBERT</strong></td><td>Parameter sharing across layers, factorised embeddings</td><td>18x fewer params, similar quality</td></tr>
+      <tr><td><strong>DistilBERT</strong></td><td>Knowledge distillation: 6 layers from 12</td><td>97% of BERT, 60% faster</td></tr>
+      <tr><td><strong>DeBERTa</strong></td><td>Disentangled attention (content + position separately)</td><td>Surpassed human on SuperGLUE</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Lesson:</strong> BERT's original training was suboptimal. RoBERTa showed that simply training longer with more data and better hyperparameters yields large gains. DeBERTa showed that architectural improvements still matter.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Each variant teaches something. RoBERTa: train harder. ALBERT: share parameters. DistilBERT: distill knowledge. DeBERTa: separate content and position. These are engineering insights, not new architectures."
+  </aside>
+</section>
+
+<section>
+  <h2>GPT: Causal Language Model</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>GPT</strong> (Radford et al., 2018) predicts the next token given all previous tokens.</p>
+  <div class="equation-box">
+    $$P(x_1, x_2, \ldots, x_n) = \prod_{t=1}^{n} P(x_t \mid x_1, \ldots, x_{t-1})$$
+    <div class="annotation">Autoregressive factorisation: model the joint probability as a product of conditionals</div>
+  </div>
+  <div class="token-stream">
+    <span class="token">The</span>
+    <span class="token">cat</span>
+    <span class="token">sat</span>
+    <span class="token">on</span>
+    <span class="token">the</span>
+    <span class="token arrow">&rarr;</span>
+    <span class="token merged">mat</span>
+  </div>
+  <div class="callout callout-theory">
+    <strong>BERT vs GPT:</strong> BERT sees the full sentence (bidirectional, fill-in-the-blank). GPT only sees what came before (causal, predict-next-token). GPT can generate text naturally; BERT cannot.
+  </div>
+  <aside class="notes">
+    Time: ~3 min. "GPT's training objective is deceptively simple: predict the next word. But this simple objective, applied at massive scale, produces models that can write, reason, code, and more. The autoregressive factorisation is the foundation of all modern LLMs."
+  </aside>
+</section>
+
+<section>
+  <h2>GPT Evolution</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Model</th><th>Year</th><th>Params</th><th>Key Contribution</th></tr></thead>
+    <tbody>
+      <tr><td>GPT-1</td><td>2018</td><td>117M</td><td>Pre-train + fine-tune paradigm</td></tr>
+      <tr><td>GPT-2</td><td>2019</td><td>1.5B</td><td>Zero-shot task transfer (no fine-tuning)</td></tr>
+      <tr><td>GPT-3</td><td>2020</td><td>175B</td><td>In-context learning (few-shot prompting)</td></tr>
+      <tr><td>GPT-4</td><td>2023</td><td>~1.8T (MoE)</td><td>Multimodal, reasoning, instruction following</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>In-context learning:</strong> GPT-3 demonstrated that a large enough model can learn new tasks from a few examples in the prompt, without any gradient updates. This eliminated fine-tuning for many tasks and opened the era of prompting.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Each generation scaled parameters by 10x and discovered emergent capabilities. GPT-2 showed you do not need fine-tuning. GPT-3 showed you can teach with examples in the prompt. These were not planned &mdash; they emerged from scale."
+  </aside>
+</section>
+
+<section>
+  <h2>T5: Text-to-Text</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p><strong>T5</strong> (Raffel et al., 2020) converts every NLP task to text-to-text format.</p>
+  <table>
+    <thead><tr><th>Task</th><th>Input</th><th>Output</th></tr></thead>
+    <tbody>
+      <tr><td>Translation</td><td>"translate English to German: The house is wonderful."</td><td>"Das Haus ist wunderbar."</td></tr>
+      <tr><td>Sentiment</td><td>"sst2 sentence: This movie is great."</td><td>"positive"</td></tr>
+      <tr><td>Summarisation</td><td>"summarize: [article text]"</td><td>"[summary]"</td></tr>
+      <tr><td>QA</td><td>"question: Who? context: [text]"</td><td>"[answer]"</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Pre-training:</strong> T5 uses <strong>span corruption</strong> &mdash; replace spans of tokens with sentinel tokens and predict the original spans. This is a generalisation of BERT's MLM that predicts multiple consecutive tokens.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "T5's insight is that every NLP task can be framed as generating text from text. Classification, translation, summarisation &mdash; all become the same architecture with the same training procedure. This unification is powerful."
+  </aside>
+</section>
+
+<section>
+  <h2>Scaling Laws: Chinchilla</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Hoffmann et al. (2022) established that compute-optimal training requires balancing model size and data:</p>
+  <div class="equation-box">
+    $$C \approx 6ND$$
+    <div class="annotation">$C$ = compute (FLOPs), $N$ = parameters, $D$ = tokens trained on</div>
+  </div>
+  <div class="callout callout-theory">
+    <strong>The Chinchilla finding:</strong> For compute-optimal training, $N$ and $D$ should scale equally. A 70B parameter model should see ~1.4T tokens. GPT-3 (175B, 300B tokens) was significantly <em>undertrained</em> by this rule.
+  </div>
+  <table>
+    <thead><tr><th>Model</th><th>Params</th><th>Tokens</th><th>Chinchilla-optimal?</th></tr></thead>
+    <tbody>
+      <tr><td>GPT-3</td><td>175B</td><td>300B</td><td>No (undertrained)</td></tr>
+      <tr><td>Chinchilla</td><td>70B</td><td>1.4T</td><td>Yes</td></tr>
+      <tr><td>LLaMA 2 70B</td><td>70B</td><td>2T</td><td>Over-trained (for inference)</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~3 min. "Chinchilla showed that bigger is not always better. A smaller model trained on more data can outperform a larger model trained on less. This changed how the industry thinks about scaling. LLaMA deliberately over-trains because inference cost depends on model size, not training tokens."
+  </aside>
+</section>
+
+<section>
+  <h2>Mixture of Experts (MoE)</h2>
+  <span class="marker marker-advanced">ADVANCED</span>
+  <p><strong>MoE</strong> uses sparse activation: only a subset of parameters are active for each token.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Dense Model</h3>
+      <p style="font-size:0.82em;">Every token activates every parameter. 70B model uses 70B params per token.</p>
+    </div>
+    <div class="col">
+      <h3>MoE Model</h3>
+      <p style="font-size:0.82em;">Each token is routed to top-k experts. 8x70B = 560B total, but only 2x70B = 140B active per token.</p>
+    </div>
+  </div>
+  <div class="equation-box">
+    $$y = \sum_{i=1}^{E} g_i(\mathbf{x}) \cdot \text{Expert}_i(\mathbf{x})$$
+    <div class="annotation">$g(\mathbf{x})$ = router (softmax over expert scores), sparse: only top-k experts have $g_i > 0$</div>
+  </div>
+  <div class="callout callout-advanced">
+    <strong>Used by:</strong> GPT-4 (rumoured 8 experts), Mixtral (8 experts, top-2 routing), Switch Transformer (top-1 routing). MoE gives the capacity of a huge model with the inference cost of a smaller one.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "MoE is how you get the best of both worlds: the knowledge of a 1 trillion parameter model with the inference cost of a 140 billion parameter model. The router decides which experts are relevant for each token."
+  </aside>
+</section>
+
+<section>
+  <h2>In-Context Learning: How GPT-3 Changed Everything</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>GPT-3 can perform tasks from examples in the prompt &mdash; no gradient updates needed.</p>
+  <table>
+    <thead><tr><th>Paradigm</th><th>Examples</th><th>Gradient Updates</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Zero-shot</strong></td><td>0 (instruction only)</td><td>None</td></tr>
+      <tr><td><strong>One-shot</strong></td><td>1 example</td><td>None</td></tr>
+      <tr><td><strong>Few-shot</strong></td><td>3-10 examples</td><td>None</td></tr>
+      <tr><td><strong>Fine-tuning</strong></td><td>100-10,000+</td><td>Yes (update weights)</td></tr>
+    </tbody>
+  </table>
+  <pre><code class="language-python"># Few-shot sentiment analysis via prompting
+prompt = """Classify sentiment:
+Review: "Excellent food!" -> Positive
+Review: "Terrible service." -> Negative
+Review: "The laksa was amazing but wait was long." ->"""
+# GPT-3 output: "Mixed" or "Positive"</code></pre>
+  <div class="callout callout-theory">
+    <strong>Why it works:</strong> Pre-training on internet-scale text includes many implicit task demonstrations. The model has seen similar patterns during training and can generalise from a few examples in the prompt.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Few-shot prompting eliminates fine-tuning for many tasks. You show the model a few examples in the prompt, and it extrapolates the pattern. This emerged at scale &mdash; GPT-2 could not do it reliably, GPT-3 could."
+  </aside>
+</section>
+
+<section>
+  <h2>Transfer Learning Pipeline</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Pre-train</strong> on massive unlabelled text (billions of tokens, weeks of compute)</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Fine-tune</strong> on task-specific labelled data (thousands of examples, hours of compute)</span></div>
+  <div class="step-row"><span class="step-number">3</span><span><strong>Deploy</strong> and evaluate on real-world data</span></div>
+  <div class="callout callout-foundations">
+    <strong>Why this works:</strong> Pre-training learns general language understanding: syntax, semantics, world knowledge. Fine-tuning adapts this knowledge to a specific task. The vast majority of learning happens during pre-training &mdash; fine-tuning is just the final adjustment.
+  </div>
+  <table>
+    <thead><tr><th>Phase</th><th>Data</th><th>Compute</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Pre-training</td><td>Billions of tokens</td><td>1000s of GPU-days</td><td>$2-10M</td></tr>
+      <tr><td>Fine-tuning</td><td>1K-100K examples</td><td>1-10 GPU-hours</td><td>$10-100</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Pre-training is expensive but done once. Fine-tuning is cheap and done many times for different tasks. This amortisation is why pre-training is so powerful &mdash; one investment enables thousands of applications."
+  </aside>
+</section>
+
+<section>
+  <h2>Instruction Tuning and RLHF</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Pre-trained models predict the next token, not follow instructions. Two additional steps make them useful:</p>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Supervised Fine-Tuning (SFT):</strong> Train on (instruction, response) pairs written by humans</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>RLHF:</strong> Train a reward model from human preferences, then optimise the LLM with reinforcement learning</span></div>
+  <div class="callout callout-theory">
+    <strong>Base model vs Chat model:</strong> A base GPT model completes text ("The president of France is..."). A chat model (ChatGPT) follows instructions ("Who is the president of France? Explain briefly."). SFT + RLHF bridge the gap. This is covered in depth in M10 (Alignment).
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Pre-training gives the model knowledge. SFT teaches it to follow instructions. RLHF aligns it with human preferences. These three stages &mdash; pre-train, SFT, RLHF &mdash; are the standard pipeline for building useful language models. Module 10 covers alignment in full."
+  </aside>
+</section>
+
+<section>
+  <h2>The Pre-training Data Pipeline</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="step-row"><span class="step-number">1</span><span><strong>Crawl:</strong> Common Crawl, books, Wikipedia, code (trillions of tokens)</span></div>
+  <div class="step-row"><span class="step-number">2</span><span><strong>Filter:</strong> Remove duplicates, low quality, toxic content, PII</span></div>
+  <div class="step-row"><span class="step-number">3</span><span><strong>Dedup:</strong> MinHash, exact string matching (duplicates degrade quality)</span></div>
+  <div class="step-row"><span class="step-number">4</span><span><strong>Tokenise:</strong> BPE/SentencePiece (32K-128K vocab)</span></div>
+  <div class="step-row"><span class="step-number">5</span><span><strong>Mix:</strong> Balance domains (web, books, code, academic)</span></div>
+  <div class="step-row"><span class="step-number">6</span><span><strong>Train:</strong> Distributed across thousands of GPUs for weeks/months</span></div>
+  <div class="callout callout-foundations">
+    <strong>Data quality &gt; data quantity.</strong> Filtering and deduplication have been shown to matter more than raw scale. A well-curated 1T token dataset outperforms a noisy 10T token dataset.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Pre-training data is the unsung hero of modern NLP. The model is only as good as its data. Deduplication alone can improve performance by 5-10%. Data curation is now a major engineering discipline."
+  </aside>
+</section>
+
+<section>
+  <h2>Section G: Key Takeaways</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <ul>
+    <li><strong>BERT (encoder):</strong> MLM pre-training, bidirectional, great for understanding tasks</li>
+    <li><strong>GPT (decoder):</strong> CLM pre-training, autoregressive, great for generation</li>
+    <li><strong>T5 (encoder-decoder):</strong> text-to-text, span corruption, versatile</li>
+    <li><strong>Scaling laws (Chinchilla):</strong> $C \approx 6ND$, balance model size and data</li>
+    <li><strong>MoE:</strong> sparse activation gives large capacity with smaller inference cost</li>
+    <li><strong>Data quality matters</strong> as much as model architecture</li>
+  </ul>
+  <p>Next: How do we actually use these models for NLP tasks?</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section H. "You now understand how transformers are built and trained. Section H covers the practical side: what tasks they solve and how you decode their outputs."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION H — NLP TASKS (15 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>H. NLP Tasks &amp; Decoding</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"A model that cannot generate useful output is just an expensive heater."</p>
+  <p>Understanding the task taxonomy and decoding strategies that turn model outputs into useful text.</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "We have spent the module building up to transformer architecture. Now let us see what they actually do. This section covers tasks and the art of decoding."
+  </aside>
+</section>
+
+<section>
+  <h2>NLP Task Taxonomy</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <table>
+    <thead><tr><th>Task</th><th>Input</th><th>Output</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Classification</td><td>Text</td><td>Label</td><td>Spam detection, sentiment</td></tr>
+      <tr><td>NER</td><td>Text</td><td>Token labels</td><td>[Singapore]<sub>LOC</sub> [MAS]<sub>ORG</sub></td></tr>
+      <tr><td>QA (extractive)</td><td>Question + context</td><td>Span from context</td><td>"Who?" &rarr; "the CEO"</td></tr>
+      <tr><td>QA (generative)</td><td>Question</td><td>Generated answer</td><td>Free-form response</td></tr>
+      <tr><td>Translation</td><td>Source language</td><td>Target language</td><td>EN &rarr; ZH</td></tr>
+      <tr><td>Summarisation</td><td>Document</td><td>Summary</td><td>Article &rarr; 3 sentences</td></tr>
+      <tr><td>Generation</td><td>Prompt</td><td>Continuation</td><td>Story writing, code</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Every NLP application maps to one of these tasks. Classification and NER are understanding tasks. Translation, summarisation, and generation are generation tasks. QA can be either, depending on the approach."
+  </aside>
+</section>
+
+<section>
+  <h2>Decoding: Greedy and Beam Search</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Greedy Decoding</h3>
+      <p style="font-size:0.82em;">At each step, pick the most likely token:</p>
+      <p style="font-size:0.82em;">$x_t = \arg\max P(x \mid x_{1:t-1})$</p>
+      <ul style="font-size:0.82em;">
+        <li>Fast: one forward pass per token</li>
+        <li>Suboptimal: can miss better sequences</li>
+        <li>"The cat sat on the mat." (boring but correct)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Beam Search</h3>
+      <p style="font-size:0.82em;">Keep top-$k$ hypotheses at each step:</p>
+      <ul style="font-size:0.82em;">
+        <li>Beam width $k = 4-8$ typical</li>
+        <li>Better: explores multiple paths</li>
+        <li>Slower: $k \times$ computation</li>
+        <li>Good for: translation, captioning</li>
+        <li>Bad for: creative generation (repetitive)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Greedy is fast but gets stuck in local optima. Beam search explores k paths in parallel and picks the best one. But for creative tasks, beam search produces generic, repetitive text because it always prefers high-probability sequences."
+  </aside>
+</section>
+
+<section>
+  <h2>Decoding: Sampling Strategies</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <h3>Temperature</h3>
+  <div class="equation-box">
+    $$P(x_i) = \frac{\exp(z_i / T)}{\sum_j \exp(z_j / T)}$$
+  </div>
+  <table>
+    <thead><tr><th>$T$</th><th>Effect</th><th>Use Case</th></tr></thead>
+    <tbody>
+      <tr><td>$T \to 0$</td><td>Argmax (greedy)</td><td>Factual answers</td></tr>
+      <tr><td>$T = 1$</td><td>Original distribution</td><td>Balanced</td></tr>
+      <tr><td>$T > 1$</td><td>Flatter, more random</td><td>Creative writing</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~2 min. "Temperature controls randomness. Low temperature makes the model more deterministic and confident. High temperature makes it more creative and surprising. T=0.7 is a common default for conversational AI."
+  </aside>
+</section>
+
+<section>
+  <h2>Top-k and Top-p (Nucleus) Sampling</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Top-k Sampling</h3>
+      <p style="font-size:0.82em;">Only consider the $k$ most likely tokens, then sample from those.</p>
+      <ul style="font-size:0.82em;">
+        <li>$k = 50$ typical</li>
+        <li>Problem: sometimes 50 tokens are all reasonable, sometimes only 3 are</li>
+        <li>Fixed $k$ does not adapt</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Top-p (Nucleus) Sampling</h3>
+      <p style="font-size:0.82em;">Include tokens until their cumulative probability exceeds $p$.</p>
+      <ul style="font-size:0.82em;">
+        <li>$p = 0.9$ typical</li>
+        <li>Adaptive: fewer tokens when confident, more when uncertain</li>
+        <li>Generally preferred over top-k</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-foundations">
+    <strong>In practice:</strong> Most systems combine temperature + top-p. For example, GPT-4 defaults: $T = 1.0$, top-p = 1.0 (all tokens). For controlled generation: $T = 0.7$, top-p = 0.9.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Top-p is more adaptive than top-k. When the model is confident, top-p considers very few tokens. When it is uncertain, it considers many. This produces more natural text than fixed top-k."
+  </aside>
+</section>
+
+<section>
+  <h2>NLP Metrics</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <table>
+    <thead><tr><th>Metric</th><th>Measures</th><th>Formula / Key Idea</th></tr></thead>
+    <tbody>
+      <tr><td><strong>BLEU</strong></td><td>Translation quality</td><td>Precision of n-gram overlap with references</td></tr>
+      <tr><td><strong>ROUGE-L</strong></td><td>Summarisation quality</td><td>Longest Common Subsequence with references</td></tr>
+      <tr><td><strong>BERTScore</strong></td><td>Semantic similarity</td><td>Cosine similarity of BERT embeddings</td></tr>
+      <tr><td><strong>Perplexity</strong></td><td>Language model quality</td><td>$\text{PPL} = \exp\left(-\frac{1}{N}\sum \log P(x_i)\right)$</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Perplexity intuition:</strong> PPL = 10 means the model is "as confused as if choosing uniformly among 10 options" at each step. Lower is better. GPT-3 achieves PPL ~20 on standard benchmarks.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "BLEU counts n-gram matches, ROUGE counts longest subsequences, BERTScore uses semantic embeddings. All are proxies &mdash; human evaluation remains the gold standard for generation quality."
+  </aside>
+</section>
+
+<section>
+  <h2>BLEU Score: Detailed</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <div class="equation-box">
+    $$\text{BLEU} = \text{BP} \cdot \exp\left(\sum_{n=1}^{N} w_n \log p_n\right)$$
+    <div class="annotation">$p_n$ = modified n-gram precision, $w_n = 1/N$ (uniform weights), BP = brevity penalty</div>
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Modified Precision</h3>
+      <p style="font-size:0.82em;">Count n-gram matches between candidate and reference, capped by reference count. Prevents gaming with repeated words.</p>
+    </div>
+    <div class="col">
+      <h3>Brevity Penalty</h3>
+      <p style="font-size:0.82em;">$\text{BP} = \min(1, e^{1-r/c})$<br/>Penalises translations that are too short. Without BP, a one-word translation could get high precision.</p>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>BLEU limitations:</strong> Does not capture meaning ("the cat is on the mat" vs "the mat is under the cat" get different BLEU scores despite identical meaning). BERTScore handles this better.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "BLEU is the standard metric for machine translation. It is simple, reproducible, and correlates reasonably with human judgments. But it only measures surface-level overlap. Two sentences with identical meaning can get very different BLEU scores."
+  </aside>
+</section>
+
+<section>
+  <h2>NER: Named Entity Recognition</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Identify and classify named entities in text:</p>
+  <div class="token-stream">
+    <span class="token" style="background:#D1FAE5;border-color:#22C55E;">[Singapore]<sub style="font-size:0.7em;">LOC</sub></span>
+    <span class="token">'s</span>
+    <span class="token" style="background:#DBEAFE;border-color:#3B82F6;">[MAS]<sub style="font-size:0.7em;">ORG</sub></span>
+    <span class="token">raised</span>
+    <span class="token">rates</span>
+    <span class="token">on</span>
+    <span class="token" style="background:#FEF3C7;border-color:#F59E0B;">[Tuesday]<sub style="font-size:0.7em;">DATE</sub></span>
+  </div>
+  <table>
+    <thead><tr><th>Entity Type</th><th>Examples</th></tr></thead>
+    <tbody>
+      <tr><td>PER (person)</td><td>Lee Hsien Loong, Elon Musk</td></tr>
+      <tr><td>ORG (organisation)</td><td>MAS, Temasek, Bloomberg</td></tr>
+      <tr><td>LOC (location)</td><td>Singapore, Marina Bay Sands</td></tr>
+      <tr><td>DATE / TIME</td><td>Tuesday, Q3 2024, 3:00 PM</td></tr>
+      <tr><td>MONEY</td><td>$1.5 million, SGD 450,000</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">NER is a <strong>token classification</strong> task: each token gets a label (BIO tagging scheme).</p>
+  <aside class="notes">
+    Time: ~2 min. "NER is one of the most practically useful NLP tasks. It extracts structured information from unstructured text. Financial NER &mdash; like what BloombergGPT does &mdash; identifies companies, amounts, and dates in news articles."
+  </aside>
+</section>
+
+<section>
+  <h2>Machine Translation: A Success Story</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="evolution-bar">
+    <div class="era">Rule-based<br/>1950s-90s</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era">Statistical<br/>2000s</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era">Seq2Seq+Attn<br/>2015</div>
+    <span class="arrow">&rarr;</span>
+    <div class="era current">Transformer<br/>2017+</div>
+  </div>
+  <table>
+    <thead><tr><th>Era</th><th>BLEU (EN-DE)</th><th>Approach</th></tr></thead>
+    <tbody>
+      <tr><td>Statistical MT</td><td>~20</td><td>Phrase tables, word alignment</td></tr>
+      <tr><td>Seq2Seq + Attention</td><td>~25</td><td>RNN encoder-decoder</td></tr>
+      <tr><td>Transformer</td><td>~28</td><td>Self-attention only</td></tr>
+      <tr><td>Large LMs (2023+)</td><td>~33</td><td>Pre-trained + fine-tuned</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-foundations">
+    <strong>Translation was the test bed</strong> where every NLP architecture proved itself. The transformer was literally invented for translation. Its success there proved the architecture's generality.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Machine translation drove NLP forward for decades. Every major architecture &mdash; statistical MT, seq2seq, attention, transformers &mdash; was first validated on translation tasks. The BLEU score improvements look small but represent massive quality leaps in practice."
+  </aside>
+</section>
+
+<section>
+  <h2>Summarisation and Generation</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Extractive Summarisation</h3>
+      <p style="font-size:0.82em;">Select the most important sentences from the original document.</p>
+      <ul style="font-size:0.82em;">
+        <li>Simple: score and rank sentences</li>
+        <li>Faithful: never generates text</li>
+        <li>Can be choppy and repetitive</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Abstractive Summarisation</h3>
+      <p style="font-size:0.82em;">Generate a new summary in the model's own words.</p>
+      <ul style="font-size:0.82em;">
+        <li>Fluent and concise</li>
+        <li>Risk of hallucination</li>
+        <li>Requires encoder-decoder or LLM</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-warning">
+    <strong>Hallucination risk:</strong> Abstractive summarisers can generate plausible-sounding content that is not in the source document. This is a major concern for financial and legal applications. Always verify generated summaries against the source.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Extractive summarisation is safe but crude. Abstractive is fluent but can hallucinate. For high-stakes applications like financial reporting, extractive or human-verified abstractive is the standard."
+  </aside>
+</section>
+
+<section>
+  <h2>Repetition and Length Control</h2>
+  <span class="marker marker-theory">THEORY</span>
+  <p>Common generation problems and their solutions:</p>
+  <table>
+    <thead><tr><th>Problem</th><th>Cause</th><th>Solution</th></tr></thead>
+    <tbody>
+      <tr><td>Repetition</td><td>High-probability loops</td><td>Repetition penalty, n-gram blocking</td></tr>
+      <tr><td>Too short</td><td>EOS token too probable</td><td>Length penalty (multiply EOS prob by $\alpha^{-t}$)</td></tr>
+      <tr><td>Too long</td><td>EOS token too improbable</td><td>Max length limit, length normalisation in beam search</td></tr>
+      <tr><td>Degeneration</td><td>Greedy collapse to generic text</td><td>Top-p sampling, temperature</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-theory">
+    <strong>Repetition penalty:</strong> $P_{\text{rep}}(w) = P(w) / \theta$ if $w$ has appeared before, where $\theta > 1$. This simple penalty dramatically reduces the "the the the the" failure mode of greedy decoding.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Generation is an art as much as a science. These practical tricks are the difference between a model that produces useful text and one that degenerates into repetitive nonsense. Every deployed LLM uses some combination of these."
+  </aside>
+</section>
+
+<section>
+  <h2>Section H: Key Takeaways</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <ul>
+    <li><strong>NLP tasks</strong> span classification, NER, QA, translation, summarisation, generation</li>
+    <li><strong>Greedy decoding</strong> is fast but suboptimal; <strong>beam search</strong> is better but generic</li>
+    <li><strong>Temperature</strong> controls randomness; <strong>top-p</strong> adapts the token pool size</li>
+    <li><strong>BLEU/ROUGE</strong> measure surface overlap; <strong>BERTScore</strong> measures semantics</li>
+    <li><strong>Perplexity</strong> measures how surprised the model is &mdash; lower is better</li>
+  </ul>
+  <p>Next: Bringing it all together with Kailash and looking ahead.</p>
+  <aside class="notes">
+    Time: ~1 min. Transition to Section I. "You now have the complete NLP toolkit: from preprocessing to transformers to evaluation. Let us connect it all to the Kailash platform and see the bigger picture."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION I — KAILASH + SYNTHESIS (10 slides)
+     ══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>I. Kailash &amp; Synthesis</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p class="provocation" style="text-align:left;font-size:1em;">"From counting words to understanding language &mdash; and all of it orchestrated."</p>
+  <aside class="notes">
+    Time: ~1 min. Section opener. "We have covered the entire journey of NLP. Now let us see how Kailash engines make this practical, and synthesise everything we have learned."
+  </aside>
+</section>
+
+<section>
+  <h2>Kailash Engines for NLP</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="kailash-bridge">
+    <h3>Kailash ML Engines Used in NLP</h3>
+    <div class="columns">
+      <div class="col">
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;margin:6px 0;font-size:0.82em;">
+          <strong>ModelVisualizer</strong><br/>Topic distributions, word clouds, embedding projections, attention heatmaps
+        </div>
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;margin:6px 0;font-size:0.82em;">
+          <strong>AutoMLEngine</strong><br/>Automatic text classification with TF-IDF, embedding selection, model tuning
+        </div>
+      </div>
+      <div class="col">
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;margin:6px 0;font-size:0.82em;">
+          <strong>TrainingPipeline</strong><br/>Custom model training with text preprocessing, tokenisation, and evaluation
+        </div>
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #E2E8F0;margin:6px 0;font-size:0.82em;">
+          <strong>ExperimentTracker</strong><br/>Track experiments across different NLP architectures and hyperparameters
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "These four engines handle the practical side of NLP in Kailash. ModelVisualizer helps you understand what your model learned. AutoMLEngine handles the full pipeline. TrainingPipeline gives you custom control. ExperimentTracker keeps everything reproducible."
+  </aside>
+</section>
+
+<section>
+  <h2>ModelVisualizer for Text</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+# Visualise word embeddings in 2D (t-SNE / UMAP)
+viz.plot_embeddings(
+    embeddings=word_vectors,
+    labels=word_labels,
+    method="umap",
+    title="Word Embedding Space"
+)
+
+# Visualise topic distributions
+viz.plot_topics(
+    documents=df["text"],
+    n_topics=10,
+    method="lda"
+)
+
+# Visualise attention patterns
+viz.plot_attention(
+    attention_weights=attn_matrix,
+    tokens=token_list
+)</code></pre>
+  <aside class="notes">
+    Time: ~2 min. "ModelVisualizer handles the three most important NLP visualisations: embedding spaces (do similar words cluster?), topic distributions (what is the corpus about?), and attention patterns (what is the model looking at?)."
+  </aside>
+</section>
+
+<section>
+  <h2>AutoMLEngine for Text Classification</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <pre><code class="language-python">from kailash_ml import AutoMLEngine
+import polars as pl
+
+# Load and configure
+df = pl.read_csv("reviews.csv")
+engine = AutoMLEngine()
+engine.configure(
+    task="classification",
+    target_column="sentiment",
+    text_columns=["review_text"],
+    time_budget=300  # seconds
+)
+
+# AutoML handles: tokenisation, TF-IDF/embeddings,
+# model selection, hyperparameter tuning
+results = engine.fit(df)
+print(results.best_model)
+print(results.metrics)</code></pre>
+  <div class="callout callout-kailash">
+    <strong>Under the hood:</strong> AutoMLEngine tries TF-IDF + classical models (SVM, logistic regression, gradient boosting) and embedding-based approaches, selecting the best performing combination automatically.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "AutoMLEngine abstracts away the pipeline decisions. You tell it which column is text and which is the target. It handles preprocessing, vectorisation, model selection, and tuning. For many text classification tasks, this is all you need."
+  </aside>
+</section>
+
+<section>
+  <h2>The Grand Synthesis</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>The evolution of NLP, each step solving the limitations of the previous:</p>
+  <table>
+    <thead><tr><th>Era</th><th>Representation</th><th>Limitation Solved</th><th>New Limitation</th></tr></thead>
+    <tbody>
+      <tr><td>BoW / TF-IDF</td><td>Sparse count vectors</td><td>Text &rarr; numbers</td><td>No semantics, no order</td></tr>
+      <tr><td>Word2Vec / GloVe</td><td>Dense static vectors</td><td>Semantic similarity</td><td>No context (polysemy)</td></tr>
+      <tr><td>RNN / LSTM</td><td>Sequential hidden states</td><td>Word order, sequences</td><td>Cannot parallelise, bottleneck</td></tr>
+      <tr><td>Attention</td><td>Weighted context</td><td>Long-range, bottleneck</td><td>Still needs RNN backbone</td></tr>
+      <tr><td>Transformer</td><td>Self-attention + FFN</td><td>Parallelism, scalability</td><td>$O(n^2)$ cost, needs data</td></tr>
+      <tr><td>BERT / GPT</td><td>Pre-trained transformer</td><td>Data efficiency via transfer</td><td>Hallucination, alignment</td></tr>
+    </tbody>
+  </table>
+  <aside class="notes">
+    Time: ~3 min. "This table is the entire module in six rows. Each row solved a real problem with the previous approach. Each row created a new problem that the next row solved. This is how scientific progress works."
+  </aside>
+</section>
+
+<section>
+  <h2>Cumulative Kailash Engine Map</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <div class="kailash-bridge">
+    <h3>All Engines Encountered (M1-M8)</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.78em;">
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>DataExplorer</strong><br/>M1
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>PreprocessingPipeline</strong><br/>M1
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>ModelVisualizer</strong><br/>M1, M8
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>FeatureStore</strong><br/>M2
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>FeatureEngineer</strong><br/>M2
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>ExperimentTracker</strong><br/>M2, M8
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>TrainingPipeline</strong><br/>M3, M8
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>ModelRegistry</strong><br/>M3
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>AutoMLEngine</strong><br/>M4, M8
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>DriftMonitor</strong><br/>M4
+      </div>
+      <div style="background:white;border-radius:8px;padding:8px 14px;border:1px solid #E2E8F0;">
+        <strong>InferenceServer</strong><br/>M4
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. "We are now using 11 of 13 kailash-ml engines. EnsembleEngine and HyperparameterSearch are the remaining two. Notice how engines accumulate &mdash; you keep using earlier engines in later modules."
+  </aside>
+</section>
+
+<section>
+  <h2>Preview: Module 9 &mdash; LLMs, Agents &amp; RAG</h2>
+  <span class="marker marker-foundations">FOUNDATIONS</span>
+  <p>Transformers are the foundation. Module 9 builds on top:</p>
+  <div class="columns">
+    <div class="col">
+      <h3>From M8</h3>
+      <ul>
+        <li>Transformer architecture</li>
+        <li>Pre-training (BERT, GPT)</li>
+        <li>Tokenisation and embeddings</li>
+        <li>Attention mechanisms</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>In M9</h3>
+      <ul>
+        <li>LLM prompting and fine-tuning</li>
+        <li>RAG: retrieval-augmented generation</li>
+        <li>AI agents with Kailash Kaizen</li>
+        <li>Tool use and multi-agent systems</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout callout-kailash">
+    <strong>Kailash Kaizen:</strong> The agent framework you will use in M9 uses transformers as the reasoning engine. Everything you learned today &mdash; attention, generation, decoding &mdash; is what powers those agents.
+  </div>
+  <aside class="notes">
+    Time: ~2 min. "Module 9 is where transformers become practical tools. You will build RAG systems that combine retrieval with generation, and AI agents that use LLMs to reason and act. But none of that works without understanding what you learned today."
+  </aside>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     CLOSING SLIDE
+     ══════════════════════════════════════════════════════════ -->
+<section class="title-slide">
+  <h1>Module 8 Complete</h1>
+  <h2 style="border:none;">NLP &amp; Transformers</h2>
+  <p class="subtitle">You now understand the journey from counting words to the architecture that powers modern AI.</p>
+  <p class="provocation">"Attention is all you need &mdash; but understanding why is everything."</p>
+  <div class="slide-footer">
+    <span>ASCENT Module 8 &mdash; Terrene Open Academy</span>
+    <span>Terrene Foundation &mdash; Apache 2.0</span>
+  </div>
+  <aside class="notes">
+    Time: ~1 min. Close with the provocation. "You started this module asking how machines read. Now you know: through attention, through context, through learning from billions of words. See you in Module 9, where we put these models to work."
+  </aside>
+</section>
+
+</div><!-- .slides -->
+</div><!-- .reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script>
+  Reveal.initialize({
+    width: 1280,
+    height: 720,
+    margin: 0.1,
+    hash: true,
+    history: true,
+    transition: 'slide',
+    transitionSpeed: 'default',
+    center: false,
+    slideNumber: true,
+    pdfSeparateFragments: false,
+    pdfMaxPagesPerSlide: 1,
+    plugins: [RevealHighlight],
+  });
+</script>
+</body>
+</html>

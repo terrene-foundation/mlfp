@@ -22,15 +22,15 @@ Every exercise must exist in three formats:
 
 | Format  | Location                             | Data Loading         |
 | ------- | ------------------------------------ | -------------------- |
-| Local   | `modules/ascentN/local/ex_N.py`        | `shared.data_loader` |
-| Jupyter | `modules/ascentN/notebooks/ex_N.ipynb` | `shared.data_loader` |
-| Colab   | `modules/ascentN/colab/ex_N.ipynb`     | Drive mount + gdown  |
+| Local   | `modules/ascentNN/local/ex_N.py`        | `shared.data_loader` |
+| Jupyter | `modules/ascentNN/notebooks/ex_N.ipynb` | `shared.data_loader` |
+| Colab   | `modules/ascentNN/colab/ex_N.ipynb`     | Drive mount + gdown  |
 
 Data loading via `shared/data_loader.py`. Setup differs by format; exercise code is identical.
 
 ### 4. Solution-First Authoring
 
-Write complete solutions first in `modules/ascentN/solutions/`, then strip to create exercises. The exercise-designer agent automates this. Solutions must always run correctly end-to-end.
+Write complete solutions first in `modules/ascentNN/solutions/`, then strip to create exercises. The exercise-designer agent automates this. Solutions must always run correctly end-to-end.
 
 ### 5. Progressive Disclosure
 
@@ -49,12 +49,12 @@ Each module reduces hand-holding. By M6, students write most code from documenta
 
 | Module | Title                                   | Kailash Frameworks                                               |
 | ------ | --------------------------------------- | ---------------------------------------------------------------- |
-| ASCENT1  | Statistics, Probability & Data Fluency  | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer |
-| ASCENT2  | Feature Engineering & Experiment Design | kailash-ml: FeatureStore, FeatureEngineer, ExperimentTracker     |
-| ASCENT3  | Supervised ML — Theory to Production    | Core SDK, DataFlow, kailash-ml: TrainingPipeline, ModelRegistry  |
-| ASCENT4  | Unsupervised ML, NLP & Deep Learning    | kailash-ml: AutoMLEngine, DriftMonitor, InferenceServer + Nexus  |
-| ASCENT5  | LLMs, AI Agents & RAG Systems           | Kaizen: Delegate, ReActAgent, RAGResearchAgent + ML agents       |
-| ASCENT6  | Alignment, Governance, RL & Deployment  | Align + PACT + kailash-ml RL + Nexus                             |
+| ASCENT01  | Statistics, Probability & Data Fluency  | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer |
+| ASCENT02  | Feature Engineering & Experiment Design | kailash-ml: FeatureStore, FeatureEngineer, ExperimentTracker     |
+| ASCENT03  | Supervised ML — Theory to Production    | Core SDK, DataFlow, kailash-ml: TrainingPipeline, ModelRegistry  |
+| ASCENT04  | Unsupervised ML, NLP & Deep Learning    | kailash-ml: AutoMLEngine, DriftMonitor, InferenceServer + Nexus  |
+| ASCENT05  | LLMs, AI Agents & RAG Systems           | Kaizen: Delegate, ReActAgent, RAGResearchAgent + ML agents       |
+| ASCENT06  | Alignment, Governance, RL & Deployment  | Align + PACT + kailash-ml RL + Nexus                             |
 
 ## Kailash Platform
 

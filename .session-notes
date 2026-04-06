@@ -2,52 +2,59 @@
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- 6 absolute directives, "Professional Certificate in Machine Learning"
-2. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- Definitive 48-lesson curriculum
-3. `workspaces/decks/briefs/deck-brief.md` -- Deck spec (Reveal.js, three-layer, 80-100 slides, speaker notes)
-4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- v4 exercise mapping table
+1. `CLAUDE.md` -- Absolute directives. Now says "Terrene Open Academy" (was Terrene Open Academy)
+2. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- 48-lesson curriculum
+3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js deck spec (three-layer, 80-100 slides, speaker notes, color palette)
+4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- v4 exercise mapping (all 48 traced to source)
 5. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
 6. `scripts/py_to_notebook.py` -- .py to .ipynb converter
-7. `scripts/generate_datasets.py` -- Dataset generator (seed=42, Singapore context, full scale)
+7. `scripts/generate_datasets.py` -- Dataset generator (seed=42, full scale)
+8. `scripts/deck-audit.mjs` -- Playwright-based deck overflow auditor
 
 ## Accomplished
 
-- **192 exercise files**: 48 solutions + 48 local + 48 Jupyter + 48 Colab (v4 curriculum aligned)
-- **6 Reveal.js lecture decks**: 85-99 slides each, three-layer depth, KaTeX math, Kailash bridge slides
-- **6 speaker notes**: 929-1177 lines each, per-slide timing (~180min), dual-audience tips
-- **Theme CSS**: `decks/assets/css/theme.css` with color palette, equation boxes, markers
+- **Rebranded**: "Terrene Open Academy" -> "Terrene Open Academy" across all files (verified: 0 SMU refs remain)
+- **192 exercise files**: 48 solutions + 48 local + 48 Jupyter + 48 Colab
+- **48 classroom exercises**: HARD, no solutions, gitignored (`classroom/`), CONFIDENTIAL
+- **6 Reveal.js decks**: 85-99 slides each, three-layer depth, KaTeX math, custom theme.css
+- **6 PDFs**: generated via decktape/Playwright with overflow-fixed CSS
+- **6 speaker notes**: 929-1177 lines each, per-slide timing, dual-audience tips
 - **163 textbook tutorials**: 83 Python + 80 Rust (all 9 packages)
 - **11 full-scale datasets**: credit 100K, experiment 500K, taxi 50K, ecommerce 50K
-- **6 quiz files**: ~146 AI-resilient questions, balanced answer distribution
-- **Infrastructure**: run_profile.py, uv.lock (Python >=3.11), ASCENTDataLoader with local data/
-- **Red team**: exercises (17 fixes) + textbook (22 fixes) -- imports, headers, load_dotenv, naming
-- **8 commits pushed** to terrene-foundation/ascent (b8c6667..1052fcd)
+- **6 quiz files**: ~146 AI-resilient questions
+- **6 assessment rubrics**: portfolio, capstone, peer review, model card template
+- **Infrastructure**: run_profile.py, uv.lock, data_loader with local data/, deck-audit.mjs
+- **Red team**: exercises (17 fixes) + textbook (22 fixes)
+- **13 commits pushed** to terrene-foundation/ascent (b8c6667..02483dc)
+- **Datasets uploaded** to Google Drive folder 16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws
 
 ## Outstanding
 
-- [ ] Assessment rubrics: portfolio guidelines, capstone rubric, peer review rubric, model card template
-- [ ] Upload datasets to Google Drive folder `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`
+- [ ] Deck bottom overflow on content-heavy slides (some slides still clip at bottom -- need content splitting or font reduction per-slide)
+- [ ] M5 PDF is 2MB vs 5-6MB for others (Playwright fallback due to KaTeX crash in decktape)
+- [ ] Deck visual polish: run `node scripts/deck-audit.mjs all` and fix remaining overflow slides
+- [ ] Some exercises reference `sg_taxi_trips.csv` but file is now `.parquet` (verified: only exercise refs updated, check data_loader)
 - [ ] Verify Rust compilation: `cd textbook/rust && cargo build --workspace`
-- [ ] Update `data_loader.py` -- taxi trips changed from .csv to .parquet (verify all exercise refs)
-- [ ] Deck quality review: verify KaTeX renders, test with `python -m http.server`
+- [ ] `pyproject.toml` description still says "Practical Course" (should be "Professional Certificate")
 
 ### Oversight -- Verify Before Starting
 
 - [ ] 48 solutions: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 48
 - [ ] 192 exercises: `find modules -name "ex_*" | wc -l` = 192
-- [ ] 6 decks: `find decks -name "deck.html" | wc -l` = 6
-- [ ] 6 speaker notes: `find decks -name "speaker-notes.md" | wc -l` = 6
-- [ ] 11 datasets: `find data/ -type f | wc -l` = 11
-- [ ] No pandas: `grep -rl "import pandas" modules/ textbook/ --include="*.py"` = 0
-- [ ] Remote: `git log --oneline -1` = 1052fcd
+- [ ] 48 classroom: `find classroom/ -name "ex_*.py" | wc -l` = 48
+- [ ] 6 decks + 6 PDFs + 6 notes: `find decks -name "deck.*" -o -name "speaker*" | wc -l` = 18
+- [ ] No SMU: `grep -ri "Terrene Open Academy" --include="*.py" --include="*.md" --include="*.html" .` = 0
+- [ ] No pandas: `grep -rl "import pandas" modules/ textbook/ --include="*.py"` = quiz only
+- [ ] Remote: `git log --oneline -1` = 02483dc
 
 ### Oversight -- Verify After Completing
 
-- [ ] No hardcoded keys: `grep -rn "sk-[a-zA-Z0-9]\{10\}" textbook/ modules/` = 0
-- [ ] Decks render: `cd decks && python -m http.server 8080` then open each deck.html
+- [ ] Deck audit: `node scripts/deck-audit.mjs all` (0 overflow slides)
+- [ ] PDFs regenerated after any deck changes
 - [ ] Push to remote: `git push origin main`
 
 ## Blockers
 
-- Kailash SDK packages not on PyPI -- tutorials validate against source only
-- Google Drive access needed for dataset upload
+- Kailash SDK packages not on PyPI -- exercises validate against source only
+- decktape crashes on M5 deck (heavy KaTeX) -- use Playwright PDF fallback
+- Classroom exercises are local-only (gitignored) -- need separate backup strategy

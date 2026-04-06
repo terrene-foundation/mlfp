@@ -1,60 +1,76 @@
-# Session Notes -- 2026-04-06 (Session 5)
+# Session Notes -- 2026-04-06 (Session 6)
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- Absolute directives. Now says "Terrene Open Academy" (was Terrene Open Academy)
-2. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- 48-lesson curriculum
-3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js deck spec (three-layer, 80-100 slides, speaker notes, color palette)
-4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- v4 exercise mapping (all 48 traced to source)
+1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, Kailash engine table
+2. `README.md` -- Programme overview: 1,398 slides, 10 modules, Feature Engineering Spectrum
+3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js spec (three-layer 🟢🔵🟣, speaker notes format, 1280x720)
+4. `workspaces/curriculum/briefs/expanded-curriculum-v4.md` -- 48-lesson curriculum (6-module, STALE — needs 10-module update)
 5. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
-6. `scripts/py_to_notebook.py` -- .py to .ipynb converter
-7. `scripts/generate_datasets.py` -- Dataset generator (seed=42, full scale)
-8. `scripts/deck-audit.mjs` -- Playwright-based deck overflow auditor
+6. `scripts/py_to_notebook.py` -- .py→.ipynb converter (local→Jupyter+Colab)
+7. `scripts/deck-audit.mjs` -- Playwright deck overflow auditor
 
-## Accomplished
+## Accomplished (Session 6)
 
-- **Rebranded**: "Terrene Open Academy" -> "Terrene Open Academy" across all files (verified: 0 SMU refs remain)
-- **192 exercise files**: 48 solutions + 48 local + 48 Jupyter + 48 Colab
-- **48 classroom exercises**: HARD, no solutions, gitignored (`classroom/`), CONFIDENTIAL
-- **6 Reveal.js decks**: 85-99 slides each, three-layer depth, KaTeX math, custom theme.css
-- **6 PDFs**: generated via decktape/Playwright with overflow-fixed CSS
-- **6 speaker notes**: 929-1177 lines each, per-slide timing, dual-audience tips
-- **163 textbook tutorials**: 83 Python + 80 Rust (all 9 packages)
-- **11 full-scale datasets**: credit 100K, experiment 500K, taxi 50K, ecommerce 50K
-- **6 quiz files**: ~146 AI-resilient questions
-- **6 assessment rubrics**: portfolio, capstone, peer review, model card template
-- **Infrastructure**: run_profile.py, uv.lock, data_loader with local data/, deck-audit.mjs
-- **Red team**: exercises (17 fixes) + textbook (22 fixes)
-- **13 commits pushed** to terrene-foundation/ascent (b8c6667..02483dc)
-- **Datasets uploaded** to Google Drive folder 16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws
+- **PCML→ASCENT rebrand**: repo renamed (`terrene-foundation/ascent`), git history rewritten, 0 stale refs
+- **6→10 module expansion**: Feature Engineering Spectrum (manual→USML→DL→transformers→LLMs)
+- **10 Reveal.js decks** (1,398 slides): 85+131+164+83+150+146+100+150+235+154
+- **Red-teamed all 10 decks**: 5 specialist panels, all critical findings fixed (KaTeX, recaps, formulas)
+- **README.md**: complete rewrite with module map, slide counts, verification list
+- **Cross-module consistency**: all recap/preview slides aligned to 10-module structure
+- Kailash SDK packages ARE on PyPI (user confirmed) — no longer a blocker
 
-## Outstanding
+## Outstanding — Next Session Work Queue
 
-- [ ] Deck bottom overflow on content-heavy slides (some slides still clip at bottom -- need content splitting or font reduction per-slide)
-- [ ] M5 PDF is 2MB vs 5-6MB for others (Playwright fallback due to KaTeX crash in decktape)
-- [ ] Deck visual polish: run `node scripts/deck-audit.mjs all` and fix remaining overflow slides
-- [ ] Some exercises reference `sg_taxi_trips.csv` but file is now `.parquet` (verified: only exercise refs updated, check data_loader)
-- [ ] Verify Rust compilation: `cd textbook/rust && cargo build --workspace`
-- [ ] `pyproject.toml` description still says "Practical Course" (should be "Professional Certificate")
+### P0: M7-M10 Exercises (128 files needed)
+- `modules/ascent07/` through `modules/ascent10/` DO NOT EXIST (verified)
+- Each needs: 8 solutions + 8 local + 8 notebooks + 8 colab = 32 files per module
+- Pattern: copy `modules/ascent06/` structure. Solutions first, then strip per scaffolding level
+- M7=DL (PyTorch, backprop, CNN, ONNX), M8=NLP (tokenization, Word2Vec, transformers)
+- M9=LLM agents (Kaizen Delegate, RAG, MCP, Nexus), M10=Alignment+RL+Governance (LoRA, DPO, PPO, PACT)
+- Scaffolding: M7=~30%, M8=~30%, M9=~25%, M10=~20%
 
-### Oversight -- Verify Before Starting
+### P0: M7-M10 Speaker Notes (4 files needed)
+- Only `decks/ascent01-06/speaker-notes.md` exist (6 files, verified)
+- Need `decks/ascent07-10/speaker-notes.md` matching format: per-slide timing, beginner tips, expert tangents
 
-- [ ] 48 solutions: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 48
-- [ ] 192 exercises: `find modules -name "ex_*" | wc -l` = 192
-- [ ] 48 classroom: `find classroom/ -name "ex_*.py" | wc -l` = 48
-- [ ] 6 decks + 6 PDFs + 6 notes: `find decks -name "deck.*" -o -name "speaker*" | wc -l` = 18
-- [ ] No SMU: `grep -ri "Terrene Open Academy" --include="*.py" --include="*.md" --include="*.html" .` = 0
-- [ ] No pandas: `grep -rl "import pandas" modules/ textbook/ --include="*.py"` = quiz only
-- [ ] Remote: `git log --oneline -1` = 02483dc
+### P0: M7-M10 Quizzes (4 files needed)
+- Only `modules/assessment/quizzes/quiz_ascent01-06.py` exist (6 files, verified)
+- Need `quiz_ascent07-10.py` — AI-resilient, context-specific, not recall
 
-### Oversight -- Verify After Completing
+### P1: All 10 Deck PDFs
+- 6 stale PDFs exist (old deck content). All 10 need regeneration
+- Use Playwright fallback for KaTeX-heavy decks: `decktape reveal deck.html deck.pdf`
 
-- [ ] Deck audit: `node scripts/deck-audit.mjs all` (0 overflow slides)
-- [ ] PDFs regenerated after any deck changes
-- [ ] Push to remote: `git push origin main`
+### P1: M1 Speaker Notes
+- Red team flagged: ascent01 has NO speaker notes (all other M1-M6 modules do)
+
+### P1: Textbook MD/HTML Completion
+- 33/83 MD files done. Missing: 01-dataflow(9), 04-agents(10), 07-align(9), 08-integration(5) = 50 needed
+- 26/83 HTML files done. Missing: 01-dataflow(9), 04-agents(10), 06-pact(9), 07-align(9), 08-integration(5) = 57 needed
+
+### P2: Curriculum Doc Update
+- `workspaces/curriculum/briefs/expanded-curriculum-v4.md` still says "6 modules x 8 lessons = 48 lessons"
+- Needs rewrite to 10 modules x 8 lessons = 80 lessons with M7-M10 lesson plans
+
+### P2: Deck Overflow Audit + Classroom Exercises (M7-M10)
+
+### Oversight — Verify Before Starting
+
+- [ ] 10 decks: `for i in $(seq -w 1 10); do ls decks/ascent${i}/deck.html; done` = all exist
+- [ ] No pcml: `grep -rli "pcml" --include="*.py" --include="*.md" --include="*.html" . | grep -v .git | grep -v .venv` = 0
+- [ ] Remote current: `git log --oneline -1` = dd19073
+- [ ] 48 existing exercises: `find modules/ascent0{1..6}/solutions -name "ex_*.py" | wc -l` = 48
+
+### Oversight — Verify After Completing
+
+- [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80
+- [ ] 10 speaker notes: `ls decks/ascent*/speaker-notes.md | wc -l` = 10
+- [ ] 10 quizzes: `ls modules/assessment/quizzes/quiz_ascent*.py | wc -l` = 10
+- [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10
+- [ ] Push: `git push origin main`
 
 ## Blockers
 
-- Kailash SDK packages not on PyPI -- exercises validate against source only
-- decktape crashes on M5 deck (heavy KaTeX) -- use Playwright PDF fallback
-- Classroom exercises are local-only (gitignored) -- need separate backup strategy
+- decktape crashes on heavy KaTeX — use Playwright PDF fallback (`page.pdf()` with `?print-pdf`)
+- Classroom exercises (gitignored) only cover M1-M6

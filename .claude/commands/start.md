@@ -5,7 +5,7 @@ Welcome to the ASCENT training repository. This is both a professional ML course
 ## What This Repo Is
 
 **Dual purpose**:
-1. **Professional ML curriculum** — 6 modules covering statistics through governed AI deployment, benchmarked at Stanford CS229 depth
+1. **ASCENT ML curriculum** — 10 modules covering statistics through governed AI deployment, benchmarked at Stanford CS229 depth
 2. **Kailash SDK training** — every exercise uses Kailash engines, every concept bridges theory to SDK
 
 **Three delivery formats**: Local Python, Jupyter notebooks, Google Colab

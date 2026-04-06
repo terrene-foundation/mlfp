@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Full Title**: Practical Course in Machine Learning  
+**Full Title**: ASCENT — ML Engineering from Foundations to Mastery  
 **Institution**: Terrene Open Academy  
 **Audience**: Working professionals targeting senior data scientist / ML engineer roles  
 **Platform**: Kailash Python SDK (Terrene Foundation)  

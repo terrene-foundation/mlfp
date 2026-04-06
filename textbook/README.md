@@ -2,7 +2,7 @@
 
 Comprehensive tutorials for the Kailash Python SDK and Kailash Rust SDK, from basic to advanced. Each tutorial is runnable code that validates the API works as documented.
 
-**Supplementary to**: [Professional Certificate in Machine Learning](../README.md) (ASCENT) at Terrene Open Academy
+**Supplementary to**: [ASCENT — ML Engineering from Foundations to Mastery](../README.md) (ASCENT) at Terrene Open Academy
 **Maintained by**: Terrene Foundation
 
 ## Purpose

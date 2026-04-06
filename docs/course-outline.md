@@ -1,9 +1,9 @@
-# ASCENT — Practical Course in Machine Learning
+# ASCENT — ASCENT — ML Engineering from Foundations to Mastery
 
 **Institution**: Terrene Open Academy  
 **Platform**: Kailash Python SDK (Terrene Foundation)  
 **Audience**: Working professionals targeting senior data scientist / ML engineer roles  
-**Format**: 6 modules (7h each: 3h lecture + 3h lab + 1h assessment), 3 delivery formats  
+**Format**: 10 modules (7h each: 3h lecture + 3h lab + 1h assessment), 3 delivery formats  
 **Standard**: Georgia Tech OMSCS / Stanford CS229 depth, production-practice reality
 
 ---

@@ -9,7 +9,7 @@ Total time: ~180 minutes (3 hours)
 **Time**: ~1 min
 **Talking points**:
 
-- Welcome to Module 1 of the Professional Certificate in Machine Learning at Terrene Open Academy.
+- Welcome to Module 1 of the ASCENT — ML Engineering from Foundations to Mastery at Terrene Open Academy.
 - Read the provocation aloud: "Can you trust a number you didn't explore yourself?"
 - Let it sit for a moment. This is the theme of the entire module.
 - If beginners look confused: "Today you will go from zero Python to loading a dataset with 15 million rows. By the end, you will have skills no spreadsheet can match."

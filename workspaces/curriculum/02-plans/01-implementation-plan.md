@@ -22,7 +22,7 @@ All deliverables being produced in parallel autonomous agent streams.
 
 ### Phase 3: Supplementary Materials (In Progress)
 
-- [ ] 48 lecture decks (Marp markdown)
+- [ ] 10 Reveal.js lecture decks (1,333 slides)
 - [ ] 6 quiz files (~24-32 questions each)
 - [ ] Rust tutorials for packages 01-08
 

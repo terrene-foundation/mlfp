@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ascent"
 version = "0.1.0"
-description = "Practical Course in Machine Learning — powered by the Kailash Python SDK"
+description = "ASCENT — ML Engineering from Foundations to Mastery, powered by the Kailash Python SDK"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [

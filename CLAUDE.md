@@ -1,4 +1,4 @@
-# ASCENT — Professional Certificate in Machine Learning
+# ASCENT — ASCENT — ML Engineering from Foundations to Mastery
 
 Official Terrene Open Academy programme powered by the Kailash Python SDK, maintained by the Terrene Foundation. Open-source course materials from zero Python to masters-level ML engineering.
 

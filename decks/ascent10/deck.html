@@ -172,11 +172,11 @@
   <table>
     <thead><tr><th>Module</th><th>Core Skill</th><th>Key Engines</th></tr></thead>
     <tbody>
-      <tr><td>M1-M2</td><td>Data fluency &amp; feature engineering</td><td>DataExplorer, FeatureStore</td></tr>
-      <tr><td>M3-M4</td><td>Classical ML &amp; ensemble methods</td><td>TrainingPipeline, EnsembleEngine</td></tr>
-      <tr><td>M5-M6</td><td>Unsupervised ML &amp; dimensionality reduction</td><td>AutoMLEngine, HyperparameterSearch</td></tr>
-      <tr><td>M7-M8</td><td>Deep learning &amp; NLP</td><td>InferenceServer, DriftMonitor</td></tr>
-      <tr><td>M9</td><td>LLMs, agents &amp; RAG</td><td>Kaizen, Align</td></tr>
+      <tr><td>M1-M3</td><td>Python, data fluency, statistics, feature engineering</td><td>DataExplorer, FeatureStore, ExperimentTracker</td></tr>
+      <tr><td>M4-M5</td><td>Supervised ML &amp; ML engineering / production</td><td>TrainingPipeline, ModelRegistry, EnsembleEngine</td></tr>
+      <tr><td>M6</td><td>Unsupervised ML &amp; pattern discovery</td><td>AutoMLEngine, DriftMonitor</td></tr>
+      <tr><td>M7-M8</td><td>Deep learning &amp; NLP / Transformers</td><td>OnnxBridge, InferenceServer</td></tr>
+      <tr><td>M9</td><td>LLMs, AI agents &amp; RAG</td><td>Kaizen, Nexus, MCP</td></tr>
     </tbody>
   </table>
   <aside class="notes">
@@ -3400,16 +3400,16 @@ platform.deploy(agent)</code></pre>
   <table style="font-size:0.65em;">
     <thead><tr><th>Module</th><th>Milestone</th><th>Key Skill</th></tr></thead>
     <tbody>
-      <tr><td>M1</td><td>First Python, first data analysis</td><td>polars, DataExplorer</td></tr>
-      <tr><td>M2</td><td>Feature engineering, experiment design</td><td>FeatureStore, ExperimentTracker</td></tr>
-      <tr><td>M3</td><td>First ML model, evaluation mastery</td><td>TrainingPipeline, cross-validation</td></tr>
-      <tr><td>M4</td><td>Ensembles, hyperparameter tuning</td><td>EnsembleEngine, HyperparameterSearch</td></tr>
-      <tr><td>M5</td><td>Unsupervised learning, clustering</td><td>AutoMLEngine, dimensionality reduction</td></tr>
-      <tr><td>M6</td><td>Mathematical foundations</td><td>Linear algebra, calculus, optimisation</td></tr>
-      <tr><td>M7</td><td>Deep learning, neural networks</td><td>Architectures, backpropagation</td></tr>
-      <tr><td>M8</td><td>NLP, transformers, attention</td><td>InferenceServer, DriftMonitor</td></tr>
-      <tr><td>M9</td><td>LLMs, agents, RAG</td><td>Kaizen, retrieval-augmented generation</td></tr>
-      <tr><td>M10</td><td>Alignment, RL, governance</td><td>Align, PACT, RLTrainer</td></tr>
+      <tr><td>M1</td><td>Python &amp; Data Fluency, first data analysis</td><td>polars, DataExplorer, PreprocessingPipeline</td></tr>
+      <tr><td>M2</td><td>Statistical Foundations, probability, hypothesis testing</td><td>ExperimentTracker, ModelVisualizer</td></tr>
+      <tr><td>M3</td><td>Feature Engineering &amp; Experiment Design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
+      <tr><td>M4</td><td>Supervised ML, complete model zoo, evaluation</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
+      <tr><td>M5</td><td>ML Engineering &amp; Production, orchestration, ensembles</td><td>WorkflowBuilder, DataFlow, EnsembleEngine</td></tr>
+      <tr><td>M6</td><td>Unsupervised ML &amp; Pattern Discovery, clustering</td><td>AutoMLEngine, DriftMonitor</td></tr>
+      <tr><td>M7</td><td>Deep Learning, neural networks, CNNs</td><td>OnnxBridge, InferenceServer</td></tr>
+      <tr><td>M8</td><td>NLP &amp; Transformers, attention, BERT, GPT</td><td>ModelVisualizer, AutoMLEngine (text)</td></tr>
+      <tr><td>M9</td><td>LLMs, AI Agents &amp; RAG</td><td>Kaizen, Nexus, MCP</td></tr>
+      <tr><td>M10</td><td>Alignment, RL &amp; Governance</td><td>AlignmentPipeline, RLTrainer, PACT GovernanceEngine</td></tr>
     </tbody>
   </table>
   <aside class="notes">
@@ -3421,9 +3421,9 @@ platform.deploy(agent)</code></pre>
   <h2>The Feature Engineering Spectrum</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="pipeline-flow">
-    <div class="stage">Manual FE<br/><small>M2</small></div>
+    <div class="stage">Manual FE<br/><small>M3</small></div>
     <span class="arrow-right">&rarr;</span>
-    <div class="stage">USML<br/><small>M5</small></div>
+    <div class="stage">USML<br/><small>M6</small></div>
     <span class="arrow-right">&rarr;</span>
     <div class="stage">Deep Learning<br/><small>M7</small></div>
     <span class="arrow-right">&rarr;</span>
@@ -3432,7 +3432,7 @@ platform.deploy(agent)</code></pre>
     <div class="stage active">LLMs<br/><small>M9-10</small></div>
   </div>
   <div class="callout callout-theory">
-    <strong>The progression:</strong> From hand-crafted features (M2) to learned representations (M5-M7) to attention-based features (M8) to models that learn their own task (M9-M10). Each stage automates more of the feature engineering.
+    <strong>The progression:</strong> From hand-crafted features (M3) to learned representations (M6-M7) to attention-based features (M8) to models that learn their own task (M9-M10). Each stage automates more of the feature engineering.
   </div>
   <aside class="notes">
     Time: ~2 min. "Feature engineering is the thread that runs through the entire programme. Understanding this spectrum is what separates engineers from practitioners."
@@ -3445,8 +3445,8 @@ platform.deploy(agent)</code></pre>
   <table>
     <thead><tr><th>Paradigm</th><th>Signal</th><th>Module</th></tr></thead>
     <tbody>
-      <tr><td>Supervised Learning</td><td>Labelled examples $(x, y)$</td><td>M3-M4</td></tr>
-      <tr><td>Unsupervised Learning</td><td>Structure in data $x$</td><td>M5</td></tr>
+      <tr><td>Supervised Learning</td><td>Labelled examples $(x, y)$</td><td>M4-M5</td></tr>
+      <tr><td>Unsupervised Learning</td><td>Structure in data $x$</td><td>M6</td></tr>
       <tr><td>Self-Supervised Learning</td><td>Predict parts of $x$ from other parts</td><td>M8-M9</td></tr>
       <tr><td>Reinforcement Learning</td><td>Reward signal $r$ from interaction</td><td>M10</td></tr>
       <tr><td>Preference Alignment</td><td>Human preferences $(y_w \succ y_l)$</td><td>M10</td></tr>
@@ -3489,16 +3489,16 @@ platform.deploy(agent)</code></pre>
       <tr><td>1</td><td>DataExplorer</td><td>Automated profiling &amp; alerts</td><td>M1</td></tr>
       <tr><td>2</td><td>PreprocessingPipeline</td><td>Auto-detect, impute, encode, scale</td><td>M1</td></tr>
       <tr><td>3</td><td>ModelVisualizer</td><td>Interactive Plotly visualisations</td><td>M1</td></tr>
-      <tr><td>4</td><td>FeatureStore</td><td>Feature versioning &amp; point-in-time</td><td>M2</td></tr>
-      <tr><td>5</td><td>FeatureEngineer</td><td>Transform, select, extract</td><td>M2</td></tr>
-      <tr><td>6</td><td>ExperimentTracker</td><td>A/B tests, causal inference</td><td>M2</td></tr>
-      <tr><td>7</td><td>TrainingPipeline</td><td>Train, evaluate, cross-validate</td><td>M3</td></tr>
-      <tr><td>8</td><td>AutoMLEngine</td><td>Automated model selection</td><td>M5</td></tr>
+      <tr><td>4</td><td>FeatureStore</td><td>Feature versioning &amp; point-in-time</td><td>M3</td></tr>
+      <tr><td>5</td><td>FeatureEngineer</td><td>Transform, select, extract</td><td>M3</td></tr>
+      <tr><td>6</td><td>ExperimentTracker</td><td>A/B tests, causal inference</td><td>M2, M3</td></tr>
+      <tr><td>7</td><td>TrainingPipeline</td><td>Train, evaluate, cross-validate</td><td>M4</td></tr>
+      <tr><td>8</td><td>AutoMLEngine</td><td>Automated model selection</td><td>M6</td></tr>
       <tr><td>9</td><td>HyperparameterSearch</td><td>Grid, random, Bayesian</td><td>M4</td></tr>
-      <tr><td>10</td><td>EnsembleEngine</td><td>Bagging, boosting, stacking</td><td>M4</td></tr>
-      <tr><td>11</td><td>ModelRegistry</td><td>Version, store, retrieve</td><td>M3</td></tr>
-      <tr><td>12</td><td>InferenceServer</td><td>ONNX serving, batching</td><td>M8</td></tr>
-      <tr><td>13</td><td>DriftMonitor</td><td>PSI, CSI, performance drift</td><td>M8</td></tr>
+      <tr><td>10</td><td>EnsembleEngine</td><td>Bagging, boosting, stacking</td><td>M5</td></tr>
+      <tr><td>11</td><td>ModelRegistry</td><td>Version, store, retrieve</td><td>M4</td></tr>
+      <tr><td>12</td><td>InferenceServer</td><td>ONNX serving, batching</td><td>M7</td></tr>
+      <tr><td>13</td><td>DriftMonitor</td><td>PSI, CSI, performance drift</td><td>M6</td></tr>
     </tbody>
   </table>
   <aside class="notes">
@@ -3530,7 +3530,7 @@ platform.deploy(agent)</code></pre>
     Foundation Ascent + Summit Ascent = Complete Certificate
   </div>
   <aside class="notes">
-    Time: ~2 min. "Two certifications earned independently. Foundation Ascent covers practical fundamentals. Summit Ascent adds mathematical depth and production governance. Together they form the complete Professional Certificate."
+    Time: ~2 min. "Two certifications earned independently. Foundation Ascent covers practical fundamentals. Summit Ascent adds mathematical depth and production governance. Together they form the complete ASCENT certification."
   </aside>
 </section>
 

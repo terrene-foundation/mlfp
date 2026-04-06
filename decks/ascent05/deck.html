@@ -161,9 +161,9 @@
       <tr><th>Module</th><th>You Learned</th><th>Kailash Engines</th></tr>
     </thead>
     <tbody>
-      <tr><td>M1</td><td>Python, Polars, EDA, probability</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td></tr>
-      <tr><td>M2</td><td>Feature engineering, experiments</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
-      <tr><td>M3</td><td>Supervised ML, training pipelines</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
+      <tr><td>M1</td><td>Python, Polars, EDA, data fluency</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td></tr>
+      <tr><td>M2</td><td>Statistical Foundations, probability, hypothesis testing</td><td>ExperimentTracker, ModelVisualizer</td></tr>
+      <tr><td>M3</td><td>Feature Engineering &amp; Experiment Design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
       <tr><td>M4</td><td>Supervised ML: The Complete Model Zoo</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
     </tbody>
   </table>
@@ -202,8 +202,8 @@
     </thead>
     <tbody>
       <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
-      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
-      <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
+      <tr><td>M2</td><td>ExperimentTracker, ModelVisualizer</td><td>Statistics, hypothesis testing</td></tr>
+      <tr><td>M3</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiment design</td></tr>
       <tr><td>M4</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, evaluate, register</td></tr>
       <tr><td style="color:var(--ascent-primary);font-weight:700;">M5</td>
           <td style="color:var(--ascent-primary);">WorkflowBuilder, DataFlow, EnsembleEngine + deep-dive all engines</td>
@@ -3581,15 +3581,15 @@ python ex_1.py  # Start with exercise 5.1</code></pre>
     <thead><tr><th>Module</th><th>Engines</th><th>What You Can Do</th></tr></thead>
     <tbody>
       <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
-      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Engineer features, track experiments</td></tr>
-      <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
-      <tr><td>M4</td><td>AutoMLEngine, DriftMonitor, InferenceServer</td><td>AutoML, monitor, serve</td></tr>
+      <tr><td>M2</td><td>ExperimentTracker, ModelVisualizer</td><td>Statistical analysis, hypothesis testing</td></tr>
+      <tr><td>M3</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Engineer features, track experiments</td></tr>
+      <tr><td>M4</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
       <tr><td style="color:var(--ascent-primary);font-weight:700;">M5</td>
           <td style="color:var(--ascent-primary);">WorkflowBuilder, DataFlow, EnsembleEngine</td>
           <td style="color:var(--ascent-primary);">Orchestrate, persist, combine, explain, audit</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:12px; font-size:0.85em;"><strong>After M5, you have the complete ML engineering toolkit.</strong> All 13 engines are now introduced. M6 will add alignment (LLMs) and governance (PACT).</p>
+  <p style="margin-top:12px; font-size:0.85em;"><strong>After M5, you have the complete ML engineering toolkit.</strong> M6 adds unsupervised learning &mdash; clustering, anomaly detection, and drift monitoring without labels.</p>
   <aside class="notes">
     Time: ~2 min. This is the cumulative engine map. After M5, students can build end-to-end ML systems: data ingestion, feature engineering, training, evaluation, explainability, fairness, deployment, and monitoring — all within the Kailash ecosystem.
   </aside>
@@ -3599,19 +3599,19 @@ python ex_1.py  # Start with exercise 5.1</code></pre>
 <section>
   <h2>Preview &mdash; Module 6</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <p><strong>Module 6: LLMs, Agents, Alignment &amp; Governance</strong></p>
+  <p><strong>Module 6: Unsupervised ML &amp; Pattern Discovery</strong></p>
   <ul>
-    <li><strong>LLMs:</strong> Transformers, attention mechanisms, scaling laws</li>
-    <li><strong>Agents:</strong> ReAct, tool use, multi-agent systems with Kaizen</li>
-    <li><strong>Alignment:</strong> LoRA, DPO, GRPO with Kailash Align</li>
-    <li><strong>Governance:</strong> PACT D/T/R model, operating envelopes</li>
-    <li><strong>Deployment:</strong> Nexus multi-channel platform</li>
+    <li><strong>Clustering:</strong> K-Means, DBSCAN, GMM, hierarchical methods</li>
+    <li><strong>Dimensionality Reduction:</strong> PCA, t-SNE, UMAP</li>
+    <li><strong>Anomaly Detection:</strong> Isolation Forest, autoencoders</li>
+    <li><strong>Topic Modelling:</strong> LDA, NMF, BERTopic</li>
+    <li><strong>Kailash Engines:</strong> AutoMLEngine (clustering mode), DriftMonitor</li>
   </ul>
   <div class="callout callout-foundations">
-    <strong>M5 gives you the engineering.</strong> M6 gives you the intelligence (LLMs), the autonomy (agents), and the governance (PACT) to deploy trustworthy AI systems.
+    <strong>M5 gives you production engineering.</strong> M6 gives you the tools to discover patterns when you have no labels &mdash; the other half of the ML landscape.
   </div>
   <aside class="notes">
-    Time: ~2 min. M6 is the capstone module. It builds on everything from M1-M5 and adds the frontier topics: large language models, AI agents, alignment, and organizational governance. Preview it to build anticipation.
+    Time: ~2 min. M6 covers unsupervised learning — clustering, dimensionality reduction, anomaly detection, topic modelling. No labels required. Preview it to build anticipation.
   </aside>
 </section>
 

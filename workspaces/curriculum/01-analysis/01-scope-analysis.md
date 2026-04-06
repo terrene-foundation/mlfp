@@ -2,7 +2,7 @@
 
 ## Objective
 
-Complete implementation of the 48-lesson Professional Certificate in Machine Learning, including all exercises, textbook tutorials, datasets, assessments, and lecture materials.
+Complete implementation of the ASCENT 10-module ML engineering curriculum, including all exercises, textbook tutorials, datasets, assessments, and lecture materials.
 
 ## Current State (Session 5 Start)
 

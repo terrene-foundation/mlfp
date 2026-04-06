@@ -21,7 +21,6 @@ import asyncio
 import os
 
 import polars as pl
-from dotenv import load_dotenv
 
 from kaizen_agents import Delegate
 from kaizen_agents.agents.specialized.react import ReActAgent

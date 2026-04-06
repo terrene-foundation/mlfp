@@ -43,24 +43,25 @@ print(f"=== Singapore Product Reviews ===")
 print(f"Shape: {reviews.shape}")
 print(f"Columns: {reviews.columns}")
 
-# Label distribution
-label_counts = reviews.group_by("rating").agg(pl.len().alias("count")).sort("rating")
+# TODO: Compute label distribution via group_by and agg.
+# Hint: reviews.group_by("rating").agg(pl.len().alias("count")).sort("rating")
+label_counts = ____
 print(f"\nRating distribution:")
 for row in label_counts.iter_rows():
     print(f"  Rating {row[0]}: {row[1]} reviews")
 
 # Binary classification: positive (4-5) vs negative (1-2)
-reviews = reviews.with_columns(
-    pl.when(pl.col("rating") >= 4)
-    .then(pl.lit("positive"))
-    .otherwise(pl.lit("negative"))
-    .alias("sentiment")
-)
+# TODO: Create a binary sentiment column using pl.when/then/otherwise.
+# Hint: reviews.with_columns(pl.when(pl.col("rating") >= 4).then(pl.lit("positive")).otherwise(pl.lit("negative")).alias("sentiment"))
+reviews = ____
 
 # Train/test split
 n_train = int(reviews.height * 0.8)
-train_reviews = reviews[:n_train]
-test_reviews = reviews[n_train:]
+# TODO: Slice reviews into train and test sets.
+# Hint: reviews[:n_train]
+train_reviews = ____
+# Hint: reviews[n_train:]
+test_reviews = ____
 
 print(f"\nBinary sentiment: positive (rating >= 4) vs negative (rating <= 2)")
 print(f"Train: {train_reviews.height}, Test: {test_reviews.height}")
@@ -128,12 +129,24 @@ correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
 accuracy = correct / len(y_true)
 
 # Per-class metrics
-tp = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "positive")
-fp = sum(1 for t, p in zip(y_true, y_pred) if t == "negative" and p == "positive")
-fn = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "negative")
-precision = tp / max(tp + fp, 1)
-recall = tp / max(tp + fn, 1)
-f1 = 2 * precision * recall / max(precision + recall, 1e-10)
+# TODO: Count true positives.
+# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "positive")
+tp = ____
+# TODO: Count false positives.
+# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "negative" and p == "positive")
+fp = ____
+# TODO: Count false negatives.
+# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "negative")
+fn = ____
+# TODO: Compute precision from tp and fp.
+# Hint: tp / max(tp + fp, 1)
+precision = ____
+# TODO: Compute recall from tp and fn.
+# Hint: tp / max(tp + fn, 1)
+recall = ____
+# TODO: Compute F1 score from precision and recall.
+# Hint: 2 * precision * recall / max(precision + recall, 1e-10)
+f1 = ____
 
 print(f"\n=== Test Evaluation ===")
 print(f"Accuracy: {accuracy:.4f}")
@@ -158,7 +171,9 @@ async def register_best():
     conn = ConnectionManager("sqlite:///nlp_models.db")
     await conn.initialize()
 
-    registry = ModelRegistry(conn)
+    # TODO: Create a ModelRegistry and initialize it.
+    # Hint: ModelRegistry(conn)
+    registry = ____
     await registry.initialize()
 
     # TODO: Register the model with name, artifact, and metrics.

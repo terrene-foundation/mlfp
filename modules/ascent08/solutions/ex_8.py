@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import re
 import time
+from collections import Counter
 
 import polars as pl
 
@@ -90,8 +92,6 @@ for text in speeches["clean_text"].to_list():
     all_tokens.extend(tokenize(text))
 
 # Frequency-based vocabulary (top 5000 tokens)
-from collections import Counter
-
 token_freq = Counter(all_tokens)
 vocab = ["<PAD>", "<UNK>"] + [t for t, _ in token_freq.most_common(5000)]
 token_to_idx = {t: i for i, t in enumerate(vocab)}
@@ -236,8 +236,6 @@ bridge, onnx_path = asyncio.run(export_model())
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Compare inference speed and model size
 # ══════════════════════════════════════════════════════════════════════
-
-import os
 
 onnx_size = os.path.getsize(onnx_path) if os.path.exists(onnx_path) else 0
 

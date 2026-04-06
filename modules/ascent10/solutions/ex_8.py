@@ -25,7 +25,6 @@ import tempfile
 import time
 
 import polars as pl
-from dotenv import load_dotenv
 
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent

@@ -21,10 +21,11 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import re
 import time
+from collections import Counter
 
 import polars as pl
-from dotenv import load_dotenv
 
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent
@@ -58,9 +59,6 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 # Build TF-IDF index for retrieval
-import re
-from collections import Counter
-
 all_docs = regulations["text"].to_list()
 doc_tokens = []
 vocab_freq: Counter = Counter()

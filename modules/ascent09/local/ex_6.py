@@ -76,17 +76,22 @@ class TechnicalAnalysisSignature(Signature):
 
     document: str = InputField(description="Business document text")
     question: str = InputField(description="Technical analysis question")
-    tech_assessment: str = OutputField(description="Technical feasibility assessment")
-    architecture_notes: list[str] = OutputField(
-        description="Architecture considerations"
-    )
-    scalability: str = OutputField(description="Scalability assessment")
+    # TODO: Define OutputField for tech_assessment
+    tech_assessment: str = ____
+    # TODO: Define OutputField for architecture_notes (list of considerations)
+    architecture_notes: list[str] = ____
+    # TODO: Define OutputField for scalability assessment
+    scalability: str = ____
 
 
 class FinancialAgent(BaseAgent):
     signature = FinancialAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
+    # TODO: Set the model from environment variable.
+    # Hint: os.environ.get("DEFAULT_LLM_MODEL")
+    model = ____
+    # TODO: Set the cost budget.
+    # Hint: 1.0
+    max_llm_cost_usd = ____
     description = (
         "Specialist in financial analysis: revenue, profitability, risk factors"
     )
@@ -94,15 +99,23 @@ class FinancialAgent(BaseAgent):
 
 class LegalAgent(BaseAgent):
     signature = LegalAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
+    # TODO: Set the model from environment variable.
+    # Hint: os.environ.get("DEFAULT_LLM_MODEL")
+    model = ____
+    # TODO: Set the cost budget.
+    # Hint: 1.0
+    max_llm_cost_usd = ____
     description = "Specialist in legal analysis: compliance, regulation, legal risk"
 
 
 class TechnicalAgent(BaseAgent):
     signature = TechnicalAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
+    # TODO: Set the model from environment variable.
+    # Hint: os.environ.get("DEFAULT_LLM_MODEL")
+    model = ____
+    # TODO: Set the cost budget.
+    # Hint: 1.0
+    max_llm_cost_usd = ____
     description = (
         "Specialist in technical analysis: architecture, scalability, feasibility"
     )
@@ -125,8 +138,9 @@ print(f"  3. TechnicalAgent: architecture, scalability, feasibility")
 # Pipeline.router() uses LLM reasoning to route queries to the best specialist
 # — NOT keyword matching. The LLM reads each agent's description (capability card)
 # and reasons about which specialist is best suited for each query.
-# TODO: Create a Pipeline.router() with the three specialist agents
-router = Pipeline.router(____)
+# TODO: Create a Pipeline.router() with the three specialist agents.
+# Hint: Pipeline.router(agents=[financial_agent, legal_agent, technical_agent])
+router = ____
 
 print(f"\n=== Router Agent ===")
 print(f"Pipeline.router() uses LLM reasoning to select the best specialist.")
@@ -157,11 +171,15 @@ class SupervisorSignature(Signature):
 
 class SupervisorAgent(BaseAgent):
     signature = SupervisorSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 2.0
-    description = (
-        "Supervisor that synthesizes specialist analyses into actionable decisions"
-    )
+    # TODO: Set the model from environment variable.
+    # Hint: os.environ.get("DEFAULT_LLM_MODEL")
+    model = ____
+    # TODO: Set a higher cost budget for supervisor (synthesizes multiple analyses).
+    # Hint: 2.0
+    max_llm_cost_usd = ____
+    # TODO: Set the agent description.
+    # Hint: "Supervisor that synthesizes specialist analyses into actionable decisions"
+    description = ____
 
 
 supervisor = SupervisorAgent()
@@ -186,15 +204,15 @@ async def multi_agent_analysis():
     print(f"Question: {question}")
 
     # Step 1: Run specialists in parallel
-    financial_result = await financial_agent.run(
-        document=doc, question="Analyse the financial health and revenue potential"
-    )
-    legal_result = await legal_agent.run(
-        document=doc, question="Identify compliance risks and regulatory requirements"
-    )
-    technical_result = await technical_agent.run(
-        document=doc, question="Assess technical feasibility and scalability"
-    )
+    # TODO: Run financial agent with document and financial question.
+    # Hint: await financial_agent.run(document=doc, question="Analyse the financial health and revenue potential")
+    financial_result = ____
+    # TODO: Run legal agent with document and legal question.
+    # Hint: await legal_agent.run(document=doc, question="Identify compliance risks and regulatory requirements")
+    legal_result = ____
+    # TODO: Run technical agent with document and technical question.
+    # Hint: await technical_agent.run(document=doc, question="Assess technical feasibility and scalability")
+    technical_result = ____
 
     print(f"\n--- Financial Analysis ---")
     print(f"Revenue insights: {financial_result.revenue_insights[:200]}...")
@@ -209,8 +227,9 @@ async def multi_agent_analysis():
     print(f"Scalability: {technical_result.scalability[:200]}...")
 
     # Step 2: Supervisor synthesizes
-    # TODO: Run supervisor with document, financial, legal, and technical analyses
-    supervisor_result = await supervisor.run(____)
+    # TODO: Run supervisor with document, financial, legal, and technical analyses.
+    # Hint: await supervisor.run(document=doc, financial_analysis=financial_result.revenue_insights, legal_analysis=str(legal_result.compliance_issues), technical_analysis=technical_result.tech_assessment)
+    supervisor_result = ____
 
     print(f"\n--- Supervisor Summary ---")
     print(f"Executive summary: {supervisor_result.executive_summary[:300]}...")
@@ -230,16 +249,15 @@ multi_result = asyncio.run(multi_agent_analysis())
 
 async def single_agent_comparison():
     doc = reports["text"][0]
-    delegate = Delegate(model=model, max_llm_cost_usd=3.0)
+    # TODO: Create a Delegate with model and higher cost budget for comparison.
+    # Hint: Delegate(model=model, max_llm_cost_usd=3.0)
+    delegate = ____
 
     print(f"\n=== Single-Agent Comparison ===")
     response = ""
-    async for event in delegate.run(
-        f"Analyse this business document from financial, legal, and technical perspectives. "
-        f"Provide an executive summary with risk assessment.\n\n{doc[:2000]}"
-    ):
-        if hasattr(event, "content"):
-            response += event.content
+    # TODO: Stream the delegate response for the analysis prompt.
+    # Hint: async for event in delegate.run(f"Analyse this business document...{doc[:2000]}"): if hasattr(event, "content"): response += event.content
+    ____
 
     print(f"Single-agent response: {response[:400]}...")
     return response

@@ -28,7 +28,7 @@ QUIZ = {
                 "    pairs = get_pair_frequencies(tokens)\n"
                 "    best_pair = max(pairs, key=pairs.get)\n"
                 "    new_token = best_pair[0] + best_pair[1]\n"
-                "    vocab.add(new_token)  # Bug: never removing old tokens\n"
+                "    vocab.add(new_token)  # Bug: num_merges exceeds target vocab\n"
                 "    tokens = merge_pair(tokens, best_pair, new_token)\n"
             ),
             "options": [

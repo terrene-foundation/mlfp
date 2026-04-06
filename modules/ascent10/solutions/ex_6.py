@@ -21,8 +21,6 @@ import asyncio
 import os
 import tempfile
 
-from dotenv import load_dotenv
-
 from kailash_pact import GovernanceEngine
 
 from shared.kailash_helpers import setup_environment

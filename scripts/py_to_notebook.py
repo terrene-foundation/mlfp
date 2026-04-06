@@ -148,16 +148,36 @@ def make_notebook(cells: list[dict], kernel: str = "python3") -> dict:
     }
 
 
-def jupyter_setup_cell() -> dict:
-    return make_code_cell(
-        "%pip install -q kailash-ml polars plotly gdown python-dotenv"
-    )
+def _detect_packages(source: str) -> str:
+    """Detect which Kailash packages are needed from import statements."""
+    packages = ["polars", "plotly", "gdown", "python-dotenv"]
+    # Map import prefixes to pip packages
+    pkg_map = {
+        "kailash_ml": "kailash-ml",
+        "kailash_align": "kailash-align",
+        "kailash_pact": "kailash-pact",
+        "kailash_nexus": "kailash-nexus",
+        "kailash_mcp": "kailash-mcp",
+        "kailash.": "kailash",
+        "kaizen": "kailash-kaizen",
+    }
+    for prefix, pkg in pkg_map.items():
+        if f"from {prefix}" in source or f"import {prefix}" in source:
+            if pkg not in packages:
+                packages.append(pkg)
+    return " ".join(packages)
 
 
-def colab_setup_cell() -> dict:
+def jupyter_setup_cell(source: str = "") -> dict:
+    packages = _detect_packages(source)
+    return make_code_cell(f"%pip install -q {packages}")
+
+
+def colab_setup_cell(source: str = "") -> dict:
+    packages = _detect_packages(source)
     return make_code_cell(
         "# Google Colab setup\n"
-        "!pip install -q kailash-ml polars plotly gdown python-dotenv\n"
+        f"!pip install -q {packages}\n"
         "\n"
         "# Mount Google Drive for datasets\n"
         "from google.colab import drive\n"
@@ -221,7 +241,7 @@ def convert_file(py_path: Path):
             ]
 
     # Jupyter notebook
-    jupyter_cells = [jupyter_setup_cell()] + convert_asyncio_for_notebook(cells)
+    jupyter_cells = [jupyter_setup_cell(source)] + convert_asyncio_for_notebook(cells)
     jupyter_nb = make_notebook(jupyter_cells)
 
     notebook_dir = py_path.parent.parent / "notebooks"
@@ -233,7 +253,7 @@ def convert_file(py_path: Path):
     print(f"  Jupyter: {notebook_path}")
 
     # Colab notebook
-    colab_cells = [colab_setup_cell()] + convert_asyncio_for_notebook(cells)
+    colab_cells = [colab_setup_cell(source)] + convert_asyncio_for_notebook(cells)
     colab_nb = make_notebook(colab_cells)
 
     colab_dir = py_path.parent.parent / "colab"

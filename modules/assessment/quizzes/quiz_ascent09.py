@@ -26,7 +26,7 @@ QUIZ = {
             ),
             "options": [
                 "A) 4 GB × 16 = 64 GB — KV cache scales linearly with concurrent users",
-                "B) 4 GB is for 4K context. Doubling to 8K doubles to 8 GB per user. With 16 users: 8 × 16 = 128 GB for KV cache. This exceeds most single-GPU memory. Solutions: KV cache quantization (reduce from fp16 to int8 = 64 GB), paged attention (only allocate used slots), or multi-GPU deployment.",
+                "B) The 4 GB figure is for 4K context; the precise calculation gives ~2.15 GB at 4K. At 8K context: ~4.3 GB per user. With 16 users: 4.3 × 16 ≈ 69 GB for KV cache alone. This exceeds most single-GPU memory. Solutions: KV cache quantization (fp16 → int8 halves to ~34 GB), paged attention (only allocate used slots), or multi-GPU deployment.",
                 "C) 4 GB total — KV cache is shared across all users",
                 "D) 4 GB × 2 = 8 GB — each user adds one K and one V, so 2× per user",
             ],

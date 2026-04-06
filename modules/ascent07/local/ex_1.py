@@ -60,8 +60,12 @@ y_mean, y_std = (
     (sum((yi - sum(y_raw) / len(y_raw)) ** 2 for yi in y_raw) / len(y_raw)) ** 0.5,
 )
 
-x_norm = [(xi - x_mean) / x_std for xi in x_raw]
-y_norm = [(yi - y_mean) / y_std for yi in y_raw]
+# TODO: Z-normalize x values using x_mean and x_std.
+# Hint: [(xi - x_mean) / x_std for xi in x_raw]
+x_norm = ____
+# TODO: Z-normalize y values using y_mean and y_std.
+# Hint: [(yi - y_mean) / y_std for yi in y_raw]
+y_norm = ____
 n = len(x_norm)
 
 print(f"\nFeature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f})")
@@ -105,7 +109,9 @@ def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
 
 
 # Compute initial loss (should be high with zero weights)
-predictions = [forward(xi, w, b) for xi in x_norm]
+# TODO: Generate predictions for all samples using the forward function.
+# Hint: [forward(xi, w, b) for xi in x_norm]
+predictions = ____
 initial_loss = mse_loss(y_norm, predictions)
 print(f"\n=== MSE Loss ===")
 print(f"Initial loss (w=0, b=0): {initial_loss:.4f}")
@@ -126,10 +132,13 @@ history = {"epoch": [], "loss": [], "w": [], "b": []}
 
 for epoch in range(epochs):
     # Forward pass for all samples
-    y_pred = [forward(xi, w, b) for xi in x_norm]
+    # TODO: Compute predictions for all normalized samples.
+    # Hint: [forward(xi, w, b) for xi in x_norm]
+    y_pred = ____
 
-    # Compute loss
-    loss = mse_loss(y_norm, y_pred)
+    # TODO: Compute MSE loss between true values and predictions.
+    # Hint: mse_loss(y_norm, y_pred)
+    loss = ____
 
     # TODO: Compute gradient of loss w.r.t. weight w.
     # Hint: (2.0 / n) * sum((yp - yt) * xi for yp, yt, xi in zip(y_pred, y_norm, x_norm))
@@ -159,7 +168,9 @@ print(f"\nFinal: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
 # Visualize training curve
 viz = ModelVisualizer()
 history_df = pl.DataFrame(history)
-fig = viz.plot_training_curves(history_df)
+# TODO: Plot training curves using ModelVisualizer.
+# Hint: viz.plot_training_curves(history_df)
+fig = ____
 print("Training curve plotted.")
 
 
@@ -178,8 +189,12 @@ cov_xy = ____
 # Hint: norm_df.select(pl.col("x").var()).item()
 var_x = ____
 
-w_ols = cov_xy / var_x
-b_ols = sum(y_norm) / n - w_ols * (sum(x_norm) / n)
+# TODO: Compute OLS weight from covariance and variance.
+# Hint: cov_xy / var_x
+w_ols = ____
+# TODO: Compute OLS bias from means.
+# Hint: sum(y_norm) / n - w_ols * (sum(x_norm) / n)
+b_ols = ____
 
 y_pred_ols = [w_ols * xi + b_ols for xi in x_norm]
 ols_loss = mse_loss(y_norm, y_pred_ols)

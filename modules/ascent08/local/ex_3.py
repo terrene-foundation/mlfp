@@ -48,16 +48,26 @@ print(summary)
 
 def tokenize(text: str) -> list[str]:
     """Lowercase and split on non-alphanumeric."""
-    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+    # TODO: Clean text with regex (remove non-alphanumeric) and split into tokens.
+    # Hint: re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+    return ____
 
 
 corpus_texts = df.select("text").to_series().to_list()
-tokenized_corpus = [tokenize(t) for t in corpus_texts]
-all_tokens = [tok for doc in tokenized_corpus for tok in doc]
+# TODO: Tokenize each document in the corpus.
+# Hint: [tokenize(t) for t in corpus_texts]
+tokenized_corpus = ____
+# TODO: Flatten all tokens from all documents into a single list.
+# Hint: [tok for doc in tokenized_corpus for tok in doc]
+all_tokens = ____
 
 word_counts = Counter(all_tokens)
-vocab = [w for w, c in word_counts.most_common(3000) if c >= 2]
-word_to_idx = {w: i for i, w in enumerate(vocab)}
+# TODO: Build vocabulary from top 3000 words with min frequency 2.
+# Hint: [w for w, c in word_counts.most_common(3000) if c >= 2]
+vocab = ____
+# TODO: Create word-to-index mapping dictionary.
+# Hint: {w: i for i, w in enumerate(vocab)}
+word_to_idx = ____
 vocab_size = len(vocab)
 
 print(f"Vocabulary: {vocab_size} words (min freq=2)")
@@ -78,8 +88,12 @@ def build_skipgram_pairs(
         if token not in word_to_idx:
             continue
         center_idx = word_to_idx[token]
-        start = max(0, i - window)
-        end = min(len(tokens), i + window + 1)
+        # TODO: Compute the context window start index (clamped to 0).
+        # Hint: max(0, i - window)
+        start = ____
+        # TODO: Compute the context window end index (clamped to len).
+        # Hint: min(len(tokens), i + window + 1)
+        end = ____
         for j in range(start, end):
             if j == i or tokens[j] not in word_to_idx:
                 continue
@@ -90,7 +104,9 @@ def build_skipgram_pairs(
 
 
 # Build pairs from first 50 articles for speed
-sample_tokens = [tok for doc in tokenized_corpus[:50] for tok in doc]
+# TODO: Flatten tokens from first 50 documents.
+# Hint: [tok for doc in tokenized_corpus[:50] for tok in doc]
+sample_tokens = ____
 pairs = build_skipgram_pairs(sample_tokens, word_to_idx, window=2)
 print(f"\nSkip-gram pairs: {len(pairs):,} from {len(sample_tokens):,} tokens")
 print(f"Sample pairs: {[(vocab[c], vocab[t]) for c, t in pairs[:5]]}")
@@ -114,14 +130,20 @@ W_context = [
 def sigmoid(x: float) -> float:
     """Numerically stable sigmoid."""
     if x >= 0:
-        return 1.0 / (1.0 + math.exp(-x))
+        # TODO: Return sigmoid for positive x.
+        # Hint: 1.0 / (1.0 + math.exp(-x))
+        return ____
     exp_x = math.exp(x)
-    return exp_x / (1.0 + exp_x)
+    # TODO: Return sigmoid for negative x (using exp_x).
+    # Hint: exp_x / (1.0 + exp_x)
+    return ____
 
 
 def dot_product(a: list[float], b: list[float]) -> float:
     """Dot product of two vectors."""
-    return sum(x * y for x, y in zip(a, b))
+    # TODO: Compute dot product as sum of element-wise products.
+    # Hint: sum(x * y for x, y in zip(a, b))
+    return ____
 
 
 def train_skipgram(
@@ -138,8 +160,12 @@ def train_skipgram(
     token_freq = [0] * vocab_size
     for c, t in pairs:
         token_freq[c] += 1
-    freq_sum = sum(f**0.75 for f in token_freq)
-    neg_probs = [(f**0.75) / freq_sum for f in token_freq]
+    # TODO: Compute smoothed frequency sum (f^0.75 smoothing).
+    # Hint: sum(f**0.75 for f in token_freq)
+    freq_sum = ____
+    # TODO: Build negative sampling probability distribution.
+    # Hint: [(f**0.75) / freq_sum for f in token_freq]
+    neg_probs = ____
 
     for epoch in range(epochs):
         epoch_loss = 0.0
@@ -150,8 +176,12 @@ def train_skipgram(
             # Hint: dot_product(W_center[center], W_context[context])
             score = ____
             prob = sigmoid(score)
-            loss = -math.log(prob + 1e-10)
-            grad = (prob - 1) * lr
+            # TODO: Compute negative log-likelihood loss for positive pair.
+            # Hint: -math.log(prob + 1e-10)
+            loss = ____
+            # TODO: Compute gradient scaled by learning rate.
+            # Hint: (prob - 1) * lr
+            grad = ____
 
             for d in range(embedding_dim):
                 W_center[center][d] -= grad * W_context[context][d]
@@ -164,15 +194,21 @@ def train_skipgram(
                     continue
                 score = dot_product(W_center[center], W_context[neg])
                 prob = sigmoid(score)
-                loss += -math.log(1 - prob + 1e-10)
-                grad = prob * lr
+                # TODO: Add negative sample loss (push apart).
+                # Hint: loss += -math.log(1 - prob + 1e-10)
+                loss += ____
+                # TODO: Compute negative sample gradient.
+                # Hint: prob * lr
+                grad = ____
                 for d in range(embedding_dim):
                     W_center[center][d] -= grad * W_context[neg][d]
                     W_context[neg][d] -= grad * W_center[center][d]
 
             epoch_loss += loss
 
-        avg_loss = epoch_loss / min(len(pairs), 5000)
+        # TODO: Compute average loss for the epoch.
+        # Hint: epoch_loss / min(len(pairs), 5000)
+        avg_loss = ____
         losses.append(avg_loss)
         print(f"  Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f}")
 
@@ -190,12 +226,20 @@ losses = train_skipgram(pairs, W_center, W_context, epochs=3, lr=0.01)
 
 def cosine_sim(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two embedding vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
+    # TODO: Compute dot product of vectors a and b.
+    # Hint: sum(x * y for x, y in zip(a, b))
+    dot = ____
+    # TODO: Compute L2 norm of vector a.
+    # Hint: math.sqrt(sum(x * x for x in a))
+    na = ____
+    # TODO: Compute L2 norm of vector b.
+    # Hint: math.sqrt(sum(y * y for y in b))
+    nb = ____
     if na == 0 or nb == 0:
         return 0.0
-    return dot / (na * nb)
+    # TODO: Return cosine similarity (dot product / product of norms).
+    # Hint: dot / (na * nb)
+    return ____
 
 
 def most_similar(word: str, top_k: int = 5) -> list[tuple[str, float]]:
@@ -208,8 +252,12 @@ def most_similar(word: str, top_k: int = 5) -> list[tuple[str, float]]:
     for i in range(vocab_size):
         if i == idx:
             continue
-        sims.append((vocab[i], cosine_sim(vec, W_center[i])))
-    sims.sort(key=lambda x: x[1], reverse=True)
+        # TODO: Append (word, similarity) tuple for each candidate.
+        # Hint: sims.append((vocab[i], cosine_sim(vec, W_center[i])))
+        ____
+    # TODO: Sort similarities in descending order.
+    # Hint: sims.sort(key=lambda x: x[1], reverse=True)
+    ____
     return sims[:top_k]
 
 
@@ -251,7 +299,9 @@ for a, b, c in analogy_tests:
 
 # Select top words for visualization
 top_words = vocab[:100]
-top_embeddings = [W_center[word_to_idx[w]] for w in top_words]
+# TODO: Extract embedding vectors for top words.
+# Hint: [W_center[word_to_idx[w]] for w in top_words]
+top_embeddings = ____
 
 viz = ModelVisualizer()
 # TODO: Plot embeddings using t-SNE via ModelVisualizer.

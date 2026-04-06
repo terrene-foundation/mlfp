@@ -17,7 +17,9 @@
 """
 from __future__ import annotations
 
+import copy
 import math
+import random
 
 import polars as pl
 
@@ -50,15 +52,13 @@ print(
 )
 
 # Simple 2-layer network: input → hidden(128) → output(10)
-import random
-
 random.seed(42)
 hidden_size = 128
 
 
-def init_weights(rows: int, cols: int, scale: float = 0.01) -> list[list[float]]:
-    """He initialization."""
-    s = scale * math.sqrt(2.0 / rows)
+def init_weights(rows: int, cols: int) -> list[list[float]]:
+    """He initialization: std = sqrt(2 / fan_in)."""
+    s = math.sqrt(2.0 / rows)
     return [[random.gauss(0, s) for _ in range(cols)] for _ in range(rows)]
 
 
@@ -117,8 +117,6 @@ batch_size = 32
 lr = 0.01
 epochs = 5
 sgd_losses = []
-
-import copy
 
 W1_sgd, b1_sgd = copy.deepcopy(W1), copy.deepcopy(b1)
 W2_sgd, b2_sgd = copy.deepcopy(W2), copy.deepcopy(b2)
@@ -271,21 +269,107 @@ beta1, beta2, eps = 0.9, 0.999, 1e-8
 #   v_hat = v / (1 - beta2^t)
 #   param -= lr * m_hat / (sqrt(v_hat) + eps)
 
-adam_losses = []
-print(
-    f"Adam converges faster because each parameter gets its own effective learning rate."
-)
-print(f"Parameters: lr={adam_lr}, beta1={beta1}, beta2={beta2}, eps={eps}")
+W1_adam, b1_adam = copy.deepcopy(W1), copy.deepcopy(b1)
+W2_adam, b2_adam = copy.deepcopy(W2), copy.deepcopy(b2)
 
-# (Training loop omitted for brevity — same structure as above with Adam update rule)
-# In practice, students implement the full Adam loop following the formula above
-adam_losses = [
-    sgd_losses[0] * 0.9,
-    sgd_losses[0] * 0.5,
-    sgd_losses[0] * 0.3,
-    sgd_losses[0] * 0.2,
-    sgd_losses[0] * 0.15,
-]  # Illustrative
+# First moments (m) and second moments (v) — same shape as weights
+mW1 = [[0.0] * hidden_size for _ in range(n_features)]
+vW1_adam = [[0.0] * hidden_size for _ in range(n_features)]
+mb1 = [0.0] * hidden_size
+vb1_adam = [0.0] * hidden_size
+mW2 = [[0.0] * n_classes for _ in range(hidden_size)]
+vW2_adam = [[0.0] * n_classes for _ in range(hidden_size)]
+mb2 = [0.0] * n_classes
+vb2_adam = [0.0] * n_classes
+
+adam_losses = []
+t_step = 0
+
+for epoch in range(epochs):
+    epoch_loss = 0.0
+    n_batches = 0
+    indices = list(range(min(500, n_samples)))
+    random.shuffle(indices)
+
+    for start in range(0, len(indices), batch_size):
+        batch_idx = indices[start : start + batch_size]
+        batch_loss = 0.0
+        t_step += 1
+
+        gW2 = [[0.0] * n_classes for _ in range(hidden_size)]
+        gb2 = [0.0] * n_classes
+        gW1_batch = [[0.0] * hidden_size for _ in range(n_features)]
+        gb1_batch = [0.0] * hidden_size
+
+        for idx in batch_idx:
+            x_row = X[idx].tolist()
+            target = y[idx]
+            hidden, h_act, logits, probs = forward(
+                x_row, W1_adam, b1_adam, W2_adam, b2_adam
+            )
+            batch_loss += cross_entropy_loss(probs, target)
+
+            d_logits = [probs[k] - target[k] for k in range(n_classes)]
+            for j in range(hidden_size):
+                for k in range(n_classes):
+                    gW2[j][k] += h_act[j] * d_logits[k] / len(batch_idx)
+            for k in range(n_classes):
+                gb2[k] += d_logits[k] / len(batch_idx)
+
+            d_hidden = [
+                sum(d_logits[k] * W2_adam[j][k] for k in range(n_classes))
+                * (1.0 if hidden[j] > 0 else 0.0)
+                for j in range(hidden_size)
+            ]
+            for i_feat in range(n_features):
+                for j in range(hidden_size):
+                    gW1_batch[i_feat][j] += x_row[i_feat] * d_hidden[j] / len(batch_idx)
+            for j in range(hidden_size):
+                gb1_batch[j] += d_hidden[j] / len(batch_idx)
+
+        # Adam update for W2, b2
+        bc1 = 1 - beta1**t_step
+        bc2 = 1 - beta2**t_step
+        for j in range(hidden_size):
+            for k in range(n_classes):
+                mW2[j][k] = beta1 * mW2[j][k] + (1 - beta1) * gW2[j][k]
+                vW2_adam[j][k] = beta2 * vW2_adam[j][k] + (1 - beta2) * gW2[j][k] ** 2
+                m_hat = mW2[j][k] / bc1
+                v_hat = vW2_adam[j][k] / bc2
+                W2_adam[j][k] -= adam_lr * m_hat / (math.sqrt(v_hat) + eps)
+        for k in range(n_classes):
+            mb2[k] = beta1 * mb2[k] + (1 - beta1) * gb2[k]
+            vb2_adam[k] = beta2 * vb2_adam[k] + (1 - beta2) * gb2[k] ** 2
+            b2_adam[k] -= (
+                adam_lr * (mb2[k] / bc1) / (math.sqrt(vb2_adam[k] / bc2) + eps)
+            )
+
+        # Adam update for W1, b1
+        for i_feat in range(n_features):
+            for j in range(hidden_size):
+                mW1[i_feat][j] = (
+                    beta1 * mW1[i_feat][j] + (1 - beta1) * gW1_batch[i_feat][j]
+                )
+                vW1_adam[i_feat][j] = (
+                    beta2 * vW1_adam[i_feat][j]
+                    + (1 - beta2) * gW1_batch[i_feat][j] ** 2
+                )
+                m_hat = mW1[i_feat][j] / bc1
+                v_hat = vW1_adam[i_feat][j] / bc2
+                W1_adam[i_feat][j] -= adam_lr * m_hat / (math.sqrt(v_hat) + eps)
+        for j in range(hidden_size):
+            mb1[j] = beta1 * mb1[j] + (1 - beta1) * gb1_batch[j]
+            vb1_adam[j] = beta2 * vb1_adam[j] + (1 - beta2) * gb1_batch[j] ** 2
+            b1_adam[j] -= (
+                adam_lr * (mb1[j] / bc1) / (math.sqrt(vb1_adam[j] / bc2) + eps)
+            )
+
+        epoch_loss += batch_loss / len(batch_idx)
+        n_batches += 1
+
+    avg_loss = epoch_loss / n_batches
+    adam_losses.append(avg_loss)
+    print(f"Adam Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════

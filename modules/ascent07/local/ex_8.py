@@ -47,16 +47,22 @@ setup_environment()
 loader = ASCENTDataLoader()
 data = loader.load("ascent07", "fashion_mnist_sample.parquet")
 
-pixel_cols = [c for c in data.columns if c != "label"]
+# TODO: Extract pixel column names (all columns except "label").
+# Hint: [c for c in data.columns if c != "label"]
+pixel_cols = ____
 n_samples = data.height
 
-# Normalize pixel values to [0, 1]
-normalized = data.with_columns([(pl.col(c) / 255.0).alias(c) for c in pixel_cols])
+# TODO: Normalize pixel values to [0, 1] by dividing by 255.
+# Hint: data.with_columns([(pl.col(c) / 255.0).alias(c) for c in pixel_cols])
+normalized = ____
 
 # Train/test split (80/20)
 n_train = int(n_samples * 0.8)
-train_data = normalized[:n_train]
-test_data = normalized[n_train:]
+# TODO: Split into train and test sets.
+# Hint: normalized[:n_train]
+train_data = ____
+# Hint: normalized[n_train:]
+test_data = ____
 
 print(f"=== Fashion-MNIST Pipeline ===")
 print(f"Total: {n_samples}, Train: {n_train}, Test: {n_samples - n_train}")
@@ -105,13 +111,19 @@ predictions = ____
 test_labels = test_data["label"].to_list()
 pred_labels = predictions["prediction"].to_list()
 
-correct = sum(1 for p, t in zip(pred_labels, test_labels) if p == t)
-test_accuracy = correct / len(test_labels)
+# TODO: Count correct predictions.
+# Hint: sum(1 for p, t in zip(pred_labels, test_labels) if p == t)
+correct = ____
+# TODO: Compute test accuracy.
+# Hint: correct / len(test_labels)
+test_accuracy = ____
 print(f"Test accuracy: {test_accuracy:.4f}")
 
 # Visualize training curves
 viz = ModelVisualizer()
-fig = viz.plot_training_curves(result.history)
+# TODO: Plot training curves using ModelVisualizer.
+# Hint: viz.plot_training_curves(result.history)
+fig = ____
 fig.write_html("capstone_training_curves.html")
 print(f"Training curves saved to capstone_training_curves.html")
 
@@ -122,10 +134,14 @@ print(f"Training curves saved to capstone_training_curves.html")
 
 
 async def register_model():
-    conn = ConnectionManager("sqlite:///capstone_models.db")
+    # TODO: Create a ConnectionManager for SQLite.
+    # Hint: ConnectionManager("sqlite:///capstone_models.db")
+    conn = ____
     await conn.initialize()
 
-    registry = ModelRegistry(conn)
+    # TODO: Create a ModelRegistry with the connection.
+    # Hint: ModelRegistry(conn)
+    registry = ____
     await registry.initialize()
 
     # TODO: Register the model with name, artifact, and metrics.
@@ -161,7 +177,9 @@ registry, model_version = asyncio.run(register_model())
 
 
 async def export_onnx():
-    bridge = OnnxBridge()
+    # TODO: Create an OnnxBridge instance.
+    # Hint: OnnxBridge()
+    bridge = ____
 
     # TODO: Export the trained model to ONNX format.
     # Hint: bridge.export(model=result.model, input_shape=(1, len(pixel_cols)), output_path="fashion_mnist_cnn.onnx")
@@ -241,7 +259,9 @@ print(f"\n=== Inference Speed Comparison ===")
 
 # Original model inference
 n_test = 100
-test_samples = [list(test_data.select(pixel_cols).row(i)) for i in range(n_test)]
+# TODO: Extract test samples as lists of pixel values.
+# Hint: [list(test_data.select(pixel_cols).row(i)) for i in range(n_test)]
+test_samples = ____
 
 start = time.time()
 for sample in test_samples:

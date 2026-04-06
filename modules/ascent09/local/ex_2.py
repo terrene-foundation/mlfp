@@ -39,7 +39,9 @@ print(f"LLM Model: {model}")
 loader = ASCENTDataLoader()
 reports = loader.load("ascent09", "sg_company_reports.parquet")
 
-sample_docs = reports.head(10)
+# TODO: Select first 10 documents as sample.
+# Hint: reports.head(10)
+sample_docs = ____
 print(f"Loaded {reports.height:,} documents for classification")
 print(f"Columns: {reports.columns}")
 
@@ -53,16 +55,13 @@ CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufactu
 
 async def zero_shot_classify(text: str) -> str:
     """Classify a document using zero-shot prompting."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
 
-    prompt = f"""Classify the following Singapore company report into exactly one category.
-
-Categories: {', '.join(CATEGORIES)}
-
-Report excerpt:
-{text[:800]}
-
-Respond with ONLY the category name, nothing else."""
+    # TODO: Build a zero-shot classification prompt with categories and text.
+    # Hint: f-string with CATEGORIES, text[:800], and instruction to respond with only the category name
+    prompt = ____
 
     response = ""
     async for event in delegate.run(prompt):
@@ -76,7 +75,9 @@ async def run_zero_shot():
     """Run zero-shot classification on sample documents."""
     print(f"\n=== Zero-Shot Classification ===")
     results = []
-    texts = sample_docs.select("text").to_series().to_list()
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
     for i, text in enumerate(texts[:5]):
         category = await zero_shot_classify(text)
         print(f"  Doc {i+1}: {category}")
@@ -117,9 +118,12 @@ FEW_SHOT_EXAMPLES = [
 
 async def few_shot_classify(text: str) -> str:
     """Classify a document using few-shot prompting with examples."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
 
-    # TODO: Build examples_text by joining each example's text and category
+    # TODO: Build examples_text by joining each example's text and category.
+    # Hint: "\n".join(f'Text: "{ex["text"]}"\nCategory: {ex["category"]}\n' for ex in FEW_SHOT_EXAMPLES)
     examples_text = ____
 
     prompt = f"""Classify Singapore company reports into categories. Here are examples:
@@ -130,9 +134,9 @@ Text: "{text[:800]}"
 Category:"""
 
     response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
+    # TODO: Stream the response from delegate.run(prompt).
+    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+    ____
 
     return response.strip()
 
@@ -141,7 +145,9 @@ async def run_few_shot():
     """Run few-shot classification on sample documents."""
     print(f"\n=== Few-Shot Classification ===")
     results = []
-    texts = sample_docs.select("text").to_series().to_list()
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
     for i, text in enumerate(texts[:5]):
         category = await few_shot_classify(text)
         print(f"  Doc {i+1}: {category}")
@@ -159,15 +165,18 @@ few_shot_results = asyncio.run(run_few_shot())
 
 async def cot_classify(text: str) -> str:
     """Classify using chain-of-thought reasoning."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
 
-    # TODO: Write a CoT prompt that instructs step-by-step reasoning before classification
+    # TODO: Write a CoT prompt that instructs step-by-step reasoning before classification.
+    # Hint: Include CATEGORIES, steps (identify key terms, match to category, state final classification), and text[:800]
     prompt = ____
 
     response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
+    # TODO: Stream the response from delegate.run(prompt).
+    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+    ____
 
     # Extract final category from reasoning
     lines = response.strip().split("\n")
@@ -179,7 +188,9 @@ async def run_cot():
     """Run chain-of-thought classification."""
     print(f"\n=== Chain-of-Thought Classification ===")
     results = []
-    texts = sample_docs.select("text").to_series().to_list()
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
     for i, text in enumerate(texts[:3]):
         reasoning, category = await cot_classify(text)
         print(f"\n  Doc {i+1} reasoning (excerpt): {reasoning[:200]}...")
@@ -209,19 +220,26 @@ class ReportExtraction(Signature):
     financial_metrics: list[str] = ____
     # TODO: Define OutputField for sentiment (positive/negative/neutral)
     sentiment: str = ____
-    confidence: float = OutputField(description="Classification confidence 0-1")
+    # TODO: Define OutputField for confidence (0-1 float)
+    # Hint: OutputField(description="Classification confidence 0-1")
+    confidence: float = ____
 
 
 async def structured_extract():
     """Use SimpleQAAgent for structured extraction."""
-    # TODO: Create SimpleQAAgent with ReportExtraction signature, model, and cost budget
-    agent = SimpleQAAgent(____)
+    # TODO: Create SimpleQAAgent with ReportExtraction signature, model, and cost budget.
+    # Hint: SimpleQAAgent(signature=ReportExtraction, model=model, max_llm_cost_usd=1.0)
+    agent = ____
 
     print(f"\n=== Structured Extraction (Signature) ===")
-    texts = sample_docs.select("text").to_series().to_list()
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
     results = []
     for i, text in enumerate(texts[:3]):
-        result = await agent.run(report_text=text[:800])
+        # TODO: Run the agent with report_text input.
+        # Hint: await agent.run(report_text=text[:800])
+        result = ____
         print(f"\n  Doc {i+1}:")
         print(f"    Category: {result.category}")
         print(f"    Entities: {result.key_entities[:5]}")

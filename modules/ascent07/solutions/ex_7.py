@@ -224,11 +224,33 @@ print(f"Dropout rate: 0.5 (zero out 50% of activations during training)")
 print(f"At test time: no dropout, but activations are already scaled")
 print(f"Why: prevents co-adaptation, forces redundant representations")
 
-# Training would follow same backprop pattern as Exercise 5-6
-# with dropout applied after each hidden layer activation
-print(f"Training CNN (simplified demo)...")
-train_losses = [2.3, 1.8, 1.4, 1.1, 0.9]
-print(f"Loss progression: {' → '.join(f'{l:.1f}' for l in train_losses)}")
+# Train using TrainingPipeline (CNN backprop in pure Python is 200+ lines —
+# Exercise 5-6 cover backprop from scratch; here we use the engine)
+from kailash_ml import TrainingPipeline
+
+pipeline = TrainingPipeline(
+    model_type="neural_network",
+    target="label",
+    features=pixel_cols,
+    config={
+        "architecture": "cnn",
+        "hidden_layers": [64, 32],
+        "activation": "relu",
+        "dropout": 0.5,
+        "epochs": 5,
+        "batch_size": 32,
+        "learning_rate": 0.001,
+    },
+)
+
+n_train_cnn = int(data.height * 0.8)
+train_cnn = data[:n_train_cnn]
+test_cnn = data[n_train_cnn:]
+
+result = pipeline.fit(train_cnn)
+train_losses = result.history.get("loss", [])
+print(f"Training complete: {len(train_losses)} epochs")
+print(f"Final loss: {train_losses[-1]:.4f}" if train_losses else "No loss recorded")
 
 
 # ══════════════════════════════════════════════════════════════════════

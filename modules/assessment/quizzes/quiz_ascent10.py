@@ -24,7 +24,7 @@ QUIZ = {
                 "parameters for q_proj and v_proj combined, and the reduction ratio vs full fine-tuning."
             ),
             "options": [
-                "A) 131,072 trainable params per module × 2 modules = 262,144 total. Full fine-tuning: 2 × 16.7M = 33.4M. Reduction: 33.4M / 262K ≈ 128×. But this is per-layer — across 32 layers: 262K × 32 = 8.4M trainable vs 33.4M × 32 = 1.07B. Still only 0.78% of full model parameters.",
+                "A) 131,072 trainable params per module × 2 modules = 262,144 per layer. Across 32 layers: 262K × 32 = 8.4M trainable. Full fine-tuning of q_proj+v_proj: 2 × 16.7M × 32 = 1.07B. Reduction for these layers: 128×. As a fraction of the full 7B model: 8.4M / 7B = 0.12% of total parameters are trainable.",
                 "B) 65,536 trainable params total — LoRA only adds one matrix, not two",
                 "C) 8,388,608 trainable params — LoRA trains 50% of the original parameters",
                 "D) 16,384 trainable params — lora_r=16 means 16 parameters per module",
@@ -146,26 +146,27 @@ QUIZ = {
             "difficulty": "intermediate",
             "question": (
                 "Exercise 3 implements Q-learning on a grid world. The agent converges to "
-                "a suboptimal policy: it avoids the shortest path through a slightly negative "
-                "reward cell (-0.1) and takes a much longer path (+0.01 per step). "
-                "The discount factor is gamma=0.5. What is wrong?"
+                "a suboptimal policy: it takes the safe but long path (15 steps, no penalties) "
+                "instead of the short path (5 steps through two cells with -1.0 penalty each). "
+                "The goal gives +1.0. The discount factor is gamma=0.5. What is wrong?"
             ),
             "options": [
                 "A) The learning rate is too high — the Q-values are oscillating",
-                "B) gamma=0.5 is too low. With gamma=0.5, a reward 3 steps away is worth 0.5³ = 0.125× its face value. The -0.1 cell is on the short path (3 steps to goal, reward=1.0: value ≈ 0.125). The long path (10 steps, reward=1.0: value ≈ 0.001 but no penalty). The agent avoids the short path because gamma=0.5 makes distant rewards nearly worthless. Fix: gamma=0.99 values future rewards highly.",
+                "B) gamma=0.5 is too low, making the distant goal nearly worthless. Short path value: -1.0 + 0.5×0 + 0.5²×0 + 0.5³×(-1.0) + 0.5⁴×1.0 = -1.0 - 0.125 + 0.0625 = -1.0625 (negative!). Long path: 0.5¹⁵ × 1.0 ≈ 0.00003 (tiny but non-negative). The agent rationally avoids the short path because penalties are immediate but the goal is heavily discounted. Fix: gamma=0.99 gives short path value ≈ -1.0 + 0.99³×(-1.0) + 0.99⁴×1.0 = -1.0 - 0.97 + 0.96 = -1.01 — still negative. With gamma=0.99 and a +10 goal: +6.1 (clearly positive).",
                 "C) The epsilon-greedy exploration rate is too low — the agent never discovers the short path",
                 "D) Q-learning cannot handle negative rewards — switch to SARSA",
             ],
             "answer": "B",
             "explanation": (
                 "Discount factor gamma controls how much the agent values future rewards. "
-                "gamma=0.5: reward N steps away is worth 0.5^N × reward. After 3 steps: 12.5%. "
-                "After 10 steps: 0.1%. The short path has value: -0.1 + 0.5×(-0.1) + 0.5²×1.0 = "
-                "-0.1 - 0.05 + 0.25 = 0.1. The long safe path has value: 10 steps of 0.01 each, "
-                "heavily discounted ≈ 0.02. Wait — the short path IS better even at gamma=0.5. "
-                "Re-examining: the issue is gamma=0.5 makes the agent extremely myopic, "
-                "overweighting the immediate -0.1 penalty vs the distant +1.0 goal. "
-                "gamma=0.99 gives: -0.1 + 0.99×(-0.1) + 0.99²×1.0 = 0.78 — clearly positive."
+                "At gamma=0.5, each step discounts by half. The short path traverses two -1.0 "
+                "penalty cells: V_short = -1.0 + 0.5³×(-1.0) + 0.5⁴×1.0 = -1.0 - 0.125 + 0.0625 "
+                "= -1.0625 (net negative). The long safe path: V_long = 0.5¹⁵ × 1.0 ≈ 0 (tiny but "
+                "non-negative). The agent rationally prefers the long path because gamma=0.5 makes "
+                "the goal too distant to offset the immediate penalties. "
+                "Fix: increase gamma to 0.99 AND increase the goal reward so the discounted goal "
+                "outweighs the penalties. The general principle: low gamma → myopic agents that "
+                "avoid any short-term pain regardless of long-term gain."
             ),
             "learning_outcome": "Tune discount factor gamma for appropriate reward time horizon",
         },

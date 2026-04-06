@@ -19,7 +19,7 @@
 <section class="title-slide">
   <h1>Module 1</h1>
   <h2 style="border: none;">Data Pipelines &amp; Visualisation Mastery with Python</h2>
-  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="subtitle">ASCENT &mdash; ML Engineering from Foundations to Mastery &mdash; Terrene Open Academy</p>
   <p class="provocation">"Can you trust a number you didn't explore yourself?"</p>
   <div class="slide-footer">
     <span>ASCENT Module 1</span>
@@ -1210,9 +1210,9 @@ z_beta  = 0.84   # 80% power
 delta   = 20_000  # $20K difference
 sigma   = 80_000  # price std dev
 
-n = ((z_alpha + z_beta) / (delta / sigma)) ** 2
+n = ((z_alpha + z_beta) / (delta / sigma)) ** 2 * 2  # two-sample: multiply by 2
 print(f"Need {math.ceil(n)} transactions per group")
-# Need ~126 transactions per group</code></pre>
+# Need ~252 transactions per group (two-sample test)</code></pre>
       <div class="callout callout-theory">
         <strong>FDR correction:</strong> Testing many towns at once? Bonferroni divides &alpha; by the number of tests. Benjamini-Hochberg controls the false discovery rate &mdash; less conservative, more powerful.
       </div>
@@ -1370,7 +1370,7 @@ fig.show()  # Interactive! Hover for details</code></pre>
       <h3>Scatter + Trendline</h3>
       <pre><code class="language-python"># Floor area vs price, coloured by town
 fig = px.scatter(
-    df.sample(5000).to_pandas(),
+    df.sample(n=5000).to_pandas(),  # Plotly Express requires pandas — use ModelVisualizer in exercises
     x="floor_area_sqm",
     y="resale_price",
     color="town",
@@ -1412,7 +1412,7 @@ fig.show()</code></pre>
       <pre><code class="language-python"># Compute correlation matrix with Polars
 numeric_cols = ["resale_price", "floor_area_sqm",
                 "remaining_lease_months"]
-corr = df.select(numeric_cols).corr()
+corr = df.select(numeric_cols).pearson_corr()
 
 fig = px.imshow(
     corr.to_pandas(),
@@ -1961,7 +1961,7 @@ rank_corr = (
         pl.col("resale_price").rank().alias("price_rank"),
         pl.col("floor_area_sqm").rank().alias("area_rank"),
     )
-    .corr()
+    .pearson_corr()
 )</code></pre>
     </div>
   </div>
@@ -2640,8 +2640,8 @@ profile = await explorer.profile(df)
 </section>
 
 <section>
-  <h2>Connection to Module 2</h2>
-  <h3>Next: Statistical Mastery for ML and AI Success</h3>
+  <h2>Connection to Module 2 &mdash; Feature Engineering &amp; Experiment Design</h2>
+  <h3>Next: Statistical Foundations for Feature Quality and Experiment Validity</h3>
   <div class="columns">
     <div class="col">
       <h3>What You Have Now</h3>
@@ -2747,7 +2747,7 @@ profile = await explorer.profile(df)
   <p class="subtitle">You can now load, explore, profile, clean, and visualise real-world data.</p>
   <p class="provocation">"The goal is not to have data. The goal is to have understanding."</p>
   <div style="margin-top: 2em; font-size: 0.8em; color: #64748B;">
-    <p>Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+    <p>ASCENT &mdash; ML Engineering from Foundations to Mastery &mdash; Terrene Open Academy</p>
     <p>Powered by Kailash Python SDK &mdash; Terrene Foundation</p>
   </div>
 </section>
@@ -2767,6 +2767,17 @@ profile = await explorer.profile(df)
       plugins: [RevealMath.KaTeX, RevealHighlight],
       slideNumber: true,
       pdfSeparateFragments: false
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    Reveal.on('ready', () => {
+      document.querySelectorAll('.katex-display').forEach(el => {
+        katex.render(el.textContent, el, { displayMode: true, throwOnError: false });
+      });
+      document.querySelectorAll('.katex-inline').forEach(el => {
+        katex.render(el.textContent, el, { displayMode: false, throwOnError: false });
+      });
     });
   </script>
 </body>

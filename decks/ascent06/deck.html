@@ -117,7 +117,7 @@
 <section class="title-slide">
   <h1>Module 6</h1>
   <h2 style="border: none;">Unsupervised ML &amp; Pattern Discovery</h2>
-  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="subtitle">ASCENT &mdash; ML Engineering from Foundations to Mastery</p>
   <p class="provocation">"The algorithm that found $2 billion in hidden fraud had never seen a single labelled example."</p>
   <div class="slide-footer">
     <span>ASCENT Module 6</span>
@@ -136,17 +136,17 @@
   <span class="marker marker-foundations">Foundations</span>
   <table>
     <tr><th>Module</th><th>What You Learned</th><th>Kailash Engines</th></tr>
-    <tr><td>M1</td><td>Python fundamentals, Kailash workflows</td><td>Core SDK</td></tr>
-    <tr><td>M2</td><td>Data exploration, profiling, cleaning with Polars</td><td>DataExplorer, PreprocessingPipeline</td></tr>
-    <tr><td>M3</td><td>Statistics, probability, hypothesis testing</td><td>ModelVisualizer</td></tr>
-    <tr><td>M4</td><td>Feature engineering, experiment design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
-    <tr><td>M5</td><td>Supervised ML &mdash; regression, classification, trees, boosting</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
+    <tr><td>M1</td><td>Python &amp; Data Fluency, Polars, EDA</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td></tr>
+    <tr><td>M2</td><td>Statistical Foundations, probability, hypothesis testing</td><td>ExperimentTracker, ModelVisualizer</td></tr>
+    <tr><td>M3</td><td>Feature Engineering &amp; Experiment Design</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td></tr>
+    <tr><td>M4</td><td>Supervised ML &mdash; regression, classification, trees, boosting</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td></tr>
+    <tr><td>M5</td><td>ML Engineering &amp; Production &mdash; orchestration, ensembles, MLOps</td><td>WorkflowBuilder, DataFlow, EnsembleEngine</td></tr>
   </table>
   <div class="callout callout-foundations" style="margin-top: 12px;">
     <strong>M3&ndash;M5 gave you features engineered by hand and models trained with labels.</strong> Today: what happens when nobody tells you the right answer &mdash; and the features engineer themselves?
   </div>
   <aside class="notes">
-    Walk through the table quickly. Emphasise: "Everything so far needed either a human to craft features (M4) or a target label (M5). Today those constraints vanish." Timing: ~2 min.
+    Walk through the table quickly. Emphasise: "Everything so far needed either a human to craft features (M3) or a target label (M4). Today those constraints vanish." Timing: ~2 min.
   </aside>
 </section>
 
@@ -194,21 +194,22 @@
   <div class="svg-diagram">
     <svg width="1100" height="200" viewBox="0 0 1100 200">
       <rect x="10" y="20" width="150" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="85" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M1-M2: Data</text>
+      <text x="85" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M1: Python &amp; Data</text>
       <text x="85" y="62" text-anchor="middle" font-size="10" fill="#334155">DataExplorer</text>
       <text x="85" y="77" text-anchor="middle" font-size="10" fill="#334155">PreprocessingPipeline</text>
       <rect x="180" y="20" width="150" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="255" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M3: Statistics</text>
-      <text x="255" y="62" text-anchor="middle" font-size="10" fill="#334155">ModelVisualizer</text>
+      <text x="255" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M2-M3: Stats &amp; Features</text>
+      <text x="255" y="62" text-anchor="middle" font-size="10" fill="#334155">ExperimentTracker</text>
+      <text x="255" y="77" text-anchor="middle" font-size="10" fill="#334155">FeatureStore, FeatureEngineer</text>
       <rect x="350" y="20" width="170" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="435" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M4: Features</text>
-      <text x="435" y="62" text-anchor="middle" font-size="10" fill="#334155">FeatureStore, FeatureEngineer</text>
-      <text x="435" y="77" text-anchor="middle" font-size="10" fill="#334155">ExperimentTracker</text>
+      <text x="435" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M4: Supervised ML</text>
+      <text x="435" y="62" text-anchor="middle" font-size="10" fill="#334155">TrainingPipeline</text>
+      <text x="435" y="77" text-anchor="middle" font-size="10" fill="#334155">HyperparameterSearch, ModelRegistry</text>
       <rect x="540" y="20" width="170" height="80" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="625" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M5: Supervised ML</text>
-      <text x="625" y="62" text-anchor="middle" font-size="10" fill="#334155">TrainingPipeline</text>
-      <text x="625" y="77" text-anchor="middle" font-size="10" fill="#334155">HyperparameterSearch</text>
-      <text x="625" y="92" text-anchor="middle" font-size="10" fill="#334155">ModelRegistry</text>
+      <text x="625" y="45" text-anchor="middle" font-size="11" font-weight="700" fill="#15803D">M5: ML Engineering</text>
+      <text x="625" y="62" text-anchor="middle" font-size="10" fill="#334155">WorkflowBuilder</text>
+      <text x="625" y="77" text-anchor="middle" font-size="10" fill="#334155">DataFlow, EnsembleEngine</text>
+      <text x="625" y="92" text-anchor="middle" font-size="10" fill="#334155">ModelVisualizer (SHAP/LIME)</text>
       <rect x="730" y="10" width="200" height="110" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="3"/>
       <text x="830" y="35" text-anchor="middle" font-size="11" font-weight="700" fill="#0D9488">M6: Unsupervised (TODAY)</text>
       <text x="830" y="55" text-anchor="middle" font-size="10" fill="#334155">AutoMLEngine</text>
@@ -301,7 +302,7 @@
   <div class="bridge-box">
     <div class="spectrum-diagram">
       <div class="spectrum-node" style="background: #FEF3C7; border: 2px solid #F59E0B;">
-        <div>Manual (M4&ndash;M5)</div>
+        <div>Manual (M3&ndash;M5)</div>
         <div style="font-weight: 400; font-size: 0.8em;">Human crafts features</div>
         <div style="font-weight: 400; font-size: 0.75em;">Domain knowledge</div>
         <div style="font-weight: 400; font-size: 0.75em;">n features &rarr; n features</div>
@@ -555,11 +556,11 @@
     </div>
   </div>
   <div class="derivation-step">
-    <div class="step-label">E-step (Assignment)</div>
+    <div class="step-label">Assignment step</div>
     <span class="katex-display">$$c_i = \arg\min_k \|x_i - \mu_k\|^2$$</span>
   </div>
   <div class="derivation-step">
-    <div class="step-label">M-step (Update)</div>
+    <div class="step-label">Update step</div>
     <span class="katex-display">$$\mu_k = \frac{1}{|C_k|} \sum_{x_i \in C_k} x_i$$</span>
   </div>
   <aside class="notes">
@@ -922,7 +923,7 @@ pipeline.fit(customer_df)  # cluster_id is now a powerful feature</code></pre>
   <span class="marker marker-theory">Theory</span>
   <p>The <strong>condensed cluster tree</strong> shows how clusters merge as &epsilon; increases. Stability measures how long a cluster persists:</p>
   <div class="equation-box">
-    <span class="katex-display">$$\text{stability}(C) = \sum_{x \in C} \left(\frac{1}{\lambda_{\min}(x, C)} - \frac{1}{\lambda_{\max}(C)}\right)$$</span>
+    <span class="katex-display">$$\text{stability}(C) = \sum_{x \in C} \left(\lambda(x, C) - \lambda_{\text{birth}}(C)\right)$$</span>
     <div class="annotation">&lambda; = 1/distance. Larger stability = cluster persists over a wider range of scales</div>
   </div>
   <div class="columns">
@@ -2298,11 +2299,11 @@ pipeline.fit(df)  # Internally: standardize -> PCA(10) -> XGBoost</code></pre>
 <section>
   <h2>Non-Negative Matrix Factorisation (NMF)</h2>
   <span class="marker marker-theory">Theory</span>
-  <p><strong>Factor the term-document matrix into non-negative parts:</strong></p>
+  <p><strong>Factor the document-term matrix into non-negative parts:</strong></p>
   <div class="equation-box">
     <span class="katex-display">$$X \approx WH \quad \text{where} \quad W, H \geq 0$$</span>
     <div class="annotation">
-      <span class="term-input">X</span> (n&times;d) = term-document matrix &nbsp;|&nbsp;
+      <span class="term-input">X</span> (n&times;d) = document-term matrix &nbsp;|&nbsp;
       <span class="term-param">W</span> (n&times;k) = document-topic matrix &nbsp;|&nbsp;
       <span class="term-output">H</span> (k&times;d) = topic-word matrix
     </div>

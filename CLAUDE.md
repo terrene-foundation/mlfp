@@ -20,8 +20,8 @@ No pandas in any exercise. kailash-ml is polars-native — students learn polars
 
 Every exercise must exist in three formats:
 
-| Format  | Location                             | Data Loading         |
-| ------- | ------------------------------------ | -------------------- |
+| Format  | Location                                | Data Loading         |
+| ------- | --------------------------------------- | -------------------- |
 | Local   | `modules/ascentNN/local/ex_N.py`        | `shared.data_loader` |
 | Jupyter | `modules/ascentNN/notebooks/ex_N.ipynb` | `shared.data_loader` |
 | Colab   | `modules/ascentNN/colab/ex_N.ipynb`     | Drive mount + gdown  |
@@ -47,14 +47,18 @@ Each module reduces hand-holding. By M6, students write most code from documenta
 
 ## Course Structure
 
-| Module | Title                                   | Kailash Frameworks                                               |
-| ------ | --------------------------------------- | ---------------------------------------------------------------- |
-| ASCENT01  | Statistics, Probability & Data Fluency  | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer |
-| ASCENT02  | Feature Engineering & Experiment Design | kailash-ml: FeatureStore, FeatureEngineer, ExperimentTracker     |
-| ASCENT03  | Supervised ML — Theory to Production    | Core SDK, DataFlow, kailash-ml: TrainingPipeline, ModelRegistry  |
-| ASCENT04  | Unsupervised ML, NLP & Deep Learning    | kailash-ml: AutoMLEngine, DriftMonitor, InferenceServer + Nexus  |
-| ASCENT05  | LLMs, AI Agents & RAG Systems           | Kaizen: Delegate, ReActAgent, RAGResearchAgent + ML agents       |
-| ASCENT06  | Alignment, Governance, RL & Deployment  | Align + PACT + kailash-ml RL + Nexus                             |
+| Module   | Title                                   | Kailash Frameworks                                                                                          |
+| -------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| ASCENT01 | Python & Data Fluency                   | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                            |
+| ASCENT02 | Statistical Foundations                 | kailash-ml: ExperimentTracker, ModelVisualizer                                                              |
+| ASCENT03 | Feature Engineering & Experiment Design | kailash-ml: FeatureEngineer, FeatureStore, ExperimentTracker                                                |
+| ASCENT04 | Supervised ML                           | kailash-ml: TrainingPipeline, ModelSpec, EvalSpec, HyperparameterSearch, ModelRegistry                      |
+| ASCENT05 | ML Engineering & Production             | Core SDK WorkflowBuilder, DataFlow, kailash-ml: EnsembleEngine, ModelVisualizer                             |
+| ASCENT06 | Unsupervised ML & Pattern Discovery     | kailash-ml: AutoMLEngine, DriftMonitor                                                                      |
+| ASCENT07 | Deep Learning                           | kailash-ml: OnnxBridge, InferenceServer                                                                     |
+| ASCENT08 | NLP & Transformers                      | kailash-ml: ModelVisualizer, AutoMLEngine (text)                                                            |
+| ASCENT09 | LLMs, AI Agents & RAG                   | Kaizen: Delegate, BaseAgent, Signature; Nexus, MCP                                                          |
+| ASCENT10 | Alignment, RL & Governance              | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT: GovernanceEngine, PactGovernedAgent |
 
 ## Kailash Platform
 

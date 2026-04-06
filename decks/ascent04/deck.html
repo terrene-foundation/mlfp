@@ -109,7 +109,7 @@
 <section class="title-slide">
   <h1>Module 4</h1>
   <h2 style="border: none;">Supervised ML: The Complete Model Zoo</h2>
-  <p class="subtitle">Professional Certificate in Machine Learning &mdash; Terrene Open Academy</p>
+  <p class="subtitle">ASCENT &mdash; ML Engineering from Foundations to Mastery &mdash; Terrene Open Academy</p>
   <p class="provocation">"Would YOU trust a system that cries wolf 10,000 times a day?"</p>
   <div class="slide-footer">
     <span>ASCENT Module 4</span>
@@ -126,7 +126,7 @@
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Module 1 &mdash; Data Fluency</h3>
+      <h3>Module 1 &mdash; Python &amp; Data Fluency</h3>
       <ul>
         <li>Polars for data manipulation</li>
         <li><code>DataExplorer</code> for automated profiling</li>
@@ -135,12 +135,12 @@
       </ul>
     </div>
     <div class="col">
-      <h3>Module 2 &mdash; Experiment Design</h3>
+      <h3>Module 2 &mdash; Statistical Foundations</h3>
       <ul>
-        <li><code>FeatureStore</code> with point-in-time correctness</li>
-        <li><code>FeatureEngineer</code> for selection &amp; generation</li>
-        <li><code>ExperimentTracker</code> for reproducibility</li>
-        <li>Hypothesis testing, CUPED, causal inference</li>
+        <li>Probability theory and distributions</li>
+        <li>Hypothesis testing and p-values</li>
+        <li><code>ExperimentTracker</code> for A/B tests</li>
+        <li><code>ModelVisualizer</code> for statistical plots</li>
       </ul>
     </div>
   </div>
@@ -152,27 +152,25 @@
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Theory</h3>
+      <h3>Feature Engineering</h3>
       <ul>
-        <li>Bias-variance trade-off</li>
-        <li>Regularisation (L1, L2)</li>
-        <li>Gradient boosting intuition</li>
-        <li>XGBoost objective function</li>
-        <li>SHAP explainability</li>
+        <li><code>FeatureStore</code> with point-in-time correctness</li>
+        <li><code>FeatureEngineer</code> for selection &amp; generation</li>
+        <li>Encoding, scaling, interaction terms</li>
+        <li>Feature importance and selection</li>
       </ul>
     </div>
     <div class="col">
-      <h3>Production</h3>
+      <h3>Experiment Design</h3>
       <ul>
-        <li><code>TrainingPipeline</code> + <code>ModelSpec</code></li>
-        <li><code>HyperparameterSearch</code></li>
-        <li><code>ModelRegistry</code> lifecycle</li>
-        <li><code>WorkflowBuilder</code> orchestration</li>
-        <li><code>DataFlow</code> persistence</li>
+        <li><code>ExperimentTracker</code> for reproducibility</li>
+        <li>CUPED, causal inference</li>
+        <li>Multi-armed bandits</li>
+        <li>Power analysis and sample sizing</li>
       </ul>
     </div>
   </div>
-  <aside class="notes">Time: ~1 min. M3 introduced the supervised ML framework and one boosting algorithm. Today we cover EVERY supervised model — the complete model zoo — from linear regression to Gaussian Processes.</aside>
+  <aside class="notes">Time: ~1 min. M3 covered feature engineering and experiment design. Today we build the first ML models on those features — the complete supervised model zoo from linear regression to Gaussian Processes.</aside>
 </section>
 
 <section>
@@ -200,11 +198,11 @@
     </thead>
     <tbody>
       <tr><td>M1</td><td>DataExplorer, PreprocessingPipeline, ModelVisualizer</td><td>Explore, clean, visualise</td></tr>
-      <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
-      <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
+      <tr><td>M2</td><td>ExperimentTracker, ModelVisualizer</td><td>Statistics, hypothesis testing</td></tr>
+      <tr><td>M3</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiment design</td></tr>
       <tr><td style="color:var(--ascent-primary);font-weight:700;">M4</td>
-          <td style="color:var(--ascent-primary);">AutoMLEngine, EnsembleEngine, ModelVisualizer (advanced)</td>
-          <td style="color:var(--ascent-primary);">Compare, ensemble, evaluate</td></tr>
+          <td style="color:var(--ascent-primary);">TrainingPipeline, ModelSpec, EvalSpec, HyperparameterSearch, ModelRegistry</td>
+          <td style="color:var(--ascent-primary);">Train, tune, evaluate, register</td></tr>
     </tbody>
   </table>
   <aside class="notes">Time: ~1 min. Show the cumulative build-up. Each module adds engines. By M4, students have a full supervised ML toolkit.</aside>
@@ -1784,13 +1782,13 @@ df = loader.load("ascent04", "sg_credit.csv")</code></pre>
       <tr><td>M2</td><td>FeatureStore, FeatureEngineer, ExperimentTracker</td><td>Features, experiments</td></tr>
       <tr><td>M3</td><td>TrainingPipeline, HyperparameterSearch, ModelRegistry</td><td>Train, tune, register</td></tr>
       <tr><td>M4</td><td>AutoMLEngine, EnsembleEngine, interop</td><td>Compare, ensemble, bridge</td></tr>
-      <tr><td style="color:#64748B;">M5</td><td style="color:#64748B;">DriftMonitor, InferenceServer, Nexus</td><td style="color:#64748B;">ML engineering &amp; production</td></tr>
+      <tr><td style="color:#64748B;">M5</td><td style="color:#64748B;">WorkflowBuilder, DataFlow, EnsembleEngine, ModelVisualizer</td><td style="color:#64748B;">ML engineering &amp; production</td></tr>
     </tbody>
   </table>
   <div class="callout callout-kailash">
-    <strong>Next:</strong> M5 takes these models into production &mdash; drift monitoring, A/B testing, serving, and full MLOps.
+    <strong>Next:</strong> M5 takes these models into production &mdash; explainability, orchestration, ensembles, CI/CD for ML, and full MLOps.
   </div>
-  <aside class="notes">Time: ~1 min. M1-M2 = data, M3-M4 = models, M5 = production.</aside>
+  <aside class="notes">Time: ~1 min. M1-M3 = data and features, M4 = models, M5 = production engineering.</aside>
 </section>
 
 <section>
@@ -1829,7 +1827,7 @@ df = loader.load("ascent04", "sg_credit.csv")</code></pre>
   <h2 style="border: none;">Supervised ML: The Complete Model Zoo</h2>
   <p class="subtitle">Next: Module 5 &mdash; ML Engineering &amp; Production</p>
   <p style="margin-top:40px; color:#64748B; font-size:0.8em;">
-    Professional Certificate in Machine Learning &mdash; Terrene Open Academy<br>
+    ASCENT &mdash; ML Engineering from Foundations to Mastery &mdash; Terrene Open Academy<br>
     Powered by Kailash Python SDK &mdash; Terrene Foundation
   </p>
   <div class="slide-footer">

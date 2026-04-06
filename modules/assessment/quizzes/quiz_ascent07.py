@@ -135,7 +135,39 @@ QUIZ = {
             ),
             "learning_outcome": "Diagnose overfitting from train/test accuracy gap and boundary visualization",
         },
-        # ── Lesson 7.3-7.4: Activations ────────────────────────────────
+        # ── Lesson 7.3: DL power hierarchy ────────────────────────────
+        {
+            "id": "7.3.1",
+            "lesson": "7.3",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "You need to classify satellite images into 50 land-use categories. "
+                "Each image is 256×256×3. A colleague proposes a wide single-hidden-layer "
+                "network (1 layer, 8192 neurons). You propose a deep network (6 layers, "
+                "512 neurons each). Both have ~100M parameters. Which is better and why?"
+            ),
+            "options": [
+                "A) The wide network — universal approximation theorem guarantees a single hidden layer can represent any function, so depth adds no value",
+                "B) The deep network. While a single wide layer CAN represent any function (UAT), it may need exponentially more neurons to do so. Depth enables hierarchical feature composition: layer 1 learns edges, layer 2 learns textures, layer 3 learns parts, layers 4-6 learn objects and scenes. This compositional hierarchy matches the structure of visual data — each layer reuses lower-level features, requiring far fewer total parameters for the same representational power.",
+                "C) Both are equivalent — total parameter count is all that matters for network capacity",
+                "D) The wide network — deep networks always suffer from vanishing gradients and cannot be trained",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The depth vs width trade-off is central to the DL power hierarchy (Lesson 7.3). "
+                "A single wide layer can theoretically represent any function (UAT), but may need "
+                "exponentially many neurons. A deep network composes simple functions hierarchically: "
+                "f(x) = f_6(f_5(f_4(f_3(f_2(f_1(x)))))). Each layer transforms representations, "
+                "building from edges → textures → parts → objects. For 256×256 images with 50 "
+                "categories, this compositionality is critical — a flat network must independently "
+                "learn every pixel-to-category mapping, while a deep network reuses intermediate "
+                "features. Modern techniques (ReLU, BatchNorm, skip connections) solve the vanishing "
+                "gradient concern, making depth practical."
+            ),
+            "learning_outcome": "Choose depth over width for hierarchical feature learning in vision tasks",
+        },
+        # ── Lesson 7.4: Activations ────────────────────────────────────
         {
             "id": "7.4.1",
             "lesson": "7.4",
@@ -425,6 +457,40 @@ QUIZ = {
                 "InferenceServer wraps it in an HTTP endpoint."
             ),
             "learning_outcome": "Justify ONNX export for production deployment via OnnxBridge",
+        },
+        # ── Lesson 7.10: Dropout ────────────────────────────────────────
+        {
+            "id": "7.10.1",
+            "lesson": "7.10",
+            "type": "output_interpretation",
+            "difficulty": "intermediate",
+            "question": (
+                "After training a network with dropout=0.5, a student runs the same input "
+                "through the model 10 times and gets 10 DIFFERENT predictions. They then "
+                "switch to model.eval() mode and get the same prediction every time, but "
+                "all predictions are ~50% smaller in magnitude than the training outputs. "
+                "What explains both observations?"
+            ),
+            "options": [
+                "A) The model has a bug — predictions should be identical in both training and eval mode",
+                "B) During training, dropout randomly zeros 50% of neurons per forward pass, so each run activates a different random subset — producing different outputs. In eval mode, dropout is disabled (all neurons active), but each neuron's output is scaled by (1-p)=0.5 to compensate for the fact that twice as many neurons are now active. If the implementation uses inverted dropout (scale by 1/p during training), eval outputs are correct without scaling. The student's model likely uses standard dropout without inverted scaling.",
+                "C) The 10 different predictions indicate the model has not converged — train for more epochs",
+                "D) model.eval() disables gradient computation, which changes the forward pass outputs",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Dropout has fundamentally different behavior at train vs test time: "
+                "Training: each neuron is randomly kept with probability p (or zeroed with probability "
+                "1-p). This means each forward pass uses a different random subnetwork — hence 10 "
+                "different predictions for the same input. "
+                "Eval/Test: all neurons are active. Expected activation doubles (since during training "
+                "only 50% were active). Two approaches: (1) Standard dropout: multiply outputs by p=0.5 "
+                "at test time (what the student sees). (2) Inverted dropout: multiply by 1/p=2.0 during "
+                "training so test time needs no adjustment. Most frameworks use inverted dropout by "
+                "default. The student's 50%-magnitude outputs confirm standard dropout without test-time "
+                "scaling."
+            ),
+            "learning_outcome": "Explain dropout behavior difference between training and evaluation modes",
         },
     ],
 }

@@ -444,5 +444,78 @@ QUIZ = {
             ),
             "learning_outcome": "Choose AutoMLEngine for exploration vs TrainingPipeline for production",
         },
+        # ── Section H: NLP Tasks & Decoding ────────────────────────────
+        {
+            "id": "8.H.1",
+            "lesson": "8.H",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "A student generates text with beam search (num_beams=2) and the output "
+                "keeps repeating: 'The company reported strong strong strong strong growth.' "
+                "Increasing num_beams to 5 makes it worse: 'The company company company "
+                "reported reported reported.' What is causing the repetition and what "
+                "parameter fixes it?"
+            ),
+            "code": (
+                "output = model.generate(\n"
+                "    input_ids,\n"
+                "    max_length=100,\n"
+                "    num_beams=5,\n"
+                "    # Bug: no repetition penalty\n"
+                ")\n"
+            ),
+            "options": [
+                "A) num_beams is too high — reduce to 1 (greedy decoding) to eliminate repetition",
+                "B) Beam search maximizes total sequence probability. Repeated high-probability tokens compound: P('strong strong strong') can exceed P('strong quarterly growth') because 'strong' has high conditional probability given 'strong'. More beams explore more paths but converge on the same repetitive pattern. Fix: add repetition_penalty=1.2 (penalizes tokens already generated) or no_repeat_ngram_size=3 (blocks any 3-gram from repeating).",
+                "C) The model vocabulary is too small — repeated tokens indicate missing words",
+                "D) The input prompt is too short — longer prompts prevent repetition",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Beam search selects the top-k most probable sequences at each step. "
+                "Language models assign high probability to common n-grams, and once a word "
+                "like 'strong' is generated, P('strong' | 'strong') remains high — creating "
+                "a self-reinforcing loop. More beams makes this worse because all beams converge "
+                "on the repetitive path (it's genuinely the highest probability sequence). "
+                "Solutions: (1) repetition_penalty=1.2 divides the logit of any previously "
+                "generated token by the penalty factor, reducing its probability. "
+                "(2) no_repeat_ngram_size=3 hard-blocks any 3-token sequence from appearing twice. "
+                "(3) Sampling with temperature (top_p, top_k) adds randomness that naturally "
+                "avoids repetition but sacrifices determinism."
+            ),
+            "learning_outcome": "Diagnose beam search repetition and apply repetition penalty parameters",
+        },
+        {
+            "id": "8.H.2",
+            "lesson": "8.H",
+            "type": "context_apply",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 8 evaluates a summarization model. BLEU score is 0.32 and "
+                "BERTScore F1 is 0.89. A colleague says 'BLEU is low — the model is bad.' "
+                "You look at the outputs: the model paraphrases well but uses different words "
+                "than the reference summaries. Which metric should you trust?"
+            ),
+            "options": [
+                "A) BLEU — it is the gold standard for all text generation evaluation",
+                "B) BERTScore. BLEU measures exact n-gram overlap between generated and reference text. A paraphrase like 'revenue increased 20%' vs reference 'sales grew by a fifth' scores low on BLEU (no shared n-grams) but high on BERTScore (semantic similarity via contextual embeddings). For summarization where paraphrasing is expected, BERTScore better captures output quality. BLEU is appropriate for translation where close lexical alignment is expected.",
+                "C) Neither — use ROUGE instead, which is always correct for summarization",
+                "D) Average the two scores: (0.32 + 0.89) / 2 = 0.605 for a balanced assessment",
+            ],
+            "answer": "B",
+            "explanation": (
+                "BLEU (Bilingual Evaluation Understudy) counts n-gram precision: how many "
+                "n-grams in the output appear in the reference. 'Revenue increased 20%' vs "
+                "'Sales grew by a fifth' shares zero 4-grams → BLEU-4 ≈ 0. "
+                "BERTScore computes token-level cosine similarity using BERT embeddings: "
+                "'revenue' ↔ 'sales' (similarity ~0.85), 'increased' ↔ 'grew' (~0.90). "
+                "These semantic matches yield high BERTScore despite zero lexical overlap. "
+                "For summarization, paraphrasing is desirable (summaries should compress, not copy). "
+                "BLEU is designed for machine translation where the reference translation defines "
+                "expected word choices. Using BLEU for summarization penalizes good paraphrasing."
+            ),
+            "learning_outcome": "Choose BERTScore over BLEU for evaluating paraphrastic text generation",
+        },
     ],
 }

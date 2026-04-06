@@ -301,7 +301,40 @@ QUIZ = {
             ),
             "learning_outcome": "Justify MCP tool architecture over direct function passing",
         },
-        # ── Section F-H: Nexus ──────────────────────────────────────────
+        {
+            "id": "9.E.2",
+            "lesson": "9.E",
+            "type": "output_interpretation",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 7's MCP server startup logs show: 'Registered 8 tools: "
+                "[data_explore, data_preprocess, feature_engineer, train_model, "
+                "evaluate_model, register_model, predict, monitor_drift]. "
+                "Agent session: discovered 8 tools, used 3 (data_explore, train_model, "
+                "predict).' The agent answered the user's question correctly using only 3 "
+                "of 8 available tools. What does this tell you about MCP tool design?"
+            ),
+            "options": [
+                "A) The other 5 tools are unused and should be removed to reduce overhead",
+                "B) MCP tools should be fine-grained and composable. The agent discovered all 8 tools via MCP's tool listing protocol, then autonomously selected the 3 relevant to the user's query (explore data → train → predict). The unused tools (preprocess, feature_engineer, evaluate, register, monitor_drift) exist for OTHER queries. This is the MCP advantage: a single server exposes a toolkit; each agent session uses only what it needs.",
+                "C) The agent should have used all 8 tools for a complete pipeline — it took a shortcut",
+                "D) 3 out of 8 tools used means the tool descriptions are poorly written — the agent could not understand the other 5",
+            ],
+            "answer": "B",
+            "explanation": (
+                "MCP's tool discovery protocol lets agents dynamically select from available "
+                "tools based on the task. A 'predict house prices' query needs: data_explore "
+                "(understand the dataset), train_model (fit a model), predict (generate predictions). "
+                "It does NOT need: preprocess (data was clean), feature_engineer (features were "
+                "sufficient), evaluate (user asked for predictions not metrics), register "
+                "(one-off query), monitor_drift (no production deployment). "
+                "The 3/8 usage ratio is healthy — it shows the agent reasons about tool relevance "
+                "rather than blindly executing all available tools. Broad tool registration with "
+                "selective use is the intended MCP pattern."
+            ),
+            "learning_outcome": "Interpret MCP tool discovery logs and understand selective tool usage",
+        },
+        # ── Section F: Nexus ───────────────────────────────────────────
         {
             "id": "9.F.1",
             "lesson": "9.F",
@@ -359,6 +392,153 @@ QUIZ = {
                 "In practice, combining all three gets median latency well under 500ms."
             ),
             "learning_outcome": "Optimize agent latency through caching, streaming, and model routing",
+        },
+        # ── Section G: LLM Evaluation ──────────────────────────────────
+        {
+            "id": "9.G.1",
+            "lesson": "9.G",
+            "type": "context_apply",
+            "difficulty": "advanced",
+            "question": (
+                "You are evaluating two LLMs for a legal document analysis agent. "
+                "Model A scores MMLU=82%, GPQA=45%. Model B scores MMLU=78%, GPQA=62%. "
+                "MMLU tests broad academic knowledge; GPQA tests graduate-level expert "
+                "reasoning (questions written by PhD domain experts). Which model do you "
+                "deploy for legal analysis and why?"
+            ),
+            "options": [
+                "A) Model A — higher MMLU means better overall intelligence, which transfers to legal analysis",
+                "B) Model B. GPQA measures expert-level reasoning — the ability to analyze complex problems requiring domain depth, not surface knowledge. Legal document analysis demands multi-step reasoning over nuanced text (interpreting clauses, identifying contradictions, applying precedent). Model B's 17-point GPQA advantage indicates stronger expert reasoning, even though Model A has broader surface knowledge (4-point MMLU lead). MMLU's multiple-choice format tests recall; GPQA tests applied reasoning.",
+                "C) Neither — benchmark scores do not predict real-world task performance at all",
+                "D) Model A — the 4% MMLU difference is more significant than the 17% GPQA difference because MMLU has more questions",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Benchmark selection must match the deployment task's cognitive demands. "
+                "MMLU (Massive Multitask Language Understanding) covers 57 subjects at undergraduate "
+                "level — it measures breadth of knowledge. High MMLU does not guarantee deep reasoning. "
+                "GPQA (Graduate-level Professional QA) uses questions designed by PhD experts to be "
+                "answerable only through genuine understanding, not pattern matching. "
+                "For legal analysis, the task requires: reading complex contracts, identifying implicit "
+                "obligations, reasoning about clause interactions — all GPQA-style expert reasoning. "
+                "Model B's 62% GPQA vs 45% is a substantial gap (38% relative improvement) indicating "
+                "materially better reasoning capability for expert-level tasks."
+            ),
+            "learning_outcome": "Select LLMs based on task-relevant benchmarks, not headline scores",
+        },
+        {
+            "id": "9.G.2",
+            "lesson": "9.G",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Your RAG agent generates financial summaries. You need to evaluate output "
+                "quality at scale (1,000 summaries/week). Three options: (1) Human expert "
+                "review ($50/summary), (2) LLM-as-Judge (GPT-4 evaluating outputs, $0.05/summary), "
+                "(3) Automated metrics (ROUGE + BERTScore, $0.001/summary). "
+                "How should you combine these?"
+            ),
+            "options": [
+                "A) Human review only — automated evaluation cannot assess financial accuracy",
+                "B) Use all three in a tiered strategy. Tier 1: automated metrics on ALL 1,000 summaries to flag outliers (low ROUGE/BERTScore). Tier 2: LLM-as-Judge on flagged outputs + random 10% sample (~150 summaries) to assess reasoning quality. Tier 3: human expert review on LLM-flagged issues + random 2% sample (~20 summaries) to calibrate LLM-as-Judge accuracy and catch domain-specific errors. This gives comprehensive coverage at ~$12/week instead of $50,000/week.",
+                "C) LLM-as-Judge only — it is as good as human evaluation and 1000× cheaper",
+                "D) Automated metrics only — ROUGE and BERTScore are sufficient for financial text",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Each evaluation method has complementary strengths and weaknesses: "
+                "Automated metrics: fast and cheap, catch gross failures (empty outputs, wrong length, "
+                "copied input) but cannot assess factual accuracy or reasoning quality. "
+                "LLM-as-Judge: evaluates coherence, relevance, and reasoning quality at scale. "
+                "Correlates 0.8-0.9 with human judgment on general quality. Weak on: domain-specific "
+                "accuracy (may not catch subtle financial errors), novel failure modes. "
+                "Human expert: catches domain errors (wrong financial interpretation, misleading "
+                "summaries) but does not scale to 1,000/week. "
+                "The tiered approach uses each method where it excels: metrics for coverage, "
+                "LLM for quality, humans for calibration and domain accuracy."
+            ),
+            "learning_outcome": "Design tiered evaluation combining automated metrics, LLM-as-Judge, and human review",
+        },
+        # ── Section H: Agent Architecture ──────────────────────────────
+        {
+            "id": "9.H.1",
+            "lesson": "9.H",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "A student builds a multi-agent system where the orchestrator calls "
+                "specialist agents. The orchestrator hangs indefinitely on the second "
+                "query. The first query works fine. What is wrong?"
+            ),
+            "code": (
+                "class Orchestrator(BaseAgent):\n"
+                "    def __init__(self):\n"
+                "        self.financial = FinancialAgent()\n"
+                "        self.legal = LegalAgent()\n"
+                "        # Bug: agents share a single session\n"
+                "        self.session = create_session()\n"
+                "\n"
+                "    async def run(self, query):\n"
+                "        if 'financial' in query:\n"
+                "            return await self.financial.run(\n"
+                "                query, session=self.session\n"
+                "            )\n"
+                "        return await self.legal.run(\n"
+                "            query, session=self.session\n"
+                "        )\n"
+            ),
+            "options": [
+                "A) The if/else routing is too simplistic — use Pipeline.router() instead",
+                "B) All agents share one session object. The first query acquires the session and completes. The second query tries to use the same session, which may still hold state (conversation history, locks) from the first. Fix: create a new session per query (session = create_session() inside run()), or use Kaizen's Pipeline which manages session lifecycle per request. Shared mutable state across agent invocations is the #1 multi-agent bug.",
+                "C) BaseAgent does not support multiple specialist agents — use SupervisorAgent instead",
+                "D) The async/await syntax is incorrect — use asyncio.gather() for parallel execution",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Session-per-request is a fundamental pattern in agent architectures. "
+                "A session holds: conversation history, tool call state, budget tracking, "
+                "and potentially locks. Sharing a session across sequential agent calls means: "
+                "(1) The second agent sees the first agent's conversation history (context bleed). "
+                "(2) If the session has a lock or active state from the first call, the second "
+                "call blocks waiting for it. (3) Budget tracking accumulates incorrectly. "
+                "Fix: self.session = create_session() per request in run(), not in __init__(). "
+                "Kaizen's Pipeline and SupervisorAgent handle this correctly by default — "
+                "each agent invocation gets an isolated session."
+            ),
+            "learning_outcome": "Isolate agent sessions to prevent state leakage in multi-agent systems",
+        },
+        {
+            "id": "9.H.2",
+            "lesson": "9.H",
+            "type": "output_interpretation",
+            "difficulty": "intermediate",
+            "question": (
+                "Your deployed RAG agent via Nexus shows these metrics: "
+                "Time to first token (TTFT): 450ms, Total response time: 3.2s, "
+                "Token generation rate: 85 tokens/sec. Users report the agent feels "
+                "'slow' despite the 450ms TTFT. The average response is 240 tokens. "
+                "What is the actual user experience and how do you improve it?"
+            ),
+            "options": [
+                "A) 450ms TTFT is fast — users are being unreasonable. No change needed.",
+                "B) TTFT (450ms) is acceptable — users see the first word quickly. But total time (3.2s) is the perceived slowness. Breakdown: 450ms retrieval + LLM prefill, then 240 tokens at 85 tok/sec = 2.8s generation. Users wait 3.2s for a complete answer. With streaming enabled, users read as tokens arrive — perceived completion time drops because reading speed (~250 words/min ≈ 4 tok/sec) is much slower than generation (85 tok/sec). The answer appears complete before the user finishes reading.",
+                "C) The token generation rate of 85 tok/sec is too slow — upgrade to a faster GPU",
+                "D) 240 tokens is too long — reduce max_tokens to 50 for faster responses",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Three latency metrics matter for agent UX: "
+                "1. TTFT (Time To First Token): how long before the user sees anything. "
+                "   450ms is good — under the 1s threshold for perceived responsiveness. "
+                "2. Generation rate: 85 tok/sec means ~340 words/min of output. "
+                "3. Total time: TTFT + tokens/rate = 450ms + 240/85 = 3.27s. "
+                "The key insight: humans read at ~250 words/min (4 tok/sec), but tokens arrive "
+                "at 85 tok/sec. With streaming, the user sees tokens 21× faster than they can read. "
+                "By the time they read the first sentence (~15 words, 0.2s of reading), the model "
+                "has generated ~17 more tokens. The response feels complete before they finish reading. "
+                "Without streaming, they wait 3.2s for nothing, then read — doubling perceived latency."
+            ),
+            "learning_outcome": "Analyze agent latency metrics and apply streaming to improve perceived performance",
         },
     ],
 }

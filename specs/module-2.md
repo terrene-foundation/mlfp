@@ -1,4 +1,4 @@
-### MODULE 2: Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success
+# MODULE 2: Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success
 
 **Description**: Statistical foundations including regression models. Following R5 Deck 3A: regression and logistic regression are taught as inference tools BEFORE the ML pipeline.
 
@@ -15,7 +15,7 @@
 
 ---
 
-#### Lesson 2.1: Probability and Bayesian Thinking
+## Lesson 2.1: Probability and Bayesian Thinking
 
 **Prerequisites**: M1 complete (Python, data manipulation)
 **Spectrum Position**: Uncertainty quantification — foundation for all statistical reasoning
@@ -52,7 +52,7 @@
 
 ---
 
-#### Lesson 2.2: Parameter Estimation and Inference
+## Lesson 2.2: Parameter Estimation and Inference
 
 **Prerequisites**: 2.1 (probability, distributions)
 **Spectrum Position**: Model fitting — connecting distributions to data
@@ -87,7 +87,7 @@
 
 ---
 
-#### Lesson 2.3: Bootstrapping and Hypothesis Testing
+## Lesson 2.3: Bootstrapping and Hypothesis Testing
 
 **Prerequisites**: 2.2 (sampling distributions, confidence intervals)
 **Spectrum Position**: Resampling and decision-making — when theory isn't enough
@@ -129,7 +129,7 @@
 
 ---
 
-#### Lesson 2.4: A/B Testing and Experiment Design
+## Lesson 2.4: A/B Testing and Experiment Design
 
 **Prerequisites**: 2.3 (hypothesis testing, p-values)
 **Spectrum Position**: Experimental design — structured learning from interventions
@@ -165,7 +165,7 @@
 
 ---
 
-#### Lesson 2.5: Linear Regression
+## Lesson 2.5: Linear Regression
 
 **Prerequisites**: 2.2 (MLE, parameter estimation), 2.3 (hypothesis testing, p-values)
 **Spectrum Position**: First predictive model — quantifying relationships
@@ -207,7 +207,7 @@
 
 ---
 
-#### Lesson 2.6: Logistic Regression and Classification Foundations
+## Lesson 2.6: Logistic Regression and Classification Foundations
 
 **Prerequisites**: 2.5 (linear regression, coefficients, significance testing)
 **Spectrum Position**: Binary prediction — from continuous to categorical outcomes
@@ -250,7 +250,7 @@
 
 ---
 
-#### Lesson 2.7: CUPED and Causal Inference
+## Lesson 2.7: CUPED and Causal Inference
 
 **Prerequisites**: 2.4 (A/B testing), 2.5 (linear regression)
 **Spectrum Position**: Advanced experiment analysis — beyond basic A/B testing
@@ -293,7 +293,7 @@
 
 ---
 
-#### Lesson 2.8: Capstone — Statistical Analysis Project
+## Lesson 2.8: Capstone — Statistical Analysis Project
 
 **Prerequisites**: All of M2 (2.1-2.7)
 **Spectrum Position**: Integration — applying all statistical tools to a real problem

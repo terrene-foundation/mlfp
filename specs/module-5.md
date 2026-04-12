@@ -1,4 +1,4 @@
-### MODULE 5: Deep Learning and Machine Learning Mastery in Vision and Transfer Learning
+# MODULE 5: Deep Learning and Machine Learning Mastery in Vision and Transfer Learning
 
 **Description**: Every major DL architecture. One paradigm per lesson. All implemented. Following R5 Deck 6A (comprehensive architecture coverage) + PCML6 notebooks (crown jewel implementations).
 
@@ -16,7 +16,7 @@
 
 ---
 
-#### Lesson 5.1: Autoencoders
+## Lesson 5.1: Autoencoders
 
 **Prerequisites**: M4.8 (neural networks, training toolkit)
 **Spectrum Position**: Unsupervised DL — learning compressed representations
@@ -56,7 +56,7 @@
 
 ---
 
-#### Lesson 5.2: CNNs and Computer Vision
+## Lesson 5.2: CNNs and Computer Vision
 
 **Prerequisites**: 5.1 (autoencoder training experience)
 **Spectrum Position**: Spatial feature learning — extracting patterns from grid data
@@ -101,7 +101,7 @@
 
 ---
 
-#### Lesson 5.3: RNNs and Sequence Models
+## Lesson 5.3: RNNs and Sequence Models
 
 **Prerequisites**: 5.2 (training experience, batch norm, gradient concepts)
 **Spectrum Position**: Temporal feature learning — extracting patterns from sequences
@@ -144,7 +144,7 @@
 
 ---
 
-#### Lesson 5.4: Transformers
+## Lesson 5.4: Transformers
 
 **Prerequisites**: 5.3 (attention mechanisms, sequence models)
 **Spectrum Position**: Attention-based feature learning — processing sequences in parallel
@@ -191,7 +191,7 @@
 
 ---
 
-#### Lesson 5.5: Generative Models — GANs and Diffusion
+## Lesson 5.5: Generative Models — GANs and Diffusion
 
 **Prerequisites**: 5.1 (autoencoders, VAE), 5.2 (CNNs)
 **Spectrum Position**: Generative modelling — learning to create new data
@@ -235,7 +235,7 @@
 
 ---
 
-#### Lesson 5.6: Graph Neural Networks
+## Lesson 5.6: Graph Neural Networks
 
 **Prerequisites**: 5.4 (attention mechanisms)
 **Spectrum Position**: Graph feature learning — patterns in connected data
@@ -268,7 +268,7 @@
 
 ---
 
-#### Lesson 5.7: Transfer Learning
+## Lesson 5.7: Transfer Learning
 
 **Prerequisites**: 5.2 (CNNs), 5.4 (Transformers/BERT)
 **Spectrum Position**: Knowledge transfer — leveraging pre-trained representations
@@ -308,7 +308,7 @@
 
 ---
 
-#### Lesson 5.8: Reinforcement Learning
+## Lesson 5.8: Reinforcement Learning
 
 **Prerequisites**: 5.2-5.4 (neural network training experience)
 **Spectrum Position**: Learning from interaction — policies learned through environment feedback

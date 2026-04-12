@@ -1,4 +1,4 @@
-### MODULE 6: Machine Learning with Language Models and Agentic Workflows
+# MODULE 6: Machine Learning with Language Models and Agentic Workflows
 
 **Description**: Build LLM applications, fine-tune models, deploy governed agents. All engineering, all code. Following R5 Deck 6B (10 fine-tuning techniques, agentic design) — adapted from CrewAI to Kaizen.
 
@@ -17,7 +17,7 @@
 
 ---
 
-#### Lesson 6.1: LLM Fundamentals, Prompt Engineering, and Structured Output
+## Lesson 6.1: LLM Fundamentals, Prompt Engineering, and Structured Output
 
 **Prerequisites**: M5 complete (DL architectures, transformers)
 **Spectrum Position**: Semantic feature learning — language models as feature extractors at scale
@@ -57,7 +57,7 @@
 
 ---
 
-#### Lesson 6.2: LLM Fine-tuning — LoRA, Adapters, and the Technique Landscape
+## Lesson 6.2: LLM Fine-tuning — LoRA, Adapters, and the Technique Landscape
 
 **Prerequisites**: 6.1 (LLM fundamentals), 5.4 (transformer architecture)
 **Spectrum Position**: Customising language models — making them domain-specific
@@ -113,7 +113,7 @@
 
 ---
 
-#### Lesson 6.3: Preference Alignment — DPO and GRPO
+## Lesson 6.3: Preference Alignment — DPO and GRPO
 
 **Prerequisites**: 6.2 (fine-tuning), 5.8 (RL: PPO)
 **Spectrum Position**: Aligning models with human preferences — engineering the training signal
@@ -161,7 +161,7 @@
 
 ---
 
-#### Lesson 6.4: RAG Systems
+## Lesson 6.4: RAG Systems
 
 **Prerequisites**: 6.1 (LLM fundamentals, prompt engineering), 4.6 (NLP, embeddings)
 **Spectrum Position**: Knowledge-augmented generation — grounding LLMs in facts
@@ -195,7 +195,7 @@
 
 ---
 
-#### Lesson 6.5: AI Agents — ReAct, Tool Use, and Function Calling
+## Lesson 6.5: AI Agents — ReAct, Tool Use, and Function Calling
 
 **Prerequisites**: 6.1 (LLM fundamentals, Kaizen Delegate)
 **Spectrum Position**: Autonomous ML — agents that reason and act
@@ -237,7 +237,7 @@
 
 ---
 
-#### Lesson 6.6: Multi-Agent Orchestration and MCP
+## Lesson 6.6: Multi-Agent Orchestration and MCP
 
 **Prerequisites**: 6.5 (single agents, tool use)
 **Spectrum Position**: Agent coordination — multiple specialists working together
@@ -274,7 +274,7 @@
 
 ---
 
-#### Lesson 6.7: AI Governance Engineering
+## Lesson 6.7: AI Governance Engineering
 
 **Prerequisites**: 6.6 (multi-agent systems)
 **Spectrum Position**: Governed AI — engineering safety and accountability into systems
@@ -316,7 +316,7 @@
 
 ---
 
-#### Lesson 6.8: Capstone — Full Production Platform
+## Lesson 6.8: Capstone — Full Production Platform
 
 **Prerequisites**: All of M6 (6.1-6.7)
 **Spectrum Position**: Integration — ship a complete governed AI system

@@ -1,4 +1,4 @@
-### MODULE 4: Unsupervised Machine Learning and Advanced Techniques for Insights
+# MODULE 4: Unsupervised Machine Learning and Advanced Techniques for Insights
 
 **Description**: Pattern discovery without labels, then the bridge to neural feature learning. USML = automated feature engineering (from R5 Deck 5A).
 
@@ -17,7 +17,7 @@
 
 ---
 
-#### Lesson 4.1: Clustering
+## Lesson 4.1: Clustering
 
 **Prerequisites**: M3 complete (supervised ML)
 **Spectrum Position**: USML begins — discovering group structure without labels
@@ -59,7 +59,7 @@
 
 ---
 
-#### Lesson 4.2: EM Algorithm and Gaussian Mixture Models
+## Lesson 4.2: EM Algorithm and Gaussian Mixture Models
 
 **Prerequisites**: 4.1 (clustering), 2.1 (Bayesian thinking)
 **Spectrum Position**: Soft clustering — probabilistic assignment to groups
@@ -94,7 +94,7 @@
 
 ---
 
-#### Lesson 4.3: Dimensionality Reduction
+## Lesson 4.3: Dimensionality Reduction
 
 **Prerequisites**: 4.1 (clustering), 2.5 (linear algebra concepts from regression)
 **Spectrum Position**: Feature compression — discovering latent axes
@@ -134,7 +134,7 @@
 
 ---
 
-#### Lesson 4.4: Anomaly Detection and Ensembles
+## Lesson 4.4: Anomaly Detection and Ensembles
 
 **Prerequisites**: 4.1 (clustering), 3.5 (evaluation metrics)
 **Spectrum Position**: Outlier discovery — finding what doesn't belong
@@ -167,7 +167,7 @@
 
 ---
 
-#### Lesson 4.5: Association Rules and Market Basket Analysis
+## Lesson 4.5: Association Rules and Market Basket Analysis
 
 **Prerequisites**: 4.1 (pattern discovery concept)
 **Spectrum Position**: Co-occurrence pattern discovery — finding what appears together
@@ -201,7 +201,7 @@
 
 ---
 
-#### Lesson 4.6: NLP — Text to Topics
+## Lesson 4.6: NLP — Text to Topics
 
 **Prerequisites**: 4.3 (dimensionality reduction), 4.1 (clustering)
 **Spectrum Position**: Text feature discovery — extracting meaning from unstructured text
@@ -240,7 +240,7 @@
 
 ---
 
-#### Lesson 4.7: Recommender Systems and Collaborative Filtering
+## Lesson 4.7: Recommender Systems and Collaborative Filtering
 
 **Prerequisites**: 4.3 (PCA/SVD), 4.6 (word embeddings concept)
 **Spectrum Position**: THE PIVOT — optimisation drives feature discovery
@@ -279,7 +279,7 @@
 
 ---
 
-#### Lesson 4.8: DL Foundations — Neural Networks, Backpropagation, and the Training Toolkit
+## Lesson 4.8: DL Foundations — Neural Networks, Backpropagation, and the Training Toolkit
 
 **Prerequisites**: 4.7 (embeddings, optimisation-driven feature discovery), 2.5 (regression)
 **Spectrum Position**: The bridge — hidden layers are USML + error feedback

@@ -1,4 +1,4 @@
-### MODULE 3: Supervised Machine Learning for Building and Deploying Models
+# MODULE 3: Supervised Machine Learning for Building and Deploying Models
 
 **Description**: The ML pipeline — from feature engineering to production deployment. Builds on M2's regression foundation. Following R5 Deck 4A: focus on the PIPELINE and advanced models, not re-teaching basic regression.
 
@@ -15,7 +15,7 @@
 
 ---
 
-#### Lesson 3.1: Feature Engineering, ML Pipeline, and Feature Selection
+## Lesson 3.1: Feature Engineering, ML Pipeline, and Feature Selection
 
 **Prerequisites**: M2 complete (statistics, regression)
 **Spectrum Position**: Manual feature engineering — human designs features from domain knowledge
@@ -51,7 +51,7 @@
 
 ---
 
-#### Lesson 3.2: Bias-Variance, Regularisation, and Cross-Validation
+## Lesson 3.2: Bias-Variance, Regularisation, and Cross-Validation
 
 **Prerequisites**: 2.5 (linear regression), 3.1 (feature engineering)
 **Spectrum Position**: Model complexity control — the fundamental ML tradeoff
@@ -93,7 +93,7 @@
 
 ---
 
-#### Lesson 3.3: The Complete Supervised Model Zoo
+## Lesson 3.3: The Complete Supervised Model Zoo
 
 **Prerequisites**: 3.2 (bias-variance, regularisation, cross-validation)
 **Spectrum Position**: Model breadth — knowing when to use what
@@ -126,7 +126,7 @@
 
 ---
 
-#### Lesson 3.4: Gradient Boosting Deep Dive
+## Lesson 3.4: Gradient Boosting Deep Dive
 
 **Prerequisites**: 3.3 (decision trees, random forests)
 **Spectrum Position**: Model depth — mastering the dominant tabular algorithm
@@ -161,7 +161,7 @@
 
 ---
 
-#### Lesson 3.5: Model Evaluation, Imbalance, and Calibration
+## Lesson 3.5: Model Evaluation, Imbalance, and Calibration
 
 **Prerequisites**: 3.3 + 3.4 (full model zoo)
 **Spectrum Position**: Model assessment — knowing how good your model really is
@@ -205,7 +205,7 @@
 
 ---
 
-#### Lesson 3.6: Interpretability and Fairness
+## Lesson 3.6: Interpretability and Fairness
 
 **Prerequisites**: 3.3-3.5 (trained models, evaluation)
 **Spectrum Position**: Model transparency — explaining predictions and checking for bias
@@ -245,7 +245,7 @@
 
 ---
 
-#### Lesson 3.7: Workflow Orchestration, Model Registry, and Hyperparameter Search
+## Lesson 3.7: Workflow Orchestration, Model Registry, and Hyperparameter Search
 
 **Prerequisites**: 3.1-3.6 (complete ML knowledge)
 **Spectrum Position**: ML engineering — automating the training pipeline
@@ -275,7 +275,7 @@
 
 ---
 
-#### Lesson 3.8: Production Pipeline — DataFlow, Drift, and Deployment
+## Lesson 3.8: Production Pipeline — DataFlow, Drift, and Deployment
 
 **Prerequisites**: 3.7 (workflow orchestration, model registry)
 **Spectrum Position**: Production ML — from training to serving and monitoring

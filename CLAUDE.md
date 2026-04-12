@@ -106,6 +106,10 @@ Each MLFP module draws from one or more ASCENT program modules:
 | `/build-exercise`     | Create a single exercise across both formats            |
 | `/validate-notebooks` | Run all notebooks and verify outputs                    |
 
+## Curriculum Specs
+
+The `specs/` directory is the **authoritative curriculum specification**. Read `specs/_index.md` first — it's a small manifest with tags per spec file. Only load the spec files relevant to your current task.
+
 ## Rules Index
 
 | Concern                      | Rule File                     |

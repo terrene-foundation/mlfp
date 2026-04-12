@@ -104,10 +104,10 @@ cp .env.example .env  # API keys for M6 (OPENAI_API_KEY, HF_TOKEN)
 uv run python modules/mlfp01/solutions/ex_1.py
 
 # View the first lecture deck
-open decks/mlfp01/deck.html
+open modules/mlfp01/deck.html
 
 # Or read the textbook chapter for self-study
-open decks/mlfp01/lessons/01/textbook.html
+open modules/mlfp01/lessons/01/textbook.html
 ```
 
 ### Three Ways to Consume Each Lesson
@@ -116,9 +116,9 @@ Every lesson ships as **three independent HTML files**, so instructors, students
 
 | Format           | File                                       | Audience       | Layout    |
 | ---------------- | ------------------------------------------ | -------------- | --------- |
-| **Slides**       | `decks/mlfpNN/lessons/LL/slides.html`      | Lecturers      | Landscape (Reveal.js 1280×720) |
-| **Textbook**     | `decks/mlfpNN/lessons/LL/textbook.html`    | Self-learners  | Portrait (long-form reading)    |
-| **Speaker notes**| `decks/mlfpNN/lessons/LL/notes.html`       | Instructors    | Portrait (per-slide cues)       |
+| **Slides**       | `modules/mlfpNN/lessons/LL/slides.html`      | Lecturers      | Landscape (Reveal.js 1280×720) |
+| **Textbook**     | `modules/mlfpNN/lessons/LL/textbook.html`    | Self-learners  | Portrait (long-form reading)    |
+| **Speaker notes**| `modules/mlfpNN/lessons/LL/notes.html`       | Instructors    | Portrait (per-slide cues)       |
 
 A module-level `deck.html` concatenates all 8 lessons into one Reveal.js deck for a continuous 3-hour session. A `textbook.md` / `speaker-notes.md` provides the markdown equivalents for instructors who prefer a single file.
 
@@ -145,43 +145,49 @@ Auto-detects environment (local vs Colab) and pulls from Google Drive when neede
 
 ## Repository Structure
 
+**Everything for a module lives inside `modules/mlfpNN/`** — exercises, deck, textbook, speaker notes, and per-lesson HTML are all co-located.
+
 ```
 mlfp/
   modules/
-    mlfp01-06/                    6 modules, 8 exercises each
-      solutions/ex_1-8.py         Complete reference implementations
-      local/ex_1-8.py             Scaffolded fill-in-the-blank
+    assets/                       Shared resources (used by all modules)
+      css/theme.css               Reveal.js deck theme (--mlfp-* variables)
+      css/textbook.css            Portrait textbook reading theme
+      templates/                  Lesson HTML templates
+    assessment/
+      quizzes/quiz_mlfp01-06.py   End-of-module quizzes
+    mlfp01/                       Module 1 — everything in one place
+      README.md                   Module overview + lesson list
+      deck.html                   MASTER 78-slide Reveal.js deck (full 3-hour session)
+      deck.pdf                    Master deck (pre-built PDF)
+      speaker-notes.md            MASTER speaker notes (markdown)
+      textbook.md                 MASTER textbook chapter (markdown, ~4000 lines)
+      index.html                  Module landing page with lesson TOC
+      solutions/ex_1-8.py         Exercise solutions (instructor reference)
+      local/ex_1-8.py             Scaffolded fill-in-the-blank (learner)
       colab/ex_1-8.ipynb          Colab notebooks
       notebooks/ex_1-8.ipynb      Jupyter notebooks
-      README.md                   Module description
-  decks/
-    mlfp01-06/                    Per-module content
-      deck.html                   Master 78-100 slide Reveal.js deck
-      speaker-notes.md            Master instructor notes (markdown)
-      textbook.md                 Master textbook chapter (markdown)
-      index.html                  Module landing page with lesson TOC
-      lessons/01-08/              Per-lesson HTML files
-        textbook.html             Standalone textbook chapter (portrait)
-        slides.html               Standalone slide deck (landscape)
-        notes.html                Standalone speaker notes (portrait)
-    assets/
-      css/theme.css               Reveal.js theme (--mlfp-* variables)
-      css/textbook.css            Portrait reading theme
-      templates/                  HTML templates for lesson generation
+      lessons/                    PER-LESSON HTML (standalone, navigate independently)
+        01/
+          slides.html             Lesson 1.1 slides (landscape Reveal.js)
+          textbook.html           Lesson 1.1 textbook (portrait, self-study)
+          notes.html              Lesson 1.1 speaker notes (portrait)
+        02/ … 08/                 Same structure for lessons 1.2 – 1.8
+    mlfp02/ … mlfp06/             Same structure for M2-M6
   data/
-    mlfp01-04/                    Singapore-context datasets
+    mlfp01-04/                    Singapore-context datasets (CSV/Parquet)
     mlfp_assessment/              Capstone assessment datasets
   shared/                         Data loader, Kailash helpers
   specs/                          Authoritative v2 course specs
-    module-1.md .. module-6.md    Per-module lesson specs
-    design-principles.md          Feature Engineering Spectrum, 3-layer system
+    module-1.md … module-6.md     Per-module lesson specs
+    design-principles.md          Feature Engineering Spectrum, three-layer system
     exercise-mapping.md           Exercise-to-lesson map
   workspaces/curriculum/
     04-validate/                  Red-team audit reports (rt1-rt6)
   scripts/
     generate-pdfs.sh              Build PDFs for all HTML deliverables
     generate_datasets.py          Regenerate datasets (reproducible seed)
-  pdf/                            Generated PDFs (gitignored, build locally)
+  pdf/                            Generated PDFs (gitignored — build locally)
 ```
 
 ### Build PDFs

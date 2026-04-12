@@ -56,7 +56,7 @@ pdf_markdown() {
 # ── 1. Master decks (6 landscape) ───────────────────────
 echo "[$(date)] [1/4] Building master decks..." | tee -a "$LOG"
 for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
-  src="$BASE/decks/$m/deck.html"
+  src="$BASE/modules/$m/deck.html"
   dst="$OUT/decks/$m-master.pdf"
   if [ -f "$src" ]; then
     echo "  $m master deck"
@@ -67,7 +67,7 @@ done
 # ── 2. Master textbooks (6 portrait) ─────────────────────
 echo "[$(date)] [2/4] Building master textbooks (markdown)..." | tee -a "$LOG"
 for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
-  src="$BASE/decks/$m/textbook.md"
+  src="$BASE/modules/$m/textbook.md"
   dst="$OUT/textbooks/$m-textbook.pdf"
   if [ -f "$src" ]; then
     echo "  $m textbook"
@@ -78,7 +78,7 @@ done
 # ── 3. Master speaker notes (6 portrait) ─────────────────
 echo "[$(date)] [3/4] Building master speaker notes (markdown)..." | tee -a "$LOG"
 for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
-  src="$BASE/decks/$m/speaker-notes.md"
+  src="$BASE/modules/$m/speaker-notes.md"
   dst="$OUT/notes/$m-speaker-notes.pdf"
   if [ -f "$src" ]; then
     echo "  $m speaker notes"
@@ -91,7 +91,7 @@ echo "[$(date)] [4/4] Building per-lesson PDFs (144 files)..." | tee -a "$LOG"
 for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
   mkdir -p "$OUT/lessons/$m"
   count=0
-  for lesson_dir in "$BASE/decks/$m/lessons"/*/; do
+  for lesson_dir in "$BASE/modules/$m/lessons"/*/; do
     lesson_num=$(basename "$lesson_dir")
     mkdir -p "$OUT/lessons/$m/$lesson_num"
 

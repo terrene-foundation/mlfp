@@ -59,7 +59,7 @@ No references to any institutional partner, funding body, or prior course code i
 | MLFP03 | Supervised Machine Learning for Building and Deploying Models                                | kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry; Core SDK: WorkflowBuilder; DataFlow         |
 | MLFP04 | Unsupervised Machine Learning and Advanced Techniques for Insights                           | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, ModelVisualizer                                        |
 | MLFP05 | Deep Learning and Machine Learning Mastery in Vision and Transfer Learning                   | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer                                     |
-| MLFP06 | Machine Learning with Language Models and Agentic Workflows for Organisational Transformation | Kaizen: Delegate, BaseAgent, Signature; Align: AlignmentPipeline; PACT: GovernanceEngine; Nexus; MCP          |
+| MLFP06 | Machine Learning with Language Models and Agentic Workflows | Kaizen: Delegate, BaseAgent, Signature; Align: AlignmentPipeline; PACT: GovernanceEngine; Nexus; MCP          |
 
 ### Certification Structure
 

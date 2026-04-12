@@ -31,7 +31,7 @@ ML Foundations for Professionals (MLFP) is an open-source ML engineering course 
 | 3   | **Supervised Machine Learning for Building and Deploying Models**                             | Model zoo (linear through CatBoost), bias-variance decomposition, workflow orchestration, model registry, hyperparameter search |
 | 4   | **Unsupervised Machine Learning and Advanced Techniques for Insights**                        | Clustering (K-means through HDBSCAN), dimensionality reduction, anomaly detection, NLP text analysis, drift monitoring   |
 | 5   | **Deep Learning and Machine Learning Mastery in Vision and Transfer Learning**                | Neural networks, backpropagation, CNNs, vision architectures, NLP transformers, transfer learning, ONNX deployment       |
-| 6   | **Machine Learning with Language Models and Agentic Workflows for Organisational Transformation** | LLM agents, RAG systems, multi-agent orchestration, fine-tuning (LoRA/DPO), governance, production deployment        |
+| 6   | **Machine Learning with Language Models and Agentic Workflows** | LLM prompt engineering, fine-tuning (LoRA/DPO/GRPO), RAG systems, multi-agent orchestration, AI governance engineering, production deployment        |
 
 ### The Organising Principle: Feature Engineering Spectrum
 

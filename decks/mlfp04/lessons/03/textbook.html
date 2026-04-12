@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.3 — Dimensionality Reduction | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.3</span>
+  Dimensionality Reduction — Finding the Axes That Matter
+</h1>
+
+<p class="lead">
+  Clustering asked "which group does this point belong to?" Dimensionality
+  reduction asks a different question: "which directions in feature space
+  carry the most information?" Today you will derive principal component
+  analysis from first principles, connect it to the singular value
+  decomposition, and meet its non-linear cousins — kernel PCA, t-SNE, and
+  UMAP. By the end you will know when to use each and why t-SNE is great
+  for visualisation but dangerous for feature extraction.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A modern business dataset easily has 50 – 500 features. Most of them are
+  correlated: "total_spend" and "n_transactions" carry overlapping
+  information; "minutes_on_site" and "pages_viewed" do too. When features
+  are correlated, distance-based algorithms waste capacity and models
+  overfit. Dimensionality reduction replaces the original features with
+  a smaller set of <em>new</em> features — linear combinations of the
+  originals — that are uncorrelated and ordered by variance.
+</p>
+
+<p>
+  The idea has three uses: <strong>visualisation</strong> (project high-dim
+  data to 2D so humans can see it), <strong>compression</strong> (store
+  less without losing much), and <strong>feature extraction</strong>
+  (feed the reduced features into a downstream model to avoid the curse
+  of dimensionality). Today we care most about feature extraction — the
+  principal components are <em>learned features</em>, the first step on
+  the spectrum from manual engineering to automated discovery.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">PCA rotates the axes to align with the data's natural directions</text>
+  <!-- Original axes -->
+  <g>
+    <rect x="20" y="40" width="300" height="220" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <line x1="170" y1="60" x2="170" y2="240" stroke="#94A3B8"/>
+    <line x1="40" y1="150" x2="300" y2="150" stroke="#94A3B8"/>
+    <text x="305" y="155" font-size="11" fill="#64748B">x₁</text>
+    <text x="165" y="55" font-size="11" fill="#64748B">x₂</text>
+    <!-- scattered data in elongated cloud along y=x -->
+    <g fill="#3B82F6" opacity="0.7">
+      <circle cx="90" cy="220" r="3"/><circle cx="110" cy="205" r="3"/><circle cx="130" cy="190" r="3"/>
+      <circle cx="150" cy="170" r="3"/><circle cx="170" cy="155" r="3"/><circle cx="190" cy="135" r="3"/>
+      <circle cx="210" cy="115" r="3"/><circle cx="230" cy="100" r="3"/><circle cx="250" cy="80" r="3"/>
+      <circle cx="100" cy="210" r="3"/><circle cx="140" cy="180" r="3"/><circle cx="180" cy="145" r="3"/>
+      <circle cx="220" cy="110" r="3"/><circle cx="260" cy="70" r="3"/>
+      <circle cx="105" cy="225" r="3"/><circle cx="145" cy="195" r="3"/><circle cx="185" cy="160" r="3"/>
+      <circle cx="225" cy="125" r="3"/><circle cx="265" cy="85" r="3"/>
+    </g>
+  </g>
+
+  <!-- arrow -->
+  <line x1="335" y1="150" x2="385" y2="150" stroke="#0D9488" stroke-width="2.5"/>
+  <polygon points="385,150 378,145 378,155" fill="#0D9488"/>
+  <text x="360" y="140" font-size="11" text-anchor="middle" fill="#0D9488">PCA</text>
+
+  <!-- New axes -->
+  <g>
+    <rect x="400" y="40" width="300" height="220" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <!-- PC1 (along y=-x direction) -->
+    <line x1="420" y1="240" x2="680" y2="60" stroke="#EF4444" stroke-width="2"/>
+    <text x="685" y="65" font-size="11" fill="#EF4444">PC1 (most var)</text>
+    <!-- PC2 (perpendicular) -->
+    <line x1="440" y1="80" x2="660" y2="220" stroke="#22C55E" stroke-width="2"/>
+    <text x="665" y="225" font-size="11" fill="#22C55E">PC2 (residual)</text>
+    <g fill="#3B82F6" opacity="0.7">
+      <circle cx="470" cy="220" r="3"/><circle cx="490" cy="205" r="3"/><circle cx="510" cy="190" r="3"/>
+      <circle cx="530" cy="170" r="3"/><circle cx="550" cy="155" r="3"/><circle cx="570" cy="135" r="3"/>
+      <circle cx="590" cy="115" r="3"/><circle cx="610" cy="100" r="3"/><circle cx="630" cy="80" r="3"/>
+      <circle cx="480" cy="210" r="3"/><circle cx="520" cy="180" r="3"/><circle cx="560" cy="145" r="3"/>
+      <circle cx="600" cy="110" r="3"/><circle cx="640" cy="70" r="3"/>
+      <circle cx="485" cy="225" r="3"/><circle cx="525" cy="195" r="3"/><circle cx="565" cy="160" r="3"/>
+      <circle cx="605" cy="125" r="3"/><circle cx="645" cy="85" r="3"/>
+    </g>
+  </g>
+</svg>
+<figcaption>PCA finds the direction of maximum variance (PC1) and then the next, orthogonal direction (PC2). Keeping only PC1 compresses the 2D data to 1D with minimal information loss.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>PCA in one sentence</h3>
+
+<p>
+  Principal component analysis finds an orthonormal basis for your data
+  such that the first axis captures as much variance as possible, the
+  second axis captures as much of the remaining variance as possible, and
+  so on. The first $k$ axes span a $k$-dimensional subspace that is the
+  <em>optimal</em> low-rank approximation of your data in a least-squares
+  sense.
+</p>
+
+<h3>Derivation via variance maximisation</h3>
+
+<p>
+  Let $X \in \mathbb{R}^{N \times D}$ be the centred data matrix (each
+  column has mean zero). We want a unit vector $\mathbf{w}$ that
+  maximises the variance of the projected points $X \mathbf{w}$:
+</p>
+
+<div class="annotated-equation">
+  $$ \max_{\mathbf{w}}\ \text{Var}(X\mathbf{w}) \;=\; \max_{\mathbf{w}}\ \mathbf{w}^\top C\,\mathbf{w}\quad \text{subject to } \lVert \mathbf{w}\rVert = 1 $$
+</div>
+
+<p>
+  where $C = \frac{1}{N-1} X^\top X$ is the sample covariance matrix.
+  Using a Lagrange multiplier $\lambda$ for the norm constraint:
+</p>
+
+<div class="annotated-equation">
+  $$ \mathcal{L}(\mathbf{w}, \lambda) \;=\; \mathbf{w}^\top C\,\mathbf{w} - \lambda(\mathbf{w}^\top \mathbf{w} - 1) $$
+  $$ \frac{\partial \mathcal{L}}{\partial \mathbf{w}} \;=\; 2 C \mathbf{w} - 2\lambda \mathbf{w} \;=\; 0 \quad \Longrightarrow\quad C\mathbf{w} \;=\; \lambda \mathbf{w} $$
+</div>
+
+<p>
+  This is an <em>eigenvalue equation</em>. The vector $\mathbf{w}$ that
+  maximises $\mathbf{w}^\top C \mathbf{w}$ is the eigenvector of $C$ with
+  the largest eigenvalue — which equals the variance along that direction.
+  The next principal component is the eigenvector with the second-largest
+  eigenvalue, constrained to be orthogonal to the first, and so on.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Every symmetric positive semi-definite matrix (like the covariance
+    $C$) has orthonormal eigenvectors with non-negative eigenvalues. So
+    the spectral decomposition $C = V \Lambda V^\top$ always exists, and
+    PCA reduces to sorting the columns of $V$ by the corresponding
+    $\lambda_i$. This is a rare case in ML where the optimisation has a
+    closed-form solution.
+  </p>
+</div>
+
+<h3>The SVD connection</h3>
+
+<p>
+  The singular value decomposition of the data matrix writes
+</p>
+
+<div class="annotated-equation">
+  $$ X \;=\; U\,\Sigma\,V^\top $$
+</div>
+
+<p>
+  where $U \in \mathbb{R}^{N \times r}$ and $V \in \mathbb{R}^{D \times r}$
+  have orthonormal columns, $\Sigma$ is diagonal with non-negative entries
+  $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r \geq 0$ (the singular
+  values), and $r = \min(N, D)$. The columns of $V$ are exactly the
+  principal component directions, and $\lambda_i = \sigma_i^2 / (N-1)$.
+  This is why every modern PCA implementation uses SVD under the hood:
+  it is numerically more stable than forming $X^\top X$ and is just as
+  fast.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="350" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">X = U Σ V<tspan font-size="10">T</tspan>   — the singular value decomposition</text>
+  <!-- X -->
+  <rect x="40" y="50" width="130" height="140" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="105" y="125" text-anchor="middle" font-family="JetBrains Mono" font-size="28" fill="#0D9488">X</text>
+  <text x="105" y="210" text-anchor="middle" font-size="11" fill="#64748B">N × D data</text>
+
+  <text x="190" y="125" font-size="20" fill="#475569">=</text>
+
+  <!-- U -->
+  <rect x="210" y="50" width="90" height="140" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="255" y="125" text-anchor="middle" font-family="JetBrains Mono" font-size="28" fill="#EF4444">U</text>
+  <text x="255" y="210" text-anchor="middle" font-size="11" fill="#64748B">N × r</text>
+
+  <!-- Σ -->
+  <rect x="310" y="70" width="90" height="100" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="355" y="125" text-anchor="middle" font-family="JetBrains Mono" font-size="28" fill="#F59E0B">Σ</text>
+  <text x="355" y="210" text-anchor="middle" font-size="11" fill="#64748B">r × r diagonal</text>
+
+  <!-- V^T -->
+  <rect x="410" y="70" width="140" height="70" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="480" y="115" text-anchor="middle" font-family="JetBrains Mono" font-size="24" fill="#3B82F6">Vᵀ</text>
+  <text x="480" y="210" text-anchor="middle" font-size="11" fill="#64748B">r × D</text>
+</svg>
+<figcaption>The SVD decomposes any matrix into left singular vectors $U$, singular values $\Sigma$, and right singular vectors $V^\top$. For PCA we care about $V$ (the principal directions) and $\Sigma$ (which encode variance).</figcaption>
+</figure>
+
+<h3>Reading a scree plot</h3>
+
+<p>
+  The <strong>scree plot</strong> shows the variance explained by each
+  principal component in descending order. You pick $k$ — the number of
+  components to keep — by eyeballing the "elbow" (the same idea as
+  elbow-method K-means) or by picking the smallest $k$ such that the
+  cumulative variance explained exceeds a threshold (e.g., 0.90).
+</p>
+
+<p>
+  The <strong>loadings</strong> — the entries of $V$ — tell you <em>which
+  original features</em> each principal component weights. A PC where
+  "n_transactions" has loading 0.7 and "total_spend" has loading 0.6
+  roughly means "overall activity level". Interpreting loadings is how
+  you turn PCA from a black box into a feature-engineering conversation.
+</p>
+
+<h3>Kernel PCA</h3>
+
+<p>
+  Standard PCA is a <em>linear</em> method — it can only rotate the axes,
+  not bend them. When the variance-maximising directions are curved (think
+  data on a spiral or a torus), linear PCA fails. <strong>Kernel PCA</strong>
+  applies the kernel trick: instead of computing PCA in the input space,
+  compute it in an implicit higher-dimensional feature space defined by a
+  kernel function $k(\mathbf{x}, \mathbf{y}) = \phi(\mathbf{x})^\top
+  \phi(\mathbf{y})$. Common kernels are RBF (Gaussian) and polynomial.
+  The cost is that you must store and eigendecompose an $N \times N$
+  kernel matrix, so kernel PCA only scales to a few thousand points.
+</p>
+
+<h3>t-SNE and UMAP — for visualisation</h3>
+
+<p>
+  <strong>t-SNE</strong> (t-distributed Stochastic Neighbour Embedding)
+  is a non-linear embedding designed specifically for visualisation. It
+  defines a probability distribution over pairs of points in the
+  high-dimensional space — $p_{ij}$ is high if points are close — and
+  another distribution $q_{ij}$ in the low-dimensional space, then
+  minimises the KL divergence between them:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{KL}(P \,\|\, Q) \;=\; \sum_{i \neq j}\ p_{ij}\ \log \frac{p_{ij}}{q_{ij}} $$
+</div>
+
+<p>
+  t-SNE preserves local structure well — points that were close stay
+  close — but it distorts global structure, and distances in the t-SNE
+  plot are not meaningful. It also has no inverse mapping, so it cannot
+  be used to project new points, and it is non-deterministic (different
+  random seeds give different layouts). Use it for visualisation, never
+  for feature extraction.
+</p>
+
+<p>
+  <strong>UMAP</strong> (Uniform Manifold Approximation and Projection)
+  is newer and generally better. It is faster, preserves more global
+  structure, and has an approximate inverse transform. It also scales to
+  millions of points. In practice, try UMAP first for any visualisation
+  task; fall back to t-SNE only when you need its specific behaviour.
+</p>
+
+<h3>Intrinsic dimension</h3>
+
+<p>
+  Your data might live in a 500-feature space but truly only vary along
+  10 dimensions — the other 490 are noise or redundancy. The
+  <strong>intrinsic dimension</strong> is the number of components
+  needed to capture most of the variance. The scree plot's elbow gives
+  a visual estimate; the participation ratio
+  $\bigl(\sum_i \lambda_i\bigr)^2 / \sum_i \lambda_i^2$ gives a scalar
+  one. Knowing the intrinsic dimension tells you whether feature
+  selection will help at all: if your data has intrinsic dimension 200,
+  reducing to 10 will lose too much information.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations</h2>
+
+<h3>Eckart-Young theorem</h3>
+
+<p>
+  The deepest result in PCA is the Eckart-Young theorem: the best
+  rank-$k$ approximation of a matrix $X$ in Frobenius norm is obtained
+  by truncating its SVD. Formally, among all rank-$k$ matrices $\hat{X}$,
+</p>
+
+<div class="annotated-equation">
+  $$ \min_{\text{rank}(\hat{X}) \leq k}\ \lVert X - \hat{X}\rVert_F^2 \;=\; \sum_{i=k+1}^{r}\ \sigma_i^2 $$
+</div>
+
+<p>
+  and the minimum is achieved by $\hat{X} = U_k \Sigma_k V_k^\top$ where
+  the subscript $k$ means "first $k$ columns". In English: PCA is
+  provably the best linear dimensionality reduction method, and the
+  reconstruction error equals the sum of the dropped singular values
+  squared.
+</p>
+
+<h3>Reconstruction error and variance explained</h3>
+
+<p>
+  Because $\sum_i \sigma_i^2 = \lVert X \rVert_F^2$, the fraction of
+  variance explained by the first $k$ components is
+  $\sum_{i=1}^{k} \sigma_i^2 / \sum_{i=1}^{r} \sigma_i^2$. Setting this
+  to 0.9 or 0.95 is the standard heuristic for choosing $k$.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ModelVisualizer for PCA</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash's <code>ModelVisualizer</code> includes a
+    <code>scree_plot()</code> helper that takes a fitted PCA object and
+    returns a ready-to-render Plotly figure. It also computes the loading
+    matrix and annotates the top three contributors to each component.
+    This is the tool we use in production when we need to share PCA
+    results with non-technical stakeholders — the loadings are the
+    most interpretable layer of a PCA analysis.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Compressing the Customer Feature Set</h2>
+
+<pre><code class="language-python">import numpy as np
+import polars as pl
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+customers = loader.load("mlfp03", "ecommerce_customers.parquet")
+
+num_cols = [c for c, d in zip(customers.columns, customers.dtypes)
+            if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c != "customer_id"]
+X = customers.drop_nulls(subset=num_cols).select(num_cols).to_numpy()
+X = StandardScaler().fit_transform(X)
+
+pca = PCA().fit(X)
+cum = np.cumsum(pca.explained_variance_ratio_)
+k90 = int(np.searchsorted(cum, 0.90)) + 1
+print(f"Need {k90} components to reach 90% variance "
+      f"(down from {X.shape[1]} features)")
+
+# Interpret the first 3 components
+for i in range(3):
+    top = np.argsort(-np.abs(pca.components_[i]))[:3]
+    print(f"PC{i+1} (var={pca.explained_variance_ratio_[i]:.3f}):")
+    for j in top:
+        print(f"  {num_cols[j]:&lt;25}  loading={pca.components_[i][j]:+.3f}")</code></pre>
+
+<p>
+  A typical result: 15 original features collapse to 6 – 8 principal
+  components at the 90% threshold. PC1 is usually an "overall activity"
+  axis (all positive loadings on spend, frequency, page views). PC2 is
+  often a "tenure vs novelty" axis (positive on account age, negative on
+  recent activity). PC3 varies by dataset. After PCA, downstream models
+  train faster, overfit less, and often perform slightly better.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Not centring the data.</strong> PCA requires zero mean. If you skip standardisation, the first PC will align with the direction of the mean rather than the direction of maximum variance.</li>
+  <li><strong>Using t-SNE as a feature extractor.</strong> t-SNE has no inverse transform and is non-deterministic. Always UMAP if you need embeddings; t-SNE is visualisation-only.</li>
+  <li><strong>Keeping too few components.</strong> If your scree plot does not have a sharp elbow, your data's variance is diffuse. Trust the 90% threshold rather than forcing a dramatic number.</li>
+  <li><strong>Ignoring the loadings.</strong> PCA results without loadings are a black box. The loadings are what let you explain the analysis to a stakeholder.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 3.</strong></p>
+  <ol>
+    <li>Load the e-commerce customer feature table.</li>
+    <li>Standardise, fit full PCA, plot the scree plot and cumulative variance.</li>
+    <li>Find $k$ for 90% and 95% variance thresholds.</li>
+    <li>Interpret the top 3 components by their loadings.</li>
+    <li>Compare UMAP and t-SNE 2D embeddings — can you see the clusters from Exercise 1?</li>
+    <li>Train a logistic regression on the raw features vs the PCA features. Which generalises better on a held-out set?</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to M3:</strong> In M3 you engineered features by hand. PCA is the first time the data tells you what features matter — the components are learned, not hand-designed.</li>
+  <li><strong>Forward to Lesson 4.6:</strong> Non-negative matrix factorisation (NMF) is PCA's cousin for non-negative data — widely used in topic modelling.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Matrix factorisation for recommender systems is the same math as SVD, applied to sparse user-item matrices. The connection will be made explicit in 4.7.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  PCA is the quiet workhorse of machine learning. It is not glamorous —
+  there are no LLMs involved, no deep networks, just eigenvectors — but
+  it shows up in almost every production pipeline. It is also the
+  cleanest example in the curriculum of <em>optimisation with a closed
+  form</em>: you write down the objective, take a derivative, and read
+  off the answer. Most ML optimisation is not this kind — but when you
+  get one that is, cherish it.
+</p>
+
+</main>
+</body>
+</html>

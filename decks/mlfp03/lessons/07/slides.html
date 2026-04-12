@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.7 — Workflow Orchestration, Model Registry, Hyperparameter Search | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.7</p>
+  <h1>Workflow Orchestration, Model Registry, and Hyperparameter Search</h1>
+  <p style="font-size: 0.7em; color: #64748B;">WorkflowBuilder · Bayesian optimisation · model lifecycle</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp;·&nbsp; <strong>Outcome:</strong> automated ML pipeline with model versioning
+  </div>
+  <div class="slide-footer">MLFP — Module 3</div>
+</section>
+
+<section>
+  <h2>From scripts to workflows</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a37s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <rect x="20" y="40" width="300" height="120" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+      <text x="170" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#F43F5E">Sequential script</text>
+      <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
+        <text x="40" y="92">load_data()</text>
+        <text x="40" y="108">preprocess()</text>
+        <text x="40" y="124">train()  # fails here?</text>
+        <text x="40" y="140">evaluate()  # never runs</text>
+      </g>
+      <rect x="400" y="40" width="300" height="120" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="550" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">WorkflowBuilder</text>
+      <g font-family="Inter" font-size="10" fill="#334155">
+        <text x="420" y="92">Nodes connected by edges</text>
+        <text x="420" y="108">Automatic error handling</text>
+        <text x="420" y="124">Conditional branching</text>
+        <text x="420" y="140">Retry logic, logging</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Workflow as a node graph</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a37g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <rect x="20" y="50" width="110" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="75" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Load</text>
+      <line x1="130" y1="75" x2="165" y2="75" stroke="#0D9488" stroke-width="2" marker-end="url(#a37g)"/>
+      <rect x="170" y="50" width="110" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="225" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Preprocess</text>
+      <line x1="280" y1="75" x2="315" y2="75" stroke="#0D9488" stroke-width="2" marker-end="url(#a37g)"/>
+      <rect x="320" y="50" width="110" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="375" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Train</text>
+      <line x1="430" y1="75" x2="465" y2="75" stroke="#0D9488" stroke-width="2" marker-end="url(#a37g)"/>
+      <rect x="470" y="50" width="110" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="525" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Evaluate</text>
+      <line x1="525" y1="100" x2="525" y2="140" stroke="#0D9488" stroke-width="2" marker-end="url(#a37g)"/>
+      <rect x="470" y="145" width="110" height="40" rx="6" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
+      <text x="525" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">Promote?</text>
+      <line x1="470" y1="165" x2="410" y2="165" stroke="#22C55E" stroke-width="2" marker-end="url(#a37g)"/>
+      <rect x="290" y="145" width="115" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="347" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Register</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>WorkflowBuilder code</h2>
+  <pre><code class="language-python" data-trim>
+from kailash import WorkflowBuilder, PythonCodeNode
+from kailash import ConditionalNode, Runtime
+
+workflow = WorkflowBuilder("credit_pipeline")
+load = PythonCodeNode("load", code=load_fn)
+prep = PythonCodeNode("prep", code=prep_fn)
+train = PythonCodeNode("train", code=train_fn)
+evl = PythonCodeNode("eval", code=eval_fn)
+gate = ConditionalNode("gate",
+    condition=lambda ctx: ctx["auc"] > 0.85)
+reg = PythonCodeNode("register", code=reg_fn)
+
+workflow.connect(load, prep)
+workflow.connect(prep, train)
+workflow.connect(train, evl)
+workflow.connect(evl, gate)
+workflow.connect(gate, reg, branch="yes")
+
+result = Runtime().execute(workflow.build())
+  </code></pre>
+</section>
+
+<section>
+  <h2>Bayesian hyperparameter search</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <line x1="80" y1="170" x2="650" y2="170" stroke="#94A3B8" stroke-width="1"/>
+      <line x1="80" y1="20" x2="80" y2="170" stroke="#94A3B8" stroke-width="1"/>
+      <path d="M 100,130 Q 200,40 300,100 Q 400,150 500,50 Q 580,70 630,65" fill="none" stroke="#94A3B8" stroke-dasharray="4 3" stroke-width="1"/>
+      <path d="M 100,120 Q 200,60 300,95 Q 400,140 500,60 Q 580,75 630,70" fill="none" stroke="#0D9488" stroke-width="2"/>
+      <path d="M 100,100 Q 200,40 300,75 Q 400,110 500,35 Q 580,50 630,45 L 630,95 Q 580,100 500,85 Q 400,165 300,115 Q 200,80 100,140 Z" fill="#0D9488" opacity="0.1"/>
+      <circle cx="150" cy="110" r="4" fill="#0D9488"/>
+      <circle cx="300" cy="95" r="4" fill="#0D9488"/>
+      <circle cx="420" cy="140" r="4" fill="#0D9488"/>
+      <circle cx="500" cy="55" r="5" fill="#F59E0B"/>
+      <text x="500" y="45" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B">next</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Bayesian optimisation: surrogate model + acquisition function. Finds good params in ~50 trials, not 3000.</p>
+</section>
+
+<section>
+  <h2>HyperparameterSearch code</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import HyperparameterSearch
+from kailash_ml import SearchSpace, SearchConfig
+
+space = SearchSpace({
+    "n_estimators": (100, 1000),
+    "max_depth": (3, 10),
+    "learning_rate": (0.01, 0.3, "log"),
+})
+config = SearchConfig(
+    method="bayesian", n_trials=50,
+    metric="auc", cv_folds=5,
+)
+
+search = HyperparameterSearch(model_class="xgboost")
+best = search.run(X_train, y_train,
+                  space=space, config=config)
+print(f"Best AUC: {best.score:.4f}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Grid vs Random vs Bayesian</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Method</th><th>Evaluations</th><th>Informed?</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr><td>Grid</td><td>$k^d$ (exponential)</td><td>No</td><td>1-2 hyperparameters</td></tr>
+      <tr><td>Random</td><td>Fixed budget</td><td>No</td><td>High-dimensional, cheap evals</td></tr>
+      <tr><td>Bayesian</td><td>Fixed budget</td><td>Yes (surrogate)</td><td>Expensive evals, complex spaces</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>ModelRegistry</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import ModelRegistry, MetricSpec
+from kailash_ml import ModelSignature
+
+registry = ModelRegistry()
+registry.register(
+    name="credit_scorer", model=best.model,
+    metrics=MetricSpec(auc=best.score),
+    signature=ModelSignature(
+        input_schema=X_train.schema,
+        output_schema={"probability": "Float64"},
+    ),
+)
+registry.promote("credit_scorer", version=1,
+                 stage="production")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Model lifecycle</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 120" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a37l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <rect x="20" y="30" width="130" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="85" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Experiment</text>
+      <line x1="150" y1="55" x2="195" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
+      <rect x="200" y="30" width="130" height="50" rx="6" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
+      <text x="265" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">Staging</text>
+      <line x1="330" y1="55" x2="375" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
+      <rect x="380" y="30" width="130" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="445" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Production</text>
+      <line x1="510" y1="55" x2="555" y2="55" stroke="#94A3B8" stroke-width="2" marker-end="url(#a37l)"/>
+      <rect x="560" y="30" width="130" height="50" rx="6" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+      <text x="625" y="60" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Retired</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Three mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>1. Grid search with 5+ hyperparameters</strong>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>2. Promoting models without a signature</strong>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>3. No conditional gate on promotion</strong>
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>Build ML workflows as node graphs with WorkflowBuilder</li>
+    <li>Use Bayesian optimisation for hyperparameter search</li>
+    <li>Register, version, and promote models through the lifecycle</li>
+    <li>Gate promotion on evaluation metrics</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1.5em;">
+    <strong>Next:</strong> Lesson 3.8 — Production Pipeline. DataFlow, DriftMonitor, Model Cards, Conformal Prediction.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
+</body>
+</html>

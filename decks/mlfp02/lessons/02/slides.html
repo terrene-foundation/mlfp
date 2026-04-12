@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.2 — Parameter Estimation and Inference | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.2</p>
+  <h1>Parameter Estimation and Inference</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    MLE · MAP · CLT · Bessel's correction · Confidence intervals
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong>⏱ 45 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> 2.1 (probability, distributions)
+  </div>
+</section>
+
+<section>
+  <h2>Population vs sample</h2>
+  <p>
+    <strong>Population:</strong> infinite set of all possible observations.
+    Parameters: $\mu, \sigma^2$.
+  </p>
+  <p>
+    <strong>Sample:</strong> the finite $n$ observations you have.
+    Statistics: $\bar{x}, s^2$.
+  </p>
+  <div style="background: #FEF3C7; padding: 12px 16px; border-left: 4px solid #F59E0B; margin-top: 1em;">
+    Parameters are fixed but unknown. Statistics are random — different
+    samples give different values. Inference is running the arrow backward.
+  </div>
+</section>
+
+<section>
+  <h2>The sampling distribution of $\bar{X}$</h2>
+  <p>For any population with mean $\mu$ and variance $\sigma^2$:</p>
+  \[ E[\bar{X}] = \mu \qquad \text{Var}(\bar{X}) = \frac{\sigma^2}{n} \]
+  <p>The standard error is $\sigma/\sqrt{n}$.</p>
+  <p>And the CLT adds shape:</p>
+  \[ \frac{\bar{X} - \mu}{\sigma/\sqrt{n}} \;\xrightarrow{d}\; N(0, 1) \]
+  <p style="font-size: 0.85em;">Whatever the population looks like, averages become Normal for large $n$.</p>
+</section>
+
+<section>
+  <h2>CLT: the HDB example</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Skewed population</text>
+        <path d="M 20,190 L 40,60 L 80,90 L 120,130 L 160,160 L 200,180 L 200,190 Z" fill="#FECACA" stroke="#EF4444" stroke-width="2"/>
+      </g>
+      <g transform="translate(240,0)">
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Mean of n=5</text>
+        <path d="M 20,190 Q 70,80 110,80 Q 160,80 200,190" fill="#FED7AA" stroke="#F59E0B" stroke-width="2"/>
+      </g>
+      <g transform="translate(480,0)">
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Mean of n=100</text>
+        <path d="M 20,190 Q 100,40 110,40 Q 120,40 200,190" fill="#BBF7D0" stroke="#22C55E" stroke-width="2"/>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">HDB prices are right-skewed. Averages of 100 HDB prices are almost perfectly Normal.</p>
+</section>
+
+<section>
+  <h2>MLE: pick parameters that make the data likely</h2>
+  <p>For $n$ i.i.d. Normal draws with density $f$:</p>
+  \[ L(\mu, \sigma^2) = \prod_{i=1}^{n} f(x_i \mid \mu, \sigma^2) \]
+  <p>Take the log (monotonic, so the max is unchanged):</p>
+  \[ \ell(\mu, \sigma^2) = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\sum_{i=1}^{n}(x_i - \mu)^2 \]
+</section>
+
+<section>
+  <h2>Solving for $\hat\mu$</h2>
+  <p>Set the partial derivative to zero:</p>
+  \[ \frac{\partial \ell}{\partial \mu} = \frac{1}{\sigma^2}\sum_{i=1}^{n}(x_i - \mu) = 0 \]
+  <p>Solving gives $\sum x_i = n\mu$, so:</p>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F0FDFA; border-radius: 8px;">
+    \[ \hat{\mu}_{\text{MLE}} = \bar{x} \]
+  </div>
+  <p>The sample mean you've been using is the MLE of the population mean.</p>
+</section>
+
+<section>
+  <h2>Solving for $\hat\sigma^2$</h2>
+  <p>Partial with respect to $\sigma^2$:</p>
+  \[ \frac{\partial \ell}{\partial \sigma^2} = -\frac{n}{2\sigma^2} + \frac{1}{2\sigma^4}\sum_{i=1}^{n}(x_i - \bar{x})^2 = 0 \]
+  \[ \hat{\sigma}^2_{\text{MLE}} = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2 \]
+  <div style="background: #FFF1F2; padding: 12px 16px; border-left: 4px solid #F43F5E; margin-top: 1em;">
+    <strong>⚠ This divides by $n$ — but it's biased!</strong>
+  </div>
+</section>
+
+<section>
+  <h2>Bessel's correction</h2>
+  <p>Expand $(X_i - \bar X)^2 = ((X_i - \mu) - (\bar X - \mu))^2$ and take expectations:</p>
+  \[ E\!\left[\sum_i (X_i - \bar X)^2\right] = n\sigma^2 - n\cdot\frac{\sigma^2}{n} = (n-1)\sigma^2 \]
+  <p>Divide by $n$ gives $\frac{n-1}{n}\sigma^2$ — biased low. Divide by $n-1$ gives $\sigma^2$ — unbiased.</p>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F0FDFA; border-radius: 8px;">
+    \[ s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2 \]
+  </div>
+</section>
+
+<section>
+  <h2>Why $n - 1$: the intuition</h2>
+  <p>
+    We used $\bar X$ to center the squared deviations. But $\bar X$ is the
+    value that <em>minimises</em> $\sum (x_i - c)^2$ — so centering there
+    systematically underestimates spread relative to the unknown true $\mu$.
+  </p>
+  <p>
+    We "spent" one degree of freedom computing $\bar X$. Only $n - 1$ are
+    free to vary given $\bar X$. The $n - 1$ denominator corrects exactly for this.
+  </p>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Two data points, 10 and 14. Mean = 12. $n$-version says variance 4.
+    $n-1$-version says variance 8. Honest answer with so little data.
+  </p>
+</section>
+
+<section>
+  <h2>Confidence intervals from the CLT</h2>
+  <p>Large $n$: $\bar X \approx N(\mu, \sigma^2/n)$. A 95% CI:</p>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \bar{x} \;\pm\; 1.96 \cdot \frac{s}{\sqrt{n}} \]
+  </div>
+  <p>Small $n$ with unknown $\sigma$: use the $t$-distribution instead. Replace $1.96$ with the $t$-critical value.</p>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin-top: 1em; font-size: 0.85em;">
+    <strong>⚠ Not a probability about the parameter.</strong>
+    Frequentist CI = statement about the procedure, not about this interval.
+  </div>
+</section>
+
+<section>
+  <h2>MAP: MLE plus a prior</h2>
+  <p>Maximise the log-posterior (log-likelihood + log-prior):</p>
+  \[ \hat\theta_{\text{MAP}} = \arg\max_\theta \big[\ell(\theta) + \log P(\theta)\big] \]
+  <p>
+    The $\log P(\theta)$ term acts as a <strong>regulariser</strong> — pulls
+    the estimate toward the prior. Small $n$ → prior dominates. Large $n$ →
+    likelihood dominates → MAP ≈ MLE.
+  </p>
+  <p style="font-size: 0.85em; color: #64748B;">
+    This is where Bayesian and frequentist methods meet in the middle.
+  </p>
+</section>
+
+<section>
+  <h2>Worked: Singapore GDP growth (closed-form)</h2>
+  <pre><code class="language-python" data-trim>
+import polars as pl, numpy as np
+from scipy import stats
+from shared import MLFPDataLoader
+
+df = MLFPDataLoader().load("mlfp02", "economic_indicators.csv")
+g  = df["gdp_growth_pct"].drop_nulls().to_numpy()
+n  = len(g)
+
+mu_hat    = g.mean()
+s2_biased = g.var(ddof=0)   # MLE
+s2_unbias = g.var(ddof=1)   # Bessel
+print(s2_unbias / s2_biased, "≈", n / (n-1))
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: Numerical MLE with scipy</h2>
+  <pre><code class="language-python" data-trim>
+from scipy.optimize import minimize
+
+def neg_log_lik(p, x):
+    mu, log_sigma = p
+    sigma = np.exp(log_sigma)
+    return -np.sum(stats.norm.logpdf(x, mu, sigma))
+
+res = minimize(neg_log_lik, [0, 0], args=(g,), method="BFGS")
+mu_fit, log_s_fit = res.x
+# mu_fit matches g.mean(); exp(log_s_fit) matches biased std
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    We wrap $\sigma$ as $e^{\log\sigma}$ so the optimiser can freely range over $\mathbb{R}$ while keeping $\sigma > 0$.
+  </p>
+</section>
+
+<section>
+  <h2>95% CI from the sample</h2>
+  <pre><code class="language-python" data-trim>
+s  = float(g.std(ddof=1))
+se = s / np.sqrt(n)
+t_crit = stats.t.ppf(0.975, df=n-1)
+lo, hi = mu_hat - t_crit*se, mu_hat + t_crit*se
+print(f"95% CI = [{lo:.3f}, {hi:.3f}]")
+  </code></pre>
+  <p style="font-size: 0.85em;">Simulation check: run 1,000 samples, count how many CIs contain the truth. Should be ≈950.</p>
+</section>
+
+<section>
+  <h2>When MLE fails</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Mode</th><th>Symptom</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Small $n$</td><td>Huge variance</td><td>MAP with prior</td></tr>
+      <tr><td>Multimodal</td><td>Local optimum</td><td>Multiple restarts</td></tr>
+      <tr><td>Misspecified</td><td>Confident garbage</td><td>Goodness-of-fit</td></tr>
+      <tr><td>Heavy tails</td><td>Outliers dominate</td><td>Student-t likelihood</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Derive $\hat\mu$ and $\hat\sigma^2$ as MLEs of a Normal</li>
+    <li>✓ Prove Bessel's correction from $E[(X_i - \bar X)^2]$</li>
+    <li>✓ State the CLT and use it to build confidence intervals</li>
+    <li>✓ Interpret a 95% CI correctly (procedure, not probability)</li>
+    <li>✓ Explain when MLE fails and how MAP helps</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.3 — bootstrap resampling and p-values.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

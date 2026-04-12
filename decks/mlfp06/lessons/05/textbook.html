@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.5 — AI Agents: ReAct, Tool Use, Function Calling | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.5</span>
+  AI Agents — ReAct, Tool Use, and Function Calling
+</h1>
+
+<p class="lead">
+  An LLM that only generates text is like a brain without hands. It can reason
+  about problems but cannot solve them — it cannot query a database, call an API,
+  train a model, or check a fact. <strong>Agents</strong> give the LLM the ability
+  to <em>act</em>: reason about a task, select a tool, execute it, observe the
+  result, and iterate until the task is complete. Today you build a ReAct agent
+  using Kaizen that wraps Kailash's DataExplorer, TrainingPipeline, and
+  ModelVisualizer as tools — an autonomous data scientist that explores a dataset,
+  selects a model, trains it, and reports results. All under a cost budget that
+  prevents runaway LLM spending.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A Singapore logistics company receives 200 datasets per quarter from port
+  authorities, customs, and carrier APIs. An analyst manually profiling each one
+  takes 30 minutes: load, inspect, check for nulls, visualise distributions,
+  try a baseline model. An agent does it in two minutes, including writing the
+  summary. More importantly, the agent applies the <em>same</em> methodology
+  every time — it never forgets to check for class imbalance or skips the
+  train-test split.
+</p>
+
+<p>
+  But an agent without guardrails is dangerous. It might call an expensive API
+  in a loop, hallucinate tool names, or present fabricated results as real.
+  Today you learn the three components that make agents useful and safe:
+  <strong>structured reasoning</strong> (ReAct), <strong>structured tool interfaces</strong>
+  (function calling), and <strong>cost budgets</strong> (LLMCostTracker).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 230" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">From prompt to agent: what changes</text>
+
+  <!-- LLM only -->
+  <rect x="30" y="50" width="200" height="80" rx="8" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="130" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#4F46E5">LLM (6.1)</text>
+  <text x="130" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Prompt in, text out</text>
+  <text x="130" y="112" text-anchor="middle" font-size="10" fill="#64748B">No actions, no memory</text>
+
+  <!-- Arrow -->
+  <line x1="240" y1="90" x2="270" y2="90" stroke="#0D9488" stroke-width="2"/>
+  <polygon points="270,90 264,86 264,94" fill="#0D9488"/>
+
+  <!-- RAG -->
+  <rect x="280" y="50" width="160" height="80" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="360" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">RAG (6.4)</text>
+  <text x="360" y="95" text-anchor="middle" font-size="10" fill="#1E293B">LLM + retrieval</text>
+  <text x="360" y="112" text-anchor="middle" font-size="10" fill="#64748B">One tool (search)</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="90" x2="480" y2="90" stroke="#0D9488" stroke-width="2"/>
+  <polygon points="480,90 474,86 474,94" fill="#0D9488"/>
+
+  <!-- Agent -->
+  <rect x="490" y="40" width="210" height="100" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="595" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">Agent (6.5)</text>
+  <text x="595" y="85" text-anchor="middle" font-size="10" fill="#1E293B">LLM + reasoning loop</text>
+  <text x="595" y="102" text-anchor="middle" font-size="10" fill="#1E293B">+ multiple tools</text>
+  <text x="595" y="119" text-anchor="middle" font-size="10" fill="#1E293B">+ cost budget</text>
+
+  <!-- Capability labels -->
+  <text x="130" y="160" text-anchor="middle" font-size="10" fill="#64748B">Cannot act</text>
+  <text x="360" y="160" text-anchor="middle" font-size="10" fill="#64748B">Retrieves context</text>
+  <text x="595" y="160" text-anchor="middle" font-size="10" fill="#64748B">Reasons + acts + observes</text>
+
+  <!-- Progression bar -->
+  <rect x="30" y="175" width="670" height="8" rx="4" fill="#E2E8F0"/>
+  <rect x="30" y="175" width="670" height="8" rx="4" fill="url(#grad-progress)"/>
+  <defs>
+    <linearGradient id="grad-progress" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#E0E7FF"/>
+      <stop offset="50%" stop-color="#DCFCE7"/>
+      <stop offset="100%" stop-color="#FEF3C7"/>
+    </linearGradient>
+  </defs>
+  <text x="360" y="205" text-anchor="middle" font-size="11" fill="#475569" font-style="italic">Increasing autonomy</text>
+</svg>
+<figcaption>The progression from a bare LLM (6.1) to RAG (6.4) to a full agent (6.5). Each step adds autonomy: retrieval adds knowledge, agents add reasoning and action.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>What is an Agent?</h3>
+
+<p>
+  An agent is an LLM wrapped in a loop. On each iteration the LLM:
+</p>
+
+<ol>
+  <li><strong>Reasons</strong> about the current state of the task — what it knows, what it still needs.</li>
+  <li><strong>Decides</strong> on an action — which tool to call, with what parameters.</li>
+  <li><strong>Executes</strong> the action — the tool runs and returns a result.</li>
+  <li><strong>Observes</strong> the result — incorporates it into its working memory.</li>
+  <li><strong>Repeats</strong> or <strong>answers</strong> — loops if more work is needed, or returns a final answer.</li>
+</ol>
+
+<p>
+  This is the <strong>ReAct</strong> pattern (Reasoning + Acting), introduced by
+  Yao et al. (2022). The key insight is that interleaving reasoning with action
+  produces better results than either pure reasoning (chain-of-thought) or pure
+  action (tool calls without explanation). The reasoning step forces the LLM to
+  plan before acting, reducing random tool invocations.
+</p>
+
+<h3>The ReAct Loop</h3>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">ReAct: Thought → Action → Observation → repeat</text>
+
+  <!-- Thought -->
+  <rect x="40" y="50" width="180" height="90" rx="10" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="130" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#3B82F6">Thought</text>
+  <text x="130" y="98" text-anchor="middle" font-size="11" fill="#1E293B">"I need to check the</text>
+  <text x="130" y="114" text-anchor="middle" font-size="11" fill="#1E293B">class distribution first"</text>
+
+  <!-- Arrow T→A -->
+  <line x1="225" y1="95" x2="265" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
+
+  <!-- Action -->
+  <rect x="270" y="50" width="180" height="90" rx="10" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="360" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#F59E0B">Action</text>
+  <text x="360" y="98" text-anchor="middle" font-size="11" fill="#1E293B">explore_data(</text>
+  <text x="360" y="114" text-anchor="middle" font-size="11" fill="#1E293B">  dataset="churn.csv")</text>
+
+  <!-- Arrow A→O -->
+  <line x1="455" y1="95" x2="495" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
+
+  <!-- Observation -->
+  <rect x="500" y="50" width="180" height="90" rx="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="590" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#22C55E">Observation</text>
+  <text x="590" y="98" text-anchor="middle" font-size="11" fill="#1E293B">shape=(5000, 12)</text>
+  <text x="590" y="114" text-anchor="middle" font-size="11" fill="#1E293B">target: 73% / 27%</text>
+
+  <!-- Loop arrow -->
+  <path d="M 590 145 C 590 210 130 210 130 145" stroke="#94A3B8" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+  <polygon points="130,145 125,155 135,155" fill="#94A3B8"/>
+  <text x="360" y="200" text-anchor="middle" font-size="12" fill="#94A3B8" font-style="italic">loop until task complete or budget exhausted</text>
+
+  <!-- Final answer box -->
+  <rect x="250" y="230" width="220" height="40" rx="8" fill="#F0FDF4" stroke="#0D9488" stroke-width="2"/>
+  <text x="360" y="255" text-anchor="middle" font-weight="600" font-size="12" fill="#0D9488">Final Answer returned to user</text>
+  <line x1="360" y1="210" x2="360" y2="225" stroke="#94A3B8" stroke-width="1.5"/>
+  <polygon points="360,225 355,219 365,219" fill="#94A3B8"/>
+</svg>
+<figcaption>The ReAct loop interleaves reasoning (Thought) with tool calls (Action) and result processing (Observation). The loop continues until the agent has enough information to produce a final answer, or until the cost budget is exhausted.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Think of a ReAct agent like a junior analyst who <em>talks through their
+    reasoning</em> before each step. "I think I should check if there are null
+    values first" → runs the null check → "OK, 3% nulls in the income column.
+    I should impute those before training" → runs imputation. The explicit
+    reasoning makes the agent's logic transparent and debuggable.
+  </p>
+</div>
+
+<h3>Chain-of-Thought vs ReAct</h3>
+
+<p>
+  Chain-of-thought (CoT) from Lesson 6.1 asks the LLM to reason step-by-step
+  <em>but does not let it act</em>. It reasons about a question and returns an
+  answer in a single pass. ReAct extends CoT by letting the LLM <em>verify its
+  reasoning against reality</em> through tool calls. This matters because LLMs
+  hallucinate — a CoT agent might reason correctly about a formula but apply it
+  to hallucinated numbers. A ReAct agent can check the actual data.
+</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>Chain-of-Thought (6.1)</th><th>ReAct Agent (6.5)</th></tr></thead>
+  <tbody>
+    <tr><td>Reasoning</td><td>Single pass</td><td>Multi-turn, iterative</td></tr>
+    <tr><td>Tool use</td><td>None</td><td>Multiple tools per task</td></tr>
+    <tr><td>Grounding</td><td>Only training data</td><td>Real-time tool results</td></tr>
+    <tr><td>Cost</td><td>1 LLM call</td><td>5-20 LLM calls per task</td></tr>
+    <tr><td>Best for</td><td>Reasoning-heavy, no data needed</td><td>Tasks requiring data access</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Math Foundations</h2>
+
+<p>
+  Agent design has less novel mathematics than deep learning, but there are
+  two formal frameworks worth understanding to reason about agent behaviour.
+</p>
+
+<h3>Agents as Markov Decision Processes</h3>
+
+<p>
+  An agent's interaction with its tools can be modelled as a simplified MDP
+  (connecting to the RL formalism from Lesson 5.8). At each step:
+</p>
+
+<div class="annotated-equation">
+  $$ s_{t+1}, r_{t+1} = \text{env}(s_t, a_t) $$
+  <div class="annotations">
+    <span>$s_t$ — agent's state (conversation history + observations)</span>
+    <span>$a_t$ — action (tool call or final answer)</span>
+    <span>$r_{t+1}$ — implicit reward (task progress)</span>
+  </div>
+</div>
+
+<p>
+  Unlike RL where the policy is learned through training, a ReAct agent's
+  "policy" is the LLM itself — prompted to select the best action given the
+  current state. The LLM's pre-training acts as a massive prior over useful
+  action sequences.
+</p>
+
+<h3>Expected cost of an agent run</h3>
+
+<p>
+  Each agent step incurs token costs. If the agent makes $K$ tool calls with
+  an average of $T_{\text{in}}$ input tokens and $T_{\text{out}}$ output tokens
+  per call:
+</p>
+
+<div class="annotated-equation">
+  $$ C_{\text{total}} = \sum_{k=1}^{K} \bigl( c_{\text{in}} \cdot T_{\text{in}}^{(k)} + c_{\text{out}} \cdot T_{\text{out}}^{(k)} \bigr) $$
+  <div class="annotations">
+    <span>$c_{\text{in}}$ — cost per input token</span>
+    <span>$c_{\text{out}}$ — cost per output token</span>
+    <span>$K$ — number of LLM calls</span>
+  </div>
+</div>
+
+<p>
+  Context grows with each step because the agent carries the full conversation.
+  Step $k$ has approximately $T_{\text{in}}^{(k)} \approx T_{\text{system}} + k
+  \cdot T_{\text{avg\_turn}}$ input tokens. This means agent cost grows
+  <strong>quadratically</strong> with the number of steps — a critical insight
+  for cost budgeting.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    The quadratic cost growth explains why agents stuck in loops are expensive.
+    A 10-step agent costs roughly $\frac{10 \cdot 11}{2} = 55$ "step-units" of
+    input tokens. A 20-step agent (just double the steps) costs $\frac{20 \cdot 21}{2} = 210$
+    step-units — nearly 4x more. This is why Kaizen's LLMCostTracker is not
+    optional. Without a hard budget, a confused agent can spend hundreds of
+    dollars in minutes.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Function Calling Protocol</h2>
+
+<p>
+  An agent needs a structured way to invoke tools. The <strong>function calling
+  protocol</strong> defines tools as JSON schemas that the LLM can reference
+  by name. The LLM does not execute code — it produces a structured JSON object
+  specifying which function to call and with what arguments. The agent framework
+  parses that JSON and executes the actual function.
+</p>
+
+<h3>Tool schema definition</h3>
+
+<pre><code class="language-python">tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "explore_data",
+            "description": "Load and profile a dataset. Returns shape, column types, null counts, and basic statistics.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dataset": {
+                        "type": "string",
+                        "description": "Dataset filename (e.g. 'churn.csv')"
+                    },
+                    "show_distributions": {
+                        "type": "boolean",
+                        "description": "Whether to compute distribution stats",
+                        "default": False
+                    }
+                },
+                "required": ["dataset"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "train_model",
+            "description": "Train a classification model on the loaded dataset.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "algorithm": {
+                        "type": "string",
+                        "enum": ["logistic_regression", "random_forest", "gradient_boosting"],
+                        "description": "ML algorithm to use"
+                    },
+                    "target_column": {
+                        "type": "string",
+                        "description": "Name of the target variable"
+                    }
+                },
+                "required": ["algorithm", "target_column"]
+            }
+        }
+    }
+]</code></pre>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Good tool descriptions are the agent equivalent of good documentation. The
+    LLM decides which tool to call based <em>entirely</em> on the
+    <code>description</code> field and the parameter names. A vague description
+    like "does data stuff" leads to incorrect tool selection. A precise
+    description like "Load and profile a dataset. Returns shape, column types,
+    null counts, and basic statistics" tells the LLM exactly when this tool
+    is useful and what to expect back.
+  </p>
+</div>
+
+<h3>The tool_choice parameter</h3>
+
+<p>
+  You can control how aggressively the LLM uses tools:
+</p>
+
+<table>
+  <thead><tr><th>tool_choice</th><th>Behaviour</th><th>When to use</th></tr></thead>
+  <tbody>
+    <tr><td><code>"auto"</code></td><td>LLM decides whether to call a tool</td><td>Default — let the agent reason</td></tr>
+    <tr><td><code>"required"</code></td><td>LLM must call at least one tool</td><td>First step, when you know action is needed</td></tr>
+    <tr><td><code>{"type": "function", "function": {"name": "..."}}</code></td><td>Force a specific tool</td><td>Debugging, testing a particular path</td></tr>
+    <tr><td><code>"none"</code></td><td>LLM cannot call tools</td><td>Final summarisation step</td></tr>
+  </tbody>
+</table>
+
+<h3>Parallel function calling</h3>
+
+<p>
+  Some LLM providers support parallel function calling — the LLM can request
+  multiple tool calls in a single response. This is useful when the agent needs
+  independent pieces of information simultaneously (e.g., profile two datasets
+  at once). Kaizen handles parallel calls automatically when the model supports
+  them.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Sequential vs parallel tool calls</text>
+
+  <!-- Sequential -->
+  <text x="180" y="50" text-anchor="middle" font-weight="600" font-size="12" fill="#475569">Sequential (3 LLM calls)</text>
+  <rect x="40" y="65" width="100" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="90" y="87" text-anchor="middle" font-size="9" fill="#1E40AF">Call tool A</text>
+  <line x1="145" y1="82" x2="155" y2="82" stroke="#475569" stroke-width="1.5"/>
+  <rect x="160" y="65" width="100" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="210" y="87" text-anchor="middle" font-size="9" fill="#1E40AF">Call tool B</text>
+  <line x1="265" y1="82" x2="275" y2="82" stroke="#475569" stroke-width="1.5"/>
+  <rect x="280" y="65" width="100" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="330" y="87" text-anchor="middle" font-size="9" fill="#1E40AF">Call tool C</text>
+
+  <!-- Parallel -->
+  <text x="540" y="50" text-anchor="middle" font-weight="600" font-size="12" fill="#475569">Parallel (1 LLM call)</text>
+  <rect x="430" y="65" width="100" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="480" y="87" text-anchor="middle" font-size="9" fill="#166534">Call tool A</text>
+  <rect x="540" y="65" width="100" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="590" y="87" text-anchor="middle" font-size="9" fill="#166534">Call tool B</text>
+  <rect x="485" y="110" width="100" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="535" y="132" text-anchor="middle" font-size="9" fill="#166534">Call tool C</text>
+
+  <!-- Cost comparison -->
+  <rect x="40" y="130" width="340" height="30" rx="4" fill="#FEE2E2"/>
+  <text x="210" y="150" text-anchor="middle" font-size="10" fill="#991B1B">3x LLM calls = 3x cost, 3x latency</text>
+  <rect x="430" y="160" width="210" height="30" rx="4" fill="#DCFCE7"/>
+  <text x="535" y="180" text-anchor="middle" font-size="10" fill="#166534">1x LLM call = 1x cost</text>
+</svg>
+<figcaption>Parallel function calling reduces both cost and latency when tools are independent. Kaizen handles the concurrency.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: Kaizen Agents</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    Kaizen provides three agent types: <code>ReActAgent</code> (thought-action-observation
+    loop), <code>ChainOfThoughtAgent</code> (reason then answer, no tools), and
+    <code>BaseAgent</code> (build your own loop). All agents use <code>Signature</code>
+    for typed input/output, <code>Delegate</code> for LLM communication, and
+    <code>LLMCostTracker</code> for budget enforcement. The agent framework handles
+    prompt formatting, tool dispatch, error recovery, and streaming.
+  </p>
+</div>
+
+<h3>Building a ReAct agent with Kaizen</h3>
+
+<pre><code class="language-python">from kaizen import ReActAgent, Signature, InputField, OutputField
+from kaizen.tools import tool
+from kailash_ml import DataExplorer, TrainingPipeline, ModelVisualizer
+import polars as pl
+
+# Define typed signature
+class DataAnalysis(Signature):
+    """Analyse a dataset and recommend the best model."""
+    dataset_name: str = InputField(desc="Name of the CSV file to analyse")
+    analysis_report: str = OutputField(desc="Markdown report with findings")
+    recommended_model: str = OutputField(desc="Best model and why")
+
+# Define tools that wrap Kailash engines
+@tool
+def explore_data(dataset: str) -> dict:
+    """Load a dataset and return profiling statistics."""
+    from shared import MLFPDataLoader
+    loader = MLFPDataLoader()
+    df = loader.load("mlfp06", dataset)
+    explorer = DataExplorer()
+    profile = explorer.profile(df)
+    return {
+        "shape": str(df.shape),
+        "columns": df.columns,
+        "null_pct": profile.null_percentages,
+        "stats": profile.summary_stats
+    }
+
+@tool
+def train_model(dataset: str, target: str, algorithm: str) -> dict:
+    """Train a model and return evaluation metrics."""
+    from shared import MLFPDataLoader
+    loader = MLFPDataLoader()
+    df = loader.load("mlfp06", dataset)
+    pipeline = TrainingPipeline(algorithm=algorithm)
+    result = pipeline.fit(df, target=target)
+    return {
+        "accuracy": result.metrics["accuracy"],
+        "f1": result.metrics["f1_score"],
+        "training_time_s": result.training_time
+    }
+
+@tool
+def visualise_results(dataset: str, target: str) -> str:
+    """Generate a feature importance chart and return the file path."""
+    viz = ModelVisualizer()
+    path = viz.feature_importance(dataset, target, save_to="results/")
+    return f"Chart saved to {path}"
+
+# Create and run the agent
+agent = ReActAgent(
+    signature=DataAnalysis,
+    tools=[explore_data, train_model, visualise_results],
+    max_iterations=10,
+    model="claude-sonnet-4-20250514"
+)</code></pre>
+
+<h3>Cost budget enforcement</h3>
+
+<pre><code class="language-python">from kaizen import LLMCostTracker
+
+# Set a hard budget — agent stops when exhausted
+tracker = LLMCostTracker(budget_usd=2.00)
+
+result = agent.run(
+    dataset_name="sg_churn.csv",
+    cost_tracker=tracker
+)
+
+print(f"Total cost: ${tracker.total_cost:.4f}")
+print(f"LLM calls: {tracker.call_count}")
+print(f"Tokens used: {tracker.total_tokens:,}")
+print(f"Budget remaining: ${tracker.remaining:.4f}")</code></pre>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    The cost tracker operates at the <code>Delegate</code> level — every LLM
+    call passes through it. When the remaining budget drops below the estimated
+    cost of one more call, the agent receives a signal to produce its final
+    answer with whatever information it has gathered so far. This is a
+    <strong>graceful degradation</strong> — the agent does not crash, it
+    summarises partial results and explains what it could not complete.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Agent Design Framework</h2>
+
+<p>
+  Before writing code, answer four questions. This mental framework (from
+  the MLFP agent design methodology) prevents the most common failure: an
+  agent that calls tools randomly because its purpose was never clearly defined.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Agent design: four questions before code</text>
+
+  <!-- Q1: Goal -->
+  <rect x="40" y="50" width="300" height="45" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="55" y="78" font-weight="700" font-size="13" fill="#3B82F6">1. Goal</text>
+  <text x="130" y="78" font-size="11" fill="#1E293B">What is the agent supposed to achieve?</text>
+
+  <!-- Q2: Thought process -->
+  <rect x="40" y="110" width="300" height="45" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="55" y="138" font-weight="700" font-size="13" fill="#22C55E">2. Process</text>
+  <text x="140" y="138" font-size="11" fill="#1E293B">What reasoning steps does it need?</text>
+
+  <!-- Q3: Specialist -->
+  <rect x="380" y="50" width="300" height="45" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="395" y="78" font-weight="700" font-size="13" fill="#F59E0B">3. Specialist</text>
+  <text x="490" y="78" font-size="11" fill="#1E293B">What kind of expert would you hire?</text>
+
+  <!-- Q4: Tools -->
+  <rect x="380" y="110" width="300" height="45" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="395" y="138" font-weight="700" font-size="13" fill="#8B5CF6">4. Tools</text>
+  <text x="475" y="138" font-size="11" fill="#1E293B">What tools do they need?</text>
+
+  <!-- Example -->
+  <rect x="40" y="180" width="640" height="80" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+  <text x="60" y="200" font-weight="600" font-size="11" fill="#475569">Example: Data analysis agent</text>
+  <text x="60" y="218" font-size="10" fill="#1E293B">Goal: Profile a dataset and recommend the best model</text>
+  <text x="60" y="234" font-size="10" fill="#1E293B">Process: Load → profile → check class balance → try 3 models → compare → recommend</text>
+  <text x="60" y="250" font-size="10" fill="#1E293B">Specialist: "ML data scientist with profiling experience" (not just "data person")</text>
+</svg>
+<figcaption>The four-question framework ensures every agent has a clear purpose. Be sharp with the specialist definition: "HR research specialist" not just "researcher".</figcaption>
+</figure>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    The specialist description becomes the agent's system prompt. A vague
+    specialist ("you are a helpful assistant") produces unfocused behaviour. A
+    sharp specialist ("you are a senior data scientist at a Singapore logistics
+    firm, specialising in churn prediction using gradient boosting on tabular
+    data") produces targeted, domain-appropriate reasoning. The more specific
+    the specialist, the fewer wasted tool calls.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Autonomous Data Analyst</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build an agent that autonomously analyses Singapore telco customer churn
+    data: profiles the dataset, identifies class imbalance, trains three
+    candidate models, and recommends the best one — all within a $1.00 budget.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. Define the signature and tools.</span>
+    <p>We already defined these above. The key design decisions:</p>
+    <ul>
+      <li><strong>3 tools</strong> (explore, train, visualise) — enough to complete the task, few enough for reliable selection.</li>
+      <li><strong>Typed outputs</strong> — <code>analysis_report</code> (Markdown) and <code>recommended_model</code> (string) force structured results.</li>
+      <li><strong>Tool descriptions are precise</strong> — each says what it returns, not just what it does.</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Run the agent with cost tracking.</span>
+    <pre><code class="language-python">from kaizen import LLMCostTracker
+
+tracker = LLMCostTracker(budget_usd=1.00)
+
+result = agent.run(
+    dataset_name="sg_telco_churn.csv",
+    cost_tracker=tracker
+)
+
+print(result.analysis_report)
+print(f"\nRecommended: {result.recommended_model}")
+print(f"Cost: ${tracker.total_cost:.4f} ({tracker.call_count} LLM calls)")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Observe the agent's trace.</span>
+    <p>A typical ReAct trace for this task looks like:</p>
+    <pre><code class="language-text">[Thought] I need to understand the dataset first. Let me profile it.
+[Action]  explore_data(dataset="sg_telco_churn.csv")
+[Observe] shape=(5000, 12), target "churned": 73% No / 27% Yes, 2% nulls in "tenure"
+
+[Thought] Class imbalance (73/27). I should use F1 as the metric, not accuracy.
+          Let me try three models: logistic regression, random forest, gradient boosting.
+[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="logistic_regression")
+[Observe] accuracy=0.78, f1=0.61, training_time=1.2s
+
+[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="random_forest")
+[Observe] accuracy=0.83, f1=0.72, training_time=3.4s
+
+[Action]  train_model(dataset="sg_telco_churn.csv", target="churned", algorithm="gradient_boosting")
+[Observe] accuracy=0.85, f1=0.76, training_time=5.1s
+
+[Thought] Gradient boosting wins on both accuracy (0.85) and F1 (0.76).
+          The F1 gap is significant: 0.76 vs 0.72 for random forest.
+          Let me generate the feature importance chart.
+[Action]  visualise_results(dataset="sg_telco_churn.csv", target="churned")
+[Observe] Chart saved to results/feature_importance.png
+
+[Answer]  Gradient boosting recommended. F1=0.76 on imbalanced data (73/27).
+          Top features: contract_length, monthly_charges, tenure.
+          Cost: $0.34 (6 LLM calls)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4. Evaluate the agent's behaviour.</span>
+    <p>
+      The agent made sensible decisions: it profiled first (not training blind),
+      recognised class imbalance, chose F1 over accuracy, compared three models,
+      and recommended the winner. Six LLM calls, $0.34, about 90 seconds
+      end-to-end. A human analyst would reach the same conclusion in 20-30
+      minutes.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Agent Design Considerations</h2>
+
+<h3>Iterative refinement</h3>
+<p>
+  A critic agent can review another agent's output and recommend improvements.
+  The data analyst agent produces a report; a reviewer agent checks for missing
+  analyses, statistical errors, or unsupported conclusions. This is more reliable
+  than asking the same agent to self-critique.
+</p>
+
+<h3>Human-in-the-loop</h3>
+<p>
+  For high-stakes decisions, the agent can pause and request human approval
+  before proceeding. Kaizen supports this with checkpoint callbacks — the agent
+  emits a checkpoint event, the framework surfaces it to the user, and the agent
+  resumes only after approval. This is critical for financial applications where
+  MAS requires human oversight of AI-driven decisions.
+</p>
+
+<h3>Monitoring and logging</h3>
+<p>
+  Every agent step — thought, action, observation — should be logged for
+  debugging and audit. Kaizen's <code>Delegate</code> emits streaming events
+  that you can capture in real time. This connects directly to the governance
+  audit trails in Lesson 6.7.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Too many tools</span>
+  <p>
+    Agents perform better with 3-5 focused tools than 20 generic ones. With 20
+    tools, the LLM spends most of its reasoning capacity on tool selection rather
+    than problem-solving. If you need more than 7 tools, consider splitting
+    into multiple specialised agents (Lesson 6.6).
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: No cost budget</span>
+  <p>
+    An agent stuck in a reasoning loop can spend hundreds of dollars in minutes.
+    Always set a hard budget with <code>LLMCostTracker</code>. A good heuristic:
+    estimate the expected number of steps, multiply by 3x for safety, and compute
+    the token cost. For most data analysis tasks, $1-5 is sufficient.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: Treating agent output as authoritative</span>
+  <p>
+    Agents hallucinate. The tool <em>results</em> are real (they come from actual
+    code execution), but the agent's <em>interpretation</em> of those results can
+    be wrong. "The model achieved 95% accuracy" might be correct, but "this means
+    the model is ready for production" is the agent's opinion. Always verify
+    critical conclusions against the raw tool outputs.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Vague tool descriptions</span>
+  <p>
+    The LLM selects tools based on their <code>description</code> field.
+    "Processes data" is useless — the LLM cannot distinguish it from other data
+    tools. "Load a CSV file and return shape, column types, null percentages,
+    and descriptive statistics as a dictionary" tells the LLM exactly when this
+    tool is appropriate and what to expect in the response.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Add a fourth tool</h3>
+  <p>
+    Add a <code>check_correlations</code> tool that computes pairwise correlation
+    coefficients for all numeric columns in a dataset. The tool should return
+    the top 5 most correlated pairs. Then run the agent on the telco churn
+    dataset and observe whether it uses the new tool. Does it change the
+    agent's recommendation?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — Budget sensitivity</h3>
+  <p>
+    Run the same agent with three different budgets: $0.20, $1.00, and $5.00.
+    Compare the quality of the analysis report at each budget level. At $0.20,
+    the agent should be forced to cut steps short. At $5.00, does it use the
+    extra budget productively or waste it on unnecessary tool calls?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Build a ChainOfThoughtAgent</h3>
+  <p>
+    Create a <code>ChainOfThoughtAgent</code> (no tools) that answers the same
+    question: "What is the best model for the telco churn dataset?" Compare its
+    answer with the ReAct agent's answer. The CoT agent will reason from general
+    knowledge; the ReAct agent reasons from actual data. Which is more trustworthy?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Singapore context</h3>
+  <p>
+    Build a ReAct agent for HDB resale price analysis. Define tools for loading
+    the HDB resale dataset (50,000 Singapore property transactions), computing
+    price statistics by town, and training a regression model. The agent should
+    autonomously identify the most expensive town and the best predictors of
+    resale price.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>6.1 Prompt engineering:</strong> the agent's system prompt IS prompt
+  engineering at scale — every design decision about the specialist description,
+  tool descriptions, and output format is prompt engineering.
+  <br>
+  <strong>6.4 RAG:</strong> RAG agents use retrieval as a tool. The
+  <code>RAGResearchAgent</code> is a ReAct agent where the primary tool is
+  vector search.
+  <br>
+  <strong>6.6 Multi-agent:</strong> single agents compose into orchestrated
+  teams — the supervisor-worker pattern delegates subtasks to specialised
+  ReAct agents.
+  <br>
+  <strong>6.7 Governance:</strong> PactGovernedAgent wraps any Kaizen agent with
+  access controls, operating envelopes, and audit logging.
+  <br>
+  <strong>5.8 RL:</strong> the ReAct loop is conceptually similar to an RL
+  agent's interaction with an environment — state, action, reward, repeat.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have built your first autonomous AI agent — a system that reasons about
+  a task, selects and calls tools, observes results, and iterates until it has
+  an answer. The three critical components are the ReAct loop (structured
+  reasoning), function calling (structured tool interfaces), and cost budgets
+  (structured safety).
+</p>
+<p>
+  The agent design framework — goal, process, specialist, tools — is more
+  important than the code. A well-designed agent with 3 tools outperforms a
+  poorly-designed agent with 20. The specialist description is the single
+  highest-leverage prompt engineering decision you make.
+</p>
+<p>
+  In Lesson 6.6, we move from single agents to multi-agent systems: teams of
+  specialists coordinated by a supervisor, communicating through structured
+  protocols, with shared and private memory. The data analyst agent you built
+  today becomes one worker in a larger pipeline.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../04/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    6.4 RAG Systems
+  </a>
+  <a href="../06/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.6 Multi-Agent Orchestration
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

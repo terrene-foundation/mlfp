@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.8</span>
+  DL Foundations — Neural Networks and the Training Toolkit
+</h1>
+
+<p class="lead">Total time: ~120 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~6–7 min per slide</p>
+
+<p>
+  This is the densest lesson in the entire curriculum. It bridges USML
+  to DL and equips students with the training toolkit for all of M5.
+  Pace is critical. The conceptual payload is the bridge from 4.7
+  (Slides 1–2), the forward/backprop mechanics (Slides 3–7), and the
+  hidden-layers-as-feature-engineering insight (Slide 14). The training
+  toolkit (Slides 8–13) is reference material — walk it briskly and
+  tell them to use the textbook for details. If running long, compress
+  the toolkit slides and protect the bridge and insight slides.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div>
+  <h3>DL Foundations</h3>
+  <p>
+    Set context: "This is the final lesson of Module 4 and the most
+    important one. Today we build a neural network from scratch and
+    understand how it works from the ground up. Every architecture
+    in Module 5 — CNNs for images, RNNs for sequences, Transformers
+    for language — is a specialised version of what we build today.
+    The training toolkit you learn here is equipment for the rest
+    of the course."
+  </p>
+  <div class="transition">→ "First, the bridge from 4.7."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~5 min</span><span>Bridge</span></div>
+  <h3>The bridge from 4.7</h3>
+  <p>
+    Walk the side-by-side diagram. "On the left: matrix factorisation
+    from 4.7. It learns linear embeddings by minimising reconstruction
+    error. On the right: a neural network. It learns non-linear
+    embeddings by minimising any differentiable loss. The arrow in
+    the middle is labelled 'add non-linearity' — that is the only
+    difference. Everything else is the same: optimisation drives
+    feature discovery."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If the bridge is unclear:</strong> "In 4.7, the optimiser
+    created a 20-dimensional vector for each user. Today, the
+    optimiser creates a vector at each hidden layer. Same process,
+    more expressive because of activation functions."
+  </div>
+  <div class="transition">→ "Let's see the architecture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~5 min</span><span>Architecture</span></div>
+  <h3>Network architecture</h3>
+  <p>
+    Walk the diagram. "Input layer: your features — floor area,
+    storey, town code. Hidden layers: learned representations.
+    Output: predicted price. Each connection carries a weight.
+    Each node applies a linear transform (multiply by weights,
+    add bias) then an activation function (introduces non-linearity).
+    The key insight: the hidden activations are embeddings — just
+    like the user/item vectors in 4.7, but non-linear."
+  </p>
+  <div class="transition">→ "The forward pass computes the prediction."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>Forward pass</span></div>
+  <h3>Forward pass</h3>
+  <p>
+    Walk the formula, then the code. "Layer 1: multiply input by
+    weights W1, add bias b1, apply ReLU. Layer 2: same with W2, b2.
+    Layer 3: same but no activation — linear output for regression.
+    Three lines of code. That is the entire forward pass."
+  </p>
+  <div class="transition">→ "Now we need a loss to minimise."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Loss function</span></div>
+  <h3>Loss function</h3>
+  <p>
+    "For regression: MSE — same as M2. For classification: cross-entropy
+    — measures how far the predicted probability distribution is from
+    the true labels. Both are differentiable, which is what backprop
+    needs."
+  </p>
+  <div class="transition">→ "How do we compute gradients?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~7 min</span><span>Backprop</span></div>
+  <h3>Backpropagation — chain rule</h3>
+  <p>
+    This is where many students get lost. Go slowly. "The chain rule
+    says: to find how the loss changes with respect to a weight in
+    layer 1, multiply together all the partial derivatives from the
+    output back to that weight. It is just repeated multiplication —
+    the chain rule from calculus applied layer by layer."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If the math is intimidating:</strong> "You do not need to
+    memorise this formula. The point is: there is a systematic way
+    to compute how each weight affects the loss. That is backprop.
+    The code is three lines per layer."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that automatic differentiation
+    (PyTorch, JAX) computes this for you. Understanding backprop
+    matters for debugging gradient issues, not for daily use.
+  </div>
+  <div class="transition">→ "Gradients tell us the direction. Descent takes the step."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Gradient descent</span></div>
+  <h3>Gradient descent</h3>
+  <p>
+    Walk the diagram. "The loss surface is a landscape. The gradient
+    points uphill. We step downhill by subtracting the gradient times
+    the learning rate. Repeat until we reach a valley." Singapore
+    analogy: "Imagine hiking on Bukit Timah in fog. You cannot see
+    the bottom but you can feel which direction is downhill. Take a
+    step. Feel again. Repeat."
+  </p>
+  <div class="transition">→ "Now the toolkit: activations."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Activations</span></div>
+  <h3>Activation functions</h3>
+  <p>
+    Walk the six boxes. "ReLU is the default for hidden layers —
+    simple, fast, works. Sigmoid for binary output (probability).
+    Softmax for multi-class (probabilities summing to 1). GELU
+    for Transformers. Tanh for RNNs. Leaky ReLU when you are worried
+    about dead neurons." Tell them: "You do not need to memorise all
+    six. Use ReLU unless there is a reason not to."
+  </p>
+  <div class="transition">→ "Regularisation: dropout."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Dropout</span></div>
+  <h3>Dropout</h3>
+  <p>
+    Walk the diagram. "During training, we randomly delete neurons —
+    set them to zero. The network has to learn with missing pieces,
+    which forces it to spread information across multiple neurons.
+    At inference, all neurons are active."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Study group analogy:</strong> "Imagine a study group
+    where one person is randomly absent each session. Everyone has
+    to learn the material, because you cannot rely on one person
+    to carry the group."
+  </div>
+  <div class="transition">→ "Normalisation: batch norm."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Batch norm</span></div>
+  <h3>Batch normalisation</h3>
+  <p>
+    Walk the formula. "Normalise each layer's inputs to zero mean,
+    unit variance. Then apply learnable scale and shift — gamma and
+    beta — so the network can undo the normalisation if it helps.
+    The effect: training is more stable, you can use higher learning
+    rates, and there is a mild regularisation effect."
+  </p>
+  <div class="transition">→ "Optimisers."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Optimisers</span></div>
+  <h3>Optimisers</h3>
+  <p>
+    Walk the table. "Adam is the default. It combines momentum
+    (remembers past gradients) with per-parameter learning rates
+    (adapts to each weight's scale). AdamW adds proper weight decay —
+    use it for transformers. SGD only if you need precise control."
+  </p>
+  <div class="transition">→ "LR schedules."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>LR schedule</span></div>
+  <h3>LR schedule + early stopping</h3>
+  <p>
+    Walk the diagram. "Start low (warmup), ramp up, then decay
+    following a cosine curve. The dashed red line is early stopping:
+    when validation loss stops improving, stop training and restore
+    the best weights. This prevents the model from memorising the
+    training set."
+  </p>
+  <div class="transition">→ "Now the deep insight."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>NN code</span></div>
+  <h3>From-scratch code</h3>
+  <p>
+    Show the code. "Three lines for forward pass. In the exercise
+    you will implement the full backprop. The textbook has the
+    complete code — use it as reference."
+  </p>
+  <div class="transition">→ "The deep insight."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~6 min</span><span>Key insight</span></div>
+  <h3>Hidden layers = automated feature engineering</h3>
+  <p>
+    This is the conceptual climax. Slow down. "The hidden layers
+    perform unsupervised feature discovery — they learn representations
+    of the input that are useful for the task. The output layer
+    performs supervised prediction on those learned features. This
+    is representation learning: the network simultaneously discovers
+    and uses features."
+  </p>
+  <p>
+    Connect to the full spectrum: "M3: human designs features. M4.1-6:
+    algorithms discover features without error. M4.7: optimisation
+    creates linear features. M4.8: optimisation creates non-linear
+    features. M5: specialised architectures create domain-specific
+    features (spatial, temporal, graph, generative)."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Code walkthrough</span></div>
+  <h3>From-scratch code (detail)</h3>
+  <p>
+    Walk the code if time permits, otherwise point to textbook.
+  </p>
+  <div class="transition">→ "Mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Common mistakes</h3>
+  <p>
+    Walk all four. #1 (zero init) is the most common beginner trap.
+    "If all weights are zero, every neuron computes the same thing.
+    The gradients are the same. The updates are the same. Symmetry
+    is never broken. The network effectively has one neuron per layer."
+  </p>
+  <div class="transition">→ "Cross-references."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Cross-refs</span></div>
+  <h3>Cross-references</h3>
+  <p>
+    Walk the three links. The forward link to M5 is the most
+    important: "Every architecture in M5 is a specialised neural
+    network. CNNs add spatial connectivity. RNNs add temporal
+    connectivity. Transformers add attention. GANs add adversarial
+    training. But the forward pass, backprop, and training toolkit
+    are identical."
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Run through the checklist. Celebrate: "You have completed
+    Module 4. You can now cluster data, reduce dimensions, detect
+    anomalies, discover co-occurrence patterns, extract topics
+    from text, build recommenders, and train neural networks from
+    scratch. Module 5 takes every architecture you have heard of —
+    CNNs, RNNs, Transformers, GANs — and implements them."
+  </p>
+  <div class="transition">→ End of Module 4. Take a proper break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    4.7 Speaker Notes
+  </a>
+  <a href="../../../mlfp05/lessons/01/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.1 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

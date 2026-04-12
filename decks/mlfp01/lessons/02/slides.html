@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.2 — Filtering and Transforming Data | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- Slide 1: Title -->
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.2</p>
+  <h1>Filtering and Transforming Data</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Boolean expressions · filter · with_columns · method chaining
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 50 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> Lesson 1.1 &nbsp; · &nbsp;
+    <strong>Dataset:</strong> HDB resale (500k rows)
+  </div>
+  <div class="slide-footer">MLFP — Module 1</div>
+</section>
+
+<!-- Slide 2: The narrowing pipeline -->
+<section>
+  <h2>From 500,000 rows to the question</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 780 240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <rect x="20" y="50" width="180" height="150" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+      <text x="110" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#1E293B">Raw</text>
+      <text x="110" y="110" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">500,000 rows</text>
+      <text x="110" y="130" text-anchor="middle" font-family="Inter" font-size="13" fill="#64748B">14 columns</text>
+      <line x1="205" y1="125" x2="275" y2="125" stroke="#0D9488" stroke-width="3" marker-end="url(#arr2)"/>
+      <text x="240" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">filter</text>
+      <rect x="280" y="70" width="180" height="110" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="370" y="100" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#0D9488">Filtered</text>
+      <text x="370" y="125" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">~300 rows</text>
+      <text x="370" y="145" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">BISHAN + 4 ROOM</text>
+      <line x1="465" y1="125" x2="535" y2="125" stroke="#0D9488" stroke-width="3" marker-end="url(#arr2)"/>
+      <text x="500" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">select + derive</text>
+      <rect x="540" y="85" width="220" height="80" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+      <text x="650" y="115" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#0D9488">Analysis-ready</text>
+      <text x="650" y="140" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">few columns + features</text>
+    </svg>
+  </figure>
+  <p style="text-align: center; font-style: italic; color: #64748B;">
+    Your first job is to throw away the 99% of rows you don't need.
+  </p>
+</section>
+
+<!-- Slide 3: Booleans -->
+<section>
+  <h2>Booleans: True or False</h2>
+  <p>Six comparison operators that produce a boolean:</p>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Operator</th><th>Meaning</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>==</code></td><td>equal</td><td><code>"BISHAN" == "BISHAN"</code> → True</td></tr>
+      <tr><td><code>!=</code></td><td>not equal</td><td><code>"BISHAN" != "JURONG"</code> → True</td></tr>
+      <tr><td><code>&gt;</code></td><td>greater</td><td><code>500_000 &gt; 350_000</code> → True</td></tr>
+      <tr><td><code>&lt;</code></td><td>less</td><td><code>100 &lt; 50</code> → False</td></tr>
+      <tr><td><code>&gt;=</code></td><td>greater or equal</td><td><code>500_000 &gt;= 500_000</code> → True</td></tr>
+      <tr><td><code>&lt;=</code></td><td>less or equal</td><td><code>26.5 &lt;= 28.0</code> → True</td></tr>
+    </tbody>
+  </table>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin-top: 1em; font-size: 0.85em;">
+    <strong>Watch:</strong> <code>=</code> assigns. <code>==</code> compares. Different operators.
+  </div>
+</section>
+
+<!-- Slide 4: pl.col expressions -->
+<section>
+  <h2>Polars expressions: recipes, not actions</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 780 220" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#4F46E5"/>
+        </marker>
+      </defs>
+      <rect x="30" y="30" width="320" height="80" rx="10" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2"/>
+      <text x="190" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#4F46E5">Expression</text>
+      <text x="190" y="85" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">pl.col("price") &gt; 500_000</text>
+      <line x1="355" y1="70" x2="460" y2="70" stroke="#4F46E5" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="465" y="30" width="290" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="610" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Method</text>
+      <text x="610" y="85" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">df.filter(...)</text>
+      <rect x="260" y="150" width="270" height="50" rx="10" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+      <text x="395" y="180" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">New DataFrame (rows matching)</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">An expression on its own does nothing. Handed to <code>filter</code>, <code>with_columns</code>, or <code>select</code>, it becomes work.</p>
+</section>
+
+<!-- Slide 5: Simple filter -->
+<section>
+  <h2>Your first filter</h2>
+  <pre><code class="language-python" data-trim>
+import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+
+# All Ang Mo Kio transactions
+amk = hdb.filter(pl.col("town") == "ANG MO KIO")
+print(f"AMK transactions: {amk.height:,}")
+  </code></pre>
+  <p>Read it aloud: <em>filter hdb to rows where the town column equals "ANG MO KIO".</em></p>
+</section>
+
+<!-- Slide 6: Compound filters -->
+<section>
+  <h2>Combining conditions with <code>&amp;</code> and <code>|</code></h2>
+  <pre><code class="language-python" data-trim>
+# AND — both must hold
+affordable = hdb.filter(
+    (pl.col("resale_price") >= 300_000)
+    & (pl.col("resale_price") <= 500_000)
+)
+
+# OR — either holds
+central = hdb.filter(
+    (pl.col("town") == "BISHAN")
+    | (pl.col("town") == "TOA PAYOH")
+)
+  </code></pre>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; font-size: 0.85em;">
+    <strong>Parenthesise every condition.</strong> <code>&amp;</code> binds tighter than <code>==</code>,
+    so unparenthesised combinations parse wrong.
+  </div>
+</section>
+
+<!-- Slide 7: is_in -->
+<section>
+  <h2><code>is_in</code>: cleaner than chained ORs</h2>
+  <pre><code class="language-python" data-trim>
+# Instead of:
+#   (town == "BISHAN") | (town == "TOA PAYOH")
+#   | (town == "QUEENSTOWN") | (town == "BUKIT MERAH")
+
+central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
+central = hdb.filter(pl.col("town").is_in(central_towns))
+
+print(f"Central towns: {central.height:,}")
+  </code></pre>
+  <p>Rule of thumb: three or more OR values → reach for <code>is_in</code>.</p>
+</section>
+
+<!-- Slide 8: with_columns -->
+<section>
+  <h2><code>with_columns</code>: derive new features</h2>
+  <pre><code class="language-python" data-trim>
+hdb = hdb.with_columns(
+    # price per sqm — normalised measure
+    (pl.col("resale_price") / pl.col("floor_area_sqm"))
+        .alias("price_per_sqm"),
+    # year as integer
+    pl.col("month").str.slice(0, 4).cast(pl.Int32)
+        .alias("year"),
+)
+
+print(hdb.select("month", "year", "price_per_sqm").head(3))
+  </code></pre>
+  <p style="font-size: 0.85em;">Add multiple columns in one call — more efficient than chaining.</p>
+</section>
+
+<!-- Slide 9: when/then -->
+<section>
+  <h2>Conditional columns: <code>when / then</code></h2>
+  <pre><code class="language-python" data-trim>
+hdb = hdb.with_columns(
+    pl.when(pl.col("resale_price") &lt; 350_000)
+      .then(pl.lit("budget"))
+    .when(pl.col("resale_price") &lt; 500_000)
+      .then(pl.lit("mid_range"))
+    .when(pl.col("resale_price") &lt; 700_000)
+      .then(pl.lit("premium"))
+    .otherwise(pl.lit("luxury"))
+    .alias("price_tier")
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    <code>pl.lit(...)</code> wraps a constant. Without it, Polars would look
+    for a column named <code>"budget"</code>.
+  </p>
+</section>
+
+<!-- Slide 10: Chain diagram -->
+<section>
+  <h2>Method chaining: the pipeline</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <rect x="250" y="10" width="260" height="36" rx="6" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+      <text x="380" y="33" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E293B">hdb  (500,000 rows)</text>
+      <line x1="380" y1="46" x2="380" y2="68" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
+      <text x="530" y="62" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.filter(year ≥ 2020)</text>
+      <rect x="250" y="72" width="260" height="36" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="380" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">180,000 rows</text>
+      <line x1="380" y1="108" x2="380" y2="130" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
+      <text x="530" y="124" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.filter(premium/luxury)</text>
+      <rect x="250" y="134" width="260" height="36" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+      <text x="380" y="157" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">32,000 rows</text>
+      <line x1="380" y1="170" x2="380" y2="192" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
+      <text x="530" y="186" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.select(...)</text>
+      <rect x="250" y="196" width="260" height="36" rx="6" fill="#99F6E4" stroke="#0D9488" stroke-width="2"/>
+      <text x="380" y="219" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#0F766E">32k × 4 cols</text>
+      <line x1="380" y1="232" x2="380" y2="254" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr4)"/>
+      <text x="530" y="248" font-family="JetBrains Mono" font-size="12" fill="#0D9488">.sort("price", desc)</text>
+      <rect x="250" y="258" width="260" height="36" rx="6" fill="#14B8A6" stroke="#0D9488" stroke-width="2"/>
+      <text x="380" y="281" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="white">result</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- Slide 11: Chain code -->
+<section>
+  <h2>The chain in code</h2>
+  <pre><code class="language-python" data-trim>
+recent_premium = (
+    hdb
+    .filter(pl.col("year") >= 2020)
+    .filter(pl.col("price_tier").is_in(["premium", "luxury"]))
+    .select(
+        "transaction_date", "town", "flat_type",
+        "price_per_sqm", "resale_price",
+    )
+    .sort("resale_price", descending=True)
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    Each line consumes the DataFrame from the line above and produces the
+    DataFrame for the line below. Reads top-to-bottom like a recipe.
+  </p>
+</section>
+
+<!-- Slide 12: Boolean algebra -->
+<section>
+  <h2>Boolean algebra under the hood</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ A \land B \iff A \text{ and } B \text{ are both True} \]
+    \[ A \lor B \iff \text{at least one of } A, B \text{ is True} \]
+  </div>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th>$A$</th><th>$B$</th><th>$A \land B$</th><th>$A \lor B$</th></tr></thead>
+    <tbody>
+      <tr><td>T</td><td>T</td><td>T</td><td>T</td></tr>
+      <tr><td>T</td><td>F</td><td>F</td><td>T</td></tr>
+      <tr><td>F</td><td>T</td><td>F</td><td>T</td></tr>
+      <tr><td>F</td><td>F</td><td>F</td><td>F</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.85em;">Polars evaluates these truth tables across hundreds of thousands of rows at once.</p>
+</section>
+
+<!-- Slide 13: De Morgan -->
+<section>
+  <h2>🔵 Theory: De Morgan's laws</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \lnot(A \land B) \equiv (\lnot A) \lor (\lnot B) \]
+    \[ \lnot(A \lor B) \equiv (\lnot A) \land (\lnot B) \]
+  </div>
+  <p>"Not (A and B)" = "not A or not B". Useful when you flip a filter.</p>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; font-size: 0.85em;">
+    In Polars: <code>~pl.col("town").is_in([...])</code> is the clean way to
+    say "not in this set". The tilde <code>~</code> is boolean negation.
+  </div>
+</section>
+
+<!-- Slide 14: Common mistakes -->
+<section>
+  <h2>Three traps to avoid</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>1. Missing parentheses.</strong> <code>&amp;</code> binds tighter
+    than <code>==</code>. Always wrap each condition.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>2. Python <code>and</code>/<code>or</code>.</strong> Do not use
+    them on Polars expressions. Use <code>&amp;</code> and <code>|</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>3. Forgetting to assign.</strong> <code>hdb.filter(...)</code>
+    alone throws the result away. Write <code>hdb = hdb.filter(...)</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>4. Bare strings in <code>then</code>.</strong> Wrap literals with
+    <code>pl.lit(...)</code> or Polars will look for a column with that name.
+  </div>
+</section>
+
+<!-- Slide 15: Reflection -->
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Write boolean expressions with comparison operators</li>
+    <li>✓ Filter rows on single and compound conditions (<code>&amp;</code>, <code>|</code>, <code>is_in</code>)</li>
+    <li>✓ Add derived columns with <code>with_columns</code> and <code>alias</code></li>
+    <li>✓ Build conditional columns with <code>pl.when / then / otherwise</code></li>
+    <li>✓ Chain filter, select, with_columns, sort into a readable pipeline</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 1.3 — define your own functions and use
+    <code>group_by</code> + <code>agg</code> to summarise every town in a
+    single call, instead of filtering one town at a time.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    width: 1280,
+    height: 720,
+    margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.8 — Capstone: Full Production Platform | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.8</span>
+  Capstone — Full Production Platform
+</h1>
+
+<p class="lead">
+  This is the culmination of the six-module programme. You deploy a complete,
+  governed AI system via Nexus — a platform accessible through API, CLI, and MCP
+  simultaneously. The system integrates every major Kailash package: Core SDK for
+  workflow orchestration, ML for model training, Kaizen for agents, PACT for
+  governance, Nexus for deployment, and DriftMonitor for production monitoring.
+  This is not a toy demo — it is the architecture of a real production AI system.
+  And it is yours.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Consider a Singapore bank building an internal AI system to predict HDB resale
+  prices for mortgage risk assessment. The model must serve predictions to three
+  audiences: relationship managers via a web dashboard (REST API), the risk
+  automation team via a CLI batch pipeline, and an AI assistant via MCP tool calls.
+  Each audience needs authentication. The system must log every prediction for
+  regulatory audit. Model drift must be detected before stale predictions cause
+  bad lending decisions.
+</p>
+
+<p>
+  Building this from scratch means writing an API server, a CLI parser, an MCP
+  server, an auth layer, a rate limiter, a logging pipeline, and a drift detector
+  — all as separate codebases that need to stay in sync. Or you can use Nexus,
+  which gives you all three channels from a single codebase, with PACT governance
+  and DriftMonitor bolted on. That is what you build today.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 340" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-cap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">The Kailash production stack — end to end</text>
+
+  <!-- Training -->
+  <rect x="20" y="50" width="130" height="65" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="85" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">TrainingPipeline</text>
+  <text x="85" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Train model</text>
+  <text x="85" y="104" text-anchor="middle" font-size="9" fill="#64748B">M3-M5</text>
+
+  <!-- Arrow -->
+  <line x1="155" y1="82" x2="175" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
+
+  <!-- DataFlow -->
+  <rect x="180" y="50" width="110" height="65" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="235" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">DataFlow</text>
+  <text x="235" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Persist model</text>
+  <text x="235" y="104" text-anchor="middle" font-size="9" fill="#64748B">ModelRegistry</text>
+
+  <!-- Arrow -->
+  <line x1="295" y1="82" x2="315" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
+
+  <!-- Kaizen -->
+  <rect x="320" y="50" width="110" height="65" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="375" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#F59E0B">Kaizen</text>
+  <text x="375" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Wrap in agent</text>
+  <text x="375" y="104" text-anchor="middle" font-size="9" fill="#64748B">M6.5-6.6</text>
+
+  <!-- Arrow -->
+  <line x1="435" y1="82" x2="455" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
+
+  <!-- PACT -->
+  <rect x="460" y="50" width="100" height="65" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="510" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#EF4444">PACT</text>
+  <text x="510" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Govern agent</text>
+  <text x="510" y="104" text-anchor="middle" font-size="9" fill="#64748B">M6.7</text>
+
+  <!-- Arrow -->
+  <line x1="565" y1="82" x2="585" y2="82" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
+
+  <!-- Nexus -->
+  <rect x="590" y="50" width="110" height="65" rx="8" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="645" y="72" text-anchor="middle" font-weight="600" font-size="11" fill="#4F46E5">Nexus</text>
+  <text x="645" y="90" text-anchor="middle" font-size="9" fill="#1E293B">Deploy platform</text>
+  <text x="645" y="104" text-anchor="middle" font-size="9" fill="#64748B">Today</text>
+
+  <!-- Three channels from Nexus -->
+  <rect x="570" y="145" width="150" height="145" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+  <text x="645" y="168" text-anchor="middle" font-weight="700" font-size="11" fill="#475569">Three Channels</text>
+  <rect x="582" y="180" width="126" height="28" rx="6" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+  <text x="645" y="198" text-anchor="middle" font-size="10" fill="#4F46E5" font-weight="600">REST API</text>
+  <rect x="582" y="215" width="126" height="28" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="645" y="233" text-anchor="middle" font-size="10" fill="#22C55E" font-weight="600">CLI</text>
+  <rect x="582" y="250" width="126" height="28" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="645" y="268" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">MCP</text>
+  <line x1="645" y1="120" x2="645" y2="140" stroke="#475569" stroke-width="2" marker-end="url(#arr-cap)"/>
+
+  <!-- DriftMonitor -->
+  <rect x="20" y="170" width="220" height="65" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="130" y="192" text-anchor="middle" font-weight="600" font-size="11" fill="#8B5CF6">DriftMonitor</text>
+  <text x="130" y="210" text-anchor="middle" font-size="9" fill="#1E293B">Production monitoring</text>
+  <text x="130" y="224" text-anchor="middle" font-size="9" fill="#64748B">Detects model staleness</text>
+
+  <path d="M 130 240 L 130 310 L 570 310 L 570 290" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="5 3" fill="none"/>
+  <text x="350" y="325" text-anchor="middle" font-size="10" fill="#8B5CF6">Monitors deployed model — alerts on feature drift, prediction shift, data quality</text>
+</svg>
+<figcaption>The complete production stack: train, persist, wrap in agent, govern, deploy, monitor. One codebase, three channels.</figcaption>
+</figure>
+
+<p>
+  Every box in this diagram maps to a lesson you have already completed. The
+  capstone connects them into one running system. The scaffolding is roughly 40%
+  — you are connecting proven components, not building everything from zero.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Nexus: One Codebase, Three Interfaces</h3>
+
+<p>
+  Nexus is Kailash's multi-channel deployment platform. You register a Python
+  function (or a Kaizen agent) as a <em>service</em>, and Nexus automatically
+  exposes it as a REST endpoint, a CLI command, and an MCP tool. You write the
+  logic once; Nexus handles serialisation, transport, error formatting, and
+  documentation generation for all three channels.
+</p>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Think of Nexus as a universal adapter. Your code speaks one language. Nexus
+    translates it for three different audiences: web clients (API), terminal
+    operators (CLI), and AI agents (MCP). Without Nexus, you would maintain three
+    separate interface layers that inevitably drift apart.
+  </p>
+</div>
+
+<h3>Authentication and Authorisation (RBAC)</h3>
+
+<p>
+  <strong>Authentication</strong> answers "who are you?" — typically via a JWT
+  token. <strong>Authorisation</strong> answers "what are you allowed to do?" —
+  via role-based access control (RBAC). Nexus supports both out of the box.
+</p>
+
+<p>
+  Roles cascade from PACT's D/T/R structure (Lesson 6.7). An <code>admin</code>
+  can deploy models and change configurations. An <code>analyst</code> can run
+  predictions but not modify the model. A <code>viewer</code> can see results
+  but not trigger new predictions. Each API call, CLI invocation, and MCP tool
+  call checks the caller's role before executing.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">RBAC: roles control access to services</text>
+
+  <!-- Roles -->
+  <rect x="40" y="50" width="120" height="50" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="100" y="72" text-anchor="middle" font-weight="700" font-size="12" fill="#EF4444">admin</text>
+  <text x="100" y="90" text-anchor="middle" font-size="9" fill="#1E293B">deploy + predict + view</text>
+
+  <rect x="40" y="115" width="120" height="50" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="100" y="137" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">analyst</text>
+  <text x="100" y="155" text-anchor="middle" font-size="9" fill="#1E293B">predict + view</text>
+
+  <rect x="40" y="180" width="120" height="35" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="100" y="202" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">viewer</text>
+
+  <!-- Services -->
+  <rect x="300" y="50" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="380" y="75" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/deploy</text>
+
+  <rect x="300" y="105" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="380" y="130" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/predict</text>
+
+  <rect x="300" y="160" width="160" height="40" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="380" y="185" text-anchor="middle" font-size="11" fill="#4F46E5" font-weight="600">/results</text>
+
+  <!-- Access lines -->
+  <line x1="165" y1="70" x2="295" y2="70" stroke="#EF4444" stroke-width="1.5"/>
+  <line x1="165" y1="75" x2="295" y2="125" stroke="#EF4444" stroke-width="1.5"/>
+  <line x1="165" y1="80" x2="295" y2="180" stroke="#EF4444" stroke-width="1.5"/>
+
+  <line x1="165" y1="135" x2="295" y2="125" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="165" y1="145" x2="295" y2="180" stroke="#F59E0B" stroke-width="1.5"/>
+
+  <line x1="165" y1="197" x2="295" y2="180" stroke="#22C55E" stroke-width="1.5"/>
+
+  <!-- Blocked -->
+  <text x="560" y="75" font-size="10" fill="#EF4444" font-weight="600">admin: full access</text>
+  <text x="560" y="130" font-size="10" fill="#F59E0B" font-weight="600">analyst: no deploy</text>
+  <text x="560" y="185" font-size="10" fill="#22C55E" font-weight="600">viewer: read only</text>
+</svg>
+<figcaption>RBAC maps roles to permitted services. Each API/CLI/MCP call checks the caller's role before executing.</figcaption>
+</figure>
+
+<h3>Middleware: Rate Limiting, Logging, CORS</h3>
+
+<p>
+  Nexus middleware wraps every request with cross-cutting concerns:
+</p>
+
+<ul>
+  <li><strong>Rate limiting</strong> prevents abuse. A sensible default for internal tools is 60 requests per minute per user. Public-facing APIs may need stricter limits.</li>
+  <li><strong>Logging</strong> captures every request and response for audit. Combined with PACT governance logs, this creates a complete audit trail.</li>
+  <li><strong>CORS</strong> (Cross-Origin Resource Sharing) controls which web domains can call the API. For internal dashboards, whitelist your domain; never use <code>*</code> in production.</li>
+</ul>
+
+<h3>Production Monitoring with DriftMonitor</h3>
+
+<p>
+  A model trained on January data may produce poor predictions by July if the
+  underlying distribution shifts. DriftMonitor (from Lesson 3.8) watches for
+  three kinds of drift:
+</p>
+
+<table>
+  <thead><tr><th>Drift type</th><th>What shifts</th><th>Detection method</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>Feature drift</td><td>Input distributions</td><td>KL divergence, PSI</td><td>Median flat size increases from 90 to 110 sqm</td></tr>
+    <tr><td>Prediction drift</td><td>Output distribution</td><td>KS test on predictions</td><td>Mean predicted price drifts upward 15%</td></tr>
+    <tr><td>Data quality</td><td>Missing/invalid values</td><td>Schema validation</td><td>New API version returns null for a required field</td></tr>
+  </tbody>
+</table>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    Population Stability Index (PSI) quantifies how much a distribution has
+    shifted. PSI below 0.1 indicates no meaningful change. PSI between 0.1 and
+    0.25 suggests moderate drift worth investigating. PSI above 0.25 signals
+    significant drift — retrain the model. The formula compares the expected
+    proportion $e_i$ (training data) against the actual proportion $a_i$
+    (production data) across $k$ bins:
+  </p>
+</div>
+
+<div class="annotated-equation">
+  $$ \text{PSI} = \sum_{i=1}^{k} (a_i - e_i) \cdot \ln\!\left(\frac{a_i}{e_i}\right) $$
+  <div class="annotations">
+    <span>$a_i$ — actual proportion in bin $i$</span>
+    <span>$e_i$ — expected proportion in bin $i$</span>
+    <span>$k$ — number of bins (10-20)</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: System Reliability</h2>
+
+<p>
+  A production system composed of $n$ sequential components, each with
+  independent availability $p_i$, has overall availability:
+</p>
+
+<div class="annotated-equation">
+  $$ A_{\text{system}} = \prod_{i=1}^{n} p_i $$
+  <div class="annotations">
+    <span>$p_i$ — availability of component $i$</span>
+    <span>$n$ — number of components in series</span>
+  </div>
+</div>
+
+<p>
+  If each of 6 components (training pipeline, data store, agent, governance,
+  Nexus, drift monitor) has 99.5% availability, the system availability is
+  $0.995^6 \approx 0.970$ — only 97%. This is why production systems need
+  health checks, retries, and graceful degradation. Nexus's middleware provides
+  the first layer of defence; DriftMonitor provides the continuous validation.
+</p>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    For higher availability, components can be deployed with redundancy. If a
+    component has two independent replicas, each with availability $p$, the
+    redundant availability is $1 - (1 - p)^2$. Two replicas at $p = 0.995$
+    yield $1 - 0.005^2 = 0.999975$ per component. Kubernetes or cloud
+    auto-scaling implements this transparently for Nexus services.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: Nexus</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    <code>Nexus</code> is the deployment layer of the Kailash platform. It
+    takes any Python callable or Kaizen agent and exposes it via REST API,
+    CLI, and MCP simultaneously. Key methods: <code>Nexus(name)</code> to
+    create a platform, <code>add_auth(provider, roles)</code> to configure
+    RBAC, <code>add_middleware(type, **config)</code> for cross-cutting
+    concerns, <code>register_service(name, handler)</code> to add endpoints,
+    and <code>serve(port)</code> to launch all three channels.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 250" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Nexus request lifecycle</text>
+
+  <!-- Incoming request -->
+  <rect x="20" y="60" width="100" height="50" rx="6" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="70" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#4F46E5">Request</text>
+  <text x="70" y="98" text-anchor="middle" font-size="9" fill="#64748B">API/CLI/MCP</text>
+
+  <!-- Auth -->
+  <rect x="150" y="60" width="90" height="50" rx="6" fill="#FEE2E2" stroke="#EF4444"/>
+  <text x="195" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#EF4444">Auth</text>
+  <text x="195" y="98" text-anchor="middle" font-size="9" fill="#64748B">JWT + RBAC</text>
+
+  <!-- Rate limit -->
+  <rect x="270" y="60" width="90" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="315" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#F59E0B">Rate Limit</text>
+  <text x="315" y="98" text-anchor="middle" font-size="9" fill="#64748B">60/min/user</text>
+
+  <!-- Governance -->
+  <rect x="390" y="60" width="90" height="50" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
+  <text x="435" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#8B5CF6">PACT</text>
+  <text x="435" y="98" text-anchor="middle" font-size="9" fill="#64748B">Governance</text>
+
+  <!-- Handler -->
+  <rect x="510" y="60" width="90" height="50" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="555" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#22C55E">Handler</text>
+  <text x="555" y="98" text-anchor="middle" font-size="9" fill="#64748B">Agent.run()</text>
+
+  <!-- Logger -->
+  <rect x="630" y="60" width="70" height="50" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="665" y="82" text-anchor="middle" font-weight="600" font-size="10" fill="#3B82F6">Log</text>
+  <text x="665" y="98" text-anchor="middle" font-size="9" fill="#64748B">Audit trail</text>
+
+  <!-- Arrows -->
+  <line x1="125" y1="85" x2="145" y2="85" stroke="#475569" stroke-width="1.5"/>
+  <line x1="245" y1="85" x2="265" y2="85" stroke="#475569" stroke-width="1.5"/>
+  <line x1="365" y1="85" x2="385" y2="85" stroke="#475569" stroke-width="1.5"/>
+  <line x1="485" y1="85" x2="505" y2="85" stroke="#475569" stroke-width="1.5"/>
+  <line x1="605" y1="85" x2="625" y2="85" stroke="#475569" stroke-width="1.5"/>
+
+  <!-- Rejection paths -->
+  <line x1="195" y1="115" x2="195" y2="160" stroke="#EF4444" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="195" y="175" text-anchor="middle" font-size="9" fill="#EF4444">401 Unauthorised</text>
+
+  <line x1="315" y1="115" x2="315" y2="195" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="315" y="210" text-anchor="middle" font-size="9" fill="#F59E0B">429 Too Many Requests</text>
+
+  <line x1="435" y1="115" x2="435" y2="225" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="435" y="240" text-anchor="middle" font-size="9" fill="#8B5CF6">403 Forbidden (governance)</text>
+</svg>
+<figcaption>Every request flows through auth, rate limiting, and governance before reaching the handler. Failures at any stage return the appropriate HTTP status.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Deploying a Governed HDB Price Prediction Platform</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Deploy the governed multi-agent system from Lessons 6.5-6.7 via Nexus.
+    The system predicts HDB resale prices. Three channels (API, CLI, MCP),
+    RBAC authentication, governance checks, and drift monitoring. Singapore-
+    specific: the model was trained on HDB transaction data and serves
+    predictions for flat types across estates like Tampines, Jurong East,
+    and Ang Mo Kio.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Build the platform.</span>
+    <p>Create a Nexus application, configure auth and middleware.</p>
+    <pre><code class="language-python">from kailash_nexus import Nexus
+from kailash_pact import GovernanceEngine, PactGovernedAgent, Address
+from kailash_ml import TrainingPipeline, DriftMonitor, ModelRegistry
+
+# Create platform
+app = Nexus("hdb-price-platform")
+
+# Configure RBAC: three roles
+app.add_auth(provider="jwt", roles=["admin", "analyst", "viewer"])
+
+# Add middleware
+app.add_middleware("rate_limit", requests_per_minute=60)
+app.add_middleware("logging", level="INFO", format="json")
+app.add_middleware("cors", origins=["https://dashboard.internal.sg"])</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Load the governed agent.</span>
+    <p>
+      Retrieve the governed agent from Lesson 6.7. This wraps a Kaizen
+      multi-agent pipeline (DataScientist, FeatureEngineer, ModelSelector,
+      ReportWriter) with PACT governance.
+    </p>
+    <pre><code class="language-python"># Load the trained model
+registry = ModelRegistry()
+model = registry.load("hdb-price-predictor", version="latest")
+
+# Wrap the prediction agent with governance
+engine = GovernanceEngine()
+org = engine.compile_org({
+    "domains": ["mortgage-risk"],
+    "teams": {"mortgage-risk": ["assessment", "audit"]},
+    "roles": {"assessment": ["analyst", "manager"],
+              "audit": ["reviewer"]}
+})
+
+governed_agent = PactGovernedAgent(
+    agent=prediction_agent,
+    governance=engine,
+    enforcement="block",  # fail-closed
+    budget=10.00
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Register services and deploy.</span>
+    <p>
+      Register the governed agent as a Nexus service. Add a health check
+      and a drift monitoring endpoint.
+    </p>
+    <pre><code class="language-python"># Prediction service — the core endpoint
+app.register_service("predict", governed_agent.run,
+    roles=["admin", "analyst"])
+
+# Results view — read-only
+app.register_service("results", get_recent_predictions,
+    roles=["admin", "analyst", "viewer"])
+
+# Deploy endpoint — admin only
+app.register_service("deploy", deploy_new_model,
+    roles=["admin"])
+
+# Health check — no auth required
+app.register_service("health", lambda: {"status": "ok"},
+    public=True)
+
+# Launch: API on :8000, CLI available, MCP on stdio
+app.serve(port=8000)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Configure drift monitoring.</span>
+    <p>
+      Attach DriftMonitor to the deployed model. It compares incoming
+      feature distributions against the training data baseline.
+    </p>
+    <pre><code class="language-python">monitor = DriftMonitor(
+    model_name="hdb-price-predictor",
+    baseline_data=training_features,
+    metrics=["psi", "ks_test"],
+    alert_threshold=0.25,    # PSI > 0.25 triggers alert
+    check_interval_hours=24  # daily check
+)
+
+# Register monitor with the platform
+app.register_monitor(monitor)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Test all three channels.</span>
+    <pre><code class="language-python">import requests
+
+# Test via REST API
+response = requests.post("http://localhost:8000/predict",
+    headers={"Authorization": f"Bearer {analyst_token}"},
+    json={"town": "Tampines", "flat_type": "4-room",
+          "floor_area_sqm": 93, "lease_commence_year": 1998})
+assert response.status_code == 200
+prediction = response.json()
+print(f"Predicted price: ${prediction['price']:,.0f}")
+
+# Test auth: unauthenticated request rejected
+bad = requests.post("http://localhost:8000/predict",
+    json={"town": "Tampines", "flat_type": "4-room"})
+assert bad.status_code == 401
+
+# Test RBAC: viewer cannot predict
+viewer_resp = requests.post("http://localhost:8000/predict",
+    headers={"Authorization": f"Bearer {viewer_token}"},
+    json={"town": "Tampines", "flat_type": "4-room"})
+assert viewer_resp.status_code == 403</code></pre>
+    <pre><code class="language-bash"># Test via CLI
+$ hdb-price-platform predict \
+    --town Tampines --flat-type 4-room \
+    --floor-area 93 --lease-year 1998
+Predicted price: $485,000</code></pre>
+  </div>
+
+  <p>
+    The platform is now live. Three audiences — web dashboards, batch pipelines,
+    AI assistants — all share the same prediction logic, the same governance
+    rules, and the same audit trail.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Debugging Agent Reasoning Chains</h2>
+
+<p>
+  When a governed agent returns an unexpected result, you need to trace the
+  reasoning chain. Kaizen agents emit structured trace events that show every
+  thought, action, observation, and governance check:
+</p>
+
+<pre><code class="language-python"># Enable trace mode
+result = governed_agent.run(
+    query="Predict HDB price for Ang Mo Kio 3-room",
+    trace=True
+)
+
+# Inspect the reasoning chain
+for step in result.trace:
+    print(f"[{step.type}] {step.content}")
+    if step.governance_check:
+        print(f"  Governance: {step.governance_check.decision}")
+        print(f"  Reason: {step.governance_check.explanation}")</code></pre>
+
+<div class="callout warning">
+  <span class="label">Common pitfall</span>
+  <p>
+    Trace output can be verbose. Filter by step type (<code>thought</code>,
+    <code>action</code>, <code>observation</code>, <code>governance</code>)
+    to focus on the relevant part of the chain. In production, traces should
+    be stored in a structured log (not printed to stdout) for later analysis.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Testing Agents: Automated Validation</h2>
+
+<p>
+  Agent testing is fundamentally different from function testing. A function
+  returns the same output for the same input. An agent may take different
+  reasoning paths each time. Testing agents requires <em>behavioural
+  assertions</em> — checking that the agent's actions and final answer are
+  reasonable, not that it followed a specific sequence.
+</p>
+
+<pre><code class="language-python">def test_agent_uses_correct_tools():
+    """Verify agent calls DataExplorer before TrainingPipeline."""
+    result = agent.run("Analyse and predict HDB prices", trace=True)
+    tool_names = [s.tool_name for s in result.trace if s.type == "action"]
+    assert "explore_data" in tool_names, "Agent must explore data first"
+    assert tool_names.index("explore_data") < tool_names.index("train_model")
+
+def test_agent_respects_governance():
+    """Verify agent stops when budget is exhausted."""
+    low_budget_agent = PactGovernedAgent(agent=agent, budget=0.01)
+    result = low_budget_agent.run("Complex multi-step analysis")
+    assert result.stopped_reason == "budget_exhausted"
+    assert result.total_cost <= 0.01
+
+def test_prediction_within_range():
+    """Verify prediction is within plausible range for Singapore HDB."""
+    result = agent.run("Predict 4-room Tampines price")
+    price = result.output["price"]
+    assert 200_000 <= price <= 1_200_000, f"Price {price} outside HDB range"</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>What You Have Built Across Six Modules</h2>
+
+<table>
+  <thead><tr><th>Module</th><th>Capability</th><th>Kailash Stack</th></tr></thead>
+  <tbody>
+    <tr><td>M1</td><td>Data pipelines and visualisation</td><td>Polars, DataExplorer, ModelVisualizer</td></tr>
+    <tr><td>M2</td><td>Statistics and inferential models</td><td>DataExplorer, FeatureEngineer</td></tr>
+    <tr><td>M3</td><td>Supervised ML and production pipelines</td><td>TrainingPipeline, ModelRegistry, ExperimentTracker</td></tr>
+    <tr><td>M4</td><td>Unsupervised ML and DL foundations</td><td>AutoMLEngine, EnsembleEngine, OnnxBridge</td></tr>
+    <tr><td>M5</td><td>Deep learning architectures (8 paradigms)</td><td>OnnxBridge, InferenceServer, ModelVisualizer</td></tr>
+    <tr><td>M6</td><td>LLMs, agents, governance, deployment</td><td>Kaizen, PACT, Nexus, Align, DriftMonitor</td></tr>
+  </tbody>
+</table>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Your journey: 48 lessons, one complete ML engineer</text>
+
+  <!-- M1 -->
+  <rect x="20" y="50" width="100" height="55" rx="6" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="70" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#3B82F6">M1</text>
+  <text x="70" y="88" text-anchor="middle" font-size="8" fill="#1E293B">Data Pipelines</text>
+
+  <!-- M2 -->
+  <rect x="135" y="50" width="100" height="55" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="185" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">M2</text>
+  <text x="185" y="88" text-anchor="middle" font-size="8" fill="#1E293B">Statistics</text>
+
+  <!-- M3 -->
+  <rect x="250" y="50" width="100" height="55" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="300" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">M3</text>
+  <text x="300" y="88" text-anchor="middle" font-size="8" fill="#1E293B">Supervised ML</text>
+
+  <!-- M4 -->
+  <rect x="365" y="50" width="100" height="55" rx="6" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="415" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">M4</text>
+  <text x="415" y="88" text-anchor="middle" font-size="8" fill="#1E293B">Unsupervised ML</text>
+
+  <!-- M5 -->
+  <rect x="480" y="50" width="100" height="55" rx="6" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="530" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#EF4444">M5</text>
+  <text x="530" y="88" text-anchor="middle" font-size="8" fill="#1E293B">Deep Learning</text>
+
+  <!-- M6 -->
+  <rect x="595" y="50" width="100" height="55" rx="6" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="645" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#4F46E5">M6</text>
+  <text x="645" y="88" text-anchor="middle" font-size="8" fill="#1E293B">LLMs + Deploy</text>
+
+  <!-- Connecting line -->
+  <line x1="70" y1="110" x2="645" y2="110" stroke="#0D9488" stroke-width="3"/>
+  <circle cx="70" cy="110" r="5" fill="#3B82F6"/>
+  <circle cx="185" cy="110" r="5" fill="#22C55E"/>
+  <circle cx="300" cy="110" r="5" fill="#F59E0B"/>
+  <circle cx="415" cy="110" r="5" fill="#8B5CF6"/>
+  <circle cx="530" cy="110" r="5" fill="#EF4444"/>
+  <circle cx="645" cy="110" r="8" fill="#4F46E5" stroke="#0D9488" stroke-width="3"/>
+
+  <!-- Start and end labels -->
+  <text x="70" y="140" text-anchor="middle" font-size="9" fill="#64748B">print("Hello")</text>
+  <text x="645" y="140" text-anchor="middle" font-size="9" fill="#4F46E5" font-weight="600">Production AI platform</text>
+
+  <!-- Key skills line -->
+  <text x="70" y="170" text-anchor="middle" font-size="8" fill="#64748B">Polars</text>
+  <text x="185" y="170" text-anchor="middle" font-size="8" fill="#64748B">Probability</text>
+  <text x="300" y="170" text-anchor="middle" font-size="8" fill="#64748B">Pipelines</text>
+  <text x="415" y="170" text-anchor="middle" font-size="8" fill="#64748B">Clustering</text>
+  <text x="530" y="170" text-anchor="middle" font-size="8" fill="#64748B">PyTorch</text>
+  <text x="645" y="170" text-anchor="middle" font-size="8" fill="#64748B">Nexus</text>
+
+  <!-- Bottom message -->
+  <text x="360" y="220" text-anchor="middle" font-weight="700" font-size="13" fill="#0D9488">You are here. You built all of this.</text>
+  <text x="360" y="245" text-anchor="middle" font-size="11" fill="#64748B">From first line of Python to governed, deployed, monitored production AI.</text>
+</svg>
+<figcaption>48 lessons across 6 modules. Every module built on the previous one. Every concept was implemented, not just discussed.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Skipping auth in development</span>
+  <p>
+    "I'll add auth later" is how production systems ship without auth.
+    Configure RBAC from day one, even in development. Use test tokens
+    with different roles. The three-line Nexus auth configuration has
+    zero excuse for deferring.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: No drift monitoring</span>
+  <p>
+    A model deployed without monitoring is a time bomb. Singapore's HDB
+    market shifts with government cooling measures, interest rate changes,
+    and demographic trends. A model trained on 2023 data will degrade
+    through 2024 unless monitored. DriftMonitor is not optional — it is
+    the feedback loop that keeps the model honest.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: Testing only the happy path</span>
+  <p>
+    Your API returns 200 for valid requests — great. But does it return
+    401 for missing auth? 403 for wrong role? 429 for rate limit breaches?
+    422 for malformed input? Test every error path. The error paths are
+    what keep a production system safe.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Forgetting the CLI and MCP channels</span>
+  <p>
+    Nexus gives you three channels from one codebase. Test all three.
+    The CLI is how batch jobs will consume the service. MCP is how
+    AI agents will consume it. If you only test the REST API, you are
+    testing one third of your deployment surface.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Deploy and test all three channels</h3>
+  <p>
+    Deploy the governed multi-agent system from M6.5-6.7 via Nexus. Add RBAC
+    with three roles (admin, analyst, viewer). Test via REST API, CLI, and MCP.
+    Verify that unauthenticated requests return 401 and that viewers cannot
+    access the prediction endpoint.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — Add drift monitoring</h3>
+  <p>
+    Configure DriftMonitor on the deployed model. Simulate drift by modifying
+    the input distribution (e.g., increase all floor areas by 20%). Verify
+    that the monitor detects the drift and reports PSI above the threshold.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Complete integration test</h3>
+  <p>
+    Write an end-to-end test that: (1) submits a prediction request via API,
+    (2) verifies governance logging captured the access check, (3) queries
+    the results endpoint as a viewer, (4) confirms the audit trail shows
+    both the prediction and the results query.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Extend with a plugin</h3>
+  <p>
+    Add a Nexus plugin that enriches every prediction response with a
+    confidence interval. The plugin wraps the prediction handler, runs
+    the prediction, then appends a 95% confidence range based on the
+    model's training residuals. Test that the enriched response appears
+    on all three channels.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The production pipeline pattern in this lesson integrates concepts from
+  every previous module. <strong>M3.8</strong> introduced DriftMonitor for
+  supervised model monitoring. <strong>M5.7</strong> introduced OnnxBridge and
+  InferenceServer for model export and serving. <strong>M6.5</strong> built the
+  ReAct agent with cost budgets. <strong>M6.6</strong> orchestrated multi-agent
+  pipelines and MCP servers. <strong>M6.7</strong> added PACT governance with
+  D/T/R addressing and operating envelopes. This lesson connects all of them
+  into a single deployable system.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Congratulations</h2>
+<p>
+  You have completed the ML Foundations for Professionals programme.
+</p>
+<p>
+  You started in Lesson 1.1 writing your first line of Python against a
+  Singapore weather dataset — twelve rows, three columns. You end in Lesson 6.8
+  deploying a governed, multi-channel AI system that serves predictions via API,
+  CLI, and MCP, enforces role-based access control, monitors for model drift,
+  and logs every decision for compliance audit.
+</p>
+<p>
+  Between those two points, you built: data exploration pipelines (M1),
+  statistical inference models (M2), supervised ML pipelines with experiment
+  tracking (M3), unsupervised learning and anomaly detection (M4), every major
+  deep learning architecture from autoencoders to reinforcement learning (M5),
+  and LLM applications with fine-tuning, agents, and governance (M6).
+</p>
+<p>
+  48 lessons. Every concept implemented in code, tested against real data, and
+  deployed with the Kailash platform. Singapore was your testing ground —
+  HDB prices, weather data, stock markets, MRT networks. The Kailash SDK is
+  your toolkit — Polars-native, engine-first, production-ready from lesson one.
+</p>
+<p>
+  The programme is complete. The platform is yours. Go build something that
+  matters.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev">
+    <span class="label">Previous</span>
+    6.7 AI Governance Engineering
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Up</span>
+    Module 6 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

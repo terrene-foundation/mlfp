@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.5 — Association Rules | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.5</p>
+  <h1>Association Rules and Market Basket Analysis</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Apriori · FP-Growth · Support · Confidence · Lift</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 60 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> discover retail patterns, turn them into features
+  </div>
+</section>
+
+<section>
+  <h2>The oldest unsupervised trick in the book</h2>
+  <ul>
+    <li>Customers don't buy one item — they buy <em>baskets</em>.</li>
+    <li>Goal: find items that appear together more often than chance.</li>
+    <li>Output: rules of the form "A ⇒ B" with three statistics.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> still powers "frequently bought together" widgets everywhere.
+  </div>
+</section>
+
+<section>
+  <h2>The pipeline</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="50" width="180" height="160" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="120" y="70" text-anchor="middle" font-size="12" font-weight="600">Transactions</text>
+      <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
+        <text x="40" y="95">T1: {milk, bread}</text>
+        <text x="40" y="115">T2: {milk, butter}</text>
+        <text x="40" y="135">T3: {bread, butter}</text>
+        <text x="40" y="155">T4: {milk, bread, butter}</text>
+        <text x="40" y="175">T5: {coffee, milk}</text>
+      </g>
+      <line x1="220" y1="130" x2="265" y2="130" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="265,130 259,126 259,134" fill="#0D9488"/>
+      <rect x="275" y="50" width="180" height="160" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="365" y="70" text-anchor="middle" font-size="12" font-weight="600" fill="#0D9488">Frequent itemsets</text>
+      <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
+        <text x="285" y="100">{milk}: 0.8</text>
+        <text x="285" y="120">{bread}: 0.6</text>
+        <text x="285" y="140">{milk, bread}: 0.4</text>
+        <text x="285" y="160">{bread, butter}: 0.4</text>
+      </g>
+      <line x1="465" y1="130" x2="510" y2="130" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="510,130 504,126 504,134" fill="#0D9488"/>
+      <rect x="520" y="50" width="170" height="160" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="605" y="70" text-anchor="middle" font-size="12" font-weight="600" fill="#F59E0B">Rules</text>
+      <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
+        <text x="530" y="100">milk → bread</text>
+        <text x="530" y="115">  conf 0.50 lift 0.83</text>
+        <text x="530" y="140">bread → butter</text>
+        <text x="530" y="155">  conf 0.67 lift 1.11</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Three metrics</h2>
+  \[ \text{support}(X) = P(X) \]
+  \[ \text{confidence}(X \to Y) = P(Y\,|\,X) \]
+  \[ \text{lift}(X \to Y) = \frac{P(X \cap Y)}{P(X)\,P(Y)} \]
+  <p><strong>Support</strong> = how common. <strong>Confidence</strong> = conditional. <strong>Lift</strong> = vs independence.</p>
+</section>
+
+<section>
+  <h2>Lift is the metric you report</h2>
+  <ul>
+    <li>Lift = 1 → $X$ and $Y$ independent.</li>
+    <li>Lift > 1 → positive association.</li>
+    <li>Lift < 1 → negative (one substitutes the other).</li>
+    <li>High confidence + low lift means the consequent is just common. Not a finding.</li>
+  </ul>
+  <div class="callout-slide warning">
+    <strong>⚠ Rookie mistake:</strong> reporting confidence without lift.
+  </div>
+</section>
+
+<section>
+  <h2>Numerical example</h2>
+  <ul>
+    <li>$P(\text{bread}) = 0.20$, $P(\text{butter}) = 0.10$, $P(\text{both}) = 0.05$.</li>
+    <li>confidence(bread → butter) = $0.05 / 0.20 = 0.25$</li>
+    <li>lift(bread → butter) = $0.25 / 0.10 = 2.5$</li>
+  </ul>
+  <p>25% of bread-buyers buy butter; this is 2.5× random chance → real association.</p>
+</section>
+
+<section>
+  <h2>Apriori property</h2>
+  <div class="callout-slide theory">
+    If an itemset is <em>not</em> frequent, no superset of it is frequent.<br>
+    Equivalently: every subset of a frequent itemset is itself frequent.
+  </div>
+  <p>This is what saves us from $2^d$ itemsets. Prune infrequent subsets early.</p>
+</section>
+
+<section>
+  <h2>Apriori in pictures</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg">
+      <text x="60" y="50" font-weight="700" font-size="12">L1</text>
+      <rect x="90" y="35" width="50" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="115" y="51" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{A}</text>
+      <rect x="150" y="35" width="50" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="175" y="51" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{B}</text>
+      <rect x="210" y="35" width="50" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="235" y="51" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{C}</text>
+      <rect x="270" y="35" width="50" height="22" fill="#FEE2E2" stroke="#EF4444"/><text x="295" y="51" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{D}</text>
+      <text x="60" y="110" font-weight="700" font-size="12">L2</text>
+      <rect x="90" y="95" width="60" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="120" y="111" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{A,B}</text>
+      <rect x="160" y="95" width="60" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="190" y="111" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{A,C}</text>
+      <rect x="230" y="95" width="60" height="22" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="3 2"/><text x="260" y="111" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#94A3B8">{A,D}</text>
+      <rect x="300" y="95" width="60" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="330" y="111" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{B,C}</text>
+      <text x="60" y="170" font-weight="700" font-size="12">L3</text>
+      <rect x="90" y="155" width="80" height="22" fill="#DCFCE7" stroke="#22C55E"/><text x="130" y="171" text-anchor="middle" font-family="JetBrains Mono" font-size="10">{A,B,C}</text>
+      <text x="180" y="210" font-size="11" font-style="italic" fill="#94A3B8">{A,D} pruned without counting → {A,B,D}, {A,C,D} never considered</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>FP-Growth — faster cousin</h2>
+  <ul>
+    <li>Builds a compressed <em>FP-tree</em> in a single pass.</li>
+    <li>Avoids candidate generation.</li>
+    <li>Typically 2–10× faster than Apriori on dense data.</li>
+    <li>Same output — same frequent itemsets.</li>
+  </ul>
+  <p style="font-size: 0.85em; color: #64748B;">Default in modern libraries. Use it unless you have a specific reason for Apriori.</p>
+</section>
+
+<section>
+  <h2>Worked example: Singapore retail</h2>
+  <pre><code class="language-python" data-trim>
+from mlxtend.frequent_patterns import fpgrowth, association_rules
+
+freq = fpgrowth(baskets_df, min_support=0.01, use_colnames=True)
+rules = association_rules(freq, metric="lift", min_threshold=2.0)
+
+top = rules.sort_values("lift", ascending=False).head(10)
+print(top[["antecedents", "consequents", "confidence", "lift"]])
+  </code></pre>
+</section>
+
+<section>
+  <h2>Interpreting a rule</h2>
+  <pre><code class="language-text" data-trim>
+{instant_noodles, canned_tuna} → {rice}
+  support: 0.035   confidence: 0.72   lift: 3.4
+  </code></pre>
+  <p>Business reading: "Customers buying instant noodles and canned tuna are 3.4× more likely than average to also buy rice."</p>
+  <p>Action: three-item promo, shelf placement, recommendation widget.</p>
+</section>
+
+<section>
+  <h2>Rules as features — the feed-forward</h2>
+  <pre><code class="language-python" data-trim>
+# Materialise a binary feature from the rule
+baskets = baskets.with_columns(
+    (pl.col("noodles") & pl.col("tuna")).alias("has_noodles_tuna")
+)
+# Now train a classifier on enriched features
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> <code>FeatureEngineer</code> materialises discovered rules as feature columns in the feature store.
+  </div>
+</section>
+
+<section>
+  <h2>Conviction — direction matters</h2>
+  \[ \text{conv}(X \to Y) \;=\; \frac{1 - \text{support}(Y)}{1 - \text{confidence}(X \to Y)} \]
+  <ul>
+    <li>Measures improvement over independence.</li>
+    <li>Asymmetric (unlike lift).</li>
+    <li>Preferred when the rule direction is causally meaningful.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Four rookie mistakes</h2>
+  <ol>
+    <li><code>min_support</code> too low → millions of noise rules.</li>
+    <li>Reporting confidence instead of lift.</li>
+    <li>Ignoring the reverse rule direction.</li>
+    <li>Treating rules as causal claims.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Cross-references</h2>
+  <ul>
+    <li><strong>M3:</strong> manual feature engineering. Rules are automated feature engineering.</li>
+    <li><strong>4.7 PIVOT:</strong> rules find discrete co-occurrences. Matrix factorisation finds continuous latent structure in the same co-occurrence data.</li>
+    <li><strong>4.6 NLP:</strong> topic modelling is association mining for words.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Compute support, confidence, lift.</li>
+    <li>✓ Apply Apriori and FP-Growth.</li>
+    <li>✓ Interpret rules for business stakeholders.</li>
+    <li>✓ Materialise rules as features for supervised models.</li>
+    <li>✓ Avoid confidence-vs-lift confusion.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> 4.6 — NLP. Same discovery problem, but the "baskets" are documents and the "items" are words.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

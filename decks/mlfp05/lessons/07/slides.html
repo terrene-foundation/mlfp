@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.7 — Transfer Learning | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>.reveal section{text-align:left}.reveal h1,.reveal h2,.reveal h3{text-transform:none}.reveal .lesson-meta{font-size:.5em;color:#64748B;text-transform:uppercase;letter-spacing:.1em}.reveal svg{max-width:100%;max-height:480px}.reveal pre{font-size:.5em}.callout-slide{padding:12px 16px;border-radius:4px;margin-top:.8em;font-size:.85em}.callout-slide.foundations{background:#F0FDF4;border-left:4px solid #22C55E}.callout-slide.theory{background:#EFF6FF;border-left:4px solid #3B82F6}.callout-slide.kailash{background:#F0FDFA;border-left:4px solid #14B8A6}</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.7</p>
+  <h1>Transfer Learning</h1>
+  <p style="font-size:.7em;color:#64748B">ResNet fine-tuning · BERT fine-tuning · ONNX export · InferenceServer</p>
+  <div style="margin-top:2em;padding:16px 20px;background:#F0FDFA;border-left:4px solid #0D9488"><strong>⏱ 90 minutes</strong> · <strong>Outcome:</strong> fine-tune, export, and serve CV and NLP models</div>
+</section>
+
+<section>
+  <h2>Why transfer learning?</h2>
+  <ul>
+    <li>Training from scratch: millions of images, weeks of compute.</li>
+    <li>Transfer: start from pre-trained weights, fine-tune on your data.</li>
+    <li>Works because early layers learn universal features (edges, syntax).</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> most production DL does NOT train from scratch. Transfer is the norm.</div>
+</section>
+
+<section>
+  <h2>The strategy</h2>
+  <figure style="text-align:center">
+    <svg viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="180" height="90" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="110" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">Early layers</text>
+      <text x="110" y="80" text-anchor="middle" font-size="10">Universal features</text>
+      <text x="110" y="105" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">FROZEN</text>
+      <rect x="230" y="30" width="180" height="90" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="320" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#F59E0B">Later layers</text>
+      <text x="320" y="80" text-anchor="middle" font-size="10">Domain features</text>
+      <text x="320" y="105" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">FINE-TUNED</text>
+      <rect x="440" y="30" width="180" height="90" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="530" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">New head</text>
+      <text x="530" y="80" text-anchor="middle" font-size="10">Your classifier</text>
+      <text x="530" y="105" text-anchor="middle" font-size="10" fill="#22C55E" font-weight="600">TRAINED</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>ResNet fine-tuning</h2>
+  <pre><code class="language-python" data-trim>
+model = models.resnet18(pretrained=True)
+for param in model.parameters():
+    param.requires_grad = False  # freeze
+
+model.fc = torch.nn.Linear(
+    model.fc.in_features, num_classes)  # new head
+optimizer = torch.optim.Adam(
+    model.fc.parameters(), lr=1e-3)
+  </code></pre>
+</section>
+
+<section>
+  <h2>BERT fine-tuning</h2>
+  <pre><code class="language-python" data-trim>
+from transformers import BertForSequenceClassification
+
+model = BertForSequenceClassification.from_pretrained(
+    "bert-base-uncased", num_labels=6)
+
+trainer = Trainer(
+    model=model, args=training_args,
+    train_dataset=train_ds, eval_dataset=eval_ds)
+trainer.train()
+  </code></pre>
+</section>
+
+<section>
+  <h2>ONNX export + InferenceServer</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import OnnxBridge, InferenceServer
+
+bridge = OnnxBridge()
+bridge.export(model, "model.onnx", sample_input=dummy)
+
+server = InferenceServer("model.onnx")
+server.warm_cache()
+result = server.predict(new_data)
+  </code></pre>
+  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> OnnxBridge exports. InferenceServer serves. Three lines from notebook to production.</div>
+</section>
+
+<section>
+  <h2>Architecture selection guide</h2>
+  <table style="font-size:.65em">
+    <thead><tr><th>Data</th><th>Architecture</th><th>Transfer?</th></tr></thead>
+    <tbody>
+      <tr><td>Images</td><td>CNN / ViT</td><td>Always (ImageNet)</td></tr>
+      <tr><td>Text</td><td>Transformer</td><td>Always (BERT/GPT)</td></tr>
+      <tr><td>Sequences</td><td>LSTM / Transformer</td><td>Sometimes</td></tr>
+      <tr><td>Graphs</td><td>GNN</td><td>Rarely</td></tr>
+      <tr><td>Tabular</td><td>Gradient boosting</td><td>Never</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size:.85em">
+    <li><strong>Training all layers from start</strong> — freeze first, unfreeze gradually.</li>
+    <li><strong>LR too high</strong> — use 10–100x lower than from-scratch training.</li>
+    <li><strong>No augmentation</strong> — small datasets need flips, rotations, jitter.</li>
+    <li><strong>No ONNX export</strong> — notebook-only model is not deployed.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Fine-tune ResNet for image classification.</li>
+    <li>✓ Fine-tune BERT for text classification.</li>
+    <li>✓ Export to ONNX with OnnxBridge.</li>
+    <li>✓ Serve predictions with InferenceServer.</li>
+    <li>✓ Select architecture + transfer strategy per data type.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>Next:</strong> 5.8 — Reinforcement Learning. Learning from interaction, not static data.</div>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+</body>
+</html>

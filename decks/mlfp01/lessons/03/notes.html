@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.3 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.3</span>
+  Functions and Aggregation
+</h1>
+
+<p class="lead">
+  Total time: ~55 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min per slide
+</p>
+
+<p>
+  This lesson combines two ideas: functions (Python abstraction) and
+  group_by (Polars aggregation). The learners are at their peak confidence
+  from Lesson 1.2 — don't let them drift. The group_by pattern is the most
+  important single idea in the entire module.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Functions and Aggregation</h3>
+  <p>
+    Open with: "Yesterday you filtered one town at a time. Today we make
+    that obsolete. By the end of this lesson you will produce a 26-row
+    summary of every HDB town with one call, and you'll have written your
+    first reusable Python functions."
+  </p>
+  <div class="transition">→ "The productivity picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Before/after diagram</span></div>
+  <h3>The productivity jump</h3>
+  <p>
+    Walk the left side first — 26 filter calls in a red block. Make them
+    feel the pain. Then the right side: one <code>group_by</code> call.
+    Ask them which one they'd want to maintain.
+  </p>
+  <p>
+    Tell them: "If you finish this module and only remember one pattern, it
+    should be group_by plus agg. It's the single most common Polars pattern
+    in real analysis code."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "You don't need to understand how the
+    aggregation works internally. Just know the shape: give it a group
+    column, give it what to compute, get back a table."
+  </div>
+  <div class="transition">→ "First tool: functions."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Function basics</span></div>
+  <h3>Functions: reusable logic</h3>
+  <p>
+    Walk the example. Run it live. Call <code>format_sgd</code> a few times
+    with different values. Make the point that the function doesn't know
+    which number you'll pass — it's a tiny machine that works on any float.
+  </p>
+  <p>
+    The type hints: explain they're documentation, not enforcement. Python
+    will not raise an error if you pass a string to a function annotated
+    with <code>: float</code>. They're for humans and IDEs.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "mypy and pyright enforce these statically
+    — a whole parallel universe of type-safe Python. We won't cover that
+    here, but know it exists."
+  </div>
+  <div class="transition">→ "Let's label every part."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>def anatomy diagram</span></div>
+  <h3>Anatomy of <code>def</code></h3>
+  <p>
+    Walk each labelled part. Point at <code>def</code> — "the keyword that
+    tells Python 'a function definition follows'". Point at the name —
+    "how you call the function later". Point at the parameter — "the input".
+    Point at the type hints — "documentation". Point at the return type —
+    "what kind of value comes back".
+  </p>
+  <p>
+    Then the body: "indented under the signature, run when the function is
+    called, ends with <code>return</code> to hand a value back to the
+    caller."
+  </p>
+  <div class="transition">→ "Python collections you'll use constantly."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Lists, dicts, for</span></div>
+  <h3>Lists, dicts, for loops</h3>
+  <p>
+    Walk all three quickly. Lists are ordered — access by integer index.
+    Dicts are keyed — access by the key you wrote. For loops walk any
+    sequence.
+  </p>
+  <p>
+    Make this point: "We'll use for loops for printing and reporting, not
+    for filtering. Polars has group_by for filtering; loops are for doing
+    things that don't fit into a DataFrame."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Lists are like numbered lockers; dicts
+    are like named lockers. Both hold multiple items — but you open them
+    differently."
+  </div>
+  <div class="transition">→ "The main event."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>group_by diagram</span></div>
+  <h3><code>group_by</code> + <code>agg</code>: the pattern</h3>
+  <p>
+    Walk the diagram left to right. Input DataFrame with mixed towns on
+    the left. Groups in the middle — each one a bucket of rows sharing a
+    town value. Output table on the right — one row per group.
+  </p>
+  <p>
+    Say: "Polars scans the input once, hashes each town, drops the row into
+    the right bucket. For every bucket it then computes the aggregations
+    you asked for. The output has one row per unique town — 26 rows for 26
+    towns."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Same algorithm as SQL's GROUP BY — hash
+    aggregation. Polars runs it in parallel across cores over columnar
+    memory, which is why it's 10–100× faster than the equivalent pandas."
+  </div>
+  <div class="transition">→ "The code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>group_by code</span></div>
+  <h3>group_by in code</h3>
+  <p>
+    Run it live. Read it aloud: "Group hdb by town. For each group, compute
+    four aggregations: count, mean, median, std. Alias each one. Sort by
+    median descending."
+  </p>
+  <p>
+    Print <code>district_stats.head(5)</code> and walk the output. "Look —
+    26 rows, five columns (town plus four stats), already sorted. The most
+    expensive towns rise to the top."
+  </p>
+  <p>
+    Emphasise the <code>.alias</code> calls. Without them you'd see columns
+    named by guesswork — and with multiple aggregations on the same column,
+    Polars would number them <code>resale_price</code>,
+    <code>resale_price_2</code>, which nobody wants to read.
+  </p>
+  <div class="transition">→ "Multi-key grouping."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Multi-key group_by</span></div>
+  <h3>Multi-key grouping</h3>
+  <p>
+    Show the example. "Group by town <em>and</em> flat type. Every unique
+    combination becomes one row. If a town has all 7 flat types, it gets
+    7 rows in the output."
+  </p>
+  <p>
+    Tell them to expect roughly 180 rows — 26 towns × 7 flat types, minus
+    some combinations that don't appear.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think pivot table — a spreadsheet
+    summary with rows and columns for two categories. Polars does the same
+    thing with one method call."
+  </div>
+  <div class="transition">→ "Now the statistics behind the scenes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Mean vs median</span></div>
+  <h3>Measures of centre: mean vs median</h3>
+  <p>
+    Walk the two formulas. Mean is arithmetic average. Median is the middle
+    value of sorted data. Easy to compute, critical to distinguish.
+  </p>
+  <p>
+    The rule of thumb: "Mean is pulled by outliers; median is not." Give
+    the concrete Singapore example: one billion-dollar HDB in a district
+    of 300 flats moves the mean by several thousand dollars but leaves the
+    median unchanged.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "If Jeff Bezos walks into your coffee
+    shop, the average net worth of the customers becomes a billion dollars.
+    The median stays what it was. That's why median is the 'typical' value."
+  </div>
+  <div class="transition">→ "And spread — IQR."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>IQR</span></div>
+  <h3>Measure of spread: IQR</h3>
+  <p>
+    Walk the definition. Q1 at 25%, Q3 at 75%, IQR = Q3 - Q1. The spread of
+    the middle half — robust to outliers.
+  </p>
+  <p>
+    Show the Polars code. Point out that <code>quantile(0.25)</code> gives
+    you Q1 directly — no need to sort or index manually.
+  </p>
+  <div class="transition">→ "Comparing spread across groups."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Coefficient of variation</span></div>
+  <h3>🔵 Theory: Coefficient of variation</h3>
+  <p>
+    Walk the formula. "Standard deviation divided by mean, times 100.
+    Expressed as a percentage. Unitless, so you can compare across groups
+    with very different means."
+  </p>
+  <p>
+    Concrete example: "Bishan and Jurong both have std of 80k. Bishan's
+    mean is 700k, so CV ≈ 11%. Jurong's mean is 400k, so CV ≈ 20%. Jurong's
+    prices are <em>relatively</em> more spread out — more mixed housing
+    stock."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "CV is also the inverse of signal-to-noise
+    ratio. High CV = noisy relative to signal = harder to model. You'll see
+    this again in Module 3 when we discuss heteroscedasticity."
+  </div>
+  <div class="transition">→ "Derived aggregates."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Derived aggregates</span></div>
+  <h3>Derived aggregates with <code>with_columns</code></h3>
+  <p>
+    Show the pattern: first aggregate, then derive. Point out that after
+    <code>agg</code>, the result is just a DataFrame — you can chain
+    <code>with_columns</code>, <code>filter</code>, <code>sort</code> on it
+    the same way.
+  </p>
+  <p>
+    This is an important conceptual point: "There's no 'aggregated
+    DataFrame' special type. It's still a DataFrame. Everything you learned
+    in Lesson 1.2 still applies."
+  </p>
+  <div class="transition">→ "Putting it all together — a for loop report."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>for + function</span></div>
+  <h3>Iterating with <code>for</code> + functions</h3>
+  <p>
+    Walk the code. The helper function takes a dict (one row) and produces
+    a formatted string. The for loop walks the top 10 rows and prints each.
+  </p>
+  <p>
+    Point out <code>iter_rows(named=True)</code> — "this yields each row as
+    a dict, so you can access fields by name. Without <code>named=True</code>
+    you'd get tuples and have to remember the column order."
+  </p>
+  <p>
+    Run it live. Admire the aligned output. Point out the format specifiers:
+    <code>:&lt;20</code> means "left-aligned in a 20-char column",
+    <code>:&gt;12</code> means "right-aligned in a 12-char column".
+  </p>
+  <div class="transition">→ "Mistakes to avoid."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Mistakes + reflection</span></div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk each one. The hardcoding mistake is about turning scripts into
+    libraries — functions without parameters are just namespaces.
+  </p>
+  <p>
+    The alias mistake is about output readability — Polars will let you
+    skip alias but the result will be ugly. Make them see it live: run an
+    aggregation without alias, show the auto-names.
+  </p>
+  <p>
+    The loop-vs-group_by mistake is the big one. "If you ever find
+    yourself writing <code>for town in towns: subset = df.filter(...)</code>,
+    stop. There's a group_by that does the same thing 50× faster."
+  </p>
+  <p>
+    Close by teasing 1.4: "Today we aggregated within one table. Tomorrow
+    we combine data from three tables — HDB transactions, MRT stations,
+    schools. You'll meet join, and you'll meet Python's if/elif/else for
+    code-level decisions."
+  </p>
+  <div class="transition">→ End of Lesson 1.3.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.2 Speaker Notes
+  </a>
+  <a href="../04/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.4 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -86,6 +86,6 @@ class MyModel:
 - Every `# TODO:` must have a hint that points toward the correct API
 - Hints reference engine names, method names, or parameter names — not full code
 - Never strip import statements
-- Never strip data loading (ASCENTDataLoader calls)
+- Never strip data loading (MLFPDataLoader calls)
 - The exercise must produce a clear error if `____` placeholders are left in
 - Each exercise has exactly one learning objective tied to a Kailash engine

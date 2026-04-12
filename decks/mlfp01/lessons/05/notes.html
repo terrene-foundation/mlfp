@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.5 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.5</span>
+  Window Functions and Trends
+</h1>
+
+<p class="lead">Total time: ~55 minutes · 13 slides · ~4 min average</p>
+
+<p>
+  This lesson introduces window functions — the second-most-important
+  Polars pattern after group_by. The core idea (enrich without collapsing)
+  often clicks slowly. Use the before/after diagram liberally.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Window Functions and Trends</h3>
+  <p>
+    Open with: "Yesterday you joined space — HDB plus MRT plus schools.
+    Today we join time. You'll compute rolling means, year-over-year
+    changes, and rank districts by growth. And you'll meet lazy frames,
+    which is how you make long pipelines fast."
+  </p>
+  <div class="transition">→ "Why we need windows."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Raw vs smoothed chart</span></div>
+  <h3>Raw data is noisy — trends live in windows</h3>
+  <p>
+    Walk the three lines. Red dashed = raw monthly prices, bouncing around.
+    Blue solid = 3-month rolling mean, still wobbly but clearer. Teal thick =
+    12-month rolling mean, smooth enough to show the real trend.
+  </p>
+  <p>
+    Tell them: "You cannot see whether Bishan is appreciating by looking at
+    the red points alone. You need to smooth. Window functions are how you
+    smooth."
+  </p>
+  <div class="transition">→ "How windows differ from group_by."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>group_by vs window diagram</span></div>
+  <h3>Windows don't collapse — they enrich</h3>
+  <p>
+    The conceptual core. Walk the left side: group_by collapses Bishan's
+    three rows into one row with the mean. You lost the month detail.
+  </p>
+  <p>
+    Right side: the window computes the same mean but broadcasts it back
+    to every row. Four input rows, four output rows, with a new column.
+    Every row now carries its group's mean alongside the original value.
+  </p>
+  <p>
+    Tell them: "If you need to compare each row to its group's average —
+    'how does this transaction compare to the town's typical price?' —
+    you need a window, not group_by."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "group_by makes a summary table. Window
+    adds a summary column. Different tools for different questions."
+  </div>
+  <div class="transition">→ "The Polars syntax."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>.over syntax</span></div>
+  <h3>The <code>.over</code> modifier</h3>
+  <p>
+    Walk the code. Read the chain aloud: "pl.col picks the column.
+    rolling_mean applies a rolling 12-row window. over partitions by town
+    so windows don't cross town boundaries. alias names the result."
+  </p>
+  <p>
+    Run it live. Print Bishan's last 15 months. Show the null early rows
+    (insufficient history) and the real values that follow. Make sure they
+    see the null — tell them it's expected.
+  </p>
+  <div class="transition">→ "The math behind rolling_mean."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Rolling mean formula</span></div>
+  <h3>Rolling mean formula</h3>
+  <p>
+    Walk the formula. Unweighted mean of the last w observations. The sum
+    from $j=i-w+1$ to $i$ is just "the window of size w ending at row i".
+  </p>
+  <p>
+    Mention the variants briefly: rolling_sum, rolling_min, rolling_max,
+    rolling_std. Same shape, different aggregation.
+  </p>
+  <div class="transition">→ "Choosing the window size."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Window trade-off table</span></div>
+  <h3>Window size trade-off</h3>
+  <p>
+    Walk the table. Short windows are reactive but noisy. Long windows are
+    smooth but lag. There's no right answer — it depends on what you're
+    trying to detect.
+  </p>
+  <p>
+    Give the technical analysis analogy: "In finance, traders plot a 50-day
+    and a 200-day moving average together. When the short one crosses above
+    the long one — the 'golden cross' — they call it a buy signal. Same
+    idea applies to HDB prices."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "The variance of the smoothed curve is
+    $\sigma^2/w$. That's why doubling the window halves the wobble. The
+    cost is a lag of $\sim w/2$ — the rolling mean always trails real
+    trend changes."
+  </div>
+  <div class="transition">→ "Another window primitive — shift."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>shift</span></div>
+  <h3><code>shift</code> — lag features</h3>
+  <p>
+    Run it live. Show that shift(12) pushes the value from 12 rows earlier
+    into the current row. First 12 rows of every town become null.
+  </p>
+  <p>
+    Explain why we use <code>over("town")</code>: without it, shift would
+    pull the last 12 rows of Bishan into Jurong's first 12 rows. Always
+    partition when you have groups.
+  </p>
+  <div class="transition">→ "Combining them — YoY."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>YoY formula</span></div>
+  <h3>Year-over-year change</h3>
+  <p>
+    Walk the formula. Current minus 12 months ago, divided by 12 months
+    ago, times 100. Standard percent change, applied to the shifted column.
+  </p>
+  <p>
+    The seasonality argument is the key teaching moment. "Month over month
+    is dominated by calendar effects — Chinese New Year suppresses
+    transactions, year-end pushes them up. Year over year compares March
+    to March, so those effects cancel."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "If you want to know whether your
+    business is really growing, compare this month to the same month last
+    year, not to last month. Same logic here."
+  </div>
+  <div class="transition">→ "Putting it all together — ranking."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Ranking code</span></div>
+  <h3>Ranking the hottest districts</h3>
+  <p>
+    Walk the code. Filter to the latest date. Drop rows with null YoY (no
+    history). Sort by YoY descending. Print top 5, bottom 5.
+  </p>
+  <p>
+    Run it live. Show the results. Ask which towns they expected to see at
+    the top — usually the central/mature estates. Sometimes there are
+    surprises.
+  </p>
+  <div class="transition">→ "The production-speed version — lazy frames."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Lazy frames diagram</span></div>
+  <h3>🟣 Lazy frames — global optimisation</h3>
+  <p>
+    Walk the before/after. Left side (eager): each step materialises a
+    DataFrame, even if the next step will immediately shrink it. Right side
+    (lazy): each step adds a plan node. collect() executes the whole plan
+    in one optimised pass.
+  </p>
+  <p>
+    The killer optimisation: filter pushdown. "If your chain filters to
+    year ≥ 2020, lazy can push that filter into the parquet scan — it
+    never even loads the rows before 2020. Eager would load all 500,000
+    rows, then throw 320,000 away."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Polars uses a rule-based optimiser
+    similar to Spark's Catalyst. Projection pushdown, predicate pushdown,
+    operator fusion, parallel scan. The plan is visible via <code>.explain()</code>
+    if you're curious."
+  </div>
+  <div class="transition">→ "The code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Lazy code</span></div>
+  <h3>Lazy pipeline in code</h3>
+  <p>
+    Walk the code. Point out the two key differences from eager: start
+    with <code>scan_parquet</code> instead of <code>read_parquet</code>,
+    end with <code>collect()</code>. Everything in between is identical.
+  </p>
+  <p>
+    Tell them: "scan reads lazy. read reads eager. collect executes. If
+    you learn those three keywords you can convert any pipeline to lazy
+    mode by changing two lines."
+  </p>
+  <p>
+    Give the rule of thumb: "Lazy for production and big data. Eager for
+    interactive exploration on small data. Interactive feedback is nicer;
+    production throughput is faster."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Four traps</h3>
+  <p>
+    Walk each. The sort trap is the most common — show it live by
+    computing a rolling mean on unsorted data and pointing at the mess.
+  </p>
+  <p>
+    The <code>over</code> trap is easy to miss if they don't have Polars
+    habit yet. Show it: rolling mean without <code>over</code> gives
+    nonsense values where one town's window bleeds into another's data.
+  </p>
+  <p>
+    The early-null trap is philosophical but important. "Those nulls mean
+    'insufficient history'. Filling with zero is injecting fake averages
+    into your model. Drop them instead."
+  </p>
+  <div class="transition">→ "Reflect and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Reflection</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets. Pause on each. Ask for a mental "yes".
+  </p>
+  <p>
+    Tease 1.6: "Today you computed trend lines. Tomorrow you'll visualise
+    them. Six chart types, interactive Plotly via ModelVisualizer, and the
+    Gestalt principles that govern how readers see a chart."
+  </p>
+  <div class="transition">→ End of Lesson 1.5.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../04/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.4 Speaker Notes
+  </a>
+  <a href="../06/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.6 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

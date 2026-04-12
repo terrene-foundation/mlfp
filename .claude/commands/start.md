@@ -1,11 +1,11 @@
-# ASCENT — Getting Started
+# MLFP — Getting Started
 
-Welcome to the ASCENT training repository. This is both a professional ML course AND the definitive training material for the Kailash Python SDK.
+Welcome to the MLFP training repository. This is both a professional ML course AND the definitive training material for the Kailash Python SDK.
 
 ## What This Repo Is
 
 **Dual purpose**:
-1. **ASCENT ML curriculum** — 10 modules covering statistics through governed AI deployment, benchmarked at Stanford CS229 depth
+1. **MLFP ML curriculum** — 10 modules covering statistics through governed AI deployment, benchmarked at Stanford CS229 depth
 2. **Kailash SDK training** — every exercise uses Kailash engines, every concept bridges theory to SDK
 
 **Three delivery formats**: Local Python, Jupyter notebooks, Google Colab

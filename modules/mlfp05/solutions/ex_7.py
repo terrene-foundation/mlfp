@@ -2,309 +2,240 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 7: CNNs for Image Classification
+# MLFP05 — Exercise 7: Transfer Learning with a Pre-trained ResNet
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build a CNN with convolution, pooling, dropout layers for
-#   image classification, then export to ONNX via OnnxBridge.
 #
-# TASKS:
-#   1. Implement convolution operation from scratch
-#   2. Build CNN architecture (conv → pool → conv → pool → fc)
-#   3. Train with dropout regularization
-#   4. Evaluate and visualize filters with ModelVisualizer
-#   5. Export to ONNX via OnnxBridge and validate
+# WHAT YOU'LL LEARN:
+#   - Load a pre-trained torchvision ResNet-18 and adapt it to a new task
+#   - Freeze the convolutional backbone and train only a new classifier head
+#   - Explain why transfer learning needs far fewer examples than scratch
+#   - Compare "from scratch" vs "transfer" on the same small dataset
+#   - Export the transferred model to ONNX for deployment
+#
+# PREREQUISITES: M5/ex_2 (CNNs and PyTorch Lightning).
+# ESTIMATED TIME: ~60 min
+# DATASET: Synthetic 3-class 32x32 RGB images (upscaled from ex_2 shapes).
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import math
-import random
+from pathlib import Path
 
-import polars as pl
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 
-from kailash_ml import ModelVisualizer, OnnxBridge
+import torchvision
+import torchvision.transforms as T
 
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from kailash_ml import ModelVisualizer
 
-setup_environment()
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Implement convolution operation from scratch
-# ══════════════════════════════════════════════════════════════════════
-
-loader = MLFPDataLoader()
-data = loader.load("mlfp05", "fashion_mnist_sample.parquet")
-
-# Reshape flat pixels to 28x28 images
-pixel_cols = [c for c in data.columns if c != "label"]
-n_samples = data.height
-print(f"=== Fashion-MNIST: {n_samples} samples, 28×28 images ===")
+torch.manual_seed(42)
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-def to_image(row_values: list[float], h: int = 28, w: int = 28) -> list[list[float]]:
-    """Convert flat pixel list to 2D image."""
-    return [row_values[i * w : (i + 1) * w] for i in range(h)]
+# ════════════════════════════════════════════════════════════════════════
+# Synthetic RGB image data — 3 classes, 32x32 (upscaled later to 64x64)
+# ════════════════════════════════════════════════════════════════════════
+def make_rgb_shapes(n_per_class: int = 120, size: int = 32):
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    images: list[np.ndarray] = []
+    labels: list[int] = []
+
+    for _ in range(n_per_class):                # class 0: red square
+        s = np.random.randint(6, 12)
+        cx = np.random.randint(s, size - s)
+        cy = np.random.randint(s, size - s)
+        mask = ((np.abs(xx - cx) < s) & (np.abs(yy - cy) < s)).astype(np.float32)
+        img = np.stack([mask, 0.1 * mask, 0.1 * mask], axis=0)
+        images.append(img)
+        labels.append(0)
+
+    for _ in range(n_per_class):                # class 1: green circle
+        r = np.random.randint(5, 10)
+        cx = np.random.randint(r + 2, size - r - 2)
+        cy = np.random.randint(r + 2, size - r - 2)
+        mask = (((xx - cx) ** 2 + (yy - cy) ** 2) < r ** 2).astype(np.float32)
+        img = np.stack([0.1 * mask, mask, 0.1 * mask], axis=0)
+        images.append(img)
+        labels.append(1)
+
+    for _ in range(n_per_class):                # class 2: blue diagonal bar
+        offset = np.random.randint(-6, 6)
+        thickness = np.random.randint(2, 4)
+        mask = (np.abs(xx - yy + offset) < thickness).astype(np.float32)
+        img = np.stack([0.1 * mask, 0.1 * mask, mask], axis=0)
+        images.append(img)
+        labels.append(2)
+
+    X = np.stack(images).astype(np.float32)
+    X += 0.02 * np.random.randn(*X.shape).astype(np.float32)
+    y = np.array(labels, dtype=np.int64)
+    perm = np.random.permutation(len(X))
+    return X[perm], y[perm]
 
 
-def conv2d(
-    image: list[list[float]],
-    kernel: list[list[float]],
-    stride: int = 1,
-    padding: int = 0,
-) -> list[list[float]]:
-    """2D convolution: slide kernel over image, compute dot product at each position."""
-    h, w = len(image), len(image[0])
-    kh, kw = len(kernel), len(kernel[0])
+X_np, y_np = make_rgb_shapes(n_per_class=120, size=32)
+print(f"Dataset: {X_np.shape[0]} images, shape={X_np.shape[1:]}")
 
-    # Apply zero padding
-    if padding > 0:
-        padded = [[0.0] * (w + 2 * padding) for _ in range(h + 2 * padding)]
-        for i in range(h):
-            for j in range(w):
-                padded[i + padding][j + padding] = image[i][j]
-        image = padded
-        h, w = len(image), len(image[0])
+# Upscale to 64x64 (ResNet expects larger inputs; we use 64 for speed)
+X_t = torch.from_numpy(X_np)
+X_t = F.interpolate(X_t, size=(64, 64), mode="bilinear", align_corners=False)
 
-    out_h = (h - kh) // stride + 1
-    out_w = (w - kw) // stride + 1
-    output = [[0.0] * out_w for _ in range(out_h)]
+# ImageNet normalisation (important for torchvision pre-trained models)
+normalise = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+X_t = normalise(X_t)
+y_t = torch.from_numpy(y_np)
 
-    for i in range(out_h):
-        for j in range(out_w):
-            val = 0.0
-            for ki in range(kh):
-                for kj in range(kw):
-                    val += image[i * stride + ki][j * stride + kj] * kernel[ki][kj]
-            output[i][j] = val
-
-    return output
+split = int(0.7 * len(X_t))
+train_loader = DataLoader(TensorDataset(X_t[:split], y_t[:split]), batch_size=32, shuffle=True)
+val_loader = DataLoader(TensorDataset(X_t[split:], y_t[split:]), batch_size=32)
 
 
-# Demonstrate with edge detection kernels
-sample_pixels = data.select(pixel_cols).row(0)
-sample_img = to_image([v / 255.0 for v in sample_pixels])
+# ════════════════════════════════════════════════════════════════════════
+# PART 1 — Load a pre-trained ResNet-18 and adapt it
+# ════════════════════════════════════════════════════════════════════════
+# torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT) loads the
+# ImageNet-pretrained checkpoint. We swap the final fc layer for a fresh
+# 3-class head, freeze everything else, and only train the new head.
+# In real projects you often unfreeze the last conv block too ("fine-tuning").
+def build_transfer_resnet(n_classes: int = 3, freeze_backbone: bool = True) -> nn.Module:
+    try:
+        weights = torchvision.models.ResNet18_Weights.DEFAULT
+        model = torchvision.models.resnet18(weights=weights)
+        print(f"Loaded pre-trained ResNet-18 (weights={weights})")
+    except Exception as exc:
+        # Offline fallback: random weights. Training "from pre-trained" in
+        # this branch is really training from scratch, but the code path
+        # remains identical — this is how a real offline environment is handled.
+        print(f"Pre-trained weights unavailable ({type(exc).__name__}: {exc})")
+        print("Falling back to randomly initialised ResNet-18.")
+        model = torchvision.models.resnet18(weights=None)
 
-# Horizontal edge detector
-horizontal_kernel = [[-1, -1, -1], [0, 0, 0], [1, 1, 1]]
-# Vertical edge detector
-vertical_kernel = [[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]]
-
-h_edges = conv2d(sample_img, horizontal_kernel, padding=1)
-v_edges = conv2d(sample_img, vertical_kernel, padding=1)
-
-print(f"Input image shape: 28×28")
-print(f"Kernel shape: 3×3")
-print(f"Output shape (padding=1): {len(h_edges)}×{len(h_edges[0])}")
-print(f"Edge detector reveals structure that a fully-connected layer cannot see.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build CNN architecture
-# ══════════════════════════════════════════════════════════════════════
-
-
-def max_pool2d(feature_map: list[list[float]], pool_size: int = 2) -> list[list[float]]:
-    """Max pooling: downsample by taking max in each pool window."""
-    h, w = len(feature_map), len(feature_map[0])
-    out_h, out_w = h // pool_size, w // pool_size
-    output = [[0.0] * out_w for _ in range(out_h)]
-    for i in range(out_h):
-        for j in range(out_w):
-            vals = []
-            for pi in range(pool_size):
-                for pj in range(pool_size):
-                    vals.append(feature_map[i * pool_size + pi][j * pool_size + pj])
-            output[i][j] = max(vals)
-    return output
+    if freeze_backbone:
+        for p in model.parameters():
+            p.requires_grad = False
+    # Replace the final fc with a fresh head
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, n_classes)
+    return model
 
 
-def relu_2d(feature_map: list[list[float]]) -> list[list[float]]:
-    return [[max(0.0, v) for v in row] for row in feature_map]
+def build_scratch_cnn(n_classes: int = 3) -> nn.Module:
+    """Baseline: a small CNN trained from random init for comparison."""
+    return nn.Sequential(
+        nn.Conv2d(3, 16, 3, padding=1), nn.BatchNorm2d(16), nn.ReLU(), nn.MaxPool2d(2),
+        nn.Conv2d(16, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2),
+        nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.AdaptiveAvgPool2d(1),
+        nn.Flatten(), nn.Linear(32, n_classes),
+    )
 
 
-def flatten(feature_maps: list[list[list[float]]]) -> list[float]:
-    """Flatten list of 2D feature maps into 1D vector."""
-    result = []
-    for fm in feature_maps:
-        for row in fm:
-            result.extend(row)
-    return result
+# ════════════════════════════════════════════════════════════════════════
+# Training harness
+# ════════════════════════════════════════════════════════════════════════
+def train_model(model: nn.Module, name: str, epochs: int = 4, lr: float = 1e-3):
+    model.to(device)
+    params = [p for p in model.parameters() if p.requires_grad]
+    n_trainable = sum(p.numel() for p in params)
+    n_total = sum(p.numel() for p in model.parameters())
+    print(f"\n── {name} ──  trainable params: {n_trainable:,} / {n_total:,}")
+
+    opt = torch.optim.Adam(params, lr=lr)
+    train_losses: list[float] = []
+    val_accs: list[float] = []
+
+    for epoch in range(epochs):
+        model.train()
+        batch_losses = []
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            opt.zero_grad()
+            loss = F.cross_entropy(model(xb), yb)
+            loss.backward()
+            opt.step()
+            batch_losses.append(loss.item())
+        train_losses.append(float(np.mean(batch_losses)))
+
+        model.eval()
+        correct = total = 0
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                preds = model(xb).argmax(dim=-1)
+                correct += int((preds == yb).sum().item())
+                total += int(yb.size(0))
+        val_accs.append(correct / total)
+        print(f"  epoch {epoch+1}  loss={train_losses[-1]:.4f}  val_acc={val_accs[-1]:.3f}")
+    return train_losses, val_accs
 
 
-class SimpleCNN:
-    """Minimal CNN: conv(3x3, 4 filters) → pool → conv(3x3, 8 filters) → pool → fc → softmax."""
+# ── Train both ─────────────────────────────────────────────────────────
+transfer_model = build_transfer_resnet()
+transfer_losses, transfer_accs = train_model(transfer_model, "Transfer (frozen ResNet-18 + new head)", epochs=4)
 
-    def __init__(self, n_classes: int = 10):
-        random.seed(42)
-        self.n_classes = n_classes
-        # Conv1: 4 filters of 3x3
-        self.conv1_filters = [
-            [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
-            for _ in range(4)
-        ]
-        self.conv1_bias = [0.0] * 4
-        # Conv2: 8 filters of 3x3 (applied per input channel, summed)
-        self.conv2_filters = [
-            [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
-            for _ in range(8)
-        ]
-        self.conv2_bias = [0.0] * 8
-        # After conv1(28→28, pad=1)→pool(28→14)→conv2(14→14, pad=1)→pool(14→7)
-        # Flatten: 8 * 7 * 7 = 392
-        fc_in = 8 * 7 * 7
-        self.fc_w = [
-            [random.gauss(0, 0.01) for _ in range(n_classes)] for _ in range(fc_in)
-        ]
-        self.fc_b = [0.0] * n_classes
-
-    def forward(self, image: list[list[float]]) -> list[float]:
-        """Forward pass through CNN."""
-        # Conv1 + ReLU + Pool
-        conv1_out = []
-        for f_idx in range(4):
-            fm = conv2d(image, self.conv1_filters[f_idx], padding=1)
-            fm = relu_2d(fm)
-            fm = max_pool2d(fm)
-            conv1_out.append(fm)
-
-        # Conv2 + ReLU + Pool (simplified: each filter applied to first channel)
-        conv2_out = []
-        for f_idx in range(8):
-            fm = conv2d(conv1_out[f_idx % 4], self.conv2_filters[f_idx], padding=1)
-            fm = relu_2d(fm)
-            fm = max_pool2d(fm)
-            conv2_out.append(fm)
-
-        # Flatten + FC + Softmax
-        flat = flatten(conv2_out)
-        logits = [
-            sum(flat[j] * self.fc_w[j][k] for j in range(len(flat))) + self.fc_b[k]
-            for k in range(self.n_classes)
-        ]
-
-        max_l = max(logits)
-        exps = [math.exp(l - max_l) for l in logits]
-        s = sum(exps)
-        probs = [e / s for e in exps]
-        return probs
+scratch_model = build_scratch_cnn()
+scratch_losses, scratch_accs = train_model(scratch_model, "Scratch (small CNN)", epochs=4)
 
 
-cnn = SimpleCNN(n_classes=10)
-sample_probs = cnn.forward(sample_img)
-print(f"\n=== CNN Architecture ===")
-print(f"Conv1: 4 filters (3×3), stride=1, padding=1 → 28×28×4")
-print(f"Pool1: 2×2 max → 14×14×4")
-print(f"Conv2: 8 filters (3×3), stride=1, padding=1 → 14×14×8")
-print(f"Pool2: 2×2 max → 7×7×8")
-print(f"Flatten: 7×7×8 = 392")
-print(f"FC: 392 → 10 (softmax)")
-print(f"Sample prediction: class {sample_probs.index(max(sample_probs))}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train with dropout
-# ══════════════════════════════════════════════════════════════════════
-
-
-def dropout(
-    values: list[float], rate: float = 0.5, training: bool = True
-) -> list[float]:
-    """Dropout: randomly zero out values during training, scale at test time."""
-    if not training:
-        return values
-    mask = [0.0 if random.random() < rate else 1.0 / (1.0 - rate) for _ in values]
-    return [v * m for v, m in zip(values, mask)]
-
-
-print(f"\n=== Dropout Regularization ===")
-print(f"Dropout rate: 0.5 (zero out 50% of activations during training)")
-print(f"At test time: no dropout, but activations are already scaled")
-print(f"Why: prevents co-adaptation, forces redundant representations")
-
-# Train using TrainingPipeline (CNN backprop in pure Python is 200+ lines —
-# Exercise 5-6 cover backprop from scratch; here we use the engine)
-from kailash_ml import TrainingPipeline
-
-pipeline = TrainingPipeline(
-    model_type="neural_network",
-    target="label",
-    features=pixel_cols,
-    config={
-        "architecture": "cnn",
-        "hidden_layers": [64, 32],
-        "activation": "relu",
-        "dropout": 0.5,
-        "epochs": 5,
-        "batch_size": 32,
-        "learning_rate": 0.001,
-    },
+# ════════════════════════════════════════════════════════════════════════
+# PART 2 — Export the transferred model to ONNX
+# ════════════════════════════════════════════════════════════════════════
+transfer_model.eval()
+onnx_path = Path("ex_7_transfer_resnet.onnx")
+sample = torch.randn(1, 3, 64, 64, device=device)
+torch.onnx.export(
+    transfer_model,
+    sample,
+    onnx_path,
+    input_names=["input"],
+    output_names=["logits"],
+    dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
+    opset_version=17,
+    dynamo=False,                       # use the stable TorchScript exporter
 )
-
-n_train_cnn = int(data.height * 0.8)
-train_cnn = data[:n_train_cnn]
-test_cnn = data[n_train_cnn:]
-
-result = pipeline.fit(train_cnn)
-train_losses = result.history.get("loss", [])
-print(f"Training complete: {len(train_losses)} epochs")
-print(f"Final loss: {train_losses[-1]:.4f}" if train_losses else "No loss recorded")
+print(f"\nExported to {onnx_path} ({onnx_path.stat().st_size // 1024} KB)")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Visualize filters with ModelVisualizer
-# ══════════════════════════════════════════════════════════════════════
-
+# ════════════════════════════════════════════════════════════════════════
+# PART 3 — Visualise training histories
+# ════════════════════════════════════════════════════════════════════════
 viz = ModelVisualizer()
-
-# Visualize conv1 filters
-print(f"\n=== Filter Visualization ===")
-print(f"Conv1 filters (4 × 3×3):")
-for i, filt in enumerate(cnn.conv1_filters):
-    flat_vals = [v for row in filt for v in row]
-    print(f"  Filter {i}: min={min(flat_vals):.2f}, max={max(flat_vals):.2f}")
-
-print(f"\nLearned filters detect: edges, textures, corners, gradients")
-print(
-    f"Deeper layers combine these into higher-level features (sleeves, collars, etc.)"
+fig = viz.training_history(
+    metrics={
+        "transfer loss": transfer_losses,
+        "transfer val acc": transfer_accs,
+        "scratch loss": scratch_losses,
+        "scratch val acc": scratch_accs,
+    },
+    x_label="Epoch",
+    y_label="Value",
 )
+fig.write_html("ex_7_training.html")
+print("Training history saved to ex_7_training.html")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Export to ONNX via OnnxBridge
-# ══════════════════════════════════════════════════════════════════════
+# ── Reflection ─────────────────────────────────────────────────────────
+print("\n" + "═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(
+    """
+  [x] Loaded a pre-trained torchvision.models.resnet18
+  [x] Froze the backbone and trained only a new classifier head
+  [x] Compared transfer learning vs training a CNN from scratch
+  [x] Exported the transferred model to ONNX with torch.onnx.export
+  [x] Applied ImageNet mean/std normalisation for pre-trained inputs
 
-
-async def export_to_onnx():
-    bridge = OnnxBridge()
-
-    # Export CNN model to ONNX format
-    onnx_path = bridge.export(
-        model=cnn,
-        input_shape=(1, 1, 28, 28),  # batch, channels, height, width
-        output_path="fashion_cnn.onnx",
-    )
-
-    print(f"\n=== ONNX Export ===")
-    print(f"Exported to: {onnx_path}")
-
-    # Validate ONNX model matches original
-    test_pixels = data.select(pixel_cols).row(0)
-    test_img_flat = [v / 255.0 for v in test_pixels]
-
-    metrics = bridge.validate(
-        onnx_path,
-        test_data=[test_img_flat],
-        expected=[sample_probs],
-    )
-    print(f"Validation: max_diff={metrics.get('max_diff', 'N/A')}")
-    print(f"ONNX model is portable: runs on any ONNX runtime (C++, JS, mobile)")
-
-    return onnx_path
-
-
-onnx_path = asyncio.run(export_to_onnx())
-
-print("\n✓ Exercise 7 complete — CNN from scratch + ONNX export via OnnxBridge")
+  Architecture-selection guide (consolidated across M5):
+    Images    -> CNN / ViT  + transfer learning (ImageNet pre-trained)
+    Text      -> Transformer + transfer learning (BERT / GPT pre-trained)
+    Sequences -> LSTM / Transformer (sometimes transfer)
+    Graphs    -> GNN (task-specific; transfer rarely used)
+    Tabular   -> Gradient boosting (train from scratch, fast and reliable)
+"""
+)

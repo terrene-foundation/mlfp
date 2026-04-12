@@ -2,443 +2,879 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP03 — Exercise 3: Dimensionality Reduction
+# MLFP03 — Exercise 3: The Complete Supervised Model Zoo
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Master PCA from SVD fundamentals — reconstruction error,
-#   scree plots, loadings — then apply UMAP and t-SNE for nonlinear
-#   embedding. Understand when each method is appropriate.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Train and compare SVM, KNN, Naive Bayes, Decision Trees, and
+#     Random Forests using a consistent evaluation framework
+#   - Compute Gini impurity and information gain by hand to understand
+#     how decision trees choose splits
+#   - Use OOB (out-of-bag) estimation as a free cross-validation proxy
+#   - Select the appropriate algorithm based on data characteristics
+#     (size, dimensionality, interpretability requirements)
+#   - Build a model comparison table and justify the best choice
+#
+# PREREQUISITES:
+#   - MLFP03 Exercise 2 (bias-variance, regularisation)
+#   - MLFP02 Module (statistics, Bayesian priors — connects to Naive Bayes)
+#
+# ESTIMATED TIME: 75-90 minutes
 #
 # TASKS:
-#   1. PCA via SVD — explained variance, reconstruction error, loadings
-#   2. Scree plot and cumulative variance — choosing n_components
-#   3. PCA loadings — which features drive each principal component
-#   4. Reconstruction error as a function of retained components
-#   5. t-SNE — local structure, perplexity hyperparameter
-#   6. UMAP — global structure, hyperparameter tuning, out-of-sample
+#   1. Load e-commerce data, set up binary classification (churn)
+#   2. Preprocess: encode categoricals, scale numerics
+#   3. Train SVM (linear + RBF), tune C parameter
+#   4. Train KNN, experiment with k values and distance metrics
+#   5. Train Naive Bayes (GaussianNB)
+#   6. Train Decision Tree, compute Gini impurity manually
+#   7. Train Random Forest, extract feature importance, OOB score
+#   8. Compare all 5 model families: accuracy, F1, training time
+#   9. Discuss when to use each model
+#
+# DATASET: E-commerce customer data (mlfp03/ecommerce_customers.parquet)
+#   Target: churned (binary — 0=retained, 1=churned)
+#   Rows: ~5,000 customers | Features: behavioural + demographic
+#   Why this dataset: realistic churn rates, mixed feature types
+#
+# THEORY:
+#   SVM margin: maximise 2/||w|| subject to y_i(w . x_i + b) >= 1
+#   Kernel trick: K(x, x') = phi(x) . phi(x') without computing phi
+#   Gini impurity: G = 1 - Sum(p_k^2) for k classes
+#   Information gain: IG = H(parent) - Sum(w_j * H(child_j))
+#   OOB estimation: ~36.8% of samples excluded per bootstrap sample
+#     (probability of NOT being drawn in n trials = (1 - 1/n)^n -> 1/e)
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import polars as pl
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    classification_report,
+    roc_auc_score,
+)
 
-from kailash_ml import ModelVisualizer
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
-
-try:
-    import umap as umap_lib
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
-    print("umap-learn not installed — UMAP tasks will use PCA fallback")
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-customers = loader.load("mlfp03", "ecommerce_customers.parquet")
+ecommerce = loader.load("mlfp03", "ecommerce_customers.parquet")
 
-feature_cols = [
-    c
-    for c, d in zip(customers.columns, customers.dtypes)
-    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c not in ("customer_id",)
-]
+# SVM with RBF kernel is O(n²) — subsample to keep training time reasonable
+# (5000 samples is enough to demonstrate all model behaviours)
+ecommerce = ecommerce.sample(n=5000, seed=42)
 
-X_raw, _, col_info = to_sklearn_input(
-    customers.drop_nulls(subset=feature_cols),
-    feature_columns=feature_cols,
+print("=== E-Commerce Customer Dataset ===")
+print(f"Shape: {ecommerce.shape} (subsampled for SVM tractability)")
+print(f"Columns: {ecommerce.columns}")
+print(f"Churn rate: {ecommerce['churned'].mean():.2%}")
+
+# Drop text columns and high-cardinality strings not suitable for the zoo
+# product_categories has 2000+ unique values — not useful without NLP.
+# review_text is free-form — belongs in an NLP exercise, not here.
+# customer_id is an identifier, not a feature.
+ecommerce = ecommerce.drop("customer_id", "review_text", "product_categories")
+
+print(f"\nAfter dropping text/ID columns: {ecommerce.shape}")
+print(f"Remaining columns: {ecommerce.columns}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1: Set up classification task
+# ════════════════════════════════════════════════════════════════════════
+# Target: churned (0 = retained, 1 = churned)
+# This is a binary classification problem.
+
+target_col = "churned"
+
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    data=ecommerce,
+    target=target_col,
+    train_size=0.8,
+    seed=42,
+    normalize=True,  # SVM and KNN require scaled features
+    normalize_method="zscore",
+    categorical_encoding="ordinal",  # Low-cardinality categoricals
+    imputation_strategy="median",
 )
 
-scaler = StandardScaler()
-X = scaler.fit_transform(X_raw)
+print(f"\nTask type: {result.task_type}")
+print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
 
-n_samples, n_features = X.shape
-print(f"=== E-commerce Customer Data ===")
-print(f"Samples: {n_samples:,}, Features: {n_features}")
-print(f"Feature names: {feature_cols}")
+feature_cols = [c for c in result.train_data.columns if c != target_col]
+
+X_train, y_train, col_info = to_sklearn_input(
+    result.train_data,
+    feature_columns=feature_cols,
+    target_column=target_col,
+)
+X_test, y_test, _ = to_sklearn_input(
+    result.test_data,
+    feature_columns=feature_cols,
+    target_column=target_col,
+)
+feature_names = col_info["feature_columns"]
+
+print(f"Features ({len(feature_names)}): {feature_names}")
+print(f"Train: {X_train.shape}, Test: {X_test.shape}")
+print(f"Train churn rate: {y_train.mean():.2%}")
+
+# Cross-validation strategy — same folds for all models
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert X_train.shape[0] > 0, "Training set is empty"
+assert X_test.shape[0] > 0, "Test set is empty"
+assert len(feature_names) > 0, "No feature columns found"
+assert 0 < y_train.mean() < 1, "Target should be binary with mixed labels"
+# INTERPRETATION: Churn prediction is a canonical binary classification task.
+# You're predicting which customers will leave. The cost of a missed churner
+# (False Negative) typically far exceeds the cost of wrongly flagging a loyal
+# customer (False Positive), so F1 and AUC matter more than raw accuracy.
+print("\n✓ Checkpoint 1 passed — data prepared for 5-model comparison\n")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: PCA via SVD — the connection explained
-# ══════════════════════════════════════════════════════════════════════
-# PCA finds directions of maximum variance (principal components).
-# It is equivalent to computing the Singular Value Decomposition (SVD):
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2: Preprocessing verification
+# ════════════════════════════════════════════════════════════════════════
+# Confirm scaling — SVM and KNN are distance-based and sensitive to scale.
+# Decision trees and Random Forests are invariant to monotone transforms,
+# but we scale everything uniformly for fair comparison.
+
+print("\n=== Feature Scales (post-normalisation) ===")
+print(f"{'Feature':<30} {'Mean':>8} {'Std':>8} {'Min':>8} {'Max':>8}")
+print("-" * 62)
+for i, name in enumerate(feature_names):
+    col = X_train[:, i]
+    print(f"{name:<30} {col.mean():>8.3f} {col.std():>8.3f} {col.min():>8.3f} {col.max():>8.3f}")
+
+print("\nAll features normalised to z-scores (mean ~0, std ~1).")
+print("This is essential for SVM (margin depends on scale) and KNN (distance).")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3: SVM — Support Vector Machines
+# ════════════════════════════════════════════════════════════════════════
+# THEORY: SVM finds the hyperplane that maximises the margin between classes.
+#   Hard-margin SVM: maximise 2/||w|| s.t. y_i(w . x_i + b) >= 1
+#   Soft-margin SVM: allow misclassification via slack variables xi_i,
+#     controlled by C (penalty parameter).
+#     - C -> inf: hard margin (no misclassification allowed)
+#     - C -> 0: wide margin, many misclassifications tolerated
 #
-#   X = U S V'
+#   Kernel trick: map data to higher-dimensional space where linear
+#   separation is possible. K(x, x') = phi(x) . phi(x') computes
+#   the dot product in feature space without explicit transformation.
+#     - Linear: K(x, x') = x . x'
+#     - RBF: K(x, x') = exp(-gamma ||x - x'||^2)
+#     - Polynomial: K(x, x') = (gamma * x . x' + r)^d
+
+print("\n=== SVM: Support Vector Machines ===")
+
+# 3a: Linear SVM — tune C parameter
+print("\n--- Linear SVM: C parameter sweep ---")
+print(f"{'C':>10} {'CV Accuracy':>14} {'CV F1':>10}")
+print("-" * 38)
+
+c_values = [0.01, 0.1, 1.0, 10.0, 100.0]
+linear_svm_results = {}
+for c_val in c_values:
+    svm_lin = SVC(kernel="linear", C=c_val, random_state=42)
+    acc_scores = cross_val_score(svm_lin, X_train, y_train, cv=cv, scoring="accuracy")
+    f1_scores = cross_val_score(svm_lin, X_train, y_train, cv=cv, scoring="f1")
+    linear_svm_results[c_val] = {
+        "accuracy": acc_scores.mean(),
+        "f1": f1_scores.mean(),
+    }
+    print(f"{c_val:>10.2f} {acc_scores.mean():>14.4f} {f1_scores.mean():>10.4f}")
+
+best_c_linear = max(linear_svm_results, key=lambda c: linear_svm_results[c]["f1"])
+print(f"\nBest linear SVM: C={best_c_linear} (F1={linear_svm_results[best_c_linear]['f1']:.4f})")
+
+# 3b: RBF SVM — tune C parameter
+print("\n--- RBF SVM: C parameter sweep ---")
+print(f"{'C':>10} {'CV Accuracy':>14} {'CV F1':>10}")
+print("-" * 38)
+
+rbf_svm_results = {}
+for c_val in c_values:
+    svm_rbf = SVC(kernel="rbf", C=c_val, random_state=42)
+    acc_scores = cross_val_score(svm_rbf, X_train, y_train, cv=cv, scoring="accuracy")
+    f1_scores = cross_val_score(svm_rbf, X_train, y_train, cv=cv, scoring="f1")
+    rbf_svm_results[c_val] = {
+        "accuracy": acc_scores.mean(),
+        "f1": f1_scores.mean(),
+    }
+    print(f"{c_val:>10.2f} {acc_scores.mean():>14.4f} {f1_scores.mean():>10.4f}")
+
+best_c_rbf = max(rbf_svm_results, key=lambda c: rbf_svm_results[c]["f1"])
+print(f"\nBest RBF SVM: C={best_c_rbf} (F1={rbf_svm_results[best_c_rbf]['f1']:.4f})")
+
+# Train final SVM on full training set
+t0 = time.perf_counter()
+svm_final = SVC(kernel="rbf", C=best_c_rbf, random_state=42, probability=True)
+svm_final.fit(X_train, y_train)
+svm_train_time = time.perf_counter() - t0
+
+svm_pred = svm_final.predict(X_test)
+svm_prob = svm_final.predict_proba(X_test)[:, 1]
+
+print(f"\nSVM Final (RBF, C={best_c_rbf}): trained in {svm_train_time:.2f}s")
+print(classification_report(y_test, svm_pred, target_names=["Retained", "Churned"]))
+
+print("SVM Insights:")
+print(f"  Support vectors: {svm_final.n_support_} (per class)")
+print(f"  Total support vectors: {svm_final.support_vectors_.shape[0]} "
+      f"({svm_final.support_vectors_.shape[0] / len(y_train):.1%} of training data)")
+print("  RBF kernel maps data into infinite-dimensional feature space.")
+print("  C controls the bias-variance tradeoff:")
+print("    Large C -> low bias, high variance (tight fit to training data)")
+print("    Small C -> high bias, low variance (wider margin, more generalisation)")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+svm_acc = accuracy_score(y_test, svm_pred)
+assert svm_acc > 0.5, f"SVM accuracy {svm_acc:.4f} should be above random baseline"
+# INTERPRETATION: The number of support vectors tells you how complex the
+# boundary is. If 80% of training samples are support vectors, the model
+# has learned almost nothing general — it has memorised the training set.
+# A well-trained SVM typically uses 10-30% of training points as support vectors.
+print("\n✓ Checkpoint 2 passed — SVM trained and evaluated\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4: KNN — K-Nearest Neighbors
+# ════════════════════════════════════════════════════════════════════════
+# THEORY: KNN is an instance-based (lazy) learner — no training phase.
+#   Prediction: for a query point x, find the k closest training points
+#   and take a majority vote.
 #
-# where:
-#   U : (n, n) — left singular vectors (sample coordinates)
-#   S : (n, p) — diagonal matrix of singular values σ_1 ≥ σ_2 ≥ ... ≥ 0
-#   V : (p, p) — right singular vectors (principal directions in feature space)
+#   Distance metrics:
+#     Euclidean: d(x, x') = sqrt(Sum((x_i - x'_i)^2))
+#     Manhattan: d(x, x') = Sum(|x_i - x'_i|)
+#     Cosine:    d(x, x') = 1 - (x . x') / (||x|| * ||x'||)
 #
-# Connection to PCA:
-#   - Columns of V = principal component directions (loadings)
-#   - Scores (projected data) = U S  or equivalently  X V
-#   - Explained variance for PC_k = σ_k² / (n - 1)
-#   - Total variance = Σ_k σ_k² / (n - 1) = Σ_j Var(X_j)
+#   Curse of dimensionality: as dimensions grow, all points become
+#   equidistant. Distances concentrate around the mean, making KNN
+#   unreliable in high-dimensional spaces without feature selection.
 
-print(f"\n=== PCA via SVD ===")
+print("\n=== KNN: K-Nearest Neighbors ===")
 
-# Manual SVD on mean-centred data (X already standardised = mean-centred + scaled)
-U, S, Vt = np.linalg.svd(X, full_matrices=False)
+# 4a: Vary k
+print("\n--- KNN: k value sweep (Euclidean distance) ---")
+print(f"{'k':>6} {'CV Accuracy':>14} {'CV F1':>10}")
+print("-" * 34)
 
-# Explained variance from singular values
-explained_variance = S**2 / (n_samples - 1)
-total_variance = explained_variance.sum()
-explained_variance_ratio = explained_variance / total_variance
-cumulative_evr = np.cumsum(explained_variance_ratio)
+k_values = [1, 3, 5, 7, 11, 15, 21, 31]
+knn_k_results = {}
+for k in k_values:
+    knn = KNeighborsClassifier(n_neighbors=k, metric="euclidean")
+    acc_scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring="accuracy")
+    f1_scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring="f1")
+    knn_k_results[k] = {
+        "accuracy": acc_scores.mean(),
+        "f1": f1_scores.mean(),
+    }
+    print(f"{k:>6} {acc_scores.mean():>14.4f} {f1_scores.mean():>10.4f}")
 
-print(f"Total variance (should ≈ n_features={n_features}): {total_variance:.2f}")
-print(f"\nTop 10 Principal Components:")
-print(f"{'PC':>4} {'Singular Value':>16} {'Expl. Var':>12} {'Expl. Var %':>12} {'Cumulative %':>14}")
-print("─" * 62)
-for i in range(min(10, n_features)):
+best_k = max(knn_k_results, key=lambda k: knn_k_results[k]["f1"])
+print(f"\nBest k={best_k} (F1={knn_k_results[best_k]['f1']:.4f})")
+
+# 4b: Compare distance metrics at best k
+print(f"\n--- KNN: distance metric comparison (k={best_k}) ---")
+print(f"{'Metric':<12} {'CV Accuracy':>14} {'CV F1':>10}")
+print("-" * 40)
+
+metrics = ["euclidean", "manhattan", "cosine"]
+knn_metric_results = {}
+for metric in metrics:
+    knn = KNeighborsClassifier(n_neighbors=best_k, metric=metric)
+    acc_scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring="accuracy")
+    f1_scores = cross_val_score(knn, X_train, y_train, cv=cv, scoring="f1")
+    knn_metric_results[metric] = {
+        "accuracy": acc_scores.mean(),
+        "f1": f1_scores.mean(),
+    }
+    print(f"{metric:<12} {acc_scores.mean():>14.4f} {f1_scores.mean():>10.4f}")
+
+best_metric = max(knn_metric_results, key=lambda m: knn_metric_results[m]["f1"])
+print(f"\nBest metric: {best_metric} (F1={knn_metric_results[best_metric]['f1']:.4f})")
+
+# Train final KNN
+t0 = time.perf_counter()
+knn_final = KNeighborsClassifier(n_neighbors=best_k, metric=best_metric)
+knn_final.fit(X_train, y_train)
+knn_train_time = time.perf_counter() - t0
+
+knn_pred = knn_final.predict(X_test)
+knn_prob = knn_final.predict_proba(X_test)[:, 1]
+
+print(f"\nKNN Final (k={best_k}, {best_metric}): trained in {knn_train_time:.4f}s")
+print(classification_report(y_test, knn_pred, target_names=["Retained", "Churned"]))
+
+print("KNN Insights:")
+print("  k=1: memorises training data (high variance, overfitting)")
+print(f"  k={best_k}: smoothed decision boundary (bias-variance sweet spot)")
+print("  KNN has NO training phase — all computation happens at prediction time.")
+print(f"  With {X_train.shape[1]} features, distances are meaningful (not too high-dimensional).")
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+knn_acc = accuracy_score(y_test, knn_pred)
+assert knn_acc > 0.5, f"KNN accuracy {knn_acc:.4f} should be above random baseline"
+assert best_k > 1, "Best k should be > 1 (k=1 always overfits)"
+# INTERPRETATION: The best k reflects the neighbourhood size where local
+# majority vote is most reliable. k=1 memorises noise; k=n votes globally
+# and ignores local structure. The cross-validated k balances both.
+# Notice that training time is near-zero (KNN is lazy) but prediction
+# requires computing distances to all training points — the cost is deferred.
+print("\n✓ Checkpoint 3 passed — KNN trained and optimal k found\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5: Naive Bayes (GaussianNB)
+# ════════════════════════════════════════════════════════════════════════
+# THEORY: Naive Bayes applies Bayes' theorem with the naive assumption
+#   that features are conditionally independent given the class:
+#
+#   P(y|x_1,...,x_n) proportional to P(y) * Product(P(x_i|y))
+#
+#   GaussianNB assumes each P(x_i|y) ~ N(mu_iy, sigma_iy^2).
+#   The model estimates class-conditional means and variances from data.
+#
+#   Despite the naive independence assumption (rarely true), Naive Bayes
+#   often performs well in practice because the decision boundary only
+#   needs the RANKING of posteriors to be correct, not the exact values.
+#
+#   Variants:
+#     GaussianNB: continuous features, assumes Gaussian likelihood
+#     MultinomialNB: discrete counts (bag-of-words text, word frequencies)
+#     BernoulliNB: binary features (word present/absent)
+
+print("\n=== Naive Bayes (GaussianNB) ===")
+
+t0 = time.perf_counter()
+nb = GaussianNB()
+nb.fit(X_train, y_train)
+nb_train_time = time.perf_counter() - t0
+
+nb_pred = nb.predict(X_test)
+nb_prob = nb.predict_proba(X_test)[:, 1]
+
+print(f"GaussianNB: trained in {nb_train_time:.4f}s")
+print(classification_report(y_test, nb_pred, target_names=["Retained", "Churned"]))
+
+# Cross-validation
+nb_cv_acc = cross_val_score(nb, X_train, y_train, cv=cv, scoring="accuracy")
+nb_cv_f1 = cross_val_score(nb, X_train, y_train, cv=cv, scoring="f1")
+print(f"CV Accuracy: {nb_cv_acc.mean():.4f} (+/- {nb_cv_acc.std():.4f})")
+print(f"CV F1:       {nb_cv_f1.mean():.4f} (+/- {nb_cv_f1.std():.4f})")
+
+# Inspect class-conditional parameters
+print(f"\nClass priors: P(retained)={nb.class_prior_[0]:.4f}, P(churned)={nb.class_prior_[1]:.4f}")
+print(f"\nClass-conditional means (mu_iy):")
+print(f"{'Feature':<30} {'Retained':>10} {'Churned':>10} {'Diff':>10}")
+print("-" * 64)
+for i, name in enumerate(feature_names):
+    mu_0 = nb.theta_[0, i]
+    mu_1 = nb.theta_[1, i]
+    print(f"{name:<30} {mu_0:>10.4f} {mu_1:>10.4f} {abs(mu_1 - mu_0):>10.4f}")
+
+print("\nNaive Bayes Insights:")
+print("  Fastest training of all models (single pass through data).")
+print("  No hyperparameters to tune (var_smoothing is rarely critical).")
+print("  Independence assumption is violated (features ARE correlated),")
+print("  but NB still provides a useful baseline — calibration may help.")
+print("  Best suited for: text classification (MultinomialNB), fast baseline.")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+nb_acc = accuracy_score(y_test, nb_pred)
+assert nb_acc > 0.5, f"Naive Bayes accuracy {nb_acc:.4f} should be above random baseline"
+assert nb.class_prior_[0] + nb.class_prior_[1] == pytest.approx(1.0) if False else \
+    abs(nb.class_prior_[0] + nb.class_prior_[1] - 1.0) < 1e-6, \
+    "Class priors must sum to 1"
+# INTERPRETATION: Naive Bayes class priors directly reflect the training set
+# class balance. If prior[1] (churned) is 0.25, the model starts every
+# prediction with a 25% base rate for churn — then updates based on features.
+# This is exactly Bayes' theorem in action, connecting back to M2 Bayesian thinking.
+print("\n✓ Checkpoint 4 passed — Naive Bayes trained and class priors inspected\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 6: Decision Tree — Gini impurity and tree structure
+# ════════════════════════════════════════════════════════════════════════
+# THEORY: Decision trees recursively partition the feature space by
+#   selecting the split that best separates classes.
+#
+#   Gini impurity: G(node) = 1 - Sum(p_k^2) for k classes
+#     Pure node: G = 0 (all one class)
+#     Maximum impurity (binary): G = 0.5 (50/50 split)
+#
+#   Information gain (entropy-based):
+#     H(node) = -Sum(p_k * log2(p_k))
+#     IG = H(parent) - Sum(w_j * H(child_j))
+#
+#   Pruning controls overfitting:
+#     Pre-pruning: max_depth, min_samples_split, min_samples_leaf
+#     Post-pruning: cost-complexity pruning (ccp_alpha)
+
+print("\n=== Decision Tree ===")
+
+# 6a: Manual Gini impurity computation
+# Demonstrate the formula on the root node before any split
+n_retained = (y_train == 0).sum()
+n_churned = (y_train == 1).sum()
+n_total = len(y_train)
+
+p_retained = n_retained / n_total
+p_churned = n_churned / n_total
+
+gini_root = 1 - (p_retained**2 + p_churned**2)
+
+print(f"\n--- Manual Gini Impurity at Root Node ---")
+print(f"Training data: {n_retained} retained, {n_churned} churned (n={n_total})")
+print(f"p(retained) = {p_retained:.4f}")
+print(f"p(churned)  = {p_churned:.4f}")
+print(f"Gini = 1 - (p_retained^2 + p_churned^2)")
+print(f"     = 1 - ({p_retained:.4f}^2 + {p_churned:.4f}^2)")
+print(f"     = 1 - ({p_retained**2:.4f} + {p_churned**2:.4f})")
+print(f"     = {gini_root:.4f}")
+
+# Simulate one split manually to show information gain
+# Pick the first feature and a threshold at the median
+feat_idx = 0
+feat_name = feature_names[feat_idx]
+threshold = np.median(X_train[:, feat_idx])
+
+left_mask = X_train[:, feat_idx] <= threshold
+right_mask = ~left_mask
+
+n_left = left_mask.sum()
+n_right = right_mask.sum()
+
+p_churn_left = y_train[left_mask].mean()
+p_retain_left = 1 - p_churn_left
+gini_left = 1 - (p_retain_left**2 + p_churn_left**2)
+
+p_churn_right = y_train[right_mask].mean()
+p_retain_right = 1 - p_churn_right
+gini_right = 1 - (p_retain_right**2 + p_churn_right**2)
+
+gini_split = (n_left / n_total) * gini_left + (n_right / n_total) * gini_right
+gini_gain = gini_root - gini_split
+
+print(f"\n--- Example Split: {feat_name} <= {threshold:.4f} ---")
+print(f"Left child:  n={n_left}, churn rate={p_churn_left:.4f}, Gini={gini_left:.4f}")
+print(f"Right child: n={n_right}, churn rate={p_churn_right:.4f}, Gini={gini_right:.4f}")
+print(f"Weighted Gini after split: ({n_left}/{n_total})*{gini_left:.4f} + ({n_right}/{n_total})*{gini_right:.4f} = {gini_split:.4f}")
+print(f"Gini gain: {gini_root:.4f} - {gini_split:.4f} = {gini_gain:.4f}")
+
+# 6b: Train Decision Tree with depth tuning
+print(f"\n--- Decision Tree: max_depth sweep ---")
+print(f"{'Depth':>8} {'CV Accuracy':>14} {'CV F1':>10}")
+print("-" * 36)
+
+depths = [2, 3, 5, 7, 10, 15, None]
+dt_results = {}
+for depth in depths:
+    dt = DecisionTreeClassifier(max_depth=depth, random_state=42)
+    acc_scores = cross_val_score(dt, X_train, y_train, cv=cv, scoring="accuracy")
+    f1_scores = cross_val_score(dt, X_train, y_train, cv=cv, scoring="f1")
+    label = str(depth) if depth is not None else "None"
+    dt_results[label] = {
+        "depth": depth,
+        "accuracy": acc_scores.mean(),
+        "f1": f1_scores.mean(),
+    }
+    print(f"{label:>8} {acc_scores.mean():>14.4f} {f1_scores.mean():>10.4f}")
+
+best_depth_key = max(dt_results, key=lambda d: dt_results[d]["f1"])
+best_depth = dt_results[best_depth_key]["depth"]
+print(f"\nBest max_depth={best_depth_key} (F1={dt_results[best_depth_key]['f1']:.4f})")
+
+# Train final Decision Tree
+t0 = time.perf_counter()
+dt_final = DecisionTreeClassifier(max_depth=best_depth, random_state=42)
+dt_final.fit(X_train, y_train)
+dt_train_time = time.perf_counter() - t0
+
+dt_pred = dt_final.predict(X_test)
+dt_prob = dt_final.predict_proba(X_test)[:, 1]
+
+print(f"\nDecision Tree (depth={best_depth_key}): trained in {dt_train_time:.4f}s")
+print(classification_report(y_test, dt_pred, target_names=["Retained", "Churned"]))
+
+# 6c: Visualise tree structure (top 4 levels)
+print("--- Tree Structure (first 4 levels) ---")
+tree_text = export_text(
+    dt_final,
+    feature_names=feature_names,
+    max_depth=4,
+)
+print(tree_text)
+
+# Feature importance from the tree
+dt_importances = dict(zip(feature_names, dt_final.feature_importances_))
+dt_importances_sorted = dict(sorted(dt_importances.items(), key=lambda x: x[1], reverse=True))
+
+print("--- Decision Tree Feature Importance ---")
+print(f"{'Feature':<30} {'Importance':>12}")
+print("-" * 44)
+for name, imp in list(dt_importances_sorted.items())[:10]:
+    bar = "#" * int(imp * 50)
+    print(f"{name:<30} {imp:>12.4f}  {bar}")
+
+print("\nDecision Tree Insights:")
+print(f"  Tree depth: {dt_final.get_depth()}, Leaves: {dt_final.get_n_leaves()}")
+print("  Fully interpretable: you can trace any prediction through the tree.")
+print("  Prone to overfitting without pruning (depth=None memorises training data).")
+print("  Non-linear boundaries: can capture complex feature interactions.")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+dt_acc = accuracy_score(y_test, dt_pred)
+assert dt_acc > 0.5, f"Decision Tree accuracy {dt_acc:.4f} should be above random baseline"
+assert abs(gini_root - (1 - (p_retained**2 + p_churned**2))) < 1e-9, \
+    "Gini impurity formula should match manual calculation"
+# INTERPRETATION: Gini impurity is the expected error if you randomly label
+# a sample from the node's distribution. A pure node (Gini=0) makes perfect
+# predictions. The tree algorithm maximises REDUCTION in Gini with each split —
+# greedy local optimization, which may not yield the globally optimal tree.
+print("\n✓ Checkpoint 5 passed — Decision Tree trained and Gini computed manually\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 7: Random Forest — bagging, feature importance, OOB
+# ════════════════════════════════════════════════════════════════════════
+# THEORY: Random Forest = bagging + feature subsampling.
+#   Bagging (bootstrap aggregating):
+#     1. Draw B bootstrap samples (with replacement) from training data
+#     2. Train one decision tree on each bootstrap sample
+#     3. Aggregate predictions by majority vote (classification)
+#
+#   Feature subsampling: at each split, consider only sqrt(p) random
+#   features (not all p). This decorrelates the trees, reducing variance.
+#
+#   Out-of-Bag (OOB) estimation:
+#     Each bootstrap sample excludes ~36.8% of training data.
+#     P(sample i NOT in bootstrap) = (1 - 1/n)^n -> 1/e ~ 0.368
+#     Use excluded samples as a free validation set per tree.
+#     OOB error ~ cross-validation error without extra computation.
+
+print("\n=== Random Forest ===")
+
+# 7a: Train with OOB estimation
+t0 = time.perf_counter()
+rf = RandomForestClassifier(
+    n_estimators=200,
+    max_features="sqrt",
+    oob_score=True,
+    random_state=42,
+    n_jobs=-1,
+)
+rf.fit(X_train, y_train)
+rf_train_time = time.perf_counter() - t0
+
+rf_pred = rf.predict(X_test)
+rf_prob = rf.predict_proba(X_test)[:, 1]
+
+print(f"Random Forest (200 trees): trained in {rf_train_time:.2f}s")
+print(f"OOB Score: {rf.oob_score_:.4f}")
+print(classification_report(y_test, rf_pred, target_names=["Retained", "Churned"]))
+
+# Cross-validation for comparison
+rf_cv_acc = cross_val_score(rf, X_train, y_train, cv=cv, scoring="accuracy")
+rf_cv_f1 = cross_val_score(rf, X_train, y_train, cv=cv, scoring="f1")
+print(f"CV Accuracy: {rf_cv_acc.mean():.4f} (+/- {rf_cv_acc.std():.4f})")
+print(f"CV F1:       {rf_cv_f1.mean():.4f} (+/- {rf_cv_f1.std():.4f})")
+
+# 7b: Feature importance
+rf_importances = dict(zip(feature_names, rf.feature_importances_))
+rf_importances_sorted = dict(sorted(rf_importances.items(), key=lambda x: x[1], reverse=True))
+
+print(f"\n--- Random Forest Feature Importance ---")
+print(f"{'Feature':<30} {'Importance':>12}")
+print("-" * 44)
+for name, imp in rf_importances_sorted.items():
+    bar = "#" * int(imp * 50)
+    print(f"{name:<30} {imp:>12.4f}  {bar}")
+
+# 7c: OOB convergence — how many trees do we actually need?
+print(f"\n--- OOB Convergence vs Number of Trees ---")
+oob_scores = []
+n_trees_list = [10, 25, 50, 75, 100, 150, 200]
+for n_trees in n_trees_list:
+    rf_temp = RandomForestClassifier(
+        n_estimators=n_trees,
+        max_features="sqrt",
+        oob_score=True,
+        random_state=42,
+        n_jobs=-1,
+    )
+    rf_temp.fit(X_train, y_train)
+    oob_scores.append(rf_temp.oob_score_)
+
+print(f"{'Trees':>8} {'OOB Score':>12}")
+print("-" * 24)
+for n, oob in zip(n_trees_list, oob_scores):
+    print(f"{n:>8} {oob:>12.4f}")
+
+print("\nRandom Forest Insights:")
+print("  OOB score provides a free estimate of generalisation error.")
+print(f"  OOB ({rf.oob_score_:.4f}) ~ CV accuracy ({rf_cv_acc.mean():.4f}) — confirms consistency.")
+print(f"  Feature subsampling (max_features='sqrt'={int(np.sqrt(len(feature_names)))}) decorrelates trees.")
+print("  Robust default: rarely needs extensive hyperparameter tuning.")
+print("  NOT interpretable: 200 trees cannot be inspected like a single tree.")
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+rf_acc = accuracy_score(y_test, rf_pred)
+assert rf_acc > 0.5, f"Random Forest accuracy {rf_acc:.4f} should be above random baseline"
+assert rf.oob_score_ > 0.5, "OOB score should be above random baseline"
+assert abs(rf.oob_score_ - rf_cv_acc.mean()) < 0.10, \
+    "OOB score and CV accuracy should be reasonably close (within 10pp)"
+# INTERPRETATION: OOB score and CV accuracy being close is a sign that the
+# model generalises consistently. A large gap (OOB >> CV) would suggest
+# data leakage or distribution shift between folds. The OOB mechanism is
+# essentially cross-validation built into the training process — free quality control.
+print("\n✓ Checkpoint 6 passed — Random Forest trained with OOB validation\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 8: Model Comparison
+# ════════════════════════════════════════════════════════════════════════
+# Compare all 5 model families on: accuracy, F1, AUC-ROC, training time.
+# Use consistent evaluation on the SAME test set.
+
+print("\n" + "=" * 76)
+print("MODEL COMPARISON: All 5 Supervised Learning Families")
+print("=" * 76)
+
+# Collect all results
+models = {
+    "SVM (RBF)": {
+        "model": svm_final,
+        "pred": svm_pred,
+        "prob": svm_prob,
+        "train_time": svm_train_time,
+    },
+    "KNN": {
+        "model": knn_final,
+        "pred": knn_pred,
+        "prob": knn_prob,
+        "train_time": knn_train_time,
+    },
+    "Naive Bayes": {
+        "model": nb,
+        "pred": nb_pred,
+        "prob": nb_prob,
+        "train_time": nb_train_time,
+    },
+    "Decision Tree": {
+        "model": dt_final,
+        "pred": dt_pred,
+        "prob": dt_prob,
+        "train_time": dt_train_time,
+    },
+    "Random Forest": {
+        "model": rf,
+        "pred": rf_pred,
+        "prob": rf_prob,
+        "train_time": rf_train_time,
+    },
+}
+
+comparison_rows = []
+for name, info in models.items():
+    acc = accuracy_score(y_test, info["pred"])
+    f1 = f1_score(y_test, info["pred"])
+    auc = roc_auc_score(y_test, info["prob"])
+    comparison_rows.append({
+        "Model": name,
+        "Accuracy": acc,
+        "F1": f1,
+        "AUC-ROC": auc,
+        "Train Time (s)": info["train_time"],
+    })
+
+# Build comparison table in polars
+comparison_df = pl.DataFrame(comparison_rows)
+
+print("\n--- Test Set Performance ---")
+print(f"{'Model':<18} {'Accuracy':>10} {'F1':>10} {'AUC-ROC':>10} {'Time (s)':>10}")
+print("-" * 62)
+for row in comparison_rows:
     print(
-        f"{i+1:>4} {S[i]:>16.4f} {explained_variance[i]:>12.4f} "
-        f"{explained_variance_ratio[i]:>11.2%} {cumulative_evr[i]:>13.2%}"
+        f"{row['Model']:<18} {row['Accuracy']:>10.4f} {row['F1']:>10.4f} "
+        f"{row['AUC-ROC']:>10.4f} {row['Train Time (s)']:>10.4f}"
     )
 
-# Verify against sklearn PCA
-pca_full = PCA(n_components=n_features)
-pca_full.fit(X)
-max_diff = np.abs(pca_full.explained_variance_ratio_ - explained_variance_ratio).max()
-print(f"\nSVD vs sklearn PCA max difference: {max_diff:.2e} (should be ≈ 0)")
-
-# Principal directions (loadings): rows of Vt = columns of V
-# PC_k direction = Vt[k, :] — a unit vector in feature space
-print(f"\nPC1 direction (first {n_features} values):")
-print(f"  {Vt[0].round(3)}")
-print(f"  ||PC1|| = {np.linalg.norm(Vt[0]):.6f} (should be 1.0 — unit vector)")
+# Rank by F1
+ranked = sorted(comparison_rows, key=lambda r: r["F1"], reverse=True)
+print(f"\nRanking by F1 Score:")
+for i, row in enumerate(ranked, 1):
+    print(f"  {i}. {row['Model']} (F1={row['F1']:.4f})")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Scree plot and choosing n_components
-# ══════════════════════════════════════════════════════════════════════
-# The scree plot shows explained variance ratio per component.
-# "Elbow" = the point where marginal variance explained drops sharply.
-# A common rule: retain components until cumulative variance ≥ 90-95%.
-
-n_95 = np.searchsorted(cumulative_evr, 0.95) + 1
-n_90 = np.searchsorted(cumulative_evr, 0.90) + 1
-n_80 = np.searchsorted(cumulative_evr, 0.80) + 1
-
-print(f"\n=== Variance Thresholds ===")
-print(f"Components for 80% variance: {n_80}")
-print(f"Components for 90% variance: {n_90}")
-print(f"Components for 95% variance: {n_95}")
-print(f"  (Original: {n_features} features → {n_95}x compression for 95% retention)")
-
-# Kaiser criterion: retain components with eigenvalue > 1
-# (only meaningful for standardised data where total variance = n_features)
-n_kaiser = (explained_variance > 1.0).sum()
-print(f"\nKaiser criterion (eigenvalue > 1): {n_kaiser} components")
-print(f"  Eigenvalue = explained variance per component")
-print(f"  Threshold 1.0 means the component captures more than one original feature")
+# ════════════════════════════════════════════════════════════════════════
+# TASK 8b: Visualise comparison with ModelVisualizer
+# ════════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
-# Scree plot
-fig_scree = viz.training_history(
-    {
-        "Explained Variance %": (explained_variance_ratio[:20] * 100).tolist(),
-        "Cumulative %": (cumulative_evr[:20] * 100).tolist(),
-    },
-    x_label="Principal Component",
-)
-fig_scree.update_layout(title="Scree Plot: Explained Variance by Component")
-fig_scree.write_html("ex3_scree_plot.html")
-print("\nSaved: ex3_scree_plot.html")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: PCA loadings — feature contributions to each PC
-# ══════════════════════════════════════════════════════════════════════
-# Loadings = correlation between original features and principal components.
-# Loading[j, k] = Vt[k, j] * sqrt(explained_variance[k]) / std(X_j)
-# (for standardised data this simplifies to Vt[k, j] * sqrt(λ_k))
-#
-# |Loading| close to 1 → feature j strongly drives PC_k
-# |Loading| close to 0 → feature j barely contributes to PC_k
-
-loadings = Vt[:n_components_to_inspect := min(5, n_features), :].T  # (n_features, n_pcs)
-
-print(f"\n=== PCA Loadings (top {n_components_to_inspect} PCs) ===")
-print(f"{'Feature':<30}", end="")
-for i in range(n_components_to_inspect):
-    print(f"{'PC' + str(i+1):>10}", end="")
-print()
-print("─" * (30 + 10 * n_components_to_inspect))
-
-for j, feat in enumerate(feature_cols):
-    print(f"{feat:<30}", end="")
-    for i in range(n_components_to_inspect):
-        val = loadings[j, i]
-        marker = " ★" if abs(val) > 0.4 else "  "
-        print(f"{val:>9.3f}{marker[1]}", end="")
-    print()
-
-print("\n★ = strong loading (|loading| > 0.4)")
-print("\nInterpretation:")
-print("  PC1: the direction capturing most customer variation")
-print("  Features with large |loading| on PC1 are the primary drivers")
-print("  Features with near-zero loading on PC1 are orthogonal to it")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Reconstruction error as a function of retained components
-# ══════════════════════════════════════════════════════════════════════
-# Reconstruction: X̂ = X_proj @ Vt[:k, :]  (project and back-project)
-# Reconstruction MSE = ||X - X̂||² / (n * p)
-# = Σ_{i > k} σ_i² / (n * p)  (exactly the unexplained variance)
-
-n_components_range = list(range(1, min(n_features + 1, 31)))
-reconstruction_errors = []
-
-for k in n_components_range:
-    pca_k = PCA(n_components=k)
-    X_proj = pca_k.fit_transform(X)
-    X_recon = pca_k.inverse_transform(X_proj)
-    mse = np.mean((X - X_recon) ** 2)
-    reconstruction_errors.append(mse)
-
-print(f"\n=== Reconstruction Error ===")
-print(f"{'Components':>12} {'MSE':>12} {'% Variance Retained':>22}")
-print("─" * 50)
-for k, mse in zip(n_components_range[::3], reconstruction_errors[::3]):
-    pct_retained = 1.0 - mse / np.mean(X ** 2)
-    print(f"{k:>12} {mse:>12.4f} {pct_retained:>21.2%}")
-
-fig_recon = viz.training_history(
-    {"Reconstruction MSE": reconstruction_errors},
-    x_label="Number of PCA Components",
-)
-fig_recon.update_layout(title="PCA: Reconstruction Error vs Components Retained")
-fig_recon.write_html("ex3_reconstruction_error.html")
-print("\nSaved: ex3_reconstruction_error.html")
-
-# Recommended n_components for downstream tasks
-n_for_embedding = n_90  # Retain 90% variance before applying t-SNE/UMAP
-print(f"\nUsing {n_for_embedding} PCA components (90% variance) as t-SNE/UMAP input")
-print("  Pre-reducing with PCA improves t-SNE/UMAP speed and removes noise")
-
-pca_pre = PCA(n_components=n_for_embedding, random_state=42)
-X_pca = pca_pre.fit_transform(X)
-print(f"  Reduced: {X.shape} → {X_pca.shape}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: t-SNE — local structure, perplexity
-# ══════════════════════════════════════════════════════════════════════
-# t-SNE minimises KL divergence between:
-#   - High-dimensional pairwise similarity (Gaussian kernel)
-#   - Low-dimensional pairwise similarity (Student-t kernel)
-#
-# Properties:
-#   - Preserves LOCAL structure (nearby points stay nearby)
-#   - Global distances are NOT preserved (clusters can appear far apart)
-#   - No out-of-sample extension (must refit for new points)
-#   - O(n log n) with Barnes-Hut approximation
-#
-# Key hyperparameter: perplexity
-#   - Roughly: effective number of nearest neighbours
-#   - Low (5-10): focuses on very local structure, isolates small clusters
-#   - High (50-100): more global perspective, smoother embeddings
-#   - Rule of thumb: 5 ≤ perplexity ≤ n/3
-
-# Subsample for speed (t-SNE is slow on large datasets)
-rng = np.random.default_rng(42)
-n_tsne = min(3000, n_samples)
-idx_tsne = rng.choice(n_samples, n_tsne, replace=False)
-X_tsne_input = X_pca[idx_tsne]
-
-print(f"\n=== t-SNE (n={n_tsne}) ===")
-print(f"{'Perplexity':>12} {'KL Divergence':>16} {'Time':>8}")
-print("─" * 40)
-
-import time
-tsne_results = {}
-for perplexity in [5, 30, 50]:
-    t0 = time.time()
-    tsne = TSNE(
-        n_components=2,
-        perplexity=perplexity,
-        max_iter=1000,
-        random_state=42,
-        init="pca",
-        learning_rate="auto",
-    )
-    embedding = tsne.fit_transform(X_tsne_input)
-    elapsed = time.time() - t0
-
-    tsne_results[perplexity] = {
-        "embedding": embedding,
-        "kl_divergence": tsne.kl_divergence_,
+# Metric comparison across all models
+metric_dict = {
+    row["Model"]: {
+        "Accuracy": row["Accuracy"],
+        "F1": row["F1"],
+        "AUC-ROC": row["AUC-ROC"],
     }
+    for row in comparison_rows
+}
+fig_compare = viz.metric_comparison(metric_dict)
+fig_compare.update_layout(title="Model Zoo: Performance Comparison")
+fig_compare.write_html("ex3_model_comparison.html")
+print("\nSaved: ex3_model_comparison.html")
 
-    # Cluster quality in the embedding
-    from sklearn.cluster import KMeans
-    km = KMeans(n_clusters=4, random_state=42, n_init=5)
-    labels_2d = km.fit_predict(embedding)
-    sil = silhouette_score(embedding, labels_2d) if len(set(labels_2d)) > 1 else -1.0
+# Random Forest feature importance bar chart
+fig_importance = viz.metric_comparison(
+    {"Importance": rf_importances_sorted}
+)
+fig_importance.update_layout(title="Random Forest: Feature Importance")
+fig_importance.write_html("ex3_rf_importance.html")
+print("Saved: ex3_rf_importance.html")
 
-    print(f"{perplexity:>12} {tsne.kl_divergence_:>16.4f} {elapsed:>7.1f}s")
-    print(f"  Silhouette in 2D embedding: {sil:.4f}")
+# Training time comparison
+time_dict = {
+    row["Model"]: {"Train Time (s)": row["Train Time (s)"]}
+    for row in comparison_rows
+}
+fig_time = viz.metric_comparison(time_dict)
+fig_time.update_layout(title="Model Zoo: Training Time Comparison")
+fig_time.write_html("ex3_training_time.html")
+print("Saved: ex3_training_time.html")
 
-print("\nt-SNE perplexity guidance:")
-print("  perplexity=5  : micro-clusters, many small tight groups")
-print("  perplexity=30 : balanced (default recommendation)")
-print("  perplexity=50 : smoother, fewer isolated clusters")
-print("  NEVER interpret inter-cluster distances — not meaningful!")
-
-# Key t-SNE warnings
-print("\nt-SNE pitfalls:")
-print("  1. Cluster sizes in t-SNE do NOT reflect real cluster sizes")
-print("  2. Distances between clusters are NOT meaningful")
-print("  3. Different runs give different layouts (random seed matters)")
-print("  4. No out-of-sample extension — new points require full refit")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: UMAP — global structure, hyperparameter tuning
-# ══════════════════════════════════════════════════════════════════════
-# UMAP uses a fuzzy topological approach:
-#   1. Build a weighted k-NN graph (high-dimensional)
-#   2. Optimise a low-dimensional layout to match graph structure
-#
-# Advantages over t-SNE:
-#   - Preserves BOTH local AND global structure
-#   - Supports out-of-sample transform (transform new points)
-#   - Faster: O(n) amortised
-#   - Can embed into any dimensionality (not just 2D)
-#
-# Key hyperparameters:
-#   n_neighbors: size of local neighbourhood (like perplexity in t-SNE)
-#     - Small: focuses on local structure, captures fine detail
-#     - Large: more global structure, smoother embedding
-#   min_dist: minimum distance between points in embedding
-#     - Small (0.0): tightly packed clusters
-#     - Large (1.0): spread out, more continuous
-
-print(f"\n=== UMAP Hyperparameter Comparison ===")
-
-if UMAP_AVAILABLE:
-    umap_configs = [
-        {"n_neighbors": 5,  "min_dist": 0.1,  "label": "local (n_nbrs=5)"},
-        {"n_neighbors": 15, "min_dist": 0.1,  "label": "default (n_nbrs=15)"},
-        {"n_neighbors": 50, "min_dist": 0.5,  "label": "global (n_nbrs=50)"},
-    ]
-
-    umap_results = {}
-    for cfg in umap_configs:
-        t0 = time.time()
-        reducer = umap_lib.UMAP(
-            n_components=2,
-            n_neighbors=cfg["n_neighbors"],
-            min_dist=cfg["min_dist"],
-            random_state=42,
-            metric="euclidean",
-        )
-        # Fit on subsample, then transform full dataset (out-of-sample extension)
-        reducer.fit(X_pca[idx_tsne])
-        embedding_full = reducer.transform(X_pca)   # All samples
-        elapsed = time.time() - t0
-
-        km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
-            embedding_full
-        )
-        sil = silhouette_score(embedding_full, km_labels) if len(set(km_labels)) > 1 else -1.0
-
-        umap_results[cfg["label"]] = {
-            "embedding": embedding_full,
-            "silhouette": sil,
-            "time": elapsed,
-        }
-        print(f"  {cfg['label']:<30}: silhouette={sil:.4f}, time={elapsed:.1f}s")
-
-    print("\nOut-of-sample: UMAP supports reducer.transform(new_X)")
-    print("  This is critical for production — new customers can be embedded")
-    print("  without refitting the entire model")
-    print("\nUMAP vs t-SNE decision guide:")
-    print("  Use t-SNE:  exploratory visualisation, understanding local clusters")
-    print("  Use UMAP:   need out-of-sample transform, large datasets, global structure")
-
-else:
-    # PCA fallback for environments without umap-learn
-    pca_2d = PCA(n_components=2, random_state=42)
-    embedding_2d = pca_2d.fit_transform(X_pca)
-    km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(embedding_2d)
-    sil = silhouette_score(embedding_2d, km_labels) if len(set(km_labels)) > 1 else -1.0
-    print(f"  PCA 2D fallback: silhouette={sil:.4f}")
-
-    umap_results = {"PCA 2D": {"embedding": embedding_2d, "silhouette": sil, "time": 0.0}}
-
-    print("\nInstall umap-learn to run UMAP: pip install umap-learn")
-    print("UMAP benefits: preserves global structure, out-of-sample transform")
+# OOB convergence plot
+fig_oob = viz.training_history(
+    {"OOB Score": oob_scores},
+    x_label="Number of Trees",
+)
+fig_oob.update_layout(title="Random Forest: OOB Score vs Number of Trees")
+fig_oob.write_html("ex3_oob_convergence.html")
+print("Saved: ex3_oob_convergence.html")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Method comparison summary
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# TASK 9: When to Use Each Model
+# ════════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Dimensionality Reduction Method Comparison ===")
-print(f"""
-┌──────────────────┬─────────────┬──────────────┬───────────────┬──────────────┐
-│ Method           │ Linear?     │ Global Struct│ Out-of-Sample │ Speed        │
-├──────────────────┼─────────────┼──────────────┼───────────────┼──────────────┤
-│ PCA              │ Yes         │ Yes          │ Yes           │ O(np min(n,p))│
-│ t-SNE            │ No          │ Local only   │ No            │ O(n log n)   │
-│ UMAP             │ No          │ Both         │ Yes           │ O(n)         │
-└──────────────────┴─────────────┴──────────────┴───────────────┴──────────────┘
+print("\n" + "=" * 76)
+print("WHEN TO USE EACH MODEL — Decision Guide")
+print("=" * 76)
 
-Practical Recommendations:
-  1. Always PCA first: removes noise, speeds up t-SNE/UMAP
-  2. PCA for production: interpretable loadings, fast, invertible
-  3. t-SNE for exploration: visualise cluster structure in 2D
-  4. UMAP for production embedding: out-of-sample transform available
-  5. Report n_components chosen and % variance retained
+print("""
++-------------------+---------------------+---------------------+---------------+
+| Model             | Best When           | Avoid When          | Key Tradeoff  |
++-------------------+---------------------+---------------------+---------------+
+| SVM               | Clear margin of     | Very large datasets | High accuracy |
+|                   | separation, high-   | (O(n^2) kernel      | but slow to   |
+|                   | dimensional data    | computation)        | train at scale|
++-------------------+---------------------+---------------------+---------------+
+| KNN               | Small datasets,     | High dimensions     | No training,  |
+|                   | non-linear          | (curse of           | but slow at   |
+|                   | boundaries, quick   | dimensionality),    | prediction    |
+|                   | prototyping         | large n (O(n) pred) | time          |
++-------------------+---------------------+---------------------+---------------+
+| Naive Bayes       | Text classification,| Complex feature     | Extremely     |
+|                   | fast baseline,      | interactions,       | fast but      |
+|                   | very large data,    | correlated features | strong        |
+|                   | real-time systems   | (violates naive     | assumptions   |
+|                   |                     | assumption badly)   |               |
++-------------------+---------------------+---------------------+---------------+
+| Decision Tree     | Interpretability    | High variance       | Fully         |
+|                   | required (audit,    | (single tree        | interpretable |
+|                   | regulation),        | overfits easily),   | but unstable  |
+|                   | non-linear data     | noisy data          | (small data   |
+|                   |                     |                     | change = new  |
+|                   |                     |                     | tree)         |
++-------------------+---------------------+---------------------+---------------+
+| Random Forest     | Robust default,     | Need interpretable  | Robust,       |
+|                   | mixed feature       | model, extreme      | accurate,     |
+|                   | types, minimal      | speed constraints,  | but black-box |
+|                   | tuning available    | memory-constrained  | (200 trees)   |
++-------------------+---------------------+---------------------+---------------+
 """)
 
-# Visualise PCA 2D projection
-pca_2d_final = PCA(n_components=2, random_state=42)
-X_pca_2d = pca_2d_final.fit_transform(X)
+print("--- Complexity vs Interpretability Trade-off ---")
+print("  Most interpretable:  Naive Bayes > Decision Tree > KNN > Random Forest > SVM (RBF)")
+print("  Typically most accurate: Random Forest > SVM > KNN > Decision Tree > Naive Bayes")
+print("  Fastest training:    Naive Bayes > Decision Tree > KNN > Random Forest > SVM")
+print("  Fastest prediction:  Naive Bayes > Decision Tree > Random Forest > SVM > KNN")
 
-fig_pca2d = viz.training_history(
-    {"PC2 vs PC1": X_pca_2d[:, 1].tolist()},
-    x_label="PC1 Score",
-)
-fig_pca2d.update_layout(title=f"PCA 2D Projection ({explained_variance_ratio[:2].sum():.1%} variance)")
-fig_pca2d.write_html("ex3_pca_2d.html")
+print("\n--- Key Takeaways ---")
+print("  1. No single model wins on ALL criteria — model selection is a tradeoff.")
+print("  2. Random Forest is the safest default for tabular data (robust, minimal tuning).")
+print("  3. SVM excels in high-dimensional spaces but does not scale to millions of rows.")
+print("  4. Naive Bayes is the speed champion — use it for baselines and real-time systems.")
+print("  5. Decision Trees are the ONLY fully interpretable model in this zoo.")
+print("  6. KNN is conceptually simple but suffers from the curse of dimensionality.")
+print("  7. Always compare models on the SAME evaluation protocol (same CV splits, same metrics).")
 
-# Method silhouette comparison
-method_silhouettes = {}
-for perp, res in tsne_results.items():
-    km_l = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(res["embedding"])
-    method_silhouettes[f"t-SNE p={perp}"] = {"Silhouette": silhouette_score(res["embedding"], km_l)}
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+all_accuracies = [svm_acc, knn_acc, nb_acc, dt_acc, rf_acc]
+assert all(a > 0.5 for a in all_accuracies), \
+    "All 5 models should beat random baseline (accuracy > 0.5)"
+assert len(comparison_rows) == 5, "Comparison table should have exactly 5 models"
+best_by_f1 = max(comparison_rows, key=lambda r: r["F1"])
+# INTERPRETATION: If Random Forest wins by a large margin, the task has
+# complex feature interactions that simpler models can't capture. If Naive Bayes
+# is competitive, features are mostly independent and the simple model is enough.
+# Always report the FULL table — picking one metric hides trade-offs.
+print("\n✓ Checkpoint 7 passed — all 5 models compared\n")
 
-for label, res in umap_results.items():
-    method_silhouettes[f"UMAP {label}"] = {"Silhouette": res["silhouette"]}
 
-km_pca_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(X_pca)
-method_silhouettes[f"PCA {n_for_embedding}d"] = {
-    "Silhouette": silhouette_score(X_pca, km_pca_labels)
-}
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ SVM: margin maximisation, kernel trick, C parameter (bias-variance)
+  ✓ KNN: instance-based, distance metrics, k selection via CV
+  ✓ Naive Bayes: Bayes theorem, independence assumption, speed vs accuracy
+  ✓ Decision Tree: Gini impurity by hand, depth control, interpretability
+  ✓ Random Forest: bagging, OOB estimation, feature importance
 
-fig_methods = viz.metric_comparison(method_silhouettes)
-fig_methods.update_layout(title="Dimensionality Reduction: 2D Cluster Quality Comparison")
-fig_methods.write_html("ex3_method_comparison.html")
-print("Saved: ex3_scree_plot.html, ex3_reconstruction_error.html")
-print("Saved: ex3_pca_2d.html, ex3_method_comparison.html")
+  BEST MODEL BY F1: {best_by_f1['Model']} (F1={best_by_f1['F1']:.4f})
 
-print("\n✓ Exercise 3 complete — PCA via SVD + t-SNE + UMAP")
-print("  Key takeaways:")
-print("  1. PCA = SVD; explained variance = σ_k²/(n-1); scree plot → choose k")
-print("  2. Loadings reveal which features drive each principal component")
-print("  3. Reconstruction error = unexplained variance = Σ_{i>k} σ_i²")
-print("  4. t-SNE: local structure only, no out-of-sample transform")
-print("  5. UMAP: global + local, supports transform() — production-ready")
+  KEY INSIGHT: No model wins on all criteria simultaneously.
+  Interpretability and accuracy often conflict: the tree is explainable
+  but fragile; the forest is robust but opaque. Regulatory contexts
+  (credit, healthcare, hiring) often require interpretable models even
+  at the cost of some accuracy.
+
+  NEXT: Exercise 4 dives deep into gradient boosting — XGBoost, LightGBM,
+  and CatBoost. These algorithms typically outperform the model zoo on
+  tabular data by building trees sequentially, each correcting the errors
+  of the previous one.
+""")
+
+print("\n" + "-" * 76)
+print("Exercise 3 complete — the supervised model zoo with 5 algorithm families")
+print("-" * 76)

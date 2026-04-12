@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.3 — Bootstrapping and Hypothesis Testing | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.3</span>
+  Bootstrapping and Hypothesis Testing
+</h1>
+
+<p class="lead">
+  Parametric formulas work when the model is right and $n$ is large. But what
+  if your data is skewed, your sample is small, or you do not know the
+  sampling distribution at all? The bootstrap lets the data tell you its own
+  sampling distribution. This lesson pairs the bootstrap with the formal
+  machinery of hypothesis testing — p-values, power, multiple testing
+  corrections, and permutation tests — so you can answer the decision
+  question "is this difference real?"
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Bootstrap</h2>
+
+<p>
+  The core idea is simple to the point of feeling illegal. You have one
+  sample of size $n$. You want to know the sampling distribution of some
+  statistic $\hat\theta$ (a mean, a median, a correlation, a regression
+  coefficient). You do not have more samples. So you <em>pretend</em> that
+  your sample is the population and draw many "resamples" from it <em>with
+  replacement</em>, computing $\hat\theta$ on each. The distribution of those
+  resampled statistics is the bootstrap estimate of the sampling distribution.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Original sample -->
+  <rect x="30" y="110" width="200" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="130" y="135" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Original sample</text>
+  <text x="130" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">n = 500 observations</text>
+
+  <!-- Arrow -->
+  <line x1="230" y1="140" x2="290" y2="60"  stroke="#64748B" stroke-width="1.5" marker-end="url(#arr23)"/>
+  <line x1="230" y1="140" x2="290" y2="140" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr23)"/>
+  <line x1="230" y1="140" x2="290" y2="220" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr23)"/>
+  <defs>
+    <marker id="arr23" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <text x="260" y="100" font-family="Inter" font-style="italic" font-size="11" fill="#64748B">resample w/ replacement</text>
+
+  <!-- Bootstrap samples -->
+  <rect x="300" y="35" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="380" y="55" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample 1 (n=500)</text>
+  <text x="380" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">θ̂₁* = 26.7</text>
+
+  <rect x="300" y="115" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="380" y="135" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample 2 (n=500)</text>
+  <text x="380" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">θ̂₂* = 26.4</text>
+
+  <rect x="300" y="195" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="380" y="215" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample B (n=500)</text>
+  <text x="380" y="232" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">θ̂_B* = 26.9</text>
+
+  <!-- Arrow to distribution -->
+  <line x1="460" y1="140" x2="520" y2="140" stroke="#0D9488" stroke-width="2" marker-end="url(#arr23)"/>
+
+  <!-- Distribution -->
+  <g transform="translate(520,40)">
+    <path d="M 20,200 Q 110,30 200,200" fill="#E0F2F1" stroke="#0D9488" stroke-width="2.5"/>
+    <line x1="20"  y1="200" x2="200" y2="200" stroke="#94A3B8"/>
+    <line x1="60"  y1="200" x2="60"  y2="205" stroke="#94A3B8"/>
+    <line x1="160" y1="200" x2="160" y2="205" stroke="#94A3B8"/>
+    <text x="60" y="220" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">2.5%</text>
+    <text x="160" y="220" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">97.5%</text>
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Bootstrap distribution</text>
+  </g>
+</svg>
+<figcaption>The bootstrap universe. One sample becomes many by resampling with replacement. The statistic computed on each resample forms an empirical sampling distribution you can read percentiles off.</figcaption>
+</figure>
+
+<h3>The algorithm</h3>
+
+<ol>
+  <li>Let $x_1, \ldots, x_n$ be your sample.</li>
+  <li>For $b = 1, \ldots, B$ (typically $B = 1{,}000$ to $10{,}000$):
+    <ul>
+      <li>Draw $n$ observations with replacement from the sample (this is $x^{*(b)}$).</li>
+      <li>Compute the statistic $\hat\theta^{*(b)}$ on the resample.</li>
+    </ul>
+  </li>
+  <li>The empirical distribution of $\{\hat\theta^{*(1)}, \ldots, \hat\theta^{*(B)}\}$ is the bootstrap sampling distribution.</li>
+</ol>
+
+<h3>Percentile bootstrap CI</h3>
+
+<p>
+  The simplest bootstrap CI reads percentiles directly off the empirical
+  distribution. A 95% CI is the interval from the 2.5th to the 97.5th
+  percentile of the bootstrap replicates:
+</p>
+
+<div class="annotated-equation">
+  $$\text{CI}_{95\%} \;=\; \left[\,\hat\theta^*_{(0.025)},\; \hat\theta^*_{(0.975)}\,\right]$$
+  <div class="annotations">
+    <span>$\hat\theta^*_{(q)}$ — the $q$-quantile of the $B$ bootstrap replicates</span>
+  </div>
+</div>
+
+<h3>BCa: bias-corrected and accelerated</h3>
+
+<p>
+  The percentile method is biased when the sampling distribution is skewed.
+  The <strong>BCa</strong> interval corrects for two things: bias (the median
+  of the bootstrap distribution is not the original $\hat\theta$) and
+  acceleration (skewness changes with the parameter). The correction uses
+  two scalars $\hat{z}_0$ (bias) and $\hat{a}$ (acceleration) to re-map the
+  percentile endpoints.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: BCa in one screen</span>
+  <p>
+    Let $\Phi$ be the standard Normal CDF and $\Phi^{-1}$ its inverse.
+    Compute the bias correction as:
+  </p>
+  $$\hat z_0 \;=\; \Phi^{-1}\!\left(\frac{\#\{\hat\theta^{*(b)} < \hat\theta\}}{B}\right)$$
+  <p>
+    Compute the acceleration $\hat a$ from the jackknife values $\hat\theta_{(-i)}$
+    (leave-one-out statistics):
+  </p>
+  $$\hat a \;=\; \frac{\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(-i)})^3}{6\left[\sum_i (\bar\theta_{(\cdot)} - \hat\theta_{(-i)})^2\right]^{3/2}}$$
+  <p>Then the BCa endpoints are not at $\alpha/2$ and $1 - \alpha/2$ but at:</p>
+  $$\alpha_1 = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_{\alpha/2}}{1 - \hat a(\hat z_0 + z_{\alpha/2})}\right), \quad
+    \alpha_2 = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_{1-\alpha/2}}{1 - \hat a(\hat z_0 + z_{1-\alpha/2})}\right)$$
+  <p>
+    If $\hat z_0 = 0$ and $\hat a = 0$, BCa reduces to the percentile method.
+    In practice, use <code>scipy.stats.bootstrap(..., method="BCa")</code> and
+    trust the library for the numerics.
+  </p>
+</div>
+
+<h3>Parametric vs non-parametric bootstrap</h3>
+
+<p>
+  The resampling scheme above is the <em>non-parametric</em> bootstrap — it
+  makes no assumption about the distribution, only about independence. A
+  <em>parametric</em> bootstrap fits a model (e.g., Normal) to the sample and
+  then draws new samples from that fitted model. The parametric version is
+  more efficient when the model is right and worse when it is wrong.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Hypothesis Testing</h2>
+
+<p>
+  A <strong>hypothesis test</strong> is a decision rule. You state a default
+  position (the <em>null hypothesis</em> $H_0$) and an alternative ($H_1$).
+  You compute a <em>test statistic</em> from the data. You ask: if the null
+  were true, how likely would I be to see a test statistic at least as
+  extreme as what I actually saw? That probability is the
+  <strong>p-value</strong>.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Null distribution curve -->
+  <path d="M 60,220 Q 360,20 660,220" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
+  <line x1="60" y1="220" x2="660" y2="220" stroke="#94A3B8"/>
+  <text x="360" y="10" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">Null distribution of the test statistic</text>
+
+  <!-- Observed test stat -->
+  <line x1="560" y1="220" x2="560" y2="120" stroke="#EF4444" stroke-width="2.5"/>
+  <text x="560" y="110" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#EF4444">observed T</text>
+
+  <!-- Tail area -->
+  <path d="M 560,220 Q 600,150 660,220 Z" fill="#FECACA" stroke="none"/>
+  <text x="620" y="205" font-family="Inter" font-size="11" fill="#B91C1C">p-value</text>
+
+  <!-- Critical value -->
+  <line x1="600" y1="220" x2="600" y2="230" stroke="#F59E0B" stroke-width="2"/>
+  <text x="605" y="245" text-anchor="start" font-family="Inter" font-size="11" fill="#F59E0B">α cutoff</text>
+</svg>
+<figcaption>The p-value is the tail area beyond the observed test statistic under the null distribution. When that area is smaller than $\alpha$, we reject $H_0$.</figcaption>
+</figure>
+
+<h3>The p-value, precisely</h3>
+
+<div class="annotated-equation">
+  $$p \;=\; P\!\left(T \ge T_{\text{obs}} \;\middle|\; H_0\right)$$
+  <div class="annotations">
+    <span>$T$ is the test statistic treated as random under $H_0$</span>
+    <span>$T_{\text{obs}}$ is the one specific value you computed</span>
+  </div>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ What a p-value is NOT</span>
+  <p>
+    It is <strong>not</strong> $P(H_0 \mid \text{data})$. The p-value is the
+    conditional probability of extreme data <em>given</em> the null, not the
+    probability of the null given the data. To get the latter you need Bayes
+    and a prior. A p-value of 0.03 does not mean "3% chance the null is
+    true"; it means "if the null were true, I would see results at least this
+    extreme 3% of the time by chance."
+  </p>
+</div>
+
+<h3>The $t$-statistic</h3>
+
+<p>
+  For testing whether a sample mean differs from a hypothesised value
+  $\mu_0$:
+</p>
+
+$$T \;=\; \frac{\bar x - \mu_0}{s / \sqrt n}$$
+
+<p>
+  Under $H_0: \mu = \mu_0$, the statistic $T$ follows a Student's
+  $t$-distribution with $n - 1$ degrees of freedom. The p-value is the tail
+  probability beyond the observed $T$.
+</p>
+
+<h3>Significance levels and the decision</h3>
+
+<table>
+  <thead><tr><th>Field</th><th>Typical $\alpha$</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td>Marketing / AB tests</td><td>0.10</td><td>Fast decisions, tolerant of false positives</td></tr>
+    <tr><td>Social science</td><td>0.05</td><td>Default in most literature</td></tr>
+    <tr><td>Clinical trials</td><td>0.01</td><td>High cost of false positives</td></tr>
+    <tr><td>Particle physics</td><td>$3 \times 10^{-7}$ (5σ)</td><td>Discovering new phenomena</td></tr>
+  </tbody>
+</table>
+
+<p>
+  "Reject $H_0$" or "fail to reject $H_0$" — never "accept $H_0$". Failing to
+  reject is not the same as confirming: absence of evidence is not evidence
+  of absence.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Type I and Type II errors, power, MDE</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Grid -->
+  <rect x="200" y="30" width="460" height="200" fill="none" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="430" y1="30" x2="430" y2="230" stroke="#94A3B8"/>
+  <line x1="200" y1="130" x2="660" y2="130" stroke="#94A3B8"/>
+
+  <!-- Column headers -->
+  <text x="315" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Fail to reject H₀</text>
+  <text x="545" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Reject H₀</text>
+
+  <!-- Row headers -->
+  <text x="190" y="85" text-anchor="end" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">H₀ true</text>
+  <text x="190" y="180" text-anchor="end" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">H₀ false</text>
+
+  <!-- Cells -->
+  <rect x="200" y="30" width="230" height="100" fill="#DCFCE7"/>
+  <text x="315" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#15803D">Correct</text>
+  <text x="315" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#15803D">prob = 1 − α</text>
+
+  <rect x="430" y="30" width="230" height="100" fill="#FEE2E2"/>
+  <text x="545" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#B91C1C">Type I error</text>
+  <text x="545" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B91C1C">prob = α</text>
+
+  <rect x="200" y="130" width="230" height="100" fill="#FEF3C7"/>
+  <text x="315" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#B45309">Type II error</text>
+  <text x="315" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B45309">prob = β</text>
+
+  <rect x="430" y="130" width="230" height="100" fill="#DCFCE7"/>
+  <text x="545" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#15803D">Correct</text>
+  <text x="545" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#15803D">power = 1 − β</text>
+</svg>
+<figcaption>The confusion matrix of hypothesis testing. $\alpha$ is the false positive rate (type I). $\beta$ is the false negative rate (type II). Power is $1 - \beta$.</figcaption>
+</figure>
+
+<p>
+  For a two-sample $z$-test with effect size $\delta$, variance $\sigma^2$
+  per arm, and sample size $n$ per arm, the formula for power under a Normal
+  approximation is:
+</p>
+
+$$\text{power} \;=\; \Phi\!\left(\frac{\delta\sqrt{n/2}}{\sigma} - z_{1 - \alpha/2}\right)$$
+
+<p>
+  The <strong>minimum detectable effect</strong> (MDE) is the smallest
+  $\delta$ such that power exceeds a target (usually 0.80). Solving the power
+  formula for $\delta$ gives:
+</p>
+
+$$\delta_{\text{MDE}} \;=\; (z_{1 - \alpha/2} + z_{1 - \beta}) \cdot \sigma\sqrt{2/n}$$
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Multiple testing</h2>
+
+<p>
+  If you run 20 tests at $\alpha = 0.05$ on random data, you expect one of
+  them to be "significant" by chance alone. The more tests you run, the more
+  false positives you accumulate. Two corrections:
+</p>
+
+<div class="compare-grid">
+  <div>
+    <h4>Bonferroni (controls FWER)</h4>
+    <p>
+      Divide your per-test $\alpha$ by the number of tests. For 20 tests at
+      overall $\alpha = 0.05$, use $\alpha = 0.0025$ per test:
+    </p>
+    $$\alpha_{\text{Bonf}} = \frac{\alpha}{m}$$
+    <p>
+      Controls the <em>family-wise error rate</em>: the probability of any
+      false positive across all tests. Very conservative when $m$ is large.
+    </p>
+  </div>
+  <div>
+    <h4>Benjamini–Hochberg (controls FDR)</h4>
+    <p>
+      Sort p-values $p_{(1)} \le p_{(2)} \le \cdots \le p_{(m)}$. Find the
+      largest $k$ with $p_{(k)} \le \frac{k}{m}\alpha$. Reject $H_0$ for all
+      tests with p-value $\le p_{(k)}$.
+    </p>
+    <p>
+      Controls the <em>false discovery rate</em>: the expected proportion of
+      false positives among the rejected hypotheses. Much more powerful than
+      Bonferroni when many nulls are false.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Permutation tests</h2>
+
+<p>
+  A <strong>permutation test</strong> is the purest form of a distribution-
+  free hypothesis test. To test whether two groups have the same mean:
+</p>
+
+<ol>
+  <li>Compute the observed test statistic $T_{\text{obs}}$ (e.g., mean difference).</li>
+  <li>Pool both groups into a single dataset.</li>
+  <li>Randomly re-split the pool into two groups of the original sizes and compute the test statistic $T^{*(b)}$. Repeat $B$ times.</li>
+  <li>The p-value is the fraction of $T^{*(b)}$ at least as extreme as $T_{\text{obs}}$.</li>
+</ol>
+
+<p>
+  The null hypothesis is that the labels are exchangeable — that the data
+  came from a single distribution. If the observed $T$ sits in the tail of
+  the permutation distribution, the labels actually matter.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ExperimentTracker</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>ExperimentTracker</code> stores every bootstrap replicate, every
+    p-value, and every multiple-testing correction you apply so you can
+    answer "which tests passed, after which correction, in which version of
+    the data" without rerunning everything. In today's exercise you generate
+    the bootstrap in numpy; the tracker captures the inputs, the random
+    seed, and the output CIs automatically.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: A/B Test with Multiple Metrics</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    An e-commerce A/B test has a control arm and a treatment arm. You want
+    to test three metrics: conversion rate, average order value (AOV), and
+    revenue per visitor (RPV). Apply both Bonferroni and BH-FDR corrections
+    and compare.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load.</span>
+    <pre><code class="language-python">import polars as pl
+import numpy as np
+from scipy import stats
+from shared import MLFPDataLoader
+
+df = MLFPDataLoader().load("mlfp02", "ab_test.parquet")
+ctrl = df.filter(pl.col("arm") == "control")
+treat = df.filter(pl.col("arm") == "treatment")
+print(ctrl.shape, treat.shape)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Point estimates for three metrics.</span>
+    <pre><code class="language-python">def metrics(d):
+    return {
+        "conv": d["converted"].mean(),
+        "aov":  d.filter(pl.col("converted") == 1)["order_value"].mean(),
+        "rpv":  d["order_value"].mean(),
+    }
+m_c, m_t = metrics(ctrl), metrics(treat)
+for k in m_c: print(f"{k}: ctrl={m_c[k]:.3f}  treat={m_t[k]:.3f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Bootstrap CIs.</span>
+    <pre><code class="language-python">B = 5000
+rng = np.random.default_rng(42)
+
+def boot_mean_diff(a, b, key, B=5000):
+    a_arr = a[key].to_numpy()
+    b_arr = b[key].to_numpy()
+    n_a, n_b = len(a_arr), len(b_arr)
+    reps = np.empty(B)
+    for i in range(B):
+        ra = rng.choice(a_arr, n_a, replace=True)
+        rb = rng.choice(b_arr, n_b, replace=True)
+        reps[i] = rb.mean() - ra.mean()
+    return reps
+
+diff_conv = boot_mean_diff(ctrl, treat, "converted")
+lo, hi = np.percentile(diff_conv, [2.5, 97.5])
+print(f"Conv rate lift 95% CI = [{lo:.4f}, {hi:.4f}]")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — p-values via z-test for proportions.</span>
+    <pre><code class="language-python">from statsmodels.stats.proportion import proportions_ztest
+
+n_c, k_c = ctrl.height, ctrl["converted"].sum()
+n_t, k_t = treat.height, treat["converted"].sum()
+z_conv, p_conv = proportions_ztest([k_t, k_c], [n_t, n_c])
+t_aov,  p_aov  = stats.ttest_ind(
+    treat.filter(pl.col("converted") == 1)["order_value"].to_numpy(),
+    ctrl .filter(pl.col("converted") == 1)["order_value"].to_numpy(),
+    equal_var=False,
+)
+t_rpv,  p_rpv  = stats.ttest_ind(
+    treat["order_value"].to_numpy(),
+    ctrl ["order_value"].to_numpy(),
+    equal_var=False,
+)
+pvals = np.array([p_conv, p_aov, p_rpv])
+print("Raw p-values:", pvals)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Apply corrections.</span>
+    <pre><code class="language-python">from statsmodels.stats.multitest import multipletests
+
+bonf_ok, bonf_p, _, _ = multipletests(pvals, alpha=0.05, method="bonferroni")
+bh_ok,   bh_p,   _, _ = multipletests(pvals, alpha=0.05, method="fdr_bh")
+
+print("Bonferroni rejects:", bonf_ok)
+print("BH-FDR rejects:    ", bh_ok)</code></pre>
+    <p>
+      Typically BH-FDR rejects one or two metrics that Bonferroni misses —
+      the price of Bonferroni's guarantee on the family-wise error rate is
+      lower power.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Bootstrap the median</h3>
+  <p>
+    The median has no clean closed-form CI. Bootstrap it. Take 500 HDB
+    resale prices, compute the sample median, then bootstrap $B = 2{,}000$
+    replicates and report the 90% percentile CI for the median.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Permutation test by hand</h3>
+  <p>
+    Take the two arms of a small A/B test (say 50 users each). Compute the
+    observed mean difference. Then shuffle the labels 5,000 times, recomputing
+    the difference each time. What fraction of shuffled differences is at
+    least as extreme as the observed? That fraction is the permutation
+    p-value.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Bonferroni vs BH-FDR</h3>
+  <p>
+    Simulate 20 independent $z$-tests where 5 of the nulls are false.
+    Generate the 20 p-values. Apply Bonferroni and BH-FDR. Count true
+    positives and false positives under each. Repeat 500 times to estimate
+    average FWER (Bonferroni) and FDR (BH-FDR).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The sampling distribution from Lesson 2.2 is what the bootstrap estimates
+  non-parametrically. The $t$-statistic you meet here is the same statistic
+  that Lesson 2.5 will apply to every regression coefficient. Multiple
+  testing corrections return in Lesson 2.4 (A/B tests with many metrics) and
+  2.7 (CUPED, where you are testing multiple variance-reduction methods).
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You now have two complementary tools for measuring uncertainty. The
+  bootstrap resamples the data to estimate the sampling distribution
+  directly. Hypothesis testing assumes a null distribution and asks how far
+  your data lies from it. Both answer the same fundamental question —
+  <em>could chance explain what I see?</em> — from different directions.
+</p>
+<p>
+  Lesson 2.4 takes these tools to the practical setting of running an A/B
+  experiment from start to finish: formulating the hypothesis, choosing the
+  sample size, checking the data for sanity, running the test, reporting
+  results.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.2 Parameter Estimation
+  </a>
+  <a href="../04/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.4 A/B Testing and Experiment Design
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

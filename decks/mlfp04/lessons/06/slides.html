@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.6 — NLP: Text to Topics | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══ Slide 1: Title ═══════════════════════════════════════ -->
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.6</p>
+  <h1>NLP — From Text to Topics</h1>
+  <p style="font-size: 0.7em; color: #64748B;">TF-IDF · BM25 · Word2Vec · LDA · BERTopic · NPMI coherence</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> extract and evaluate topics from Singapore news
+  </div>
+</section>
+
+<!-- ═══ Slide 2: Why text matters ════════════════════════════ -->
+<section>
+  <h2>Text: the most common unstructured data</h2>
+  <ul>
+    <li>Support tickets, reviews, news articles, legal contracts, chat logs.</li>
+    <li>Nobody reads them all — <em>topic modelling</em> discovers themes automatically.</li>
+    <li>Themes become features for downstream classification and routing.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> same discovery mindset as clustering and association rules — but the "items" are words.
+  </div>
+</section>
+
+<!-- ═══ Slide 3: The pipeline ════════════════════════════════ -->
+<section>
+  <h2>Text analysis pipeline</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="50" width="150" height="100" fill="#F8FAFC" stroke="#CBD5E1" rx="6"/>
+      <text x="95" y="75" text-anchor="middle" font-weight="600" font-size="13">Raw text</text>
+      <text x="30" y="100" font-size="10" fill="#64748B">"MRT delay again..."</text>
+      <text x="30" y="118" font-size="10" fill="#64748B">"HDB price rose 5%..."</text>
+      <text x="30" y="136" font-size="10" fill="#64748B">"Budget 2026 policy..."</text>
+
+      <line x1="180" y1="100" x2="220" y2="100" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="220,100 214,96 214,104" fill="#0D9488"/>
+
+      <rect x="230" y="50" width="150" height="100" fill="#F0FDFA" stroke="#0D9488" rx="6"/>
+      <text x="305" y="75" text-anchor="middle" font-weight="600" font-size="13" fill="#0D9488">Vectorise</text>
+      <text x="240" y="100" font-family="JetBrains Mono" font-size="10">TF-IDF / BERT</text>
+      <text x="240" y="118" font-family="JetBrains Mono" font-size="10">[0.1, 0.8, 0.0 ...]</text>
+
+      <line x1="390" y1="100" x2="430" y2="100" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="430,100 424,96 424,104" fill="#0D9488"/>
+
+      <rect x="440" y="50" width="150" height="100" fill="#FEF3C7" stroke="#F59E0B" rx="6"/>
+      <text x="515" y="75" text-anchor="middle" font-weight="600" font-size="13" fill="#F59E0B">Topic model</text>
+      <text x="450" y="100" font-size="10">Topic 0: transport</text>
+      <text x="450" y="118" font-size="10">Topic 1: housing</text>
+      <text x="450" y="136" font-size="10">Topic 2: policy</text>
+
+      <line x1="600" y1="100" x2="640" y2="100" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="640,100 634,96 634,104" fill="#0D9488"/>
+
+      <rect x="650" y="60" width="50" height="80" fill="#E0E7FF" stroke="#4F46E5" rx="6"/>
+      <text x="675" y="100" text-anchor="middle" font-size="10" font-weight="600" fill="#4F46E5">Features</text>
+      <text x="675" y="120" text-anchor="middle" font-family="JetBrains Mono" font-size="8">p(t|d)</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 4: TF-IDF ═════════════════════════════════════ -->
+<section>
+  <h2>TF-IDF — weighting words by importance</h2>
+  \[ \text{tfidf}(t, d) \;=\; \text{tf}(t, d) \cdot \log \frac{N}{\text{df}(t)} \]
+  <ul style="font-size: 0.85em;">
+    <li><strong>tf</strong> = how often does the word appear in <em>this</em> document?</li>
+    <li><strong>idf</strong> = how rare is the word across <em>all</em> documents?</li>
+    <li>Common words (the, and) get idf ≈ 0 → contribute nothing.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> think of idf as a "surprise" weight. Common words are not surprising; rare words are.
+  </div>
+</section>
+
+<!-- ═══ Slide 5: BM25 ═══════════════════════════════════════ -->
+<section>
+  <h2>BM25 — TF-IDF's smarter cousin</h2>
+  \[ \text{BM25}(t,d) \;=\; \text{idf}(t) \cdot \frac{(k_1+1)\,\text{tf}(t,d)}{\text{tf}(t,d)+k_1\!\left(1-b+b\,\frac{|d|}{\text{avg}|d|}\right)} \]
+  <ul style="font-size: 0.85em;">
+    <li>TF-IDF is linear in term frequency — 10 repeats = 10x weight. BM25 saturates.</li>
+    <li>Longer documents penalised via length normalisation ($b \approx 0.75$).</li>
+    <li>Powers Elasticsearch, Lucene, and every search engine you have used.</li>
+  </ul>
+</section>
+
+<!-- ═══ Slide 6: Word embeddings ═════════════════════════════ -->
+<section>
+  <h2>Word embeddings — dense semantic vectors</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg">
+      <text x="340" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#475569">Sparse (TF-IDF) vs Dense (Word2Vec)</text>
+      <rect x="30" y="40" width="280" height="80" fill="#FEF3C7" stroke="#F59E0B" rx="6"/>
+      <text x="170" y="62" text-anchor="middle" font-weight="600" font-size="12">Sparse: one-hot</text>
+      <text x="40" y="85" font-family="JetBrains Mono" font-size="10">"happy" → [0,0,0,1,0,...,0]</text>
+      <text x="40" y="105" font-family="JetBrains Mono" font-size="10">"joyful"→ [0,0,0,0,0,...,1]</text>
+
+      <rect x="370" y="40" width="280" height="80" fill="#DCFCE7" stroke="#22C55E" rx="6"/>
+      <text x="510" y="62" text-anchor="middle" font-weight="600" font-size="12">Dense: embedding</text>
+      <text x="380" y="85" font-family="JetBrains Mono" font-size="10">"happy" → [0.82, 0.31, -0.15]</text>
+      <text x="380" y="105" font-family="JetBrains Mono" font-size="10">"joyful"→ [0.79, 0.34, -0.12]</text>
+
+      <text x="340" y="155" text-anchor="middle" font-size="12" fill="#64748B">Similar words get similar coordinates</text>
+
+      <g font-size="11">
+        <rect x="40" y="175" width="180" height="50" fill="#EFF6FF" stroke="#3B82F6" rx="4"/>
+        <text x="130" y="195" text-anchor="middle" font-weight="600" fill="#3B82F6">Word2Vec</text>
+        <text x="130" y="213" text-anchor="middle" font-size="10">Skip-gram / CBOW</text>
+
+        <rect x="250" y="175" width="180" height="50" fill="#EFF6FF" stroke="#3B82F6" rx="4"/>
+        <text x="340" y="195" text-anchor="middle" font-weight="600" fill="#3B82F6">GloVe</text>
+        <text x="340" y="213" text-anchor="middle" font-size="10">Global co-occurrence</text>
+
+        <rect x="460" y="175" width="180" height="50" fill="#EFF6FF" stroke="#3B82F6" rx="4"/>
+        <text x="550" y="195" text-anchor="middle" font-weight="600" fill="#3B82F6">FastText</text>
+        <text x="550" y="213" text-anchor="middle" font-size="10">Subword → handles OOV</text>
+      </g>
+    </svg>
+  </figure>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> "How does Word2Vec learn these vectors?" Answer in 4.8 — hidden layers are automated feature engineering.
+  </div>
+</section>
+
+<!-- ═══ Slide 7: LDA generative story ═══════════════════════ -->
+<section>
+  <h2>LDA — the generative story</h2>
+  <ol style="font-size: 0.85em;">
+    <li>For each topic $k$: draw word distribution $\phi_k$ from Dirichlet($\beta$).</li>
+    <li>For each document $d$: draw topic mixture $\theta_d$ from Dirichlet($\alpha$).</li>
+    <li>For each word position: draw topic $z$ from $\theta_d$, then draw word from $\phi_z$.</li>
+  </ol>
+  <p style="font-size: 0.85em;">Inference reverses the story: given words, find the most likely topics.</p>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> LDA is soft clustering for documents. Each document belongs to <em>multiple</em> topics, like GMM's soft assignments.
+  </div>
+</section>
+
+<!-- ═══ Slide 8: LDA plate diagram ══════════════════════════ -->
+<section>
+  <h2>LDA plate notation</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="30" width="580" height="160" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3" rx="8"/>
+      <text x="600" y="180" text-anchor="end" font-size="10" fill="#64748B">N docs</text>
+      <rect x="220" y="70" width="360" height="100" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3" rx="8"/>
+      <text x="560" y="160" text-anchor="end" font-size="10" fill="#64748B">per word</text>
+      <circle cx="90" cy="110" r="18" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="90" y="115" text-anchor="middle" font-size="14">α</text>
+      <circle cx="170" cy="110" r="18" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="170" y="115" text-anchor="middle" font-size="14">θ</text>
+      <circle cx="300" cy="110" r="18" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="300" y="115" text-anchor="middle" font-size="14">z</text>
+      <circle cx="400" cy="110" r="18" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="400" y="115" text-anchor="middle" font-size="14">w</text>
+      <circle cx="500" cy="110" r="18" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="500" y="115" text-anchor="middle" font-size="14">φ</text>
+      <circle cx="580" cy="110" r="18" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="580" y="115" text-anchor="middle" font-size="14">β</text>
+      <g stroke="#475569" stroke-width="1.5">
+        <line x1="108" y1="110" x2="152" y2="110"/><polygon points="152,110 146,106 146,114" fill="#475569"/>
+        <line x1="188" y1="110" x2="282" y2="110"/><polygon points="282,110 276,106 276,114" fill="#475569"/>
+        <line x1="318" y1="110" x2="382" y2="110"/><polygon points="382,110 376,106 376,114" fill="#475569"/>
+        <line x1="482" y1="110" x2="418" y2="110"/><polygon points="418,110 424,106 424,114" fill="#475569"/>
+        <line x1="562" y1="110" x2="518" y2="110"/><polygon points="518,110 524,106 524,114" fill="#475569"/>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 9: NMF ════════════════════════════════════════ -->
+<section>
+  <h2>NMF — topics via matrix factorisation</h2>
+  <p>Decompose the TF-IDF matrix $X \approx W H$ with non-negative entries.</p>
+  <ul style="font-size: 0.85em;">
+    <li>$W$ rows = topic weights per document.</li>
+    <li>$H$ rows = word weights per topic.</li>
+    <li>Faster than LDA, sparser topics, more interpretable.</li>
+  </ul>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> NMF is the closest relative of PCA (Lesson 4.3). Same idea: low-rank factorisation, different constraint (non-negativity).
+  </div>
+</section>
+
+<!-- ═══ Slide 10: BERTopic ══════════════════════════════════ -->
+<section>
+  <h2>BERTopic — the 2020s upgrade</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="40" width="130" height="80" fill="#EFF6FF" stroke="#3B82F6" rx="6"/>
+      <text x="85" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#3B82F6">BERT embed</text>
+      <text x="85" y="90" text-anchor="middle" font-size="10">sentence-transformers</text>
+
+      <line x1="155" y1="80" x2="185" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="185,80 179,76 179,84" fill="#0D9488"/>
+
+      <rect x="190" y="40" width="130" height="80" fill="#F5F3FF" stroke="#8B5CF6" rx="6"/>
+      <text x="255" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#8B5CF6">UMAP</text>
+      <text x="255" y="90" text-anchor="middle" font-size="10">reduce dims</text>
+
+      <line x1="325" y1="80" x2="355" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="355,80 349,76 349,84" fill="#0D9488"/>
+
+      <rect x="360" y="40" width="130" height="80" fill="#FEF3C7" stroke="#F59E0B" rx="6"/>
+      <text x="425" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#F59E0B">HDBSCAN</text>
+      <text x="425" y="90" text-anchor="middle" font-size="10">cluster</text>
+
+      <line x1="495" y1="80" x2="525" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="525,80 519,76 519,84" fill="#0D9488"/>
+
+      <rect x="530" y="40" width="160" height="80" fill="#DCFCE7" stroke="#22C55E" rx="6"/>
+      <text x="610" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#22C55E">c-TF-IDF</text>
+      <text x="610" y="90" text-anchor="middle" font-size="10">representative words</text>
+    </svg>
+  </figure>
+  <ul style="font-size: 0.85em;">
+    <li>Captures semantic relationships, not just co-occurrence.</li>
+    <li>Auto-determines number of topics.</li>
+    <li>Needs a few hundred documents minimum.</li>
+  </ul>
+</section>
+
+<!-- ═══ Slide 11: BERTopic code ═════════════════════════════ -->
+<section>
+  <h2>BERTopic in practice</h2>
+  <pre><code class="language-python" data-trim>
+from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+topic_model = BERTopic(embedding_model=model, min_topic_size=15)
+topics, probs = topic_model.fit_transform(sg_news_articles)
+
+print(topic_model.get_topic_info().head(10))
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> <code>ModelVisualizer.topic_heatmap()</code> wraps BERTopic's visualisation API for stakeholder reports.
+  </div>
+</section>
+
+<!-- ═══ Slide 12: NPMI coherence ════════════════════════════ -->
+<section>
+  <h2>NPMI — evaluating topic quality</h2>
+  \[ \text{NPMI}(w_i, w_j) \;=\; \frac{\log P(w_i, w_j) - \log\bigl(P(w_i)\,P(w_j)\bigr)}{-\log P(w_i, w_j)} \]
+  <ul style="font-size: 0.85em;">
+    <li>Range $[-1, 1]$: positive for words that co-occur more than chance.</li>
+    <li>Average over top-10 words per topic, then across all topics.</li>
+    <li>Higher is better. The standard metric in modern topic modelling papers.</li>
+  </ul>
+  <div class="callout-slide warning">
+    <strong>⚠ Warning:</strong> LDA perplexity does NOT correlate with human topic quality. Use NPMI instead.
+  </div>
+</section>
+
+<!-- ═══ Slide 13: Worked example ════════════════════════════ -->
+<section>
+  <h2>TF-IDF + NMF on Singapore news</h2>
+  <pre><code class="language-python" data-trim>
+vec = TfidfVectorizer(max_features=5000, stop_words="english",
+                      min_df=5, max_df=0.7)
+X = vec.fit_transform(corpus)
+nmf = NMF(n_components=10, random_state=42).fit(X)
+
+for k, topic in enumerate(nmf.components_):
+    words = [vec.get_feature_names_out()[i]
+             for i in topic.argsort()[-10:][::-1]]
+    print(f"Topic {k}: {', '.join(words)}")
+  </code></pre>
+  <p style="font-size: 0.85em;">Typical output: "transport MRT", "HDB property", "Budget policy", "hawker food".</p>
+</section>
+
+<!-- ═══ Slide 14: Comparing three methods ═══════════════════ -->
+<section>
+  <h2>Three methods compared</h2>
+  <table style="font-size: 0.65em;">
+    <thead>
+      <tr><th>Method</th><th>Representation</th><th>Num topics</th><th>Strength</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>TF-IDF + NMF</td><td>Sparse</td><td>You set K</td><td>Fast, interpretable</td></tr>
+      <tr><td>LDA</td><td>Sparse</td><td>You set K</td><td>Soft assignments, generative</td></tr>
+      <tr><td>BERTopic</td><td>Dense (BERT)</td><td>Automatic</td><td>Semantic, modern</td></tr>
+    </tbody>
+  </table>
+  <p>Compare all three on the same corpus. Evaluate with NPMI. Pick the one that best matches your downstream need.</p>
+</section>
+
+<!-- ═══ Slide 15: Common mistakes ════════════════════════════ -->
+<section>
+  <h2>Four common mistakes</h2>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Skipping stopword removal</strong> — top words: "the", "and", "to". Useless.</li>
+    <li><strong>Wrong K</strong> — start 10–20, tune with coherence.</li>
+    <li><strong>Evaluating on perplexity</strong> — does NOT reflect human quality judgments.</li>
+    <li><strong>BERTopic on tiny corpora</strong> — needs hundreds of docs. Fall back to NMF.</li>
+  </ol>
+</section>
+
+<!-- ═══ Slide 16: Cross-references ══════════════════════════ -->
+<section>
+  <h2>Connections</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>4.3 PCA:</strong> NMF is non-negative PCA. Same low-rank idea, different constraint.</li>
+    <li><strong>4.5 Rules:</strong> topic modelling is association mining for words.</li>
+    <li><strong>4.7 PIVOT:</strong> NMF factorises doc-word. Matrix factorisation factorises user-item. Same math.</li>
+    <li><strong>M5:</strong> BERTopic's sentence embeddings come from frozen BERT — we train those in M5.</li>
+  </ul>
+</section>
+
+<!-- ═══ Slide 17: Reflection ════════════════════════════════ -->
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Derive TF-IDF and explain why it works.</li>
+    <li>✓ Explain BM25's improvements: saturation + length normalisation.</li>
+    <li>✓ Apply LDA and BERTopic for topic extraction.</li>
+    <li>✓ Evaluate topic quality with NPMI coherence.</li>
+    <li>✓ Use word embeddings as features (training explained in 4.8).</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> 4.7 — Recommender Systems. NMF factorises documents; collaborative filtering factorises users and items. The PIVOT begins.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

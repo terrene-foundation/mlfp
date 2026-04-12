@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.5 — Window Functions and Trends | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.5</p>
+  <h1>Window Functions and Trends</h1>
+  <p style="font-size: 0.7em; color: #64748B;">rolling · over · shift · YoY · lazy frames</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp; · &nbsp; <strong>Dataset:</strong> HDB time-series
+  </div>
+  <div class="slide-footer">MLFP — Module 1</div>
+</section>
+
+<section>
+  <h2>Raw data is noisy — trends live in windows</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text x="50" y="25" font-weight="600" font-size="14" fill="#1E293B">Raw monthly prices</text>
+      <polyline fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="3 3"
+                points="70,100 130,80 190,110 250,75 310,105 370,70 430,95 490,85 550,110 610,75 670,85 730,68"/>
+      <g stroke="#F43F5E" stroke-width="2" fill="white">
+        <circle cx="70" cy="100" r="4"/><circle cx="130" cy="80" r="4"/>
+        <circle cx="190" cy="110" r="4"/><circle cx="250" cy="75" r="4"/>
+        <circle cx="310" cy="105" r="4"/><circle cx="370" cy="70" r="4"/>
+        <circle cx="430" cy="95" r="4"/><circle cx="490" cy="85" r="4"/>
+        <circle cx="550" cy="110" r="4"/><circle cx="610" cy="75" r="4"/>
+        <circle cx="670" cy="85" r="4"/><circle cx="730" cy="68" r="4"/>
+      </g>
+      <text x="50" y="170" font-weight="600" font-size="14" fill="#1E293B">3-month rolling mean</text>
+      <polyline fill="none" stroke="#3B82F6" stroke-width="2.5"
+                points="190,100 250,98 310,95 370,82 430,90 490,83 550,97 610,90 670,90 730,76"/>
+      <text x="50" y="240" font-weight="600" font-size="14" fill="#1E293B">12-month rolling mean</text>
+      <polyline fill="none" stroke="#0D9488" stroke-width="3"
+                points="430,92 490,90 550,88 610,86 670,84 730,82"/>
+      <line x1="50" y1="295" x2="780" y2="295" stroke="#94A3B8"/>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Windows don't collapse — they enrich</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(20, 20)">
+        <text x="170" y="20" text-anchor="middle" font-weight="600" font-size="14">group_by / agg</text>
+        <rect x="20" y="30" width="320" height="210" rx="8" fill="#F8FAFC" stroke="#64748B"/>
+        <g font-family="JetBrains Mono" font-size="11">
+          <text x="40" y="55" fill="#0F766E">town    month price</text>
+          <text x="40" y="73">BISHAN  Jan   720</text>
+          <text x="40" y="90">BISHAN  Feb   690</text>
+          <text x="40" y="107">JURONG  Jan   430</text>
+          <text x="40" y="124">JURONG  Feb   445</text>
+          <text x="40" y="150" fill="#94A3B8">↓ collapse</text>
+          <text x="40" y="175" fill="#0F766E">town    mean</text>
+          <text x="40" y="193">BISHAN  705</text>
+          <text x="40" y="210">JURONG  437</text>
+          <text x="40" y="228" fill="#F43F5E">(month detail lost)</text>
+        </g>
+      </g>
+      <g transform="translate(430, 20)">
+        <text x="180" y="20" text-anchor="middle" font-weight="600" font-size="14">window (over)</text>
+        <rect x="20" y="30" width="340" height="210" rx="8" fill="#F0FDFA" stroke="#0D9488"/>
+        <g font-family="JetBrains Mono" font-size="11">
+          <text x="40" y="55" fill="#0F766E">town    month  price  mean_town</text>
+          <text x="40" y="73">BISHAN  Jan    720    705</text>
+          <text x="40" y="90">BISHAN  Feb    690    705</text>
+          <text x="40" y="107">JURONG  Jan    430    437</text>
+          <text x="40" y="124">JURONG  Feb    445    437</text>
+          <text x="40" y="155" fill="#0D9488">same row count ✓</text>
+          <text x="40" y="180" fill="#0D9488">every row carries</text>
+          <text x="40" y="197" fill="#0D9488">its group's stat</text>
+        </g>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>The <code>.over</code> modifier</h2>
+  <pre><code class="language-python" data-trim>
+monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm")
+      .rolling_mean(window_size=12)
+      .over("town")
+      .alias("rolling_12m"),
+)
+  </code></pre>
+  <p style="font-size: 0.88em;">
+    Read: "12-row rolling mean of price, independently per town, aliased
+    as rolling_12m."
+  </p>
+  <div style="background: #EFF6FF; padding: 10px 16px; border-left: 4px solid #3B82F6; border-radius: 4px; font-size: 0.85em; margin-top: 1em;">
+    <code>.over("town")</code> partitions the window so it never crosses
+    town boundaries.
+  </div>
+</section>
+
+<section>
+  <h2>Rolling mean formula</h2>
+  <div style="text-align: center; margin: 1.5em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{rolling\_mean}_i = \frac{1}{w} \sum_{j=i-w+1}^{i} x_j \]
+  </div>
+  <p>Unweighted mean of the last $w$ observations inclusive.</p>
+  <ul style="font-size: 0.88em;">
+    <li>First $w-1$ rows → null (not enough history). That's correct.</li>
+    <li>Polars has <code>rolling_sum</code>, <code>rolling_min</code>, <code>rolling_max</code>, <code>rolling_std</code> — same shape.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Window size trade-off</h2>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th>Window</th><th>Noise</th><th>Lag</th><th>Use case</th></tr></thead>
+    <tbody>
+      <tr><td>3 months</td><td>Low reduction</td><td>~1.5 mo</td><td>Turning points</td></tr>
+      <tr><td>6 months</td><td>Moderate</td><td>~3 mo</td><td>Balanced</td></tr>
+      <tr><td>12 months</td><td>Strong</td><td>~6 mo</td><td>Underlying trend</td></tr>
+      <tr><td>24 months</td><td>Very strong</td><td>~12 mo</td><td>Structural comparison</td></tr>
+    </tbody>
+  </table>
+  <div style="background: #EFF6FF; padding: 10px 16px; border-left: 4px solid #3B82F6; border-radius: 4px; font-size: 0.85em; margin-top: 1em;">
+    <strong>🔵 Theory:</strong> with independent noise of variance $\sigma^2$,
+    rolling mean has variance $\sigma^2/w$. Doubling $w$ halves variance
+    but adds lag of $\sim w/2$.
+  </div>
+</section>
+
+<section>
+  <h2><code>shift</code> — lag features</h2>
+  <pre><code class="language-python" data-trim>
+monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm")
+      .shift(12)
+      .over("town")
+      .alias("price_12m_ago"),
+)
+  </code></pre>
+  <p style="font-size: 0.88em;">
+    <code>shift(12)</code> moves every value 12 rows forward, filling the
+    first 12 rows with null. Combined with <code>over("town")</code>, each
+    town shifts independently.
+  </p>
+</section>
+
+<section>
+  <h2>Year-over-year change</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{YoY}\% = \frac{x_t - x_{t-12}}{x_{t-12}} \times 100\% \]
+  </div>
+  <pre><code class="language-python" data-trim>
+monthly_prices = monthly_prices.with_columns(
+    (
+        (pl.col("median_price_sqm") - pl.col("price_12m_ago"))
+        / pl.col("price_12m_ago") * 100
+    ).alias("yoy_change_pct"),
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    Why YoY not MoM? Cancels out seasonality — compares the same calendar
+    month to itself a year earlier.
+  </p>
+</section>
+
+<section>
+  <h2>Ranking the hottest districts</h2>
+  <pre><code class="language-python" data-trim>
+latest = monthly_prices["transaction_date"].max()
+
+rankings = (
+    monthly_prices
+    .filter(pl.col("transaction_date") == latest)
+    .filter(pl.col("yoy_change_pct").is_not_null())
+    .select("town", "median_price_sqm", "yoy_change_pct")
+    .sort("yoy_change_pct", descending=True)
+)
+print(rankings.head(5))  # top 5 growers
+print(rankings.tail(5))  # bottom 5
+  </code></pre>
+</section>
+
+<section>
+  <h2>🟣 Lazy frames — global optimisation</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(20, 10)">
+        <text x="180" y="20" text-anchor="middle" font-weight="600" font-size="14" fill="#F43F5E">Eager (default)</text>
+        <rect x="20" y="30" width="330" height="28" rx="4" fill="#FFF1F2"/>
+        <text x="40" y="48" font-family="JetBrains Mono" font-size="11">load → 500k rows in memory</text>
+        <rect x="20" y="64" width="330" height="28" rx="4" fill="#FFF1F2"/>
+        <text x="40" y="82" font-family="JetBrains Mono" font-size="11">filter → 180k rows</text>
+        <rect x="20" y="98" width="330" height="28" rx="4" fill="#FFF1F2"/>
+        <text x="40" y="116" font-family="JetBrains Mono" font-size="11">group_by → 26 rows</text>
+        <rect x="20" y="132" width="330" height="28" rx="4" fill="#FFF1F2"/>
+        <text x="40" y="150" font-family="JetBrains Mono" font-size="11">sort → result</text>
+        <text x="20" y="185" font-size="12" fill="#F43F5E">each step runs immediately</text>
+      </g>
+      <g transform="translate(420, 10)">
+        <text x="180" y="20" text-anchor="middle" font-weight="600" font-size="14" fill="#0D9488">Lazy</text>
+        <rect x="20" y="30" width="330" height="28" rx="4" fill="#F0FDFA"/>
+        <text x="40" y="48" font-family="JetBrains Mono" font-size="11">scan_parquet → plan node</text>
+        <rect x="20" y="64" width="330" height="28" rx="4" fill="#F0FDFA"/>
+        <text x="40" y="82" font-family="JetBrains Mono" font-size="11">filter → plan node</text>
+        <rect x="20" y="98" width="330" height="28" rx="4" fill="#F0FDFA"/>
+        <text x="40" y="116" font-family="JetBrains Mono" font-size="11">group_by → plan node</text>
+        <rect x="20" y="132" width="330" height="28" rx="4" fill="#E0F2F1" stroke="#0D9488"/>
+        <text x="40" y="150" font-family="JetBrains Mono" font-size="11" fill="#0D9488">collect() → optimise + run</text>
+        <text x="20" y="185" font-size="12" fill="#0D9488">pushes filter into scan</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Lazy pipeline in code</h2>
+  <pre><code class="language-python" data-trim>
+result = (
+    pl.scan_parquet("hdb_resale.parquet")  # lazy: no data loaded
+    .filter(pl.col("year") >= 2020)
+    .group_by("town")
+    .agg(pl.col("resale_price").median().alias("median"))
+    .sort("median", descending=True)
+    .collect()                              # execute the whole plan
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    <code>scan_*</code> = lazy. <code>read_*</code> = eager.
+    <code>collect()</code> executes. Polars optimises the whole chain
+    before running anything.
+  </p>
+</section>
+
+<section>
+  <h2>Four traps</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>1. Not sorting before rolling.</strong> Windows depend on row order.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>2. Rolling across groups without <code>over</code>.</strong> Windows will span unrelated partitions.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>3. Filling early nulls with zero.</strong> Nulls mean "insufficient history" — that's correct.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>4. Calling <code>collect()</code> too early.</strong> Breaks the optimiser's view.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Compute rolling means with <code>rolling_mean(window_size=w)</code></li>
+    <li>✓ Partition windows per group with <code>.over("town")</code></li>
+    <li>✓ Build lag features with <code>shift(n)</code></li>
+    <li>✓ Compute year-over-year percent change</li>
+    <li>✓ Choose window size for the responsiveness/smoothness trade-off</li>
+    <li>✓ Convert a pipeline to lazy with <code>scan_*</code> + <code>collect</code></li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 1.6 — turn these trend lines into
+    interactive Plotly charts via <code>ModelVisualizer</code>. Six chart
+    types, Gestalt principles, visual hierarchy.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

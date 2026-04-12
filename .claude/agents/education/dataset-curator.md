@@ -1,6 +1,6 @@
 ---
 name: dataset-curator
-description: Validates and curates datasets for ASCENT course exercises
+description: Validates and curates datasets for MLFP course exercises
 model: sonnet
 ---
 

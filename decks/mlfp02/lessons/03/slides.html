@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.3 — Bootstrapping and Hypothesis Testing | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.3</p>
+  <h1>Bootstrapping and Hypothesis Testing</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Resampling · p-values · Power · Multiple testing · Permutation tests
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong>⏱ 45 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> 2.2 (sampling distributions, CLT)
+  </div>
+</section>
+
+<section>
+  <h2>The Bootstrap: sampling without extra samples</h2>
+  <p>
+    <strong>Problem:</strong> you have one sample, $n$ observations. You want
+    the sampling distribution of some statistic. You cannot go get more data.
+  </p>
+  <p>
+    <strong>Solution:</strong> treat your sample as if it were the population.
+    Resample with replacement. Compute the statistic. Repeat thousands of times.
+  </p>
+  <div style="background: #FEF3C7; padding: 14px 18px; border-left: 4px solid #F59E0B;">
+    It feels illegal. It is mathematically justified. And it works for
+    statistics (median, correlation, regression coefficients) where no clean
+    formula exists.
+  </div>
+</section>
+
+<section>
+  <h2>The resampling loop</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="110" width="200" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="130" y="135" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Original sample</text>
+      <text x="130" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">n = 500</text>
+      <line x1="230" y1="140" x2="290" y2="60" stroke="#64748B" stroke-width="1.5"/>
+      <line x1="230" y1="140" x2="290" y2="140" stroke="#64748B" stroke-width="1.5"/>
+      <line x1="230" y1="140" x2="290" y2="220" stroke="#64748B" stroke-width="1.5"/>
+      <rect x="300" y="35" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="380" y="55" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample 1</text>
+      <text x="380" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="11">θ̂₁* = 26.7</text>
+      <rect x="300" y="115" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="380" y="135" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample 2</text>
+      <text x="380" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="11">θ̂₂* = 26.4</text>
+      <rect x="300" y="195" width="160" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="380" y="215" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">Resample B</text>
+      <text x="380" y="232" text-anchor="middle" font-family="JetBrains Mono" font-size="11">θ̂_B* = 26.9</text>
+      <line x1="460" y1="140" x2="520" y2="140" stroke="#0D9488" stroke-width="2"/>
+      <g transform="translate(520,40)">
+        <path d="M 20,200 Q 110,30 200,200" fill="#E0F2F1" stroke="#0D9488" stroke-width="2.5"/>
+        <line x1="20" y1="200" x2="200" y2="200" stroke="#94A3B8"/>
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Bootstrap distribution</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Percentile CI (the simple version)</h2>
+  \[ \text{CI}_{95\%} = \left[\hat\theta^*_{(0.025)},\; \hat\theta^*_{(0.975)}\right] \]
+  <pre><code class="language-python" data-trim>
+rng = np.random.default_rng(42)
+B = 5000
+reps = np.empty(B)
+for b in range(B):
+    resample = rng.choice(data, len(data), replace=True)
+    reps[b] = np.median(resample)
+
+lo, hi = np.percentile(reps, [2.5, 97.5])
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Read the 2.5th and 97.5th percentiles straight off the empirical distribution.
+  </p>
+</section>
+
+<section>
+  <h2>BCa: when percentile is biased</h2>
+  <p>The percentile method is biased when the sampling distribution is skewed. BCa corrects two things:</p>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Bias $\hat z_0$</strong> — is the median of the bootstrap distribution equal to $\hat\theta$?</li>
+    <li><strong>Acceleration $\hat a$</strong> — does skewness change with $\theta$? (jackknife)</li>
+  </ul>
+  \[ \alpha_i = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_{\alpha_i'}}{1 - \hat a(\hat z_0 + z_{\alpha_i'})}\right) \]
+  <pre><code class="language-python" data-trim>
+from scipy.stats import bootstrap
+res = bootstrap((data,), np.median, method="BCa",
+                confidence_level=0.95, n_resamples=5000)
+print(res.confidence_interval)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Hypothesis testing in one picture</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 60,220 Q 360,20 660,220" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
+      <line x1="60" y1="220" x2="660" y2="220" stroke="#94A3B8"/>
+      <text x="360" y="10" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">Null distribution</text>
+      <line x1="560" y1="220" x2="560" y2="120" stroke="#EF4444" stroke-width="2.5"/>
+      <text x="560" y="110" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#EF4444">observed T</text>
+      <path d="M 560,220 Q 600,150 660,220 Z" fill="#FECACA" stroke="none"/>
+      <text x="620" y="205" font-family="Inter" font-size="11" fill="#B91C1C">p-value</text>
+    </svg>
+  </figure>
+  \[ p \;=\; P\!\left(T \ge T_{\text{obs}} \;\middle|\; H_0\right) \]
+</section>
+
+<section>
+  <h2>The $t$-statistic and its distribution</h2>
+  \[ T = \frac{\bar x - \mu_0}{s / \sqrt n} \sim t_{n-1} \quad \text{under } H_0 \]
+  <p>Large $T$ → observed mean is far from the null hypothesis → small p-value → reject $H_0$.</p>
+  <div style="background: #FFF1F2; padding: 12px 16px; border-left: 4px solid #F43F5E; margin-top: 1em; font-size: 0.85em;">
+    <strong>⚠ p-value is not $P(H_0 \mid \text{data})$.</strong>
+    To get that you need a prior. The p-value is probability of
+    extreme data given $H_0$.
+  </div>
+</section>
+
+<section>
+  <h2>Type I / Type II / Power</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <rect x="200" y="30" width="460" height="200" fill="none" stroke="#94A3B8"/>
+      <line x1="430" y1="30" x2="430" y2="230" stroke="#94A3B8"/>
+      <line x1="200" y1="130" x2="660" y2="130" stroke="#94A3B8"/>
+      <text x="315" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12">Fail to reject</text>
+      <text x="545" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12">Reject</text>
+      <text x="190" y="85" text-anchor="end" font-family="Inter" font-weight="700" font-size="12">H₀ true</text>
+      <text x="190" y="180" text-anchor="end" font-family="Inter" font-weight="700" font-size="12">H₀ false</text>
+      <rect x="200" y="30" width="230" height="100" fill="#DCFCE7"/>
+      <text x="315" y="80" text-anchor="middle" font-family="Inter" font-size="12" fill="#15803D">Correct (1-α)</text>
+      <rect x="430" y="30" width="230" height="100" fill="#FEE2E2"/>
+      <text x="545" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#B91C1C">Type I</text>
+      <text x="545" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B91C1C">α</text>
+      <rect x="200" y="130" width="230" height="100" fill="#FEF3C7"/>
+      <text x="315" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#B45309">Type II</text>
+      <text x="315" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B45309">β</text>
+      <rect x="430" y="130" width="230" height="100" fill="#DCFCE7"/>
+      <text x="545" y="175" text-anchor="middle" font-family="Inter" font-size="12" fill="#15803D">Power (1-β)</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Power and MDE</h2>
+  <p>Two-sample $z$-test with effect $\delta$, variance $\sigma^2$, $n$ per arm:</p>
+  \[ \text{power} = \Phi\!\left(\frac{\delta\sqrt{n/2}}{\sigma} - z_{1-\alpha/2}\right) \]
+  <p>Solve for the smallest detectable $\delta$:</p>
+  \[ \delta_{\text{MDE}} = (z_{1-\alpha/2} + z_{1-\beta}) \cdot \sigma\sqrt{2/n} \]
+  <p style="font-size: 0.85em;">More data → smaller MDE. More variance → larger MDE. Stricter $\alpha$ or higher power target → larger MDE.</p>
+</section>
+
+<section>
+  <h2>Multiple testing: Bonferroni</h2>
+  <p>Run 20 tests at $\alpha = 0.05$ on random data → expect 1 false positive.</p>
+  <div style="text-align: center; padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \alpha_{\text{Bonf}} = \frac{\alpha}{m} \]
+  </div>
+  <p>
+    For 20 tests → $\alpha = 0.0025$ per test. Controls <strong>family-wise error rate</strong>.
+  </p>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Very conservative. Good for high-stakes decisions; wasteful for exploration.
+  </p>
+</section>
+
+<section>
+  <h2>Multiple testing: BH-FDR</h2>
+  <p>Sort p-values $p_{(1)} \le p_{(2)} \le \cdots \le p_{(m)}$.</p>
+  <p>Find the largest $k$ where $p_{(k)} \le \frac{k}{m}\alpha$. Reject all with rank $\le k$.</p>
+  <p>Controls <strong>false discovery rate</strong> — expected proportion of false positives <em>among the rejects</em>.</p>
+  <pre><code class="language-python" data-trim>
+from statsmodels.stats.multitest import multipletests
+bh_ok, bh_p, _, _ = multipletests(pvals, alpha=0.05, method="fdr_bh")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Permutation test</h2>
+  <ol style="font-size: 0.9em;">
+    <li>Compute observed test statistic $T_{\text{obs}}$</li>
+    <li>Pool the two groups</li>
+    <li>Randomly re-split $B$ times; each shuffle gives $T^{*(b)}$</li>
+    <li>p-value = fraction of $T^{*(b)}$ at least as extreme as $T_{\text{obs}}$</li>
+  </ol>
+  <pre><code class="language-python" data-trim>
+obs = treat.mean() - ctrl.mean()
+pool = np.concatenate([ctrl, treat])
+n_c = len(ctrl)
+B = 5000
+null = np.empty(B)
+for b in range(B):
+    rng.shuffle(pool)
+    null[b] = pool[n_c:].mean() - pool[:n_c].mean()
+p = np.mean(np.abs(null) >= abs(obs))
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: three-metric A/B test</h2>
+  <pre><code class="language-python" data-trim>
+pvals = np.array([p_conv, p_aov, p_rpv])
+bonf_ok, bonf_p, _, _ = multipletests(pvals, 0.05, "bonferroni")
+bh_ok,   bh_p,   _, _ = multipletests(pvals, 0.05, "fdr_bh")
+
+print("Raw p:     ", pvals)
+print("Bonferroni:", bonf_ok, bonf_p)
+print("BH-FDR:    ", bh_ok,   bh_p)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    BH-FDR typically rejects more than Bonferroni — more power at the cost
+    of a weaker error guarantee.
+  </p>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Implement a percentile bootstrap CI from scratch</li>
+    <li>✓ Explain BCa corrections and when to use them</li>
+    <li>✓ Define p-value correctly (and say what it is NOT)</li>
+    <li>✓ Use Bonferroni and BH-FDR to correct for multiple testing</li>
+    <li>✓ Compute power and minimum detectable effect</li>
+    <li>✓ Run a permutation test by shuffling labels</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.4 — running a real A/B experiment end to end.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

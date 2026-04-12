@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.6 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.6</span>
+  Interpretability and Fairness
+</h1>
+
+<p class="lead">Total time: ~55 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4 min per slide average</p>
+
+<p>
+  This lesson shifts from "is the model accurate?" to "should the model be
+  deployed?". It is the most ethically loaded lesson in the course. Handle
+  the fairness section with care — learners may have strong opinions. Ground
+  everything in mathematics (the impossibility theorem) and engineering
+  (measure, report, mitigate). Avoid moral prescriptions.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Interpretability and Fairness</h3>
+  <p>"We have spent five lessons building the best model we can. Today we ask two questions: can we explain it, and is it fair?"</p>
+  <div class="transition">→ "Why interpretability matters."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Why it matters</span></div>
+  <h3>Why interpretability matters</h3>
+  <p>Walk the three reasons. The Singapore MAS reference is important for local context — financial institutions are required to explain credit decisions. "If your model denies someone a loan, you need to say why."</p>
+  <div class="transition">→ "SHAP."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 3-5</span><span>~10 min</span><span>SHAP</span></div>
+  <h3>SHAP: Shapley values</h3>
+  <p><strong>Slide 3:</strong> Walk the formula and the four axioms. "Efficiency is the key one — SHAP values sum to the prediction. That means the explanation is complete — nothing is left unexplained."</p>
+  <p><strong>Slide 4:</strong> Walk the waterfall diagram. "Base value is the average prediction. Each feature pushes it up or down. The final prediction is the sum." This is the visual learners will remember.</p>
+  <p><strong>Slide 5:</strong> Run the code. Show the summary plot and one waterfall.</p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Don't worry about the formula. The waterfall is the key visual: each bar is one feature's contribution."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "TreeSHAP is polynomial, not exponential. It exploits the tree structure to avoid enumerating all coalitions. KernelSHAP approximates with weighted regression."
+  </div>
+  <div class="transition">→ "A simpler alternative: LIME."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 6-7</span><span>~5 min</span><span>LIME + comparison</span></div>
+  <h3>LIME and the comparison table</h3>
+  <p><strong>Slide 6:</strong> Walk the LIME code. "LIME perturbs the input, gets predictions, fits a local linear model. The coefficients of that linear model are the explanation."</p>
+  <p><strong>Slide 7:</strong> Walk the comparison table. "Use SHAP for tree models (fast, consistent). Use LIME when you need a quick model-agnostic answer. Use ALE when features are correlated and PDP would be misleading."</p>
+  <div class="transition">→ "Fairness."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 8-10</span><span>~12 min</span><span>Fairness</span></div>
+  <h3>Fairness metrics and the impossibility theorem</h3>
+  <p><strong>Slide 8:</strong> Walk disparate impact. "The four-fifths rule: if you approve 80% of majority applicants, you must approve at least 64% of minority applicants. Below that ratio triggers investigation."</p>
+  <p><strong>Slide 9:</strong> Walk equalised odds. "Same true positive rate and false positive rate across groups. If your model catches 90% of actual defaults in group A, it should catch 90% in group B too."</p>
+  <p><strong>Slide 10:</strong> The impossibility theorem. This is the climactic moment. "When base rates differ — and they almost always do — you cannot have all three. This is not your model's fault. It is mathematics." Let this sink in. It is the most important conceptual takeaway.</p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of it like this: if group A defaults 5% of the time and group B defaults 15%, a perfectly calibrated model will approve group A more often. That violates demographic parity. Fixing demographic parity breaks calibration."
+  </div>
+  <div class="transition">→ "Mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Three mistakes</h3>
+  <p>Mistake 2 (removing protected features) is the most common in practice. Give the postcode example: "Remove gender, the model uses postcode. Remove postcode, it uses school district. The signal finds a way."</p>
+  <div class="transition">→ "Reflection."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Reflection</span></div>
+  <h3>What you can now do</h3>
+  <p>Walk the bullets. Bridge to 3.7: "You can now build, evaluate, explain, and audit a model. The next two lessons are about industrialising this: workflow orchestration (3.7) and production deployment (3.8)."</p>
+  <div class="transition">→ End. Break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/notes.html" class="prev"><span class="label">← Previous</span>3.5 Speaker Notes</a>
+  <a href="../07/notes.html" class="next"><span class="label">Next →</span>3.7 Speaker Notes</a>
+</nav>
+
+</main>
+</body>
+</html>

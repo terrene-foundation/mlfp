@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.1 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.1</span>
+  Feature Engineering, ML Pipeline, and Feature Selection
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~4.5 min per slide average
+</p>
+
+<p>
+  This is the first lesson of the ML engine room. Most learners finished
+  Module 2 comfortable with linear regression and statistics but nervous
+  about moving to "real" ML. Your job is to signal that the transition is
+  mostly a shift in objective and a new discipline around features — not a
+  mountain of new algorithms. Model algorithms start in Lesson 3.2.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Welcome to the ML engine room</h3>
+  <p>
+    Open with the framing sentence: "Module 2 gave you one model. Module 3
+    gives you the whole zoo — but today we do not train a single model. Today
+    we build the raw material every model in the zoo needs: features." That
+    framing lowers the anxiety of learners who feared Module 3 would throw
+    twenty algorithms at them on day one.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For nervous beginners:</strong> "If you finished Module 2 you
+    already know 80% of what happens in Module 3. We just swap the loss from
+    MSE to log-loss and add more model families. The rest is the discipline
+    we learn today."
+  </div>
+  <div class="transition">→ "Before the zoo, the single most important principle."</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Data &gt; Models</span></div>
+  <h3>Data &gt; Models &gt; Hyperparameters</h3>
+  <p>
+    Drive the headline home. "I will say this at least three times in Module
+    3 and I will keep meaning it: data beats models, and features beat data."
+    Give a real example from your own experience — a project where a
+    carefully engineered feature made a 0.05 AUC jump that no amount of
+    XGBoost tuning could match.
+  </p>
+  <p>
+    Tell them today's dataset is a real Singapore ICU cohort. The target is
+    in-hospital mortality. The prediction is made 24 hours after admission —
+    that 24-hour deadline is what makes the feature-engineering discipline
+    non-trivial.
+  </p>
+  <div class="transition">→ "Where does feature engineering sit in the full pipeline?"</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>The seven-stage pipeline</span></div>
+  <h3>The seven-stage ML pipeline</h3>
+  <p>
+    Walk the diagram left to right, naming each stage and saying who owns it.
+    "Ingest — your data engineer or you. Preprocess — cleaning, imputation,
+    encoding. Feature engineering — today's lesson, stage three. Feature
+    selection — today's lesson, stage four. Training — lessons 3.2 through
+    3.4. Evaluation — lesson 3.5. Deploy — lessons 3.7 and 3.8."
+  </p>
+  <p>
+    Emphasise the arrows. "Every single arrow is a potential leakage site. The
+    most common place a leakage bug hides is in the arrow between feature
+    engineering and training — a feature that was computed on the whole
+    dataset before you split."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experienced folks:</strong> "Yes, stages 3 and 4 can overlap
+    — embedded feature selection does both in a single fit. We'll come back
+    to that on slide 7."
+  </div>
+  <div class="transition">→ "First, the objective function that justifies everything."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Stats vs ML</span></div>
+  <h3>Statistics vs ML — two different objective functions</h3>
+  <p>
+    Read the equation aloud: "minimise the expected loss over the true data
+    distribution". Point out that we never see $\mathcal{D}$ directly —
+    that's what makes ML hard. We see a sample from $\mathcal{D}$, fit on
+    that sample, and hope to generalise.
+  </p>
+  <p>
+    The contrast: "In Module 2 we reported coefficients — a statistical
+    exercise. In Module 3 we do not care what the coefficients say; we care
+    what the model does on next week's applicants. Same math, different
+    goal, different feature-engineering rules."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If the expectation notation is scary:</strong> "Read the big E as
+    'average over all possible new customers we haven't seen yet'. Our job
+    is to make that average loss small. We can't compute it exactly, so we
+    estimate it with cross-validation."
+  </div>
+  <div class="transition">→ "So what kinds of features should we engineer?"</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Four families</span></div>
+  <h3>Four feature families that cover most of the work</h3>
+  <p>
+    Walk each row. For aggregation, use the ICU example: "we have 200
+    heart-rate readings in the first 24 hours; the model wants one row per
+    admission; so we compute mean, std, max and forget the raw series." For
+    lag, use Module 1's rainfall example: "yesterday's rain predicts today's
+    rain, seven days ago predicts today." For interaction, use the medical
+    cliché age × systolic_bp.
+  </p>
+  <p>
+    The most important row is domain-derived. "The shock index — heart rate
+    divided by systolic blood pressure — is a feature you would never
+    discover from 5000 rows of data, but every ICU clinician knows it. Your
+    job as an ML engineer is to talk to those clinicians."
+  </p>
+  <div class="transition">→ "Now the most expensive mistake in ML."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>Leakage timeline</span></div>
+  <h3>Point-in-time correctness</h3>
+  <p>
+    Slow down here. Leakage is the single biggest mistake in applied ML, and
+    if learners leave today understanding how to spot it you have justified
+    the whole lesson.
+  </p>
+  <p>
+    Walk the timeline. "The prediction is made at t = 24 hours. Everything to
+    the left of that line — age, sex, comorbidities, first-24h vitals — is
+    legal. Everything to the right — length of stay, total medications
+    administered over the whole admission, the final ICD-10 code — is a
+    crime scene. If your model uses it, your CV score will be beautiful and
+    your deployment will fail."
+  </p>
+  <p>
+    Give a war story: "I once worked on a model that predicted hospital
+    mortality with 99.2% AUC. Best model I ever trained. Turned out one of
+    the features was 'was the patient admitted to palliative care' — which
+    is only set in the discharge record. The model had memorised death.
+    That's leakage."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For confused beginners:</strong> "Think of it as a rule: if the
+    feature uses a number from <em>after</em> the moment you are predicting,
+    it is cheating. Draw the timeline, put a vertical line at the prediction
+    moment, and everything to the right is illegal."
+  </div>
+  <div class="transition">→ "Now — how do we pick the best subset of the features we did engineer?"</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Three selection families</span></div>
+  <h3>Filter / wrapper / embedded</h3>
+  <p>
+    Walk the three definitions. Emphasise the tradeoff: filter methods are
+    milliseconds per feature but ignore interactions; wrapper methods catch
+    interactions but retrain the model every time you add or drop a feature;
+    embedded methods are one fit but tied to a specific model family.
+  </p>
+  <p>
+    The punchline is the intersection trick: run all three, keep features
+    that survive all three rankings as your robust core, and use the union
+    of the three as your candidate pool for hyperparameter tuning. This is
+    a real practitioner pattern, not a textbook cliché.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts who ask about SHAP-based selection:</strong> "Yes,
+    SHAP-based selection is an advanced embedded method. We'll see it in
+    Lesson 3.6 alongside interpretability. For today stick with L1 sparsity
+    and tree importance."
+  </div>
+  <div class="transition">→ "The go-to filter statistic is mutual information."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Mutual information</span></div>
+  <h3>Mutual information — the default filter</h3>
+  <p>
+    Read the equation. "$H(Y)$ is the entropy of $Y$ — how uncertain we are
+    about the label. $H(Y \mid X)$ is the entropy of $Y$ after we learn $X$.
+    If $X$ is perfectly predictive, $H(Y \mid X) = 0$ and $I(X; Y) = H(Y)$.
+    If $X$ is useless, $H(Y \mid X) = H(Y)$ and $I(X; Y) = 0$."
+  </p>
+  <p>
+    Then the two wins over Pearson correlation. "First, MI captures non-linear
+    dependencies — Pearson is zero for $Y = X^2$ when $X$ is symmetric; MI
+    is not. Second, MI is invariant to monotonic transforms — scaling or
+    log-transforming a feature doesn't change its MI, which is exactly what
+    you want in a pre-model scoring step."
+  </p>
+  <div class="transition">→ "And for categorical targets with categorical features, chi-squared."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Chi-squared</span></div>
+  <h3>Chi-squared — when the target is categorical</h3>
+  <p>
+    Explain the contingency-table intuition. "Count how often each feature
+    value co-occurs with each target value. Compare those counts to what
+    you'd expect if they were independent. Sum the squared differences,
+    normalised by the expected counts. Big number = feature and target are
+    not independent = the feature is predictive."
+  </p>
+  <p>
+    Don't get into the chi-squared distribution. They'll see it again in
+    statistics courses. For today it is just a scoring function.
+  </p>
+  <div class="transition">→ "Enough theory — let's meet the Kailash engines."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Kailash engines</span></div>
+  <h3>FeatureEngineer, PreprocessingPipeline, FeatureStore</h3>
+  <p>
+    Introduce the three verbs. "<code>FeatureEngineer</code> generates
+    columns. <code>PreprocessingPipeline</code> chains transforms with
+    train-only fitting enforced. <code>FeatureStore</code> registers a
+    schema so inference time can validate incoming batches before they hit
+    the model."
+  </p>
+  <p>
+    Walk the code block. Point out the declarative style:
+    <code>.aggregate(...).then_join(...).then_derive(...)</code>. That is
+    the Kailash polars-native pipeline idiom you will see all module.
+  </p>
+  <div class="transition">→ "Now the worked example on real ICU data."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Clip to 24h</span></div>
+  <h3>Load and clip vitals to the first 24 hours</h3>
+  <p>
+    Walk the code. "Join vitals onto admissions so every vital row knows
+    its admission's start time. Compute hours since admission. Filter to
+    keep only readings within the first 24 hours."
+  </p>
+  <p>
+    Emphasise again: "This filter is where point-in-time correctness is
+    enforced. If I forget it, my hr_mean feature would include readings from
+    hour 48 — information the real model will never have."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners worried about dates:</strong> "We already cast
+    both columns to datetime at the top of the script. Polars subtracts
+    datetimes and gives you a duration; <code>.dt.total_hours()</code>
+    converts it to a number."
+  </div>
+  <div class="transition">→ "Now collapse the time series into a fixed row."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~5 min</span><span>Aggregate</span></div>
+  <h3>Aggregate into a fixed-shape row per admission</h3>
+  <p>
+    Walk the agg list. Mean, std, max of heart rate; mean and min of systolic
+    BP; min of SpO₂; count of readings. "Each of these is a legitimate,
+    clinically meaningful summary. And that last one — <code>n_vital_readings</code>
+    — is the informative-missingness trick."
+  </p>
+  <p>
+    Tell them: "In clinical data, how <em>often</em> a patient is measured
+    is itself a signal. Sicker patients get monitored every 15 minutes.
+    Stable patients get measured once an hour. A tree-based model will
+    happily split on this count and pick up on it as a sickness proxy. This
+    is one of those features you wouldn't invent if you weren't paying
+    attention to your domain."
+  </p>
+  <div class="transition">→ "And now the domain-derived feature."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Shock index</span></div>
+  <h3>Shock index — a clinical ratio</h3>
+  <p>
+    "The shock index is heart rate divided by systolic BP. Clinicians have
+    used it since the 1960s as an early warning for circulatory collapse.
+    A normal patient sits around 0.5–0.7. A patient above 1.0 is in trouble.
+    This ratio is a better predictor of ICU mortality than either of its
+    inputs on their own — because a tachycardia of 110 is worrying if the
+    BP is 90, but benign if the BP is 140."
+  </p>
+  <p>
+    "Could a random forest learn this split on its own? Maybe, with enough
+    data. In our 5000-row dataset, encoding the ratio directly is the
+    difference between 0.78 AUC and 0.81 AUC. Domain knowledge is a
+    shortcut through statistical learning."
+  </p>
+  <div class="transition">→ "Now the three selection methods, side by side."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~5 min</span><span>Three selections</span></div>
+  <h3>Filter / wrapper / embedded — run them all</h3>
+  <p>
+    Walk the three code blocks. For each one say what it does in plain
+    English: "Mutual information ranks every column against the target.
+    RFE starts with all columns, fits logistic regression, drops the least
+    important one, refits, and repeats until only ten are left. Random
+    forest fits once and returns an importance score per feature."
+  </p>
+  <p>
+    Then the punchline: "They will disagree. That is not a bug, that is a
+    feature. The filter ranks <code>age</code> high because it has strong MI
+    with death. The wrapper ranks <code>shock_index</code> high because
+    logistic regression loves it. The embedded RF ranks <code>hr_std</code>
+    high because it captures instability. Different lenses, different
+    rankings. Take the intersection as your robust core."
+  </p>
+  <div class="transition">→ "Three mistakes to not make."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Common mistakes</span></div>
+  <h3>Three expensive mistakes</h3>
+  <p>
+    Walk each one. Mistake 1 (scaler leakage) catches everyone. "If you
+    fit <code>StandardScaler</code> on the full dataset before you split,
+    the mean and std were computed using test data. You have leaked. Always
+    fit on train only."
+  </p>
+  <p>
+    Mistake 2 (future features) is what the timeline slide was about.
+    Repeat the war story if you didn't already: "99.2% AUC because one
+    feature was set in the discharge record. Leakage."
+  </p>
+  <p>
+    Mistake 3 (selection on full data) is the subtle one. "If you rank
+    features on the full data and then split, your selection already saw
+    the test labels. The right order is: split, then fit the selector on
+    the train split, then apply the same selector to the test split."
+  </p>
+  <div class="transition">→ "Reflection and bridge to 3.2."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Run the bullet list. Pause after each one — let learners silently tick
+    them off. The psychological payoff is important: Module 3 feels huge,
+    and they just mastered a meaningful chunk of it in 75 minutes.
+  </p>
+  <p>
+    Then tease Lesson 3.2: "Today we engineered features. Tomorrow we ask:
+    given a feature set, why does a model with more parameters not always
+    win? The answer is the bias-variance decomposition, and once you see
+    it you will understand why every ML training loop looks the way it
+    does. We will also derive L1 and L2 regularisation geometrically — the
+    diamond and the circle — and you will see where all the sparsity
+    properties of Lasso come from."
+  </p>
+  <div class="transition">→ End of Lesson 3.1. Take a 10-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 3 Index
+  </a>
+  <a href="../02/notes.html" class="next">
+    <span class="label">Next →</span>
+    3.2 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

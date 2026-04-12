@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.3 — RNNs and Sequence Models | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.48em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+  </style>
+</head>
+<body>
+
+<div class="reveal"><div class="slides">
+
+<!-- 1 -->
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.3</p>
+  <h1>RNNs and Sequence Models</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Vanilla RNN · LSTM · GRU · temporal attention</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 60 minutes</strong> · <strong>Prerequisite:</strong> 5.2 (PyTorch training loop)
+  </div>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>Sequences need their own architecture</h2>
+  <ul>
+    <li><strong>Variable length</strong> — 5 words or 500, no fixed input size</li>
+    <li><strong>Temporal dependency</strong> — "bank" near "river" ≠ "bank" near "deposit"</li>
+  </ul>
+  <p>The recurrent idea: carry a hidden state forward, update it step by step, reuse the same weights at every step.</p>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>The vanilla RNN update</h2>
+  <div style="text-align: center; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ h_t = \phi(W_{xh}\, x_t + W_{hh}\, h_{t-1} + b) \]
+  </div>
+  <p>Same weight matrices at every time step. Weight sharing is exactly like a conv kernel — but across time instead of space.</p>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>The RNN unrolled</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="60" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="95" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">cell</text>
+      <rect x="200" y="60" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="255" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">cell</text>
+      <rect x="360" y="60" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="415" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">cell</text>
+      <rect x="520" y="60" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="575" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">cell</text>
+      <line x1="150" y1="90" x2="198" y2="90" stroke="#F59E0B" stroke-width="3"/>
+      <line x1="310" y1="90" x2="358" y2="90" stroke="#F59E0B" stroke-width="3"/>
+      <line x1="470" y1="90" x2="518" y2="90" stroke="#F59E0B" stroke-width="3"/>
+      <text x="95" y="40" text-anchor="middle" font-family="JetBrains Mono" fill="#3B82F6">x₁</text>
+      <text x="255" y="40" text-anchor="middle" font-family="JetBrains Mono" fill="#3B82F6">x₂</text>
+      <text x="415" y="40" text-anchor="middle" font-family="JetBrains Mono" fill="#3B82F6">x₃</text>
+      <text x="575" y="40" text-anchor="middle" font-family="JetBrains Mono" fill="#3B82F6">x₄</text>
+      <text x="575" y="150" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">ŷ</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>The cruel flaw: vanishing gradients</h2>
+  <p>Backprop through a long sequence = product of T Jacobians.</p>
+  <ul>
+    <li>Each Jacobian has norm &lt; 1 → gradient shrinks exponentially (vanish)</li>
+    <li>Each Jacobian has norm &gt; 1 → gradient blows up (explode)</li>
+  </ul>
+  <p>Vanilla RNNs are unusable past ~20 time steps. The 1997 fix: LSTM.</p>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>LSTM: cell state highway</h2>
+  <p>Adds a second state — the <strong>cell state</strong> — that flows forward with only additive updates, protected by three gates.</p>
+  <p>Additive path → gradient flows through almost unchanged. That is the magic.</p>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
+    🔵 The cell state is the ancestor of ResNet's skip connections (2015).
+  </div>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>LSTM gate equations — all six</h2>
+  <div style="font-size: 0.72em; text-align: left; padding: 14px; background: #F8FAFC;">
+    \[
+    \begin{aligned}
+    f_t &= \sigma(W_f[h_{t-1}, x_t] + b_f) && \text{forget}\\
+    i_t &= \sigma(W_i[h_{t-1}, x_t] + b_i) && \text{input}\\
+    \tilde C_t &= \tanh(W_C[h_{t-1}, x_t] + b_C) && \text{candidate}\\
+    C_t &= f_t \odot C_{t-1} + i_t \odot \tilde C_t && \text{cell update}\\
+    o_t &= \sigma(W_o[h_{t-1}, x_t] + b_o) && \text{output}\\
+    h_t &= o_t \odot \tanh(C_t) && \text{hidden}
+    \end{aligned}
+    \]
+  </div>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>Walk the equations</h2>
+  <ul style="font-size: 0.8em;">
+    <li><strong>Forget</strong> f_t ∈ [0,1]: "keep how much of past cell state?"</li>
+    <li><strong>Input</strong> i_t ∈ [0,1]: "accept how much new content?"</li>
+    <li><strong>Candidate</strong> \tilde C_t ∈ [-1,1]: "what is the new content?"</li>
+    <li><strong>Cell update</strong>: forget some past + accept some new — <em>additive</em></li>
+    <li><strong>Output</strong> o_t: "how much of the cell to reveal?"</li>
+    <li><strong>Hidden</strong> h_t: output-gated tanh of cell</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>Why it works: gradient highway</h2>
+  <p>Vanilla RNN: \( \partial h_t / \partial h_{t-1} \) involves W_{hh} and a tanh derivative → decays exponentially.</p>
+  <p>LSTM: \( \partial C_t / \partial C_{t-1} \approx f_t \). If \( f_t \approx 1 \), gradient passes through unchanged.</p>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px;">
+    🟢 Same insight as ResNet: give the gradient an additive path back.
+  </div>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>GRU — a simpler cousin (2014)</h2>
+  <div style="font-size: 0.75em; padding: 14px; background: #F8FAFC;">
+    \[
+    \begin{aligned}
+    z_t &= \sigma(W_z[h_{t-1}, x_t]) && \text{update}\\
+    r_t &= \sigma(W_r[h_{t-1}, x_t]) && \text{reset}\\
+    \tilde h_t &= \tanh(W[r_t \odot h_{t-1}, x_t])\\
+    h_t &= (1 - z_t)\odot h_{t-1} + z_t \odot \tilde h_t
+    \end{aligned}
+    \]
+  </div>
+  <p>One gate merged, no separate cell state. Fewer parameters, usually competitive with LSTM.</p>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>LSTM regressor in PyTorch</h2>
+  <pre><code class="language-python" data-trim>
+class LSTMRegressor(nn.Module):
+    def __init__(self, input_size=1, hidden_size=32, num_layers=2):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
+                            batch_first=True, dropout=0.1)
+        self.head = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)               # (B, L, H)
+        last = out[:, -1, :]                # final time step
+        return self.head(last).squeeze(-1)
+  </code></pre>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>Training — clip those gradients</h2>
+  <pre><code class="language-python" data-trim>
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+for epoch in range(30):
+    for xb, yb in loader:
+        pred = model(xb)
+        loss = F.mse_loss(pred, yb)
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=1.0)   # ★ essential
+        opt.step()
+  </code></pre>
+  <p>Without gradient clipping, RNNs explode on ~1% of batches and NaN your loss.</p>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>Temporal attention</h2>
+  <p>Instead of taking only the last time step, compute a learned weighted sum:</p>
+  <pre><code class="language-python" data-trim>
+out, _ = self.lstm(x)                         # (B, L, H)
+scores = self.attn(out).squeeze(-1)           # (B, L)
+weights = F.softmax(scores, dim=-1).unsqueeze(-1)
+context = (weights * out).sum(dim=1)          # (B, H)
+  </code></pre>
+  <p>Preview of 5.4 — this is exactly what the Transformer generalises.</p>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>Singapore scenario: forecasting SGX</h2>
+  <p>A synthetic price series: trend + seasonality + noise.</p>
+  <ul>
+    <li>Input: 50 past daily "prices"</li>
+    <li>Target: next day's price</li>
+    <li>Features: price, RSI, MACD, Bollinger position (optional)</li>
+  </ul>
+  <p>Vanilla RNN plateaus high; GRU and LSTM both converge below it.</p>
+</section>
+
+<!-- 15 -->
+<section>
+  <h2>Metrics for sequence models</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Metric</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>MSE / MAE</td><td>Regression — prices, demand</td></tr>
+      <tr><td>Perplexity \(\exp(-\frac{1}{N}\sum \log P)\)</td><td>Language models</td></tr>
+      <tr><td>BLEU</td><td>Machine translation</td></tr>
+      <tr><td>Sequence accuracy</td><td>Classification</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 16 -->
+<section>
+  <h2>Four traps</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Forgetting gradient clipping</strong> — always clip L2 norm to 1.0</li>
+    <li><strong>Wrong <code>batch_first</code></strong> — default is (L, B, F); modern is (B, L, F)</li>
+    <li><strong>Stateful state leakage</strong> — don't reuse h across unrelated sequences</li>
+    <li><strong>BPTT memory blow-up</strong> — truncate when seq_len × hidden × batch is too large</li>
+  </ul>
+</section>
+
+<!-- 17 -->
+<section>
+  <h2>Reflection</h2>
+  <ul style="font-size: 0.85em;">
+    <li>✓ Explain the vanishing-gradient problem and why LSTMs solve it</li>
+    <li>✓ Write all six LSTM gate equations from memory</li>
+    <li>✓ Build LSTM / GRU regressors with nn.LSTM and nn.GRU</li>
+    <li>✓ Apply gradient clipping as standard practice</li>
+    <li>✓ Add temporal attention as a weighted sum over time steps</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> 5.4 Transformers — no recurrence, pure attention.
+  </div>
+</section>
+
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });</script>
+</body>
+</html>

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.6 — Data Visualisation | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.6</span>
+  Data Visualisation
+</h1>
+
+<p class="lead">
+  A good chart answers a question faster than the best table in the world.
+  A bad chart misleads its reader in seconds. Today you learn the six chart
+  types that cover most of the questions a data analyst is asked, the
+  <strong>Gestalt principles</strong> of visual perception that govern
+  which shapes the eye groups together, the cardinal rules of truthful
+  charts, and the <code>ModelVisualizer</code> engine that turns a Polars
+  DataFrame into an interactive Plotly figure in one line.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Every analysis has two audiences. The first is you — you are looking for
+  patterns in the data. The second is the decision-maker you are writing
+  the report for. For the first, a dense table works fine. For the second,
+  a chart is usually the only thing they will actually read. The gap
+  between the two audiences is the reason visualisation skill is a
+  career-long differentiator.
+</p>
+
+<p>
+  Charts communicate by exploiting the human visual system. A reader's
+  eye processes position, length, colour, and shape before any conscious
+  thought. The <em>Gestalt psychologists</em> (Wertheimer, Koffka, Köhler,
+  1920s) catalogued the rules by which the eye groups shapes together.
+  Those rules govern whether your chart communicates or confuses.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Proximity -->
+  <g transform="translate(20, 20)">
+    <text x="100" y="15" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Proximity</text>
+    <g fill="#0D9488">
+      <circle cx="40" cy="60" r="6"/><circle cx="55" cy="60" r="6"/><circle cx="70" cy="60" r="6"/>
+      <circle cx="130" cy="60" r="6"/><circle cx="145" cy="60" r="6"/><circle cx="160" cy="60" r="6"/>
+      <circle cx="40" cy="110" r="6"/><circle cx="55" cy="110" r="6"/><circle cx="70" cy="110" r="6"/>
+      <circle cx="130" cy="110" r="6"/><circle cx="145" cy="110" r="6"/><circle cx="160" cy="110" r="6"/>
+    </g>
+    <text x="100" y="160" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">close = grouped</text>
+  </g>
+
+  <!-- Similarity -->
+  <g transform="translate(220, 20)">
+    <text x="100" y="15" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Similarity</text>
+    <g>
+      <circle cx="40" cy="60" r="6" fill="#0D9488"/>
+      <circle cx="70" cy="60" r="6" fill="#F43F5E"/>
+      <circle cx="100" cy="60" r="6" fill="#0D9488"/>
+      <circle cx="130" cy="60" r="6" fill="#F43F5E"/>
+      <circle cx="160" cy="60" r="6" fill="#0D9488"/>
+      <circle cx="40" cy="90" r="6" fill="#F43F5E"/>
+      <circle cx="70" cy="90" r="6" fill="#0D9488"/>
+      <circle cx="100" cy="90" r="6" fill="#F43F5E"/>
+      <circle cx="130" cy="90" r="6" fill="#0D9488"/>
+      <circle cx="160" cy="90" r="6" fill="#F43F5E"/>
+      <circle cx="40" cy="120" r="6" fill="#0D9488"/>
+      <circle cx="70" cy="120" r="6" fill="#F43F5E"/>
+      <circle cx="100" cy="120" r="6" fill="#0D9488"/>
+      <circle cx="130" cy="120" r="6" fill="#F43F5E"/>
+      <circle cx="160" cy="120" r="6" fill="#0D9488"/>
+    </g>
+    <text x="100" y="160" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">same colour = grouped</text>
+  </g>
+
+  <!-- Enclosure -->
+  <g transform="translate(420, 20)">
+    <text x="100" y="15" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Enclosure</text>
+    <rect x="25" y="45" width="80" height="90" rx="6" fill="none" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+    <g fill="#0D9488">
+      <circle cx="45" cy="65" r="5"/><circle cx="65" cy="65" r="5"/><circle cx="85" cy="65" r="5"/>
+      <circle cx="45" cy="90" r="5"/><circle cx="65" cy="90" r="5"/><circle cx="85" cy="90" r="5"/>
+      <circle cx="45" cy="115" r="5"/><circle cx="65" cy="115" r="5"/><circle cx="85" cy="115" r="5"/>
+    </g>
+    <g fill="#F43F5E">
+      <circle cx="125" cy="65" r="5"/><circle cx="145" cy="65" r="5"/><circle cx="165" cy="65" r="5"/>
+      <circle cx="125" cy="90" r="5"/><circle cx="145" cy="90" r="5"/><circle cx="165" cy="90" r="5"/>
+      <circle cx="125" cy="115" r="5"/><circle cx="145" cy="115" r="5"/><circle cx="165" cy="115" r="5"/>
+    </g>
+    <text x="100" y="160" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">box around = grouped</text>
+  </g>
+
+  <!-- Continuity -->
+  <g transform="translate(620, 20)">
+    <text x="100" y="15" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Continuity</text>
+    <polyline fill="none" stroke="#0D9488" stroke-width="2.5"
+              points="30,120 60,100 90,80 120,70 150,60 180,55"/>
+    <g fill="#0D9488">
+      <circle cx="30" cy="120" r="4"/><circle cx="60" cy="100" r="4"/><circle cx="90" cy="80" r="4"/>
+      <circle cx="120" cy="70" r="4"/><circle cx="150" cy="60" r="4"/><circle cx="180" cy="55" r="4"/>
+    </g>
+    <text x="100" y="160" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">smooth line = trend</text>
+  </g>
+
+  <!-- bottom summary -->
+  <text x="410" y="230" text-anchor="middle" font-family="Inter" font-style="italic" font-size="13" fill="#64748B">
+    Design choices that violate these principles force the reader to work harder than necessary.
+  </text>
+</svg>
+<figcaption>Four of the core Gestalt principles. A chart that exploits them communicates instantly; one that fights them creates confusion.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>The purpose of every chart</h3>
+
+<p>
+  Before you pick a chart type, ask yourself one question: <em>what
+  decision should the reader make after seeing this?</em> The chart exists
+  to answer one question — not three, not ten. If you cannot state the
+  question in a single sentence, the chart is not ready.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Single-question rule</span>
+  <p>
+    Every chart should have exactly one question it answers. "Which town
+    grew fastest last year?" is a question. "All the important patterns in
+    the HDB market" is not. If your chart is trying to answer everything
+    it will answer nothing.
+  </p>
+</div>
+
+<h3>Chart selection by data shape</h3>
+
+<table>
+  <thead>
+    <tr><th>Question</th><th>Chart</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>How is a numeric variable distributed?</td><td>Histogram</td><td>Shows shape, skew, peaks, tails</td></tr>
+    <tr><td>How does one number change over time?</td><td>Line chart</td><td>Continuity exploits the eye's sense of trend</td></tr>
+    <tr><td>Which category ranks highest?</td><td>Horizontal bar</td><td>Labels readable, position = length comparison</td></tr>
+    <tr><td>Do two numeric variables relate?</td><td>Scatter plot</td><td>Each point = one observation, trend visible</td></tr>
+    <tr><td>How do many variables correlate?</td><td>Heatmap</td><td>Dense matrix of colour-coded cells</td></tr>
+    <tr><td>How is a whole composed?</td><td>Stacked bar</td><td>Parts add to a meaningful total</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Six chart types cover roughly 95% of the questions you will be asked.
+  The rest (box plots, violin plots, sankey diagrams, maps) are specialist
+  tools. Master the six and you can communicate almost anything; master
+  the specialists when you actually need them.
+</p>
+
+<h3>Gestalt in practice</h3>
+
+<p>
+  Six Gestalt principles matter for charts:
+</p>
+
+<ul>
+  <li><strong>Proximity</strong> — elements close together appear grouped. Use spacing to separate clusters.</li>
+  <li><strong>Similarity</strong> — elements with the same colour, shape, or size appear grouped. Use colour deliberately; random colour reads as random categories.</li>
+  <li><strong>Closure</strong> — the eye completes partial shapes. You can suggest a trend line without drawing it.</li>
+  <li><strong>Enclosure</strong> — a box around elements binds them tightly. Stronger than proximity.</li>
+  <li><strong>Continuity</strong> — the eye follows smooth lines and curves. This is why line charts read as trends.</li>
+  <li><strong>Connection</strong> — elements joined by a line read as related. Strongest grouping signal of all.</li>
+</ul>
+
+<h3>The attributes of a good chart</h3>
+
+<div class="compare-grid">
+  <div class="col">
+    <h4>✅ Good chart</h4>
+    <ul>
+      <li>Answers one question</li>
+      <li>Truthful axes (0 baseline on bar, honest scale on line)</li>
+      <li>Direct labels instead of legends where possible</li>
+      <li>Colour used meaningfully</li>
+      <li>Text big enough to read at final size</li>
+      <li>No chartjunk (gratuitous gridlines, 3D, shadows)</li>
+    </ul>
+  </div>
+  <div class="col">
+    <h4>❌ Bad chart</h4>
+    <ul>
+      <li>Tries to answer everything</li>
+      <li>Truncated y-axis exaggerates tiny differences</li>
+      <li>Legend forces eye saccades between chart and key</li>
+      <li>Colour is random or misleading</li>
+      <li>Text too small to read when embedded</li>
+      <li>3D effects distort quantities</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Charts to avoid</h3>
+
+<div class="callout warning">
+  <span class="label">⚠ 3D charts</span>
+  <p>
+    The 3D effect distorts the quantities. A reader cannot tell if the
+    green bar is actually larger than the blue one because perspective
+    shrinks the back bars. <em>Never</em> use 3D for quantitative
+    communication.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Misleading pie charts</span>
+  <p>
+    Pie charts ask the reader to compare angles — the single hardest
+    perceptual task in charting. Five slices is the usable limit; ten
+    slices is unreadable. Use a horizontal bar chart instead — position on
+    a common axis is the easiest comparison for the human eye.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ModelVisualizer</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>ModelVisualizer</code> wraps Plotly Express behind a consistent
+    API for the chart types you use most often in EDA and model evaluation.
+    It accepts Polars DataFrames directly, returns Plotly Figure objects
+    you can show inline (<code>fig.show()</code>), save as interactive HTML
+    (<code>fig.write_html(...)</code>), or customise further with standard
+    Plotly methods. Same engine in M1 EDA and in M5 model evaluation —
+    consistent look and feel.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+fig = viz.histogram(
+    data=hdb,
+    column="resale_price",
+    bins=40,
+    title="HDB Resale Price Distribution",
+)
+fig.write_html("price_histogram.html")
+</code></pre>
+
+<p>
+  Every chart method on the visualiser follows the same shape: pass a
+  DataFrame, pass the columns, pass a title, get back a Figure. No manual
+  axis configuration, no legend wrangling, no colour palette decisions for
+  the default case — the engine has opinionated defaults that work.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Six Charts from the HDB Data</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Produce six charts that together tell the story of Singapore HDB
+    prices: distribution, price vs area, price by town, correlation
+    heatmap, price trend over time, and flat-type composition by town.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Set up the visualiser and prepare the data.</p>
+    <pre><code class="language-python">import polars as pl
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+)
+
+viz = ModelVisualizer()</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Histogram.</span>
+    <p>Answering "how are prices distributed?". Bins = 40 gives enough
+       resolution to see shape without over-fragmenting.</p>
+    <pre><code class="language-python">fig = viz.histogram(
+    data=hdb,
+    column="resale_price",
+    bins=40,
+    title="HDB Resale Price Distribution",
+)
+fig.write_html("ex6_price_histogram.html")</code></pre>
+    <p>
+      Expect right skew: most transactions in the 350k–600k range, a long
+      tail of million-dollar flats. Mean will be higher than median as a
+      result.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Scatter.</span>
+    <p>Answering "how does price relate to area?". Sample to 5,000 points
+       — a scatter of 500,000 points is unreadable ink.</p>
+    <pre><code class="language-python">hdb_sample = hdb.sample(n=5_000, seed=42)
+fig = viz.scatter(
+    data=hdb_sample,
+    x="floor_area_sqm",
+    y="resale_price",
+    title="HDB Resale Price vs Floor Area",
+)
+fig.write_html("ex6_price_vs_area.html")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Horizontal bar.</span>
+    <p>Answering "which towns have the highest median price?". Aggregate
+       first, then feed the named dict to <code>metric_comparison</code>.</p>
+    <pre><code class="language-python">district_prices = (
+    hdb.group_by("town")
+    .agg(pl.col("resale_price").median().alias("median_price"))
+    .sort("median_price", descending=True)
+)
+
+price_by_town = {
+    town: {"Median Price (S$)": price}
+    for town, price in zip(
+        district_prices["town"].to_list(),
+        district_prices["median_price"].to_list(),
+    )
+}
+
+fig = viz.metric_comparison(price_by_town)
+fig.write_html("ex6_median_by_town.html")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Line chart.</span>
+    <p>Answering "how has price per sqm changed over time?". Aggregate to
+       monthly first.</p>
+    <pre><code class="language-python">monthly = (
+    hdb.group_by("transaction_date")
+    .agg(pl.col("price_per_sqm").median().alias("median_psm"))
+    .sort("transaction_date")
+)
+
+fig = viz.training_history(
+    {"median_price_sqm": monthly["median_psm"].to_list()}
+)
+fig.write_html("ex6_price_trend.html")</code></pre>
+    <p>
+      <code>training_history</code> was designed for ML training curves
+      but works perfectly for any single-series line chart — that's the
+      beauty of consistent engine APIs.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Heatmap.</span>
+    <p>Answering "how do numeric features correlate?".</p>
+    <pre><code class="language-python">numeric = hdb.select(
+    "resale_price", "floor_area_sqm", "price_per_sqm"
+).drop_nulls()
+
+corr = numeric.corr()
+fig = viz.confusion_matrix(
+    matrix=corr.to_numpy(),
+    labels=numeric.columns,
+    title="HDB Numeric Feature Correlations",
+)
+fig.write_html("ex6_correlation.html")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 7 — Stacked bar.</span>
+    <p>Answering "how does flat-type composition vary across towns?".</p>
+    <pre><code class="language-python">composition = (
+    hdb.group_by("town", "flat_type")
+    .agg(pl.len().alias("count"))
+    .sort("town", "flat_type")
+)
+# Plotly Express handles the stacking when given long-format data
+import plotly.express as px
+fig = px.bar(
+    composition.to_pandas(),
+    x="town", y="count", color="flat_type",
+    title="HDB Flat Type Composition by Town",
+)
+fig.write_html("ex6_composition.html")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Perception Accuracy</h2>
+
+<p>
+  William Cleveland and Robert McGill (1984) ranked the perceptual tasks
+  used in charts by accuracy. Their finding is the empirical foundation of
+  modern chart design:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 380" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Ranked tasks -->
+  <g font-family="Inter" font-size="13" fill="#1E293B">
+    <rect x="30" y="30" width="600" height="30" rx="4" fill="#CCFBF1" stroke="#0D9488"/>
+    <text x="50" y="50">1. Position on a common scale</text>
+    <text x="640" y="50" fill="#0D9488" font-weight="600">most accurate</text>
+
+    <rect x="30" y="70" width="560" height="30" rx="4" fill="#D1FAE5" stroke="#10B981"/>
+    <text x="50" y="90">2. Position on non-aligned scales</text>
+
+    <rect x="30" y="110" width="500" height="30" rx="4" fill="#ECFCCB" stroke="#84CC16"/>
+    <text x="50" y="130">3. Length</text>
+
+    <rect x="30" y="150" width="440" height="30" rx="4" fill="#FEF9C3" stroke="#EAB308"/>
+    <text x="50" y="170">4. Angle / slope</text>
+
+    <rect x="30" y="190" width="380" height="30" rx="4" fill="#FED7AA" stroke="#F97316"/>
+    <text x="50" y="210">5. Area</text>
+
+    <rect x="30" y="230" width="300" height="30" rx="4" fill="#FECACA" stroke="#EF4444"/>
+    <text x="50" y="250">6. Volume</text>
+
+    <rect x="30" y="270" width="220" height="30" rx="4" fill="#FFE4E6" stroke="#F43F5E"/>
+    <text x="50" y="290">7. Colour hue / saturation</text>
+    <text x="260" y="290" fill="#F43F5E" font-weight="600">least accurate</text>
+  </g>
+
+  <text x="400" y="340" text-anchor="middle" font-family="Inter" font-size="13" font-style="italic" fill="#64748B">
+    Bar charts use #1 (bar lengths on a common axis).  Pie charts use #4 (angles).  3D uses #5/#6.
+  </text>
+  <text x="400" y="360" text-anchor="middle" font-family="Inter" font-size="13" font-style="italic" fill="#64748B">
+    Always encode the most important comparison using the most accurate perceptual task.
+  </text>
+</svg>
+<figcaption>Cleveland–McGill ranking. The perceptual task you ask the reader to perform determines how accurately they can compare values.</figcaption>
+</figure>
+
+<p>
+  The practical rule: for quantitative comparisons, prefer charts that use
+  position on a common scale (bar charts, dot plots, scatter plots). Avoid
+  charts that rely on angle (pie charts) or area (bubble charts) when
+  accurate comparison matters. Colour is the least reliable quantitative
+  channel — use it for categories, not for magnitudes.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Too many points on a scatter</span>
+  <p>
+    500,000 points on a scatter is a grey blob — you cannot see individual
+    observations or the relationship. Sample down to 2,000–10,000 points
+    for scatter, or switch to a 2D histogram / hexbin for density.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Truncated y-axis on bar charts</span>
+  <p>
+    If your bars start at 400 instead of 0, a 5% difference looks like a
+    50% difference. <em>Bar charts must start at zero</em> — the length of
+    the bar encodes the value. Line charts may start at non-zero if you
+    are emphasising change, but always label the axis clearly.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Random colour choices</span>
+  <p>
+    A chart with ten bars in ten random colours reads as chaos. Either use
+    a single colour for non-categorical data, a sequential palette for
+    ordered categories, or a diverging palette for values with a meaningful
+    middle. Random rainbow palettes break the similarity principle.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Title as header instead of takeaway</span>
+  <p>
+    "HDB resale prices" is a <em>label</em>, not a takeaway. "Central
+    districts command a 60% premium over peripheral towns" is a takeaway.
+    Use chart titles to state the conclusion, not the topic.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Histogram</h3>
+  <p>
+    Produce a histogram of <code>floor_area_sqm</code> with 30 bins.
+    Describe the shape in one sentence.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Scatter (sampled)</h3>
+  <p>
+    Sample 3,000 HDB transactions. Plot <code>floor_area_sqm</code> vs
+    <code>resale_price</code>. Overlay a trend by computing
+    <code>price_per_sqm</code> and adding it as a colour dimension.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Bar</h3>
+  <p>
+    Bar chart of the 10 towns with the highest median price per square
+    metre. Sort descending. Write a one-sentence title stating the
+    takeaway.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise D — Line</h3>
+  <p>
+    Plot the monthly median price per sqm for two towns (your choice).
+    Add a 12-month rolling mean overlay. What pattern do you see?
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 1.5's trend computations become today's line charts. Lesson 1.7's
+  DataExplorer generates visualisations automatically from the same
+  patterns you are building manually. Module 2's exploratory data analysis
+  relies on these six chart types. Module 5's model evaluation reuses
+  <code>ModelVisualizer</code> for confusion matrices, ROC curves, and
+  feature importance. The Cleveland–McGill ranking drives every default
+  in the engine's chart choices.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Visualisation is a design discipline as much as a technical one. The
+  six chart types you met today cover almost every question you will be
+  asked. The Gestalt principles tell you <em>why</em> one choice reads
+  better than another. The Cleveland–McGill ranking tells you <em>which</em>
+  perceptual task to pick for the comparison you want the reader to make.
+  ModelVisualizer gives you the tools without the boilerplate.
+</p>
+<p>
+  The biggest habit you take away today: <strong>every chart answers one
+  question</strong>. State the question before you build the chart. If
+  you cannot, the chart is not ready. If you can, your chart-type choice
+  follows automatically.
+</p>
+<p>
+  In Lesson 1.7 we stop hand-rolling exploration and meet the engine that
+  automates it. <code>DataExplorer</code> profiles a dataset in one call,
+  surfaces eight kinds of quality alerts, and generates a suite of
+  diagnostic visualisations — the same ones you just built by hand, at
+  scale, for any dataset you point it at.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../05/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.5 Window Functions and Trends
+  </a>
+  <a href="../07/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.7 Automated Data Profiling
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

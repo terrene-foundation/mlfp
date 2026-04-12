@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.8 — DL Foundations: Neural Networks and Training Toolkit | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.8</span>
+  DL Foundations — Neural Networks and the Training Toolkit
+</h1>
+
+<p class="lead">
+  In Lesson 4.7 you watched matrix factorisation learn embeddings by
+  minimising reconstruction error. A neural network does the exact same
+  thing — hidden layer activations ARE embeddings, learned by minimising
+  a loss function. The difference: neural networks can learn
+  <strong>non-linear</strong> combinations through activation functions.
+  Today you build a neural network from scratch — forward pass,
+  backpropagation, gradient descent — then equip it with the full
+  training toolkit: activations, dropout, batch normalisation,
+  optimisers, learning rate schedules, and early stopping. This toolkit
+  is your equipment for every architecture in Module 5.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Bridge from Matrix Factorisation</h2>
+
+<p>
+  In 4.7, matrix factorisation decomposed $R \approx U V^T$. The
+  rows of $U$ and $V$ are embeddings — features discovered by
+  optimisation. A neural network generalises this:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">From matrix factorisation to neural networks</text>
+  <!-- MF side -->
+  <rect x="30" y="50" width="300" height="160" rx="8" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="180" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">Matrix Factorisation (4.7)</text>
+  <text x="40" y="105" font-size="12" fill="#1E293B">Input: user-item pair</text>
+  <text x="40" y="130" font-size="12" fill="#1E293B">Embeddings: U, V (linear)</text>
+  <text x="40" y="155" font-size="12" fill="#1E293B">Prediction: u^T v (dot product)</text>
+  <text x="40" y="180" font-size="12" fill="#1E293B">Loss: (r - u^T v)^2</text>
+  <text x="40" y="200" font-size="12" fill="#1E293B">Update: ALS / SGD</text>
+
+  <!-- Arrow -->
+  <line x1="340" y1="130" x2="380" y2="130" stroke="#0D9488" stroke-width="3"/>
+  <polygon points="380,130 374,126 374,134" fill="#0D9488"/>
+  <text x="360" y="118" text-anchor="middle" font-size="10" fill="#0D9488">generalise</text>
+
+  <!-- NN side -->
+  <rect x="390" y="50" width="300" height="160" rx="8" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="540" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#4F46E5">Neural Network (4.8)</text>
+  <text x="400" y="105" font-size="12" fill="#1E293B">Input: feature vector x</text>
+  <text x="400" y="130" font-size="12" fill="#1E293B">Embeddings: hidden activations (non-linear)</text>
+  <text x="400" y="155" font-size="12" fill="#1E293B">Prediction: f(Wx + b)</text>
+  <text x="400" y="180" font-size="12" fill="#1E293B">Loss: any differentiable function</text>
+  <text x="400" y="200" font-size="12" fill="#1E293B">Update: backprop + gradient descent</text>
+</svg>
+<figcaption>Neural networks generalise matrix factorisation: both learn embeddings via optimisation, but networks add non-linearity through activation functions.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Neural network architecture</h3>
+
+<p>
+  A feedforward neural network is a stack of layers. Each layer
+  computes $\mathbf{z} = W\mathbf{x} + \mathbf{b}$ (a linear
+  transformation) followed by an activation function
+  $\mathbf{a} = f(\mathbf{z})$ (a non-linear transformation).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">A 3-layer neural network</text>
+  <!-- Input layer -->
+  <g>
+    <circle cx="100" cy="80" r="18" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+    <text x="100" y="84" text-anchor="middle" font-size="11">x₁</text>
+    <circle cx="100" cy="140" r="18" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+    <text x="100" y="144" text-anchor="middle" font-size="11">x₂</text>
+    <circle cx="100" cy="200" r="18" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+    <text x="100" y="204" text-anchor="middle" font-size="11">x₃</text>
+    <text x="100" y="245" text-anchor="middle" font-size="11" fill="#22C55E" font-weight="600">Input</text>
+  </g>
+  <!-- Hidden layer 1 -->
+  <g>
+    <circle cx="280" cy="70" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="280" y="74" text-anchor="middle" font-size="10">h₁</text>
+    <circle cx="280" cy="140" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="280" y="144" text-anchor="middle" font-size="10">h₂</text>
+    <circle cx="280" cy="210" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="280" y="214" text-anchor="middle" font-size="10">h₃</text>
+    <text x="280" y="245" text-anchor="middle" font-size="11" fill="#3B82F6" font-weight="600">Hidden 1</text>
+  </g>
+  <!-- Hidden layer 2 -->
+  <g>
+    <circle cx="440" cy="100" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="440" y="104" text-anchor="middle" font-size="10">h₄</text>
+    <circle cx="440" cy="180" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="440" y="184" text-anchor="middle" font-size="10">h₅</text>
+    <text x="440" y="245" text-anchor="middle" font-size="11" fill="#3B82F6" font-weight="600">Hidden 2</text>
+  </g>
+  <!-- Output -->
+  <g>
+    <circle cx="600" cy="140" r="18" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="600" y="144" text-anchor="middle" font-size="11">ŷ</text>
+    <text x="600" y="245" text-anchor="middle" font-size="11" fill="#F59E0B" font-weight="600">Output</text>
+  </g>
+  <!-- Connections (simplified) -->
+  <g stroke="#CBD5E1" stroke-width="1" opacity="0.5">
+    <line x1="118" y1="80" x2="262" y2="70"/><line x1="118" y1="80" x2="262" y2="140"/><line x1="118" y1="80" x2="262" y2="210"/>
+    <line x1="118" y1="140" x2="262" y2="70"/><line x1="118" y1="140" x2="262" y2="140"/><line x1="118" y1="140" x2="262" y2="210"/>
+    <line x1="118" y1="200" x2="262" y2="70"/><line x1="118" y1="200" x2="262" y2="140"/><line x1="118" y1="200" x2="262" y2="210"/>
+    <line x1="298" y1="70" x2="422" y2="100"/><line x1="298" y1="70" x2="422" y2="180"/>
+    <line x1="298" y1="140" x2="422" y2="100"/><line x1="298" y1="140" x2="422" y2="180"/>
+    <line x1="298" y1="210" x2="422" y2="100"/><line x1="298" y1="210" x2="422" y2="180"/>
+    <line x1="458" y1="100" x2="582" y2="140"/><line x1="458" y1="180" x2="582" y2="140"/>
+  </g>
+</svg>
+<figcaption>Each connection carries a weight. Each node applies: linear transform (Wx + b) then activation function f(z). The hidden activations are learned embeddings.</figcaption>
+</figure>
+
+<h3>Forward pass</h3>
+
+<p>For each layer $l$:</p>
+
+<div class="annotated-equation">
+  $$ \mathbf{z}^{(l)} = W^{(l)} \mathbf{a}^{(l-1)} + \mathbf{b}^{(l)} \qquad \mathbf{a}^{(l)} = f\bigl(\mathbf{z}^{(l)}\bigr) $$
+</div>
+
+<p>
+  The final $\mathbf{a}^{(L)}$ is the prediction $\hat{y}$. The loss
+  $\mathcal{L}(\hat{y}, y)$ measures how far the prediction is from
+  the target.
+</p>
+
+<h3>Backpropagation</h3>
+
+<p>
+  Backpropagation computes $\partial \mathcal{L} / \partial W^{(l)}$
+  for every layer by applying the chain rule backward through the
+  network:
+</p>
+
+<div class="annotated-equation">
+  $$ \frac{\partial \mathcal{L}}{\partial W^{(l)}} = \frac{\partial \mathcal{L}}{\partial \mathbf{a}^{(L)}} \cdot \frac{\partial \mathbf{a}^{(L)}}{\partial \mathbf{z}^{(L)}} \cdots \frac{\partial \mathbf{z}^{(l)}}{\partial W^{(l)}} $$
+</div>
+
+<h3>Gradient descent</h3>
+
+<p>Update every weight: $W \leftarrow W - \eta \, \partial \mathcal{L} / \partial W$ where $\eta$ is the learning rate.</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Linear regression with zero hidden layers IS a neural network:
+    $\hat{y} = W \mathbf{x} + b$. Adding hidden layers lets the model
+    "write its own parametric function". Two or more hidden layers can
+    approximate any continuous function (universal approximation theorem).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The DL Training Toolkit</h2>
+
+<h3>Activation functions</h3>
+
+<table>
+  <thead><tr><th>Name</th><th>Formula</th><th>Use case</th></tr></thead>
+  <tbody>
+    <tr><td>ReLU</td><td>$\max(0, z)$</td><td>Default for hidden layers</td></tr>
+    <tr><td>Leaky ReLU</td><td>$\max(0.01z, z)$</td><td>Avoids dead neurons</td></tr>
+    <tr><td>GELU</td><td>$z \cdot \Phi(z)$</td><td>Transformers (M5.4)</td></tr>
+    <tr><td>Sigmoid</td><td>$1/(1+e^{-z})$</td><td>Binary output</td></tr>
+    <tr><td>Softmax</td><td>$e^{z_i}/\sum e^{z_j}$</td><td>Multi-class output</td></tr>
+    <tr><td>Tanh</td><td>$(e^z - e^{-z})/(e^z + e^{-z})$</td><td>RNNs (M5.3)</td></tr>
+  </tbody>
+</table>
+
+<h3>Dropout</h3>
+
+<p>
+  Randomly zero out neurons during training with probability $p$
+  (typically 0.1–0.5). Forces the network to learn redundant
+  representations — no single neuron can be critical. Turn off
+  during inference.
+</p>
+
+<h3>Batch normalisation</h3>
+
+<div class="annotated-equation">
+  $$ \hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}} \qquad y_i = \gamma \hat{x}_i + \beta $$
+</div>
+
+<p>
+  Normalise each layer's inputs to zero mean, unit variance, then
+  rescale with learnable parameters $\gamma$ and $\beta$. Stabilises
+  training and enables higher learning rates.
+</p>
+
+<h3>Optimisers</h3>
+
+<table>
+  <thead><tr><th>Optimiser</th><th>Key idea</th><th>When</th></tr></thead>
+  <tbody>
+    <tr><td>SGD + momentum</td><td>Exponential average of gradients</td><td>Fine-grained control</td></tr>
+    <tr><td>RMSProp</td><td>Per-parameter learning rate</td><td>Non-stationary objectives</td></tr>
+    <tr><td>Adam</td><td>Momentum + RMSProp</td><td>Default first choice</td></tr>
+    <tr><td>AdamW</td><td>Adam + decoupled weight decay</td><td>Transformers, modern default</td></tr>
+  </tbody>
+</table>
+
+<h3>Learning rate schedules</h3>
+
+<p>
+  <strong>Warmup + cosine:</strong> start with a small learning rate,
+  ramp up over the first few epochs (warmup), then decay following a
+  cosine curve. This is the standard schedule for transformer training
+  and works well for most architectures.
+</p>
+
+<h3>Early stopping</h3>
+
+<p>
+  Monitor validation loss each epoch. If it has not improved for
+  $P$ consecutive epochs (patience), stop training and restore the
+  best weights. Prevents overfitting without manual epoch tuning.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Hidden Layers as Automated Feature Engineering</h2>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — the deep insight</span>
+  <p>
+    Hidden layer activations are <em>learned representations</em> of the
+    input. The first hidden layer might learn simple features (edges in
+    images, word associations in text). Deeper layers compose these into
+    complex features (shapes, phrases). The output layer performs supervised
+    prediction on these learned features. This is <strong>representation
+    learning</strong>: the network simultaneously discovers features
+    (unsupervised, in the hidden layers) and uses them for prediction
+    (supervised, in the output layer). The hidden node values are
+    <strong>embeddings</strong> — exactly like the matrix factorisation
+    embeddings in 4.7, but non-linear.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: HDB Price Prediction</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build a 3-layer neural network from scratch for HDB resale price
+    prediction. Implement forward pass, backpropagation, gradient
+    descent. Then add dropout, batch norm, Adam optimiser, and learning
+    rate scheduling. Compare training curves with and without each
+    technique.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Forward pass from scratch.</p>
+    <pre><code class="language-python">import numpy as np
+
+def relu(z):
+    return np.maximum(0, z)
+
+def relu_grad(z):
+    return (z > 0).astype(float)
+
+def forward(X, W1, b1, W2, b2, W3, b3):
+    z1 = X @ W1 + b1;    a1 = relu(z1)
+    z2 = a1 @ W2 + b2;   a2 = relu(z2)
+    z3 = a2 @ W3 + b3;   y_hat = z3  # linear output for regression
+    return z1, a1, z2, a2, z3, y_hat</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Backpropagation and weight update.</p>
+    <pre><code class="language-python">def backward(X, y, z1, a1, z2, a2, z3, y_hat,
+             W1, b1, W2, b2, W3, b3, lr=0.001):
+    m = X.shape[0]
+    # Output layer gradient
+    dz3 = (y_hat - y) / m
+    dW3 = a2.T @ dz3;    db3 = dz3.sum(axis=0)
+    # Hidden layer 2
+    da2 = dz3 @ W3.T
+    dz2 = da2 * relu_grad(z2)
+    dW2 = a1.T @ dz2;    db2 = dz2.sum(axis=0)
+    # Hidden layer 1
+    da1 = dz2 @ W2.T
+    dz1 = da1 * relu_grad(z1)
+    dW1 = X.T @ dz1;     db1 = dz1.sum(axis=0)
+    # Update
+    W3 -= lr * dW3; b3 -= lr * db3
+    W2 -= lr * dW2; b2 -= lr * db2
+    W1 -= lr * dW1; b1 -= lr * db1
+    return W1, b1, W2, b2, W3, b3</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Training loop with loss tracking.</p>
+    <pre><code class="language-python">losses = []
+for epoch in range(500):
+    z1, a1, z2, a2, z3, y_hat = forward(X_train, W1, b1, W2, b2, W3, b3)
+    loss = np.mean((y_hat - y_train) ** 2)
+    losses.append(loss)
+    W1, b1, W2, b2, W3, b3 = backward(
+        X_train, y_train, z1, a1, z2, a2, z3, y_hat,
+        W1, b1, W2, b2, W3, b3, lr=0.001)
+    if epoch % 50 == 0:
+        print(f"Epoch {epoch}: MSE = {loss:.4f}")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Zero-initialising all weights.</strong> Every neuron computes the same gradient — symmetry is never broken. Use He initialisation for ReLU layers.</li>
+  <li><strong>Forgetting to turn off dropout at inference.</strong> Predictions become noisy and non-deterministic.</li>
+  <li><strong>Learning rate too high.</strong> Loss oscillates wildly or diverges. Start with $10^{-3}$ and use a schedule.</li>
+  <li><strong>No early stopping.</strong> The model overfits for 1000 epochs when it should have stopped at 200.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 8.</strong></p>
+  <ol>
+    <li>Build a 3-layer neural network from scratch for HDB price prediction.</li>
+    <li>Implement forward pass, backpropagation, and gradient descent.</li>
+    <li>Add dropout (p=0.2) and plot training curves with and without.</li>
+    <li>Add batch normalisation and compare convergence speed.</li>
+    <li>Replace SGD with Adam and compare.</li>
+    <li>Add cosine learning rate scheduling and early stopping.</li>
+    <li>Write one paragraph explaining: how are hidden layers automated feature engineering?</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to 4.7 PIVOT:</strong> matrix factorisation learns linear embeddings. Neural networks learn non-linear ones. Same core idea.</li>
+  <li><strong>Back to M2 regression:</strong> linear regression is a neural network with zero hidden layers. Adding layers extends the expressiveness.</li>
+  <li><strong>Forward to M5:</strong> every architecture (CNN, RNN, Transformer, GAN) is a specialised neural network with different connectivity patterns and the same training toolkit.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+  <h2>Reflection</h2>
+  <p>
+    You have now completed Module 4. The journey: clustering (discover
+    groups), PCA (discover axes), anomaly detection (discover outliers),
+    association rules (discover co-occurrence), NLP (discover topics),
+    recommenders (THE PIVOT — discover embeddings via optimisation), and
+    neural networks (generalise with non-linearity). Every concept in
+    Module 5 — CNNs, RNNs, Transformers, GANs, GNNs — is a specialised
+    neural network architecture. The training toolkit you learned today
+    is the equipment for all of them.
+  </p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    4.7 Recommender Systems
+  </a>
+  <a href="../../../mlfp05/lessons/01/textbook.html" class="next">
+    <span class="label">Next →</span>
+    5.1 Autoencoders
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

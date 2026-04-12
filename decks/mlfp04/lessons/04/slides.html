@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.4 — Anomaly Detection | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.4</p>
+  <h1>Anomaly Detection and Ensembles</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Z-score · IQR · Isolation Forest · LOF · EnsembleEngine</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> detect fraud without labels
+  </div>
+</section>
+
+<section>
+  <h2>The opposite question</h2>
+  <ul>
+    <li>Clustering: "Which group does this point belong to?"</li>
+    <li>Anomaly detection: "Which points don't belong to any group?"</li>
+    <li>Use cases: fraud, defects, sensor faults, intrusions, churn precursors.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> anomalies are rare. If "anomalies" are 20% of your data, you have a classification problem, not an anomaly detection one.
+  </div>
+</section>
+
+<section>
+  <h2>Three types of outliers</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="30" width="640" height="180" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <g fill="#3B82F6" opacity="0.6">
+        <circle cx="180" cy="115" r="3"/><circle cx="200" cy="125" r="3"/><circle cx="220" cy="140" r="3"/>
+        <circle cx="240" cy="115" r="3"/><circle cx="260" cy="130" r="3"/><circle cx="280" cy="120" r="3"/>
+        <circle cx="190" cy="140" r="3"/><circle cx="230" cy="130" r="3"/><circle cx="250" cy="145" r="3"/>
+      </g>
+      <g fill="#22C55E" opacity="0.6">
+        <circle cx="420" cy="75" r="3"/><circle cx="440" cy="85" r="3"/><circle cx="460" cy="70" r="3"/>
+      </g>
+      <circle cx="600" cy="180" r="6" fill="#EF4444" stroke="black"/><text x="615" y="185" font-size="10" fill="#EF4444">far from all</text>
+      <circle cx="350" cy="45" r="6" fill="#EF4444" stroke="black"/><text x="365" y="50" font-size="10" fill="#EF4444">rare direction</text>
+      <circle cx="340" cy="180" r="6" fill="#EF4444" stroke="black"/><text x="355" y="185" font-size="10" fill="#EF4444">in a gap</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em; color: #64748B;">Different methods catch different types.</p>
+</section>
+
+<section>
+  <h2>Z-score: univariate, assumes normality</h2>
+  \[ z_i \;=\; \frac{x_i - \bar x}{s}\qquad |z_i| > 3\ \Rightarrow\ \text{flag} \]
+  <ul>
+    <li>Simple, fast, one-line.</li>
+    <li>Breaks on right-skewed data (revenue, session length).</li>
+    <li>Outliers inflate $\bar x$ and $s$, hiding each other.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>IQR: robust to skew</h2>
+  \[ \text{flag if } x &lt; Q_1 - 1.5\,\text{IQR} \quad\text{or}\quad x > Q_3 + 1.5\,\text{IQR} \]
+  <ul>
+    <li>Quartiles are not affected by a few extreme values.</li>
+    <li>This is what box-plot whiskers use.</li>
+    <li>Default univariate detector for business data.</li>
+  </ul>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> winsorisation = cap at IQR bounds instead of dropping. Preserves sample size for downstream stats.
+  </div>
+</section>
+
+<section>
+  <h2>Univariate methods miss combinations</h2>
+  <ul>
+    <li>Small transaction: normal.</li>
+    <li>Midnight transaction: normal.</li>
+    <li>Small + midnight + new device + unusual location: <em>suspicious</em>.</li>
+  </ul>
+  <p>Need a multivariate method. Enter Isolation Forest.</p>
+</section>
+
+<section>
+  <h2>Isolation Forest — few splits isolate anomalies</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="30" width="620" height="170" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <g fill="#3B82F6" opacity="0.6">
+        <circle cx="200" cy="120" r="3"/><circle cx="220" cy="130" r="3"/><circle cx="240" cy="145" r="3"/>
+        <circle cx="260" cy="120" r="3"/><circle cx="280" cy="135" r="3"/><circle cx="300" cy="125" r="3"/>
+      </g>
+      <circle cx="520" cy="70" r="5" fill="#EF4444" stroke="black"/>
+      <line x1="420" y1="30" x2="420" y2="200" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 3"/>
+      <text x="425" y="45" font-size="11" fill="#F59E0B">split 1 isolates it</text>
+      <line x1="245" y1="30" x2="245" y2="200" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+      <line x1="275" y1="30" x2="275" y2="200" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+      <line x1="190" y1="135" x2="320" y2="135" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="180" y="180" font-size="11" fill="#3B82F6">normals: many splits needed</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Isolation Forest score</h2>
+  \[ s(\mathbf{x}, n) \;=\; 2^{-E(h(\mathbf{x}))/c(n)} \]
+  <ul>
+    <li>$E(h(\mathbf{x}))$ = average path length across trees.</li>
+    <li>$c(n)$ = expected path in random binary tree.</li>
+    <li>$s \approx 1$ → strong anomaly. $s \approx 0.5$ → normal.</li>
+    <li>Threshold: typically $s &gt; 0.6$.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>LOF — local density matters</h2>
+  \[ \text{LOF}_k(\mathbf{x}) \;=\; \frac{1}{|N_k|}\sum_{\mathbf{o}\in N_k}\ \frac{\text{lrd}_k(\mathbf{o})}{\text{lrd}_k(\mathbf{x})} \]
+  <ul>
+    <li>Compares point density to neighbour density.</li>
+    <li>LOF ≈ 1: same density → normal.</li>
+    <li>LOF > 1.5: anomalous relative to local context.</li>
+    <li>Right choice when clusters have different densities.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Method × outlier type matrix</h2>
+  <table style="font-size: 0.8em;">
+    <thead><tr><th></th><th>Z-score / IQR</th><th>Iso Forest</th><th>LOF</th></tr></thead>
+    <tbody>
+      <tr><td>Extreme single feature</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Strange combination</td><td>✗</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Local density anomaly</td><td>✗</td><td>partial</td><td>✓</td></tr>
+      <tr><td>High-dimensional</td><td>✗</td><td>✓</td><td>slow</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Score blending — more robust than any single method</h2>
+  <pre><code class="language-python" data-trim>
+def normalise(x):
+    return (x - x.min()) / (x.max() - x.min() + 1e-9)
+
+z_s = normalise(np.abs(z_scores))
+if_s = normalise(-iforest.decision_function(X))
+lof_s = normalise(-lof.negative_outlier_factor_)
+
+blended = (z_s + if_s + lof_s) / 3
+anomalies = blended &gt; 0.7
+  </code></pre>
+  <p>Caught-by-all-three → almost certainly anomaly. Caught-by-one → review.</p>
+</section>
+
+<section>
+  <h2>EnsembleEngine does this with one API</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import EnsembleEngine
+
+ensemble = EnsembleEngine()
+blended = ensemble.blend(
+    scores={"z": z_s, "iforest": if_s, "lof": lof_s},
+    normalise=True,
+    agg="mean",
+)
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> <code>blend()</code>, <code>stack()</code>, <code>bag()</code>, <code>boost()</code> — unified ensemble API for both anomaly detection and supervised learning.
+  </div>
+</section>
+
+<section>
+  <h2>Worked example: financial fraud</h2>
+  <pre><code class="language-python" data-trim>
+features = ["amount", "hour", "recipient_count_24h", "location_km"]
+X = StandardScaler().fit_transform(...)
+
+iforest = IsolationForest(contamination=0.01, random_state=42).fit(X)
+lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01)
+lof.fit_predict(X)
+
+# ... blend scores, flag top 1% ...
+print(f"Flagged {anomalies.sum()} of {len(X)} transactions")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Contamination matters</h2>
+  <ul>
+    <li>Isolation Forest / LOF need <code>contamination</code> — approx. anomaly fraction.</li>
+    <li>Set too high → false positives explode.</li>
+    <li>Set too low → real anomalies missed.</li>
+    <li>Rule of thumb: start with the real base rate, then tune by inspecting top-$k$.</li>
+  </ul>
+  <div class="callout-slide warning">
+    <strong>⚠ Warning:</strong> there is no precision/recall without labels. You must inspect manually.
+  </div>
+</section>
+
+<section>
+  <h2>Four rookie mistakes</h2>
+  <ol>
+    <li>Contamination set to 10% when the real rate is 0.1%.</li>
+    <li>Z-score on right-skewed data without log-transform.</li>
+    <li>Unscaled features in multivariate methods.</li>
+    <li>Treating raw anomaly scores as probabilities across methods.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Production: DriftMonitor uses this</h2>
+  <p>
+    The same algorithms — trained on yesterday's distribution — flag
+    today's data as "drifted" when too many points look anomalous
+    compared to the reference.
+  </p>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import DriftMonitor
+monitor = DriftMonitor(reference=X_train, method="iforest")
+score = monitor.check(X_today)
+if score.drift_detected:
+    alert("Distribution shift — consider retraining")
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">Full DriftMonitor coverage in M5.</p>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Apply Z-score, IQR, Isolation Forest, LOF.</li>
+    <li>✓ Explain which outlier type each method catches.</li>
+    <li>✓ Normalise and blend scores into a single signal.</li>
+    <li>✓ Use EnsembleEngine for unified ensembles.</li>
+    <li>✓ Recognise when unsupervised anomaly detection will not work.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> 4.5 — association rules. What <em>co-occurs</em> in transactional data?
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

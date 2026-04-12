@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.5 — Linear Regression | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.5</span>
+  Linear Regression
+</h1>
+
+<p class="lead">
+  Linear regression is the most widely used statistical model in the world,
+  and the first predictive model you will build. This lesson derives OLS
+  from first principles — squared-error loss, normal equations, the closed-
+  form $\hat\beta = (X^\top X)^{-1} X^\top y$ — and connects regression to
+  the $t$-tests, $R^2$, and $F$-statistics you already know. Regression
+  coefficients are sample statistics, and the inference tools from 2.3 apply
+  directly.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The model</h2>
+
+<p>
+  Linear regression models a continuous outcome $y$ as a linear combination
+  of predictors $x_1, \ldots, x_k$ plus an error term:
+</p>
+
+$$y_i \;=\; \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \cdots + \beta_k x_{ik} + \varepsilon_i$$
+
+<p>
+  The intercept $\beta_0$ is the expected $y$ when all predictors are zero.
+  Each slope $\beta_j$ is the expected change in $y$ for a one-unit increase
+  in $x_j$ <em>holding all other predictors constant</em> — the "ceteris
+  paribus" interpretation. The errors $\varepsilon_i$ are the unobserved
+  residuals that capture everything the linear combination does not
+  explain.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <line x1="60" y1="220" x2="680" y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="60" y1="40"  x2="60"  y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="680" y="245" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">floor_area (m²)</text>
+  <text x="40" y="130" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 40 130)">resale price</text>
+
+  <!-- Scatter -->
+  <g fill="#0D9488">
+    <circle cx="120" cy="190" r="3"/>
+    <circle cx="150" cy="175" r="3"/>
+    <circle cx="170" cy="180" r="3"/>
+    <circle cx="200" cy="160" r="3"/>
+    <circle cx="230" cy="165" r="3"/>
+    <circle cx="250" cy="140" r="3"/>
+    <circle cx="280" cy="155" r="3"/>
+    <circle cx="310" cy="125" r="3"/>
+    <circle cx="340" cy="135" r="3"/>
+    <circle cx="370" cy="115" r="3"/>
+    <circle cx="400" cy="100" r="3"/>
+    <circle cx="430" cy="120" r="3"/>
+    <circle cx="460" cy="95" r="3"/>
+    <circle cx="490" cy="85" r="3"/>
+    <circle cx="520" cy="100" r="3"/>
+    <circle cx="560" cy="70" r="3"/>
+    <circle cx="590" cy="80" r="3"/>
+    <circle cx="620" cy="60" r="3"/>
+  </g>
+
+  <!-- Best fit line -->
+  <line x1="90" y1="200" x2="650" y2="50" stroke="#F59E0B" stroke-width="2.5"/>
+  <text x="520" y="45" font-family="Inter" font-size="11" fill="#F59E0B">best-fit line</text>
+
+  <!-- Residual example -->
+  <line x1="310" y1="125" x2="310" y2="155" stroke="#EF4444" stroke-dasharray="3 3" stroke-width="1.5"/>
+  <text x="320" y="145" font-family="Inter" font-size="10" fill="#EF4444">residual</text>
+</svg>
+<figcaption>The picture. Dots are observations. The best-fit line minimises the sum of squared vertical distances (residuals) between dots and line. This is OLS — "ordinary least squares".</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Deriving OLS</h2>
+
+<p>
+  Stack the $n$ observations into vector/matrix form. Let $y$ be the
+  $n$-vector of outcomes, $X$ the $n \times (k+1)$ design matrix (first
+  column all ones for the intercept), $\beta$ the $(k+1)$-vector of
+  coefficients, and $\varepsilon$ the $n$-vector of errors:
+</p>
+
+$$y \;=\; X\beta + \varepsilon$$
+
+<p>
+  We want to pick $\beta$ to minimise the sum of squared residuals:
+</p>
+
+<div class="annotated-equation">
+  $$S(\beta) \;=\; \sum_{i=1}^{n}(y_i - x_i^\top \beta)^2 \;=\; (y - X\beta)^\top (y - X\beta)$$
+  <div class="annotations">
+    <span>$S(\beta)$ — the loss</span>
+    <span>vector form makes differentiation clean</span>
+  </div>
+</div>
+
+<p>
+  Expand the loss:
+</p>
+
+$$S(\beta) \;=\; y^\top y - 2\beta^\top X^\top y + \beta^\top X^\top X \beta$$
+
+<p>
+  Take the gradient with respect to $\beta$ and set it to zero:
+</p>
+
+$$\frac{\partial S}{\partial \beta} \;=\; -2 X^\top y + 2 X^\top X \beta \;=\; 0$$
+
+<p>
+  Solving for $\beta$ gives the <strong>normal equations</strong>:
+</p>
+
+$$X^\top X \beta \;=\; X^\top y$$
+
+<p>
+  If $X^\top X$ is invertible (which requires the columns of $X$ to be
+  linearly independent — no perfect multicollinearity), we can solve:
+</p>
+
+<div class="annotated-equation">
+  $$\boxed{\;\hat\beta \;=\; (X^\top X)^{-1} X^\top y\;}$$
+  <div class="annotations">
+    <span>$(X^\top X)^{-1}$ — normal matrix inverse, $(k+1)\times(k+1)$</span>
+    <span>$X^\top y$ — score vector, $(k+1) \times 1$</span>
+  </div>
+</div>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: why squared error?</span>
+  <p>
+    Squared-error loss is not arbitrary. If the errors $\varepsilon_i$ are
+    i.i.d. Normal with mean 0 and variance $\sigma^2$, the MLE of $\beta$
+    (from Lesson 2.2) is exactly the OLS estimator. Writing out the
+    log-likelihood of a Normal model and differentiating gives back the
+    normal equations. So OLS is not just "intuitive" — it is MLE under
+    the Normal assumption.
+  </p>
+</div>
+
+<h3>Fitted values and residuals</h3>
+
+<p>
+  The fitted values are $\hat y = X\hat\beta$. The residuals are
+  $e = y - \hat y$. The residual vector is always orthogonal to the column
+  space of $X$ (a consequence of the normal equations: $X^\top e = 0$),
+  which is why OLS is sometimes described as "projecting $y$ onto the
+  column space of $X$".
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Standard errors and the $t$-statistic</h2>
+
+<p>
+  Under the Normal-error assumption, $\hat\beta$ itself is Normally
+  distributed around the true $\beta$ with covariance matrix:
+</p>
+
+$$\text{Var}(\hat\beta) \;=\; \sigma^2 (X^\top X)^{-1}$$
+
+<p>
+  We estimate $\sigma^2$ from the residuals:
+</p>
+
+$$\hat\sigma^2 \;=\; \frac{e^\top e}{n - k - 1}$$
+
+<p>
+  Note the $n - k - 1$ divisor — one degree of freedom is consumed by each
+  of the $k + 1$ coefficients, leaving $n - k - 1$. This is the general
+  form of Bessel's correction. The standard error of coefficient $\beta_j$
+  is the square root of the $j$-th diagonal entry of $\hat\sigma^2 (X^\top X)^{-1}$.
+</p>
+
+<p>
+  The $t$-statistic for testing $H_0: \beta_j = 0$ is:
+</p>
+
+<div class="annotated-equation">
+  $$t_j \;=\; \frac{\hat\beta_j}{\text{SE}(\hat\beta_j)}$$
+  <div class="annotations">
+    <span>same $t$-statistic as Lesson 2.3</span>
+    <span>distributed $t_{n-k-1}$ under $H_0$</span>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Confidence</th><th>Approximate $t$ cutoff</th></tr></thead>
+  <tbody>
+    <tr><td>90%</td><td>$|t| > 1.6$</td></tr>
+    <tr><td>95%</td><td>$|t| > 1.96$</td></tr>
+    <tr><td>99%</td><td>$|t| > 2.58$</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>$R^2$ and the $F$-statistic</h2>
+
+<p>
+  $R^2$ is the proportion of variance in $y$ explained by the model. Define:
+</p>
+
+<ul>
+  <li>$\text{SS}_{\text{tot}} = \sum_i (y_i - \bar y)^2$ — total sum of squares (spread of $y$).</li>
+  <li>$\text{SS}_{\text{res}} = \sum_i (y_i - \hat y_i)^2$ — residual sum of squares (what the model did not explain).</li>
+  <li>$\text{SS}_{\text{reg}} = \sum_i (\hat y_i - \bar y)^2$ — regression sum of squares (what the model did explain).</li>
+</ul>
+
+<p>
+  These satisfy $\text{SS}_{\text{tot}} = \text{SS}_{\text{reg}} + \text{SS}_{\text{res}}$
+  (because the residuals are orthogonal to the fitted values).
+</p>
+
+<div class="annotated-equation">
+  $$R^2 \;=\; 1 - \frac{\text{SS}_{\text{res}}}{\text{SS}_{\text{tot}}} \;=\; \frac{\text{SS}_{\text{reg}}}{\text{SS}_{\text{tot}}}$$
+  <div class="annotations">
+    <span>$R^2 = 1$ — perfect fit</span>
+    <span>$R^2 = 0$ — no better than the mean</span>
+  </div>
+</div>
+
+<p>
+  $R^2$ only goes up when you add predictors — even useless ones. The
+  <strong>adjusted $R^2$</strong> penalises model complexity:
+</p>
+
+$$R^2_{\text{adj}} \;=\; 1 - (1 - R^2) \cdot \frac{n - 1}{n - k - 1}$$
+
+<h3>The $F$-statistic</h3>
+
+<p>
+  The $F$-test compares your full model to the intercept-only model (just
+  the mean of $y$). It asks: "does the model do better than guessing
+  $\bar y$ for everyone?"
+</p>
+
+<div class="annotated-equation">
+  $$F \;=\; \frac{\text{SS}_{\text{reg}} / k}{\text{SS}_{\text{res}} / (n - k - 1)} \;=\; \frac{R^2 / k}{(1 - R^2) / (n - k - 1)}$$
+  <div class="annotations">
+    <span>numerator — variance explained per parameter</span>
+    <span>denominator — unexplained variance per residual df</span>
+  </div>
+</div>
+
+<p>
+  Under $H_0$ (all slopes are zero), $F$ follows an $F_{k, n-k-1}$
+  distribution. Large $F$ → small p-value → reject the intercept-only
+  model in favour of yours.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Categorical variables and dummy encoding</h2>
+
+<p>
+  Linear regression takes numbers. A categorical variable like
+  <code>flat_type ∈ {3-room, 4-room, 5-room, executive}</code> must be
+  encoded as numbers. The standard method is <strong>dummy encoding</strong>:
+  pick one category as the <em>base</em> (often the most common) and create
+  a binary column for each other category.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Original -->
+  <rect x="40" y="40" width="180" height="160" fill="#F8FAFC" stroke="#94A3B8"/>
+  <text x="130" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">flat_type</text>
+  <g font-family="JetBrains Mono" font-size="12" fill="#1E293B">
+    <text x="130" y="65" text-anchor="middle">3-room</text>
+    <text x="130" y="95" text-anchor="middle">4-room</text>
+    <text x="130" y="125" text-anchor="middle">5-room</text>
+    <text x="130" y="155" text-anchor="middle">4-room</text>
+    <text x="130" y="185" text-anchor="middle">executive</text>
+  </g>
+
+  <!-- Arrow -->
+  <line x1="230" y1="120" x2="290" y2="120" stroke="#64748B" stroke-width="2" marker-end="url(#a25)"/>
+  <defs>
+    <marker id="a25" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <!-- Encoded -->
+  <rect x="300" y="40" width="380" height="160" fill="#F0FDFA" stroke="#0D9488"/>
+  <text x="360" y="30" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#0D9488">is_4room</text>
+  <text x="470" y="30" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#0D9488">is_5room</text>
+  <text x="600" y="30" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#0D9488">is_exec</text>
+
+  <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
+    <text x="360" y="65" text-anchor="middle">0</text>
+    <text x="470" y="65" text-anchor="middle">0</text>
+    <text x="600" y="65" text-anchor="middle">0</text>
+
+    <text x="360" y="95" text-anchor="middle">1</text>
+    <text x="470" y="95" text-anchor="middle">0</text>
+    <text x="600" y="95" text-anchor="middle">0</text>
+
+    <text x="360" y="125" text-anchor="middle">0</text>
+    <text x="470" y="125" text-anchor="middle">1</text>
+    <text x="600" y="125" text-anchor="middle">0</text>
+
+    <text x="360" y="155" text-anchor="middle">1</text>
+    <text x="470" y="155" text-anchor="middle">0</text>
+    <text x="600" y="155" text-anchor="middle">0</text>
+
+    <text x="360" y="185" text-anchor="middle">0</text>
+    <text x="470" y="185" text-anchor="middle">0</text>
+    <text x="600" y="185" text-anchor="middle">1</text>
+  </g>
+  <text x="490" y="210" text-anchor="middle" font-family="Inter" font-style="italic" font-size="11" fill="#64748B">3-room is the base category (all zeros)</text>
+</svg>
+<figcaption>Dummy encoding. A $k$-level categorical variable becomes $k - 1$ binary columns. The omitted category is the base; all dummies equal zero for a base-category observation.</figcaption>
+</figure>
+
+<p>
+  The coefficient on <code>is_4room</code> is the expected difference in
+  the outcome between a 4-room flat and a 3-room flat (the base), holding
+  all other predictors constant. You must always identify the base category
+  when interpreting dummy coefficients.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Non-linearity: polynomials and interactions</h2>
+
+<p>
+  "Linear" in linear regression means linear in the coefficients — not
+  linear in the predictors. You can add polynomial and interaction terms
+  and still use OLS:
+</p>
+
+<ul>
+  <li><strong>Polynomial terms</strong>: add $x^2$ (or $x^3$) to capture curvature. HDB floor area has diminishing returns — the second square metre is more valuable than the hundredth.</li>
+  <li><strong>Interaction terms</strong>: add $x_1 \cdot x_2$ to capture effects that depend on each other. A 30-year-old flat in Bishan may not behave like a 30-year-old flat in Yishun.</li>
+  <li><strong>Log transform</strong>: take $\log y$ when $y$ is strictly positive and right-skewed. Coefficients then have a multiplicative interpretation: a one-unit change in $x$ multiplies $y$ by $\exp(\hat\beta)$.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: TrainingPipeline</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>TrainingPipeline</code> runs the regression, stores the coefficients
+    with their standard errors, and logs the full fit summary to
+    <code>ExperimentTracker</code>. In today's exercise you will first roll
+    OLS by hand with numpy to feel the matrix algebra, then recreate the
+    same fit through <code>TrainingPipeline</code> to see what the engine
+    wraps.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: HDB Price Model</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build a model for Singapore HDB 4-room resale prices using floor area,
+    age of the flat, and town as predictors. Interpret coefficients, test
+    significance, evaluate fit, and add polynomial features.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load and prepare.</span>
+    <pre><code class="language-python">import polars as pl
+import numpy as np
+from shared import MLFPDataLoader
+
+df = (
+    MLFPDataLoader().load("mlfp02", "hdb_resale.parquet")
+    .filter(pl.col("flat_type") == "4 ROOM")
+    .filter(pl.col("town").is_in(["TAMPINES", "BISHAN", "YISHUN", "JURONG WEST"]))
+    .with_columns(
+        age=(pl.col("year") - pl.col("lease_commence_date")),
+        log_price=pl.col("resale_price").log(),
+    )
+)
+print(df.shape)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Build the design matrix with dummy encoding.</span>
+    <pre><code class="language-python">df_encoded = df.to_dummies(["town"], drop_first=True)
+y = df_encoded["log_price"].to_numpy()
+X_cols = ["floor_area_sqm", "age", "town_BISHAN", "town_TAMPINES", "town_YISHUN"]
+X = df_encoded.select(X_cols).to_numpy()
+X = np.column_stack([np.ones(len(X)), X])   # intercept
+print(X.shape)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Solve the normal equations.</span>
+    <pre><code class="language-python">XtX = X.T @ X
+Xty = X.T @ y
+beta_hat = np.linalg.solve(XtX, Xty)
+
+names = ["intercept"] + X_cols
+for name, b in zip(names, beta_hat):
+    print(f"{name:>22s}: {b:+.4f}")</code></pre>
+    <p>
+      Typical output: the intercept is the baseline log-price; the
+      coefficient on <code>floor_area_sqm</code> is how log-price changes per
+      additional square metre; the town dummies are the premia over Jurong
+      West (the dropped category).
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Standard errors and $t$-statistics.</span>
+    <pre><code class="language-python">n, p = X.shape
+y_hat = X @ beta_hat
+e = y - y_hat
+sigma2 = (e @ e) / (n - p)
+cov_beta = sigma2 * np.linalg.inv(XtX)
+se = np.sqrt(np.diag(cov_beta))
+t_stats = beta_hat / se
+
+from scipy import stats as scipy_stats
+p_vals = 2 * (1 - scipy_stats.t.cdf(np.abs(t_stats), df=n - p))
+
+for name, b, s, t, pv in zip(names, beta_hat, se, t_stats, p_vals):
+    print(f"{name:>22s}  b={b:+.4f}  se={s:.4f}  t={t:+6.2f}  p={pv:.3g}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — $R^2$, adjusted $R^2$, and $F$-statistic.</span>
+    <pre><code class="language-python">ss_tot = ((y - y.mean())**2).sum()
+ss_res = (e**2).sum()
+ss_reg = ss_tot - ss_res
+r2     = 1 - ss_res / ss_tot
+r2_adj = 1 - (1 - r2) * (n - 1) / (n - p)
+k      = p - 1
+F      = (ss_reg / k) / (ss_res / (n - p))
+p_F    = 1 - scipy_stats.f.cdf(F, k, n - p)
+
+print(f"R²       = {r2:.4f}")
+print(f"R²_adj   = {r2_adj:.4f}")
+print(f"F        = {F:.1f} on ({k}, {n - p}) df, p = {p_F:.3g}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Add a polynomial term.</span>
+    <pre><code class="language-python">X_poly = np.column_stack([X, df_encoded["age"].to_numpy() ** 2])
+beta_poly = np.linalg.solve(X_poly.T @ X_poly, X_poly.T @ y)
+e_poly = y - X_poly @ beta_poly
+r2_poly = 1 - (e_poly @ e_poly) / ss_tot
+print(f"R² with age²: {r2_poly:.4f}")</code></pre>
+    <p>
+      The squared age term captures the curvature — prices drop with age but
+      at a decreasing rate as flats approach lease decay. Adjusted $R^2$ will
+      usually improve (but only slightly).
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Interpreting coefficients</h2>
+
+<table>
+  <thead><tr><th>Coefficient</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td>$\hat\beta_{\text{floor\_area}} = 0.012$</td><td>Each additional $m^2$ increases $\log$ price by 0.012 → $\approx 1.2\%$ increase in price</td></tr>
+    <tr><td>$\hat\beta_{\text{age}} = -0.004$</td><td>Each additional year of age decreases $\log$ price by 0.004 → $\approx 0.4\%$ decrease</td></tr>
+    <tr><td>$\hat\beta_{\text{BISHAN}} = 0.18$</td><td>Bishan commands an 18% premium over Jurong West (the base), holding area and age constant</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The ceteris paribus phrasing ("holding other predictors constant") is
+  essential. The coefficient on age is the marginal effect of age
+  <em>after</em> the model has already absorbed the variation due to area
+  and town. Changing the set of predictors can change every coefficient.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Interpreting in isolation</span>
+  <p>
+    "The coefficient on age is $-0.004$, so a 1-year older flat is 0.4%
+    cheaper." Only in the presence of the other predictors. If you drop
+    <code>town</code> from the model, the age coefficient changes — it
+    picks up the correlation between age and town.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Chasing high $R^2$ by adding predictors</span>
+  <p>
+    $R^2$ only goes up as you add predictors. Always report adjusted $R^2$.
+    And use cross-validation (M3) to check whether the extra variables
+    actually help on unseen data.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Multicollinearity</span>
+  <p>
+    If two predictors are highly correlated, $X^\top X$ becomes nearly
+    singular, the inverse blows up, and standard errors explode. Diagnose
+    with variance inflation factors (VIF). Fix by dropping one, combining
+    them, or using ridge regression (M3).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — By-hand single-predictor regression</h3>
+  <p>
+    With only <code>floor_area</code> as a predictor, compute
+    $\hat\beta = (X^\top X)^{-1} X^\top y$ by hand. Verify that the slope
+    matches $\text{Cov}(x, y) / \text{Var}(x)$ (the familiar single-variable
+    formula).
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Interaction terms</h3>
+  <p>
+    Add an interaction <code>floor_area × is_BISHAN</code>. Does the slope on
+    floor area differ between Bishan and the base town? Interpret the
+    interaction coefficient.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Train/test split</h3>
+  <p>
+    Split the data 80/20. Fit on train. Compute $R^2$ on train and test
+    separately. Then add ten random noise predictors to the model. Watch
+    train $R^2$ climb while test $R^2$ falls. This is overfitting — and the
+    cue for cross-validation in M3.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  OLS is the MLE under Normal errors — the link back to Lesson 2.2. Every
+  coefficient $t$-test uses the same machinery as the one-sample $t$-test
+  from Lesson 2.3. Lesson 2.6 extends the framework to binary outcomes via
+  logistic regression, where there is no closed form and we return to
+  numerical MLE. In Module 3, regularised regression (ridge, lasso) fixes
+  the multicollinearity problem and introduces cross-validation for model
+  selection.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have derived OLS from the loss function, solved the normal
+  equations, computed standard errors, interpreted coefficients, evaluated
+  fit with $R^2$ and $F$, and handled categorical variables through dummy
+  encoding. Every one of these pieces reappears in every regression model
+  you will ever build.
+</p>
+<p>
+  Lesson 2.6 takes the framework and bends it to binary outcomes. The
+  linear combination becomes the input to a sigmoid, and the coefficients
+  become log-odds ratios. Same spirit, new optimisation.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../04/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.4 A/B Testing
+  </a>
+  <a href="../06/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.6 Logistic Regression
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

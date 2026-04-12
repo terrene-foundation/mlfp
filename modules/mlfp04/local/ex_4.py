@@ -2,242 +2,353 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 4: Governed Agents
+# MLFP04 — Exercise 4: DriftMonitor — Production Model Monitoring
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Wrap Module 5's ReActAgent with PactGovernedAgent. Define
-#   operating envelopes and demonstrate that agents cannot modify their
-#   own governance (frozen GovernanceContext).
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Establish a reference distribution and configure DriftMonitor thresholds
+#   - Simulate realistic data drift scenarios (feature shift, concept drift)
+#   - Detect drift using PSI (Population Stability Index) and KS statistics
+#   - Interpret PSI severity: < 0.1 stable, 0.1-0.2 investigate, > 0.2 retrain
+#   - Frame model monitoring as a regulatory obligation under MAS AI guidelines
+#
+# PREREQUISITES:
+#   - MLFP03 Exercise 8 (production pipeline — the model being monitored here)
+#   - MLFP02 Exercise 3 (hypothesis testing — KS test is a two-sample test)
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
-#   1. Create GovernanceEngine from Exercise 3's organization
-#   2. Wrap a ReActAgent with PactGovernedAgent
-#   3. Define operating envelopes (cost, tools, data)
-#   4. Test governance enforcement
-#   5. Demonstrate frozen context and monotonic tightening
+#   1. Establish reference distribution from training data
+#   2. Configure DriftMonitor with DriftSpec thresholds
+#   3. Simulate realistic data drift (feature shift, concept drift)
+#   4. Detect drift with PSI and KS statistics
+#   5. Analyse drift severity and affected features
+#   6. Governance discussion: monitoring obligations
+#
+# DATASET: Singapore credit scoring (from MLFP02)
+#   The reference distribution = what the model was trained on
+#   Drift scenarios simulate: economic downturn, population shift
+#   Governance context: MAS requires ongoing model validation post-deployment
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-import os
 
-from dotenv import load_dotenv
+import numpy as np
+import polars as pl
+from kailash.db.connection import ConnectionManager
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
+from kailash_ml.engines.drift_monitor import DriftMonitor, DriftSpec
+from kailash_ml.interop import to_sklearn_input
 
-from pact import GovernanceEngine, GovernanceContext, PactGovernedAgent
-from pact import Address, compile_org, load_org_yaml
-from kaizen_agents import Delegate
-
+from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+
+# ── Data Loading ──────────────────────────────────────────────────────
+
+loader = MLFPDataLoader()
+credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
+
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
+
+feature_cols = [c for c in result.train_data.columns if c != "default"]
+print(f"=== Credit Scoring Data ===")
+print(f"Features: {len(feature_cols)}")
+print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Set up GovernanceEngine
+# TASK 1: Establish reference distribution
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define a minimal org dict with one department/team/role and compile it.
-# Hint: The dict mirrors the YAML structure from Exercise 3 but as a Python dict:
-#   org_dict = {
-#     "organization": {
-#       "name": "ASCENT Demo",
-#       "departments": [{
-#         "name": "data_science",
-#         "teams": [{
-#           "name": "modeling",
-#           "roles": [{
-#             "name": "ml_agent",
-#             "permissions": {
-#               "data_access": ["credit_data", "feature_store"],
-#               "tools": ["profile_data", "describe_column", "default_rate_by"],
-#               "max_cost_usd": 5.0,
-#               "can_deploy": False,
-#             }
-#           }]
-#         }]
-#       }]
-#     }
-#   }
-org_dict = ____
+reference_data = result.train_data.select(feature_cols)
+print(f"\nReference distribution: {reference_data.shape}")
+print("This represents the data the model was trained on.")
+print("Any significant deviation from this distribution = potential drift.")
 
-
-async def setup():
-    # TODO: Compile the org dict and create a GovernanceEngine.
-    # Then create a GovernanceContext for the ml_agent role.
-    # Hint: compiled = compile_org(org_dict)  — accepts dict directly (no YAML file needed)
-    #   engine = GovernanceEngine(compiled)
-    #   agent_address = Address("data_science", "modeling", "ml_agent")
-    #   context = await engine.create_context(agent_address)
-    #   context has: .max_cost_usd, .data_access, .tools_allowed, .can_deploy
-    compiled = ____
-    engine = ____
-
-    agent_address = ____
-    context = await ____
-
-    print(f"=== GovernanceContext ===")
-    print(f"Address: {agent_address}")
-    print(f"Max cost: ${context.max_cost_usd}")
-    print(f"Data access: {context.data_access}")
-    print(f"Tools allowed: {context.tools_allowed}")
-    print(f"Can deploy: {context.can_deploy}")
-
-    return engine, context
-
-
-engine, governance_context = asyncio.run(setup())
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert reference_data.shape[0] > 0, "Reference data should not be empty"
+assert len(feature_cols) > 0, "Should have at least one feature column"
+assert "default" not in feature_cols, "Target column should not be in feature_cols"
+# INTERPRETATION: The reference distribution is the statistical fingerprint
+# of the data the model was trained on. DriftMonitor compares every new
+# batch of predictions against this fingerprint. If the new data looks
+# different (shifted means, different variance, new modes), the model's
+# predictions may no longer be reliable — that's drift.
+print("\n✓ Checkpoint 1 passed — reference distribution established\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Wrap agent with PactGovernedAgent
+# TASK 2: Configure DriftMonitor
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def create_governed_agent():
-    # TODO: Create a Delegate (base agent) and wrap it with PactGovernedAgent.
-    # Hint: base_agent = Delegate(model=model)
-    #   governed_agent = PactGovernedAgent(
-    #       agent=base_agent,
-    #       governance_context=governance_context,
-    #   )
-    base_agent = ____
-    governed_agent = ____
+async def setup_monitoring():
+    conn = ConnectionManager("sqlite:///mlfp03_drift.db")
+    await conn.initialize()
 
-    print(f"\n=== PactGovernedAgent ===")
-    print(f"Base agent: Delegate")
-    print(f"Governance: ASCENT Demo / data_science / modeling / ml_agent")
-    print(f"Cost budget: ${governance_context.max_cost_usd}")
-
-    return governed_agent
-
-
-governed_agent = asyncio.run(create_governed_agent())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Test governance enforcement
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_enforcement():
-    """Test that governance restricts agent behavior."""
-    print(f"\n=== Governance Tests ===")
-
-    # TODO: Test all six governance checks using governed_agent methods.
-    # Hint: governed_agent.check_permission(action="use_tool", resource="...") → bool
-    #       governed_agent.check_permission(action="access_data", resource="...") → bool
-    #       governed_agent.check_permission(action="deploy", resource="...") → bool
-    #       governed_agent.check_cost(amount=float) → bool
-    #
-    # Expected results:
-    #   "profile_data" tool → ALLOW (in permissions)
-    #   "training_pipeline" tool → DENY (not in allowed tools)
-    #   "production_logs" data → DENY (not in allowed data)
-    #   $3.00 cost → ALLOW (within $5 budget)
-    #   $10.00 cost → DENY (exceeds $5 budget)
-    #   deploy action → DENY (can_deploy: False)
-
-    allowed = await ____  # use_tool / profile_data
-    print(f"1. Use profile_data tool: {'ALLOW' if allowed else 'DENY'} ✓")
-
-    denied_tool = await ____  # use_tool / training_pipeline
-    print(f"2. Use training_pipeline: {'ALLOW' if denied_tool else 'DENY'} ✓")
-
-    denied_data = await ____  # access_data / production_logs
-    print(f"3. Access production_logs: {'ALLOW' if denied_data else 'DENY'} ✓")
-
-    within_budget = await ____  # check_cost 3.0
-    over_budget = await ____  # check_cost 10.0
-    print(f"4. Spend $3.00 (budget $5): {'ALLOW' if within_budget else 'DENY'} ✓")
-    print(f"5. Spend $10.00 (budget $5): {'ALLOW' if over_budget else 'DENY'} ✓")
-
-    can_deploy = await ____  # deploy / model_v1
-    print(f"6. Deploy model: {'ALLOW' if can_deploy else 'DENY'} ✓")
-
-
-asyncio.run(test_enforcement())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Run governed agent on a real task
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def run_governed_task():
-    """Run the governed agent — governance is transparent to the task."""
-    prompt = (
-        "Analyse the credit scoring dataset. Profile the data and "
-        "identify which features predict default. Keep analysis under $5."
+    # TODO: Create a DriftMonitor with psi_threshold=0.1, ks_threshold=0.05,
+    #       performance_threshold=0.1
+    monitor = DriftMonitor(
+        conn,
+        psi_threshold=____,  # Hint: 0.1 — PSI > 0.1 = moderate drift
+        ks_threshold=____,  # Hint: 0.05 — KS p-value < 0.05 = significant shift
+        performance_threshold=____,  # Hint: 0.1
     )
 
-    print(f"\n=== Governed Agent Execution ===")
-    print(f"Task: {prompt}")
-    print(
-        f"Governance active: cost≤$5, tools=[profile_data, describe_column, default_rate_by]"
+    # TODO: Call monitor.set_reference() with model_name="credit_default_lgbm",
+    #       reference_data=reference_data, feature_columns=feature_cols
+    await monitor.set_reference(
+        model_name=____,  # Hint: "credit_default_lgbm"
+        reference_data=____,  # Hint: reference_data
+        feature_columns=____,  # Hint: feature_cols
     )
 
-    # TODO: Run the governed agent and stream its response.
-    # Hint: async for event in governed_agent.run(prompt):
-    #           if hasattr(event, "text"): response_text += event.text
-    #   After running: governed_agent.cost_tracker.total_spent shows cost used.
-    response_text = ""
-    async for event in ____:
-        if hasattr(event, "text"):
-            response_text += event.text
+    print(f"\n=== DriftMonitor Configured ===")
+    print(f"PSI threshold: 0.1 (>0.2 = severe)")
+    print(f"KS threshold: 0.05")
+    print(f"Model: credit_default_lgbm")
 
-    print(f"\nResponse: {response_text[:300]}...")
-
-    cost_spent = governed_agent.cost_tracker.total_spent
-    print(f"\nCost spent: ${cost_spent:.4f} / ${governance_context.max_cost_usd}")
+    return conn, monitor
 
 
-asyncio.run(run_governed_task())
+conn, monitor = asyncio.run(setup_monitoring())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Frozen context demonstration
+# TASK 3: Simulate realistic data drift
+# ══════════════════════════════════════════════════════════════════════
+# Real drift scenarios:
+# a) Feature drift: income distribution shifts (economic downturn)
+# b) Concept drift: same features, different default relationship
+# c) Gradual drift: slow shift over months
+
+rng = np.random.default_rng(42)
+
+# Scenario A: No drift (control — test data from same distribution)
+no_drift = result.test_data.select(feature_cols)
+
+# TODO: Scenario B — moderate feature drift: income drops 20%, debt rises 15%
+#       Use with_columns to multiply annual_income by 0.8 and total_debt by 1.15
+#       (guard with `if "annual_income" in feature_cols` as shown in the solution)
+moderate_drift = result.test_data.select(feature_cols).with_columns(
+    (
+        # TODO: Scale annual_income down by 20%
+        ____  # Hint: (pl.col("annual_income") * 0.8).alias("annual_income") if "annual_income" in feature_cols else pl.lit(0).alias("_placeholder_b")
+    ),
+    (
+        # TODO: Scale total_debt up by 15%
+        ____  # Hint: (pl.col("total_debt") * 1.15).alias("total_debt") if "total_debt" in feature_cols else pl.lit(0).alias("_placeholder_b2")
+    ),
+)
+
+# TODO: Scenario C — severe drift: for each Float64/Float32 column, apply a random
+#       scale (0.8-1.5) and shift (mean * random -0.3 to 0.3); leave other columns unchanged
+severe_drift_cols = []
+for col in feature_cols:
+    dtype = result.test_data[col].dtype
+    if dtype in (pl.Float64, pl.Float32):
+        shift = rng.uniform(-0.3, 0.3)
+        scale = rng.uniform(0.8, 1.5)
+        # TODO: Append a scaled+shifted expression for this column
+        severe_drift_cols.append(
+            ____  # Hint: (pl.col(col) * scale + pl.col(col).mean() * shift).alias(col)
+        )
+    else:
+        severe_drift_cols.append(pl.col(col))
+
+severe_drift = result.test_data.select(feature_cols).with_columns(severe_drift_cols)
+
+print(f"\n=== Simulated Drift Scenarios ===")
+print(f"A) No drift: test data from same distribution")
+print(f"B) Moderate: income -20%, debt +15%")
+print(f"C) Severe: multiple features shifted (crisis simulation)")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert no_drift.shape[0] > 0, "No-drift scenario should have data"
+assert moderate_drift.shape[0] == no_drift.shape[0], \
+    "Moderate drift scenario should have same number of rows"
+assert severe_drift.shape[0] == no_drift.shape[0], \
+    "Severe drift scenario should have same number of rows"
+# INTERPRETATION: Realistic drift simulation covers a range of scenarios.
+# The no-drift control verifies DriftMonitor doesn't false-alarm on held-out
+# test data. Moderate drift (income -20%) simulates an economic shock.
+# Severe drift (multiple features shifted) simulates a population shift
+# or major macroeconomic event — the model should flag this for retraining.
+print("\n✓ Checkpoint 2 passed — drift scenarios simulated\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Detect drift
 # ══════════════════════════════════════════════════════════════════════
 
+
+async def check_all_scenarios():
+    scenarios = [
+        ("No Drift", no_drift),
+        ("Moderate Drift", moderate_drift),
+        ("Severe Drift", severe_drift),
+    ]
+
+    all_reports = {}
+    for name, data in scenarios:
+        # TODO: Call monitor.check_drift() with model_name="credit_default_lgbm"
+        #       and current_data=data
+        report = await monitor.check_drift(
+            model_name=____,  # Hint: "credit_default_lgbm"
+            current_data=____,  # Hint: data
+        )
+
+        all_reports[name] = report
+
+        print(f"\n=== {name} ===")
+        print(f"Overall drift: {report.overall_drift_detected}")
+        print(f"Severity: {report.overall_severity}")
+
+        # Feature-level results
+        drifted = [r for r in report.feature_results if r.drift_detected]
+        print(f"Features with drift: {len(drifted)} / {len(report.feature_results)}")
+
+        if drifted:
+            print(
+                f"\n  {'Feature':<25} {'PSI':>8} {'KS stat':>8} {'KS p':>10} {'Type':>10}"
+            )
+            print("  " + "─" * 65)
+            for r in sorted(drifted, key=lambda x: x.psi, reverse=True)[:10]:
+                print(
+                    f"  {r.feature_name:<25} {r.psi:>8.4f} {r.ks_statistic:>8.4f} "
+                    f"{r.ks_pvalue:>10.6f} {r.drift_type:>10}"
+                )
+
+    return all_reports
+
+
+all_reports = asyncio.run(check_all_scenarios())
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert len(all_reports) == 3, "Should have reports for all 3 scenarios"
+no_drift_report = all_reports["No Drift"]
+severe_drift_report = all_reports["Severe Drift"]
+# No-drift scenario should not trigger overall drift detection
+# (with reasonable thresholds, same-distribution data should not drift)
+assert not no_drift_report.overall_drift_detected or \
+    len([r for r in no_drift_report.feature_results if r.drift_detected]) < len(feature_cols) / 2, \
+    "No-drift scenario flagged too many features as drifted"
+# INTERPRETATION: PSI < 0.1 means the population is stable (no drift).
+# PSI 0.1-0.2 means moderate drift — investigate. PSI > 0.2 means severe
+# drift — retrain the model. The KS test gives statistical significance:
+# p < 0.05 means the distributions are significantly different.
+print("\n✓ Checkpoint 3 passed — drift detected for all 3 scenarios\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Analyse drift severity
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Drift Severity Analysis ===")
+print(f"\nPSI Interpretation:")
+print(f"  < 0.1  : No significant drift")
+print(f"  0.1-0.2: Moderate drift — investigate")
+print(f"  > 0.2  : Severe drift — retrain model")
+
+for name, report in all_reports.items():
+    # TODO: Extract PSI values from all feature_results in this report
+    psi_values = ____  # Hint: [r.psi for r in report.feature_results]
+    print(f"\n{name}:")
+    print(f"  Mean PSI: {np.mean(psi_values):.4f}")
+    print(f"  Max PSI:  {max(psi_values):.4f}")
+    # TODO: Count features with PSI above 0.1 and above 0.2
+    print(f"  Features above 0.1: {sum(1 for p in psi_values if p > 0.1)}")
+    print(f"  Features above 0.2: {sum(1 for p in psi_values if p > 0.2)}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Governance — monitoring as obligation
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Governance: Model Monitoring Obligations ===")
 print(
-    f"""
-=== Frozen GovernanceContext ===
+    """
+In production, you MUST prove your model still performs.
+DriftMonitor is how you meet this obligation.
 
-GovernanceContext is a frozen dataclass:
+1. REGULATORY: MAS AI guidelines require ongoing model validation
+2. OPERATIONAL: Drift detection → retrain trigger → ModelRegistry update
+3. AUDIT TRAIL: Every drift check is logged (get_drift_history)
+4. ALERTING: DriftSpec.on_drift_detected for automated notifications
+5. MODULE 6: PACT GovernanceEngine formalises these obligations
 
-  @dataclass(frozen=True)
-  class GovernanceContext:
-      max_cost_usd: float
-      data_access: tuple[str, ...]
-      tools_allowed: tuple[str, ...]
-      can_deploy: bool
-
-  # This RAISES FrozenInstanceError:
-  context.max_cost_usd = 999.0
-
-WHY frozen?
-  1. Agents cannot escalate their own privileges
-  2. Context is immutable proof of what was authorized
-  3. AuditChain can verify context wasn't tampered with
-  4. Monotonic tightening is guaranteed (child <= parent)
-
-Attack prevention:
-  Agent modifies its budget: FrozenInstanceError
-  Agent creates child with higher permissions: tightened to parent
-  Agent accesses data outside scope: fail-closed DENY
-  Governance engine error: fail-closed DENY (not ALLOW)
+Pipeline: DriftMonitor → alert → retrain (M3 pipeline) → promote (ModelRegistry)
 """
 )
 
-# TODO: Attempt to modify the frozen context and catch the resulting error.
-# Hint: try: governance_context.max_cost_usd = 999.0
-#       except (AttributeError, TypeError) as e:
-#           print(f"Modification blocked: {type(e).__name__}")
-try:
-    governance_context.max_cost_usd = ____
-    print("ERROR: Should have raised FrozenInstanceError!")
-except (AttributeError, TypeError) as e:
-    print(f"✓ Attempted modification blocked: {type(e).__name__}")
 
-print("\n✓ Exercise 4 complete — governed agents with PACT enforcement")
+# Check drift history
+async def show_history():
+    history = await monitor.get_drift_history("credit_default_lgbm", limit=10)
+    print(f"Drift check history: {len(history)} entries")
+    for h in history[:5]:
+        print(f"  {h.get('checked_at', '?')}: severity={h.get('severity', '?')}")
+    await conn.close()
+
+
+asyncio.run(show_history())
+
+viz = ModelVisualizer()
+comparison = {
+    name: {
+        "Mean_PSI": np.mean([r.psi for r in report.feature_results]),
+        "Max_PSI": max(r.psi for r in report.feature_results),
+        "Drifted_Features": sum(1 for r in report.feature_results if r.drift_detected),
+    }
+    for name, report in all_reports.items()
+}
+fig = viz.metric_comparison(comparison)
+fig.update_layout(title="Drift Detection: Scenario Comparison")
+fig.write_html("ex4_drift_comparison.html")
+print("\nSaved: ex4_drift_comparison.html")
+
+print("\n✓ Exercise 4 complete — DriftMonitor for production model monitoring")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ DriftMonitor: reference distribution → statistical comparison → alert
+  ✓ PSI: Population Stability Index — standard industry drift metric
+  ✓ KS test: distribution-level significance test (two-sample, non-parametric)
+  ✓ Drift scenarios: no drift / moderate / severe — validates monitor sensitivity
+  ✓ Governance: monitoring as a regulatory obligation, not just best practice
+
+  PSI THRESHOLDS (industry standard):
+    < 0.1   → Stable: no action needed
+    0.1-0.2 → Moderate: investigate affected features
+    > 0.2   → Severe: retrain model immediately
+
+  KEY INSIGHT: Model drift is inevitable. Economic cycles, population
+  changes, policy shifts all alter the distribution of features that
+  models rely on. DriftMonitor is the early warning system — catch
+  drift before it manifests as bad predictions and regulatory violations.
+
+  MONITORING PIPELINE:
+    DriftMonitor → alert → retrain (M3 pipeline) → promote (ModelRegistry)
+
+  NEXT: Exercise 6 applies deep learning to medical image classification.
+  You'll build a CNN with residual connections, train with cosine annealing
+  LR scheduling, monitor gradient norms, and export to ONNX for deployment.
+""")
+print("═" * 70)

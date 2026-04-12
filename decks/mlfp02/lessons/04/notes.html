@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.4 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 2.4</span>
+  A/B Testing and Experiment Design
+</h1>
+
+<p class="lead">~45 minutes · 13 slides · ~3.5 min per slide</p>
+
+<p>
+  This lesson is where statistics becomes decision-making. Your tone
+  should shift from "here is the math" to "here is the workflow". The
+  pre-registration slide and the SRM slide are the ones that will save
+  learners time and money in real projects.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>A/B Testing and Experiment Design</h3>
+  <p>
+    Open: "2.3 gave you hypothesis tests. 2.4 assembles them into
+    industrial A/B testing — the workflow Booking.com, Grab and Shopee
+    all run. By the end of the day you will run a full A/B test from
+    scratch on a BOGO promotion."
+  </p>
+  <div class="transition">→ "Why randomisation is the foundation."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Randomisation</span></div>
+  <h3>Why randomisation</h3>
+  <p>
+    State the fundamental problem of causal inference. "We never see
+    both worlds for the same person. Randomisation is the trick that
+    makes the two groups we do see be, on average, identical — so the
+    difference we measure is the causal effect, not some confounder."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Concrete framing:</strong> "Imagine you want to test whether
+    umbrellas cause rain. You measure umbrella owners and non-owners.
+    Owners see more rain. Does that mean umbrellas cause rain? No —
+    rainy places cause umbrella ownership. Randomisation prevents
+    this kind of reverse reasoning because you assign, not observe."
+  </div>
+  <div class="transition">→ "Before touching data — pre-register."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Pre-registration</span></div>
+  <h3>Pre-register before you touch the data</h3>
+  <p>
+    Walk the five items. Emphasise the discipline: "Once you've seen the
+    data you cannot fairly decide the test. Your brain has already
+    adjusted. Commit everything upfront — in writing — before the first
+    user is randomised."
+  </p>
+  <p>
+    Tell the peeking story. "The single most common way to get a false
+    positive in industry: run until significance, then stop. If you do
+    this, your false positive rate isn't 5% — it's 30-50%. Most 'wins'
+    you see reported are this."
+  </p>
+  <div class="transition">→ "Power analysis before data collection."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>Power analysis</span></div>
+  <h3>Power analysis — sizing</h3>
+  <p>
+    Walk both formulas. Point at the pieces: "The numerator is a function
+    of how careful you want to be — $z_\alpha$ for false positives,
+    $z_\beta$ for false negatives. The denominator is the signal-to-noise
+    ratio. If the effect is big relative to noise, you need fewer
+    observations."
+  </p>
+  <p>
+    Work the numbers: "Baseline 8% conversion. Want to detect 1pp lift.
+    $p(1-p) = 0.074$. $(z_{0.025} + z_{0.80})^2 \approx 7.85$. So
+    $n = 2 \cdot 7.85 \cdot 0.074 / 0.0001 \approx 11{,}600$ — wait, per
+    arm is half. Around 5,800 per arm. 11,600 total."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that this is the Normal
+    approximation; for small $n$ or unbalanced arms, use
+    <code>statsmodels.stats.power.NormalIndPower</code>.
+  </div>
+  <div class="transition">→ "Power curves to see the scaling."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Power curves</span></div>
+  <h3>Power curves</h3>
+  <p>
+    Show how power grows with $n$ for two effect sizes. Key insight:
+    "Power scales with $\delta^2$. Halve the effect, quadruple the
+    sample. If your PM says 'we expect a 0.5pp lift', check whether
+    they can afford the sample size. Most of the time they cannot."
+  </p>
+  <div class="transition">→ "The first check before outcome analysis."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>SRM</span></div>
+  <h3>SRM — the first check you run</h3>
+  <p>
+    Sell SRM as a hygiene check: "Before you look at whether the
+    treatment worked, check whether the randomiser worked. If you asked
+    for 50/50 and got 52/48 on 10,000 users, something is broken — bot
+    filter, redirect bug, pipeline error. That analysis is contaminated."
+  </p>
+  <p>
+    Walk the chi-squared. Stress the threshold: "Use 0.0001, not 0.05.
+    SRM is a hygiene alarm. You want very few false alarms that cause
+    engineers to waste time debugging nothing."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Story:</strong> "At one company I worked with, SRM caught a
+    bug where the treatment variant took 50ms longer to load. Users on
+    slow connections timed out before reaching the randomiser. The
+    control had 10% more users. Without SRM, we would have concluded
+    'treatment kills conversions' and rolled back a good feature."
+  </div>
+  <div class="transition">→ "Now the framework for data collection."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Collection framework</span></div>
+  <h3>Data Collection Framework</h3>
+  <p>
+    Walk the five questions. For each, give a concrete example from the
+    BOGO campaign:
+  </p>
+  <ul>
+    <li><strong>Why:</strong> "Does BOGO increase conversion by 1pp? If yes, ship. If no, kill."</li>
+    <li><strong>What:</strong> "Primary: conversion rate. Secondary: AOV, RPV. Guardrail: page load time."</li>
+    <li><strong>Where:</strong> "Internal: event stream, order database. External: none needed."</li>
+    <li><strong>How:</strong> "Real-time event logging; nightly batch for reconciliation."</li>
+    <li><strong>Frequency:</strong> "Run for 14 days minimum to cover both weekday and weekend patterns."</li>
+  </ul>
+  <div class="transition">→ "The common pitfalls."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Common pitfalls</span></div>
+  <h3>Common data pitfalls</h3>
+  <p>
+    Walk the list. Silos and red tape are organisational — name them
+    honestly. Aggregated-only is the one to watch in finance and public-
+    sector data. Selection bias is almost inevitable; the fix is logging
+    exposure, not just outcomes. Temporal leakage is what kills
+    experiments during marketing pushes.
+  </p>
+  <div class="transition">→ "Hands on the BOGO example."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>BOGO sample size</span></div>
+  <h3>Worked: BOGO sample size</h3>
+  <p>
+    Run the code. Read the result aloud. "5,800 per arm. At our traffic of
+    1,000 users a day, that's 12 days minimum — pad to 14 to cover a full
+    week cycle."
+  </p>
+  <div class="transition">→ "Load data and SRM."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Load and SRM</span></div>
+  <h3>Worked: load and SRM check</h3>
+  <p>
+    Run the code. Show that $p_{\text{SRM}}$ comes out clean. "Passed.
+    Now we can look at outcomes."
+  </p>
+  <p>
+    Tell them to put the assert in their pipeline. "Every experiment
+    analysis function I have ever written starts with this assert. Catches
+    bugs automatically."
+  </p>
+  <div class="transition">→ "The primary test."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Primary test</span></div>
+  <h3>Worked: the primary test</h3>
+  <p>
+    Walk the code. z-test for proportions gives p-value. CI tells us how
+    big the effect really is. Lift is the point estimate. Report all
+    three.
+  </p>
+  <div class="transition">→ "Write the recommendation."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Reporting</span></div>
+  <h3>Reporting to the business</h3>
+  <p>
+    Read the recommendation aloud. Point at each piece: the decision
+    (ship), the effect (1.3 pp with CI), the p-value (0.003), the
+    business value ($240K/quarter), the guardrail check. This is the
+    shape of every good A/B test report.
+  </p>
+  <p>
+    Tell them what to NEVER do: "Don't say 'we prove'. Don't quote just
+    a p-value without a CI. Don't report the effect in percent when the
+    stakeholder wants dollars."
+  </p>
+  <div class="transition">→ "Three rookie mistakes and recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Recap</span></div>
+  <h3>Rookie mistakes + what you can now do</h3>
+  <p>
+    Walk the three mistakes one more time. Then the skills list. Tease
+    2.5: "You have M2's experimental track. Now we pivot to the modelling
+    track — linear regression from first principles. Same $t$-statistic
+    you learned today, but applied to every coefficient."
+  </p>
+  <div class="transition">→ End. 10-min break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    2.3 Speaker Notes
+  </a>
+  <a href="../05/notes.html" class="next">
+    <span class="label">Next →</span>
+    2.5 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

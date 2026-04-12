@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 2 — AI-Resilient Assessment Questions
+"""MLFP 2 — AI-Resilient Assessment Questions
 
 Feature Engineering & Experiment Design
 Covers: Bayesian inference, MLE, hypothesis testing, CUPED, bootstrap,

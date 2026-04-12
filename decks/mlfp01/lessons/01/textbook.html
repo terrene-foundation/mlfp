@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.1 — Your First Data Exploration | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.1</span>
+  Your First Data Exploration
+</h1>
+
+<p class="lead">
+  In the next 45 minutes you will write your first lines of Python, load a real
+  Singapore weather dataset into a Polars DataFrame, and answer three questions
+  about it using nothing but built‑in summary statistics. By the end you will
+  understand the four building blocks every data professional uses every day:
+  <strong>variables, types, DataFrames, and summary statistics</strong>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Singapore's National Environment Agency publishes monthly weather data — mean
+  temperature, total rainfall, humidity — going back decades. A retail manager
+  wants to know whether sales of umbrellas correlate with rainfall. A property
+  analyst wants to check if cooler months coincide with HDB price dips. A
+  logistics planner wants to forecast peak demand during the December monsoon.
+</p>
+
+<p>
+  Every one of these questions starts with the same three steps:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Step 1: Load -->
+  <rect x="20" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="110" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">1. Load</text>
+  <text x="110" y="115" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">CSV → DataFrame</text>
+  <text x="110" y="132" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">pl.read_csv(...)</text>
+
+  <!-- Arrow -->
+  <line x1="200" y1="100" x2="265" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+
+  <!-- Step 2: Inspect -->
+  <rect x="270" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="360" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">2. Inspect</text>
+  <text x="360" y="115" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">Shape, columns,</text>
+  <text x="360" y="132" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">first 5 rows</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="100" x2="515" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+
+  <!-- Step 3: Summarise -->
+  <rect x="520" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="610" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">3. Summarise</text>
+  <text x="610" y="115" text-anchor="middle" font-family="Inter" font-size="13" fill="#1E293B">describe()</text>
+  <text x="610" y="132" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">mean, std, min, max</text>
+</svg>
+<figcaption>The universal three‑step entry point to any dataset.</figcaption>
+</figure>
+
+<p>
+  These three steps are not optional — they are the price of admission to every
+  data analysis you will ever do, in any language, on any platform. We are going
+  to do them today on a tiny weather dataset so you can see every byte that
+  flows through them.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Variables and Types</h3>
+
+<p>
+  A <strong>variable</strong> in Python is a named handle on a value that lives
+  in memory. When you write <code>city = "Singapore"</code>, Python performs
+  three actions:
+</p>
+
+<ol>
+  <li>It allocates memory for the string <code>"Singapore"</code> (10 bytes for the characters plus a small header).</li>
+  <li>It records the <em>type</em> of that value — <code>str</code> — so it knows what operations are valid (you can concatenate strings, but you cannot subtract them).</li>
+  <li>It binds the name <code>city</code> in the current scope to that memory location.</li>
+</ol>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Variable name boxes -->
+  <rect x="30" y="40" width="150" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="105" y="65" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#15803D">city</text>
+  <text x="105" y="82" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Name (variable)</text>
+
+  <rect x="30" y="105" width="150" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="105" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#15803D">temperature</text>
+  <text x="105" y="147" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Name (variable)</text>
+
+  <rect x="30" y="170" width="150" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="105" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#15803D">is_raining</text>
+
+  <!-- Arrows -->
+  <line x1="180" y1="65" x2="285" y2="65" stroke="#22C55E" stroke-width="2"/>
+  <text x="232" y="58" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">binds to</text>
+  <polygon points="285,65 280,61 280,69" fill="#22C55E"/>
+
+  <line x1="180" y1="130" x2="285" y2="130" stroke="#22C55E" stroke-width="2"/>
+  <polygon points="285,130 280,126 280,134" fill="#22C55E"/>
+
+  <line x1="180" y1="190" x2="285" y2="190" stroke="#22C55E" stroke-width="2"/>
+  <polygon points="285,190 280,186 280,194" fill="#22C55E"/>
+
+  <!-- Value boxes -->
+  <rect x="290" y="40" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="390" y="65" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E40AF">"Singapore"</text>
+  <text x="390" y="82" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E3A8A">Value in memory</text>
+
+  <rect x="290" y="105" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="390" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E40AF">28.5</text>
+  <text x="390" y="147" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E3A8A">Value in memory</text>
+
+  <rect x="290" y="170" width="200" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="390" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#1E40AF">True</text>
+
+  <!-- Type tags -->
+  <rect x="510" y="48" width="60" height="30" rx="14" fill="#22C55E"/>
+  <text x="540" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="white">str</text>
+
+  <rect x="510" y="113" width="60" height="30" rx="14" fill="#3B82F6"/>
+  <text x="540" y="133" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="white">float</text>
+
+  <rect x="510" y="175" width="60" height="30" rx="14" fill="#8B5CF6"/>
+  <text x="540" y="195" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="white">bool</text>
+</svg>
+<figcaption>Variables are <em>names</em> bound to <em>values</em>. Each value carries a <em>type</em> that determines what you can do with it.</figcaption>
+</figure>
+
+<p>
+  Python has four primitive types you will use constantly:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Type</th><th>Example</th><th>Use it for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>str</code></td><td><code>"Singapore"</code>, <code>"July"</code></td><td>Text — names, labels, identifiers</td></tr>
+    <tr><td><code>int</code></td><td><code>42</code>, <code>2024</code></td><td>Counts, years, indices — values without fractions</td></tr>
+    <tr><td><code>float</code></td><td><code>28.5</code>, <code>3.14</code></td><td>Measurements — temperature, price, distance</td></tr>
+    <tr><td><code>bool</code></td><td><code>True</code>, <code>False</code></td><td>Flags — was it raining? did the test pass?</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    A useful mental model: a variable is a <em>label</em> stuck onto a value. You
+    can move the label to a different value (<code>city = "Jakarta"</code>) and
+    the original value is unaffected. You can stick multiple labels onto the
+    same value. The label itself is just a string of letters Python uses to find
+    the value when you ask for it.
+  </p>
+</div>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Internally, Python's variable bindings live in <em>dictionaries</em> — one
+    for each scope (local function, enclosing function, module global, built-in).
+    The function <code>locals()</code> returns the local dictionary;
+    <code>globals()</code> returns the module dictionary. This is why looking up
+    a variable is <em>O(1)</em> on average — it is a hash lookup, not a linear
+    scan of names.
+  </p>
+</div>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    Python's reference semantics matter when you assign objects: <code>a = [1, 2, 3]; b = a; b.append(4)</code>
+    will mutate <code>a</code> as well, because <code>b</code> is a second label
+    on the same list object. Strings, ints, floats and bools are <em>immutable</em>,
+    so this surprise cannot happen with them — every assignment creates a new
+    binding to a fresh value. Mutable containers (lists, dicts, sets) and custom
+    classes <em>can</em> bite you. The Polars DataFrame is mutable in
+    appearance only — most methods return a new DataFrame.
+  </p>
+</div>
+
+<h3>String Formatting with f-strings</h3>
+
+<p>
+  Once you have variables, you almost always want to print them in human-readable
+  form. The modern way to do this in Python is the <strong>f-string</strong>:
+  prefix a string literal with the letter <code>f</code> and embed expressions
+  inside curly braces.
+</p>
+
+<pre><code class="language-python">city = "Singapore"
+temperature = 28.5
+report = f"The mean temperature in {city} is {temperature:.1f}°C"
+print(report)
+# → The mean temperature in Singapore is 28.5°C</code></pre>
+
+<p>
+  The colon-format-spec <code>:.1f</code> reads "format as a floating point
+  number with 1 digit after the decimal". Other useful format specs:
+</p>
+
+<table>
+  <thead><tr><th>Spec</th><th>Effect</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><code>:.0f</code></td><td>Integer (no decimals)</td><td><code>f"{3.7:.0f}"</code> → <code>"4"</code></td></tr>
+    <tr><td><code>:.2f</code></td><td>Two decimals</td><td><code>f"{3.14159:.2f}"</code> → <code>"3.14"</code></td></tr>
+    <tr><td><code>:,.0f</code></td><td>Integer with thousand separators</td><td><code>f"{1234567:,.0f}"</code> → <code>"1,234,567"</code></td></tr>
+    <tr><td><code>:>10</code></td><td>Right-align in 10-char column</td><td><code>f"{'July':>10}"</code> → <code>"      July"</code></td></tr>
+    <tr><td><code>:%</code></td><td>Format as percent</td><td><code>f"{0.27:.1%}"</code> → <code>"27.0%"</code></td></tr>
+  </tbody>
+</table>
+
+<h3>The DataFrame</h3>
+
+<p>
+  A <strong>DataFrame</strong> is a table with named columns of typed data. If
+  you have ever used a spreadsheet, you already understand it intuitively:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 300" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Header -->
+  <rect x="40" y="20" width="640" height="40" fill="#0D9488"/>
+  <text x="100" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
+  <text x="240" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
+  <text x="430" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
+  <text x="600" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">humidity_pct</text>
+
+  <!-- Type row -->
+  <rect x="40" y="60" width="640" height="28" fill="#F0FDFA" stroke="#94A3B8" stroke-width="0.5"/>
+  <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
+  <text x="240" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+  <text x="430" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+  <text x="600" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
+
+  <!-- Data rows -->
+  <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
+    <rect x="40" y="88" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+    <text x="100" y="108" text-anchor="middle">"Jan"</text>
+    <text x="240" y="108" text-anchor="middle">26.0</text>
+    <text x="430" y="108" text-anchor="middle">194.7</text>
+    <text x="600" y="108" text-anchor="middle">82</text>
+
+    <rect x="40" y="120" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="100" y="140" text-anchor="middle">"Feb"</text>
+    <text x="240" y="140" text-anchor="middle">26.5</text>
+    <text x="430" y="140" text-anchor="middle">63.4</text>
+    <text x="600" y="140" text-anchor="middle">79</text>
+
+    <rect x="40" y="152" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+    <text x="100" y="172" text-anchor="middle">"Mar"</text>
+    <text x="240" y="172" text-anchor="middle">27.0</text>
+    <text x="430" y="172" text-anchor="middle">170.6</text>
+    <text x="600" y="172" text-anchor="middle">81</text>
+
+    <rect x="40" y="184" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="100" y="204" text-anchor="middle">…</text>
+    <text x="240" y="204" text-anchor="middle">…</text>
+    <text x="430" y="204" text-anchor="middle">…</text>
+    <text x="600" y="204" text-anchor="middle">…</text>
+
+    <rect x="40" y="216" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+    <text x="100" y="236" text-anchor="middle">"Dec"</text>
+    <text x="240" y="236" text-anchor="middle">26.5</text>
+    <text x="430" y="236" text-anchor="middle">227.2</text>
+    <text x="600" y="236" text-anchor="middle">85</text>
+  </g>
+
+  <!-- Row label -->
+  <text x="20" y="108" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 20 108)">Row 0</text>
+
+  <!-- Annotations -->
+  <text x="40" y="275" font-family="Inter" font-style="italic" font-size="12" fill="#64748B">Each column has a name and a single type. Each row is one observation (one month).</text>
+</svg>
+<figcaption>A Polars DataFrame: named columns, typed data, ordered rows. The same shape as a spreadsheet but with rules.</figcaption>
+</figure>
+
+<p>
+  Three rules separate a DataFrame from a generic spreadsheet:
+</p>
+
+<ol>
+  <li><strong>Every column has exactly one type.</strong> A column is either floats <em>or</em> integers <em>or</em> strings. You cannot mix. This sounds restrictive but it is what makes operations fast and predictable.</li>
+  <li><strong>Every row has the same shape.</strong> Row 0 has values in all columns; row 1 has values in all columns; you cannot have a row with extra columns or missing columns. (You can have explicit <em>null</em> values.)</li>
+  <li><strong>Rows are ordered.</strong> Row 0 is always the first row. This matters when you slice or sort.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: DataExplorer</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Throughout this module — and the rest of this course — we use Polars
+    directly for the <em>data structure</em> (the DataFrame) and Kailash's
+    <code>DataExplorer</code> engine for <em>automated profiling</em>. Today's
+    lesson is the simplest possible case: you only need <code>polars.read_csv()</code>
+    to load the file and the DataFrame's built-in <code>.describe()</code>
+    method to summarise it. We will introduce DataExplorer in Lesson 1.7 once
+    you have hand-rolled enough exploration to appreciate what it automates.
+  </p>
+</div>
+
+<p>
+  The Kailash design philosophy is "engines before infrastructure". You start
+  by using high-level engines (like <code>DataExplorer</code> later this module)
+  and only descend to the underlying primitives when you need to. For now, the
+  primitives are enough.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Singapore Weather, Twelve Months</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Load the file <code>data/mlfp01/sg_weather.csv</code> (12 rows, one per
+    month of 2023), inspect its shape and types, and answer three questions:
+  </p>
+  <ol>
+    <li>What was the hottest month?</li>
+    <li>What was the coldest month?</li>
+    <li>Which month had the most rain?</li>
+  </ol>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Import the libraries we need. Polars is our DataFrame engine; the
+       <code>MLFPDataLoader</code> from <code>shared</code> handles paths so the
+       same code runs locally and on Colab.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+df = loader.load("mlfp01", "sg_weather.csv")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Inspect the DataFrame. <code>.shape</code> returns
+       <code>(rows, columns)</code>. <code>.columns</code> returns the list of
+       column names. <code>.head(5)</code> returns the first five rows. The
+       <em>schema</em> attribute returns the column types.</p>
+    <pre><code class="language-python">print(f"Shape: {df.shape}")
+print(f"Columns: {df.columns}")
+print(f"Types: {df.schema}")
+print(df.head(5))</code></pre>
+    <p>You should see something like:</p>
+    <pre><code class="language-text">Shape: (12, 3)
+Columns: ['month', 'mean_temperature_c', 'total_rainfall_mm']
+Types: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Float64}
+shape: (5, 3)
+┌───────┬────────────────────┬────────────────────┐
+│ month ┆ mean_temperature_c ┆ total_rainfall_mm  │
+│ ---   ┆ ---                ┆ ---                │
+│ str   ┆ f64                ┆ f64                │
+╞═══════╪════════════════════╪════════════════════╡
+│ Jan   ┆ 26.0               ┆ 194.7              │
+│ Feb   ┆ 26.5               ┆  63.4              │
+│ Mar   ┆ 27.0               ┆ 170.6              │
+│ Apr   ┆ 27.5               ┆ 122.3              │
+│ May   ┆ 27.2               ┆ 178.5              │
+└───────┴────────────────────┴────────────────────┘</code></pre>
+    <p>
+      Read those values aloud: "12 rows, 3 columns; the columns are month,
+      mean temperature, total rainfall; the first month is January with mean
+      26.0°C and 194.7mm of rain". You have just done the data professional's
+      most important habit: <em>looked at the data before doing anything else</em>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Compute summary statistics for the numeric columns.</p>
+    <pre><code class="language-python">print(df.describe())</code></pre>
+    <p>Output:</p>
+    <pre><code class="language-text">┌────────────┬───────┬────────────────────┬───────────────────┐
+│ statistic  ┆ month ┆ mean_temperature_c ┆ total_rainfall_mm │
+╞════════════╪═══════╪════════════════════╪═══════════════════╡
+│ count      ┆ 12    ┆ 12.0               ┆  12.0             │
+│ null_count ┆ 0     ┆  0.0               ┆   0.0             │
+│ mean       ┆ null  ┆ 26.68              ┆ 152.85            │
+│ std        ┆ null  ┆  0.43              ┆  56.71            │
+│ min        ┆ Apr   ┆ 26.00              ┆  63.40            │
+│ 25%        ┆ null  ┆ 26.42              ┆ 110.30            │
+│ 50%        ┆ null  ┆ 26.65              ┆ 156.10            │
+│ 75%        ┆ null  ┆ 27.05              ┆ 188.20            │
+│ max        ┆ Sep   ┆ 27.20              ┆ 227.20            │
+└────────────┴───────┴────────────────────┴───────────────────┘</code></pre>
+    <p>
+      The <em>mean</em> temperature is 26.68°C; the <em>standard deviation</em>
+      is just 0.43°C. Singapore's temperature is famously consistent — only
+      half a degree of variation across the entire year. Rainfall, on the
+      other hand, has a standard deviation of 56.71 mm: it ranges from 63 mm
+      (driest month) to 227 mm (wettest), so the spread relative to the mean
+      is much wider.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Answer Question 1: which month was the hottest? We need the row whose
+       temperature equals the column maximum. In Polars, the idiomatic way is:</p>
+    <pre><code class="language-python">max_temp = df["mean_temperature_c"].max()
+hottest = df.filter(pl.col("mean_temperature_c") == max_temp)
+print(f"Hottest month: {hottest['month'][0]} at {max_temp}°C")</code></pre>
+    <p>
+      Read this carefully. <code>df["mean_temperature_c"].max()</code> returns
+      the single value <code>27.2</code>. <code>pl.col("mean_temperature_c") == max_temp</code>
+      builds an <em>expression</em> that, when evaluated, returns
+      <code>True</code> for the row(s) matching the max. <code>df.filter(...)</code>
+      returns a new DataFrame containing only those rows. We then read row 0,
+      column "month" with <code>['month'][0]</code>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Repeat for the coldest month and the wettest month, then compose a
+       formatted summary.</p>
+    <pre><code class="language-python">min_temp = df["mean_temperature_c"].min()
+coldest = df.filter(pl.col("mean_temperature_c") == min_temp)["month"][0]
+
+max_rain = df["total_rainfall_mm"].max()
+wettest = df.filter(pl.col("total_rainfall_mm") == max_rain)["month"][0]
+
+print("=" * 50)
+print("  SINGAPORE WEATHER, 2023")
+print("=" * 50)
+print(f"  Hottest month:  {hottest['month'][0]} ({max_temp:.1f}°C)")
+print(f"  Coldest month:  {coldest} ({min_temp:.1f}°C)")
+print(f"  Wettest month:  {wettest} ({max_rain:.1f} mm)")
+print(f"  Annual mean T:  {df['mean_temperature_c'].mean():.2f}°C")
+print(f"  Annual mean R:  {df['total_rainfall_mm'].mean():.0f} mm")
+print("=" * 50)</code></pre>
+  </div>
+
+  <p>
+    That is your first complete Python program. Twelve lines of executable
+    code, four lines of formatted output, three answered questions. Every
+    additional capability we add over the next eight lessons builds on
+    exactly this pattern: load → inspect → summarise → answer.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Mean, Variance, Standard Deviation</h2>
+
+<p>
+  Three of the numbers <code>describe()</code> printed are worth understanding
+  precisely now, because they reappear in every lesson of Module 2. Let
+  $x_1, x_2, \ldots, x_n$ be the $n$ observations in a column.
+</p>
+
+<h3>The mean</h3>
+
+<p>The arithmetic <strong>mean</strong> is the sum divided by the count:</p>
+
+<div class="annotated-equation">
+  $$\bar{x} \;=\; \frac{1}{n} \sum_{i=1}^{n} x_i$$
+  <div class="annotations">
+    <span>$\bar{x}$ — the mean</span>
+    <span>$n$ — number of observations</span>
+    <span>$x_i$ — the $i$-th observation</span>
+  </div>
+</div>
+
+<p>
+  For our 12 monthly temperatures the mean is
+  $\bar{x} = (26.0 + 26.5 + \cdots + 26.5)/12 = 26.68$°C. The mean is what
+  we usually call the "average" in everyday speech. It is the unique value
+  $c$ that minimises $\sum (x_i - c)^2$ (the sum of squared deviations) — a
+  fact you will use when we derive linear regression in Module 2.
+</p>
+
+<h3>The variance</h3>
+
+<p>
+  The <strong>variance</strong> measures how spread out the values are around
+  the mean. If every value equals the mean, variance is zero. If values
+  scatter widely, variance is large.
+</p>
+
+<div class="annotated-equation">
+  $$s^2 \;=\; \frac{1}{n - 1} \sum_{i=1}^{n} (x_i - \bar{x})^2$$
+  <div class="annotations">
+    <span>$s^2$ — sample variance</span>
+    <span>$n - 1$ — degrees of freedom</span>
+    <span>$(x_i - \bar{x})^2$ — squared deviation</span>
+  </div>
+</div>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: Why $n - 1$ instead of $n$?</span>
+  <p>
+    This is called <em>Bessel's correction</em>. When we estimate variance
+    from a sample, we have already used one degree of freedom to compute
+    $\bar{x}$. Dividing by $n - 1$ gives an <em>unbiased</em> estimator of
+    the true population variance — its expected value over all possible
+    samples equals the true variance. Dividing by $n$ would systematically
+    underestimate it. We will derive this in Lesson 2.2.
+  </p>
+</div>
+
+<h3>The standard deviation</h3>
+
+<p>
+  Variance is in <em>squared</em> units (squared degrees Celsius, in our
+  case) which is awkward to interpret. The <strong>standard deviation</strong>
+  takes the square root and brings us back to the original units:
+</p>
+
+$$s \;=\; \sqrt{s^2}$$
+
+<p>
+  For Singapore's 2023 temperatures, $s = 0.43$°C — meaning a typical month
+  is within half a degree of the annual mean. For rainfall, $s = 56.71$ mm,
+  which compared to the mean of $\bar{x} = 152.85$ is a coefficient of
+  variation of $56.71 / 152.85 \approx 37\%$ — a much larger relative spread.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 The intuitive picture</span>
+  <p>
+    Imagine throwing twelve darts at a dart board.
+    The mean is the centre of mass of the holes. The standard deviation is the
+    typical distance from the centre. A tight cluster has small std; a wild
+    scatter has large std. That is exactly what these numbers tell you about
+    your data.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Mixing up assignment and equality</span>
+  <p>
+    The single equals sign <code>=</code> is <em>assignment</em> ("set
+    <code>city</code> to <code>'Singapore'</code>"). The double equals
+    <code>==</code> is <em>comparison</em> ("does <code>city</code> equal
+    <code>'Singapore'</code>?"). Beginners frequently write <code>if city = "Singapore"</code>
+    when they mean <code>if city == "Singapore"</code>. Python will refuse to
+    run the first form — that is the language doing you a kindness.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Forgetting that DataFrames are immutable in Polars</span>
+  <p>
+    In Polars (unlike pandas), almost every operation returns a <em>new</em>
+    DataFrame. <code>df.filter(...)</code> does not change <code>df</code>; it
+    returns a new DataFrame that you should assign to a variable:
+    <code>filtered = df.filter(...)</code>. If you write
+    <code>df.filter(...)</code> on a line by itself the result is computed and
+    immediately thrown away.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Confusing column names with column values</span>
+  <p>
+    <code>df["mean_temperature_c"]</code> returns the column as a Series.
+    <code>"mean_temperature_c"</code> (without the <code>df[...]</code>) is just
+    a string that happens to spell out a column name. You cannot do
+    <code>"mean_temperature_c".max()</code> because strings do not have a
+    <code>.max()</code> method.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Two new variables</h3>
+  <p>
+    Create two variables: <code>your_city</code> (a string) and
+    <code>your_age</code> (an integer). Then print a sentence using an f-string
+    that says <em>"Hello from CITY — I am AGE years old."</em>. The output
+    should look like one line of text with both values inserted.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — A different question</h3>
+  <p>
+    Using the same <code>sg_weather.csv</code> dataset, find the month with the
+    <em>least</em> rainfall (the dry month). You will need
+    <code>df["total_rainfall_mm"].min()</code> and <code>df.filter(...)</code>.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Combining columns</h3>
+  <p>
+    Compute the <em>annual total rainfall</em> in millimetres and convert it to
+    metres. The annual total is the sum of all 12 monthly values; one metre is
+    1000 millimetres. Print the result with one decimal place.
+  </p>
+  <p>
+    <em>Hint:</em> <code>df["total_rainfall_mm"].sum()</code> returns the sum,
+    division uses <code>/</code>, and the f-string spec for one decimal is
+    <code>:.1f</code>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The DataFrame inspection pattern from this lesson reappears every time you
+  work with new data. Lesson 1.2 builds on this by adding <em>filtering</em>
+  and <em>transformation</em>. Lesson 1.7 introduces <code>DataExplorer</code>,
+  which automates everything you did by hand today and adds eight kinds of
+  data-quality alerts. Lesson 2.2 derives why <code>describe()</code> divides
+  by $n - 1$ when computing variance (Bessel's correction). The mean, variance
+  and standard deviation you saw today are the foundation of <em>every</em>
+  parametric statistical test in Module 2.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In 45 minutes you have learned the four primitives every data professional
+  uses: variables (names bound to typed values), f-strings (formatted output),
+  the DataFrame (typed, ordered, named-column tables), and summary statistics
+  (mean, std, min, max). You loaded a real Singapore weather dataset, inspected
+  its shape and schema, computed summaries, and answered three concrete
+  questions about it.
+</p>
+<p>
+  More importantly, you established the habit that distinguishes a careful
+  analyst from a careless one: <strong>look at the data before doing anything
+  else</strong>. <code>shape</code>, <code>columns</code>, <code>head</code>,
+  <code>describe</code> — that ritual takes thirty seconds and catches almost
+  every disaster waiting to happen.
+</p>
+<p>
+  In Lesson 1.2, we move beyond looking at the whole dataset to picking out
+  exactly the rows we care about. The HDB resale dataset (50,000 rows of
+  Singapore property transactions) is waiting.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 1 Index
+  </a>
+  <a href="../02/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.2 Filtering and Transforming Data
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

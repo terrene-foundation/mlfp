@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 3 — Supervised ML: Building and Deploying Models | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 3</span>
+    Supervised Machine Learning — Building and Deploying Models
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~30 hours total study</span>
+    <span>Scaffolding: 50% (moderate)</span>
+    <span>Audience: MLFP02 complete</span>
+  </div>
+  <p class="lead">
+    Module 3 is the machine-learning engine room. Module 2 gave you statistics
+    and a single linear model. In the next eight lessons you will engineer
+    features from raw data, master the complete supervised model zoo (SVM, KNN,
+    Naive Bayes, trees, random forests, gradient boosting), calibrate and fair-audit
+    every model you train, and deploy a production pipeline with drift monitoring
+    and a Mitchell model card. The running datasets are Singapore credit
+    scoring, HDB resale prices, and the ICU cohort from Module 2.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module, you will be able to:</p>
+<ul>
+  <li>Engineer domain-driven features and select the most predictive subset with filter, wrapper, and embedded methods</li>
+  <li>Derive the bias-variance decomposition and apply L1, L2, and ElasticNet regularisation with a Bayesian justification</li>
+  <li>Train, tune, and compare the full supervised model zoo: linear, SVM, KNN, Naive Bayes, decision trees, random forests, and gradient boosting (XGBoost, LightGBM, CatBoost)</li>
+  <li>Handle class imbalance with cost-sensitive learning, focal loss, and SMOTE; calibrate probabilities with Platt scaling and isotonic regression</li>
+  <li>Interpret models with SHAP and LIME and audit fairness under the impossibility theorem</li>
+  <li>Orchestrate the end-to-end pipeline with <code>WorkflowBuilder</code>, <code>HyperparameterSearch</code>, <code>ModelRegistry</code>, and <code>DataFlow</code></li>
+  <li>Deploy a production model with drift monitoring (PSI, KS), a model card, and conformal prediction intervals</li>
+</ul>
+
+<h2>Datasets You Will Use</h2>
+<table>
+  <thead><tr><th>Dataset</th><th>Size</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td>ICU patient cohort (icu_*.parquet)</td><td>~6K admissions</td><td>3.1 (feature engineering)</td></tr>
+    <tr><td>Singapore credit scoring (credit_*.parquet)</td><td>~5K applicants, 12% default rate</td><td>3.2, 3.4–3.8</td></tr>
+    <tr><td>E-commerce churn (ecommerce_customers.parquet)</td><td>~5K customers</td><td>3.3 (model zoo)</td></tr>
+    <tr><td>HDB resale transactions (hdb_resale.parquet)</td><td>50K transactions</td><td>3.1, 3.2 (worked examples)</td></tr>
+  </tbody>
+</table>
+
+<h2>Kailash Engines Used in Module 3</h2>
+<table>
+  <thead><tr><th>Engine</th><th>First Used</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>FeatureEngineer</code>, <code>FeatureStore</code></td><td>3.1</td><td>Engineer and register features with schemas</td></tr>
+    <tr><td><code>PreprocessingPipeline</code></td><td>3.1</td><td>Polars-native encoding, scaling, splits</td></tr>
+    <tr><td><code>TrainingPipeline</code></td><td>3.3</td><td>End-to-end training with cross-validation</td></tr>
+    <tr><td><code>EnsembleEngine</code></td><td>3.3</td><td>Bagging and stacking ensembles</td></tr>
+    <tr><td><code>AutoMLEngine</code></td><td>3.4</td><td>Automated model selection and tuning</td></tr>
+    <tr><td><code>HyperparameterSearch</code></td><td>3.7</td><td>Bayesian optimisation over search spaces</td></tr>
+    <tr><td><code>ModelRegistry</code></td><td>3.7</td><td>Version, stage, and promote models</td></tr>
+    <tr><td><code>ModelVisualizer</code></td><td>3.2</td><td>Learning curves, ROC, calibration plots</td></tr>
+    <tr><td><code>WorkflowBuilder</code></td><td>3.7</td><td>Node-based pipeline orchestration</td></tr>
+    <tr><td><code>DataFlow</code></td><td>3.7</td><td>Typed persistence of ML results</td></tr>
+    <tr><td><code>DriftMonitor</code></td><td>3.8</td><td>PSI/KS feature and performance drift</td></tr>
+  </tbody>
+</table>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">3.1</div>
+    <div>
+      <p class="title">Feature Engineering, ML Pipeline, and Feature Selection</p>
+      <p class="summary">Domain-driven features, the seven-stage ML pipeline, filter/wrapper/embedded selection, leakage detection. ICU cohort + HDB.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">3.2</div>
+    <div>
+      <p class="title">Bias-Variance, Regularisation, and Cross-Validation</p>
+      <p class="summary">Derivation of the decomposition, L1 vs L2 geometry, Bayesian priors, k-fold, stratified, time-series, nested CV. HDB overfitting demo.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">3.3</div>
+    <div>
+      <p class="title">The Complete Supervised Model Zoo</p>
+      <p class="summary">SVM, KNN, Naive Bayes, decision trees, random forests. Gini/entropy by hand, curse of dimensionality, OOB = 1/e. E-commerce churn.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">3.4</div>
+    <div>
+      <p class="title">Gradient Boosting Deep Dive</p>
+      <p class="summary">XGBoost 2nd-order Taylor expansion, LightGBM GOSS, CatBoost ordered boosting. Full split-gain derivation. Credit scoring.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">3.5</div>
+    <div>
+      <p class="title">Model Evaluation, Imbalance, and Calibration</p>
+      <p class="summary">Confusion matrix, ROC vs PR, SMOTE failures, focal loss, Platt scaling, Brier score, isotonic regression. 100:1 cost matrix.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">3.6</div>
+    <div>
+      <p class="title">Interpretability and Fairness</p>
+      <p class="summary">Shapley axioms, TreeSHAP vs KernelSHAP, LIME, ALE, disparate impact, equalised odds, the impossibility theorem. PDPA context.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/07/textbook.html">
+    <div class="num">3.7</div>
+    <div>
+      <p class="title">Workflow Orchestration, Model Registry, Hyperparameter Search</p>
+      <p class="summary"><code>WorkflowBuilder</code>, custom nodes, Bayesian optimisation, <code>ModelRegistry</code> lifecycle, <code>ModelSignature</code>.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/08/textbook.html">
+    <div class="num">3.8</div>
+    <div>
+      <p class="title">Production Pipeline — DataFlow, Drift, and Deployment</p>
+      <p class="summary"><code>DataFlow</code> persistence, <code>DriftMonitor</code> PSI/KS, Mitchell model card, conformal prediction. Full credit-scoring deploy.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+</div>
+
+<h2>Forward Link: Where This Leads</h2>
+<p>
+  Module 3 closes out the supervised-learning core. Module 4 picks up where
+  3.1 left off — generalising "feature engineering" to the full
+  <strong>feature engineering spectrum</strong>: clustering as automated
+  feature discovery ($n \to 1$), dimensionality reduction as compression
+  ($n \to k$), and representation learning as the deep-learning bridge
+  ($n \to m$). Every model you trained in M3 remains usable in M4 — but now
+  the features are learned rather than hand-crafted.
+</p>
+
+<h2>Master Documents</h2>
+<p>If you prefer the consolidated single-file experience, the full module is also available as:</p>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> (all 8 lessons in one Reveal.js deck)</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a> (markdown, all 8 lessons)</li>
+</ul>
+
+</main>
+</body>
+</html>

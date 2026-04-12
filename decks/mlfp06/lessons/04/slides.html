@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 6.4 — RAG Systems | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>.reveal section{text-align:left}.reveal h1,.reveal h2,.reveal h3{text-transform:none}.reveal .lesson-meta{font-size:.5em;color:#64748B;text-transform:uppercase;letter-spacing:.1em}.reveal svg{max-width:100%;max-height:480px}.reveal pre{font-size:.5em}.callout-slide{padding:12px 16px;border-radius:4px;margin-top:.8em;font-size:.85em}.callout-slide.foundations{background:#F0FDF4;border-left:4px solid #22C55E}.callout-slide.theory{background:#EFF6FF;border-left:4px solid #3B82F6}.callout-slide.warning{background:#FFFBEB;border-left:4px solid #F59E0B}.callout-slide.kailash{background:#F0FDFA;border-left:4px solid #14B8A6}</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 6 · Lesson 6.4</p>
+  <h1>RAG Systems</h1>
+  <p style="font-size:.7em;color:#64748B">Chunking · Dense/sparse/hybrid retrieval · RAGAS evaluation · HyDE</p>
+  <div style="margin-top:2em;padding:16px 20px;background:#F0FDFA;border-left:4px solid #0D9488"><strong>⏱ 90 minutes</strong> · <strong>Outcome:</strong> build, evaluate, and improve a production RAG pipeline</div>
+</section>
+
+<section>
+  <h2>Why RAG beats fine-tuning for knowledge</h2>
+  <ul>
+    <li><strong>Freshness:</strong> re-index daily (trivial) vs retrain daily (absurd).</li>
+    <li><strong>Attribution:</strong> RAG cites source chunks. Fine-tuning blurs facts into weights.</li>
+    <li><strong>Cost:</strong> indexing 1M docs = pennies. Fine-tuning on 1M docs = thousands.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> fine-tune for skills and style. RAG for facts and freshness.</div>
+</section>
+
+<section>
+  <h2>The RAG pipeline</h2>
+  <figure style="text-align:center">
+    <svg viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="120" height="100" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/><text x="80" y="65" text-anchor="middle" font-weight="600" font-size="11">Documents</text><text x="80" y="85" text-anchor="middle" font-size="9" fill="#64748B">MAS, PDPA</text><text x="80" y="100" text-anchor="middle" font-size="9" fill="#64748B">AI Verify</text>
+      <line x1="145" y1="80" x2="175" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="175,80 169,76 169,84" fill="#0D9488"/>
+      <rect x="180" y="30" width="120" height="100" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="240" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">Chunk</text><text x="240" y="80" text-anchor="middle" font-size="9">Fixed / semantic</text><text x="240" y="95" text-anchor="middle" font-size="9">200-500 tokens</text>
+      <line x1="305" y1="80" x2="335" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="335,80 329,76 329,84" fill="#0D9488"/>
+      <rect x="340" y="30" width="120" height="100" rx="6" fill="#DCFCE7" stroke="#22C55E"/><text x="400" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">Embed</text><text x="400" y="80" text-anchor="middle" font-size="9">Sentence-BERT</text><text x="400" y="95" text-anchor="middle" font-size="9">or BM25 index</text>
+      <line x1="465" y1="80" x2="495" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="495,80 489,76 489,84" fill="#0D9488"/>
+      <rect x="500" y="30" width="100" height="100" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="550" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#F59E0B">Retrieve</text><text x="550" y="80" text-anchor="middle" font-size="9">Top-k</text>
+      <line x1="605" y1="80" x2="635" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="635,80 629,76 629,84" fill="#0D9488"/>
+      <rect x="640" y="30" width="60" height="100" rx="6" fill="#E0E7FF" stroke="#4F46E5"/><text x="670" y="70" text-anchor="middle" font-weight="600" font-size="10" fill="#4F46E5">LLM</text><text x="670" y="90" text-anchor="middle" font-size="9" fill="#4F46E5">answer</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Chunking strategies</h2>
+  <table style="font-size:.65em">
+    <thead><tr><th>Strategy</th><th>How</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Fixed size</td><td>Split every N tokens</td><td>Simple, fast, baseline</td></tr>
+      <tr><td>Sentence</td><td>Split on sentence boundaries</td><td>Preserves meaning</td></tr>
+      <tr><td>Semantic</td><td>Embed, cluster, split at topic shifts</td><td>Best quality, slower</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:.85em">Always overlap chunks (10-20%) to avoid splitting key passages at boundaries.</p>
+</section>
+
+<section>
+  <h2>Three retrieval approaches</h2>
+  <table style="font-size:.65em">
+    <thead><tr><th>Type</th><th>Method</th><th>Strength</th></tr></thead>
+    <tbody>
+      <tr><td>Sparse</td><td>BM25 (from 4.6)</td><td>Exact keyword match</td></tr>
+      <tr><td>Dense</td><td>Sentence embeddings + cosine</td><td>Semantic similarity</td></tr>
+      <tr><td>Hybrid</td><td>Combine dense + sparse scores</td><td>Best of both</td></tr>
+    </tbody>
+  </table>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> hybrid retrieval with re-ranking (cross-encoder) is the production standard.</div>
+</section>
+
+<section>
+  <h2>RAGAS evaluation</h2>
+  <table style="font-size:.65em">
+    <thead><tr><th>Metric</th><th>Measures</th></tr></thead>
+    <tbody>
+      <tr><td>Faithfulness</td><td>Is the answer grounded in retrieved context?</td></tr>
+      <tr><td>Answer relevance</td><td>Does the answer address the question?</td></tr>
+      <tr><td>Context relevance</td><td>Are the retrieved chunks relevant?</td></tr>
+      <tr><td>Context recall</td><td>Did we retrieve all relevant chunks?</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>HyDE — Hypothetical Document Embeddings</h2>
+  <figure style="text-align:center">
+    <svg viewBox="0 0 600 140" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="120" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/><text x="80" y="60" text-anchor="middle" font-weight="600" font-size="10">Query</text><text x="80" y="80" text-anchor="middle" font-size="9" fill="#64748B">"MAS regulation..."</text>
+      <line x1="145" y1="70" x2="175" y2="70" stroke="#0D9488" stroke-width="2"/><polygon points="175,70 169,66 169,74" fill="#0D9488"/>
+      <rect x="180" y="30" width="140" height="80" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="250" y="55" text-anchor="middle" font-weight="600" font-size="10" fill="#3B82F6">LLM generates</text><text x="250" y="75" text-anchor="middle" font-size="9">hypothetical answer</text><text x="250" y="90" text-anchor="middle" font-size="9" fill="#64748B">(not used as answer)</text>
+      <line x1="325" y1="70" x2="355" y2="70" stroke="#0D9488" stroke-width="2"/><polygon points="355,70 349,66 349,74" fill="#0D9488"/>
+      <rect x="360" y="30" width="100" height="80" rx="6" fill="#DCFCE7" stroke="#22C55E"/><text x="410" y="60" text-anchor="middle" font-weight="600" font-size="10" fill="#22C55E">Embed</text><text x="410" y="80" text-anchor="middle" font-size="9">hypo answer</text>
+      <line x1="465" y1="70" x2="495" y2="70" stroke="#0D9488" stroke-width="2"/><polygon points="495,70 489,66 489,74" fill="#0D9488"/>
+      <rect x="500" y="30" width="80" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="540" y="60" text-anchor="middle" font-weight="600" font-size="10" fill="#F59E0B">Retrieve</text><text x="540" y="80" text-anchor="middle" font-size="9">better matches</text>
+    </svg>
+  </figure>
+  <p style="font-size:.85em">Generate a hypothetical answer, embed it, use that embedding for retrieval. Retrieves documents that look like answers, not just keyword matches.</p>
+</section>
+
+<section>
+  <h2>RAG code</h2>
+  <pre><code class="language-python" data-trim>
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+chunk_embeddings = encoder.encode(chunks)
+
+query_emb = encoder.encode([query])
+sims = np.dot(chunk_embeddings, query_emb.T).flatten()
+top_k = np.argsort(sims)[-5:][::-1]
+
+context = "\n".join([chunks[i] for i in top_k])
+answer = llm.generate(f"Context: {context}\nQ: {query}\nA:")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Singapore context</h2>
+  <ul>
+    <li>MAS regulatory documents — financial compliance queries.</li>
+    <li>PDPA (Personal Data Protection Act) — data handling questions.</li>
+    <li>AI Verify — responsible AI governance checks.</li>
+  </ul>
+  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> <code>RAGResearchAgent</code> and <code>MemoryAgent</code> in Kaizen provide production-ready RAG with memory persistence.</div>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size:.85em">
+    <li><strong>Chunks too large</strong> — LLM gets distracted by irrelevant context. 200–500 tokens.</li>
+    <li><strong>No overlap</strong> — key passages split at chunk boundaries.</li>
+    <li><strong>Dense-only retrieval</strong> — misses exact keyword matches. Use hybrid.</li>
+    <li><strong>No RAGAS evaluation</strong> — "it looks right" is not a metric.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Build a complete RAG pipeline from documents to answers.</li>
+    <li>✓ Compare BM25, dense, and hybrid retrieval.</li>
+    <li>✓ Evaluate RAG quality with RAGAS metrics.</li>
+    <li>✓ Apply HyDE for improved retrieval.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>Next:</strong> 6.5 — AI Agents. ReAct, tool use, and function calling. The LLM starts acting in the world.</div>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+</body>
+</html>

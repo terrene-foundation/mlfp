@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.4 — RAG Systems | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.4</span>
+  RAG Systems
+</h1>
+
+<p class="lead">
+  Your aligned LLM is capable and safe but still has two fatal flaws:
+  it does not know anything that post-dates its training cutoff, and it
+  does not know anything that was private to your organisation.
+  Retrieval-Augmented Generation (RAG) fixes both in one architectural
+  move — fetch relevant facts from a search index and inject them into
+  the prompt as context. In this lesson you will build a production-grade
+  RAG pipeline on Singapore regulatory documents (MAS, PDPA, AI Verify),
+  compare BM25, dense, and hybrid retrieval, evaluate quality with
+  RAGAS, and try the HyDE trick for an easy accuracy boost.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why RAG Beats Fine-Tuning for Knowledge</h2>
+
+<p>
+  Fine-tuning teaches the model new <em>skills</em> and new <em>styles</em>.
+  It is the wrong tool for teaching the model new <em>facts</em>. The
+  reasons are practical:
+</p>
+
+<ul>
+  <li><strong>Freshness:</strong> new regulations, product launches, policy changes happen daily. Retraining daily is absurd. Re-indexing daily is trivial.</li>
+  <li><strong>Attribution:</strong> RAG can cite the source chunk that produced an answer. Fine-tuning blurs facts into weights with no traceability.</li>
+  <li><strong>Cost:</strong> indexing a million documents costs pennies. Fine-tuning on a million documents costs thousands of dollars.</li>
+  <li><strong>Privacy:</strong> the document stays in your index; only the retrieved snippets reach the model provider.</li>
+</ul>
+
+<p>
+  The trade-off: RAG pipelines are more complex to operate (indexing,
+  retrieval tuning, evaluation) and retrieval errors cascade directly
+  into generation errors.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The RAG Pipeline in Five Stages</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+
+  <!-- Indexing row -->
+  <text x="30" y="30" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">OFFLINE · INDEXING</text>
+
+  <rect x="30" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="95" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">1. Documents</text>
+  <text x="95" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">MAS / PDPA /</text>
+  <text x="95" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">AI Verify</text>
+
+  <line x1="160" y1="85" x2="190" y2="85" stroke="#0D9488" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="190" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="255" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">2. Chunk</text>
+  <text x="255" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">~500 tokens</text>
+  <text x="255" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">50 overlap</text>
+
+  <line x1="320" y1="85" x2="350" y2="85" stroke="#0D9488" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="350" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="415" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">3. Embed</text>
+  <text x="415" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">768-dim</text>
+  <text x="415" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">vectors</text>
+
+  <line x1="480" y1="85" x2="510" y2="85" stroke="#0D9488" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="510" y="50" width="130" height="70" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="575" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">4. Index</text>
+  <text x="575" y="95" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">Vector DB</text>
+  <text x="575" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#0F766E">+ BM25</text>
+
+  <!-- Query row -->
+  <text x="30" y="170" font-family="Inter" font-weight="700" font-size="13" fill="#F59E0B">ONLINE · QUERY</text>
+
+  <rect x="30" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="95" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">5. User query</text>
+  <text x="95" y="235" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">"What does MAS</text>
+  <text x="95" y="248" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">TRM require for</text>
+  <text x="95" y="261" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">AI models?"</text>
+
+  <line x1="160" y1="230" x2="190" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="190" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="255" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">6. Retrieve top-k</text>
+  <text x="255" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">dense + BM25</text>
+  <text x="255" y="251" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">+ re-rank</text>
+
+  <line x1="320" y1="230" x2="350" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="350" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="415" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">7. Augment prompt</text>
+  <text x="415" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">retrieved chunks</text>
+  <text x="415" y="251" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">+ question</text>
+
+  <line x1="480" y1="230" x2="510" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="510" y="190" width="130" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="575" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">8. Generate</text>
+  <text x="575" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">LLM answer</text>
+  <text x="575" y="251" text-anchor="middle" font-family="Inter" font-size="10" fill="#78350F">with citations</text>
+
+  <line x1="640" y1="230" x2="680" y2="230" stroke="#F59E0B" stroke-width="2" marker-end="url(#arr5)"/>
+
+  <rect x="680" y="190" width="80" height="80" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="720" y="225" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#15803D">Answer</text>
+  <text x="720" y="245" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">+ sources</text>
+</svg>
+<figcaption>The RAG pipeline splits cleanly into an offline indexing path (top row, runs once per document update) and an online query path (bottom row, runs per user request).</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Stage 1: Chunking</h2>
+
+<p>
+  You cannot retrieve "the MAS TRM document" — it is 200 pages. You
+  retrieve <em>chunks</em>. A chunk is a contiguous window of text
+  small enough to fit comfortably in the prompt and focused enough
+  that its meaning is self-contained.
+</p>
+
+<h3>Chunk size trade-offs</h3>
+
+<table>
+  <thead>
+    <tr><th>Chunk size</th><th>Pros</th><th>Cons</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Small (~100 tokens)</td><td>Precise retrieval, many chunks fit in context</td><td>Often lacks full context for a claim</td></tr>
+    <tr><td>Medium (~500 tokens)</td><td>Good default — balance of context and precision</td><td>Sometimes splits a single thought across chunks</td></tr>
+    <tr><td>Large (~1500 tokens)</td><td>Self-contained — whole sections</td><td>Retrieval is coarse, prompts get expensive</td></tr>
+  </tbody>
+</table>
+
+<h3>The overlap trick</h3>
+
+<p>
+  A fixed-size chunker splits text at arbitrary token boundaries —
+  which means a key sentence can end up cut in half. The fix is
+  <strong>overlap</strong>: each chunk shares its last $k$ tokens with
+  the start of the next chunk. Typical overlap is 10–20% of the chunk
+  size (e.g., 50 tokens of overlap on a 500-token chunk). Every
+  sentence that crosses a chunk boundary ends up fully inside at
+  least one chunk.
+</p>
+
+<pre><code class="language-python">def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    """Split text into overlapping chunks of approximately `chunk_size` tokens.
+
+    Simple whitespace tokenisation — for production, use a proper tokenizer
+    so your chunks match the embedder's view of length.
+    """
+    tokens = text.split()
+    chunks: list[str] = []
+    step = chunk_size - overlap
+    for i in range(0, len(tokens), step):
+        window = tokens[i : i + chunk_size]
+        if len(window) &lt; 20:     # skip tail fragments shorter than 20 tokens
+            break
+        chunks.append(" ".join(window))
+    return chunks</code></pre>
+
+<h3>Smarter chunking</h3>
+
+<p>
+  The naive fixed-size chunker is good enough to get started. Two
+  upgrades you should know about:
+</p>
+
+<ul>
+  <li><strong>Sentence-boundary aware:</strong> split on sentence-ending punctuation and pack sentences into chunks until you hit the target size. Prevents sentence fragments.</li>
+  <li><strong>Semantic chunking:</strong> use an embedding model to detect topic shifts and put chunk boundaries where topics change. Slow at indexing time, pays off in retrieval quality.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Stage 2: Sparse Retrieval with BM25</h2>
+
+<p>
+  Before embeddings, retrieval was done with keyword scoring. BM25 is
+  the classic, and it still works remarkably well — often
+  <em>better</em> than embeddings on tasks with rare terms (names,
+  numbers, acronyms) that embedding models fail to distinguish.
+</p>
+
+<p>
+  BM25 scores a document $d$ against a query $q$ as a sum over query
+  terms of three factors: how rare the term is across the corpus, how
+  frequent it is in the document, and a length correction.
+</p>
+
+<div class="annotated-equation">
+  $$\text{BM25}(q, d) \;=\; \sum_{t \in q} \text{IDF}(t) \cdot \frac{f(t, d) \cdot (k_1 + 1)}{f(t, d) + k_1 \cdot \left(1 - b + b \cdot \frac{|d|}{\bar{|d|}}\right)}$$
+  <div class="annotations">
+    <span>IDF(t) — inverse document frequency of $t$</span>
+    <span>$f(t, d)$ — term frequency in $d$</span>
+    <span>$|d|$ — document length</span>
+    <span>$\bar{|d|}$ — average document length</span>
+    <span>$k_1 \approx 1.5$ — term saturation</span>
+    <span>$b \approx 0.75$ — length norm</span>
+  </div>
+</div>
+
+<p>
+  Where:
+</p>
+
+$$\text{IDF}(t) \;=\; \log\!\left(\frac{N - n_t + 0.5}{n_t + 0.5} + 1\right)$$
+
+<p>
+  $N$ is the total number of chunks in the corpus and $n_t$ is the
+  number of chunks containing term $t$. Rare terms dominate; common
+  terms like "the" contribute near zero.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — why BM25 still wins on some queries</span>
+  <p>
+    Dense embeddings compress meaning into a fixed-length vector
+    (typically 768 or 1024 floats). They are magnificent at semantic
+    similarity but they struggle with exact-match queries like
+    "section 4.3.2 of MAS Notice 626" where the right answer depends
+    on the precise term. BM25 retrieves by exact token match and
+    handles this effortlessly. The standard production pattern is
+    <em>hybrid</em> retrieval: run both, combine the scores, enjoy
+    the best of both worlds.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Stage 3: Dense Retrieval with Embeddings</h2>
+
+<p>
+  Dense retrieval replaces token matching with semantic similarity.
+  You embed each chunk into a high-dimensional vector, embed the query
+  into the same space, and retrieve the chunks whose vectors are
+  closest to the query's.
+</p>
+
+<p>
+  The distance metric is almost always <strong>cosine similarity</strong>:
+</p>
+
+<div class="annotated-equation">
+  $$\text{cosine}(\mathbf{u}, \mathbf{v}) \;=\; \frac{\mathbf{u} \cdot \mathbf{v}}{\|\mathbf{u}\| \, \|\mathbf{v}\|}$$
+  <div class="annotations">
+    <span>$\mathbf{u}$ — query embedding</span>
+    <span>$\mathbf{v}$ — chunk embedding</span>
+    <span>range: $[-1, 1]$</span>
+    <span>1 = identical direction</span>
+  </div>
+</div>
+
+<p>
+  Cosine similarity measures the angle between two vectors — it is
+  invariant to magnitude. Two embeddings that are pointing the same
+  direction have cosine 1, regardless of length. This is the right
+  metric for embeddings because the meaning is encoded in direction,
+  not magnitude.
+</p>
+
+<pre><code class="language-python">import math
+
+def cosine_similarity(u: list[float], v: list[float]) -> float:
+    dot = sum(a * b for a, b in zip(u, v))
+    nu = math.sqrt(sum(a * a for a in u))
+    nv = math.sqrt(sum(b * b for b in v))
+    return dot / (nu * nv + 1e-12)
+
+
+class VectorStore:
+    """A minimal in-memory vector store — good enough for teaching."""
+
+    def __init__(self):
+        self.chunks: list[str] = []
+        self.embeddings: list[list[float]] = []
+        self.metadata: list[dict] = []
+
+    def add(self, chunk: str, embedding: list[float], meta: dict):
+        self.chunks.append(chunk)
+        self.embeddings.append(embedding)
+        self.metadata.append(meta)
+
+    def search(self, query_embedding: list[float], k: int = 5) -> list[tuple[float, str, dict]]:
+        scored = [
+            (cosine_similarity(query_embedding, emb), chunk, meta)
+            for emb, chunk, meta in zip(self.embeddings, self.chunks, self.metadata)
+        ]
+        scored.sort(reverse=True, key=lambda x: x[0])
+        return scored[:k]</code></pre>
+
+<p>
+  For real systems use a dedicated vector database (pgvector, Qdrant,
+  FAISS) that can handle millions of chunks with approximate nearest
+  neighbour search. The in-memory version above is enough to teach
+  the mechanics and small enough to debug.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Stage 4: Hybrid Retrieval</h2>
+
+<p>
+  BM25 and dense retrieval have complementary failure modes. BM25
+  misses paraphrases ("credit exposure" vs "counterparty risk").
+  Dense retrieval misses exact identifiers ("MAS Notice 626"). A
+  hybrid combines both:
+</p>
+
+$$\text{score}_\text{hybrid} \;=\; \alpha \cdot \text{score}_\text{dense} + (1 - \alpha) \cdot \text{score}_\text{BM25}$$
+
+<p>
+  The scores are first <em>normalised</em> (both to [0, 1]) before
+  combining, since BM25 scores are unbounded while cosine similarities
+  live in $[-1, 1]$. Tune $\alpha$ on a held-out set; $\alpha = 0.6$
+  is a reasonable default for technical documents with rare terms.
+</p>
+
+<h3>Re-ranking with a cross-encoder</h3>
+
+<p>
+  After retrieval, you often have ~20 candidates and need to pick the
+  top 5 for the prompt. A <strong>cross-encoder</strong> re-ranker
+  scores each (query, chunk) pair <em>jointly</em> — it takes both
+  inputs through a transformer and outputs a single relevance score.
+  This is more accurate than cosine similarity (because the model can
+  attend between query and chunk tokens) but far too slow to use on
+  an entire corpus. The standard pattern is <em>retrieve 20 with
+  dense + BM25, re-rank with a cross-encoder, keep top 5 for the
+  prompt</em>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Stage 5: HyDE — Hypothetical Document Embeddings</h2>
+
+<p>
+  Here is a clever trick. User queries are often short and sparse
+  ("How is customer NRIC handled under PDPA?"), while the documents
+  they want to retrieve are long and specific ("Personal data protection
+  obligations include consent requirements before collecting NRIC
+  numbers from individuals..."). The embeddings of short queries and
+  long documents live in different parts of the vector space.
+</p>
+
+<p>
+  HyDE (<em>Gao et al. 2022</em>) fixes this by asking an LLM to
+  generate a <em>hypothetical answer</em> to the query first, then
+  embedding the hypothetical answer instead of the raw query.
+</p>
+
+<ol>
+  <li>User asks: <em>"How is customer NRIC handled under PDPA?"</em></li>
+  <li>LLM writes a hypothetical answer (without retrieval): <em>"Under PDPA, organisations must obtain consent before collecting NRIC numbers, and can only collect them when required by law..."</em></li>
+  <li>Embed the <em>hypothetical answer</em>, not the query.</li>
+  <li>Retrieve. The hypothetical answer is long and specific and lives in the same neighbourhood as the real PDPA text.</li>
+  <li>Generate the final answer from the real retrieved chunks.</li>
+</ol>
+
+<div class="callout foundations">
+  <span class="label">🟢 HyDE in one sentence</span>
+  <p>
+    "Hallucinate the answer first so that the embedding of the
+    hallucination can retrieve the real answer." The LLM does not
+    need to hallucinate correctly — it just needs to hallucinate
+    <em>in the right neighbourhood</em>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Evaluating RAG with RAGAS</h2>
+
+<p>
+  "Does the system work?" is a useless question. RAG quality has at
+  least four independent axes, and a good pipeline should be measured
+  on all of them. The RAGAS framework names and scores them:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>Question</th><th>Diagnoses</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Faithfulness</strong></td>
+      <td>Does the answer follow from the retrieved context?</td>
+      <td>Hallucination — answer invents facts not in the sources</td>
+    </tr>
+    <tr>
+      <td><strong>Answer relevance</strong></td>
+      <td>Does the answer actually address the question?</td>
+      <td>Off-topic answers, verbose padding</td>
+    </tr>
+    <tr>
+      <td><strong>Context relevance</strong></td>
+      <td>Is the retrieved context actually relevant to the question?</td>
+      <td>Retrieval misses — wrong chunks fetched</td>
+    </tr>
+    <tr>
+      <td><strong>Context recall</strong></td>
+      <td>Does the retrieved context contain all the needed information?</td>
+      <td>Retrieval gaps — relevant chunks not fetched</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Each metric is scored by an LLM judge in [0, 1]. Run RAGAS on a
+  small gold-labelled set of questions and expected answers. When one
+  metric drops, you know exactly where to look: low faithfulness
+  means the generator is hallucinating; low context relevance means
+  retrieval is fetching the wrong chunks; low context recall means
+  retrieval is missing the right chunks.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — why separate context relevance from recall</span>
+  <p>
+    Context relevance asks "are the chunks we fetched useful?".
+    Context recall asks "did we fetch everything we needed?". You
+    can have high relevance and low recall (fetched chunks are
+    great, but we missed three others), or high recall and low
+    relevance (we got everything, plus a pile of junk). Fixing these
+    two failures requires different tools — relevance improves with
+    re-ranking, recall improves with broader retrieval (more $k$,
+    hybrid, query expansion).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Singapore Regulatory RAG</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build a RAG pipeline on <code>sg_regulations.parquet</code>
+    (MAS, PDPA, AI Verify sections). Compare BM25, dense, and hybrid
+    retrieval. Evaluate with RAGAS. Implement HyDE and measure the
+    improvement.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load the corpus and chunk it.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+from shared.kailash_helpers import setup_environment
+
+setup_environment()
+loader = MLFPDataLoader()
+regs = loader.load("mlfp06", "sg_regulations.parquet")
+print(f"Loaded {regs.height:,} regulation sections")
+
+all_chunks = []
+for row in regs.iter_rows(named=True):
+    for i, chunk in enumerate(chunk_text(row["text"], 500, 50)):
+        all_chunks.append({
+            "section": row["section"],
+            "chunk_id": f"{row['section']}::{i}",
+            "text": chunk,
+        })
+chunks_df = pl.DataFrame(all_chunks)
+print(f"Produced {chunks_df.height:,} chunks")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Embed with Delegate and build the vector store.</p>
+    <pre><code class="language-python">import os
+from kaizen_agents import Delegate
+
+model = os.environ["DEFAULT_LLM_MODEL"]
+embedder = Delegate(model=model, max_llm_cost_usd=2.0)
+
+async def embed(text: str) -> list[float]:
+    # In practice use a dedicated embedding endpoint; Delegate abstracts both.
+    return await embedder.embed(text)
+
+store = VectorStore()
+for row in chunks_df.iter_rows(named=True):
+    emb = await embed(row["text"])
+    store.add(row["text"], emb, {"chunk_id": row["chunk_id"], "section": row["section"]})</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Implement BM25 over the same chunks.</p>
+    <pre><code class="language-python">import math
+from collections import Counter
+
+class BM25Index:
+    def __init__(self, chunks: list[str], k1: float = 1.5, b: float = 0.75):
+        self.chunks = chunks
+        self.k1, self.b = k1, b
+        self.tokens = [c.lower().split() for c in chunks]
+        self.lengths = [len(t) for t in self.tokens]
+        self.avg_len = sum(self.lengths) / len(self.lengths)
+        # document frequency
+        self.df: Counter[str] = Counter()
+        for toks in self.tokens:
+            for t in set(toks):
+                self.df[t] += 1
+        self.N = len(chunks)
+
+    def idf(self, term: str) -> float:
+        n_t = self.df.get(term, 0)
+        return math.log((self.N - n_t + 0.5) / (n_t + 0.5) + 1)
+
+    def score(self, query: str, idx: int) -> float:
+        q_terms = query.lower().split()
+        doc_toks = self.tokens[idx]
+        doc_len = self.lengths[idx]
+        tf = Counter(doc_toks)
+        score = 0.0
+        for t in q_terms:
+            f = tf.get(t, 0)
+            if f == 0:
+                continue
+            num = f * (self.k1 + 1)
+            den = f + self.k1 * (1 - self.b + self.b * doc_len / self.avg_len)
+            score += self.idf(t) * num / den
+        return score
+
+    def top_k(self, query: str, k: int = 5) -> list[tuple[float, int]]:
+        scored = [(self.score(query, i), i) for i in range(self.N)]
+        scored.sort(reverse=True)
+        return scored[:k]</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Build a hybrid retriever that normalises and combines both.</p>
+    <pre><code class="language-python">def normalise(scores: list[float]) -> list[float]:
+    lo, hi = min(scores), max(scores)
+    if hi - lo &lt; 1e-9:
+        return [0.0] * len(scores)
+    return [(s - lo) / (hi - lo) for s in scores]
+
+
+async def hybrid_retrieve(query: str, k: int = 5, alpha: float = 0.6):
+    q_emb = await embed(query)
+    # dense scores
+    dense_scores = [cosine_similarity(q_emb, e) for e in store.embeddings]
+    # bm25 scores
+    bm25_scores = [bm25.score(query, i) for i in range(len(store.chunks))]
+
+    d_norm = normalise(dense_scores)
+    b_norm = normalise(bm25_scores)
+
+    hybrid = [alpha * d + (1 - alpha) * b for d, b in zip(d_norm, b_norm)]
+    ranked = sorted(enumerate(hybrid), key=lambda x: x[1], reverse=True)
+    return [(store.chunks[i], s) for i, s in ranked[:k]]</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Assemble the full RAG answer pipeline.</p>
+    <pre><code class="language-python">async def rag_answer(question: str, k: int = 5) -> dict:
+    retrieved = await hybrid_retrieve(question, k=k)
+    context = "\n\n---\n\n".join(f"[Source {i+1}]\n{chunk}" for i, (chunk, _) in enumerate(retrieved))
+
+    prompt = f"""You are a Singapore regulatory compliance assistant.
+Answer the question using only the sources below. Cite sources by number.
+If the sources do not contain the answer, say so clearly.
+
+SOURCES:
+{context}
+
+QUESTION: {question}
+
+ANSWER:"""
+
+    delegate = Delegate(model=model, max_llm_cost_usd=0.2)
+    response = ""
+    async for event in delegate.run(prompt):
+        if hasattr(event, "text"):
+            response += event.text
+
+    return {
+        "question": question,
+        "answer": response.strip(),
+        "sources": [chunk for chunk, _ in retrieved],
+    }</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6.</span>
+    <p>Evaluate with RAGAS on a small gold set. Expect faithfulness
+    near 0.9 when the retriever is working; watch for faithfulness
+    drops that signal hallucination.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Chunks too big</span>
+  <p>
+    A 2000-token chunk is easy to index but produces coarse retrieval —
+    the user's question matches one sentence out of 2000 tokens and
+    you pollute the prompt with 1999 irrelevant tokens. Start at 500,
+    go smaller only if the system keeps retrieving almost-relevant
+    chunks.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Pure dense retrieval on rare-term queries</span>
+  <p>
+    "What does MAS Notice 626 say about data governance?" The exact
+    string "MAS Notice 626" is rare and specific. Dense embeddings
+    compress it into a generic "regulatory document" signal and the
+    retriever pulls the wrong notices. Always run hybrid on
+    technical corpora.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: No RAGAS evaluation</span>
+  <p>
+    Without faithfulness and context relevance scores you cannot
+    diagnose which stage is failing. A full retrieval-augmented
+    pipeline has 5+ failure modes, and "the answer is wrong" tells
+    you nothing about which one.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Stale index</span>
+  <p>
+    You indexed the MAS documents a month ago. Last week MAS
+    published a revision. Your RAG system confidently cites the old
+    version. Set up an index refresh schedule and include a "last
+    indexed" timestamp in your answer's footer.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Chunk size sweep</h3>
+  <p>
+    Run the pipeline with chunk sizes in $\{200, 500, 1000\}$. For
+    each, compute context relevance on a 10-question gold set. Which
+    chunk size wins on this corpus?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Tune $\alpha$</h3>
+  <p>
+    Sweep the hybrid blend factor $\alpha \in \{0.0, 0.3, 0.6, 0.9,
+    1.0\}$. $\alpha = 0$ is pure BM25, $\alpha = 1$ is pure dense.
+    Plot retrieval accuracy vs $\alpha$. Is the optimum closer to
+    dense or sparse on Singapore regulations?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — HyDE improvement</h3>
+  <p>
+    Implement HyDE: before retrieval, ask the LLM to generate a
+    hypothetical answer, then embed that answer instead of the raw
+    query. Compare retrieval accuracy with and without HyDE on 20
+    short queries. Report the delta in context relevance.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The dense embedding idea comes from <strong>Lesson 4.6</strong> (NLP
+  and word embeddings). BM25 is a direct descendant of TF-IDF from the
+  same lesson. Cosine similarity was introduced in
+  <strong>Lesson 4.4</strong> as a distance metric for clustering.
+  The LLM generator you use at the end is whatever you aligned in
+  Lessons 6.2 and 6.3. Lesson 6.5 will wrap this RAG pipeline as a
+  <em>tool</em> that an agent can call, and Lesson 6.8 will deploy
+  the whole thing behind Nexus with PACT governance.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You now have a complete, production-grade RAG pipeline: chunks with
+  overlap, BM25 for exact match, dense embeddings for semantics, a
+  hybrid blender, a cross-encoder re-ranker, and RAGAS to tell you
+  which stage is failing. That is the same architecture sitting
+  behind enterprise copilots at scale, only with a bigger vector
+  database.
+</p>
+<p>
+  More importantly, you now know the axis where RAG wins and where it
+  loses. It wins on fresh knowledge, private corpora, and attribution
+  — the three things fine-tuning cannot give you. It loses on style,
+  tone, and task shape — which is exactly where Lessons 6.2 and 6.3
+  came in. A serious production stack uses both: fine-tune for
+  behaviour, RAG for facts.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../03/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    6.3 DPO and GRPO
+  </a>
+  <a href="../05/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.5 AI Agents — ReAct and Tools
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

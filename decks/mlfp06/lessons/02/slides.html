@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.2 — LoRA, Adapters, Fine-Tuning Landscape | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- 1 Title -->
+<section>
+  <p class="lesson-meta">Module 6 · Lesson 6.2</p>
+  <h1>LoRA, Adapters, and the Fine-Tuning Landscape</h1>
+  <p style="font-size: 0.7em; color:#64748B;">From scratch · 10-technique survey · model merging · QLoRA</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color:#0D9488;">⏱ 75 minutes</strong> ·
+    <strong>Prereq:</strong> 6.1 + 5.4 (transformers) + 4.3 (SVD) ·
+    <strong>Outcome:</strong> run <code>AlignmentPipeline</code> with LoRA
+  </div>
+  <div class="slide-footer">MLFP — ML Foundations for Professionals</div>
+</section>
+
+<!-- 2 Motivation -->
+<section>
+  <h2>When prompting is not enough</h2>
+  <ul style="font-size:0.85em;">
+    <li>Wrong tone for a regulatory environment</li>
+    <li>Hallucinates Singapore regulations that do not exist</li>
+    <li>Refuses to extract fields you need</li>
+    <li>Domain vocabulary the pre-trained model has never seen enough of</li>
+  </ul>
+  <p>Full fine-tuning updates all ~7B weights. Too expensive, too destructive.</p>
+  <div style="background:#F0FDF4; padding:14px 18px; border-left:4px solid #22C55E; border-radius:4px;">
+    <strong>🟢 PEFT:</strong> update &lt; 1% of weights. Base knowledge stays intact.
+  </div>
+</section>
+
+<!-- 3 LoRA equation -->
+<section>
+  <h2>The LoRA insight</h2>
+  <div style="text-align:center; padding:24px; background:#F8FAFC; border-radius:8px;">
+    \[ W = W_0 + \Delta W = W_0 + BA, \quad r \ll \min(d, k) \]
+  </div>
+  <ul style="font-size:0.85em;">
+    <li>$W_0 \in \mathbb{R}^{d \times k}$ — frozen base (e.g., 4096 × 4096 = 16.8M params)</li>
+    <li>$B \in \mathbb{R}^{d \times r}$, $A \in \mathbb{R}^{r \times k}$ — learned</li>
+    <li>At $r = 8$: $r(d+k) = 65\,536$ params — <strong>250× reduction</strong></li>
+  </ul>
+  <p style="font-size:0.85em;">Fine-tuning updates actually have low intrinsic rank. LoRA exploits this.</p>
+</section>
+
+<!-- 4 LoRA diagram -->
+<section>
+  <h2>Picture of LoRA</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="80" width="200" height="200" rx="4" fill="#E2E8F0" stroke="#64748B" stroke-width="2" stroke-dasharray="4 4"/>
+      <text x="140" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#334155">W₀ (frozen)</text>
+      <text x="140" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="28" fill="#64748B">d × k</text>
+      <text x="140" y="230" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">no gradients</text>
+      <text x="280" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="22" fill="#0D9488">+</text>
+      <rect x="320" y="80" width="40" height="200" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="340" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">B  d×r</text>
+      <text x="340" y="300" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">init 0</text>
+      <text x="380" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#0D9488">×</text>
+      <rect x="400" y="170" width="200" height="40" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="500" y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">A  r×k</text>
+      <text x="500" y="235" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">init Kaiming</text>
+      <text x="620" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="22" fill="#1E293B">=</text>
+      <rect x="640" y="80" width="100" height="200" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="690" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#92400E">W₀ + BA</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- 5 Forward pass and init -->
+<section>
+  <h2>Forward pass + init</h2>
+  <div style="text-align:center; padding:20px; background:#F8FAFC; border-radius:8px;">
+    \[ \mathbf{y} = W_0 \mathbf{x} + \frac{\alpha}{r}\, B A \mathbf{x} \]
+  </div>
+  <ul style="font-size:0.85em;">
+    <li>$\alpha$: scaling that decouples "effect strength" from "rank"</li>
+    <li>Typical: $r \in \{4, 8, 16, 32\}$, $\alpha = r$ or $2r$</li>
+    <li><strong>B initialised to 0</strong> — step 0 is numerically identical to the base</li>
+    <li>A initialised with Kaiming uniform — breaks symmetry</li>
+  </ul>
+</section>
+
+<!-- 6 Code: LoRALayer -->
+<section>
+  <h2>LoRA from scratch — the minimal layer</h2>
+  <pre><code class="language-python" data-trim>
+class LoRALayer(nn.Module):
+    def __init__(self, base_layer, rank=8, alpha=16):
+        super().__init__()
+        self.base_layer = base_layer
+        for p in self.base_layer.parameters():
+            p.requires_grad = False          # freeze W_0
+
+        self.rank, self.alpha = rank, alpha
+        self.scaling = alpha / rank
+        self.lora_A = nn.Parameter(torch.empty(rank, base_layer.in_features))
+        self.lora_B = nn.Parameter(torch.zeros(base_layer.out_features, rank))
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+
+    def forward(self, x):
+        return self.base_layer(x) + (x @ self.lora_A.T) @ self.lora_B.T * self.scaling
+  </code></pre>
+</section>
+
+<!-- 7 Adapters -->
+<section>
+  <h2>The other PEFT — adapter bottlenecks</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="100" width="120" height="40" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="100" y="125" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">acts (d)</text>
+      <line x1="160" y1="120" x2="200" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <rect x="200" y="100" width="140" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="270" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">Down d→m</text>
+      <line x1="340" y1="120" x2="380" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <rect x="380" y="100" width="80" height="40" rx="20" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="420" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">GELU</text>
+      <line x1="460" y1="120" x2="500" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <rect x="500" y="100" width="140" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="570" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">Up m→d</text>
+      <line x1="640" y1="120" x2="690" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <circle cx="700" cy="120" r="12" fill="white" stroke="#0D9488" stroke-width="2"/>
+      <text x="700" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">+</text>
+      <path d="M 100 100 Q 100 20, 700 20 Q 700 108, 700 108" fill="none" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+      <text x="400" y="12" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488" font-style="italic">residual</text>
+    </svg>
+  </figure>
+  <p style="font-size:0.85em;">Inserted after attention and FFN of each transformer block. Near-identity initialisation: zero the up projection.</p>
+</section>
+
+<!-- 8 LoRA vs Adapters -->
+<section>
+  <h2>LoRA vs adapters</h2>
+  <table style="font-size:0.72em;">
+    <thead><tr><th></th><th>LoRA</th><th>Adapters</th></tr></thead>
+    <tbody>
+      <tr><td>Mechanism</td><td>$W_0 + BA$</td><td>New bottleneck module in residual</td></tr>
+      <tr><td>Params</td><td>$r(d+k)$</td><td>$2dm$</td></tr>
+      <tr><td>Inference cost</td><td><strong>0</strong> (merges into $W_0$)</td><td>+5–10% latency</td></tr>
+      <tr><td>Multi-adapter in one pass</td><td>No (merged)</td><td>Yes</td></tr>
+    </tbody>
+  </table>
+  <div style="background:#F0FDF4; padding:14px 18px; border-left:4px solid #22C55E; border-radius:4px;">
+    <strong>🟢 Default:</strong> LoRA. Reach for adapters only when you need multiple active adapters in one forward pass.
+  </div>
+</section>
+
+<!-- 9 Landscape -->
+<section>
+  <h2>The 10-technique landscape</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 780 260" xmlns="http://www.w3.org/2000/svg">
+      <line x1="40" y1="60" x2="740" y2="60" stroke="#0D9488" stroke-width="3"/>
+      <polygon points="740,60 730,54 730,66" fill="#0D9488"/>
+      <text x="40" y="50" font-family="Inter" font-size="11" fill="#0D9488">Fewer params</text>
+      <text x="740" y="50" text-anchor="end" font-family="Inter" font-size="11" fill="#0D9488">More expressive</text>
+
+      <circle cx="70" cy="60" r="6" fill="#22C55E"/><text x="70" y="85" text-anchor="middle" font-size="10">Prompt Tuning</text>
+      <circle cx="150" cy="60" r="6" fill="#22C55E"/><text x="150" y="85" text-anchor="middle" font-size="10">Prefix Tuning</text>
+      <circle cx="240" cy="60" r="6" fill="#0D9488"/><text x="240" y="85" text-anchor="middle" font-size="10" font-weight="700">LoRA</text>
+      <circle cx="320" cy="60" r="6" fill="#0D9488"/><text x="320" y="85" text-anchor="middle" font-size="10">Adapters</text>
+      <circle cx="410" cy="60" r="6" fill="#3B82F6"/><text x="410" y="85" text-anchor="middle" font-size="10">LLRD</text>
+      <circle cx="490" cy="60" r="6" fill="#3B82F6"/><text x="490" y="85" text-anchor="middle" font-size="10">Progressive Freeze</text>
+      <circle cx="580" cy="60" r="6" fill="#8B5CF6"/><text x="580" y="85" text-anchor="middle" font-size="10">Distillation</text>
+      <circle cx="660" cy="60" r="6" fill="#8B5CF6"/><text x="660" y="85" text-anchor="middle" font-size="10">Full SFT</text>
+      <circle cx="730" cy="60" r="6" fill="#8B5CF6"/><text x="730" y="85" text-anchor="middle" font-size="10">DPSGD</text>
+
+      <rect x="40" y="120" width="720" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E"/>
+      <text x="50" y="144" font-family="Inter" font-size="11" fill="#166534"><tspan font-weight="700">Soft prompts:</tspan> prepend learned vectors. Single-task, very cheap.</text>
+
+      <rect x="40" y="165" width="720" height="40" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="50" y="189" font-family="Inter" font-size="11" fill="#0F766E"><tspan font-weight="700">PEFT:</tspan> LoRA + adapters. &lt;1% params, base knowledge preserved. Default.</text>
+
+      <rect x="40" y="210" width="720" height="40" rx="6" fill="#F3E8FF" stroke="#8B5CF6"/>
+      <text x="50" y="234" font-family="Inter" font-size="11" fill="#6D28D9"><tspan font-weight="700">Heavy guns:</tspan> full SFT, distillation, DPSGD. Only when PEFT is not enough.</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- 10 Technique table part 1 -->
+<section>
+  <h2>When to reach for which</h2>
+  <table style="font-size:0.7em;">
+    <tbody>
+      <tr><td><strong>LoRA</strong></td><td>Default for domain or task adaptation</td></tr>
+      <tr><td><strong>Adapters</strong></td><td>Multiple active adapters in one forward pass</td></tr>
+      <tr><td><strong>Prefix Tuning</strong></td><td>Task-switching by prefix swap</td></tr>
+      <tr><td><strong>Prompt Tuning</strong></td><td>Ultra-low parameter regime on huge models</td></tr>
+      <tr><td><strong>Full SFT</strong></td><td>Lots of compute/data, LoRA plateaus</td></tr>
+      <tr><td><strong>LLRD</strong></td><td>Full SFT where earlier layers are general</td></tr>
+      <tr><td><strong>Progressive Freeze</strong></td><td>Small dataset, prevent forgetting</td></tr>
+      <tr><td><strong>Distillation</strong></td><td>Compress a large model to deployable size</td></tr>
+      <tr><td><strong>DPSGD</strong></td><td>Training data has PII</td></tr>
+      <tr><td><strong>EWC</strong></td><td>Sequential multi-task, prevent forgetting</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 11 Model merging -->
+<section>
+  <h2>Model merging — combining fine-tunes without retraining</h2>
+  <ul style="font-size:0.85em;">
+    <li><strong>TIES:</strong> Trim smallest updates → elect dominant sign → average sign-aligned updates</li>
+    <li><strong>DARE:</strong> Randomly drop 90% of updates, rescale survivors by $1/(1-p)$</li>
+    <li><strong>SLERP:</strong> spherical linear interpolation between two checkpoints</li>
+    <li><strong>Task arithmetic:</strong> add/subtract delta vectors as if they were task gradients</li>
+  </ul>
+</section>
+
+<!-- 12 SLERP formula -->
+<section>
+  <h2>SLERP in one formula</h2>
+  <div style="text-align:center; padding:24px; background:#F8FAFC; border-radius:8px;">
+    \[ \theta_{\text{slerp}} = \frac{\sin((1-t)\phi)}{\sin \phi}\,\theta_1 + \frac{\sin(t\phi)}{\sin \phi}\,\theta_2 \]
+  </div>
+  <ul style="font-size:0.85em;">
+    <li>$\phi$ = angle between $\theta_1$ and $\theta_2$ on the parameter hypersphere</li>
+    <li>At $t = 0.5$ you get the geodesic midpoint</li>
+    <li>Smoother than linear averaging — fewer interference artefacts</li>
+  </ul>
+</section>
+
+<!-- 13 Quantisation / QLoRA -->
+<section>
+  <h2>Quantisation &amp; QLoRA</h2>
+  <ul style="font-size:0.85em;">
+    <li><strong>GPTQ / AWQ</strong> — post-training 4-bit, calibrated</li>
+    <li><strong>GGUF</strong> — llama.cpp; runs on CPU + Apple Silicon</li>
+    <li><strong>bitsandbytes</strong> — on-the-fly during PyTorch training</li>
+    <li><strong>QLoRA:</strong> 4-bit base + fp16 LoRA → fine-tune 65B on 1× 48GB GPU</li>
+  </ul>
+  <div style="background:#EFF6FF; padding:14px 18px; border-left:4px solid #3B82F6; border-radius:4px;">
+    <strong>🔵 Serious LoRA runs on constrained hardware should default to QLoRA.</strong>
+  </div>
+</section>
+
+<!-- 14 AlignmentConfig -->
+<section>
+  <h2>Configure <code>AlignmentPipeline</code></h2>
+  <pre><code class="language-python" data-trim>
+from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+
+cfg = AlignmentConfig(
+    method="sft",
+    base_model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    train_data="data/mlfp06/sg_domain_qa_train.parquet",
+    eval_data="data/mlfp06/sg_domain_qa_eval.parquet",
+    lora_r=8, lora_alpha=16, lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj"],
+    epochs=3, batch_size=4, learning_rate=2e-4,
+    max_seq_length=512,
+    output_dir="artifacts/mlfp06/sft_adapter",
+)
+  </code></pre>
+</section>
+
+<!-- 15 Train + register -->
+<section>
+  <h2>Train and register the adapter</h2>
+  <pre><code class="language-python" data-trim>
+pipeline = AlignmentPipeline(cfg)
+result = await pipeline.train()
+
+registry = AdapterRegistry("artifacts/mlfp06/registry")
+registry.register(
+    name="sg_domain_sft",
+    version="v1",
+    path=result.adapter_path,
+    metadata={"base_model": cfg.base_model, "method": "sft", "r": cfg.lora_r},
+)
+
+print(f"train={result.train_loss:.4f}  eval={result.eval_loss:.4f}")
+  </code></pre>
+  <p style="font-size:0.8em;">AdapterRegistry is your single source of truth — every downstream lesson loads from it.</p>
+</section>
+
+<!-- 16 Reading loss curves -->
+<section>
+  <h2>Reading the loss curves</h2>
+  <ul style="font-size:0.85em;">
+    <li><strong>Healthy:</strong> train ↓ smoothly, eval ↓ following with small gap</li>
+    <li><strong>Overfitting:</strong> train ↓, eval ↑ — reduce epochs or raise dropout</li>
+    <li><strong>Underfitting:</strong> both flat — raise LR or increase rank</li>
+    <li><strong>Leakage:</strong> eval &lt; 0.5 from step 1 — check train/eval split</li>
+  </ul>
+</section>
+
+<!-- 17 Parameter reduction formula -->
+<section>
+  <h2>Parameter reduction</h2>
+  <div style="text-align:center; padding:24px; background:#F8FAFC; border-radius:8px;">
+    \[ \text{reduction} = \frac{r(d+k)}{dk} \]
+  </div>
+  <table style="font-size:0.75em;">
+    <thead><tr><th>$d, k$</th><th>$r$</th><th>Reduction</th></tr></thead>
+    <tbody>
+      <tr><td>4096, 4096</td><td>4</td><td>0.2%</td></tr>
+      <tr><td>4096, 4096</td><td>8</td><td>0.4%</td></tr>
+      <tr><td>4096, 4096</td><td>16</td><td>0.8%</td></tr>
+      <tr><td>4096, 4096</td><td>32</td><td>1.6%</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82em;">Double the rank, double the params. No free lunch.</p>
+</section>
+
+<!-- 18 Mistakes -->
+<section>
+  <h2>Four common mistakes</h2>
+  <div style="background:#FFF1F2; padding:10px 16px; border-left:4px solid #F43F5E; border-radius:4px; margin:0.5em 0;">
+    <strong>1. Wrong target modules.</strong> Start with q_proj and v_proj.
+  </div>
+  <div style="background:#FFF1F2; padding:10px 16px; border-left:4px solid #F43F5E; border-radius:4px; margin:0.5em 0;">
+    <strong>2. Rank too small for the task.</strong> Plateau early? Double r.
+  </div>
+  <div style="background:#FFF1F2; padding:10px 16px; border-left:4px solid #F43F5E; border-radius:4px; margin:0.5em 0;">
+    <strong>3. Forgetting to load the adapter at inference.</strong> Check the registry call.
+  </div>
+  <div style="background:#FFF1F2; padding:10px 16px; border-left:4px solid #F43F5E; border-radius:4px; margin:0.5em 0;">
+    <strong>4. Catastrophic forgetting on small datasets.</strong> Fewer epochs, lower LR, or Progressive Freezing.
+  </div>
+</section>
+
+<!-- 19 What you can now do -->
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size:0.88em;">
+    <li>✓ Explain LoRA as $W_0 + BA$ and compute the parameter reduction</li>
+    <li>✓ Implement <code>LoRALayer</code> and <code>AdapterLayer</code> from scratch</li>
+    <li>✓ Choose among 10 fine-tuning techniques for a given constraint</li>
+    <li>✓ Merge LoRA adapters with TIES / DARE / SLERP</li>
+    <li>✓ Configure <code>AlignmentPipeline</code> and register the result</li>
+    <li>✓ Read training/eval loss curves to diagnose the run</li>
+  </ul>
+  <div style="background:#F0FDFA; padding:16px 20px; border-left:4px solid #0D9488; border-radius:4px; margin-top:1em;">
+    <strong>Next — Lesson 6.3:</strong> preference alignment. Derive DPO from the RLHF objective and train a safer model.
+  </div>
+</section>
+
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.4 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.4</span>
+  Transformers and Self-Attention
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes · 17 slides · ~4 min per slide
+</p>
+
+<p>
+  This is the most important lesson in the module. If the class
+  understands nothing else at the end of Module 5, they need to
+  understand self-attention — it is the beating heart of every
+  LLM, every modern translation system, every image generator that
+  uses conditioning, every Whisper-style speech model, and everything
+  in Module 6. Allocate more time here than any other lesson. Budget
+  ~20 min on the attention derivation (slides 3–5), ~15 min on
+  multi-head and positional encoding (6–9), and ~15 min on the encoder
+  assembly and worked example (10–14).
+</p>
+
+<p>
+  Unlike earlier lessons in this module, do <em>not</em> rush the math.
+  The ELBO in 5.1 was optional; the attention math is not. Every student
+  must be able to write down the formula and explain each piece.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Transformers and Self-Attention</h3>
+  <p>
+    Open with the stakes. "This is probably the most influential
+    architecture of the last decade. Every large language model —
+    GPT, Claude, Gemini, Llama — is a Transformer. Every modern
+    translation, summarisation, QA system is a Transformer. Vision
+    Transformers are catching CNNs on standard benchmarks. Whisper
+    is a Transformer. AlphaFold 2 is a Transformer. If you leave
+    this course understanding only one architecture deeply, this
+    should be the one."
+  </p>
+  <p>
+    Warn them about the pace: "we are going to slow down on the math.
+    I want every single person in this room to be able to write down
+    the attention equation from memory by the end of the hour. No
+    exceptions."
+  </p>
+  <div class="transition">→ "Why did attention replace recurrence?"</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Motivation</span></div>
+  <h3>Why attention replaced recurrence</h3>
+  <p>
+    Start with the parallelism argument. "Yesterday we saw LSTMs.
+    They carry a hidden state forward one step at a time. To compute
+    the state at time 5, you need the state at time 4, which needs
+    time 3, and so on. The computation is inherently sequential.
+    Modern GPUs have thousands of cores. An LSTM uses essentially one
+    of them for the time-step direction — enormous waste."
+  </p>
+  <p>
+    Then the observation: "Vaswani et al. asked: what if every token
+    could directly look at every other token, in parallel, via an
+    attention mechanism? No hidden state pipelined through time.
+    Every position computed at once. The paper was titled 'Attention
+    is all you need'. The title is correct — you don't need
+    recurrence at all."
+  </p>
+  <div class="transition">→ "The database metaphor."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>QKV</span></div>
+  <h3>Query, Key, Value — database metaphor</h3>
+  <p>
+    Walk the metaphor slowly. Use the database analogy explicitly.
+    "Imagine a key-value store. You submit a query — a description of
+    what you want. The store has a bunch of keys, each describing
+    what it contains. Your query is compared against every key. The
+    best match returns its value."
+  </p>
+  <p>
+    Extend the analogy: "In attention, we soften that. Instead of
+    picking the single best key, we compute a similarity to every key,
+    softmax into weights, and return a <em>weighted combination</em>
+    of the values. Now instead of one answer, we get a smooth mixture
+    — and that mixture is differentiable, so we can train it."
+  </p>
+  <p>
+    The key insight: "every token produces a Q, K, and V simultaneously.
+    So every token can query every other token. It's an
+    all-to-all lookup, in parallel, in one matrix multiplication."
+  </p>
+  <div class="transition">→ "The formula."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>Attention formula</span></div>
+  <h3>Scaled dot-product attention</h3>
+  <p>
+    Put the formula on the board. Walk it right to left, slowly. "Q
+    and K are L-by-d_k matrices — one row per token. QKᵀ is L-by-L,
+    containing every pairwise dot product. Entry (i,j) is how much
+    token i's query matches token j's key."
+  </p>
+  <p>
+    "Divide by √d_k — we come back to why in the next slide. Softmax
+    each row — so row i becomes a probability distribution over all
+    keys: 'how much should token i attend to each other token?' Then
+    multiply by V — each token's output is the weighted sum of value
+    vectors according to its attention distribution."
+  </p>
+  <p>
+    Concrete: "if token 3 wants information from token 7, it learns
+    to produce a query whose dot product with token 7's key is large.
+    After softmax, most of the attention weight lands on token 7, and
+    the output for position 3 is dominated by V_7."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "This formula will not make sense
+    on first read. That's normal. Read it five times over the next
+    week. Each time one more piece clicks."
+  </div>
+  <div class="transition">→ "But why √d_k specifically?"</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>√d_k reasoning</span></div>
+  <h3>Why divide by √d_k?</h3>
+  <p>
+    Walk the variance calculation. "q and k are d_k-dimensional.
+    Assume unit variance per entry. Their dot product is a sum of
+    d_k products of unit-variance numbers. Independent sum gives
+    variance d_k. Standard deviation is √d_k. That's the typical
+    magnitude of a raw score."
+  </p>
+  <p>
+    "Feed √d_k-magnitude scores into a softmax and the softmax
+    saturates — one entry gets essentially all the weight, the rest
+    are zero, gradients are zero for everything except the winner,
+    training stalls."
+  </p>
+  <p>
+    "Dividing by √d_k brings scores back to unit variance. Softmax
+    stays in its useful region. Gradients flow. Three characters of
+    code, entire paper does not work without them."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> this is why Gaussian initialisation
+    of the Q/K/V projection matrices is standard — it keeps the
+    variance assumption approximately valid. If you ever see a
+    Transformer stuck at high loss, the first thing to check is the
+    scale factor.
+  </div>
+  <div class="transition">→ "Now the code."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>einsum impl</span></div>
+  <h3>From scratch with einsum</h3>
+  <p>
+    Walk the six lines. Pause at each einsum: "einsum lets us
+    multiply tensors along named axes. 'bld,bmd-&gt;blm' means: for
+    each batch b, take the outer product of the length-l and length-m
+    axes, summing over d. That gives us the L×L score matrix."
+  </p>
+  <p>
+    "Divide by √d_k. Softmax over the last axis (the key positions).
+    Second einsum: for each batch b and each query position l, weight
+    the value vectors by the attention row. Output: (B, L, d_k)."
+  </p>
+  <p>
+    "Two einsum calls, one softmax, one math.sqrt. That's the entire
+    op. Everything else is just book-keeping and projection matrices."
+  </p>
+  <div class="transition">→ "Multi-head."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Multi-head</span></div>
+  <h3>Multi-head attention</h3>
+  <p>
+    Motivate: "one attention head gives every token one 'viewpoint'.
+    But different linguistic phenomena live on different subspaces —
+    syntactic agreement cares about verb-subject pairs, coreference
+    cares about noun-pronoun links, topic-relevance cares about
+    content words. We want the model to attend to all of these
+    simultaneously."
+  </p>
+  <p>
+    "Multi-head runs h parallel attentions on smaller subspaces and
+    concatenates. With d_model = 512 and 8 heads, each head gets
+    d_k = 64. Same total parameter count as one big d_k=512 attention,
+    but eight different attention patterns."
+  </p>
+  <p>
+    Show the formula. Explain Concat and W^O briefly — "concatenate
+    the h head outputs, then a final linear projection back to
+    d_model."
+  </p>
+  <div class="transition">→ "Diagram."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~2 min</span><span>Multi-head diagram</span></div>
+  <h3>Multi-head diagram</h3>
+  <p>
+    Walk the picture. "Input x. Four parallel projections into Q, K,
+    V subspaces — one per head. Each head runs its own scaled
+    dot-product attention. Outputs concatenated along the feature
+    axis. Final W^O projection back to d_model."
+  </p>
+  <p>
+    Emphasise: "this is all done in a single matrix multiplication in
+    practice. PyTorch's <code>nn.MultiheadAttention</code> fuses the
+    Q/K/V projections for speed."
+  </p>
+  <div class="transition">→ "Position."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Positional encoding</span></div>
+  <h3>Positional encoding</h3>
+  <p>
+    Set up the problem. "Self-attention is permutation invariant. If
+    I shuffle the tokens, the output is the same shuffled. But
+    language is ordered: 'dog bites man' vs 'man bites dog' have
+    completely different meanings. We need to inject position
+    information."
+  </p>
+  <p>
+    Explain the sinusoidal choice. "The original paper uses sin and
+    cos at different frequencies. Each position gets a unique
+    fingerprint — a vector of sin and cos values at geometrically
+    spaced wavelengths. The key property: PE(pos + k) is a linear
+    function of PE(pos), so the model can learn relative position via
+    trigonometric identities."
+  </p>
+  <p>
+    "We add the position vector to the token embedding, element by
+    element. It's not concatenated — it's added. Modern variants
+    (RoPE, ALiBi) use different schemes, but the sinusoidal encoding
+    is still the textbook one."
+  </p>
+  <div class="transition">→ "Code."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>PE code</span></div>
+  <h3>PositionalEncoding in PyTorch</h3>
+  <p>
+    Walk the code. "Precompute a (max_len, d_model) matrix of
+    sin/cos values. Register it as a buffer (not a parameter — it's
+    constant). In forward, just add the first L rows to the
+    input. Broadcast handles the batch dimension."
+  </p>
+  <p>
+    Point out <code>register_buffer</code>: "this tells PyTorch the
+    tensor is part of the module state (moved to GPU when you call
+    <code>.to(device)</code>) but not trained. Use it for any
+    constant tensor inside a module."
+  </p>
+  <div class="transition">→ "Encoder block structure."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Encoder block</span></div>
+  <h3>The encoder block</h3>
+  <p>
+    Walk the six components. "Multi-head attention. Residual (add
+    input). LayerNorm. Feed-forward (two linear layers with ReLU).
+    Residual. LayerNorm. That's one encoder block. Stack N of them
+    to get the full encoder."
+  </p>
+  <p>
+    "Pre-norm vs post-norm: the original paper used LayerNorm after
+    the residual (post-norm). Modern practice is to apply LayerNorm
+    <em>before</em> the attention (pre-norm), which trains much more
+    stably. PyTorch has a <code>norm_first=True</code> flag."
+  </p>
+  <div class="transition">→ "The code we'll use."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>TinyTransformer</span></div>
+  <h3>TinyTransformer in PyTorch</h3>
+  <p>
+    Walk the code. "Embedding layer — maps token ids to vectors.
+    PositionalEncoding — adds position info. <code>nn.TransformerEncoderLayer</code>
+    — one encoder block with 4 heads. <code>nn.TransformerEncoder</code>
+    — stack 2 of them. Linear head."
+  </p>
+  <p>
+    "In forward: embed, add position, run encoder, mean-pool over
+    sequence, project to classes. Twenty lines total, full working
+    Transformer. PyTorch does all the heavy lifting once you
+    understand what's inside."
+  </p>
+  <div class="transition">→ "Why layer norm not batch norm?"</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Layer norm</span></div>
+  <h3>Layer norm, not batch norm</h3>
+  <p>
+    Quick explanation. "BatchNorm normalises across the batch — for
+    each feature, subtract the batch mean and divide by the batch
+    std. Works great for CNNs, fails for Transformers because
+    sequence lengths vary and the effective batch size at each
+    position is not constant."
+  </p>
+  <p>
+    "LayerNorm normalises across features — for each token
+    independently, subtract its mean and divide by its std. No
+    batch dependency. Works the same way at train and inference.
+    Always LayerNorm in Transformers."
+  </p>
+  <div class="transition">→ "The variants zoo."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Variants</span></div>
+  <h3>Transformer variants</h3>
+  <p>
+    Walk the table. Do not dwell — just orient the class.
+    "BERT uses only the encoder, trained bidirectionally with masked
+    language modelling. GPT uses only the decoder with causal masking
+    and next-token prediction. T5 uses both with a text-to-text
+    objective. ViT applies the encoder to image patches. Whisper
+    applies encoder-decoder to audio."
+  </p>
+  <p>
+    "The underlying block is the same. What changes is the mask, the
+    training objective, and the data. We'll fine-tune BERT in 5.7."
+  </p>
+  <div class="transition">→ "Worked example."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>Majority-bit task worked example</h3>
+  <p>
+    Set up the problem: "given a length-20 bit string, output 1 if
+    the majority are 1, else 0. Trivial for a human, non-trivial for
+    a model because it requires <em>counting</em> across positions.
+    A positional-agnostic bag-of-words classifier can solve it, but
+    any sequence model that looks only at the last position will
+    fail."
+  </p>
+  <p>
+    Run the training if you have the time. 20 epochs, ~10 seconds on
+    CPU. Should get 100% accuracy.
+  </p>
+  <p>
+    "Optional extension: visualise attention weights. PyTorch's
+    attention returns them if you hook it correctly. Show a heat map
+    and you'll see the model is essentially summing across positions
+    uniformly — exactly what the task requires."
+  </p>
+  <div class="transition">→ "Traps."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Four traps</h3>
+  <p>
+    Walk each. The missing PE trap is the worst — "your model gets
+    stuck at 50% on any order-dependent task and you stare at the
+    code for an hour before noticing you forgot to add the positional
+    encoding."
+  </p>
+  <p>
+    Missing √d_k: same class of bug — "loss drops for one epoch
+    then flatlines at high value".
+  </p>
+  <p>
+    Mask types: "Pytorch's <code>attn_mask</code> and
+    <code>key_padding_mask</code> are <em>different</em> arguments.
+    Confusing them is a rite of passage."
+  </p>
+  <p>
+    Quadratic memory: "OOM killer strikes at seq_len 4096 on a
+    consumer GPU. Use FlashAttention or Longformer for longer
+    contexts."
+  </p>
+  <div class="transition">→ "Wrap up + consolidate."</div>
+</div>
+
+<!-- Slide 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Reflection + consolidation</span></div>
+  <h3>Reflection — the four paradigms so far</h3>
+  <p>
+    Run through the table. "You have now seen autoencoders,
+    CNNs, RNNs / LSTMs, and Transformers — the four load-bearing
+    ideas of deep learning. Everything in the second half of this
+    module combines them."
+  </p>
+  <p>
+    Bridge to 5.5: "Tomorrow: generative models. GANs pair a
+    generator (think: VAE decoder) with a discriminator in an
+    adversarial game. Diffusion models add noise progressively and
+    learn to reverse. Both descend from the autoencoder idea, but
+    the training is fundamentally different."
+  </p>
+  <p>
+    Q&amp;A time: give 5 minutes. Common questions: "How long does
+    it take to train a real Transformer?" (BERT base took 4 days on
+    16 TPUs. Small fine-tuning jobs are minutes.) "Are we going to
+    use HuggingFace?" (Yes — in 5.7 we fine-tune a pre-trained BERT
+    through HuggingFace's pipeline API.) "What's the difference
+    between BERT and GPT really?" (Mask direction + objective.
+    Architecture is essentially identical.)
+  </p>
+  <div class="transition">→ End of 5.4. 10-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    5.3 Speaker Notes
+  </a>
+  <a href="../05/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.5 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

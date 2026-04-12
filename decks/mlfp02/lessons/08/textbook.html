@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.8 — Capstone: Statistical Analysis Project | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.8</span>
+  Capstone — Statistical Analysis Project
+</h1>
+
+<p class="lead">
+  This is the integration lesson of Module 2. You will execute a complete
+  statistical analysis — from raw data to business recommendations — using
+  every tool from the previous seven lessons. You will also meet two new
+  Kailash engines: <code>FeatureEngineer</code> for automated feature
+  creation and <code>FeatureStore</code> for point-in-time feature management.
+  These engines bridge Module 2's statistical thinking to Module 3's ML
+  pipeline.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The End-to-End Statistical Pipeline</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 180" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr28a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="10" y="50" width="100" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="60" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Load</text>
+  <text x="60" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Profile</text>
+  <line x1="110" y1="80" x2="135" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr28a)"/>
+
+  <rect x="140" y="50" width="100" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="190" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Describe</text>
+  <text x="190" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">EDA</text>
+  <line x1="240" y1="80" x2="265" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr28a)"/>
+
+  <rect x="270" y="50" width="100" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="320" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Engineer</text>
+  <text x="320" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Features</text>
+  <line x1="370" y1="80" x2="395" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr28a)"/>
+
+  <rect x="400" y="50" width="100" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="450" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Model</text>
+  <text x="450" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Regression</text>
+  <line x1="500" y1="80" x2="525" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr28a)"/>
+
+  <rect x="530" y="50" width="100" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="580" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Test</text>
+  <text x="580" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Hypotheses</text>
+  <line x1="630" y1="80" x2="655" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr28a)"/>
+
+  <rect x="660" y="50" width="110" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="715" y="78" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Report</text>
+  <text x="715" y="95" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Recommend</text>
+</svg>
+<figcaption>The six-stage statistical analysis pipeline that every data science project follows.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>FeatureEngineer</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>FeatureEngineer</code> automates feature creation: temporal
+    features (lag, rolling, day-of-week), interaction terms, polynomial
+    expansions, and domain-specific transformations. It does not replace
+    domain knowledge — it amplifies it.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import FeatureEngineer
+
+engineer = FeatureEngineer()
+
+# Temporal features
+df_features = engineer.create_temporal_features(
+    df, date_col="date",
+    features=["lag_1", "lag_3", "rolling_mean_6", "month", "quarter"]
+)
+
+# Interaction terms
+df_features = engineer.create_interactions(
+    df_features,
+    pairs=[("floor_area", "age"), ("town_premium", "floor_level")]
+)
+
+print(f"Original: {df.shape[1]} cols → Engineered: {df_features.shape[1]} cols")</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr28b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20" y="30" width="200" height="160" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="120" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Raw features (8)</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
+    <text x="40" y="85">date, price, area</text>
+    <text x="40" y="103">age, town, floor</text>
+    <text x="40" y="121">type, lease_start</text>
+  </g>
+  <line x1="225" y1="110" x2="310" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr28b)"/>
+  <rect x="315" y="30" width="200" height="160" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="415" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">FeatureEngineer</text>
+  <g font-family="Inter" font-size="10" fill="#334155">
+    <text x="335" y="85">+ lag_1, lag_3</text>
+    <text x="335" y="103">+ rolling_mean_6</text>
+    <text x="335" y="121">+ month, quarter</text>
+    <text x="335" y="139">+ area x age</text>
+    <text x="335" y="157">+ town x floor</text>
+  </g>
+  <line x1="520" y1="110" x2="545" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr28b)"/>
+  <rect x="550" y="30" width="150" height="160" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="625" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Engineered (15)</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
+    <text x="565" y="85">8 original</text>
+    <text x="565" y="103">+ 5 temporal</text>
+    <text x="565" y="121">+ 2 interactions</text>
+  </g>
+</svg>
+<figcaption>FeatureEngineer: raw features in, enriched features out. Domain knowledge guides which features to create.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>FeatureStore</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>FeatureStore</code> manages features with point-in-time
+    correctness: when you ask for features as of January 2024, you get
+    exactly what was available in January 2024 — not features computed
+    from future data. This prevents data leakage in time-series problems.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import FeatureStore
+
+store = FeatureStore()
+
+# Register features with timestamps
+store.register(
+    name="hdb_features",
+    df=df_features,
+    timestamp_col="date",
+    entity_col="town",
+)
+
+# Retrieve point-in-time correct features
+features_jan = store.get_features(
+    name="hdb_features",
+    as_of="2024-01-01",
+    entities=["TAMPINES", "BISHAN"]
+)</code></pre>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Point-in-time correctness is critical for any time-series model. If
+    your training data for January includes features computed from February
+    data, your model learns from the future — and performs worse in
+    production where the future is unknown. FeatureStore enforces this
+    automatically.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Project Options</h2>
+
+<p>Choose one of three projects. All follow the same pipeline; the data and questions differ.</p>
+
+<div class="compare-grid">
+  <div class="col">
+    <h4>Option A: Wine Quality</h4>
+    <p>
+      Predict wine quality score from chemical properties. Build linear
+      regression, test which properties are significant, engineer
+      interaction terms, store features.
+    </p>
+  </div>
+  <div class="col">
+    <h4>Option B: Economic Indicators</h4>
+    <p>
+      Model Singapore CPI from employment, exchange rates, and trade data.
+      Build time-series regression with temporal features, test structural
+      breaks, store point-in-time features.
+    </p>
+  </div>
+</div>
+
+<div class="try-it">
+  <h3>Option C: Experiment Design and Analysis</h3>
+  <p>
+    Design an A/B test for a Singapore e-commerce platform. Compute sample
+    size, implement CUPED, detect SRM, and report results with business
+    recommendations.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Wine Quality Pipeline</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build a complete statistical analysis of wine quality: EDA, feature
+    engineering, regression model, hypothesis tests, and a recommendation
+    report.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load and profile.</span>
+    <pre><code class="language-python">df = loader.load("mlfp02", "wine_quality.csv")
+profile = run_profile(explorer, df)
+print(f"Shape: {df.shape}, Alerts: {len(profile.alerts)}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — EDA: distributions and correlations.</span>
+    <pre><code class="language-python"># Correlation matrix
+corr = df.select(pl.exclude("quality")).to_pandas().corr()
+# Top correlations with quality
+quality_corr = df.select(
+    pl.corr(pl.col(c), pl.col("quality")).alias(c)
+    for c in df.columns if c != "quality"
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Engineer features.</span>
+    <pre><code class="language-python">engineer = FeatureEngineer()
+df_eng = engineer.create_interactions(
+    df, pairs=[("alcohol", "volatile_acidity"),
+               ("citric_acid", "residual_sugar")]
+)
+# Store in FeatureStore
+store = FeatureStore()
+store.register(name="wine_features", df=df_eng)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Build regression model.</span>
+    <pre><code class="language-python">from kailash_ml import TrainingPipeline
+
+pipeline = TrainingPipeline(model="linear_regression")
+result = pipeline.fit(
+    df_eng.drop("quality"), df_eng["quality"]
+)
+print(f"R²: {result.r_squared:.4f}")
+print(f"Significant predictors: {result.significant_features(alpha=0.05)}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Hypothesis tests.</span>
+    <pre><code class="language-python"># H0: alcohol has no effect on quality
+# (t-test on the alcohol coefficient)
+t_alcohol = result.coefficients["alcohol"].t_stat
+p_alcohol = result.coefficients["alcohol"].p_value
+print(f"Alcohol: t = {t_alcohol:.2f}, p = {p_alcohol:.4f}")
+
+# H0: red and white wines have equal mean quality
+# (two-sample t-test)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Report findings.</span>
+    <p>
+      Summarise: which predictors matter, how much variance is explained,
+      what a winemaker should focus on to improve quality scores. Present
+      to a non-technical audience.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Feature leakage from the future</span>
+  <p>
+    If you compute a 6-month rolling mean and include future months in the
+    window, your model sees the future. Use FeatureStore's point-in-time
+    retrieval to prevent this.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Engineering features without domain rationale</span>
+  <p>
+    Creating 100 random interactions and selecting the ones that correlate
+    with the target is p-hacking with extra steps. Every feature should
+    have a domain reason.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Reporting p-values without effect sizes</span>
+  <p>
+    "Alcohol is significant ($p < 0.001$)" tells the reader nothing
+    useful. "Each additional percentage point of alcohol increases quality
+    by 0.3 points ($p < 0.001$)" tells them what to do.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  This capstone integrates probability (2.1), estimation (2.2), hypothesis
+  testing (2.3), experiment design (2.4), linear regression (2.5), logistic
+  regression (2.6), and CUPED/DiD (2.7). The feature engineering and feature
+  store concepts bridge directly to Module 3's ML pipeline, where
+  FeatureEngineer feeds TrainingPipeline and FeatureStore provides
+  point-in-time training data.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have completed Module 2. You can reason about uncertainty
+  (probability), estimate parameters (MLE, bootstrap), test hypotheses
+  (t-tests, permutation tests, CUPED), build regression models (linear,
+  logistic), measure causal effects (A/B tests, DiD), and manage features
+  with point-in-time correctness.
+</p>
+<p>
+  Module 3 takes the statistical foundation you built and adds the ML
+  engineering layer: feature selection, regularisation, cross-validation,
+  the complete model zoo, gradient boosting, evaluation metrics, SHAP,
+  fairness, workflow orchestration, and production deployment.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.7 CUPED and Causal Inference
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Next →</span>
+    Module 2 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

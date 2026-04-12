@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.6 — Interpretability and Fairness | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.6</p>
+  <h1>Interpretability and Fairness</h1>
+  <p style="font-size: 0.7em; color: #64748B;">SHAP · LIME · ALE · disparate impact · equalised odds · impossibility theorem</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp;·&nbsp; <strong>Outcome:</strong> explain and audit any model
+  </div>
+  <div class="slide-footer">MLFP — Module 3</div>
+</section>
+
+<section>
+  <h2>Why interpretability matters</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Regulatory:</strong> Singapore's MAS requires explainability for credit decisions</li>
+    <li><strong>Debugging:</strong> a model that uses postcode as a proxy for race needs to be caught</li>
+    <li><strong>Trust:</strong> stakeholders will not act on a prediction they do not understand</li>
+  </ul>
+  <div style="background: #EFF6FF; padding: 14px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #3B82F6;">🔵 Theory:</strong>
+    Interpretability is not a nice-to-have. It is a deployment prerequisite.
+  </div>
+</section>
+
+<section>
+  <h2>SHAP: Shapley values for ML</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \phi_i = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|!\,(|F|-|S|-1)!}{|F|!} [f(S \cup \{i\}) - f(S)] \]
+  </div>
+  <table style="font-size: 0.65em; margin-top: 0.5em;">
+    <thead><tr><th>Axiom</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Efficiency</td><td>Contributions sum to the prediction</td></tr>
+      <tr><td>Symmetry</td><td>Equal contributions → equal values</td></tr>
+      <tr><td>Dummy</td><td>Useless feature → zero value</td></tr>
+      <tr><td>Linearity</td><td>Values add across model sums</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>SHAP waterfall</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <line x1="80" y1="30" x2="80" y2="220" stroke="#94A3B8" stroke-width="1"/>
+      <rect x="85" y="35" width="180" height="25" rx="4" fill="#94A3B8" opacity="0.3"/>
+      <text x="90" y="52" font-family="Inter" font-size="10" fill="#64748B">Base = 0.50</text>
+      <rect x="265" y="70" width="100" height="25" rx="4" fill="#22C55E" opacity="0.7"/>
+      <text x="315" y="87" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">+income (+0.15)</text>
+      <rect x="365" y="105" width="60" height="25" rx="4" fill="#22C55E" opacity="0.5"/>
+      <text x="395" y="122" text-anchor="middle" font-family="Inter" font-size="10" fill="#166534">+age (+0.08)</text>
+      <rect x="195" y="140" width="70" height="25" rx="4" fill="#F43F5E" opacity="0.7"/>
+      <text x="230" y="157" text-anchor="middle" font-family="Inter" font-size="10" fill="#9F1239">-debt (-0.12)</text>
+      <rect x="85" y="185" width="300" height="25" rx="4" fill="#0D9488" opacity="0.3"/>
+      <text x="90" y="202" font-family="Inter" font-size="10" fill="#0D9488">Prediction = 0.61</text>
+    </svg>
+  </figure>
+  <p style="text-align: center; font-size: 0.8em; color: #64748B;">Each bar shows one feature's contribution. Green pushes up; red pushes down.</p>
+</section>
+
+<section>
+  <h2>SHAP in code</h2>
+  <pre><code class="language-python" data-trim>
+import shap
+
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+
+# Global importance
+shap.summary_plot(shap_values, X_test)
+
+# Single prediction
+shap.plots.waterfall(shap_values[0])
+  </code></pre>
+</section>
+
+<section>
+  <h2>LIME: local explanations</h2>
+  <pre><code class="language-python" data-trim>
+from lime.lime_tabular import LimeTabularExplainer
+
+explainer = LimeTabularExplainer(
+    X_train.to_numpy(),
+    feature_names=X_train.columns,
+)
+exp = explainer.explain_instance(
+    X_test[0].to_numpy(),
+    model.predict_proba,
+    num_features=5,
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">LIME: perturb the input, fit a local linear model, read the coefficients.</p>
+</section>
+
+<section>
+  <h2>SHAP vs LIME vs ALE</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Method</th><th>Scope</th><th>Consistent?</th><th>Speed</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr><td>SHAP</td><td>Global + local</td><td>Yes (axioms)</td><td>Fast (trees)</td><td>Tree models</td></tr>
+      <tr><td>LIME</td><td>Local only</td><td>Approximate</td><td>Moderate</td><td>Any model</td></tr>
+      <tr><td>ALE</td><td>Global</td><td>Handles correlation</td><td>Fast</td><td>Correlated features</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Fairness: disparate impact</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{DI} = \frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})} \;\geq\; 0.8 \]
+  </div>
+  <pre><code class="language-python" data-trim>
+rate_min = pred[group == "minority"].mean()
+rate_maj = pred[group == "majority"].mean()
+di = rate_min / rate_maj
+print(f"DI: {di:.3f} — {'PASS' if di >= 0.8 else 'FAIL'}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Fairness: equalised odds</h2>
+  <p style="font-size: 0.85em;">TPR and FPR must be equal across groups:</p>
+  <div style="text-align: center; margin: 0.8em 0; padding: 16px; background: #F8FAFC; border-radius: 8px; font-size: 0.9em;">
+    \[ P(\hat{Y}=1 \mid Y=1, G=a) = P(\hat{Y}=1 \mid Y=1, G=b) \]
+  </div>
+  <pre><code class="language-python" data-trim>
+for g in ["minority", "majority"]:
+    mask = group == g
+    tpr = recall_score(y_test[mask], pred[mask])
+    print(f"  {g}: TPR = {tpr:.3f}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>The impossibility theorem</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="360,30 140,190 580,190" fill="none" stroke="#F43F5E" stroke-width="2.5"/>
+      <text x="360" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Demographic Parity</text>
+      <text x="110" y="210" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Equalised Odds</text>
+      <text x="610" y="210" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F43F5E">Calibration</text>
+      <text x="360" y="125" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Pick at most two</text>
+      <text x="360" y="145" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">(Chouldechova 2017, Kleinberg et al. 2016)</text>
+    </svg>
+  </figure>
+  <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px; margin-top: 0.5em;">
+    Not a limitation of your model. A mathematical fact.
+  </div>
+</section>
+
+<section>
+  <h2>Three mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>1. SHAP ≠ causation</strong><br><span style="font-size: 0.85em;">SHAP shows what the model uses, not what causes the outcome.</span>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>2. Removing protected features ≠ fairness</strong><br><span style="font-size: 0.85em;">Proxy features (postcode, school) carry the same signal.</span>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>3. Optimising one fairness metric blindly</strong><br><span style="font-size: 0.85em;">Impossibility theorem: fixing one may break another.</span>
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>Compute and interpret SHAP values (global + local)</li>
+    <li>Apply LIME for model-agnostic local explanations</li>
+    <li>Measure disparate impact and equalised odds</li>
+    <li>Explain the impossibility theorem to stakeholders</li>
+    <li>Write a fairness audit report</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1.5em;">
+    <strong>Next:</strong> Lesson 3.7 — WorkflowBuilder, ModelRegistry, and Bayesian hyperparameter search.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
+</body>
+</html>

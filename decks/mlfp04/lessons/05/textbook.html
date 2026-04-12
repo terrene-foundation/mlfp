@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.5 — Association Rules | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.5</span>
+  Association Rules and Market Basket Analysis
+</h1>
+
+<p class="lead">
+  Customers don't buy one item — they buy baskets. Patients don't have
+  one symptom — they have syndromes. Web users don't visit one page —
+  they follow paths. Association rule mining is the classical
+  unsupervised technique for discovering these co-occurrence patterns
+  without assuming any particular model. Today you will meet the Apriori
+  and FP-Growth algorithms, the support / confidence / lift triangle,
+  and how the rules you discover become features for supervised models
+  downstream.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Thirty years ago, a researcher at a supermarket chain found that
+  customers who bought nappies on Thursday evenings also tended to buy
+  beer. The story is probably apocryphal but the technique it inspired
+  — market basket analysis — is very real. Today it powers "frequently
+  bought together" widgets on every major e-commerce site, menu
+  recommendations in restaurant apps, and cross-sell engines in
+  telecoms. It is one of the oldest unsupervised techniques in the
+  book and still one of the most useful.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Market basket → frequent itemsets → rules</text>
+  <!-- Transactions -->
+  <rect x="30" y="40" width="220" height="220" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="140" y="60" text-anchor="middle" font-size="12" font-weight="600">Transactions</text>
+  <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
+    <text x="45" y="90">T1: {milk, bread, eggs}</text>
+    <text x="45" y="115">T2: {milk, bread, butter}</text>
+    <text x="45" y="140">T3: {bread, eggs}</text>
+    <text x="45" y="165">T4: {milk, bread, eggs, butter}</text>
+    <text x="45" y="190">T5: {milk, coffee}</text>
+    <text x="45" y="215">T6: {bread, butter}</text>
+    <text x="45" y="240">T7: {milk, bread, butter}</text>
+  </g>
+
+  <line x1="260" y1="150" x2="305" y2="150" stroke="#0D9488" stroke-width="2.5"/>
+  <polygon points="305,150 299,146 299,154" fill="#0D9488"/>
+
+  <!-- Frequent itemsets -->
+  <rect x="315" y="40" width="190" height="220" fill="#F0FDFA" stroke="#0D9488"/>
+  <text x="410" y="60" text-anchor="middle" font-size="12" font-weight="600" fill="#0D9488">Frequent itemsets (supp ≥ 3/7)</text>
+  <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
+    <text x="325" y="90">{milk}: 5/7</text>
+    <text x="325" y="110">{bread}: 6/7</text>
+    <text x="325" y="130">{butter}: 4/7</text>
+    <text x="325" y="155">{milk, bread}: 4/7</text>
+    <text x="325" y="175">{bread, butter}: 4/7</text>
+    <text x="325" y="200">{milk, bread, butter}: 3/7</text>
+  </g>
+
+  <line x1="515" y1="150" x2="560" y2="150" stroke="#0D9488" stroke-width="2.5"/>
+  <polygon points="560,150 554,146 554,154" fill="#0D9488"/>
+
+  <!-- Rules -->
+  <rect x="570" y="40" width="130" height="220" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="635" y="60" text-anchor="middle" font-size="12" font-weight="600" fill="#F59E0B">Rules</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#1E293B">
+    <text x="578" y="90">milk→bread</text>
+    <text x="578" y="105">conf: 0.80</text>
+    <text x="578" y="120">lift: 0.93</text>
+    <text x="578" y="150">bread→butter</text>
+    <text x="578" y="165">conf: 0.67</text>
+    <text x="578" y="180">lift: 1.17</text>
+    <text x="578" y="210">milk∧bread</text>
+    <text x="578" y="225">→butter</text>
+    <text x="578" y="240">conf: 0.75</text>
+  </g>
+</svg>
+<figcaption>Three-stage pipeline: transactional data → frequent itemsets → association rules with support, confidence, and lift.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Support, confidence, lift</h3>
+
+<p>
+  Let $T$ be the set of all transactions and let $X$ and $Y$ be
+  (disjoint) sets of items. The three fundamental metrics are:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{support}(X) \;=\; \frac{|\{t \in T : X \subseteq t\}|}{|T|} $$
+  $$ \text{confidence}(X \to Y) \;=\; \frac{\text{support}(X \cup Y)}{\text{support}(X)} $$
+  $$ \text{lift}(X \to Y) \;=\; \frac{\text{confidence}(X \to Y)}{\text{support}(Y)} $$
+</div>
+
+<p>
+  <strong>Support</strong> is "how often do we see this combination" — a
+  pure frequency. <strong>Confidence</strong> is "given that we see $X$,
+  how likely are we to also see $Y$" — a conditional probability.
+  <strong>Lift</strong> is "is $Y$ more likely when $X$ is present than
+  it would be by random chance?" — lift > 1 means positive association,
+  lift < 1 means negative, lift ≈ 1 means independent.
+</p>
+
+<p>
+  Example: if 20% of baskets contain bread and 10% contain butter, and
+  5% contain both, then:
+</p>
+
+<ul>
+  <li>support(bread ∧ butter) = 0.05</li>
+  <li>confidence(bread → butter) = 0.05 / 0.20 = 0.25 — 25% of bread-buyers also buy butter</li>
+  <li>lift(bread → butter) = 0.25 / 0.10 = 2.5 — bread-buyers are 2.5× more likely to buy butter than a random customer</li>
+</ul>
+
+<p>
+  Lift is the metric you report to a marketing manager. A rule with
+  high confidence but low lift tells you the consequent is common, not
+  that there is a real association.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Lift is the ratio of the joint probability to the product of the
+    marginals: $\text{lift}(X \to Y) = P(X \cap Y) / (P(X) P(Y))$.
+    For independent events this is exactly 1. For perfectly correlated
+    events (both present iff both present) it is $1 / P(X)$. This
+    matches the mutual-information view of dependency.
+  </p>
+</div>
+
+<h3>Apriori — the classical algorithm</h3>
+
+<p>
+  Association rule mining has two stages: (1) find all itemsets with
+  support above a minimum threshold, and (2) generate rules from those
+  itemsets. Stage (1) is the expensive one — there are $2^d$ possible
+  itemsets over $d$ items, so brute-forcing is impossible. The
+  <strong>Apriori property</strong> saves you:
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Apriori property</span>
+  <p>
+    If an itemset $X$ is <em>not</em> frequent (support below threshold),
+    then no superset of $X$ is frequent either. Equivalently: every
+    subset of a frequent itemset is itself frequent.
+  </p>
+</div>
+
+<p>
+  Apriori uses this property to prune the search space. It proceeds
+  level by level: find all frequent 1-itemsets, use them to generate
+  candidate 2-itemsets, prune those that contain an infrequent subset,
+  count the survivors, repeat. In practice it scales to thousands of
+  items and millions of transactions, but slows dramatically when
+  itemsets get long.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="340" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Apriori candidate generation with anti-monotone pruning</text>
+  <!-- Level 1 -->
+  <text x="60" y="60" font-family="Inter" font-weight="700" font-size="12" fill="#475569">L1</text>
+  <g font-family="JetBrains Mono" font-size="11">
+    <rect x="90" y="45" width="55" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="117" y="61" text-anchor="middle">{A}</text>
+    <rect x="155" y="45" width="55" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="182" y="61" text-anchor="middle">{B}</text>
+    <rect x="220" y="45" width="55" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="247" y="61" text-anchor="middle">{C}</text>
+    <rect x="285" y="45" width="55" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="312" y="61" text-anchor="middle">{D}</text>
+    <rect x="350" y="45" width="55" height="24" fill="#FEE2E2" stroke="#EF4444"/><text x="377" y="61" text-anchor="middle">{E}</text>
+  </g>
+  <text x="420" y="61" font-size="10" fill="#EF4444">← infrequent, pruned</text>
+
+  <!-- Level 2 -->
+  <text x="60" y="130" font-family="Inter" font-weight="700" font-size="12" fill="#475569">L2</text>
+  <g font-family="JetBrains Mono" font-size="10">
+    <rect x="90" y="115" width="65" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="122" y="131" text-anchor="middle">{A,B}</text>
+    <rect x="165" y="115" width="65" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="197" y="131" text-anchor="middle">{A,C}</text>
+    <rect x="240" y="115" width="65" height="24" fill="#FEE2E2" stroke="#EF4444"/><text x="272" y="131" text-anchor="middle">{A,D}</text>
+    <rect x="315" y="115" width="65" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="347" y="131" text-anchor="middle">{B,C}</text>
+    <rect x="390" y="115" width="65" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="422" y="131" text-anchor="middle">{B,D}</text>
+    <rect x="465" y="115" width="65" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="497" y="131" text-anchor="middle">{C,D}</text>
+  </g>
+
+  <!-- Level 3 -->
+  <text x="60" y="200" font-family="Inter" font-weight="700" font-size="12" fill="#475569">L3</text>
+  <g font-family="JetBrains Mono" font-size="10">
+    <rect x="90" y="185" width="80" height="24" fill="#DCFCE7" stroke="#22C55E"/><text x="130" y="201" text-anchor="middle">{A,B,C}</text>
+    <rect x="185" y="185" width="80" height="24" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="3 2"/><text x="225" y="201" text-anchor="middle">{A,B,D}</text>
+    <rect x="280" y="185" width="80" height="24" fill="#FEE2E2" stroke="#EF4444"/><text x="320" y="201" text-anchor="middle">{B,C,D}</text>
+  </g>
+  <text x="185" y="230" font-size="10" fill="#94A3B8">{A,D} infrequent → pruned without counting</text>
+
+  <text x="60" y="265" font-size="11" fill="#64748B" font-style="italic">Only survivors proceed to the next level. Counts drop exponentially.</text>
+</svg>
+<figcaption>Level-by-level Apriori. At L3, {A,B,D} is pruned without counting because its subset {A,D} was infrequent at L2 — that is the Apriori property in action.</figcaption>
+</figure>
+
+<h3>FP-Growth — Apriori's faster cousin</h3>
+
+<p>
+  Apriori has one big drawback: it scans the transaction database once
+  per level. For long itemsets that is many scans. <strong>FP-Growth</strong>
+  (Frequent Pattern Growth) avoids the candidate-generation step entirely
+  by building a compressed data structure called an FP-tree on a single
+  pass, then mining frequent itemsets by recursively walking the tree.
+  FP-Growth is typically 2 – 10× faster than Apriori on dense data and
+  is the default in modern libraries (<code>mlxtend</code>, SparkML,
+  polars' own extensions).
+</p>
+
+<p>
+  You do not need to implement FP-Growth from scratch — understanding
+  that it exists, that it is faster than Apriori, and that it gives
+  the same answer is enough. In the exercise you will use both.
+</p>
+
+<h3>From rules to features</h3>
+
+<p>
+  A key design point: association rules are not an end in themselves.
+  The discovered rules become <em>features</em> for supervised models.
+  Example: if you find that "purchased item A AND item B → 75%
+  probability of purchasing item C", you can add a binary feature
+  <code>has_AB_pattern</code> to your feature store and let a classifier
+  learn how to use it. This is the feed-forward from unsupervised
+  discovery into supervised decisions — the same story as using cluster
+  labels as features in Lesson 4.1.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations</h2>
+
+<h3>The combinatorial explosion</h3>
+
+<p>
+  With $d$ items there are $2^d - 1$ non-empty itemsets. For $d = 100$
+  that is $\approx 10^{30}$ — a thousand million million million
+  billion itemsets. Apriori's pruning is what makes the problem
+  tractable: under a minimum support threshold, the number of itemsets
+  you actually examine is typically a few orders of magnitude smaller
+  than the worst case.
+</p>
+
+<h3>Conviction — beyond lift</h3>
+
+<p>
+  An alternative to lift is <strong>conviction</strong>:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{conv}(X \to Y) \;=\; \frac{1 - \text{support}(Y)}{1 - \text{confidence}(X \to Y)} $$
+</div>
+
+<p>
+  Conviction measures how much the rule improves over a model where
+  $X$ and $Y$ are independent: conviction of 1 means the rule is no
+  better than random, higher values mean stronger implication.
+  Conviction is asymmetric (unlike lift) and is the metric of choice
+  when direction matters — e.g., "does buying A cause buying B?"
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Kailash integration: rules as feature columns</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash does not ship a dedicated association-rule engine — you use
+    <code>mlxtend.frequent_patterns.apriori</code> and
+    <code>association_rules</code> as the computational core. What
+    Kailash provides is the <code>FeatureEngineer</code> engine to
+    materialise discovered rules as binary feature columns in a polars
+    DataFrame, which then flows into the training pipeline. This is
+    how you turn an offline rule-mining exercise into a production
+    feature.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Singapore Retail Baskets</h2>
+
+<pre><code class="language-python">import polars as pl
+from mlxtend.frequent_patterns import apriori, association_rules, fpgrowth
+
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+baskets = loader.load("mlfp04", "sg_retail_baskets.parquet")
+# Each row: one transaction. Columns: item codes as booleans.
+
+# Run both algorithms with the same threshold
+freq_apriori = apriori(baskets.to_pandas(), min_support=0.01, use_colnames=True)
+freq_fp = fpgrowth(baskets.to_pandas(), min_support=0.01, use_colnames=True)
+print(f"Apriori found {len(freq_apriori)} frequent itemsets")
+print(f"FP-Growth found {len(freq_fp)} frequent itemsets")  # should agree
+
+# Generate rules with lift >= 2
+rules = association_rules(freq_fp, metric="lift", min_threshold=2.0)
+rules = rules.sort_values("lift", ascending=False).head(20)
+print(rules[["antecedents", "consequents", "support", "confidence", "lift"]])</code></pre>
+
+<p>
+  Interpretation walk-through: look at the top rule. If the
+  antecedent is <code>{instant_noodles, canned_tuna}</code> and the
+  consequent is <code>{rice}</code> with lift 3.5, the business reading
+  is "customers buying instant noodles and canned tuna are 3.5× more
+  likely to also buy rice than a random customer". That suggests a
+  three-item promotion, a shelf placement decision, or a recommendation
+  widget.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Setting min_support too low.</strong> If you allow itemsets that appear in only 0.001% of baskets, you get millions of meaningless rules. Start at 1% and adjust.</li>
+  <li><strong>Reporting confidence instead of lift.</strong> High confidence means "the consequent is common", not "there is an association". Lift is the metric stakeholders should see.</li>
+  <li><strong>Ignoring reverse direction.</strong> $A \to B$ and $B \to A$ have different confidences — present both if direction matters.</li>
+  <li><strong>Treating rules as causal.</strong> Lift measures association, not causation. A rule is a correlation, not a causal claim.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 5.</strong></p>
+  <ol>
+    <li>Load the Singapore retail basket dataset.</li>
+    <li>Run Apriori and FP-Growth at <code>min_support=0.01</code>; verify they agree.</li>
+    <li>Generate rules with <code>min_threshold=2.0</code> on lift.</li>
+    <li>Pick the top 5 rules and write a business interpretation for each.</li>
+    <li>Materialise a <code>has_pattern</code> binary feature from the top rule and add it to a customer feature table.</li>
+    <li>Train a logistic regression to predict high-value baskets with and without the new feature — does it improve performance?</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to M3:</strong> Feature engineering was manual in M3. Rules discovered by Apriori are features discovered automatically — another step on the spectrum.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Association rules find co-occurrence. Collaborative filtering finds latent structure in co-occurrence. Matrix factorisation will generalise the idea — instead of discrete rules, it learns continuous embeddings.</li>
+  <li><strong>Lesson 4.6:</strong> Topic modelling is association mining for words and documents — TF-IDF's cousin.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  Association rules are the oldest trick in the unsupervised book and
+  they still earn their keep. The algorithm is simple, the metrics are
+  interpretable, and the output is a list of rules that a non-technical
+  stakeholder can read and argue about. This is unusual in modern ML
+  — most algorithms produce predictions, not explanations. When you
+  need to have a meeting about <em>why</em>, association rules are
+  often the easiest place to start.
+</p>
+
+</main>
+</body>
+</html>

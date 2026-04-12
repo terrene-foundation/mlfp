@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 6 — LLMs and Agentic Workflows | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+    .capstone-card { border-left-color: #8B5CF6; }
+    .capstone-card .num { color: #8B5CF6; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 6</span>
+    Machine Learning with Language Models and Agentic Workflows
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~28 hours total study</span>
+    <span>Scaffolding: 20% (minimal) — capstone 40%</span>
+    <span>Audience: M1–M5 complete</span>
+  </div>
+  <p class="lead">
+    The final module. You have built classical models, deep networks, and
+    transformers. Now you close the loop: prompt LLMs, fine-tune them with
+    LoRA, align them with DPO, ground them in your own data with RAG, wrap
+    them in agents, coordinate those agents, govern them with PACT, and
+    deploy the whole stack through Nexus. By the end of Lesson 6.8 you will
+    have shipped a <em>complete governed AI system</em>.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module you will be able to:</p>
+<ul>
+  <li>Apply zero-shot, few-shot, and chain-of-thought prompting with <code>Kaizen Delegate</code> and <code>Signature</code>-typed output</li>
+  <li>Fine-tune a base model with <strong>LoRA</strong> (low-rank adapters) and the <code>kailash-align</code> <code>AlignmentPipeline</code></li>
+  <li>Align a model to human preferences with <strong>DPO</strong> and explain the derivation from the RLHF objective</li>
+  <li>Build a production RAG pipeline with chunking, dense + sparse retrieval, re-ranking and RAGAS evaluation</li>
+  <li>Build Kaizen <code>ReActAgent</code>s with custom tools, cost budgets, and function-calling schemas</li>
+  <li>Orchestrate multi-agent systems (supervisor-worker, router, A2A) and expose tools via an MCP server</li>
+  <li>Engineer governance with PACT D/T/R addressing, operating envelopes, budget cascading, and audit trails</li>
+  <li>Deploy a governed agent over <strong>API + CLI + MCP simultaneously</strong> via Nexus and verify end-to-end enforcement</li>
+</ul>
+
+<h2>Datasets You Will Use</h2>
+<table>
+  <thead><tr><th>Dataset</th><th>Purpose</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td><code>sg_company_reports.parquet</code></td><td>Classification, entity extraction, agent reasoning</td><td>6.1, 6.5, 6.6</td></tr>
+    <tr><td><code>sg_domain_qa.parquet</code></td><td>SFT instruction-response pairs (Singapore domain)</td><td>6.2, 6.8</td></tr>
+    <tr><td><code>preference_pairs.parquet</code></td><td>Chosen / rejected pairs for DPO alignment</td><td>6.3</td></tr>
+    <tr><td><code>sg_regulations.parquet</code></td><td>MAS, PDPA, AI Verify — RAG grounding corpus</td><td>6.4</td></tr>
+    <tr><td>Organisation YAML</td><td>D/T/R hierarchy for PACT governance</td><td>6.7, 6.8</td></tr>
+  </tbody>
+</table>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">6.1</div>
+    <div>
+      <p class="title">LLM Fundamentals, Prompting, and Structured Output</p>
+      <p class="summary">Scaling laws, zero / few / CoT prompting, self-consistency, Kaizen <code>Delegate</code> and <code>Signature</code>.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">6.2</div>
+    <div>
+      <p class="title">LoRA, Adapters, and the Fine-Tuning Landscape</p>
+      <p class="summary">LoRA from scratch (W + BA), adapter bottlenecks, 10-technique survey, model merging (TIES / DARE / SLERP), QLoRA.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">6.3</div>
+    <div>
+      <p class="title">Preference Alignment — DPO and GRPO</p>
+      <p class="summary">Bradley-Terry model, DPO loss derivation, GRPO from DeepSeek-R1, LLM-as-judge biases, lm-eval-harness.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">6.4</div>
+    <div>
+      <p class="title">RAG Systems</p>
+      <p class="summary">Chunking, BM25 + cosine + hybrid retrieval, re-ranking, RAGAS faithfulness, HyDE — grounded in MAS regulations.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">6.5</div>
+    <div>
+      <p class="title">AI Agents — ReAct, Tools, and Function Calling</p>
+      <p class="summary">Kaizen <code>ReActAgent</code>, custom tools, function-calling JSON schema, cost budgets, the agent design framework.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">6.6</div>
+    <div>
+      <p class="title">Multi-Agent Orchestration and MCP</p>
+      <p class="summary">Supervisor-worker, router agents, A2A protocol, agent memory, and building an MCP server.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/07/textbook.html">
+    <div class="num">6.7</div>
+    <div>
+      <p class="title">AI Governance Engineering with PACT</p>
+      <p class="summary">D/T/R addressing, <code>GovernanceEngine</code>, operating envelopes, budget cascading, fail-closed audit trails.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+  <a class="lesson-card capstone-card" href="lessons/08/textbook.html">
+    <div class="num">6.8</div>
+    <div>
+      <p class="title">Capstone — Full Production Platform</p>
+      <p class="summary">Nexus multi-channel deploy (API + CLI + MCP), RBAC, drift monitoring, end-to-end governed ML system. The final lesson of MLFP.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span></div>
+  </a>
+
+</div>
+
+<h2>The Complete MLFP Stack</h2>
+<p>
+  Module 6 is where the six modules of MLFP fuse into a single deployable
+  system. Look back at what each module contributed:
+</p>
+<table>
+  <thead><tr><th>Module</th><th>Contribution to the capstone</th></tr></thead>
+  <tbody>
+    <tr><td>M1 — Data pipelines</td><td>Polars, DataFrames, the 30-second inspection ritual — every dataset in M6 flows through it</td></tr>
+    <tr><td>M2 — Statistics</td><td>Distributions, confidence intervals — the foundations of DPO's Bradley-Terry model and RAGAS scoring</td></tr>
+    <tr><td>M3 — Supervised ML</td><td><code>TrainingPipeline</code>, <code>ModelRegistry</code>, drift monitoring — the backbone we still use for non-LLM models</td></tr>
+    <tr><td>M4 — Unsupervised ML + NLP</td><td>Embeddings, cosine similarity, BM25 — the retrieval half of RAG</td></tr>
+    <tr><td>M5 — Deep learning</td><td>Transformers, attention, backprop — the architecture LoRA and DPO operate on</td></tr>
+    <tr><td><strong>M6 — LLMs and agents</strong></td><td>Prompting, fine-tuning, RAG, agents, governance, deployment — the layer that turns everything above into a product</td></tr>
+  </tbody>
+</table>
+
+<h2>Master Documents</h2>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> — all 8 lessons in one Reveal.js deck</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a> — consolidated markdown for instructors</li>
+</ul>
+
+</main>
+</body>
+</html>

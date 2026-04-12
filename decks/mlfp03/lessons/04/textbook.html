@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.4 — Gradient Boosting Deep Dive | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.4</span>
+  Gradient Boosting Deep Dive
+</h1>
+
+<p class="lead">
+  Gradient boosting is the single algorithmic family most responsible for
+  winning tabular ML competitions in the last fifteen years. In the next
+  75 minutes you will see why. We derive XGBoost's split gain formula from
+  a second-order Taylor expansion of the loss, contrast it with LightGBM's
+  GOSS sampling and CatBoost's ordered boosting, and train all three on
+  Singapore credit-scoring data. By the end you will be able to pick and
+  tune the right booster for any tabular problem you meet.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Boosting vs Bagging — Two Ensembles, Two Strategies</h2>
+
+<p>
+  The random forest from Lesson 3.3 uses <strong>bagging</strong>: train
+  many high-variance trees in parallel on bootstrap samples and average
+  them. Bagging reduces variance without changing bias.
+</p>
+
+<p>
+  <strong>Boosting</strong> does the opposite. It trains trees
+  <em>sequentially</em>, each new tree correcting the errors of the
+  previous ensemble. The individual trees are weak (often depth 3–6) but
+  the ensemble becomes strong. Boosting reduces bias.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <!-- Bagging -->
+    <text x="190" y="25" text-anchor="middle" font-weight="700" fill="#0D9488">Bagging (parallel)</text>
+    <rect x="60"  y="50" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="120" y="75" text-anchor="middle">tree 1</text>
+    <rect x="60"  y="100" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="120" y="125" text-anchor="middle">tree 2</text>
+    <rect x="60"  y="150" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="120" y="175" text-anchor="middle">tree 3</text>
+    <rect x="210" y="100" width="120" height="40" rx="6" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
+    <text x="270" y="125" text-anchor="middle" font-weight="700">average</text>
+    <line x1="180" y1="70"  x2="210" y2="115" stroke="#16A34A"/>
+    <line x1="180" y1="120" x2="210" y2="120" stroke="#16A34A"/>
+    <line x1="180" y1="170" x2="210" y2="125" stroke="#16A34A"/>
+    <text x="190" y="220" text-anchor="middle" font-style="italic" fill="#047857" font-size="11">reduces variance</text>
+
+    <!-- Boosting -->
+    <text x="570" y="25" text-anchor="middle" font-weight="700" fill="#B45309">Boosting (sequential)</text>
+    <rect x="430" y="100" width="90" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="475" y="125" text-anchor="middle">tree 1</text>
+    <text x="540" y="125" font-size="18" fill="#475569">→</text>
+    <rect x="560" y="100" width="90" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="605" y="125" text-anchor="middle">tree 2</text>
+    <text x="660" y="125" font-size="18" fill="#475569">→</text>
+    <rect x="680" y="100" width="60" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="710" y="125" text-anchor="middle">...</text>
+    <text x="570" y="75"  text-anchor="middle" font-size="11" fill="#78350F">each corrects prev residuals</text>
+    <text x="570" y="220" text-anchor="middle" font-style="italic" fill="#B45309" font-size="11">reduces bias</text>
+  </g>
+</svg>
+<figcaption>Bagging averages decorrelated high-variance trees to reduce variance. Boosting chains weak learners sequentially, each one correcting the residuals of the ensemble so far, to reduce bias.</figcaption>
+</figure>
+
+<h3>The boosting recipe</h3>
+
+<p>
+  Let $F_m(x)$ be the ensemble after $m$ trees. We start with a constant
+  $F_0(x) = \arg\min_c \sum_i L(y_i, c)$ — for squared loss, the mean of
+  $y$; for log-loss, the log-odds of the base rate. At each subsequent
+  step we fit a new weak learner $f_m$ to the <em>gradient</em> of the
+  loss with respect to the current predictions, and add it:
+</p>
+
+$$F_m(x) \;=\; F_{m-1}(x) \;+\; \eta \cdot f_m(x)$$
+
+<p>
+  $\eta$ is the learning rate (typically 0.01–0.3) that controls how much
+  each tree contributes. Small $\eta$ with many trees generalises better
+  than large $\eta$ with few trees — a version of the bias-variance dial
+  from Lesson 3.2.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>XGBoost — The Second-Order Taylor Expansion</h2>
+
+<p>
+  The original gradient-boosting algorithm (Friedman 2001) fits each tree
+  to the first-order gradient of the loss. XGBoost (Chen &amp; Guestrin,
+  2016) extends this to a second-order approximation — and the resulting
+  algebra is where the celebrated split-gain formula comes from.
+</p>
+
+<h3>Setup</h3>
+
+<p>
+  Let $\hat{y}_i^{(t-1)}$ be the ensemble's prediction for row $i$ after
+  $t-1$ trees. We want to add a new tree $f_t$ to minimise the objective:
+</p>
+
+$$\mathcal{L}^{(t)} \;=\; \sum_{i=1}^{n} L\bigl(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)\bigr) \;+\; \Omega(f_t)$$
+
+<p>
+  The regulariser $\Omega(f_t) = \gamma T + \tfrac{1}{2}\lambda\sum_{j=1}^T w_j^2$
+  penalises the number of leaves $T$ and the L2 norm of the leaf weights
+  $w_j$. $\gamma$ controls tree complexity; $\lambda$ shrinks leaf values.
+</p>
+
+<h3>Second-order Taylor expansion</h3>
+
+<p>
+  Expand $L$ around $\hat{y}_i^{(t-1)}$ to second order:
+</p>
+
+$$L(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)) \;\approx\; L(y_i, \hat{y}_i^{(t-1)}) + g_i\,f_t(x_i) + \tfrac{1}{2}\,h_i\,f_t(x_i)^2$$
+
+<p>
+  where $g_i$ and $h_i$ are the first and second derivatives of the loss:
+</p>
+
+$$g_i \;=\; \partial_{\hat{y}_i^{(t-1)}}\, L(y_i, \hat{y}_i^{(t-1)})\,,\qquad h_i \;=\; \partial^2_{\hat{y}_i^{(t-1)}}\, L(y_i, \hat{y}_i^{(t-1)})$$
+
+<p>
+  Drop the constant $L(y_i, \hat{y}_i^{(t-1)})$ (it doesn't depend on
+  $f_t$) and substitute into the objective:
+</p>
+
+$$\tilde{\mathcal{L}}^{(t)} \;=\; \sum_{i=1}^{n}\bigl(g_i f_t(x_i) + \tfrac{1}{2}h_i f_t(x_i)^2\bigr) + \gamma T + \tfrac{1}{2}\lambda\sum_{j=1}^T w_j^2$$
+
+<h3>Optimal leaf weight</h3>
+
+<p>
+  A tree with $T$ leaves assigns every training point to exactly one leaf.
+  Let $I_j$ be the set of training points landing in leaf $j$; then
+  $f_t(x_i) = w_j$ for $i \in I_j$. Rewriting the sum:
+</p>
+
+$$\tilde{\mathcal{L}}^{(t)} \;=\; \sum_{j=1}^{T}\Bigl[\bigl(\sum_{i \in I_j} g_i\bigr) w_j + \tfrac{1}{2}\bigl(\sum_{i \in I_j} h_i + \lambda\bigr) w_j^2\Bigr] + \gamma T$$
+
+<p>
+  Let $G_j = \sum_{i \in I_j} g_i$ and $H_j = \sum_{i \in I_j} h_i$. The
+  inner bracket is a quadratic in $w_j$ and its minimum is:
+</p>
+
+$$\boxed{\;w_j^* \;=\; -\frac{G_j}{H_j + \lambda}\;}$$
+
+<p>
+  Substituting this back gives the optimal objective for a fixed tree
+  structure:
+</p>
+
+$$\tilde{\mathcal{L}}^{(t)}_{\min} \;=\; -\tfrac{1}{2}\sum_{j=1}^{T}\frac{G_j^2}{H_j + \lambda} + \gamma T$$
+
+<h3>The split-gain formula</h3>
+
+<p>
+  Now consider splitting a single leaf into left ($L$) and right ($R$)
+  children. Before the split, the leaf contributed
+  $-\tfrac{1}{2}(G_L + G_R)^2 / (H_L + H_R + \lambda)$ (plus the
+  $\gamma$ for its own leaf). After the split we have two leaves each
+  contributing their own term. The improvement from splitting is:
+</p>
+
+$$\boxed{\;\mathrm{Gain} \;=\; \frac{1}{2}\Bigl[\frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda}\Bigr] - \gamma\;}$$
+
+<p>
+  XGBoost evaluates this formula for every candidate split and keeps the
+  split with the largest gain. If no split has positive gain, the leaf is
+  not split — the $\gamma$ penalty serves as a built-in pruning cost.
+  This one formula is the mathematical core of XGBoost.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — Why the second order matters</span>
+  <p>
+    First-order boosting (Friedman) uses only $g_i$ and fits a tree to the
+    pseudo-residuals $-g_i$. That works but requires a line search for
+    each leaf weight. The second-order approach uses $g_i$ and $h_i$
+    together — the Newton step $-G_j / H_j$ is the optimal leaf weight in
+    closed form. This avoids the line search, makes the gain formula
+    loss-agnostic (works for any twice-differentiable loss), and lets
+    XGBoost parallelise over features trivially. That is the combination
+    that made it the default competition winner.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>LightGBM — GOSS and Histogram Splits</h2>
+
+<p>
+  LightGBM (Microsoft, 2017) optimises for speed on massive datasets with
+  two big ideas.
+</p>
+
+<h3>Histogram-based split finding</h3>
+
+<p>
+  XGBoost's exact split search evaluates every candidate threshold per
+  feature: $O(n \log n)$ per feature per level. LightGBM bins each
+  feature's values into ~256 buckets and evaluates splits only at bucket
+  boundaries: $O(n + 256)$ per feature. That is orders of magnitude
+  faster on large datasets with little loss in accuracy.
+</p>
+
+<h3>GOSS: Gradient-based One-Side Sampling</h3>
+
+<p>
+  The insight: rows with small gradients are already well-predicted.
+  Training further tree nodes on them adds little information. Rows with
+  large gradients are under-fit and carry most of the signal. GOSS keeps
+  all of the high-gradient rows and randomly subsamples the low-gradient
+  rows:
+</p>
+
+<ol>
+  <li>Sort training rows by $|g_i|$ descending.</li>
+  <li>Keep the top $a\%$ (typically $a=20$) — the high-loss instances.</li>
+  <li>Randomly sample $b\%$ (typically $b=10$) from the remaining 80%.</li>
+  <li>Train the next tree only on these $a + b \approx 30\%$ of rows.</li>
+  <li>Up-weight the sampled low-gradient rows by $(1 - a)/b$ so the gradient estimate remains unbiased.</li>
+</ol>
+
+<p>
+  The net effect: ~30% of the data per iteration, ~3× speedup, almost no
+  accuracy loss. GOSS is why LightGBM scales to millions of rows where
+  vanilla XGBoost starts to crawl.
+</p>
+
+<h3>Leaf-wise growth</h3>
+
+<p>
+  XGBoost grows trees <em>level-wise</em>: every node at the current depth
+  is split before going deeper. LightGBM grows <em>leaf-wise</em>: split
+  the single leaf with the largest gain regardless of depth. Leaf-wise
+  trees are unbalanced but each split is locally optimal. Faster
+  convergence, but risk of overfitting — LightGBM exposes
+  <code>num_leaves</code> as the main complexity dial.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>CatBoost — Ordered Boosting for Categorical Features</h2>
+
+<p>
+  CatBoost (Yandex, 2017) tackles a subtle problem that XGBoost and
+  LightGBM brush under the rug: <strong>target leakage in categorical
+  encoding</strong>. The standard trick for a high-cardinality categorical
+  feature (postcode, city, user_id) is mean-target encoding: replace each
+  category with the mean target over rows in that category. That is
+  leakage — the encoding uses the target that the model is trying to
+  predict.
+</p>
+
+<h3>Ordered target encoding</h3>
+
+<p>
+  CatBoost fixes this by imposing an artificial ordering on the rows and,
+  for each row, computing the target encoding from only the rows that
+  precede it in that ordering:
+</p>
+
+$$\text{enc}(x_i^{\text{cat}}) \;=\; \frac{\sum_{j < i,\, x_j^{\text{cat}} = x_i^{\text{cat}}} y_j + a\cdot\bar{y}}{\sum_{j < i,\, x_j^{\text{cat}} = x_i^{\text{cat}}} 1 + a}$$
+
+<p>
+  where $a$ is a smoothing prior. Because row $i$'s encoding never
+  depends on its own target $y_i$, there is no leakage. This ordering is
+  re-shuffled on each boosting iteration so different trees see different
+  orderings, avoiding a bias toward the particular arrangement.
+</p>
+
+<p>
+  In practice: CatBoost is the booster to pick when your data has many
+  high-cardinality categorical features (think Singapore postal codes or
+  product IDs) and you do not want to hand-engineer the encoding.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Credit Scoring with All Three</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Load Singapore credit-scoring data (~5000 applications, 12% default
+    rate — imbalanced). Train XGBoost, LightGBM, and CatBoost with default
+    and tuned parameters, compare AUC-PR (the appropriate metric for
+    imbalanced classification), training time, and feature importance.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load and split.</span>
+    <pre><code class="language-python">import polars as pl, numpy as np
+import xgboost as xgb, lightgbm as lgb, catboost as cb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import average_precision_score, roc_auc_score
+from kailash_ml.interop import to_sklearn_input
+
+from shared import MLFPDataLoader
+df = MLFPDataLoader().load("mlfp02", "credit_scoring.parquet")
+X, y = to_sklearn_input(df, target="default", standardise=False)  # trees don't need scaling
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2,
+                                          stratify=y, random_state=0)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Three boosters, sensible defaults.</span>
+    <pre><code class="language-python">models = {
+    "XGBoost":  xgb.XGBClassifier(n_estimators=400, learning_rate=0.05,
+                                  max_depth=6, reg_lambda=1, gamma=0.1,
+                                  eval_metric="aucpr", random_state=0),
+    "LightGBM": lgb.LGBMClassifier(n_estimators=400, learning_rate=0.05,
+                                   num_leaves=31, reg_lambda=1,
+                                   random_state=0),
+    "CatBoost": cb.CatBoostClassifier(iterations=400, learning_rate=0.05,
+                                      depth=6, l2_leaf_reg=3,
+                                      verbose=False, random_state=0),
+}
+
+for name, model in models.items():
+    model.fit(X_tr, y_tr)
+    p = model.predict_proba(X_te)[:, 1]
+    print(f"{name:10s}  AUC-PR = {average_precision_score(y_te, p):.4f}  "
+          f"AUC-ROC = {roc_auc_score(y_te, p):.4f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Learning curves and early stopping.</span>
+    <pre><code class="language-python">xgb_model = xgb.XGBClassifier(n_estimators=1000, learning_rate=0.05,
+                              early_stopping_rounds=25, eval_metric="aucpr")
+xgb_model.fit(X_tr, y_tr, eval_set=[(X_te, y_te)], verbose=False)
+print(f"Early stopping at round {xgb_model.best_iteration}")</code></pre>
+    <p>
+      Early stopping halts training when the validation metric has not
+      improved for 25 rounds. It is the standard way to pick the number
+      of trees without manual tuning.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Hyperparameter sensitivity.</span>
+    <pre><code class="language-python">for lr in [0.01, 0.05, 0.1, 0.3]:
+    for depth in [3, 6, 10]:
+        m = xgb.XGBClassifier(n_estimators=300, learning_rate=lr,
+                              max_depth=depth, eval_metric="aucpr")
+        m.fit(X_tr, y_tr)
+        p = m.predict_proba(X_te)[:, 1]
+        print(f"lr={lr:<5} depth={depth:<3} AUC-PR = "
+              f"{average_precision_score(y_te, p):.4f}")</code></pre>
+    <p>
+      Classic pattern: high learning rate with deep trees overfits; low
+      learning rate with shallow trees needs many more iterations but
+      generalises best. Early stopping finds the right number of
+      iterations automatically.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Picking Your Booster</h2>
+
+<table>
+  <thead><tr><th>Booster</th><th>Pick when</th><th>Hyperparameter to tune first</th></tr></thead>
+  <tbody>
+    <tr><td>XGBoost</td><td>small-to-medium data, reproducibility, clean numeric features</td><td><code>learning_rate</code>, <code>max_depth</code>, <code>reg_lambda</code></td></tr>
+    <tr><td>LightGBM</td><td>millions of rows, many features, speed matters</td><td><code>num_leaves</code>, <code>learning_rate</code>, <code>min_data_in_leaf</code></td></tr>
+    <tr><td>CatBoost</td><td>many high-cardinality categoricals, minimum hand-engineering</td><td><code>iterations</code>, <code>depth</code>, <code>l2_leaf_reg</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1 — Reporting ROC-AUC on imbalanced data</span>
+  <p>
+    With 12% default rate, ROC-AUC can stay high while the precision at
+    useful recall is miserable. Use AUC-PR (average precision) or a
+    business-weighted threshold instead. Lesson 3.5 develops this in
+    detail.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2 — No early stopping</span>
+  <p>
+    Without a validation set and early stopping, you either underfit
+    (picked too few trees) or overfit (picked too many). Always pass an
+    eval_set and let the training loop find the right iteration.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3 — Tuning learning_rate and n_estimators independently</span>
+  <p>
+    They interact directly: halving the learning rate typically doubles
+    the optimal number of trees. Fix a small learning rate (0.05 or 0.01),
+    let early stopping pick n_estimators, and tune depth and regularisation
+    separately.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Derive the split gain</h3>
+  <p>
+    Start from the regularised objective
+    $\tilde{\mathcal{L}}^{(t)} = \sum_i(g_i f_t(x_i) + \tfrac{1}{2}h_i f_t(x_i)^2) + \gamma T + \tfrac{1}{2}\lambda \sum_j w_j^2$
+    and fill in the algebra to get the optimal leaf weight
+    $w_j^* = -G_j/(H_j + \lambda)$ and the gain formula. Should fit on one
+    sheet of paper.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Learning rate vs n_estimators</h3>
+  <p>
+    Train XGBoost with learning rates $0.01, 0.05, 0.1, 0.3$ and plot
+    AUC-PR against the iteration index for each. Observe that smaller
+    rates need more iterations but reach a better optimum.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — CatBoost wins on categoricals</h3>
+  <p>
+    Artificially inflate the dataset by adding a categorical feature
+    <code>postal_code</code> with 500 unique values. Re-train all three
+    boosters without manual encoding. CatBoost should win; explain why in
+    two sentences.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The bias-variance dial from Lesson 3.2 returns here as
+  <code>learning_rate</code>, <code>max_depth</code>, <code>reg_lambda</code>,
+  and early stopping. Lesson 3.5 tackles the imbalance problem you just
+  saw in credit scoring with SMOTE, cost-sensitive learning, and
+  calibration. Lesson 3.6 applies SHAP to the gradient-boosting model you
+  built today — the fastest SHAP implementation is TreeSHAP, specifically
+  designed for this model family. Lesson 3.7 uses Kailash
+  <code>HyperparameterSearch</code> to tune a gradient booster with
+  Bayesian optimisation.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have derived the XGBoost split gain from first principles — one of
+  the most cited derivations in modern ML. You understand how LightGBM's
+  GOSS cuts training time without losing accuracy, and why CatBoost's
+  ordered boosting solves a leakage problem the others ignore. You have
+  trained and tuned all three on real Singapore credit data and you can
+  defend your choice of booster with evidence about feature types,
+  dataset size, and training-time budget.
+</p>
+<p>
+  Gradient boosting is the default for tabular ML in production across
+  Singapore finance, healthcare, and logistics. Knowing it deeply — not
+  just "call XGBoost, set n_estimators=500" — is the skill that
+  distinguishes a working ML engineer from a button-pusher.
+</p>
+<p>
+  In Lesson 3.5 we face the single most common production failure mode:
+  imbalanced data. We will see why accuracy lies, how SMOTE helps and
+  hurts, and how to calibrate probabilities so that a "0.8" from the
+  model actually means 80% chance.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/textbook.html" class="prev"><span class="label">← Previous</span>3.3 Model Zoo</a>
+  <a href="../05/textbook.html" class="next"><span class="label">Next →</span>3.5 Evaluation, Imbalance, Calibration</a>
+</nav>
+
+</main>
+</body>
+</html>

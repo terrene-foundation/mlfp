@@ -2,339 +2,440 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 6: Capstone — Full Platform Deployment
+# MLFP04 — Exercise 6: Deep Learning with ONNX Export
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Deploy a governed ML system combining the full Kailash
-#   platform: trained model (M3) → InferenceServer → Kaizen agent (M5)
-#   → PactGovernedAgent → Nexus multi-channel → PACT governance.
 #
-# This is the capstone exercise demonstrating the entire Kailash platform.
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Build a CNN with residual connections (ResBlock) in PyTorch
+#   - Explain why skip connections solve the vanishing gradient problem
+#   - Train with cosine annealing LR scheduling and gradient clipping
+#   - Monitor gradient norms to diagnose training stability
+#   - Export a trained CNN to ONNX format via OnnxBridge for deployment
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 4 (production monitoring — deployment context)
+#   - MLFP03 Exercise 1 (feature engineering — same mindset for image features)
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
-#   1. Load trained model from ModelRegistry
-#   2. Deploy via InferenceServer
-#   3. Wrap with Kaizen agent for intelligent interaction
-#   4. Apply PACT governance (operating envelopes)
-#   5. Deploy through Nexus (API + CLI + MCP)
-#   6. End-to-end test: governed prediction through all layers
+#   1. Load and prepare image data
+#   2. Build CNN architecture with residual connections
+#   3. Train with cosine annealing LR scheduler
+#   4. Monitor gradients and training dynamics
+#   5. Export to ONNX with OnnxBridge
+#   6. Validate ONNX model matches PyTorch predictions
+#
+# DATASET: Synthetic medical image data (matching ChestX-ray14 properties)
+#   Format: (N, 1, 64, 64) grayscale images, multi-label classification
+#   Task: detect 5 medical conditions simultaneously (binary per class)
+#   Real-world note: in production, load from mlfp03/chest_xray_subset/
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import os
+import numpy as np
+import polars as pl
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
-from dotenv import load_dotenv
+from kailash_ml import ModelVisualizer
+from kailash_ml.bridge.onnx_bridge import OnnxBridge
 
-from kailash.db.connection import ConnectionManager
-from kailash_ml.engines.model_registry import ModelRegistry
-from kailash_ml.engines.inference_server import InferenceServer
-from kailash_ml.engines.drift_monitor import DriftMonitor
-from kailash_ml.types import FeatureSchema, FeatureField, ModelSignature, MetricSpec
-
-from kaizen import Signature, InputField, OutputField
-from kaizen_agents import Delegate
-from kaizen_agents.agents.specialized.react import ReActAgent
-
-from pact import GovernanceEngine, GovernanceContext, PactGovernedAgent
-from pact import Address, compile_org
-
-from nexus import Nexus
-
+from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-model_name_llm = os.environ.get(
-    "DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device: {device}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Load and prepare data
+# ══════════════════════════════════════════════════════════════════════
+# Using synthetic data matching ChestX-ray14 characteristics
+# In production, load from mlfp03/chest_xray_subset/
+
+loader = MLFPDataLoader()
+
+# Synthetic data matching medical image properties
+n_samples = 5000
+n_channels = 1  # Grayscale X-rays
+img_size = 64  # Downsampled for training speed
+n_classes = 5  # Multi-label: 5 conditions
+
+rng = np.random.default_rng(42)
+X_images = rng.standard_normal((n_samples, n_channels, img_size, img_size)).astype(
+    np.float32
+)
+# Multi-label: each sample can have multiple conditions
+y_labels = (rng.random((n_samples, n_classes)) > 0.85).astype(np.float32)
+
+print(f"=== Medical Image Data ===")
+print(f"Images: {X_images.shape} (N, C, H, W)")
+print(f"Labels: {y_labels.shape} (N, classes)")
+print(f"Positive rates per class: {y_labels.mean(axis=0).round(3)}")
+
+# Split
+split = int(0.8 * n_samples)
+X_train, X_test = X_images[:split], X_images[split:]
+y_train, y_test = y_labels[:split], y_labels[split:]
+
+# DataLoaders
+train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
+test_ds = TensorDataset(torch.from_numpy(X_test), torch.from_numpy(y_test))
+train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+test_loader = DataLoader(test_ds, batch_size=64)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Build CNN with residual connections
+# ══════════════════════════════════════════════════════════════════════
+
+
+class ResBlock(nn.Module):
+    """Residual block: skip connection preserves gradient flow."""
+
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+
+    def forward(self, x):
+        residual = x
+        # TODO: pass x through conv1 -> bn1 -> relu
+        out = ____  # Hint: torch.relu(self.bn1(self.conv1(x)))
+        # TODO: pass out through conv2 -> bn2 (no relu yet)
+        out = ____  # Hint: self.bn2(self.conv2(out))
+        # TODO: return relu(out + residual) — the skip connection
+        return ____  # Hint: torch.relu(out + residual)
+
+
+class MedicalCNN(nn.Module):
+    """CNN for multi-label medical image classification."""
+
+    def __init__(self, n_classes: int = 5):
+        super().__init__()
+        # TODO: define self.features as nn.Sequential with:
+        #   Conv2d(1->32, 3, padding=1) -> BatchNorm2d(32) -> ReLU -> MaxPool2d(2)
+        #   -> ResBlock(32)
+        #   -> Conv2d(32->64, 3, padding=1) -> BatchNorm2d(64) -> ReLU -> MaxPool2d(2)
+        #   -> ResBlock(64)
+        #   -> AdaptiveAvgPool2d(4)
+        self.features = nn.Sequential(
+            ____,  # Hint: nn.Conv2d(1, 32, 3, padding=1)
+            ____,  # Hint: nn.BatchNorm2d(32)
+            ____,  # Hint: nn.ReLU()
+            ____,  # Hint: nn.MaxPool2d(2)
+            ____,  # Hint: ResBlock(32)
+            ____,  # Hint: nn.Conv2d(32, 64, 3, padding=1)
+            ____,  # Hint: nn.BatchNorm2d(64)
+            ____,  # Hint: nn.ReLU()
+            ____,  # Hint: nn.MaxPool2d(2)
+            ____,  # Hint: ResBlock(64)
+            ____,  # Hint: nn.AdaptiveAvgPool2d(4)
+        )
+        # TODO: define self.classifier as nn.Sequential:
+        #   Flatten -> Linear(64*4*4 -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> n_classes)
+        self.classifier = nn.Sequential(
+            ____,  # Hint: nn.Flatten()
+            ____,  # Hint: nn.Linear(64 * 4 * 4, 128)
+            ____,  # Hint: nn.ReLU()
+            ____,  # Hint: nn.Dropout(0.3)
+            ____,  # Hint: nn.Linear(128, n_classes)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        return self.classifier(x)
+
+
+model = MedicalCNN(n_classes=n_classes).to(device)
+print(f"\n=== Model Architecture ===")
+total_params = sum(p.numel() for p in model.parameters())
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total parameters: {total_params:,}")
+print(f"Trainable: {trainable_params:,}")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert total_params > 0, "Model should have trainable parameters"
+assert X_images.shape == (n_samples, n_channels, img_size, img_size), \
+    f"Image tensor shape should be (N, C, H, W), got {X_images.shape}"
+# Verify ResBlock preserves spatial dimensions
+_dummy = torch.zeros(1, 32, 16, 16)
+_res_block = ResBlock(32)
+_out = _res_block(_dummy)
+assert _out.shape == _dummy.shape, "ResBlock should preserve spatial dimensions"
+# INTERPRETATION: ResBlocks (residual blocks) solve the vanishing gradient
+# problem in deep networks. The skip connection y = F(x) + x lets gradients
+# flow directly from loss to early layers. Without skip connections, deep
+# networks often train worse than shallow ones — the residual connection
+# ensures each layer only needs to learn the residual (improvement over
+# the identity), which is easier to optimise.
+print("\n✓ Checkpoint 1 passed — CNN architecture built, ResBlock verified\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Train with cosine annealing LR
+# ══════════════════════════════════════════════════════════════════════
+
+criterion = nn.BCEWithLogitsLoss()  # Multi-label: BCE per class
+optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+
+# Cosine annealing: LR decays from max to min following cosine curve
+n_epochs = 20
+# TODO: create CosineAnnealingLR scheduler with T_max=n_epochs, eta_min=1e-6
+scheduler = ____  # Hint: optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
+
+# Training loop with gradient monitoring
+history = {
+    "train_loss": [],
+    "val_loss": [],
+    "lr": [],
+    "grad_norm": [],
+}
+
+for epoch in range(n_epochs):
+    # Train
+    model.train()
+    train_losses = []
+    epoch_grad_norms = []
+
+    for X_batch, y_batch in train_loader:
+        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+        # TODO: zero gradients, forward pass, compute loss, backprop
+        ____  # Hint: optimizer.zero_grad()
+        logits = ____  # Hint: model(X_batch)
+        loss = ____  # Hint: criterion(logits, y_batch)
+        ____  # Hint: loss.backward()
+
+        # TODO: compute total gradient norm (sum of squared L2 norms, then sqrt)
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                # TODO: add squared L2 norm of p.grad.data to total_norm
+                total_norm += ____  # Hint: p.grad.data.norm(2).item() ** 2
+        total_norm = total_norm**0.5
+        epoch_grad_norms.append(total_norm)
+
+        # Gradient clipping (prevents exploding gradients)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        # TODO: update model weights
+        ____  # Hint: optimizer.step()
+        train_losses.append(loss.item())
+
+    # Validate
+    model.eval()
+    val_losses = []
+    with torch.no_grad():
+        for X_batch, y_batch in test_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            # TODO: forward pass through model
+            logits = ____  # Hint: model(X_batch)
+            val_losses.append(criterion(logits, y_batch).item())
+
+    # Record
+    history["train_loss"].append(np.mean(train_losses))
+    history["val_loss"].append(np.mean(val_losses))
+    history["lr"].append(scheduler.get_last_lr()[0])
+    history["grad_norm"].append(np.mean(epoch_grad_norms))
+
+    # TODO: step the LR scheduler at end of each epoch
+    ____  # Hint: scheduler.step()
+
+    if (epoch + 1) % 5 == 0:
+        print(
+            f"Epoch {epoch + 1}/{n_epochs}: "
+            f"train_loss={history['train_loss'][-1]:.4f}, "
+            f"val_loss={history['val_loss'][-1]:.4f}, "
+            f"lr={history['lr'][-1]:.6f}, "
+            f"grad_norm={history['grad_norm'][-1]:.4f}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Evaluate model
+# ══════════════════════════════════════════════════════════════════════
+
+model.eval()
+all_preds = []
+all_labels = []
+
+with torch.no_grad():
+    for X_batch, y_batch in test_loader:
+        X_batch = X_batch.to(device)
+        logits = model(X_batch)
+        probs = torch.sigmoid(logits).cpu().numpy()
+        all_preds.append(probs)
+        all_labels.append(y_batch.numpy())
+
+y_pred = np.vstack(all_preds)
+y_true = np.vstack(all_labels)
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert len(history["train_loss"]) == n_epochs, "Should have one loss per epoch"
+assert history["train_loss"][-1] < history["train_loss"][0], \
+    "Training loss should decrease over epochs"
+assert history["lr"][-1] < history["lr"][0], \
+    "Cosine annealing should reduce LR over training"
+# INTERPRETATION: Cosine annealing starts at lr=1e-3 and smoothly decays
+# to lr=1e-6 following a cosine curve. This avoids the sharp LR drops of
+# step schedulers — the smooth decay keeps the model in a good region of
+# the loss landscape rather than oscillating around sharp minima.
+print("\n✓ Checkpoint 2 passed — training complete, LR schedule verified\n")
+
+print(f"\n=== Model Evaluation ===")
+class_names = [
+    "Condition_A",
+    "Condition_B",
+    "Condition_C",
+    "Condition_D",
+    "Condition_E",
+]
+for i, name in enumerate(class_names):
+    if y_true[:, i].sum() > 0:
+        from sklearn.metrics import roc_auc_score as auc_fn
+
+        auc = auc_fn(y_true[:, i], y_pred[:, i])
+        print(f"  {name}: AUC={auc:.4f}, prevalence={y_true[:, i].mean():.3f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Export to ONNX with OnnxBridge
+# ══════════════════════════════════════════════════════════════════════
+
+bridge = OnnxBridge()
+
+# Check compatibility
+compat = bridge.check_compatibility(model, framework="pytorch")
+print(f"\n=== ONNX Compatibility ===")
+print(f"Compatible: {compat.compatible}")
+print(f"Confidence: {compat.confidence}")
+
+# TODO: export model to ONNX using bridge.export()
+#       with framework="pytorch", output_path="medical_cnn.onnx", n_features=None
+export_result = bridge.export(
+    model=____,  # Hint: model
+    framework=____,  # Hint: "pytorch"
+    output_path=____,  # Hint: "medical_cnn.onnx"
+    n_features=____,  # Hint: None (not needed for CNN)
 )
 
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert compat.compatible, "Model should be ONNX-compatible with pytorch framework"
+# INTERPRETATION: ONNX (Open Neural Network Exchange) is a vendor-neutral
+# model interchange format. OnnxBridge checks that all operations in the
+# model have ONNX equivalents — custom ops without ONNX support would fail
+# here. ONNX compatibility is the first step toward cross-framework deployment.
+print("\n✓ Checkpoint 3 passed — ONNX compatibility verified\n")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load trained model from ModelRegistry
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup_model():
-    # TODO: Set up ConnectionManager → ModelRegistry → register credit model
-    #       → promote to production.
-    #
-    # Model signature input features:
-    #   annual_income (float64), total_debt (float64),
-    #   credit_utilisation (float64), late_payments_12m (int64),
-    #   account_age_months (int64); entity_id_column="application_id"
-    # Output: output_columns=["default_probability", "decision"],
-    #         output_dtypes=["float64", "utf8"], model_type="classifier"
-    #
-    # Register with:
-    #   name="credit_default_production", artifact=b"capstone_model_placeholder",
-    #   metrics=[MetricSpec(name="auc_pr", value=0.62)]
-    # Promote to target_stage="production", reason="Capstone deployment"
-    conn = ____  # Hint: ConnectionManager("sqlite:///ascent_capstone.db")
-    await ____  # Hint: conn.initialize()
-    registry = ____  # Hint: ModelRegistry(conn)
-
-    signature = ____  # Hint: ModelSignature(input_schema=FeatureSchema(...), ...)
-
-    model_version = (
-        await ____
-    )  # Hint: registry.register_model(name="credit_default_production", artifact=b"capstone_model_placeholder", metrics=[MetricSpec(name="auc_pr", value=0.62)], signature=signature)
-
-    await ____  # Hint: registry.promote_model(name="credit_default_production", version=model_version.version, target_stage="production", reason="Capstone deployment")
-
-    print(f"=== Model Loaded ===")
-    print(f"Name: {model_version.name} v{model_version.version}")
-    print(f"Stage: production")
-
-    return conn, registry, signature
-
-
-conn, registry, signature = asyncio.run(setup_model())
+print(f"\nExport result: {export_result.success}")
+if export_result.onnx_path:
+    print(f"ONNX path: {export_result.onnx_path}")
+    if export_result.model_size_bytes:
+        print(f"Model size: {export_result.model_size_bytes / 1024:.1f} KB")
+    print(f"Export time: {export_result.export_time_seconds:.2f}s")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Deploy via InferenceServer
+# TASK 6: Validate ONNX model
 # ══════════════════════════════════════════════════════════════════════
 
+if export_result.success and export_result.onnx_path:
+    sample_input = torch.from_numpy(X_test[:10]).to(device)
 
-async def setup_inference():
-    # TODO: create InferenceServer, warm cache for "credit_default_production",
-    #       and get model info.
-    # Hint: server = InferenceServer(registry, cache_size=5)
-    #       await server.warm_cache(["credit_default_production"])
-    #       info = await server.get_model_info("credit_default_production")
-    server = ____  # Hint: InferenceServer(registry, cache_size=5)
-    await ____  # Hint: server.warm_cache(["credit_default_production"])
-
-    print(f"\n=== InferenceServer ===")
-    info = await ____  # Hint: server.get_model_info("credit_default_production")
-    print(f"Model info: {info}")
-
-    return server
-
-
-server = asyncio.run(setup_inference())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Kaizen agent for intelligent interaction
-# ══════════════════════════════════════════════════════════════════════
-
-
-# TODO: define CreditDecisionResult as a Kaizen Signature with:
-#   InputField:  application (str) — credit application details
-#   OutputFields: risk_assessment (str), decision (str — APPROVE/REVIEW/DENY),
-#                 explanation (str), confidence (float — 0 to 1)
-class CreditDecisionResult(____):  # Hint: Signature
-    application: str = (
-        ____  # Hint: InputField(description="Credit application details")
-    )
-    risk_assessment: str = (
-        ____  # Hint: OutputField(description="Risk assessment summary")
-    )
-    decision: str = ____  # Hint: OutputField(description="APPROVE / REVIEW / DENY")
-    explanation: str = (
-        ____  # Hint: OutputField(description="Human-readable explanation")
-    )
-    confidence: float = ____  # Hint: OutputField(description="Decision confidence 0-1")
-
-
-# TODO: implement a tool that calls the InferenceServer for a credit application.
-# Use hardcoded features: annual_income=85000, total_debt=25000,
-# credit_utilisation=0.45, late_payments_12m=1, account_age_months=36,
-# application_id="cap_001"
-# Return a formatted string with default probability, model name/version,
-# and inference time.
-async def tool_predict_default(application_data: str) -> str:
-    """Get default probability from the ML model."""
-    result = (
-        await ____
-    )  # Hint: server.predict(model_name="credit_default_production", features={...})
-    return (
-        f"Default probability: {result.prediction}\n"
-        f"Model: {result.model_name} v{result.model_version}\n"
-        f"Inference: {result.inference_time_ms:.1f}ms ({result.inference_path})"
+    # TODO: validate ONNX model against PyTorch using bridge.validate()
+    #       with onnx_path=export_result.onnx_path, sample_input=sample_input,
+    #       tolerance=1e-4
+    validation = bridge.validate(
+        model=____,  # Hint: model
+        onnx_path=____,  # Hint: export_result.onnx_path
+        sample_input=____,  # Hint: sample_input
+        tolerance=____,  # Hint: 1e-4
     )
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: PACT governance
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup_governance():
-    # TODO: define org structure for "ASCENT Bank / lending / auto_underwriting / credit_agent"
-    # credit_agent permissions:
-    #   data_access: ["credit_applications", "model_predictions"]
-    #   tools: ["predict_default"]
-    #   max_cost_usd: 2.0
-    #   can_deploy: False
-    #
-    # Then: compiled = compile_org(org)
-    #       engine = GovernanceEngine(compiled)
-    #       agent_address = Address("lending", "auto_underwriting", "credit_agent")
-    #       context = await engine.create_context(agent_address)
-    org = ____  # Hint: {"organization": {"name": "ASCENT Bank", "departments": [...]}}
-
-    compiled = ____  # Hint: compile_org(org)
-    engine = ____  # Hint: GovernanceEngine(compiled)
-
-    agent_address = (
-        ____  # Hint: Address("lending", "auto_underwriting", "credit_agent")
-    )
-    context = await ____  # Hint: engine.create_context(agent_address)
-
-    print(f"\n=== PACT Governance ===")
-    print(f"Agent: {agent_address}")
-    print(f"Cost budget: ${context.max_cost_usd}")
-    print(f"Data access: {context.data_access}")
-    print(f"Tools: {context.tools_allowed}")
-
-    return engine, context
-
-
-governance_engine, gov_context = asyncio.run(setup_governance())
+    print(f"\n=== ONNX Validation ===")
+    print(f"Valid: {validation.valid}")
+    print(f"Max difference: {validation.max_diff:.8f}")
+    print(f"Mean difference: {validation.mean_diff:.8f}")
+    print(f"Samples tested: {validation.n_samples}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Nexus multi-channel deployment
+# Visualise training dynamics
 # ══════════════════════════════════════════════════════════════════════
 
+viz = ModelVisualizer()
 
-async def setup_nexus():
-    # TODO: create Nexus app, register InferenceServer endpoints,
-    #       and create a unified session.
-    # Hint: app = Nexus()
-    #       server.register_endpoints(app)  — registers /predict and /model-info
-    #       session = app.create_session()  — unified session for API+CLI+MCP
-    app = ____  # Hint: Nexus()
-    ____  # Hint: server.register_endpoints(app)
+# Loss curves
+fig_loss = viz.training_history(
+    {"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]},
+    x_label="Epoch",
+)
+fig_loss.update_layout(title="Training and Validation Loss")
+fig_loss.write_html("ex5_loss_curves.html")
 
-    print(f"\n=== Nexus Multi-Channel ===")
-    print(f"Channels: API + CLI + MCP")
+# LR schedule
+fig_lr = viz.training_history(
+    {"Learning Rate": history["lr"]},
+    x_label="Epoch",
+)
+fig_lr.update_layout(title="Cosine Annealing LR Schedule")
+fig_lr.write_html("ex5_lr_schedule.html")
 
-    session = ____  # Hint: app.create_session()
-    print(f"Session: {session}")
+# Gradient norms
+fig_grad = viz.training_history(
+    {"Gradient Norm": history["grad_norm"]},
+    x_label="Epoch",
+)
+fig_grad.update_layout(title="Gradient Norm During Training")
+fig_grad.write_html("ex5_gradient_norms.html")
 
-    return app, session
+print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
 
-
-app, session = asyncio.run(setup_nexus())
+print("\n✓ Exercise 6 complete — CNN training + ONNX export")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: End-to-end governed prediction
+# REFLECTION
 # ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ ResBlock: skip connections preserve gradient flow in deep networks
+  ✓ BCEWithLogitsLoss: numerically stable multi-label loss (fused sigmoid)
+  ✓ CosineAnnealingLR: smooth LR decay avoids sharp scheduler transitions
+  ✓ Gradient monitoring: norm tracking catches exploding/vanishing gradients
+  ✓ OnnxBridge: PyTorch → ONNX export with numerical fidelity validation
 
+  KEY INSIGHT: Residual connections (y = F(x) + x) solve depth:
+    Without skip: gradient must flow through every multiplication → vanishes
+    With skip: identity path carries gradient directly → stable deep training
+    ResNets proved: depth helps, but only with proper gradient highways.
 
-async def end_to_end():
-    """Full stack: Application → Governed Agent → Model → Decision."""
+  TRAINING DYNAMICS CHECKLIST:
+    ✓ Loss decreasing → model learning
+    ✓ LR following cosine curve → scheduler working
+    ✓ Grad norm stable (not exploding) → clipping effective
+    ✓ Val loss > train loss → overfitting (acceptable here, small data)
 
-    # TODO: wire all layers together for an end-to-end governed credit decision.
-    #
-    # Step 1: create governed agent
-    #   base_agent = Delegate(model=model_name_llm)
-    #   governed_agent = PactGovernedAgent(agent=base_agent, governance_context=gov_context)
-    #
-    # Step 2: check governance permission for "access_data" on "credit_applications"
-    #   can_access = await governed_agent.check_permission("access_data", "credit_applications")
-    #
-    # Step 3: get ML prediction
-    #   prediction = await server.predict(
-    #     model_name="credit_default_production",
-    #     features={"annual_income": 85000, "total_debt": 25000,
-    #               "credit_utilisation": 0.45, "late_payments_12m": 1,
-    #               "account_age_months": 36, "application_id": "CAP-2026-001"},
-    #   )
-    #
-    # Step 4: run governed agent reasoning with a prompt combining the application
-    #   details and model prediction; stream events into response_text.
-    base_agent = ____  # Hint: Delegate(model=model_name_llm)
-    governed_agent = ____  # Hint: PactGovernedAgent(agent=base_agent, governance_context=gov_context)
+  ONNX DEPLOYMENT CHAIN:
+    PyTorch (training) → OnnxBridge.export() → .onnx file
+    → OnnxBridge.validate() → numerical parity check
+    → InferenceServer (M5) → production serving
 
-    application = """
-    Credit Application #CAP-2026-001:
-    - Applicant: Working professional, age 35
-    - Annual income: $85,000 SGD
-    - Total debt: $25,000 (car loan + credit card)
-    - Credit utilisation: 45%
-    - Late payments (12m): 1
-    - Account age: 36 months
-    - Purpose: Home renovation loan, $50,000
-    """
-
-    print(f"\n{'=' * 70}")
-    print(f"   CAPSTONE: END-TO-END GOVERNED CREDIT DECISION")
-    print(f"{'=' * 70}")
-
-    print(f"\n1. Application received")
-    print(application)
-
-    print(f"2. Governance check: agent has permission to access credit data")
-    can_access = (
-        await ____
-    )  # Hint: governed_agent.check_permission("access_data", "credit_applications")
-    print(f"   → {'ALLOW' if can_access else 'DENY'}")
-
-    print(f"\n3. ML model prediction via InferenceServer")
-    prediction = (
-        await ____
-    )  # Hint: server.predict(model_name="credit_default_production", features={...})
-    print(f"   → Default probability: {prediction.prediction}")
-    print(
-        f"   → Inference: {prediction.inference_time_ms:.1f}ms via {prediction.inference_path}"
-    )
-
-    print(
-        f"\n4. Agent reasoning (governed, cost-capped at ${gov_context.max_cost_usd})"
-    )
-    response_text = ""
-    prompt = (
-        f"You are a credit underwriting agent. Based on this application and model prediction:\n"
-        f"{application}\n"
-        f"Model says default probability = {prediction.prediction}\n"
-        f"Provide: risk assessment, decision (APPROVE/REVIEW/DENY), explanation."
-    )
-    # TODO: stream the governed_agent response into response_text
-    # Hint: async for event in governed_agent.run(prompt):
-    #           if hasattr(event, "text"): response_text += event.text
-    async for event in ____:  # Hint: governed_agent.run(prompt)
-        if hasattr(event, "text"):
-            response_text += event.text
-    print(f"   → {response_text[:300]}...")
-
-    print(f"\n5. Audit trail")
-    print(f"   → Application: CAP-2026-001")
-    print(f"   → Model: {prediction.model_name} v{prediction.model_version}")
-    print(f"   → Agent: lending/auto_underwriting/credit_agent")
-    print(
-        f"   → Governance: cost=${gov_context.max_cost_usd}, tools={gov_context.tools_allowed}"
-    )
-    print(f"   → All logged to AuditChain (tamper-evident)")
-
-    print(f"\n{'=' * 70}")
-    print(f"   PLATFORM STACK")
-    print(f"{'=' * 70}")
-    print(
-        f"""
-    Layer 6: Nexus    — Multi-channel (API + CLI + MCP)
-    Layer 5: PACT     — Governance (D/T/R, envelopes, audit)
-    Layer 4: Kaizen   — AI agents (Delegate, ReAct, RAG)
-    Layer 3: ML       — InferenceServer, DriftMonitor, ModelRegistry
-    Layer 2: DataFlow — Persistence, @db.model, db.express
-    Layer 1: Core SDK — WorkflowBuilder, runtime.execute(workflow.build())
-
-    Every layer is integrated. Every action is governed.
-    This is production ML.
-    """
-    )
-
-
-asyncio.run(end_to_end())
-
-# Clean up
-asyncio.run(conn.close())
-
-print("✓ Exercise 6 (CAPSTONE) complete — full Kailash platform deployment")
-print("  Module 6 complete: alignment, governance, RL, and governed deployment")
-print("  ASCENT course complete: 34 exercises across 6 modules")
+  NEXT: Exercise 8 is the M4 capstone — deep learning foundations
+  from first principles. You'll prove why hidden layers beat linear
+  on XOR, then build the full CNN architecture from scratch.
+""")
+print("═" * 70)

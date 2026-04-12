@@ -2,435 +2,256 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 6: Optimizers and Learning Rate Scheduling
+# MLFP05 — Exercise 6: Graph Neural Networks (GCN and GAT)
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Compare SGD, SGD+momentum, Adam optimizers and implement
-#   learning rate warmup + cosine annealing.
 #
-# TASKS:
-#   1. Implement SGD with mini-batches
-#   2. Add momentum to SGD
-#   3. Implement Adam optimizer
-#   4. Compare convergence curves with ModelVisualizer
-#   5. Add learning rate warmup + cosine decay schedule
+# WHAT YOU'LL LEARN:
+#   - Build GCN and GAT layers as torch.nn.Module subclasses
+#   - Implement graph convolution as  H' = sigma( D^{-1/2} A D^{-1/2} H W )
+#   - Implement graph attention (GAT) with torch.softmax over neighbours
+#   - Train node classifiers on a synthetic stochastic-block-model graph
+#   - Visualise learned node embeddings and training curves
+#
+# PREREQUISITES: M5/ex_4 (attention mechanisms, nn.Module training).
+# ESTIMATED TIME: ~60 min
+# DATASET: Synthetic 3-community stochastic block model (SBM).
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import copy
 import math
-import random
 
-import polars as pl
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 from kailash_ml import ModelVisualizer
 
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Implement SGD with mini-batches
-# ══════════════════════════════════════════════════════════════════════
-
-loader = MLFPDataLoader()
-data = loader.load("mlfp05", "mnist_sample.parquet")
-
-# Extract features and labels
-X = data.select([c for c in data.columns if c != "label"]).to_numpy() / 255.0
-y_raw = data["label"].to_numpy()
-
-# One-hot encode labels (10 classes)
-n_classes = 10
-y = [[1.0 if j == int(label) else 0.0 for j in range(n_classes)] for label in y_raw]
-
-n_samples, n_features = X.shape
-print(
-    f"=== Dataset: {n_samples} samples, {n_features} features, {n_classes} classes ==="
-)
-
-# Simple 2-layer network: input → hidden(128) → output(10)
-random.seed(42)
-hidden_size = 128
-
-
-def init_weights(rows: int, cols: int) -> list[list[float]]:
-    """He initialization: std = sqrt(2 / fan_in)."""
-    s = math.sqrt(2.0 / rows)
-    return [[random.gauss(0, s) for _ in range(cols)] for _ in range(rows)]
-
-
-W1 = init_weights(n_features, hidden_size)
-b1 = [0.0] * hidden_size
-W2 = init_weights(hidden_size, n_classes)
-b2 = [0.0] * n_classes
-
-
-def relu(x: list[float]) -> list[float]:
-    return [max(0.0, v) for v in x]
-
-
-def softmax(x: list[float]) -> list[float]:
-    max_x = max(x)
-    exps = [math.exp(v - max_x) for v in x]
-    s = sum(exps)
-    return [e / s for e in exps]
-
-
-def forward(x_row, w1, b1_, w2, b2_):
-    """Forward pass: input → ReLU → softmax."""
-    hidden = [
-        sum(x_row[j] * w1[j][k] for j in range(len(x_row))) + b1_[k]
-        for k in range(len(b1_))
-    ]
-    h_act = relu(hidden)
-    logits = [
-        sum(h_act[j] * w2[j][k] for j in range(len(h_act))) + b2_[k]
-        for k in range(len(b2_))
-    ]
-    probs = softmax(logits)
-    return hidden, h_act, logits, probs
-
-
-def cross_entropy_loss(probs: list[float], target: list[float]) -> float:
-    return -sum(t * math.log(max(p, 1e-10)) for p, t in zip(probs, target))
-
-
-def sgd_step(params: list, grads: list, lr: float):
-    """Vanilla SGD update."""
-    for i in range(len(params)):
-        if isinstance(params[i], list):
-            for j in range(len(params[i])):
-                if isinstance(params[i][j], list):
-                    for k in range(len(params[i][j])):
-                        params[i][j][k] -= lr * grads[i][j][k]
-                else:
-                    params[i][j] -= lr * grads[i][j]
-        else:
-            params[i] -= lr * grads[i]
-
-
-# Train with vanilla SGD
-batch_size = 32
-lr = 0.01
-epochs = 5
-sgd_losses = []
-
-W1_sgd, b1_sgd = copy.deepcopy(W1), copy.deepcopy(b1)
-W2_sgd, b2_sgd = copy.deepcopy(W2), copy.deepcopy(b2)
-
-for epoch in range(epochs):
-    epoch_loss = 0.0
-    n_batches = 0
-    indices = list(range(min(500, n_samples)))  # Use subset for speed
-    random.shuffle(indices)
-
-    for start in range(0, len(indices), batch_size):
-        batch_idx = indices[start : start + batch_size]
-        batch_loss = 0.0
-
-        # Accumulate gradients over batch
-        for idx in batch_idx:
-            x_row = X[idx].tolist()
-            target = y[idx]
-            hidden, h_act, logits, probs = forward(
-                x_row, W1_sgd, b1_sgd, W2_sgd, b2_sgd
-            )
-            batch_loss += cross_entropy_loss(probs, target)
-
-            # Backward pass (output layer)
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    W2_sgd[j][k] -= lr / len(batch_idx) * h_act[j] * d_logits[k]
-            for k in range(n_classes):
-                b2_sgd[k] -= lr / len(batch_idx) * d_logits[k]
-
-            # Backward pass (hidden layer)
-            d_hidden = [
-                sum(d_logits[k] * W2_sgd[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    W1_sgd[i_feat][j] -= (
-                        lr / len(batch_idx) * x_row[i_feat] * d_hidden[j]
-                    )
-            for j in range(hidden_size):
-                b1_sgd[j] -= lr / len(batch_idx) * d_hidden[j]
-
-        epoch_loss += batch_loss / len(batch_idx)
-        n_batches += 1
-
-    avg_loss = epoch_loss / n_batches
-    sgd_losses.append(avg_loss)
-    print(f"SGD Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: SGD with momentum
-# ══════════════════════════════════════════════════════════════════════
-
-W1_mom, b1_mom = copy.deepcopy(W1), copy.deepcopy(b1)
-W2_mom, b2_mom = copy.deepcopy(W2), copy.deepcopy(b2)
-momentum = 0.9
-# Velocity buffers (same shape as weights)
-vW1 = [[0.0] * hidden_size for _ in range(n_features)]
-vb1 = [0.0] * hidden_size
-vW2 = [[0.0] * n_classes for _ in range(hidden_size)]
-vb2 = [0.0] * n_classes
-
-mom_losses = []
-for epoch in range(epochs):
-    epoch_loss = 0.0
-    n_batches = 0
-    indices = list(range(min(500, n_samples)))
-    random.shuffle(indices)
-
-    for start in range(0, len(indices), batch_size):
-        batch_idx = indices[start : start + batch_size]
-        batch_loss = 0.0
-
-        # Accumulate gradients
-        gW2 = [[0.0] * n_classes for _ in range(hidden_size)]
-        gb2 = [0.0] * n_classes
-        gW1 = [[0.0] * hidden_size for _ in range(n_features)]
-        gb1_ = [0.0] * hidden_size
-
-        for idx in batch_idx:
-            x_row = X[idx].tolist()
-            target = y[idx]
-            hidden, h_act, logits, probs = forward(
-                x_row, W1_mom, b1_mom, W2_mom, b2_mom
-            )
-            batch_loss += cross_entropy_loss(probs, target)
-
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    gW2[j][k] += h_act[j] * d_logits[k] / len(batch_idx)
-            for k in range(n_classes):
-                gb2[k] += d_logits[k] / len(batch_idx)
-
-            d_hidden = [
-                sum(d_logits[k] * W2_mom[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    gW1[i_feat][j] += x_row[i_feat] * d_hidden[j] / len(batch_idx)
-            for j in range(hidden_size):
-                gb1_[j] += d_hidden[j] / len(batch_idx)
-
-        # Momentum update: v = momentum * v + grad; w -= lr * v
-        for j in range(hidden_size):
-            for k in range(n_classes):
-                vW2[j][k] = momentum * vW2[j][k] + gW2[j][k]
-                W2_mom[j][k] -= lr * vW2[j][k]
-            vb1[j] = momentum * vb1[j] + gb1_[j]
-            b1_mom[j] -= lr * vb1[j]
-        for k in range(n_classes):
-            vb2[k] = momentum * vb2[k] + gb2[k]
-            b2_mom[k] -= lr * vb2[k]
-        for i_feat in range(n_features):
-            for j in range(hidden_size):
-                vW1[i_feat][j] = momentum * vW1[i_feat][j] + gW1[i_feat][j]
-                W1_mom[i_feat][j] -= lr * vW1[i_feat][j]
-
-        epoch_loss += batch_loss / len(batch_idx)
-        n_batches += 1
-
-    avg_loss = epoch_loss / n_batches
-    mom_losses.append(avg_loss)
-    print(f"SGD+Momentum Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Implement Adam optimizer
-# ══════════════════════════════════════════════════════════════════════
-
-print("\n=== Adam Optimizer ===")
-print("Adam = adaptive moment estimation: combines momentum (first moment)")
-print("with RMSprop-style scaling (second moment) for per-parameter learning rates.")
-
-# Adam hyperparameters
-adam_lr = 0.001
-beta1, beta2, eps = 0.9, 0.999, 1e-8
-
-# Adam tracks two moments per parameter (m = first moment, v = second moment)
-# Update rule:
-#   m = beta1 * m + (1 - beta1) * grad
-#   v = beta2 * v + (1 - beta2) * grad^2
-#   m_hat = m / (1 - beta1^t)   # bias correction
-#   v_hat = v / (1 - beta2^t)
-#   param -= lr * m_hat / (sqrt(v_hat) + eps)
-
-W1_adam, b1_adam = copy.deepcopy(W1), copy.deepcopy(b1)
-W2_adam, b2_adam = copy.deepcopy(W2), copy.deepcopy(b2)
-
-# First moments (m) and second moments (v) — same shape as weights
-mW1 = [[0.0] * hidden_size for _ in range(n_features)]
-vW1_adam = [[0.0] * hidden_size for _ in range(n_features)]
-mb1 = [0.0] * hidden_size
-vb1_adam = [0.0] * hidden_size
-mW2 = [[0.0] * n_classes for _ in range(hidden_size)]
-vW2_adam = [[0.0] * n_classes for _ in range(hidden_size)]
-mb2 = [0.0] * n_classes
-vb2_adam = [0.0] * n_classes
-
-adam_losses = []
-t_step = 0
-
-for epoch in range(epochs):
-    epoch_loss = 0.0
-    n_batches = 0
-    indices = list(range(min(500, n_samples)))
-    random.shuffle(indices)
-
-    for start in range(0, len(indices), batch_size):
-        batch_idx = indices[start : start + batch_size]
-        batch_loss = 0.0
-        t_step += 1
-
-        gW2 = [[0.0] * n_classes for _ in range(hidden_size)]
-        gb2 = [0.0] * n_classes
-        gW1_batch = [[0.0] * hidden_size for _ in range(n_features)]
-        gb1_batch = [0.0] * hidden_size
-
-        for idx in batch_idx:
-            x_row = X[idx].tolist()
-            target = y[idx]
-            hidden, h_act, logits, probs = forward(
-                x_row, W1_adam, b1_adam, W2_adam, b2_adam
-            )
-            batch_loss += cross_entropy_loss(probs, target)
-
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    gW2[j][k] += h_act[j] * d_logits[k] / len(batch_idx)
-            for k in range(n_classes):
-                gb2[k] += d_logits[k] / len(batch_idx)
-
-            d_hidden = [
-                sum(d_logits[k] * W2_adam[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    gW1_batch[i_feat][j] += x_row[i_feat] * d_hidden[j] / len(batch_idx)
-            for j in range(hidden_size):
-                gb1_batch[j] += d_hidden[j] / len(batch_idx)
-
-        # Adam update for W2, b2
-        bc1 = 1 - beta1**t_step
-        bc2 = 1 - beta2**t_step
-        for j in range(hidden_size):
-            for k in range(n_classes):
-                mW2[j][k] = beta1 * mW2[j][k] + (1 - beta1) * gW2[j][k]
-                vW2_adam[j][k] = beta2 * vW2_adam[j][k] + (1 - beta2) * gW2[j][k] ** 2
-                m_hat = mW2[j][k] / bc1
-                v_hat = vW2_adam[j][k] / bc2
-                W2_adam[j][k] -= adam_lr * m_hat / (math.sqrt(v_hat) + eps)
-        for k in range(n_classes):
-            mb2[k] = beta1 * mb2[k] + (1 - beta1) * gb2[k]
-            vb2_adam[k] = beta2 * vb2_adam[k] + (1 - beta2) * gb2[k] ** 2
-            b2_adam[k] -= (
-                adam_lr * (mb2[k] / bc1) / (math.sqrt(vb2_adam[k] / bc2) + eps)
-            )
-
-        # Adam update for W1, b1
-        for i_feat in range(n_features):
-            for j in range(hidden_size):
-                mW1[i_feat][j] = (
-                    beta1 * mW1[i_feat][j] + (1 - beta1) * gW1_batch[i_feat][j]
-                )
-                vW1_adam[i_feat][j] = (
-                    beta2 * vW1_adam[i_feat][j]
-                    + (1 - beta2) * gW1_batch[i_feat][j] ** 2
-                )
-                m_hat = mW1[i_feat][j] / bc1
-                v_hat = vW1_adam[i_feat][j] / bc2
-                W1_adam[i_feat][j] -= adam_lr * m_hat / (math.sqrt(v_hat) + eps)
-        for j in range(hidden_size):
-            mb1[j] = beta1 * mb1[j] + (1 - beta1) * gb1_batch[j]
-            vb1_adam[j] = beta2 * vb1_adam[j] + (1 - beta2) * gb1_batch[j] ** 2
-            b1_adam[j] -= (
-                adam_lr * (mb1[j] / bc1) / (math.sqrt(vb1_adam[j] / bc2) + eps)
-            )
-
-        epoch_loss += batch_loss / len(batch_idx)
-        n_batches += 1
-
-    avg_loss = epoch_loss / n_batches
-    adam_losses.append(avg_loss)
-    print(f"Adam Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Compare convergence curves
-# ══════════════════════════════════════════════════════════════════════
-
+torch.manual_seed(42)
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Build a synthetic graph — Stochastic Block Model with 3 communities
+# ════════════════════════════════════════════════════════════════════════
+# Each node belongs to one of 3 communities. Within a community, edges are
+# dense (p_in). Between communities, edges are sparse (p_out). Each node
+# has a 16-dim feature vector sampled from a community-specific Gaussian.
+def make_sbm_graph(n_per_community: int = 30, p_in: float = 0.4, p_out: float = 0.02, feature_dim: int = 16):
+    n = n_per_community * 3
+    labels = np.concatenate([np.full(n_per_community, c, dtype=np.int64) for c in range(3)])
+    # Symmetric adjacency
+    rand = np.random.rand(n, n)
+    probs = np.where(labels[:, None] == labels[None, :], p_in, p_out)
+    A = (rand < probs).astype(np.float32)
+    A = np.triu(A, k=1)
+    A = A + A.T
+    # Feature vectors: community means shifted apart
+    centres = np.random.randn(3, feature_dim).astype(np.float32) * 2
+    X = centres[labels] + 0.5 * np.random.randn(n, feature_dim).astype(np.float32)
+    return X, A, labels
+
+
+X_np, A_np, y_np = make_sbm_graph(n_per_community=30)
+N = X_np.shape[0]
+print(f"Graph: {N} nodes, {int(A_np.sum() // 2)} undirected edges, "
+      f"{int((y_np == 0).sum())} / {int((y_np == 1).sum())} / {int((y_np == 2).sum())} per class")
+
+X = torch.from_numpy(X_np).to(device)
+A = torch.from_numpy(A_np).to(device)
+y = torch.from_numpy(y_np).to(device)
+
+# Add self-loops and build the symmetric Laplacian D^{-1/2} A D^{-1/2}
+A_hat = A + torch.eye(N, device=device)
+deg = A_hat.sum(dim=1)
+d_inv_sqrt = deg.pow(-0.5)
+d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
+A_norm = d_inv_sqrt.unsqueeze(1) * A_hat * d_inv_sqrt.unsqueeze(0)
+
+# Train/val mask — 30% of each class trains, rest is val
+train_mask = torch.zeros(N, dtype=torch.bool, device=device)
+rng = np.random.default_rng(0)
+for c in range(3):
+    idx = np.where(y_np == c)[0]
+    chosen = rng.choice(idx, size=int(0.3 * len(idx)), replace=False)
+    train_mask[chosen] = True
+val_mask = ~train_mask
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 1 — Graph Convolutional Layer (Kipf & Welling 2017)
+# ════════════════════════════════════════════════════════════════════════
+# One layer computes H' = sigma( A_norm @ H @ W ). Notice there are NO
+# Python loops over nodes — a single matmul aggregates every neighbourhood
+# at once. This is the core insight of GCNs: message passing as a matrix
+# multiplication.
+class GCNLayer(nn.Module):
+    def __init__(self, in_dim: int, out_dim: int):
+        super().__init__()
+        self.W = nn.Linear(in_dim, out_dim, bias=True)
+
+    def forward(self, h: torch.Tensor, a_norm: torch.Tensor) -> torch.Tensor:
+        return a_norm @ self.W(h)
+
+
+class GCN(nn.Module):
+    def __init__(self, in_dim: int, hidden_dim: int, n_classes: int):
+        super().__init__()
+        self.l1 = GCNLayer(in_dim, hidden_dim)
+        self.l2 = GCNLayer(hidden_dim, n_classes)
+
+    def forward(self, h: torch.Tensor, a_norm: torch.Tensor) -> torch.Tensor:
+        h = F.relu(self.l1(h, a_norm))
+        h = F.dropout(h, p=0.3, training=self.training)
+        return self.l2(h, a_norm)
+
+    def embed(self, h: torch.Tensor, a_norm: torch.Tensor) -> torch.Tensor:
+        return F.relu(self.l1(h, a_norm))
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 2 — Graph Attention Layer (Veličković 2018)
+# ════════════════════════════════════════════════════════════════════════
+# Instead of symmetric-normalised aggregation, GAT learns attention weights
+# alpha_ij between each pair of connected nodes:
+#
+#   e_ij = LeakyReLU( a^T [W h_i || W h_j] )
+#   alpha_ij = softmax_j(e_ij)  over the neighbourhood of i
+#   h'_i = sigma( Sum_j alpha_ij * W h_j )
+#
+# We compute e_ij for ALL node pairs via broadcasting, then mask out
+# non-neighbours with -inf so the softmax ignores them. No node-index loop.
+class GATLayer(nn.Module):
+    def __init__(self, in_dim: int, out_dim: int):
+        super().__init__()
+        self.W = nn.Linear(in_dim, out_dim, bias=False)
+        self.a_src = nn.Linear(out_dim, 1, bias=False)
+        self.a_dst = nn.Linear(out_dim, 1, bias=False)
+
+    def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        Wh = self.W(h)                                       # (N, out_dim)
+        e_src = self.a_src(Wh)                               # (N, 1)
+        e_dst = self.a_dst(Wh)                               # (N, 1)
+        # e_ij = e_src_i + e_dst_j broadcast to (N, N)
+        scores = F.leaky_relu(e_src + e_dst.T, negative_slope=0.2)
+        mask = adj + torch.eye(adj.size(0), device=adj.device)
+        scores = scores.masked_fill(mask == 0, float("-inf"))
+        alpha = F.softmax(scores, dim=1)                     # softmax over neighbours of each i
+        return alpha @ Wh
+
+
+class GAT(nn.Module):
+    def __init__(self, in_dim: int, hidden_dim: int, n_classes: int):
+        super().__init__()
+        self.l1 = GATLayer(in_dim, hidden_dim)
+        self.l2 = GATLayer(hidden_dim, n_classes)
+
+    def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        h = F.elu(self.l1(h, adj))
+        h = F.dropout(h, p=0.3, training=self.training)
+        return self.l2(h, adj)
+
+    def embed(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        return F.elu(self.l1(h, adj))
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Training harness
+# ════════════════════════════════════════════════════════════════════════
+def train_node_classifier(
+    model: nn.Module,
+    name: str,
+    forward_arg: torch.Tensor,
+    epochs: int = 60,
+    lr: float = 1e-2,
+    weight_decay: float = 5e-4,
+) -> tuple[list[float], list[float]]:
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    train_losses: list[float] = []
+    val_accs: list[float] = []
+
+    for epoch in range(epochs):
+        model.train()
+        opt.zero_grad()
+        logits = model(X, forward_arg)
+        loss = F.cross_entropy(logits[train_mask], y[train_mask])
+        loss.backward()
+        opt.step()
+        train_losses.append(loss.item())
+
+        model.eval()
+        with torch.no_grad():
+            preds = model(X, forward_arg).argmax(dim=-1)
+            acc = (preds[val_mask] == y[val_mask]).float().mean().item()
+        val_accs.append(acc)
+
+        if (epoch + 1) % 15 == 0:
+            print(f"  [{name}] epoch {epoch+1:3d}  loss={loss.item():.4f}  val_acc={acc:.3f}")
+    return train_losses, val_accs
+
+
+# ── Train GCN ──────────────────────────────────────────────────────────
+print("\n── Training GCN ──")
+gcn = GCN(in_dim=16, hidden_dim=16, n_classes=3)
+gcn_losses, gcn_accs = train_node_classifier(gcn, "GCN", A_norm, epochs=60)
+
+# ── Train GAT ──────────────────────────────────────────────────────────
+print("\n── Training GAT ──")
+gat = GAT(in_dim=16, hidden_dim=16, n_classes=3)
+gat_losses, gat_accs = train_node_classifier(gat, "GAT", A, epochs=60)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 3 — Visualise learned node embeddings
+# ════════════════════════════════════════════════════════════════════════
+gcn.eval()
+with torch.no_grad():
+    emb = gcn.embed(X, A_norm).cpu().numpy()
+
+# Simple 2-D projection: PCA via SVD (no sklearn dependency needed)
+emb_centered = emb - emb.mean(axis=0, keepdims=True)
+U, S, Vt = np.linalg.svd(emb_centered, full_matrices=False)
+coords = (emb_centered @ Vt.T[:, :2])
+
+print("\nGCN hidden embedding 2-D projection (first 5 nodes per class):")
+for c in range(3):
+    rows = coords[y_np == c][:5]
+    pretty = ", ".join(f"({r[0]:+.2f}, {r[1]:+.2f})" for r in rows)
+    print(f"  class {c}: {pretty}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 4 — Visualise training histories
+# ════════════════════════════════════════════════════════════════════════
 viz = ModelVisualizer()
-fig = viz.plot_training_curves(
-    {
-        "SGD": sgd_losses,
-        "SGD+Momentum": mom_losses,
-        "Adam": adam_losses,
-    }
+fig = viz.training_history(
+    metrics={
+        "GCN train loss": gcn_losses,
+        "GCN val acc": gcn_accs,
+        "GAT train loss": gat_losses,
+        "GAT val acc": gat_accs,
+    },
+    x_label="Epoch",
+    y_label="Value",
 )
-fig.write_html("optimizer_comparison.html")
+fig.write_html("ex_6_training.html")
+print("\nTraining history saved to ex_6_training.html")
 
-print(f"\n=== Optimizer Comparison ===")
-print(f"SGD final loss:          {sgd_losses[-1]:.4f}")
-print(f"SGD+Momentum final loss: {mom_losses[-1]:.4f}")
-print(f"Adam final loss:         {adam_losses[-1]:.4f}")
-print(f"\nKey takeaways:")
-print(f"  - SGD: simple but slow convergence, sensitive to learning rate")
+
+# ── Reflection ─────────────────────────────────────────────────────────
+print("\n" + "═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
 print(
-    f"  - SGD+Momentum: smooths oscillations, accelerates in consistent gradient directions"
+    """
+  [x] Built a GCN layer as  H' = sigma( D^{-1/2} A D^{-1/2} H W )
+  [x] Built a GAT layer with learned attention weights over neighbours
+  [x] Trained both as node classifiers on a 3-community SBM graph
+  [x] Projected hidden embeddings to 2-D with SVD (no Python loops)
+  [x] Compared GCN and GAT training dynamics on the same task
+"""
 )
-print(f"  - Adam: adaptive per-parameter rates, fast convergence, good default choice")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Learning rate warmup + cosine decay
-# ══════════════════════════════════════════════════════════════════════
-
-
-def cosine_schedule(
-    step: int, total_steps: int, warmup_steps: int, max_lr: float, min_lr: float = 1e-6
-) -> float:
-    """Cosine annealing with linear warmup."""
-    if step < warmup_steps:
-        # Linear warmup
-        return max_lr * step / warmup_steps
-    else:
-        # Cosine decay
-        progress = (step - warmup_steps) / (total_steps - warmup_steps)
-        return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(math.pi * progress))
-
-
-total_steps = 1000
-warmup_steps = 100
-max_lr = 0.001
-
-schedule = [
-    cosine_schedule(s, total_steps, warmup_steps, max_lr) for s in range(total_steps)
-]
-
-print(f"\n=== Cosine Schedule with Warmup ===")
-print(f"Warmup: {warmup_steps} steps (linear ramp from 0 to {max_lr})")
-print(f"Decay: cosine from {max_lr} to 1e-6 over {total_steps - warmup_steps} steps")
-print(f"LR at step 0:    {schedule[0]:.6f}")
-print(f"LR at step 50:   {schedule[50]:.6f}")
-print(f"LR at step 100:  {schedule[100]:.6f} (peak)")
-print(f"LR at step 500:  {schedule[500]:.6f}")
-print(f"LR at step 999:  {schedule[999]:.6f}")
-
-print("\n✓ Exercise 6 complete — SGD vs Momentum vs Adam + cosine scheduling")

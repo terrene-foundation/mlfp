@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.4 — Joins and Multi-Table Data | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.4</span>
+  Joins and Multi-Table Data
+</h1>
+
+<p class="lead">
+  Real questions almost never fit in a single table. "Is Bishan more
+  expensive because it is closer to the MRT?" requires an HDB table
+  <em>and</em> an MRT table, joined on a shared key. Today you learn how
+  to combine datasets with <code>join</code>, when to use left versus inner
+  versus outer joins, and how to handle the nulls that appear when one side
+  has no match. You also meet Python's <code>if/elif/else</code> statement
+  and the <code>import</code> keyword — the final pieces needed to write
+  multi-file programs.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Every real analytics question is a join question waiting to happen. The
+  HDB price you computed in Lesson 1.3 is a single number; the
+  <em>context</em> that makes it meaningful lives in other tables: MRT
+  proximity, school density, nearby amenities, historical cooling measures,
+  household income for the postcode. Each of those data sources arrives as
+  its own CSV or parquet file. Your job is to line them up by a shared key
+  — usually a town name, a postal code, a date — and pull the relevant
+  columns across.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrj1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Three source tables -->
+  <rect x="20" y="30" width="180" height="70" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="110" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">HDB transactions</text>
+  <text x="110" y="75" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · price · area</text>
+  <text x="110" y="90" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">500,000 rows</text>
+
+  <rect x="20" y="115" width="180" height="70" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="110" y="140" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">MRT stations</text>
+  <text x="110" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · station · dist_km</text>
+  <text x="110" y="175" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">26 rows</text>
+
+  <rect x="20" y="200" width="180" height="50" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="110" y="222" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Schools</text>
+  <text x="110" y="240" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · school_count</text>
+
+  <line x1="205" y1="140" x2="330" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arrj1)"/>
+  <text x="267" y="130" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">join on "town"</text>
+
+  <!-- Joined table -->
+  <rect x="340" y="50" width="460" height="180" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="570" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Enriched HDB</text>
+  <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
+    <text x="360" y="110" fill="#0F766E">town   price  area  station     dist  schools</text>
+    <text x="360" y="132">BISHAN 720k   100   Bishan MRT  0.4   6</text>
+    <text x="360" y="150">BISHAN 680k    95   Bishan MRT  0.4   6</text>
+    <text x="360" y="168">JURONG 420k   100   Lakeside    0.8   4</text>
+    <text x="360" y="186">JURONG 445k   104   Lakeside    0.8   4</text>
+    <text x="360" y="204" fill="#94A3B8">... 500,000 rows, enriched ...</text>
+  </g>
+</svg>
+<figcaption>Three tables with a shared key (<code>town</code>) combine into one enriched table. Each transaction now carries its spatial context.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Imports and packages</h3>
+
+<p>
+  Before we can join anything, a word about the tools. The <code>import</code>
+  keyword tells Python to load a package and make its contents available.
+  You have already used <code>import polars as pl</code> and <code>from
+  shared import MLFPDataLoader</code>. Two forms, same idea:
+</p>
+
+<pre><code class="language-python">import polars as pl              # load whole package, call it pl
+from shared import MLFPDataLoader  # load one name from a package
+</code></pre>
+
+<p>
+  The <code>as</code> clause is an alias — a short nickname. The Polars
+  convention is <code>pl</code>. When you type <code>pl.col(...)</code> you
+  are saying "the <code>col</code> function inside the Polars package".
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    A <em>package</em> is just a folder of Python files that someone has
+    published so you can reuse their code. PyPI (the Python Package Index)
+    hosts hundreds of thousands. You install packages with
+    <code>pip install &lt;name&gt;</code>; you use them with
+    <code>import &lt;name&gt;</code>. That two-step — install once, import
+    whenever — is how every non-trivial Python program is built.
+  </p>
+</div>
+
+<h3><code>if / elif / else</code>: code-level decisions</h3>
+
+<p>
+  Lesson 1.2 introduced <code>pl.when / then / otherwise</code> for choosing
+  values inside a column. Python also has an <code>if</code> statement for
+  choosing what to <em>do</em> at the code level. The two are not
+  interchangeable: <code>pl.when</code> operates on whole columns;
+  <code>if</code> operates on whole program paths.
+</p>
+
+<pre><code class="language-python">def price_range_label(price: float) -> str:
+    """Classify a resale price into a human-readable tier."""
+    if price < 350_000:
+        return "Budget"
+    elif price < 500_000:
+        return "Mid-range"
+    elif price < 700_000:
+        return "Premium"
+    else:
+        return "Luxury"
+</code></pre>
+
+<p>
+  Read it: if the price is below 350k return "Budget". Otherwise, if it is
+  below 500k return "Mid-range". Otherwise, if below 700k return "Premium".
+  Otherwise return "Luxury". Python checks each condition in order and stops
+  at the first one that is True.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrif" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Entry -->
+  <rect x="320" y="20" width="140" height="40" rx="20" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="390" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">price = 485_000</text>
+
+  <line x1="390" y1="60" x2="390" y2="85" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrif)"/>
+
+  <!-- if -->
+  <rect x="280" y="90" width="220" height="40" rx="6" fill="#FFF1F2" stroke="#F43F5E" stroke-width="2"/>
+  <text x="390" y="115" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">if price &lt; 350_000?</text>
+  <text x="530" y="115" font-family="Inter" font-size="11" fill="#F43F5E">False →</text>
+
+  <line x1="390" y1="130" x2="390" y2="155" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrif)"/>
+
+  <!-- elif -->
+  <rect x="280" y="160" width="220" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="390" y="185" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">elif price &lt; 500_000?</text>
+  <text x="530" y="185" font-family="Inter" font-size="11" fill="#22C55E">True ✓</text>
+
+  <line x1="390" y1="200" x2="390" y2="225" stroke="#22C55E" stroke-width="2.5" marker-end="url(#arrif)"/>
+
+  <!-- result -->
+  <rect x="280" y="230" width="220" height="40" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+  <text x="390" y="255" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">return "Mid-range"</text>
+
+  <!-- skipped -->
+  <g opacity="0.4">
+    <rect x="560" y="160" width="210" height="40" rx="6" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+    <text x="665" y="185" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#64748B">elif price &lt; 700_000? (skipped)</text>
+    <rect x="560" y="210" width="210" height="40" rx="6" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+    <text x="665" y="235" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#64748B">else: "Luxury" (skipped)</text>
+  </g>
+</svg>
+<figcaption>Python evaluates <code>if / elif / else</code> top to bottom, stopping at the first True condition. Once a branch matches, the rest of the chain is skipped.</figcaption>
+</figure>
+
+<h3>Joins: the core vocabulary</h3>
+
+<p>
+  A <strong>join</strong> combines two tables by matching rows on a shared
+  key. Suppose the HDB table has a column <code>town</code> and the MRT
+  table also has a column <code>town</code>. A join on that key lines up
+  rows where the two town values are equal and produces a new table with
+  columns from both sides.
+</p>
+
+<pre><code class="language-python">hdb_enriched = hdb.join(
+    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
+    on="town",
+    how="left",
+)
+</code></pre>
+
+<p>
+  Four things to notice: the left-hand DataFrame (<code>hdb</code>) calls
+  <code>.join</code>; the right-hand DataFrame is the first argument; the
+  <code>on</code> parameter names the shared key; the <code>how</code>
+  parameter chooses which kind of join.
+</p>
+
+<h3>Left, inner, outer, right</h3>
+
+<p>
+  Four join types cover almost every real case:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 800 440" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Grid of 4 venn diagrams -->
+  <!-- Inner -->
+  <g transform="translate(40, 20)">
+    <text x="140" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">INNER join</text>
+    <circle cx="100" cy="80" r="50" fill="#E0F2F1" fill-opacity="0.7" stroke="#0D9488" stroke-width="2"/>
+    <circle cx="160" cy="80" r="50" fill="#CCFBF1" fill-opacity="0.7" stroke="#0D9488" stroke-width="2"/>
+    <path d="M 123 40 A 50 50 0 0 1 137 40 A 50 50 0 0 1 137 120 A 50 50 0 0 1 123 120 A 50 50 0 0 1 123 40" fill="#14B8A6" fill-opacity="0.8"/>
+    <text x="100" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">HDB</text>
+    <text x="160" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">MRT</text>
+    <text x="140" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">only rows with matches on BOTH sides</text>
+  </g>
+
+  <!-- Left -->
+  <g transform="translate(430, 20)">
+    <text x="140" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">LEFT join</text>
+    <circle cx="100" cy="80" r="50" fill="#14B8A6" fill-opacity="0.8" stroke="#0D9488" stroke-width="2"/>
+    <circle cx="160" cy="80" r="50" fill="#CCFBF1" fill-opacity="0.5" stroke="#0D9488" stroke-width="2"/>
+    <path d="M 123 40 A 50 50 0 0 1 137 40 A 50 50 0 0 1 137 120 A 50 50 0 0 1 123 120 A 50 50 0 0 1 123 40" fill="#0D9488" fill-opacity="0.9"/>
+    <text x="100" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="white">HDB</text>
+    <text x="160" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">MRT</text>
+    <text x="140" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">all HDB rows + matches from MRT (nulls if no match)</text>
+  </g>
+
+  <!-- Right -->
+  <g transform="translate(40, 230)">
+    <text x="140" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">RIGHT join</text>
+    <circle cx="100" cy="80" r="50" fill="#CCFBF1" fill-opacity="0.5" stroke="#0D9488" stroke-width="2"/>
+    <circle cx="160" cy="80" r="50" fill="#14B8A6" fill-opacity="0.8" stroke="#0D9488" stroke-width="2"/>
+    <path d="M 123 40 A 50 50 0 0 1 137 40 A 50 50 0 0 1 137 120 A 50 50 0 0 1 123 120 A 50 50 0 0 1 123 40" fill="#0D9488" fill-opacity="0.9"/>
+    <text x="100" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">HDB</text>
+    <text x="160" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="white">MRT</text>
+    <text x="140" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">all MRT rows + matches from HDB</text>
+  </g>
+
+  <!-- Full / outer -->
+  <g transform="translate(430, 230)">
+    <text x="140" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">FULL / OUTER join</text>
+    <circle cx="100" cy="80" r="50" fill="#14B8A6" fill-opacity="0.8" stroke="#0D9488" stroke-width="2"/>
+    <circle cx="160" cy="80" r="50" fill="#14B8A6" fill-opacity="0.8" stroke="#0D9488" stroke-width="2"/>
+    <text x="100" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="white">HDB</text>
+    <text x="160" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="white">MRT</text>
+    <text x="140" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">every row from both sides (nulls fill missing)</text>
+  </g>
+
+  <rect x="40" y="410" width="720" height="26" rx="4" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1"/>
+  <text x="400" y="428" text-anchor="middle" font-family="Inter" font-size="12" fill="#92400E">Rule of thumb: <tspan font-weight="600">use LEFT 95% of the time</tspan> — it's the safest default for enriching a primary table.</text>
+</svg>
+<figcaption>Four join types. The shaded region shows which rows survive in the output. For enrichment tasks (Lesson 1.4's use case), left join is almost always right: keep every HDB row, attach MRT data where available.</figcaption>
+</figure>
+
+<h3>Handling nulls after a join</h3>
+
+<p>
+  A left join keeps every row from the left table. For rows where the right
+  table has no matching key, the new columns are filled with <code>null</code>.
+  You almost always need to decide what to do with those nulls.
+</p>
+
+<pre><code class="language-python"># Count unmatched rows
+n_null = hdb_enriched["distance_to_mrt_km"].null_count()
+print(f"HDB rows with no MRT data: {n_null:,}")
+
+# Fill with a sentinel (0, -1, "Unknown")
+hdb_enriched = hdb_enriched.with_columns(
+    pl.col("school_count").fill_null(0),
+)
+
+# Or drop the unmatched rows entirely
+hdb_matched = hdb_enriched.filter(pl.col("distance_to_mrt_km").is_not_null())
+</code></pre>
+
+<p>
+  Which choice is correct depends on the question. If you are counting
+  schools and "no match" really does mean "zero schools", fill with 0. If
+  "no match" means "data missing" and you cannot model missingness,
+  drop. Never silently let nulls propagate into calculations without
+  deciding.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: Cardinality of joins</span>
+  <p>
+    A join is <em>one-to-one</em>, <em>one-to-many</em>, or
+    <em>many-to-many</em> depending on how unique the key is in each table.
+    MRT stations has one row per town — the key is unique on the right side.
+    HDB has many rows per town. The join is therefore <em>many-to-one</em>,
+    and the output has the same row count as HDB. If both sides had duplicate
+    keys the output would be a Cartesian product of the matches, which can
+    blow up memory in a hurry. Always check the key uniqueness on both sides
+    before joining.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: FeatureStore (preview)</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Module 2's <code>FeatureStore</code> engine is built on the join
+    pattern you are learning today. Features live in a store keyed by entity
+    ID (a town, a user, an order). When you train a model, the store joins
+    the features onto your target table — exactly the left-join pattern used
+    here for MRT data. Understanding joins now makes the FeatureStore API a
+    thin wrapper rather than a black box.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Enriching HDB with Spatial Features</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Combine the HDB resale data with MRT station proximity and school
+    counts, then produce a district summary that ranks towns by a composite
+    "desirability" score computed with an if/elif/else function.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load all three datasets.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+mrt_stations = loader.load("mlfp_assessment", "mrt_stations.parquet")
+schools = loader.load("mlfp_assessment", "schools.parquet")
+
+print(f"HDB:      {hdb.height:,} rows")
+print(f"MRT:      {mrt_stations.height} rows")
+print(f"Schools:  {schools.height} rows")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Check the overlap of join keys <em>before</em> joining. This is the
+       step that catches 90% of join errors.</p>
+    <pre><code class="language-python">hdb_towns = set(hdb["town"].unique().to_list())
+mrt_towns = set(mrt_stations["town"].unique().to_list())
+
+matched = hdb_towns & mrt_towns       # intersection
+unmatched = hdb_towns - mrt_towns     # in HDB but not in MRT
+
+print(f"HDB towns:       {len(hdb_towns)}")
+print(f"MRT towns:       {len(mrt_towns)}")
+print(f"Matched:         {len(matched)}")
+print(f"Unmatched HDB:   {len(unmatched)}")
+if unmatched:
+    print(f"Missing from MRT: {sorted(unmatched)}")</code></pre>
+    <p>
+      Matched towns will gain MRT columns; unmatched towns will get nulls
+      under a left join (or disappear under an inner join). This check tells
+      you what to expect before you run the join.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Left-join MRT stations onto HDB. We use <code>.select(...)</code>
+       on the right side to limit which columns come across — otherwise every
+       column of the MRT table would be attached.</p>
+    <pre><code class="language-python">hdb_enriched = hdb.join(
+    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
+    on="town",
+    how="left",
+)
+
+print(f"Rows after MRT join: {hdb_enriched.height:,}")
+# Should equal hdb.height — left join preserves all left rows</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Schools is one row per school, so we need to aggregate to
+       one-row-per-town before joining.</p>
+    <pre><code class="language-python">school_counts = (
+    schools
+    .group_by("town")
+    .agg(pl.col("school_name").count().alias("school_count"))
+)
+
+hdb_enriched = hdb_enriched.join(
+    school_counts,
+    on="town",
+    how="left",
+).with_columns(
+    pl.col("school_count").fill_null(0),  # no match → zero schools
+)</code></pre>
+    <p>
+      The <code>.fill_null(0)</code> step matters. Without it, towns with
+      zero schools in the source data would show up as <code>null</code>,
+      which is <em>different</em> from zero — any arithmetic with nulls
+      produces more nulls, so you would silently lose those towns in
+      downstream calculations.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Write a helper function that classifies desirability using
+       <code>if / elif / else</code>.</p>
+    <pre><code class="language-python">def desirability_tier(distance_km: float, schools: int) -> str:
+    """Classify a town into four desirability tiers."""
+    if distance_km is None:
+        return "Unknown"
+    if distance_km < 1.0 and schools >= 5:
+        return "Prime (close MRT, many schools)"
+    elif distance_km < 1.0:
+        return "Good MRT access"
+    elif schools >= 5:
+        return "School-rich, farther MRT"
+    else:
+        return "Further out"</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6.</span>
+    <p>Aggregate to town level and apply the function using
+       <code>map_elements</code>.</p>
+    <pre><code class="language-python">district_summary = (
+    hdb_enriched.group_by("town")
+    .agg(
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
+        pl.col("school_count").first().alias("school_count"),
+        pl.len().alias("transactions"),
+    )
+    .with_columns(
+        pl.struct(["distance_to_mrt_km", "school_count"])
+        .map_elements(
+            lambda x: desirability_tier(x["distance_to_mrt_km"], x["school_count"]),
+            return_dtype=pl.String,
+        )
+        .alias("tier"),
+    )
+    .sort("median_price", descending=True)
+)
+
+print(district_summary.head(10))</code></pre>
+    <p>
+      <code>pl.struct([...])</code> bundles two columns into a single
+      argument for <code>map_elements</code>, which calls your Python
+      function once per row. This is the bridge between vectorised Polars
+      expressions and plain Python logic — use it sparingly, because it's
+      slower than a pure Polars expression.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Set Operations</h2>
+
+<p>
+  Joins are a direct application of set theory. Treat each table's key
+  column as a set. Let $H$ be the set of HDB towns and $M$ be the set of
+  MRT towns.
+</p>
+
+<div class="annotated-equation">
+  $$H \cap M = \{t : t \in H \text{ and } t \in M\}$$
+  <div class="annotations">
+    <span>$\cap$ — intersection</span>
+    <span>the towns present in both tables</span>
+  </div>
+</div>
+
+<p>
+  An <strong>inner join</strong> keeps exactly the rows whose keys lie in
+  $H \cap M$. A <strong>left join</strong> keeps all rows from $H$,
+  attaching right-side columns when the key lies in $H \cap M$ and nulls
+  otherwise. A <strong>full outer join</strong> keeps all rows from the
+  union $H \cup M$.
+</p>
+
+<p>
+  The <em>set difference</em> $H \setminus M = \{t : t \in H, t \notin M\}$
+  tells you which HDB towns have no matching MRT row — exactly the nulls
+  you saw in Step 2 of the worked example.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Inner join when left was meant</span>
+  <p>
+    You start with 500,000 HDB rows. You inner-join with MRT. You end with
+    480,000 rows. Twenty thousand transactions silently disappeared — the
+    ones whose towns had no MRT match. Left join preserves them; inner
+    drops them. Always know which you wanted.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Duplicate keys on both sides</span>
+  <p>
+    If both sides have many rows per key, the join produces a Cartesian
+    product of matches. 5 HDB rows × 5 MRT rows for the same town → 25
+    output rows instead of 5. Aggregate one side to one-row-per-key before
+    joining (as we did with school_counts).
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Ignoring nulls after a join</span>
+  <p>
+    Left joins produce nulls for unmatched rows. Arithmetic with nulls
+    propagates nulls (<code>null + 5 = null</code>). If you do not fill or
+    drop those nulls, downstream aggregations silently become nulls and you
+    lose data without noticing.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Mismatched key types or cases</span>
+  <p>
+    Joining <code>"BISHAN"</code> with <code>"Bishan"</code> produces zero
+    matches — the strings are not equal. Before joining, normalise both
+    sides with <code>str.to_uppercase()</code> or <code>str.strip_chars()</code>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — if/elif/else</h3>
+  <p>
+    Write a function <code>classify_size(area_sqm: float) -&gt; str</code>
+    that returns <code>"small"</code> for area under 70, <code>"medium"</code>
+    under 100, <code>"large"</code> under 130, and <code>"xlarge"</code>
+    otherwise.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Inner join</h3>
+  <p>
+    Using the HDB and MRT datasets, perform an inner join on <code>town</code>
+    and count how many rows survive. Compare the count to the left-join
+    version.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — School-count feature</h3>
+  <p>
+    Aggregate the schools table to one row per town (counting schools),
+    left-join it onto HDB, fill nulls with 0, then group by town and compute
+    the median price and school count. Which towns have high median price
+    <em>and</em> many schools?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise D — Set operations</h3>
+  <p>
+    Compute the set difference <code>hdb_towns - mrt_towns</code> and print
+    it sorted. These are the towns that would become nulls under a left
+    join.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 1.3 aggregated within a table; today's lesson combines across
+  tables. Lesson 1.5 layers window functions (rolling means, YoY changes)
+  on top of the joined result. Lesson 1.7's DataExplorer will highlight
+  join-induced nulls as alerts. Module 2's FeatureStore is a structured
+  left-join API; Module 3's training pipelines rely on the same joins to
+  attach labels to features.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Today you learned the vocabulary of multi-table work: <code>import</code>
+  to load libraries, <code>if/elif/else</code> for code-level branching,
+  and <code>join</code> to combine DataFrames by key. You built a concrete
+  enrichment pipeline: start with HDB transactions, attach MRT proximity,
+  attach school counts, produce a ranked district summary with a
+  Python-function classifier.
+</p>
+<p>
+  The most important habit is the <em>key check</em> before every join —
+  count the unique keys on each side, compute the intersection, decide what
+  to do with the difference. A join without that check is how analysts
+  silently lose twenty thousand rows and ship a broken report.
+</p>
+<p>
+  In Lesson 1.5 we pivot from space to time. The joined table you built
+  today becomes the input for <em>window functions</em> — rolling means,
+  YoY changes, trend detection — which compute per-row values that depend
+  on nearby rows. Polars has the fastest window implementation in any open
+  DataFrame library, and you will see why.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../03/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.3 Functions and Aggregation
+  </a>
+  <a href="../05/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.5 Window Functions and Trends
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

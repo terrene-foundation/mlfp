@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.7 — Recommender Systems: THE PIVOT | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+    .pivot-box { padding: 16px 20px; background: #FEF3C7; border: 2px solid #F59E0B; border-radius: 8px; margin-top: 1em; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══ Slide 1: Title ═══════════════════════════════════════ -->
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.7</p>
+  <h1>Recommender Systems — THE PIVOT</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Content-based · User/Item CF · ALS matrix factorisation · Embedding connection</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #FEF3C7; border-left: 4px solid #F59E0B;">
+    <strong>⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> understand that optimisation drives feature discovery
+  </div>
+</section>
+
+<!-- ═══ Slide 2: The spectrum ═══════════════════════════════ -->
+<section>
+  <h2>The Feature Engineering Spectrum</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="40" width="130" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="85" y="70" text-anchor="middle" font-weight="700" font-size="12">M3</text>
+      <text x="85" y="90" text-anchor="middle" font-size="10" fill="#64748B">Manual features</text>
+      <text x="85" y="108" text-anchor="middle" font-size="10" fill="#64748B">Human designs</text>
+
+      <line x1="155" y1="80" x2="185" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="185,80 179,76 179,84" fill="#0D9488"/>
+
+      <rect x="190" y="40" width="130" height="80" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="255" y="70" text-anchor="middle" font-weight="700" font-size="12" fill="#0D9488">M4.1-6</text>
+      <text x="255" y="90" text-anchor="middle" font-size="10" fill="#0D9488">USML discovers</text>
+      <text x="255" y="108" text-anchor="middle" font-size="10" fill="#94A3B8">No error signal</text>
+
+      <line x1="325" y1="80" x2="365" y2="80" stroke="#F59E0B" stroke-width="3"/>
+      <polygon points="365,80 359,76 359,84" fill="#F59E0B"/>
+
+      <rect x="370" y="30" width="130" height="100" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2.5"/>
+      <text x="435" y="58" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">4.7 PIVOT</text>
+      <text x="435" y="80" text-anchor="middle" font-size="10" fill="#92400E">Optimisation drives</text>
+      <text x="435" y="96" text-anchor="middle" font-size="10" fill="#92400E">feature discovery</text>
+      <text x="435" y="118" text-anchor="middle" font-weight="600" font-size="10" fill="#B45309">Embeddings!</text>
+
+      <line x1="505" y1="80" x2="545" y2="80" stroke="#4F46E5" stroke-width="2"/>
+      <polygon points="545,80 539,76 539,84" fill="#4F46E5"/>
+
+      <rect x="550" y="40" width="140" height="80" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+      <text x="620" y="70" text-anchor="middle" font-weight="700" font-size="12" fill="#4F46E5">M4.8 → M5</text>
+      <text x="620" y="90" text-anchor="middle" font-size="10" fill="#4F46E5">DL generalises</text>
+      <text x="620" y="108" text-anchor="middle" font-size="10" fill="#94A3B8">Nonlinear + error</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 3: Content-based ══════════════════════════════ -->
+<section>
+  <h2>Content-based filtering</h2>
+  <ul>
+    <li>Represent each item as a feature vector (TF-IDF, metadata).</li>
+    <li>User profile = average of items they liked.</li>
+    <li>Recommend: top-k by cosine similarity.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> no other users needed. Works for new users with item features. Cannot discover surprises.
+  </div>
+</section>
+
+<!-- ═══ Slide 4: Collaborative filtering ════════════════════ -->
+<section>
+  <h2>Collaborative filtering</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="20" width="250" height="160" fill="#F0FDF4" stroke="#22C55E" rx="6"/>
+      <text x="145" y="45" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">User-based CF</text>
+      <text x="30" y="75" font-size="11">1. Find similar users</text>
+      <text x="30" y="100" font-size="11">2. Recommend their items</text>
+      <text x="30" y="130" font-size="10" fill="#64748B">Cold-start: new users</text>
+      <text x="30" y="150" font-size="10" fill="#64748B">Unstable with few users</text>
+
+      <rect x="310" y="20" width="250" height="160" fill="#EFF6FF" stroke="#3B82F6" rx="6"/>
+      <text x="435" y="45" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Item-based CF</text>
+      <text x="320" y="75" font-size="11">1. Find similar items</text>
+      <text x="320" y="100" font-size="11">2. Recommend to likers</text>
+      <text x="320" y="130" font-size="10" fill="#64748B">More stable</text>
+      <text x="320" y="150" font-size="10" fill="#64748B">Amazon's original algo</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 5: The interaction matrix ═════════════════════ -->
+<section>
+  <h2>The user-item matrix</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 500 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="80" y="20" width="380" height="25" fill="#0D9488"/>
+      <text x="150" y="38" text-anchor="middle" font-size="10" fill="white" font-weight="600">Item A</text>
+      <text x="230" y="38" text-anchor="middle" font-size="10" fill="white" font-weight="600">Item B</text>
+      <text x="310" y="38" text-anchor="middle" font-size="10" fill="white" font-weight="600">Item C</text>
+      <text x="390" y="38" text-anchor="middle" font-size="10" fill="white" font-weight="600">Item D</text>
+      <g font-family="JetBrains Mono" font-size="12">
+        <text x="40" y="65" fill="#0D9488" font-size="10" font-weight="600">User 1</text>
+        <rect x="80" y="48" width="380" height="25" fill="white" stroke="#E2E8F0"/>
+        <text x="150" y="65" text-anchor="middle">5</text>
+        <text x="230" y="65" text-anchor="middle" fill="#CBD5E1">?</text>
+        <text x="310" y="65" text-anchor="middle">3</text>
+        <text x="390" y="65" text-anchor="middle" fill="#CBD5E1">?</text>
+
+        <text x="40" y="90" fill="#0D9488" font-size="10" font-weight="600">User 2</text>
+        <rect x="80" y="73" width="380" height="25" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="150" y="90" text-anchor="middle" fill="#CBD5E1">?</text>
+        <text x="230" y="90" text-anchor="middle">4</text>
+        <text x="310" y="90" text-anchor="middle" fill="#CBD5E1">?</text>
+        <text x="390" y="90" text-anchor="middle">5</text>
+
+        <text x="40" y="115" fill="#0D9488" font-size="10" font-weight="600">User 3</text>
+        <rect x="80" y="98" width="380" height="25" fill="white" stroke="#E2E8F0"/>
+        <text x="150" y="115" text-anchor="middle">4</text>
+        <text x="230" y="115" text-anchor="middle">5</text>
+        <text x="310" y="115" text-anchor="middle" fill="#CBD5E1">?</text>
+        <text x="390" y="115" text-anchor="middle" fill="#CBD5E1">?</text>
+      </g>
+      <text x="270" y="155" text-anchor="middle" font-size="12" fill="#64748B">Mostly empty — fill the "?" with matrix factorisation</text>
+      <rect x="80" y="170" width="380" height="30" rx="4" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="270" y="190" text-anchor="middle" font-weight="600" font-size="11" fill="#92400E">R ≈ U · V^T — user embeddings × item embeddings</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 6: Matrix factorisation objective ═════════════ -->
+<section>
+  <h2>Matrix factorisation objective</h2>
+  \[ \min_{U, V} \sum_{(u,i) \in \text{obs}} \bigl(r_{ui} - \mathbf{u}_u^T \mathbf{v}_i\bigr)^2 + \lambda\bigl(\|\mathbf{u}_u\|^2 + \|\mathbf{v}_i\|^2\bigr) \]
+  <ul style="font-size: 0.85em;">
+    <li>$\mathbf{u}_u$ = user embedding (k-dimensional), $\mathbf{v}_i$ = item embedding.</li>
+    <li>Predicted rating = dot product of embeddings.</li>
+    <li>$\lambda$ prevents overfitting on sparse data.</li>
+  </ul>
+  <div class="pivot-box">
+    <strong>THE PIVOT:</strong> these embeddings did not exist before training. They are features <em>created by optimisation</em>.
+  </div>
+</section>
+
+<!-- ═══ Slide 7: ALS algorithm ══════════════════════════════ -->
+<section>
+  <h2>ALS — Alternating Least Squares</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="40" width="220" height="60" rx="8" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="150" y="65" text-anchor="middle" font-weight="600" font-size="12" fill="#1E40AF">Fix U, solve for V</text>
+      <text x="150" y="85" text-anchor="middle" font-size="10" fill="#3B82F6">Closed-form least squares</text>
+
+      <rect x="340" y="40" width="220" height="60" rx="8" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="450" y="65" text-anchor="middle" font-weight="600" font-size="12" fill="#166534">Fix V, solve for U</text>
+      <text x="450" y="85" text-anchor="middle" font-size="10" fill="#22C55E">Closed-form least squares</text>
+
+      <path d="M 260 70 C 300 10, 300 10, 340 70" stroke="#475569" stroke-width="2" fill="none"/>
+      <polygon points="340,70 336,60 342,62" fill="#475569"/>
+      <path d="M 340 100 C 300 160, 300 160, 260 100" stroke="#475569" stroke-width="2" fill="none"/>
+      <polygon points="260,100 264,110 258,108" fill="#475569"/>
+      <text x="300" y="150" text-anchor="middle" font-size="11" fill="#64748B">Repeat until convergence</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 8: Connection to PCA ══════════════════════════ -->
+<section>
+  <h2>Connection to PCA</h2>
+  <table style="font-size: 0.7em;">
+    <thead>
+      <tr><th>Aspect</th><th>PCA (Lesson 4.3)</th><th>Matrix Factorisation</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Decomposition</td><td>$X = U \Sigma V^T$</td><td>$R \approx U V^T$</td></tr>
+      <tr><td>Data</td><td>Feature matrix</td><td>User-item matrix</td></tr>
+      <tr><td>Optimises</td><td>Full matrix reconstruction</td><td>Observed entries only</td></tr>
+      <tr><td>Output</td><td>Principal components</td><td>User/item embeddings</td></tr>
+      <tr><td>Core idea</td><td colspan="2" style="text-align: center; font-weight: 600;">Low-rank structure → embeddings</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══ Slide 9: ALS code ═══════════════════════════════════ -->
+<section>
+  <h2>ALS from scratch</h2>
+  <pre><code class="language-python" data-trim>
+def als(R, k=20, lam=0.1, n_iter=20):
+    m, n = R.shape
+    U = np.random.randn(m, k) * 0.01
+    V = np.random.randn(n, k) * 0.01
+    mask = (R > 0).astype(float)
+    for _ in range(n_iter):
+        for u in range(m):
+            idx = mask[u] > 0
+            V_u = V[idx]
+            U[u] = np.linalg.solve(
+                V_u.T @ V_u + lam * np.eye(k),
+                V_u.T @ R[u, idx])
+        for i in range(n):
+            idx = mask[:, i] > 0
+            U_i = U[idx]
+            V[i] = np.linalg.solve(
+                U_i.T @ U_i + lam * np.eye(k),
+                U_i.T @ R[idx, i])
+    return U, V
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 10: Implicit vs explicit ══════════════════════ -->
+<section>
+  <h2>Implicit vs explicit feedback</h2>
+  <table style="font-size: 0.7em;">
+    <thead>
+      <tr><th>Explicit</th><th>Implicit</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Star ratings</td><td>Clicks, views, purchases, dwell time</td></tr>
+      <tr><td>User actively provides</td><td>Observed from behaviour</td></tr>
+      <tr><td>Sparse — most items unrated</td><td>100x more abundant</td></tr>
+      <tr><td>Clear signal</td><td>Noisy but predictive</td></tr>
+    </tbody>
+  </table>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> SVD++ combines explicit + implicit. Modern production systems use implicit almost exclusively.
+  </div>
+</section>
+
+<!-- ═══ Slide 11: Hybrid systems ════════════════════════════ -->
+<section>
+  <h2>Hybrid recommenders</h2>
+  <ul>
+    <li>Combine content-based features with collaborative signals.</li>
+    <li>Mitigate cold start: new items have features but no interactions.</li>
+    <li>Typical: neural network with embedding layer (CF) + feature layer (content).</li>
+  </ul>
+  <p style="font-size: 0.85em; color: #64748B;">Most production recommenders at Shopee, Grab, and Netflix are hybrids.</p>
+</section>
+
+<!-- ═══ Slide 12: Embedding visualisation ═══════════════════ -->
+<section>
+  <h2>Visualising learned embeddings</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 340" xmlns="http://www.w3.org/2000/svg">
+      <text x="300" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#475569">t-SNE of item embeddings — clusters emerge without labels</text>
+      <rect x="40" y="30" width="520" height="260" fill="#F8FAFC" stroke="#E2E8F0" rx="4"/>
+      <!-- Simulated clusters -->
+      <g fill="#3B82F6" opacity="0.6">
+        <circle cx="150" cy="100" r="6"/><circle cx="165" cy="115" r="5"/><circle cx="140" cy="120" r="4"/>
+        <circle cx="155" cy="90" r="5"/><circle cx="170" cy="105" r="4"/><circle cx="135" cy="105" r="5"/>
+      </g>
+      <text x="155" y="145" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">Electronics</text>
+
+      <g fill="#22C55E" opacity="0.6">
+        <circle cx="380" cy="90" r="5"/><circle cx="395" cy="100" r="6"/><circle cx="370" cy="105" r="4"/>
+        <circle cx="400" cy="85" r="5"/><circle cx="385" cy="115" r="4"/><circle cx="410" cy="95" r="5"/>
+      </g>
+      <text x="390" y="135" text-anchor="middle" font-size="10" fill="#22C55E" font-weight="600">Groceries</text>
+
+      <g fill="#F59E0B" opacity="0.6">
+        <circle cx="250" cy="220" r="5"/><circle cx="270" cy="230" r="6"/><circle cx="240" cy="240" r="4"/>
+        <circle cx="260" cy="210" r="5"/><circle cx="280" cy="220" r="4"/><circle cx="235" cy="225" r="5"/>
+      </g>
+      <text x="260" y="265" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">Fashion</text>
+
+      <text x="475" y="275" font-size="10" fill="#94A3B8">No labels used — structure from ratings alone</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 13: THE PIVOT statement ═══════════════════════ -->
+<section>
+  <h2 style="color: #F59E0B;">THE PIVOT</h2>
+  <div class="pivot-box">
+    <p style="font-size: 1.1em; margin: 0;">
+      Matrix factorisation learns user and item embeddings
+      by <strong>minimising reconstruction error</strong>.
+    </p>
+    <p style="margin: 0.5em 0 0;">
+      This is the first time you have seen <strong>optimisation drive
+      feature discovery</strong>.
+    </p>
+  </div>
+  <p style="margin-top: 1.5em; font-size: 0.9em;">
+    In Lesson 4.8, neural networks generalise this:
+  </p>
+  <ul style="font-size: 0.85em;">
+    <li>Hidden layer activations <strong>ARE</strong> embeddings.</li>
+    <li>Learned by minimising a loss function.</li>
+    <li>Non-linear combinations via activation functions.</li>
+  </ul>
+</section>
+
+<!-- ═══ Slide 14: NMF parallel ══════════════════════════════ -->
+<section>
+  <h2>The factorisation family</h2>
+  <table style="font-size: 0.65em;">
+    <thead>
+      <tr><th>Method</th><th>Matrix</th><th>Factors</th><th>Lesson</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>PCA</td><td>Feature matrix X</td><td>$U \Sigma V^T$</td><td>4.3</td></tr>
+      <tr><td>NMF</td><td>Doc-word TF-IDF</td><td>$W H$ (non-neg)</td><td>4.6</td></tr>
+      <tr><td>CF MF</td><td>User-item R</td><td>$U V^T$</td><td>4.7 (today)</td></tr>
+      <tr><td>NN</td><td>"Data matrix"</td><td>Learned weights</td><td>4.8 (next)</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.85em;">Same core insight: low-rank structure → learned representations → embeddings.</p>
+</section>
+
+<!-- ═══ Slide 15: Common mistakes ═══════════════════════════ -->
+<section>
+  <h2>Four common mistakes</h2>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Training on the full matrix</strong> — hold out test interactions.</li>
+    <li><strong>Ignoring implicit data</strong> — clicks are 100x more abundant than ratings.</li>
+    <li><strong>Too many latent factors</strong> — $k = 20$–$50$ typical; higher overfits.</li>
+    <li><strong>Missing the pivot insight</strong> — if you leave thinking this is about recommendations, re-read.</li>
+  </ol>
+</section>
+
+<!-- ═══ Slide 16: Cross-references ══════════════════════════ -->
+<section>
+  <h2>Connections</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>4.3 PCA:</strong> same low-rank decomposition.</li>
+    <li><strong>4.5 Rules:</strong> discrete co-occurrence → continuous latent factors.</li>
+    <li><strong>4.6 NMF:</strong> doc-word factorisation → user-item factorisation.</li>
+    <li><strong>4.8 DL:</strong> hidden layers generalise embeddings with non-linearity.</li>
+  </ul>
+</section>
+
+<!-- ═══ Slide 17: Reflection ════════════════════════════════ -->
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Build content-based and collaborative filtering recommenders.</li>
+    <li>✓ Implement ALS matrix factorisation from scratch.</li>
+    <li>✓ Explain how matrix factorisation learns embeddings.</li>
+    <li>✓ Articulate the pivot: optimisation drives feature discovery.</li>
+    <li>✓ Visualise and interpret learned embeddings.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> 4.8 — DL Foundations. Hidden layers are automated feature engineering WITH error feedback. The bridge to M5.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

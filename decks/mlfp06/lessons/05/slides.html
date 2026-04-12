@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 6.5 — AI Agents | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"><link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>.reveal section{text-align:left}.reveal h1,.reveal h2,.reveal h3{text-transform:none}.reveal .lesson-meta{font-size:.5em;color:#64748B;text-transform:uppercase;letter-spacing:.1em}.reveal svg{max-width:100%;max-height:480px}.reveal pre{font-size:.5em}.callout-slide{padding:12px 16px;border-radius:4px;margin-top:.8em;font-size:.85em}.callout-slide.foundations{background:#F0FDF4;border-left:4px solid #22C55E}.callout-slide.theory{background:#EFF6FF;border-left:4px solid #3B82F6}.callout-slide.kailash{background:#F0FDFA;border-left:4px solid #14B8A6}.callout-slide.warning{background:#FFFBEB;border-left:4px solid #F59E0B}</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+<section><p class="lesson-meta">Module 6 · Lesson 6.5</p><h1>AI Agents — ReAct, Tool Use, Function Calling</h1><p style="font-size:.7em;color:#64748B">ReAct loop · Custom tools · Cost budgets · Kaizen agents</p><div style="margin-top:2em;padding:16px 20px;background:#F0FDFA;border-left:4px solid #0D9488"><strong>⏱ 90 minutes</strong> · <strong>Outcome:</strong> build a ReAct agent with tools and cost budget</div></section>
+
+<section><h2>ReAct: Thought → Action → Observation</h2>
+<figure style="text-align:center"><svg viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg"><rect x="30" y="30" width="160" height="70" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="110" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">Thought</text><text x="110" y="80" text-anchor="middle" font-size="10">Reason about task</text><line x1="195" y1="65" x2="225" y2="65" stroke="#0D9488" stroke-width="2"/><polygon points="225,65 219,61 219,69" fill="#0D9488"/><rect x="230" y="30" width="160" height="70" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="310" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">Action</text><text x="310" y="80" text-anchor="middle" font-size="10">Call tool</text><line x1="395" y1="65" x2="425" y2="65" stroke="#0D9488" stroke-width="2"/><polygon points="425,65 419,61 419,69" fill="#0D9488"/><rect x="430" y="30" width="160" height="70" rx="6" fill="#DCFCE7" stroke="#22C55E"/><text x="510" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">Observation</text><text x="510" y="80" text-anchor="middle" font-size="10">Tool result</text><path d="M 510 105 C 510 130 110 130 110 105" stroke="#94A3B8" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/><text x="310" y="140" text-anchor="middle" font-size="10" fill="#94A3B8">repeat until done</text></svg></figure></section>
+
+<section><h2>Function calling</h2><pre><code class="language-python" data-trim>tools = [{"type": "function", "function": {
+    "name": "explore_data",
+    "description": "Load and profile a dataset",
+    "parameters": {"type": "object",
+        "properties": {"dataset": {"type": "string"}},
+        "required": ["dataset"]}
+}}]
+# LLM decides which tool to call and with what arguments</code></pre><p style="font-size:.85em">Structured schemas. LLM fills the parameters. You execute the function.</p></section>
+
+<section><h2>Agent design framework</h2><ol style="font-size:.85em"><li><strong>Goal:</strong> what is the agent supposed to achieve?</li><li><strong>Thought process:</strong> what reasoning steps?</li><li><strong>Specialist:</strong> be sharp — "data analysis researcher" not "researcher".</li><li><strong>Tools:</strong> versatile, fault-tolerant, with caching.</li></ol></section>
+
+<section><h2>Kaizen agents</h2><pre><code class="language-python" data-trim>from kailash_kaizen import ReActAgent, Delegate
+
+agent = ReActAgent(
+    name="DataAnalyst",
+    tools=[explore_tool, train_tool, viz_tool],
+    delegate=Delegate(model="claude-sonnet"),
+    cost_budget=5.00  # USD limit
+)
+result = agent.run("Analyse HDB data and recommend a model")</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> LLMCostTracker enforces budget. Agent stops gracefully when budget runs out.</div></section>
+
+<section><h2>Tool design principles</h2><ul style="font-size:.85em"><li><strong>3–5 tools max</strong> — more tools confuse the agent.</li><li><strong>Clear descriptions</strong> — the LLM reads them to choose.</li><li><strong>Error handling</strong> — tools should return errors, not crash.</li><li><strong>Caching</strong> — avoid re-computing expensive operations.</li></ul></section>
+
+<section><h2>Common mistakes</h2><ol style="font-size:.85em"><li><strong>Too many tools</strong> — agent performance degrades.</li><li><strong>No cost budget</strong> — reasoning loops burn money.</li><li><strong>Trusting agent output</strong> — agents hallucinate. Verify critical results.</li><li><strong>No observation logging</strong> — you need traces to debug agent behaviour.</li></ol></section>
+
+<section><h2>What you can now do</h2><ul><li>✓ Build ReAct agents with custom tools.</li><li>✓ Implement function calling with structured schemas.</li><li>✓ Apply cost budgets to prevent runaway spending.</li><li>✓ Design agents using the specialist framework.</li></ul><div class="callout-slide foundations"><strong>Next:</strong> 6.6 — Multi-Agent Orchestration and MCP. Single agents compose into teams.</div></section>
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+</body></html>

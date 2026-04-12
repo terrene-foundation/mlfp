@@ -4,8 +4,21 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP06 — Exercise 6: Multi-Agent Orchestration
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build a multi-agent system with delegation — router,
-#   specialist agents, supervisor pattern — for complex document analysis.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Build specialist agents with domain-specific Signatures
+#   - Use Pipeline.router() for LLM-based query routing (not keyword matching)
+#   - Implement the supervisor pattern (fan-out specialists -> fan-in synthesis)
+#   - Compare single-agent vs multi-agent output quality
+#   - Apply security considerations to multi-agent architectures
+#
+# PREREQUISITES:
+#   Exercise 5 (BaseAgent, Signature, single-agent patterns). Understanding
+#   that each specialist agent is a separate LLM call with a focused prompt —
+#   multi-agent = orchestrated parallelism, not one mega-prompt.
+#
+# ESTIMATED TIME: 45-75 minutes
 #
 # TASKS:
 #   1. Build 3 specialist agents (financial, legal, technical)
@@ -13,6 +26,11 @@
 #   3. Implement supervisor pattern with delegation
 #   4. Run multi-agent analysis on complex document
 #   5. Compare single-agent vs multi-agent quality
+#
+# DATASET: Singapore company reports
+#   Same dataset as Exercise 5. The document analysed here is complex
+#   enough to benefit from specialist analysis across three domains.
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -258,4 +276,99 @@ print(f"  - Deep analysis needed per domain (not just surface-level)")
 print(f"  - Quality matters more than latency")
 print(f"  - Audit trail needed (which specialist said what)")
 
-print("\n✓ Exercise 6 complete — multi-agent orchestration with Pipeline.router()")
+print("=" * 60)
+print("  MLFP06 Exercise 6: Multi-Agent Orchestration")
+print("=" * 60)
+print(f"\n  Supervisor + 3 specialists + router demonstrated.\n")
+
+# ── Checkpoint 1: Specialist agents ──────────────────────────────────
+assert financial_agent is not None, "FinancialAgent should be created"
+assert legal_agent is not None, "LegalAgent should be created"
+assert technical_agent is not None, "TechnicalAgent should be created"
+print(f"✓ Checkpoint 1 passed — 3 specialist agents defined\n")
+
+# INTERPRETATION: Specialist agents work better than generalists for complex tasks
+# because each agent's prompt is focused. A financial analyst only analyses
+# financial aspects — it doesn't dilute attention on legal or technical concerns.
+# The Signature enforces that each specialist produces domain-specific fields:
+# FinancialAgent -> revenue_insights, risk_factors, recommendation
+# LegalAgent -> compliance_issues, regulatory_references, legal_risk
+# This structure prevents the agents from giving vague, generic answers.
+
+# ── Checkpoint 2: Router ──────────────────────────────────────────────
+assert router is not None, "Router should be created"
+print(f"✓ Checkpoint 2 passed — Pipeline.router() created with 3 agents\n")
+
+# INTERPRETATION: Pipeline.router() uses the LLM to read each agent's
+# description (capability card) and match it to the incoming query.
+# This is fundamentally different from keyword routing (if "revenue" -> financial):
+# - It handles synonyms and paraphrases
+# - It routes based on INTENT, not vocabulary
+# - It gracefully handles ambiguous queries (may route to multiple agents)
+# The cost is one additional LLM call per routing decision.
+
+# ── Checkpoint 3: Supervisor pattern ─────────────────────────────────
+assert supervisor is not None, "SupervisorAgent should be created"
+print(f"✓ Checkpoint 3 passed — supervisor + fan-out/fan-in pattern defined\n")
+
+# INTERPRETATION: The supervisor pattern is fan-out -> fan-in:
+# Fan-out: run specialists in parallel (financial, legal, technical run concurrently)
+# Fan-in: supervisor reads ALL specialist outputs and synthesises into one decision
+# This beats a single-agent approach because:
+# 1. Each specialist gives deep, focused analysis (not surface-level)
+# 2. The supervisor can weigh conflicting assessments
+# 3. You know WHICH specialist said what (audit trail)
+# Parallel execution also reduces total latency vs sequential.
+
+# ── Checkpoint 4: Multi-agent analysis ───────────────────────────────
+assert multi_result is not None, "Multi-agent analysis should produce a result"
+assert hasattr(multi_result, "executive_summary"), "Should have executive summary"
+assert hasattr(multi_result, "overall_risk"), "Should have risk rating"
+assert hasattr(multi_result, "action_items"), "Should have action items"
+assert len(multi_result.action_items) > 0, "Should produce at least one action item"
+print(f"✓ Checkpoint 4 passed — supervisor synthesis: "
+      f"risk={multi_result.overall_risk}, "
+      f"actions={len(multi_result.action_items)}\n")
+
+# INTERPRETATION: The overall_risk field (low/medium/high) integrates
+# financial, legal, and technical risks into a single decision signal.
+# In production, this would trigger different workflows:
+# low -> auto-approve, medium -> human review, high -> reject or escalate.
+# Action items should be specific and actionable, not vague recommendations.
+
+# ── Checkpoint 5: Comparison ──────────────────────────────────────────
+assert single_result is not None, "Single-agent comparison should produce output"
+print(f"✓ Checkpoint 5 passed — single-agent vs multi-agent comparison done\n")
+
+# INTERPRETATION: Single-agent typically produces broader but shallower analysis.
+# It covers all three domains in one pass but at reduced depth per domain.
+# Multi-agent produces deeper, more structured insights per domain.
+# The choice depends on: quality requirements, latency tolerance, cost budget.
+# Multi-agent costs 3x more (3 specialist calls + supervisor) but quality
+# improvement is typically larger than 3x for complex multi-domain tasks.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 60)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 60)
+print("""
+  ✓ Specialist agents: focused Signatures produce deeper domain analysis
+  ✓ Pipeline.router(): LLM-based routing reads capability cards, handles
+    ambiguous queries better than keyword matching
+  ✓ Supervisor pattern: fan-out specialists -> fan-in supervisor synthesis
+  ✓ Structured outputs: Signature contracts make agent outputs reliable
+  ✓ Single vs multi-agent: quality vs cost trade-off quantified
+
+  Multi-agent patterns:
+    Supervisor-worker: one director, multiple specialists (this exercise)
+    Sequential:        output of agent A feeds into agent B feeds into C
+    Parallel:          multiple agents run simultaneously, results merged
+    Handoff:           agent transfers to specialist when topic changes
+
+  NEXT: Exercise 7 (PACT Governance) wraps your multi-agent system
+  in formal governance. D/T/R addressing, operating envelopes, budget
+  cascading, and audit trails — the engineering implementation of AI safety.
+""")

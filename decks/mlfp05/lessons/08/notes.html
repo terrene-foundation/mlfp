@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+</head>
+<body>
+<nav class="top-nav"><span class="brand">MLFP — Module 5 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+<main class="textbook">
+<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.8</span>Reinforcement Learning</h1>
+<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 10 slides &nbsp;·&nbsp; ~9 min per slide</p>
+<p>RL is conceptually different from all prior lessons — learning from interaction rather than static data. Spend extra time on the RL loop (Slide 2) and the Bellman equations (Slide 3). The PPO-to-RLHF bridge (Slide 8) is the most important forward connection — it sets up M6.3. The five-algorithm table (Slide 6) is reference material; walk it quickly and tell them to use the textbook for details.</p>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div><h3>Reinforcement Learning</h3><p>Frame: "This is the final lesson of Module 5 and the final DL paradigm. We have learned from images (CNN), sequences (RNN), text (Transformers), and generated data (GANs). RL learns from interaction — the agent acts in an environment and learns from the consequences. This is how AlphaGo beat the world champion and how ChatGPT was aligned with human preferences."</p><div class="transition">→ "The RL loop."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~6 min</span><span>RL loop</span></div><h3>The RL loop</h3><p>Walk the diagram slowly. "The agent observes a state, chooses an action, the environment transitions to a new state and produces a reward. The agent uses this experience to improve its policy — the mapping from states to actions. This cycle repeats thousands or millions of times."</p><div class="audience-cue beginner"><strong>Navigation analogy:</strong> "Imagine driving in an unfamiliar city without GPS. You make turns (actions), observe streets (states), and learn from wrong turns (negative reward) and progress (positive reward). After enough exploration, you know the optimal route."</div><div class="transition">→ "The mathematical foundation: Bellman."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 3</span><span>~7 min</span><span>Bellman</span></div><h3>Bellman equations</h3><p>Walk both equations. "The value V(s) is the expected cumulative reward starting from state s. The Q-value Q(s,a) is the expected cumulative reward taking action a in state s and acting optimally afterward. The discount factor gamma says future rewards are worth less than immediate ones — a dollar today vs a dollar tomorrow."</p><div class="audience-cue expert"><strong>For experts:</strong> mention the contraction mapping proof of convergence — iterating the Bellman operator converges to the fixed point Q*.</div><div class="transition">→ "DQN approximates Q* with a neural network."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 4–5</span><span>~12 min</span><span>DQN and PPO</span></div><h3>DQN and PPO</h3><p>Walk the code and formulas. DQN: "We train a network to predict Q-values for each action. Experience replay breaks correlation. Target network stabilises training." PPO: "Instead of learning Q-values, we directly learn a policy. The clipped objective prevents the policy from changing too much in one update — that is the 'proximal' in PPO."</p><div class="transition">→ "Five algorithms for five business problems."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 6–7</span><span>~10 min</span><span>Applications and Gym</span></div><h3>Five algorithms and custom environments</h3><p>Walk the table briefly. Then focus on the Gymnasium code: "A custom environment is a Python class with step() and reset(). step() takes an action, computes the next state and reward, and returns them. That is the entire interface. Once you have this, any RL algorithm can train on your business problem."</p><div class="transition">→ "The bridge to M6."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 8</span><span>~8 min</span><span>RLHF bridge</span></div><h3>PPO → RLHF → DPO</h3><p>This is the key forward connection. Walk the diagram. "PPO is a policy gradient algorithm. RLHF uses PPO to align LLMs: a reward model trained on human preferences scores the LLM's outputs, and PPO fine-tunes the LLM to maximise that reward while staying close to the original policy. DPO, which we will study in M6.3, skips the reward model entirely — it learns directly from preference pairs. Simpler, cheaper, often equally effective."</p><div class="transition">→ "Mistakes."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 9–10</span><span>~6 min</span><span>Mistakes + recap</span></div><h3>Mistakes and recap</h3><p>Walk mistakes. Then celebrate: "Module 5 is complete. You have implemented autoencoders, CNNs, RNNs, Transformers, GANs, diffusion, GNNs, transfer learning, and RL. Module 6 puts all of this to work: LLMs, fine-tuning, RAG, agents, governance, and production deployment. The full stack."</p><div class="transition">→ End of Module 5.</div></div>
+
+<nav class="lesson-nav"><a href="../07/notes.html" class="prev"><span class="label">← Previous</span>5.7 Speaker Notes</a><a href="../../../mlfp06/lessons/01/notes.html" class="next"><span class="label">Next →</span>6.1 Speaker Notes</a></nav>
+</main>
+</body>
+</html>

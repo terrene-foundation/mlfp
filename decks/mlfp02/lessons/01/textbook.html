@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.1 — Probability and Bayesian Thinking | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.1</span>
+  Probability and Bayesian Thinking
+</h1>
+
+<p class="lead">
+  In Module 1 you learned how to look at data. Now we ask the harder question:
+  <em>how confident can you be in what you saw?</em> This lesson introduces the
+  language of uncertainty — probability, conditional probability, Bayes'
+  theorem, and probability distributions — and uses it to update beliefs about
+  Singapore HDB resale prices the moment new data arrives.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A property analyst at HDB says the average 4-room flat in Tampines sells for
+  about S$550,000. Then two transactions land in the database: one at
+  S$620,000 and one at S$590,000. Should the analyst's estimate change? By how
+  much? If a hundred more transactions arrive, should they trust the new
+  average and discard the old belief, or blend them? Probability is the
+  machinery that answers these questions, and Bayes' theorem is its central
+  instrument.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr21" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20" y="70" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="110" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">Prior</text>
+  <text x="110" y="122" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">P(μ) — what we believe</text>
+  <text x="110" y="138" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">before looking</text>
+
+  <line x1="200" y1="110" x2="265" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr21)"/>
+
+  <rect x="270" y="70" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="360" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">Likelihood</text>
+  <text x="360" y="122" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">P(data | μ)</text>
+  <text x="360" y="138" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">how the data fits</text>
+
+  <line x1="450" y1="110" x2="515" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr21)"/>
+
+  <rect x="520" y="70" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="610" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">Posterior</text>
+  <text x="610" y="122" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">P(μ | data) — updated</text>
+  <text x="610" y="138" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">belief</text>
+</svg>
+<figcaption>The Bayesian update loop: prior belief meets likelihood to yield a posterior. Every statistical learning system — from spam filters to HDB valuation models — is some version of this picture.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Probability as a weight on an event</h3>
+
+<p>
+  The probability of an event $A$, written $P(A)$, is a number between 0 and 1
+  that expresses how likely $A$ is to happen. $P(A) = 0$ means impossible;
+  $P(A) = 1$ means certain. For any event $A$ and its complement $A'$ ("not
+  $A$"), the total probability is 1:
+</p>
+
+$$P(A) + P(A') = 1$$
+
+<p>
+  For a fair six-sided die, each face has probability $1/6$. The probability
+  of rolling an even number is $P(\{2,4,6\}) = 3/6 = 1/2$. The probability of
+  the die landing at all is $1$ — one of the outcomes must happen.
+</p>
+
+<h3>Joint and conditional probability</h3>
+
+<p>
+  Two events can happen together. The <strong>joint probability</strong>
+  $P(A, B)$ is the probability that both $A$ and $B$ occur. The
+  <strong>conditional probability</strong> $P(A \mid B)$ — read "probability of
+  $A$ given $B$" — is the probability of $A$ under the restriction that $B$
+  has already happened. Conditional probability is defined as:
+</p>
+
+<div class="annotated-equation">
+  $$P(A \mid B) \;=\; \frac{P(A, B)}{P(B)} \qquad (\text{when } P(B) > 0)$$
+  <div class="annotations">
+    <span>$P(A, B)$ — joint probability</span>
+    <span>$P(B)$ — probability of the condition</span>
+    <span>The fraction is a "renormalisation" inside $B$</span>
+  </div>
+</div>
+
+<p>
+  The intuition is simple. The condition $B$ shrinks the sample space to only
+  the outcomes where $B$ holds. Inside that shrunken world, we ask what
+  fraction also contains $A$. The division by $P(B)$ is just rescaling so the
+  new world has total probability 1 again.
+</p>
+
+<p>
+  Rearranging the definition gives the multiplication rule:
+</p>
+
+$$P(A, B) \;=\; P(A \mid B)\,P(B) \;=\; P(B \mid A)\,P(A)$$
+
+<p>
+  The fact that $P(A \mid B)\,P(B)$ and $P(B \mid A)\,P(A)$ both equal $P(A, B)$
+  is the seed of Bayes' theorem.
+</p>
+
+<h3>Deriving Bayes' theorem</h3>
+
+<p>
+  Set the two expressions for $P(A, B)$ equal to each other and divide by
+  $P(B)$:
+</p>
+
+<div class="annotated-equation">
+  $$P(A \mid B) \;=\; \frac{P(B \mid A)\,P(A)}{P(B)}$$
+  <div class="annotations">
+    <span>$P(A \mid B)$ — posterior</span>
+    <span>$P(B \mid A)$ — likelihood</span>
+    <span>$P(A)$ — prior</span>
+    <span>$P(B)$ — evidence (normaliser)</span>
+  </div>
+</div>
+
+<p>
+  That is Bayes' theorem. It is nothing more than algebra on the definition of
+  conditional probability, yet it is the single most important formula in
+  applied statistics. It tells you how to update a prior belief ($P(A)$) into
+  a posterior belief ($P(A \mid B)$) after observing evidence $B$, using the
+  likelihood $P(B \mid A)$ to quantify how well the evidence fits.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: the denominator as a sum</span>
+  <p>
+    In most applications, $P(B)$ is computed by the law of total probability:
+    $P(B) = \sum_i P(B \mid A_i)\,P(A_i)$ where the $A_i$ partition the
+    sample space. It is a normalising constant that ensures the posterior
+    integrates (or sums) to 1. When we do continuous Bayes later, it becomes
+    an integral: $P(B) = \int P(B \mid A)\,P(A)\,dA$. Many modern methods
+    (MCMC, variational inference) exist precisely because this integral is
+    hard to evaluate in closed form.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>A Worked Example: COVID ART Tests</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Root -->
+  <circle cx="80" cy="160" r="20" fill="#0D9488"/>
+  <text x="80" y="165" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="white">Pop</text>
+
+  <!-- Infected / not -->
+  <line x1="100" y1="160" x2="240" y2="80" stroke="#0D9488" stroke-width="2"/>
+  <line x1="100" y1="160" x2="240" y2="240" stroke="#0D9488" stroke-width="2"/>
+  <text x="150" y="105" font-family="Inter" font-size="12" fill="#64748B">P(T)=0.01</text>
+  <text x="150" y="215" font-family="Inter" font-size="12" fill="#64748B">P(T')=0.99</text>
+
+  <rect x="240" y="60" width="140" height="40" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="310" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Infected (T)</text>
+
+  <rect x="240" y="220" width="140" height="40" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+  <text x="310" y="245" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#475569">Not infected (T')</text>
+
+  <!-- Test results -->
+  <line x1="380" y1="80" x2="520" y2="40" stroke="#22C55E" stroke-width="2"/>
+  <line x1="380" y1="80" x2="520" y2="120" stroke="#22C55E" stroke-width="2"/>
+  <text x="450" y="55" font-family="Inter" font-size="11" fill="#15803D">P(+|T)=0.90</text>
+  <text x="450" y="115" font-family="Inter" font-size="11" fill="#15803D">P(−|T)=0.10</text>
+
+  <line x1="380" y1="240" x2="520" y2="200" stroke="#EF4444" stroke-width="2"/>
+  <line x1="380" y1="240" x2="520" y2="280" stroke="#EF4444" stroke-width="2"/>
+  <text x="450" y="215" font-family="Inter" font-size="11" fill="#B91C1C">P(+|T')=0.02</text>
+  <text x="450" y="275" font-family="Inter" font-size="11" fill="#B91C1C">P(−|T')=0.98</text>
+
+  <rect x="520" y="20" width="160" height="40" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="600" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#15803D">T ∧ + = 0.0090</text>
+  <rect x="520" y="100" width="160" height="40" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="600" y="125" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#15803D">T ∧ − = 0.0010</text>
+
+  <rect x="520" y="180" width="160" height="40" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="600" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#B91C1C">T' ∧ + = 0.0198</text>
+  <rect x="520" y="260" width="160" height="40" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="600" y="285" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#B91C1C">T' ∧ − = 0.9702</text>
+</svg>
+<figcaption>The COVID tree. Prior infection rate 1%. Test sensitivity 90%. Test false-positive rate 2%. Multiplying along the branches gives joint probabilities that must sum to 1.</figcaption>
+</figure>
+
+<div class="worked-example">
+  <h3>📝 The question</h3>
+  <p>
+    Singapore's Ministry of Health reports a current COVID prevalence of about
+    1% in the community. A rapid antigen test (ART) has sensitivity 90%
+    (true-positive rate) and specificity 98% (so 2% false-positive rate). You
+    test positive. <strong>What is the probability you actually have
+    COVID?</strong> Most people — including doctors — guess around 90%. The
+    answer is dramatically smaller.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Name the events. Let $T$ = "has COVID", $T'$ = "does not", $+$ = "tests positive".</p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Write down what we are given:</p>
+    <ul>
+      <li>Prior: $P(T) = 0.01$, so $P(T') = 0.99$</li>
+      <li>Sensitivity: $P(+ \mid T) = 0.90$</li>
+      <li>False-positive rate: $P(+ \mid T') = 0.02$</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Compute the total probability of testing positive:</p>
+    $$P(+) \;=\; P(+ \mid T)P(T) + P(+ \mid T')P(T') \;=\; (0.90)(0.01) + (0.02)(0.99) \;=\; 0.0090 + 0.0198 \;=\; 0.0288$$
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Apply Bayes' theorem:</p>
+    $$P(T \mid +) \;=\; \frac{P(+ \mid T)\,P(T)}{P(+)} \;=\; \frac{0.0090}{0.0288} \;\approx\; 0.3125$$
+    <p>
+      A positive ART in a low-prevalence setting gives only a 31% chance of
+      infection. Two out of three positive tests will be false positives. This
+      is not a flaw of Bayes — it is a property of the numbers. When the prior
+      is very small, even a "90% accurate" test is dominated by the false
+      positives from the huge non-infected population.
+    </p>
+  </div>
+</div>
+
+<div class="callout foundations">
+  <span class="label">🟢 Intuition: the 10,000-person ward</span>
+  <p>
+    Imagine 10,000 people. 100 have COVID (1%). Of those 100, the test catches
+    90 (sensitivity). Of the 9,900 uninfected, the test wrongly flags 198
+    (2%). So $90 + 198 = 288$ people test positive; only $90/288 \approx 31\%$
+    of them are actually sick. The tree diagram above is exactly this
+    counting exercise written in probability notation.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Probability Distributions</h2>
+
+<p>
+  A random variable $X$ is a function from outcomes to numbers (the number of
+  bedrooms in a flat, the resale price, the test score). The
+  <strong>distribution</strong> of $X$ assigns a probability to each possible
+  value (discrete) or a density to each region (continuous). Five distributions
+  cover almost everything you will need in this course.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Normal -->
+  <g transform="translate(0,0)">
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Normal</text>
+    <path d="M 20,200 Q 110,40 200,200" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+    <line x1="20" y1="200" x2="200" y2="200" stroke="#94A3B8"/>
+    <line x1="110" y1="200" x2="110" y2="205" stroke="#94A3B8"/>
+    <text x="110" y="220" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">μ</text>
+    <text x="110" y="240" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Continuous bell</text>
+  </g>
+  <!-- Beta -->
+  <g transform="translate(240,0)">
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#4F46E5">Beta</text>
+    <path d="M 20,200 Q 60,80 110,80 Q 160,80 200,200" fill="none" stroke="#4F46E5" stroke-width="2.5"/>
+    <line x1="20" y1="200" x2="200" y2="200" stroke="#94A3B8"/>
+    <text x="110" y="220" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">0 ≤ p ≤ 1</text>
+    <text x="110" y="240" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Prior for proportions</text>
+  </g>
+  <!-- Poisson -->
+  <g transform="translate(480,0)">
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F59E0B">Poisson</text>
+    <rect x="30"  y="160" width="14" height="40"  fill="#F59E0B"/>
+    <rect x="54"  y="120" width="14" height="80"  fill="#F59E0B"/>
+    <rect x="78"  y="80"  width="14" height="120" fill="#F59E0B"/>
+    <rect x="102" y="90"  width="14" height="110" fill="#F59E0B"/>
+    <rect x="126" y="120" width="14" height="80"  fill="#F59E0B"/>
+    <rect x="150" y="150" width="14" height="50"  fill="#F59E0B"/>
+    <rect x="174" y="180" width="14" height="20"  fill="#F59E0B"/>
+    <line x1="20" y1="200" x2="200" y2="200" stroke="#94A3B8"/>
+    <text x="110" y="220" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#64748B">k = 0, 1, 2, …</text>
+    <text x="110" y="240" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Counts / arrivals</text>
+  </g>
+</svg>
+<figcaption>Three workhorses. Normal for measurements. Beta for proportions (bounded in [0,1]). Poisson for counts. Exponential (waiting times) and Uniform (flat priors) fill out the toolkit.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th>Distribution</th><th>Support</th><th>When to reach for it</th></tr></thead>
+  <tbody>
+    <tr><td>Normal $N(\mu, \sigma^2)$</td><td>$(-\infty, \infty)$</td><td>Measurements that cluster around a mean: temperature, height, HDB log-price</td></tr>
+    <tr><td>Beta $\text{Beta}(\alpha, \beta)$</td><td>$[0, 1]$</td><td>Probabilities and proportions: conversion rate, click-through rate</td></tr>
+    <tr><td>Binomial $\text{Bin}(n, p)$</td><td>$\{0, 1, \ldots, n\}$</td><td>Counts of successes in $n$ trials: conversions in 1,000 visitors</td></tr>
+    <tr><td>Poisson $\text{Poisson}(\lambda)$</td><td>$\{0, 1, 2, \ldots\}$</td><td>Counts over time or space: taxi arrivals per hour, bugs per KLOC</td></tr>
+    <tr><td>Exponential $\text{Exp}(\lambda)$</td><td>$(0, \infty)$</td><td>Waiting times: seconds between MRT arrivals, days until churn</td></tr>
+  </tbody>
+</table>
+
+<h3>Expected value</h3>
+
+<p>
+  The <strong>expected value</strong> of a discrete random variable is the
+  probability-weighted average of its possible values:
+</p>
+
+<div class="annotated-equation">
+  $$E[X] \;=\; \sum_{i} p_i\, x_i$$
+  <div class="annotations">
+    <span>$p_i$ — probability of outcome $i$</span>
+    <span>$x_i$ — the value at outcome $i$</span>
+  </div>
+</div>
+
+<p>
+  For a continuous random variable, the sum becomes an integral:
+  $E[X] = \int x\,f(x)\,dx$ where $f$ is the probability density function.
+  The expected value is the long-run average if you repeated the experiment
+  many times — the "gravitational centre" of the distribution.
+</p>
+
+<p>
+  <strong>Variance</strong> is the expected squared deviation from the mean.
+  There are two equivalent forms, and the algebra between them is worth
+  seeing now because it will reappear throughout Module 2:
+</p>
+
+$$\text{Var}(X) \;=\; E[(X - \mu)^2] \;=\; E[X^2] - \mu^2$$
+
+<p>
+  The derivation expands the square inside the expectation:
+</p>
+
+$$\begin{aligned}
+E[(X - \mu)^2] &\;=\; E[X^2 - 2\mu X + \mu^2] \\
+               &\;=\; E[X^2] - 2\mu E[X] + \mu^2 \\
+               &\;=\; E[X^2] - 2\mu^2 + \mu^2 \\
+               &\;=\; E[X^2] - \mu^2
+\end{aligned}$$
+
+<p>
+  The second form ($E[X^2] - \mu^2$) is often easier to compute numerically;
+  the first form makes the geometric meaning (squared distance from the
+  centre) obvious.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Conjugate Priors: Bayes Without Integrals</h2>
+
+<p>
+  Bayes' theorem in its continuous form involves an integral that is usually
+  hard to compute:
+</p>
+
+$$P(\mu \mid \text{data}) \;=\; \frac{P(\text{data} \mid \mu)\,P(\mu)}{\int P(\text{data} \mid \mu')\,P(\mu')\,d\mu'}$$
+
+<p>
+  A <strong>conjugate prior</strong> is a family of priors chosen so that the
+  posterior stays in the same family — turning Bayes into algebra on the
+  parameters. Two conjugate pairs cover most of what we do:
+</p>
+
+<div class="compare-grid">
+  <div>
+    <h4>Normal–Normal (for a mean)</h4>
+    <p>
+      Prior: $\mu \sim N(\mu_0, \sigma_0^2)$. Observe $n$ data points with known
+      variance $\sigma^2$. The posterior is also Normal with:
+    </p>
+    $$\mu_{\text{post}} = \frac{\sigma^2\,\mu_0 + n\,\sigma_0^2\,\bar{x}}{\sigma^2 + n\,\sigma_0^2}$$
+    $$\sigma^2_{\text{post}} = \frac{\sigma_0^2\,\sigma^2}{\sigma^2 + n\,\sigma_0^2}$$
+    <p>
+      The posterior mean is a weighted average of the prior mean and sample
+      mean, with weights determined by the precision (inverse variance) of
+      each. As $n \to \infty$, the data dominates the prior.
+    </p>
+  </div>
+  <div>
+    <h4>Beta–Binomial (for a proportion)</h4>
+    <p>
+      Prior: $p \sim \text{Beta}(\alpha, \beta)$. Observe $k$ successes in
+      $n$ trials. The posterior is:
+    </p>
+    $$p \mid \text{data} \;\sim\; \text{Beta}(\alpha + k,\, \beta + n - k)$$
+    <p>
+      You literally add the successes to $\alpha$ and the failures to $\beta$.
+      This is why Beta is the canonical prior for conversion rates: the update
+      rule is elementary arithmetic and the posterior is instantly
+      interpretable.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ExperimentTracker</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash's <code>ExperimentTracker</code> is where you log priors, posteriors,
+    and probabilistic estimates so that you can replay any computation later.
+    Today you will hand-roll Bayes on HDB prices; the <code>ExperimentTracker</code>
+    enters fully in Lesson 2.4 once we run real A/B experiments. For now, the
+    engine exists in the background — every number you compute in the exercise
+    is logged, time-stamped, and attributed so that a reviewer can reproduce
+    your reasoning.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Singapore HDB Prices — A Bayesian Update</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    The URA's 2019 annual report said the average 4-room Tampines resale price
+    was $\mu_0 = \$480{,}000$ with standard deviation $\sigma_0 = \$40{,}000$
+    across neighbourhoods (your prior belief). You now pull $n = 30$ recent
+    transactions from <code>hdb_resale.parquet</code> and compute a sample mean
+    of $\bar{x} = \$542{,}000$ with assumed sampling standard deviation
+    $\sigma = \$60{,}000$. <strong>What is your updated belief about the true
+    mean?</strong>
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load the data with the standard M1 ritual.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+df = loader.load("mlfp02", "hdb_resale.parquet")
+recent = df.filter(
+    (pl.col("town") == "TAMPINES") &
+    (pl.col("flat_type") == "4 ROOM") &
+    (pl.col("year") >= 2024)
+)
+print(recent.shape)
+print(recent.select("resale_price").describe())</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Encode the prior and likelihood parameters.</p>
+    <pre><code class="language-python">mu_0, sigma_0 = 480_000, 40_000     # prior from 2019 report
+x_bar = recent["resale_price"].mean()
+sigma = recent["resale_price"].std()
+n = recent.height</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Apply the Normal–Normal conjugate update.</p>
+    <pre><code class="language-python">precision_prior = 1 / sigma_0**2
+precision_data  = n / sigma**2
+
+mu_post  = (precision_prior * mu_0 + precision_data * x_bar) / (precision_prior + precision_data)
+var_post = 1 / (precision_prior + precision_data)
+sigma_post = var_post**0.5
+
+print(f"Prior:     mu_0 = {mu_0:,.0f}, sigma_0 = {sigma_0:,.0f}")
+print(f"Data:      x̄   = {x_bar:,.0f}, sigma = {sigma:,.0f}, n = {n}")
+print(f"Posterior: mu   = {mu_post:,.0f}, sigma = {sigma_post:,.0f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Read the result. The posterior mean sits between the prior and the
+       sample mean, pulled more towards the sample because $n = 30$ gives the
+       data higher precision. The posterior std $\sigma_{\text{post}}$ is smaller
+       than either input — we are more certain than we were before.</p>
+    <p>A 95% Bayesian credible interval is:</p>
+    <pre><code class="language-python">lo = mu_post - 1.96 * sigma_post
+hi = mu_post + 1.96 * sigma_post
+print(f"95% credible: [{lo:,.0f}, {hi:,.0f}]")</code></pre>
+    <p>
+      A <em>credible</em> interval is what most people incorrectly think a
+      frequentist CI means: "there is a 95% probability the true mean lies in
+      this range, given our prior and our data". In Lesson 2.2 we will see the
+      frequentist CI and its more awkward interpretation.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Sampling Bias: the Friendship Paradox</h2>
+
+<p>
+  Your friends, on average, have more friends than you do. This sounds
+  insulting, but it is a mathematical fact — a consequence of how we sample.
+  If you pick a random person from a social network, each person is equally
+  likely. If you pick a random <em>friend</em> of a random person, people with
+  many friends are more likely to be picked because they appear in more
+  friendship lists.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced: the algebra</span>
+  <p>
+    Let $X$ be the number of friends of a uniformly chosen person. Let $Y$ be
+    the number of friends of a uniformly chosen <em>friendship endpoint</em>
+    (i.e., pick a random edge and then one of its two ends). Then $E[Y] = E[X^2]/E[X]$,
+    and by the Cauchy–Schwarz inequality $E[X^2]/E[X] \ge E[X]$ with equality
+    only if everyone has the same number of friends. So sampling through
+    friendships systematically over-represents high-degree nodes.
+  </p>
+</div>
+
+<p>
+  The lesson for data work: the way you sample shapes what you see.
+  Surveys that recruit through existing users over-sample engaged people.
+  Customer satisfaction data over-samples the very angry and the very happy.
+  Bayesian thinking does not rescue you from biased sampling — you must model
+  the selection mechanism explicitly.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Confusing $P(A \mid B)$ with $P(B \mid A)$</span>
+  <p>
+    The COVID example is the canonical trap. $P(+ \mid T) = 0.90$ ("given you
+    have COVID, the test is positive 90% of the time") is <em>not</em> the same
+    as $P(T \mid +) \approx 0.31$ ("given the test is positive, you have COVID
+    31% of the time"). Bayes' theorem is the conversion factor between the
+    two, and the prior $P(T)$ is what makes them differ.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Ignoring the base rate</span>
+  <p>
+    Saying "the test is 90% accurate" tells you nothing about $P(T \mid +)$
+    without the base rate $P(T)$. Journalists, managers, and even physicians
+    routinely forget this. Always ask: what was the prior before the data
+    arrived?
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Treating $P(A)$ as a fixed number when it is a belief</span>
+  <p>
+    In Bayesian statistics, probabilities quantify beliefs about uncertain
+    quantities — they are not frequencies of repeatable experiments. The prior
+    $P(\mu)$ is your belief about the true mean before seeing the data; it is
+    reasonable for two analysts to have different priors and therefore
+    different posteriors. Over time, enough data makes the posteriors converge.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Flipping the COVID ratio</h3>
+  <p>
+    Repeat the COVID calculation but with the prior $P(T) = 0.20$ (outbreak
+    scenario) instead of $0.01$. How does $P(T \mid +)$ change? Then compute
+    $P(T \mid -)$ (probability of infection given a negative test) in both
+    scenarios. Which number matters more in a screening programme?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Beta–Binomial for an A/B test</h3>
+  <p>
+    A control arm shows 40 conversions in 500 visitors. Using a uniform prior
+    $\text{Beta}(1, 1)$, write down the posterior. What is the posterior mean?
+    How does it differ from the raw sample proportion $40/500$, and why?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Building a Bayesian HDB estimator</h3>
+  <p>
+    Using the HDB resale file, pick a town and flat type, set a reasonable
+    prior from the 2019 baseline, compute the posterior, and report the 95%
+    credible interval. Then repeat with only 5 transactions vs 200 — watch
+    how the posterior variance shrinks with $n$.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The summary statistics from Lesson 1.1 (mean, variance, std) are now revealed
+  to be estimators of distribution parameters. Lesson 2.2 will show why
+  <code>describe()</code> divides by $n-1$ for the sample variance — Bessel's
+  correction, derived from the Normal MLE. Lesson 2.3 replaces analytical
+  Bayes with bootstrapping when conjugate priors do not exist. The entire
+  Bayesian update story reappears in Lesson 2.7 as the posterior probability
+  of improvement in a Bayesian A/B test.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In 45 minutes you have derived Bayes' theorem from the definition of
+  conditional probability, worked a medical-test example that defeats most
+  intuition, and used a Normal–Normal conjugate update to revise a belief
+  about Singapore HDB prices. You now speak the basic vocabulary of every
+  probabilistic model in the course.
+</p>
+<p>
+  The most important takeaway is the update loop itself: prior → likelihood →
+  posterior. Every statistical learning system is some version of this loop —
+  from simple A/B tests to large-scale neural networks. You will see it again
+  in every remaining lesson of this module.
+</p>
+<p>
+  Lesson 2.2 zooms in on the likelihood: if you have data but no prior, what
+  is the "best" parameter value? The answer is maximum likelihood estimation,
+  and it is the second of three pillars (Bayes, MLE, bootstrap) that the rest
+  of M2 rests on.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 2 Index
+  </a>
+  <a href="../02/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.2 Parameter Estimation and Inference
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

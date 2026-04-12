@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.6 — Logistic Regression and Classification | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.6</p>
+  <h1>Logistic Regression and Classification</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Sigmoid · Log-odds · Odds ratios · ANOVA · Tukey HSD
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 60 minutes</strong> · <strong>Prereq:</strong> 2.2, 2.5
+  </div>
+</section>
+
+<section>
+  <h2>Binary outcomes — why not linear?</h2>
+  <ul style="font-size: 0.9em;">
+    <li>Linear predictions can exceed 1 or drop below 0 — no probability interpretation</li>
+    <li>Constant variance is wrong for binary data (variance = $p(1-p)$)</li>
+    <li>MLE under Bernoulli is cleaner and more efficient</li>
+  </ul>
+  <p>We need a model that bounds the output in $(0, 1)$ and uses the Bernoulli likelihood.</p>
+</section>
+
+<section>
+  <h2>The sigmoid</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <line x1="60" y1="200" x2="680" y2="200" stroke="#94A3B8"/>
+      <line x1="370" y1="30" x2="370" y2="240" stroke="#94A3B8"/>
+      <line x1="60" y1="60" x2="680" y2="60" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+      <text x="48" y="64" text-anchor="end" font-family="JetBrains Mono" font-size="10">1.0</text>
+      <line x1="60" y1="130" x2="680" y2="130" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+      <text x="48" y="134" text-anchor="end" font-family="JetBrains Mono" font-size="10">0.5</text>
+      <line x1="60" y1="200" x2="680" y2="200" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+      <text x="48" y="204" text-anchor="end" font-family="JetBrains Mono" font-size="10">0.0</text>
+      <path d="M 60,198 C 200,196 300,190 370,130 C 440,70 540,62 680,60"
+            fill="none" stroke="#0D9488" stroke-width="3"/>
+    </svg>
+  </figure>
+  \[ \sigma(z) = \frac{1}{1 + e^{-z}} \]
+</section>
+
+<section>
+  <h2>From log-odds to sigmoid</h2>
+  <p>Assume log-odds is linear in predictors:</p>
+  \[ \log\!\left(\frac{p}{1-p}\right) = \beta_0 + \beta_1 x_1 + \cdots = z \]
+  <p>Solve for $p$:</p>
+  \[ \frac{p}{1-p} = e^z \;\Rightarrow\; p = \frac{e^z}{1 + e^z} = \frac{1}{1 + e^{-z}} = \sigma(z) \]
+  <p style="font-size: 0.85em;">Log-odds live in $(-\infty, \infty)$; sigmoid maps them back to $(0, 1)$.</p>
+</section>
+
+<section>
+  <h2>Bernoulli log-likelihood</h2>
+  \[ P(y_i \mid x_i, \beta) = p_i^{y_i}(1 - p_i)^{1 - y_i} \]
+  <p>Log over $n$ observations:</p>
+  \[ \ell(\beta) = \sum_{i=1}^{n}\big[y_i \log p_i + (1 - y_i)\log(1 - p_i)\big] \]
+  <div style="background: #FEF3C7; padding: 12px 16px; border-left: 4px solid #F59E0B; margin-top: 1em; font-size: 0.85em;">
+    No closed form. Gradient is non-linear in $\beta$. Optimise with BFGS or IRLS.
+  </div>
+</section>
+
+<section>
+  <h2>Odds ratios — the multiplicative story</h2>
+  \[ \frac{\text{odds}(x_j + 1)}{\text{odds}(x_j)} = e^{\beta_j} \]
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>$\beta_j$</th><th>$e^{\beta_j}$</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>+0.69</td><td>≈ 2.0</td><td>Odds double per unit</td></tr>
+      <tr><td>+0.10</td><td>≈ 1.10</td><td>10% increase in odds</td></tr>
+      <tr><td>0</td><td>1</td><td>No effect</td></tr>
+      <tr><td>−0.22</td><td>≈ 0.80</td><td>Odds −20% per unit</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Odds ≠ probability</h2>
+  <div style="background: #FFF1F2; padding: 14px 18px; border-left: 4px solid #F43F5E;">
+    <strong>⚠</strong> Odds ratio of 2 does <em>not</em> mean "twice as likely".
+    For a baseline probability of 10%, doubling the odds gives about 18%.
+  </div>
+  <p style="font-size: 0.85em; margin-top: 1em;">
+    Always convert back to probabilities when reporting to non-specialists.
+    Coefficients live in log-odds space; audiences live in probability space.
+  </p>
+</section>
+
+<section>
+  <h2>Evaluation: confusion matrix</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <rect x="200" y="30" width="460" height="200" fill="none" stroke="#94A3B8"/>
+      <line x1="430" y1="30" x2="430" y2="230" stroke="#94A3B8"/>
+      <line x1="200" y1="130" x2="660" y2="130" stroke="#94A3B8"/>
+      <text x="315" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12">Pred 0</text>
+      <text x="545" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12">Pred 1</text>
+      <text x="190" y="85" text-anchor="end" font-family="Inter" font-weight="700" font-size="12">Actual 0</text>
+      <text x="190" y="180" text-anchor="end" font-family="Inter" font-weight="700" font-size="12">Actual 1</text>
+      <rect x="200" y="30" width="230" height="100" fill="#DCFCE7"/>
+      <text x="315" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#15803D">TN</text>
+      <rect x="430" y="30" width="230" height="100" fill="#FEE2E2"/>
+      <text x="545" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#B91C1C">FP</text>
+      <rect x="200" y="130" width="230" height="100" fill="#FEF3C7"/>
+      <text x="315" y="185" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#B45309">FN</text>
+      <rect x="430" y="130" width="230" height="100" fill="#DCFCE7"/>
+      <text x="545" y="185" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#15803D">TP</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Accuracy = (TP+TN)/total. Precision = TP/(TP+FP). Recall = TP/(TP+FN). AUC is threshold-independent.</p>
+</section>
+
+<section>
+  <h2>Worked: ICU mortality (MLE by hand)</h2>
+  <pre><code class="language-python" data-trim>
+def sigmoid(z):
+    return np.where(z >= 0, 1/(1+np.exp(-z)), np.exp(z)/(1+np.exp(z)))
+
+def neg_log_lik(beta, X, y):
+    p = sigmoid(X @ beta)
+    eps = 1e-12
+    return -np.sum(y*np.log(p+eps) + (1-y)*np.log(1-p+eps))
+
+result = minimize(neg_log_lik, np.zeros(X.shape[1]),
+                  args=(X, y), method="BFGS")
+for name, b in zip(names, result.x):
+    print(f"{name}: β={b:+.4f}  OR={np.exp(b):.2f}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: evaluate the classifier</h2>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import confusion_matrix, roc_auc_score
+
+p_hat = sigmoid(X @ result.x)
+y_hat = (p_hat >= 0.5).astype(int)
+
+cm  = confusion_matrix(y, y_hat)
+acc = (y == y_hat).mean()
+auc = roc_auc_score(y, p_hat)
+  </code></pre>
+  <p style="font-size: 0.85em;">Always report accuracy with the confusion matrix — accuracy alone lies on imbalanced data.</p>
+</section>
+
+<section>
+  <h2>ANOVA: generalising the $t$-test</h2>
+  <p>Test whether 3+ groups have the same mean. Decompose variance:</p>
+  \[ \text{SS}_{\text{total}} = \text{SS}_{\text{between}} + \text{SS}_{\text{within}} \]
+  \[ F = \frac{\text{MS}_{\text{between}}}{\text{MS}_{\text{within}}} = \frac{\text{SS}_{\text{between}}/(k-1)}{\text{SS}_{\text{within}}/(n-k)} \]
+  <p style="font-size: 0.85em;">Under $H_0$ (all group means equal), $F \sim F_{k-1, n-k}$. With 2 groups, ANOVA's $F$ is the square of the $t$-statistic.</p>
+</section>
+
+<section>
+  <h2>Post-hoc: Tukey's HSD</h2>
+  <p>ANOVA says "some group differs". Tukey's HSD says <em>which</em>.</p>
+  \[ \text{HSD} = q_{\alpha, k, n-k} \cdot \sqrt{\frac{\text{MS}_{\text{within}}}{n_{\text{group}}}} \]
+  <p>Two means differ significantly if their difference exceeds HSD. Family-wise error control is built in.</p>
+  <pre><code class="language-python" data-trim>
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+result = pairwise_tukeyhsd(prices, labels, alpha=0.05)
+print(result)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: HDB prices across flat types</h2>
+  <pre><code class="language-python" data-trim>
+groups = {k: df.filter(pl.col("flat_type") == k)["resale_price"].to_numpy()
+          for k in ["3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]}
+F, p = stats.f_oneway(*groups.values())
+# → F huge, p ≈ 0
+
+# Which pairs differ?
+prices = np.concatenate(list(groups.values()))
+labels = np.concatenate([[k]*len(v) for k, v in groups.items()])
+pairwise_tukeyhsd(prices, labels)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Three rookie mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>1. Blind 0.5 threshold.</strong> It's arbitrary. Optimise for business cost.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>2. Accuracy on imbalanced data.</strong> 95% sounds great — until base rate is 95%.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>3. Multiple pairwise $t$-tests.</strong> Use ANOVA + Tukey.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Derive the sigmoid from the log-odds link</li>
+    <li>✓ Write and optimise the Bernoulli log-likelihood</li>
+    <li>✓ Interpret logistic coefficients as odds ratios</li>
+    <li>✓ Evaluate with confusion matrix, accuracy, AUC</li>
+    <li>✓ Run one-way ANOVA and decompose variance</li>
+    <li>✓ Use Tukey HSD for post-hoc pairwise comparisons</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.7 — CUPED, DiD, and causal inference.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

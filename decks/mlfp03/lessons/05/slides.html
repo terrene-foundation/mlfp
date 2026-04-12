@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.5 — Model Evaluation, Imbalance, and Calibration | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.48em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.5</p>
+  <h1>Evaluation, Imbalance, and Calibration</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Confusion matrix · ROC vs PR · SMOTE · Focal loss · Platt scaling · Brier</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 75 min</strong> · Prereq: 3.4 · Outcome: turn raw classifier into calibrated decision system
+  </div>
+</section>
+
+<section>
+  <h2>The confusion matrix</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="13">
+        <text x="280" y="85" text-anchor="middle">Negative</text>
+        <text x="440" y="85" text-anchor="middle">Positive</text>
+        <text x="175" y="125" text-anchor="end">Pred Neg</text>
+        <text x="175" y="185" text-anchor="end">Pred Pos</text>
+        <rect x="200" y="95" width="160" height="60" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="280" y="125" text-anchor="middle" font-weight="700" fill="#166534">TN</text>
+        <rect x="360" y="95" width="160" height="60" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="440" y="125" text-anchor="middle" font-weight="700" fill="#B45309">FN</text>
+        <rect x="200" y="155" width="160" height="60" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="280" y="185" text-anchor="middle" font-weight="700" fill="#B45309">FP</text>
+        <rect x="360" y="155" width="160" height="60" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="440" y="185" text-anchor="middle" font-weight="700" fill="#166534">TP</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>The formulas</h2>
+  <div style="padding: 14px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{Precision} = \frac{TP}{TP+FP}\qquad \text{Recall} = \frac{TP}{TP+FN} \]
+  </div>
+  <div style="padding: 14px; background: #F8FAFC; border-radius: 8px; margin-top: 1em;">
+    \[ F_1 = 2\cdot\frac{\text{Prec}\cdot\text{Rec}}{\text{Prec}+\text{Rec}} \]
+  </div>
+  <p style="font-size: 0.85em;">On 12% credit data, predicting "no default" for everyone scores 88% accuracy. F1 = 0. <strong>Accuracy lies.</strong></p>
+</section>
+
+<section>
+  <h2>ROC vs PR — why PR is honest on imbalanced data</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <text x="180" y="25" text-anchor="middle" font-weight="700">ROC</text>
+        <line x1="60" y1="240" x2="300" y2="240" stroke="#334155"/>
+        <line x1="60" y1="50" x2="60" y2="240" stroke="#334155"/>
+        <line x1="60" y1="240" x2="300" y2="50" stroke="#94A3B8" stroke-dasharray="3 3"/>
+        <path d="M 60 240 Q 80 80, 200 60 T 300 50" fill="rgba(13,148,136,0.2)" stroke="#0D9488" stroke-width="2.5"/>
+        <text x="200" y="160" fill="#0F766E" font-weight="600">AUC=0.87 (looks great)</text>
+        <text x="540" y="25" text-anchor="middle" font-weight="700">PR</text>
+        <line x1="420" y1="240" x2="660" y2="240" stroke="#334155"/>
+        <line x1="420" y1="50" x2="420" y2="240" stroke="#334155"/>
+        <line x1="420" y1="220" x2="660" y2="220" stroke="#94A3B8" stroke-dasharray="3 3"/>
+        <text x="655" y="216" text-anchor="end" font-size="10" fill="#64748B">base rate</text>
+        <path d="M 420 70 Q 520 90, 580 140 T 660 220" fill="rgba(13,148,136,0.2)" stroke="#0D9488" stroke-width="2.5"/>
+        <text x="480" y="120" fill="#0F766E" font-weight="600">AP=0.48 (honest)</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Why ROC fails on imbalanced data</h2>
+  <ul style="font-size: 0.88em;">
+    <li>$\text{FPR} = FP / (FP + TN)$ — when negatives dominate, FP is tiny relative to TN</li>
+    <li>Moving $FP$ from 10 to 1000 barely changes FPR</li>
+    <li>ROC stays beautiful while precision is miserable</li>
+    <li><strong>PR has no blind spot</strong>: ignores $TN$ entirely. Every false positive counts.</li>
+  </ul>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
+    <strong>Rule of thumb:</strong> positive class &lt; 20%? report PR-AUC. Otherwise, either works.
+  </div>
+</section>
+
+<section>
+  <h2>Four imbalance techniques</h2>
+  <ol style="font-size: 0.88em;">
+    <li><strong>SMOTE</strong> — synthesise minority samples via $k$-NN interpolation. Fragile in high-dim or noisy minority.</li>
+    <li><strong>Cost-sensitive</strong> — <code>class_weight</code> in the loss. No fake data.</li>
+    <li><strong>Focal loss</strong> — $(1 - p_t)^\gamma$ factor down-weights easy examples. Focus on the hard.</li>
+    <li><strong>Threshold tuning</strong> — derive from business cost matrix, not default 0.5.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Focal loss</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{FL}(p_t) = -\alpha_t (1 - p_t)^\gamma \log(p_t) \]
+  </div>
+  <ul style="font-size: 0.85em;">
+    <li>$p_t$ = predicted probability of the true class</li>
+    <li>$\gamma = 0$ → ordinary weighted cross-entropy</li>
+    <li>$\gamma = 2$: easy example at $p_t = 0.9$ gets factor $0.01$ — 100× less influence</li>
+    <li>Hard example at $p_t = 0.3$ gets factor $0.49$ — barely changed</li>
+    <li>Gradient is dominated by hard cases</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Threshold from the cost matrix</h2>
+  <p style="font-size: 0.88em;">Given costs $(c_{FP}, c_{FN})$, predict positive iff $p > c_{FP}/(c_{FP}+c_{FN})$.</p>
+  <div style="padding: 14px; background: #F8FAFC; border-radius: 8px;">
+    \[ t^* = \frac{c_{FP}}{c_{FP} + c_{FN}} \]
+  </div>
+  <p style="font-size: 0.88em;">100:1 credit costs: $t^* = 100/10100 \approx 0.0099$.</p>
+  <p style="font-size: 0.88em; color: #B91C1C;"><strong>Not 0.5!</strong> Any doubt about a loan is enough to flag when missing a default is 100× more expensive.</p>
+</section>
+
+<section>
+  <h2>Calibration — reliability diagram</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <line x1="80" y1="260" x2="620" y2="260" stroke="#334155"/>
+        <line x1="80" y1="50" x2="80" y2="260" stroke="#334155"/>
+        <text x="350" y="290" text-anchor="middle">Predicted probability</text>
+        <text x="40" y="155" text-anchor="middle" transform="rotate(-90 40 155)">Observed frequency</text>
+        <line x1="80" y1="260" x2="620" y2="50" stroke="#10B981" stroke-dasharray="3 3"/>
+        <text x="590" y="80" fill="#047857" font-size="10">perfect</text>
+        <path d="M 80 260 Q 200 250, 280 220 Q 340 180, 400 150 Q 460 120, 520 100 Q 580 70, 620 50" fill="none" stroke="#DC2626" stroke-width="2.5"/>
+        <text x="430" y="200" fill="#B91C1C" font-weight="600">raw GBM: over-confident</text>
+        <path d="M 80 260 Q 180 235, 280 190 Q 380 140, 480 90 Q 560 60, 620 50" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-dasharray="5 3"/>
+        <text x="200" y="170" fill="#1D4ED8" font-weight="600">after calibration</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Two calibration methods</h2>
+  <ul style="font-size: 0.9em;">
+    <li><strong>Platt scaling:</strong> fit $\sigma(Ax + B)$ on model scores. One parameter plus bias. Cheap. Works when miscalibration is sigmoid-shaped.</li>
+    <li><strong>Isotonic regression:</strong> non-decreasing piecewise-constant function. Flexible but needs more data.</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+from sklearn.calibration import CalibratedClassifierCV
+
+cal = CalibratedClassifierCV(base_model, method="isotonic", cv=5)
+cal.fit(X_tr, y_tr)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Brier score — proper scoring rule</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{BS} = \frac{1}{N}\sum_i (p_i - y_i)^2 \]
+  </div>
+  <ul style="font-size: 0.88em;">
+    <li>Lower is better</li>
+    <li>Proper scoring rule: minimised by reporting the true probability</li>
+    <li>Cheating (push everything to 0/1) scores <em>worse</em> than honest uncertainty</li>
+    <li>Report before and after calibration to show improvement</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Full pipeline — credit scoring</h2>
+  <pre><code class="language-python" data-trim>
+# 1. Baseline
+base = lgb.LGBMClassifier(n_estimators=400).fit(X_tr, y_tr)
+
+# 2. Cost-sensitive
+weighted = lgb.LGBMClassifier(n_estimators=400,
+    class_weight={0: 1, 1: 100}).fit(X_tr, y_tr)
+
+# 3. Threshold from cost matrix
+t_opt = 100 / (100 + 10_000)  # 0.0099
+pred = (weighted.predict_proba(X_te)[:, 1] >= t_opt).astype(int)
+
+# 4. Post-hoc calibration
+cal = CalibratedClassifierCV(weighted, method="isotonic", cv=3).fit(X_tr, y_tr)
+p_cal = cal.predict_proba(X_te)[:, 1]
+print("Brier:", brier_score_loss(y_te, p_cal))
+  </code></pre>
+</section>
+
+<section>
+  <h2>Three traps</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>1.</strong> Reporting accuracy on imbalanced data
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>2.</strong> SMOTE-ing the test set (SMOTE is training-only)
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>3.</strong> Leaving the decision threshold at 0.5
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Read and explain every cell of the confusion matrix</li>
+    <li>✓ Pick ROC vs PR appropriately (PR for imbalanced)</li>
+    <li>✓ Apply SMOTE, cost-sensitive learning, focal loss</li>
+    <li>✓ Derive the cost-optimal decision threshold from a business cost matrix</li>
+    <li>✓ Calibrate with Platt scaling or isotonic regression and measure with Brier</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 3.6 — <em>should</em> this model be deployed? SHAP, LIME, fairness, impossibility theorem.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

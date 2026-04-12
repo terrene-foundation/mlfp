@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.2 — CNNs and Computer Vision | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.2</p>
+  <h1>CNNs and Computer Vision</h1>
+  <p style="font-size: 0.7em; color: #64748B;">LeNet · AlexNet · VGG · ResNet · SE · ViT</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 60 minutes</strong> &nbsp;·&nbsp; <strong>Prerequisite:</strong> 5.1 (AE, PyTorch training loop)
+  </div>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>Why convolutions?</h2>
+  <p>A 224×224 colour image has <strong>150,528</strong> pixels. A fully connected layer to 1000 units needs 150M parameters and learns nothing about spatial structure.</p>
+  <p>Images have two properties we need to exploit:</p>
+  <ul>
+    <li><strong>Local structure</strong> — adjacent pixels are correlated</li>
+    <li><strong>Translation equivariance</strong> — a cat is a cat regardless of position</li>
+  </ul>
+  <p>A convolution uses the <em>same</em> small filter at <em>every</em> position.</p>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>The convolution op</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="30" width="150" height="150" fill="#F1F5F9" stroke="#64748B"/>
+      <rect x="60" y="60" width="75" height="75" fill="rgba(13, 148, 136, 0.35)" stroke="#0D9488" stroke-width="2"/>
+      <text x="105" y="20" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">input 6×6</text>
+      <rect x="240" y="70" width="75" height="75" fill="#0D9488" stroke="#0F766E" stroke-width="2"/>
+      <text x="277" y="60" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">3×3 kernel</text>
+      <text x="277" y="170" text-anchor="middle" font-family="Inter" font-size="10" fill="white">(shared weights)</text>
+      <rect x="370" y="50" width="100" height="100" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="420" y="40" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">output 4×4</text>
+      <line x1="180" y1="100" x2="235" y2="100" stroke="#64748B" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="315" y1="100" x2="370" y2="100" stroke="#64748B" stroke-width="1" stroke-dasharray="3 3"/>
+    </svg>
+  </figure>
+  <p style="text-align: center;">Output size: \( (W - F + 2P)/S + 1 \)</p>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>Conv arithmetic — the one formula</h2>
+  <div style="text-align: center; margin: 1.5em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ W_{\text{out}} = \left\lfloor \frac{W - F + 2P}{S} \right\rfloor + 1 \]
+  </div>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Same</strong> (stride 1, <em>P</em> = (F−1)/2): 28×28 → 28×28</li>
+    <li><strong>Halving</strong> (stride 2, <em>F</em>=3, <em>P</em>=1): 28×28 → 14×14</li>
+  </ul>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>A short history</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Year</th><th>Model</th><th>Key idea</th></tr></thead>
+    <tbody>
+      <tr><td>1998</td><td>LeNet</td><td>First working CNN</td></tr>
+      <tr><td>2012</td><td>AlexNet</td><td>ReLU, dropout, GPUs, ImageNet</td></tr>
+      <tr><td>2014</td><td>VGG</td><td>Only 3×3, depth is what matters</td></tr>
+      <tr><td>2014</td><td>Inception</td><td>Parallel filter sizes in one block</td></tr>
+      <tr><td>2015</td><td><strong>ResNet</strong></td><td><strong>Skip connections</strong></td></tr>
+      <tr><td>2017</td><td>SENet</td><td>Channel attention</td></tr>
+      <tr><td>2020</td><td>ViT</td><td>Transformer on image patches</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>The ResNet idea</h2>
+  <p>Before ResNet: adding more layers <em>hurt</em> accuracy after ~20 layers. Not overfitting — gradient vanishing.</p>
+  <p>ResNet learns the residual and adds the input back:</p>
+  <div style="text-align: center; margin: 1.5em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ H(x) = F(x) + x \]
+  </div>
+  <p style="font-size: 0.85em;">The skip gives gradients a clear path back. In the worst case, <em>F</em> can learn zero and the block becomes the identity — so adding layers can never hurt.</p>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>ResNet basic block</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="85" width="80" height="36" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="70" y="108" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">x</text>
+      <rect x="150" y="50" width="140" height="36" rx="4" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="220" y="73" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Conv+BN+ReLU</text>
+      <rect x="150" y="130" width="140" height="36" rx="4" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="220" y="153" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Conv+BN</text>
+      <circle cx="360" cy="103" r="20" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="360" y="109" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#B45309">+</text>
+      <rect x="410" y="85" width="110" height="36" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="465" y="108" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">ReLU → out</text>
+      <line x1="110" y1="103" x2="148" y2="68" stroke="#0D9488" stroke-width="2"/>
+      <line x1="290" y1="68" x2="290" y2="130" stroke="#0D9488" stroke-width="2"/>
+      <line x1="290" y1="148" x2="340" y2="103" stroke="#0D9488" stroke-width="2"/>
+      <path d="M 110 103 Q 230 200 340 103" stroke="#F59E0B" stroke-width="3" stroke-dasharray="6 4" fill="none"/>
+      <line x1="380" y1="103" x2="408" y2="103" stroke="#0D9488" stroke-width="2"/>
+      <text x="230" y="200" font-family="Inter" font-style="italic" font-size="11" fill="#B45309">identity shortcut</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>BasicBlock in PyTorch</h2>
+  <pre><code class="language-python" data-trim>
+class BasicBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(channels)
+
+    def forward(self, x):
+        identity = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = out + identity          # ← the magic line
+        return F.relu(out)
+  </code></pre>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>Squeeze-and-Excitation</h2>
+  <p>Drop-in block (2017) that rescales channels based on global context.</p>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Squeeze</strong>: global average pool each channel → one number</li>
+    <li><strong>Excite</strong>: tiny MLP → sigmoid → weight in (0, 1)</li>
+    <li><strong>Scale</strong>: multiply each channel by its weight</li>
+  </ol>
+  <div style="text-align: center; background: #F8FAFC; padding: 12px; border-radius: 6px;">
+    \( w = \sigma(W_2 \, \text{ReLU}(W_1 \, \text{GAP}(x))) \)
+  </div>
+  <p style="font-size: 0.85em;">Adds ~3% parameters, buys ~1–2% accuracy on ImageNet.</p>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>SE block code</h2>
+  <pre><code class="language-python" data-trim>
+class SEBlock(nn.Module):
+    def __init__(self, channels, reduction=8):
+        super().__init__()
+        hidden = max(channels // reduction, 4)
+        self.fc1 = nn.Linear(channels, hidden)
+        self.fc2 = nn.Linear(hidden, channels)
+
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        s = x.mean(dim=[2, 3])                # squeeze (GAP)
+        s = F.relu(self.fc1(s))
+        s = torch.sigmoid(self.fc2(s))        # excite
+        return x * s.view(b, c, 1, 1)         # scale
+  </code></pre>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>Stacking them</h2>
+  <pre><code class="language-python" data-trim>
+class TinyResNetSE(nn.Module):
+    def __init__(self, n_classes=3):
+        super().__init__()
+        self.stem   = nn.Sequential(nn.Conv2d(1, 16, 3, padding=1),
+                                    nn.BatchNorm2d(16), nn.ReLU())
+        self.block1 = BasicBlock(16)
+        self.se1    = SEBlock(16)
+        self.down   = nn.Conv2d(16, 32, 3, stride=2, padding=1)
+        self.block2 = BasicBlock(32)
+        self.se2    = SEBlock(32)
+        self.head   = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                                    nn.Flatten(),
+                                    nn.Linear(32, n_classes))
+  </code></pre>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>Training loop — familiar territory</h2>
+  <pre><code class="language-python" data-trim>
+model = TinyResNetSE().to(device)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+for epoch in range(15):
+    for xb, yb in loader:
+        logits = model(xb)
+        loss = F.cross_entropy(logits, yb)
+        opt.zero_grad(); loss.backward(); opt.step()
+  </code></pre>
+  <p>Identical structure to M4.8 and to Lesson 5.1. The only change: cross-entropy instead of MSE.</p>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>Modern training recipes</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Trick</th><th>What</th><th>Gain</th></tr></thead>
+    <tbody>
+      <tr><td>Kaiming init</td><td>Variance 2/n_in, for ReLU</td><td>Fast convergence</td></tr>
+      <tr><td>Mixed precision</td><td>FP16 forward, FP32 master</td><td>2× speed, ½ mem</td></tr>
+      <tr><td>Mixup</td><td>Blend pairs of inputs/labels</td><td>+1% acc</td></tr>
+      <tr><td>Label smoothing</td><td>Soft targets</td><td>Calibration</td></tr>
+      <tr><td>Cosine LR schedule</td><td>Anneal LR along cosine</td><td>+0.5–1% acc</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>Exporting with OnnxBridge</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import OnnxBridge
+bridge = OnnxBridge()
+bridge.export(
+    model=model.cpu().eval(),
+    sample_input=torch.randn(1, 1, 28, 28),
+    output_path="tiny_resnet_se.onnx",
+)
+  </code></pre>
+  <p>Traces the model, writes ONNX, validates PyTorch↔ONNX parity automatically. If an op is unsupported, it raises before you ship.</p>
+</section>
+
+<!-- 15 -->
+<section>
+  <h2>Vision Transformers in one slide</h2>
+  <p>2020+: ViT matches ResNet on ImageNet without a single convolution.</p>
+  <ul style="font-size: 0.85em;">
+    <li>Split image into 16×16 patches → flatten each to a vector</li>
+    <li>Add a learned position embedding per patch</li>
+    <li>Feed the sequence to a standard Transformer encoder (Lesson 5.4)</li>
+  </ul>
+  <p>For very large datasets: ViT ≥ CNN. For small datasets: CNN still wins (stronger inductive bias).</p>
+</section>
+
+<!-- 16 -->
+<section>
+  <h2>Four traps</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Forgetting <code>model.eval()</code></strong> — BN uses batch stats in train mode, running avg in eval.</li>
+    <li><strong>Spatial mismatch in the skip</strong> — when downsampling, use a 1×1 conv on the shortcut.</li>
+    <li><strong>LR too high for deep nets</strong> — start 1e-3 Adam; halve on NaN.</li>
+    <li><strong><code>.view(b, -1)</code> vs <code>flatten</code></strong> — use <code>torch.flatten</code> or <code>nn.Flatten</code>.</li>
+  </ul>
+</section>
+
+<!-- 17 -->
+<section>
+  <h2>Reflection</h2>
+  <ul style="font-size: 0.85em;">
+    <li>✓ Compute conv output size from the one formula</li>
+    <li>✓ Build a ResNet basic block and explain the skip connection</li>
+    <li>✓ Add SE blocks for channel attention</li>
+    <li>✓ Train with Adam + cross-entropy</li>
+    <li>✓ Export to ONNX with OnnxBridge</li>
+    <li>✓ Know when ViT beats CNN (and when it doesn't)</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> 5.3 RNNs and LSTMs — from spatial to temporal feature learning.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

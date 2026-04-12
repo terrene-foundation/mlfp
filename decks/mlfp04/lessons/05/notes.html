@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.5 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.5</span>
+  Association Rules and Market Basket Analysis
+</h1>
+
+<p class="lead">Total time: ~60 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3–4 min per slide</p>
+
+<p>
+  This is the shortest textbook lesson in M4 — the concepts are
+  straightforward and the algorithm is well-known. Spend extra time on
+  the confidence-vs-lift distinction and on the "rules as features"
+  forward connection. The math is light; the pedagogical lift is in the
+  business interpretation.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Association Rules and Market Basket Analysis</h3>
+  <p>
+    Frame: "This is the oldest unsupervised technique we will study.
+    Thirty years old, still running on every e-commerce site. Today we
+    learn how it works and how to turn its output into features for
+    supervised models."
+  </p>
+  <div class="transition">→ "The core idea."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>The oldest unsupervised trick in the book</h3>
+  <p>
+    Give the apocryphal example: "Thirty years ago a researcher found
+    that supermarket customers who bought nappies on Thursday nights also
+    bought beer. Probably apocryphal, but it launched a whole subfield.
+    Today you see it in 'customers also bought' and 'frequently viewed
+    together' widgets everywhere."
+  </p>
+  <div class="transition">→ "The pipeline: transactions → itemsets → rules."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Pipeline diagram</span></div>
+  <h3>The pipeline</h3>
+  <p>
+    Walk the three-box pipeline. Transactions → frequent itemsets →
+    rules. Emphasise the support threshold between boxes 1 and 2 —
+    that is the expensive step. From itemsets to rules is cheap.
+  </p>
+  <div class="transition">→ "Three metrics define every rule."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>Three metrics</span></div>
+  <h3>Three metrics</h3>
+  <p>
+    Walk the three formulas. Support is "how common", confidence is
+    "given X, how likely is Y", lift is "compared to random chance, is
+    Y more likely when X is present?" These three must become second
+    nature.
+  </p>
+  <div class="audience-cue beginner">
+    "If this still feels abstract: support is frequency, confidence is 'how reliable is the rule', lift is 'is the rule better than guessing'. That's it."
+  </div>
+  <div class="transition">→ "Lift is the star of the show."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Lift</span></div>
+  <h3>Lift is the metric you report</h3>
+  <p>
+    Key point: high confidence alone is not a finding. "If everyone
+    buys bread, then confidence(anything → bread) is high. Lift corrects
+    for this by dividing by the base rate of bread."
+  </p>
+  <p>
+    Emphasise: "When you present rules to a stakeholder, report lift,
+    not confidence. Lift is the actionable signal."
+  </p>
+  <div class="transition">→ "Numerical walkthrough."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Numerical example</span></div>
+  <h3>Numerical example</h3>
+  <p>
+    Walk the three calculations. Bread is 20% of baskets, butter is 10%,
+    both is 5%. Confidence is 0.25, lift is 2.5. "2.5× is a strong
+    signal — worth a cross-sell experiment."
+  </p>
+  <div class="transition">→ "Computationally, how do we find frequent itemsets?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Apriori property</span></div>
+  <h3>Apriori property</h3>
+  <p>
+    State it clearly. "If {A,D} is infrequent, no itemset containing both
+    A and D can be frequent. That is what saves us from $2^d$ itemsets —
+    we prune aggressively at each level."
+  </p>
+  <div class="audience-cue expert">
+    "This is the anti-monotone property of support — it is a monotone function under set inclusion and can be used in branch-and-bound search. The same property appears in closed frequent itemsets and generalisations to sequential patterns."
+  </div>
+  <div class="transition">→ "Visually."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Apriori diagram</span></div>
+  <h3>Apriori in pictures</h3>
+  <p>
+    Walk the three levels. At L1, {D} is infrequent (red). At L2,
+    {A,D} is correctly dropped because {D} was infrequent. At L3,
+    {A,B,D} is pruned without ever being counted because its subset
+    {A,D} was infrequent — that is the property in action.
+  </p>
+  <div class="transition">→ "Faster alternative: FP-Growth."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>FP-Growth</span></div>
+  <h3>FP-Growth — faster cousin</h3>
+  <p>
+    Brief. "Single pass of the data, compressed FP-tree, recursive
+    mining. 2 – 10× faster than Apriori on dense data. Same output."
+    Do not go into the tree construction — students just need to know
+    it exists and when to prefer it (almost always).
+  </p>
+  <div class="transition">→ "Real example."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>Worked example: Singapore retail</h3>
+  <p>
+    Walk the code. Emphasise that <code>use_colnames=True</code> makes
+    the output readable with item names instead of indices. Sort by lift
+    descending, take top 10. Point at <code>modules/mlfp04/solutions/ex_5.py</code>
+    for the full script including data preparation.
+  </p>
+  <div class="transition">→ "How to read a rule."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Interpret rule</span></div>
+  <h3>Interpreting a rule</h3>
+  <p>
+    Walk the noodles-tuna-rice example. "Translate the numbers into a
+    business sentence: 'customers buying noodles and tuna are 3.4× more
+    likely to also buy rice'. Then propose an action: promo bundle,
+    shelf placement, widget. This translation is what separates a
+    usable analysis from an academic exercise."
+  </p>
+  <div class="transition">→ "And then: turn rules into features."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Features</span></div>
+  <h3>Rules as features — the feed-forward</h3>
+  <p>
+    This is the strategically important slide. "Association rules are
+    not a dead end. The best rules become binary features — has_pattern
+    columns — that you add to a feature store and feed into supervised
+    models. The unsupervised discovery powers supervised prediction."
+  </p>
+  <p>
+    Connect this to the feature engineering spectrum: "This is a step
+    between manual M3 features and the continuous embeddings we will
+    see in 4.7."
+  </p>
+  <div class="transition">→ "One more metric: conviction."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Conviction</span></div>
+  <h3>Conviction — direction matters</h3>
+  <p>
+    Brief. "Lift is symmetric — $A \to B$ and $B \to A$ have the same
+    lift. Conviction is asymmetric and measures the directional
+    strength. Use it when rule direction is meaningful."
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four rookie mistakes</h3>
+  <p>
+    Walk all four. #1 and #4 are the most common in practice.
+  </p>
+  <div class="transition">→ "Recap and forward links."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Cross-refs</span></div>
+  <h3>Cross-references</h3>
+  <p>
+    Walk the three links. Strongest connection is 4.7 — "we have discrete
+    co-occurrence rules today; in 4.7 we will learn continuous
+    embeddings that generalise them." This is important setup for the
+    pivot lesson.
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Checklist. Preview 4.6: "Next we apply the same discovery mindset
+    to text. Documents are baskets, words are items — and the math is
+    richer because word frequencies have heavy tails."
+  </p>
+  <div class="transition">→ End of lesson.</div>
+</div>
+
+</main>
+</body>
+</html>

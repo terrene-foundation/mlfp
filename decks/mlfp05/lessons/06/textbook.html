@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.6 — Graph Neural Networks | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5: Deep Learning</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 5.6</span>
+  Graph Neural Networks
+</h1>
+
+<p class="lead">
+  Not all data fits neatly into grids (images) or sequences (text). Social
+  networks, molecular structures, knowledge graphs, and supply chains are
+  naturally <strong>graphs</strong> — nodes connected by edges. Today you learn
+  three architectures — GCN, GraphSAGE, and GAT — that extend neural networks
+  to graph-structured data using <em>message passing</em>: each node updates
+  its representation by aggregating information from its neighbours. You implement
+  graph classification on molecular data using <code>torch_geometric</code> and
+  visualise learned node embeddings to see what GNNs discover.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Singapore's MRT network is a graph: stations are nodes, rail connections are
+  edges, and passenger flow is a signal on that graph. DBS Bank's fraud detection
+  system models transactions as a graph — accounts are nodes, transfers are edges,
+  and suspicious patterns emerge as unusual subgraph structures. NUS chemistry
+  researchers model molecules as graphs — atoms are nodes, bonds are edges, and
+  predicting molecular properties (toxicity, solubility, drug efficacy) is a
+  graph classification task.
+</p>
+
+<p>
+  Whenever your data has <strong>explicit relationships between entities</strong>,
+  a graph representation captures structure that tabular data loses. Flattening
+  a social network into a feature table discards the connection topology — who
+  knows whom, who influences whom — which is often the most predictive signal.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 250" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="gnn-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Three data structures, three architectures</text>
+
+  <!-- Grid (CNN) -->
+  <rect x="30" y="50" width="180" height="130" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="120" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Grid (CNN)</text>
+  <!-- Small grid -->
+  <rect x="60" y="90" width="25" height="25" fill="#93C5FD" stroke="#3B82F6"/>
+  <rect x="85" y="90" width="25" height="25" fill="#BFDBFE" stroke="#3B82F6"/>
+  <rect x="110" y="90" width="25" height="25" fill="#93C5FD" stroke="#3B82F6"/>
+  <rect x="135" y="90" width="25" height="25" fill="#BFDBFE" stroke="#3B82F6"/>
+  <rect x="60" y="115" width="25" height="25" fill="#BFDBFE" stroke="#3B82F6"/>
+  <rect x="85" y="115" width="25" height="25" fill="#93C5FD" stroke="#3B82F6"/>
+  <rect x="110" y="115" width="25" height="25" fill="#BFDBFE" stroke="#3B82F6"/>
+  <rect x="135" y="115" width="25" height="25" fill="#93C5FD" stroke="#3B82F6"/>
+  <text x="120" y="162" text-anchor="middle" font-size="10" fill="#64748B">Images, spatial data</text>
+
+  <!-- Sequence (RNN/Transformer) -->
+  <rect x="270" y="50" width="180" height="130" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="360" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">Sequence (RNN)</text>
+  <circle cx="300" cy="110" r="12" fill="#86EFAC" stroke="#22C55E"/>
+  <circle cx="335" cy="110" r="12" fill="#86EFAC" stroke="#22C55E"/>
+  <circle cx="370" cy="110" r="12" fill="#86EFAC" stroke="#22C55E"/>
+  <circle cx="405" cy="110" r="12" fill="#86EFAC" stroke="#22C55E"/>
+  <line x1="314" y1="110" x2="321" y2="110" stroke="#22C55E" stroke-width="2"/>
+  <line x1="349" y1="110" x2="356" y2="110" stroke="#22C55E" stroke-width="2"/>
+  <line x1="384" y1="110" x2="391" y2="110" stroke="#22C55E" stroke-width="2"/>
+  <text x="360" y="162" text-anchor="middle" font-size="10" fill="#64748B">Text, time series</text>
+
+  <!-- Graph (GNN) -->
+  <rect x="510" y="50" width="180" height="130" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="600" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">Graph (GNN)</text>
+  <circle cx="560" cy="100" r="12" fill="#FDE68A" stroke="#F59E0B"/>
+  <circle cx="600" cy="88" r="12" fill="#FDE68A" stroke="#F59E0B"/>
+  <circle cx="640" cy="105" r="12" fill="#FDE68A" stroke="#F59E0B"/>
+  <circle cx="580" cy="140" r="12" fill="#FDE68A" stroke="#F59E0B"/>
+  <circle cx="620" cy="145" r="12" fill="#FDE68A" stroke="#F59E0B"/>
+  <line x1="571" y1="96" x2="589" y2="91" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="611" y1="92" x2="629" y2="101" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="567" y1="110" x2="574" y2="130" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="592" y1="141" x2="609" y2="144" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="628" y1="116" x2="623" y2="134" stroke="#F59E0B" stroke-width="1.5"/>
+  <line x1="600" y1="100" x2="585" y2="130" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="600" y="162" text-anchor="middle" font-size="10" fill="#64748B">Networks, molecules</text>
+
+  <!-- Architecture labels -->
+  <text x="120" y="200" text-anchor="middle" font-size="11" fill="#3B82F6">Fixed neighbourhood</text>
+  <text x="120" y="215" text-anchor="middle" font-size="11" fill="#3B82F6">(3x3, 5x5 kernels)</text>
+  <text x="360" y="200" text-anchor="middle" font-size="11" fill="#22C55E">Ordered, linear</text>
+  <text x="360" y="215" text-anchor="middle" font-size="11" fill="#22C55E">(token by token)</text>
+  <text x="600" y="200" text-anchor="middle" font-size="11" fill="#F59E0B">Variable neighbourhood</text>
+  <text x="600" y="215" text-anchor="middle" font-size="11" fill="#F59E0B">(1-1000 neighbours)</text>
+</svg>
+<figcaption>CNNs process grids with fixed-size kernels. RNNs/Transformers process ordered sequences. GNNs process graphs with variable-size neighbourhoods. Each architecture is optimised for its data structure.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Graph representation</h3>
+
+<p>
+  A graph $G = (V, E)$ consists of nodes $V$ (vertices) and edges $E$
+  (connections). Each node has a feature vector $\mathbf{h}_i \in \mathbb{R}^d$.
+  The graph structure is encoded in the <strong>adjacency matrix</strong>
+  $A \in \{0, 1\}^{|V| \times |V|}$ where $A_{ij} = 1$ if nodes $i$ and $j$
+  are connected.
+</p>
+
+<table>
+  <thead><tr><th>Component</th><th>Symbol</th><th>Singapore example</th></tr></thead>
+  <tbody>
+    <tr><td>Node</td><td>$v_i \in V$</td><td>MRT station, bank account, molecule atom</td></tr>
+    <tr><td>Edge</td><td>$(v_i, v_j) \in E$</td><td>Rail connection, money transfer, chemical bond</td></tr>
+    <tr><td>Node feature</td><td>$\mathbf{h}_i \in \mathbb{R}^d$</td><td>Station capacity, account balance, atomic number</td></tr>
+    <tr><td>Edge feature</td><td>$\mathbf{e}_{ij} \in \mathbb{R}^k$</td><td>Travel time, transfer amount, bond type</td></tr>
+    <tr><td>Adjacency</td><td>$A \in \{0,1\}^{n \times n}$</td><td>Which stations connect directly</td></tr>
+  </tbody>
+</table>
+
+<h3>Message passing — the GNN paradigm</h3>
+
+<p>
+  All GNN architectures share one core idea: <strong>message passing</strong>.
+  At each layer, every node collects information from its neighbours,
+  aggregates it, and updates its own representation. One round of message
+  passing = one GNN layer. After $L$ layers, each node's representation
+  encodes information from its $L$-hop neighbourhood.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Message passing: aggregate → update → repeat</text>
+
+  <!-- Layer 0 -->
+  <text x="120" y="50" text-anchor="middle" font-weight="600" font-size="12" fill="#475569">Layer 0 (input features)</text>
+  <circle cx="60" cy="100" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="60" y="105" text-anchor="middle" font-size="11" fill="#1E40AF">A</text>
+  <circle cx="120" cy="70" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="120" y="75" text-anchor="middle" font-size="11" fill="#1E40AF">B</text>
+  <circle cx="180" cy="100" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="180" y="105" text-anchor="middle" font-size="11" fill="#1E40AF">C</text>
+  <circle cx="120" cy="150" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="120" y="155" text-anchor="middle" font-size="11" fill="#1E40AF">D</text>
+  <line x1="79" y1="90" x2="101" y2="79" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="139" y1="79" x2="161" y2="90" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="120" y1="92" x2="120" y2="128" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="79" y1="110" x2="101" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="161" y1="110" x2="139" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+
+  <!-- Arrow to layer 1 -->
+  <line x1="220" y1="110" x2="260" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#gnn-arr)"/>
+  <text x="240" y="100" text-anchor="middle" font-size="9" fill="#0D9488">aggregate</text>
+
+  <!-- Layer 1 -->
+  <text x="380" y="50" text-anchor="middle" font-weight="600" font-size="12" fill="#475569">Layer 1 (1-hop info)</text>
+  <circle cx="320" cy="100" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="320" y="105" text-anchor="middle" font-size="11" fill="#166534">A'</text>
+  <circle cx="380" cy="70" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="380" y="75" text-anchor="middle" font-size="11" fill="#166534">B'</text>
+  <circle cx="440" cy="100" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="440" y="105" text-anchor="middle" font-size="11" fill="#166534">C'</text>
+  <circle cx="380" cy="150" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="380" y="155" text-anchor="middle" font-size="11" fill="#166534">D'</text>
+  <line x1="339" y1="90" x2="361" y2="79" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="399" y1="79" x2="421" y2="90" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="380" y1="92" x2="380" y2="128" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="339" y1="110" x2="361" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="421" y1="110" x2="399" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+
+  <!-- Arrow to layer 2 -->
+  <line x1="480" y1="110" x2="520" y2="110" stroke="#0D9488" stroke-width="2.5" marker-end="url(#gnn-arr)"/>
+  <text x="500" y="100" text-anchor="middle" font-size="9" fill="#0D9488">aggregate</text>
+
+  <!-- Layer 2 -->
+  <text x="640" y="50" text-anchor="middle" font-weight="600" font-size="12" fill="#475569">Layer 2 (2-hop info)</text>
+  <circle cx="580" cy="100" r="22" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="580" y="105" text-anchor="middle" font-size="11" fill="#92400E">A''</text>
+  <circle cx="640" cy="70" r="22" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="640" y="75" text-anchor="middle" font-size="11" fill="#92400E">B''</text>
+  <circle cx="700" cy="100" r="22" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="700" y="105" text-anchor="middle" font-size="11" fill="#92400E">C''</text>
+  <circle cx="640" cy="150" r="22" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="640" y="155" text-anchor="middle" font-size="11" fill="#92400E">D''</text>
+  <line x1="599" y1="90" x2="621" y2="79" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="659" y1="79" x2="681" y2="90" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="640" y1="92" x2="640" y2="128" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="599" y1="110" x2="621" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="681" y1="110" x2="659" y2="141" stroke="#94A3B8" stroke-width="1.5"/>
+
+  <!-- Receptive field note -->
+  <text x="120" y="200" text-anchor="middle" font-size="10" fill="#64748B">Each node knows</text>
+  <text x="120" y="215" text-anchor="middle" font-size="10" fill="#64748B">only itself</text>
+  <text x="380" y="200" text-anchor="middle" font-size="10" fill="#64748B">Each node knows</text>
+  <text x="380" y="215" text-anchor="middle" font-size="10" fill="#64748B">its direct neighbours</text>
+  <text x="640" y="200" text-anchor="middle" font-size="10" fill="#64748B">Each node knows</text>
+  <text x="640" y="215" text-anchor="middle" font-size="10" fill="#64748B">neighbours' neighbours</text>
+
+  <!-- Over-smoothing warning -->
+  <rect x="180" y="240" width="360" height="28" rx="4" fill="#FEE2E2" stroke="#EF4444"/>
+  <text x="360" y="259" text-anchor="middle" font-size="10" fill="#991B1B">Too many layers → over-smoothing: all nodes converge to same representation</text>
+</svg>
+<figcaption>Each GNN layer expands a node's receptive field by one hop. After 2 layers, every node encodes information from its 2-hop neighbourhood. More than 3-4 layers risks over-smoothing.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Math Foundations</h2>
+
+<h3>GCN — Graph Convolutional Network</h3>
+
+<p>
+  The GCN (Kipf and Welling, 2017) applies a spectral convolution approximation
+  that simplifies to a neighbourhood aggregation with symmetric normalisation:
+</p>
+
+<div class="annotated-equation">
+  $$ H^{(l+1)} = \sigma\bigl(\tilde{D}^{-1/2}\,\tilde{A}\,\tilde{D}^{-1/2}\,H^{(l)}\,W^{(l)}\bigr) $$
+  <div class="annotations">
+    <span>$\tilde{A} = A + I_N$ — adjacency with self-loops</span>
+    <span>$\tilde{D}_{ii} = \sum_j \tilde{A}_{ij}$ — degree matrix</span>
+    <span>$W^{(l)} \in \mathbb{R}^{d_l \times d_{l+1}}$ — learnable weights</span>
+    <span>$\sigma$ — activation (ReLU)</span>
+  </div>
+</div>
+
+<p>
+  The term $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ normalises the
+  adjacency matrix so that high-degree nodes do not dominate. Adding the
+  identity matrix $I_N$ to $A$ creates self-loops — each node also aggregates
+  its own features. The result: each node's new representation is a weighted
+  average of its neighbours' features (including itself), transformed by $W^{(l)}$.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    The symmetric normalisation $\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}$ is
+    key. Without it, nodes with many neighbours would have much larger feature
+    values after aggregation (since they sum more neighbours). The normalisation
+    divides by $\sqrt{\deg(i) \cdot \deg(j)}$, making the aggregation scale-invariant.
+    This is analogous to batch normalisation in CNNs — it prevents features from
+    growing or shrinking uncontrollably across layers.
+  </p>
+</div>
+
+<h3>GraphSAGE — inductive learning</h3>
+
+<p>
+  GCN is <strong>transductive</strong>: it requires the full graph at training
+  time and cannot generalise to unseen nodes. GraphSAGE (Hamilton et al., 2017)
+  is <strong>inductive</strong>: it learns an aggregation function that works on
+  any node, even new ones not seen during training. This is essential for
+  dynamic graphs where new users or products appear daily.
+</p>
+
+<p>
+  GraphSAGE with mean aggregation:
+</p>
+
+<div class="annotated-equation">
+  $$ \mathbf{h}_v^{(l+1)} = \sigma\Bigl(W^{(l)} \cdot \text{CONCAT}\bigl(\mathbf{h}_v^{(l)},\;\text{MEAN}\bigl\{\mathbf{h}_u^{(l)} : u \in \mathcal{N}(v)\bigr\}\bigr)\Bigr) $$
+  <div class="annotations">
+    <span>$\mathcal{N}(v)$ — sampled neighbours of $v$</span>
+    <span>MEAN — mean aggregation (or LSTM, max pooling)</span>
+    <span>CONCAT — concatenate self and aggregated neighbour</span>
+  </div>
+</div>
+
+<p>
+  The critical difference: GraphSAGE <strong>samples</strong> a fixed-size
+  neighbourhood (e.g., 10 neighbours per node per layer) rather than using
+  all neighbours. This makes computation tractable on large graphs — Facebook's
+  social graph has billions of edges, but each aggregation step only touches
+  a fixed number.
+</p>
+
+<h3>GAT — attention on graphs</h3>
+
+<p>
+  GCN weights all neighbours equally (after normalisation). GraphSAGE uses a
+  fixed aggregation function. GAT (Velickovic et al., 2018) <strong>learns
+  different attention weights</strong> for each neighbour pair — the same
+  attention mechanism from Lesson 5.4, applied to graph neighbourhoods:
+</p>
+
+<div class="annotated-equation">
+  $$ e_{ij} = \text{LeakyReLU}\bigl(\mathbf{a}^T [W\mathbf{h}_i \| W\mathbf{h}_j]\bigr) $$
+  <div class="annotations">
+    <span>$W$ — shared weight matrix</span>
+    <span>$\mathbf{a}$ — attention weight vector</span>
+    <span>$\|$ — concatenation</span>
+    <span>$e_{ij}$ — attention coefficient</span>
+  </div>
+</div>
+
+<p>
+  Attention coefficients are normalised with softmax over the neighbourhood:
+</p>
+
+$$ \alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})} $$
+
+<p>
+  The updated representation uses the attention-weighted sum:
+</p>
+
+$$ \mathbf{h}_i^{(l+1)} = \sigma\Bigl(\sum_{j \in \mathcal{N}(i)} \alpha_{ij}\, W\mathbf{h}_j^{(l)}\Bigr) $$
+
+<p>
+  Multi-head attention (as in Transformers) is applied by running $K$ independent
+  attention heads and concatenating or averaging the results.
+</p>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    GAT attention is structurally identical to the self-attention in
+    Transformers (Lesson 5.4). The difference: Transformers attend over all
+    tokens (global attention), while GATs attend only over graph neighbours
+    (local attention). This makes GAT computationally cheaper on sparse graphs
+    — attention is $O(|E|)$ instead of $O(|V|^2)$. On dense graphs, the
+    distinction disappears.
+  </p>
+</div>
+
+<h3>Comparison: GCN vs GraphSAGE vs GAT</h3>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="18" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Aggregation mechanisms compared</text>
+
+  <!-- GCN: equal weights -->
+  <text x="120" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#3B82F6">GCN: equal (normalised)</text>
+  <circle cx="120" cy="100" r="18" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="120" y="105" text-anchor="middle" font-size="10" fill="#1E40AF">v</text>
+  <circle cx="60" cy="65" r="12" fill="#EFF6FF" stroke="#3B82F6"/>
+  <circle cx="180" cy="65" r="12" fill="#EFF6FF" stroke="#3B82F6"/>
+  <circle cx="70" cy="140" r="12" fill="#EFF6FF" stroke="#3B82F6"/>
+  <circle cx="170" cy="140" r="12" fill="#EFF6FF" stroke="#3B82F6"/>
+  <line x1="107" y1="86" x2="68" y2="75" stroke="#3B82F6" stroke-width="1.5"/>
+  <line x1="133" y1="86" x2="172" y2="75" stroke="#3B82F6" stroke-width="1.5"/>
+  <line x1="107" y1="114" x2="78" y2="132" stroke="#3B82F6" stroke-width="1.5"/>
+  <line x1="133" y1="114" x2="162" y2="132" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="120" y="175" text-anchor="middle" font-size="9" fill="#64748B">All edges weight = $\frac{1}{\sqrt{d_i d_j}}$</text>
+
+  <!-- GraphSAGE: sample + aggregate -->
+  <text x="360" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#22C55E">GraphSAGE: sample + mean</text>
+  <circle cx="360" cy="100" r="18" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="360" y="105" text-anchor="middle" font-size="10" fill="#166534">v</text>
+  <circle cx="300" cy="65" r="12" fill="#F0FDF4" stroke="#22C55E"/>
+  <circle cx="420" cy="65" r="12" fill="#F0FDF4" stroke="#22C55E"/>
+  <circle cx="310" cy="140" r="12" fill="#F0FDF4" stroke="#22C55E" stroke-dasharray="3 2"/>
+  <circle cx="410" cy="140" r="12" fill="#F0FDF4" stroke="#22C55E"/>
+  <line x1="347" y1="86" x2="308" y2="75" stroke="#22C55E" stroke-width="1.5"/>
+  <line x1="373" y1="86" x2="412" y2="75" stroke="#22C55E" stroke-width="1.5"/>
+  <line x1="347" y1="114" x2="318" y2="132" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="373" y1="114" x2="402" y2="132" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="360" y="175" text-anchor="middle" font-size="9" fill="#64748B">Fixed sample size, MEAN agg</text>
+
+  <!-- GAT: attention weights -->
+  <text x="600" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#F59E0B">GAT: learned attention</text>
+  <circle cx="600" cy="100" r="18" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="600" y="105" text-anchor="middle" font-size="10" fill="#92400E">v</text>
+  <circle cx="540" cy="65" r="12" fill="#FFFBEB" stroke="#F59E0B"/>
+  <circle cx="660" cy="65" r="12" fill="#FFFBEB" stroke="#F59E0B"/>
+  <circle cx="550" cy="140" r="12" fill="#FFFBEB" stroke="#F59E0B"/>
+  <circle cx="650" cy="140" r="12" fill="#FFFBEB" stroke="#F59E0B"/>
+  <line x1="587" y1="86" x2="548" y2="75" stroke="#F59E0B" stroke-width="3"/>
+  <line x1="613" y1="86" x2="652" y2="75" stroke="#F59E0B" stroke-width="1"/>
+  <line x1="587" y1="114" x2="558" y2="132" stroke="#F59E0B" stroke-width="2"/>
+  <line x1="613" y1="114" x2="642" y2="132" stroke="#F59E0B" stroke-width="1"/>
+  <text x="600" y="175" text-anchor="middle" font-size="9" fill="#64748B">Line thickness = attention weight $\alpha_{ij}$</text>
+</svg>
+<figcaption>GCN uses fixed degree-normalised weights (all edges equal). GraphSAGE samples a subset (dashed = not sampled) and applies a fixed aggregation (mean). GAT learns attention weights per edge (thicker lines = higher attention).</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th>Feature</th><th>GCN</th><th>GraphSAGE</th><th>GAT</th></tr></thead>
+  <tbody>
+    <tr><td>Neighbour weighting</td><td>Fixed (degree normalised)</td><td>Fixed (mean/max/LSTM)</td><td>Learned (attention)</td></tr>
+    <tr><td>Inductive?</td><td>No (transductive)</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Large graphs</td><td>Full matrix multiply</td><td>Sampling-based</td><td>Sparse attention</td></tr>
+    <tr><td>Flexibility</td><td>Low</td><td>Medium</td><td>High</td></tr>
+    <tr><td>Parameters</td><td>Fewest</td><td>Moderate</td><td>Most</td></tr>
+    <tr><td>Best for</td><td>Static, small graphs</td><td>Dynamic, large graphs</td><td>Heterogeneous edges</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>GNN Tasks</h2>
+
+<p>
+  GNNs support three levels of prediction:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="18" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Node classification vs graph classification</text>
+
+  <!-- Node classification -->
+  <text x="180" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#3B82F6">Node classification</text>
+  <circle cx="120" cy="90" r="16" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="120" y="95" text-anchor="middle" font-size="8" fill="#166534">safe</text>
+  <circle cx="180" cy="70" r="16" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="180" y="75" text-anchor="middle" font-size="8" fill="#991B1B">fraud</text>
+  <circle cx="240" cy="90" r="16" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="240" y="95" text-anchor="middle" font-size="8" fill="#166534">safe</text>
+  <circle cx="180" cy="130" r="16" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="180" y="135" text-anchor="middle" font-size="8" fill="#991B1B">fraud</text>
+  <line x1="134" y1="82" x2="166" y2="76" stroke="#94A3B8" stroke-width="1.2"/>
+  <line x1="194" y1="76" x2="226" y2="84" stroke="#94A3B8" stroke-width="1.2"/>
+  <line x1="180" y1="86" x2="180" y2="114" stroke="#94A3B8" stroke-width="1.2"/>
+  <line x1="134" y1="100" x2="166" y2="122" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="180" y="170" text-anchor="middle" font-size="10" fill="#64748B">Label per node, no pooling</text>
+
+  <!-- Graph classification -->
+  <text x="540" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#F59E0B">Graph classification</text>
+  <!-- Graph 1 -->
+  <rect x="430" y="55" width="100" height="80" rx="8" fill="rgba(220,252,231,0.3)" stroke="#22C55E" stroke-dasharray="4 3"/>
+  <circle cx="460" cy="80" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <circle cx="500" cy="70" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <circle cx="480" cy="110" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <line x1="468" y1="76" x2="492" y2="73" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="465" y1="88" x2="475" y2="102" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="492" y1="78" x2="485" y2="102" stroke="#94A3B8" stroke-width="1"/>
+  <text x="480" y="150" text-anchor="middle" font-size="9" fill="#22C55E" font-weight="600">non-toxic</text>
+
+  <!-- Graph 2 -->
+  <rect x="560" y="55" width="100" height="80" rx="8" fill="rgba(254,226,226,0.3)" stroke="#EF4444" stroke-dasharray="4 3"/>
+  <circle cx="590" cy="80" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <circle cx="630" cy="75" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <circle cx="580" cy="110" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <circle cx="620" cy="115" r="10" fill="#DBEAFE" stroke="#3B82F6"/>
+  <line x1="598" y1="77" x2="622" y2="77" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="586" y1="88" x2="583" y2="102" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="625" y1="83" x2="622" y2="107" stroke="#94A3B8" stroke-width="1"/>
+  <line x1="588" y1="112" x2="612" y2="114" stroke="#94A3B8" stroke-width="1"/>
+  <text x="610" y="150" text-anchor="middle" font-size="9" fill="#EF4444" font-weight="600">toxic</text>
+
+  <!-- Arrow showing pooling -->
+  <text x="540" y="175" text-anchor="middle" font-size="10" fill="#64748B">Label per graph, needs global_mean_pool</text>
+</svg>
+<figcaption>Node classification assigns a label to each node (e.g., fraud detection). Graph classification assigns a label to the entire graph (e.g., molecular toxicity) and requires pooling all node embeddings into a single graph-level vector.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th>Task</th><th>Predict</th><th>Pooling</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>Node classification</td><td>Label per node</td><td>None</td><td>Is this account fraudulent?</td></tr>
+    <tr><td>Graph classification</td><td>Label per graph</td><td><code>global_mean_pool</code></td><td>Is this molecule toxic?</td></tr>
+    <tr><td>Link prediction</td><td>Does edge exist?</td><td>None (node pair)</td><td>Will these users connect?</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    The key distinction: node classification uses the node embeddings directly
+    as input to a classifier. Graph classification needs to aggregate all node
+    embeddings into a single graph-level representation — this is
+    <code>global_mean_pool</code> (or <code>global_max_pool</code>). Forgetting
+    the pooling step for graph classification is a common error that causes
+    shape mismatches.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ModelVisualizer for Graph Embeddings</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    While GNN training uses <code>torch_geometric</code> directly (Kailash ML
+    does not wrap graph-specific architectures), you can use
+    <code>ModelVisualizer</code> to visualise learned node embeddings via
+    t-SNE or UMAP projections. This reveals whether the GNN has learned
+    meaningful representations — nodes of the same class should cluster together
+    in the embedding space.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Molecular Graph Classification</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Classify molecules in the MUTAG dataset (188 molecules, binary labels:
+    mutagenic or not) using a 2-layer GCN. Then compare with a GAT and
+    visualise the learned node embeddings.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. Load the dataset.</span>
+    <pre><code class="language-python">import torch
+import torch.nn.functional as F
+from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader
+
+dataset = TUDataset(root='/tmp/MUTAG', name='MUTAG')
+print(f"Graphs: {len(dataset)}")
+print(f"Classes: {dataset.num_classes}")
+print(f"Node features: {dataset.num_features}")
+# → Graphs: 188, Classes: 2, Node features: 7
+
+# Train/test split
+train_dataset = dataset[:150]
+test_dataset = dataset[150:]
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Build a 2-layer GCN for graph classification.</span>
+    <pre><code class="language-python">from torch_geometric.nn import GCNConv, global_mean_pool
+
+class GCN(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.conv1 = GCNConv(in_channels, hidden_channels)
+        self.conv2 = GCNConv(hidden_channels, hidden_channels)
+        self.classifier = torch.nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+
+        # Message passing layers
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.3, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+
+        # Graph-level pooling (critical for graph classification)
+        x = global_mean_pool(x, batch)  # [num_graphs, hidden_channels]
+
+        # Classification head
+        return self.classifier(x)
+
+model = GCN(dataset.num_features, 64, dataset.num_classes)</code></pre>
+    <p>
+      Note <code>global_mean_pool(x, batch)</code>: this averages all node
+      embeddings within each graph to produce a single graph-level vector.
+      The <code>batch</code> tensor tells the pooling layer which nodes
+      belong to which graph (torch_geometric batches multiple graphs into
+      one large disconnected graph for efficiency).
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Train and evaluate.</span>
+    <pre><code class="language-python">optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+def train():
+    model.train()
+    total_loss = 0
+    for data in train_loader:
+        optimizer.zero_grad()
+        out = model(data)
+        loss = F.cross_entropy(out, data.y)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * data.num_graphs
+    return total_loss / len(train_dataset)
+
+def test(loader):
+    model.eval()
+    correct = 0
+    for data in loader:
+        out = model(data)
+        pred = out.argmax(dim=1)
+        correct += (pred == data.y).sum().item()
+    return correct / len(loader.dataset)
+
+for epoch in range(1, 101):
+    loss = train()
+    train_acc = test(train_loader)
+    test_acc = test(test_loader)
+    if epoch % 20 == 0:
+        print(f"Epoch {epoch:3d} | Loss: {loss:.4f} | "
+              f"Train: {train_acc:.3f} | Test: {test_acc:.3f}")
+
+# Typical output:
+# Epoch  20 | Loss: 0.4821 | Train: 0.787 | Test: 0.763
+# Epoch  40 | Loss: 0.3912 | Train: 0.840 | Test: 0.789
+# Epoch  60 | Loss: 0.3201 | Train: 0.873 | Test: 0.816
+# Epoch  80 | Loss: 0.2834 | Train: 0.893 | Test: 0.816
+# Epoch 100 | Loss: 0.2547 | Train: 0.913 | Test: 0.842</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4. Compare GCN with GAT.</span>
+    <pre><code class="language-python">from torch_geometric.nn import GATConv
+
+class GAT(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
+        super().__init__()
+        self.conv1 = GATConv(in_channels, hidden_channels, heads=heads)
+        self.conv2 = GATConv(hidden_channels * heads, hidden_channels, heads=1)
+        self.classifier = torch.nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.3, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return self.classifier(x)
+
+gat_model = GAT(dataset.num_features, 64, dataset.num_classes)
+# Train similarly — GAT typically achieves 0.85-0.87 test accuracy on MUTAG</code></pre>
+    <p>
+      The GAT model uses <code>heads=4</code> in the first layer — four
+      independent attention mechanisms that each learn different neighbour
+      importance patterns. The second layer uses <code>heads=1</code> to
+      produce the final node embedding. Note that the input to the second
+      layer is <code>hidden_channels * heads</code> because multi-head
+      attention concatenates head outputs.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5. Visualise node embeddings.</span>
+    <pre><code class="language-python">from sklearn.manifold import TSNE
+import polars as pl
+from kailash_ml import ModelVisualizer
+
+# Extract node embeddings from the trained GCN (before pooling)
+model.eval()
+all_embeddings, all_labels = [], []
+for data in test_loader:
+    x = F.relu(model.conv1(data.x, data.edge_index))
+    x = F.relu(model.conv2(x, data.edge_index))
+    all_embeddings.append(x.detach())
+    all_labels.append(data.y.detach())
+
+embeddings = torch.cat(all_embeddings).numpy()
+labels = torch.cat(all_labels).numpy()
+
+# t-SNE projection to 2D
+tsne = TSNE(n_components=2, random_state=42)
+coords = tsne.fit_transform(embeddings[:500])  # Sample for speed
+
+# Visualise with ModelVisualizer
+viz = ModelVisualizer()
+viz.scatter_2d(coords, labels[:500],
+               title="GCN Node Embeddings (MUTAG)",
+               save_to="results/gcn_embeddings.png")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Ignoring graph structure</span>
+  <p>
+    Flattening a graph into a feature table loses relationship information. If
+    you have a social network and compute "number of friends" as a feature, you
+    lose <em>who</em> those friends are and how they connect to each other. Use
+    GNNs when edges carry signal — when the pattern of connections matters, not
+    just the count.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: Too many GNN layers</span>
+  <p>
+    GNNs <strong>over-smooth</strong> with depth. After many layers, every node's
+    representation converges to the same value because it has aggregated
+    information from the entire graph. For most tasks, 2-3 layers is optimal.
+    If you need deeper models, use skip connections (residual GNN) or jumping
+    knowledge networks that concatenate representations from all layers.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: Wrong pooling for the task</span>
+  <p>
+    Node classification needs <strong>no pooling</strong> — you classify each
+    node directly from its embedding. Graph classification needs
+    <code>global_mean_pool</code> or <code>global_max_pool</code> to produce a
+    graph-level vector. Mixing these up causes dimension mismatches or, worse,
+    silently incorrect results.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Forgetting self-loops</span>
+  <p>
+    Without self-loops ($\tilde{A} = A + I$), each node aggregates only its
+    neighbours' features and loses its own. After several layers, a node's
+    representation contains no information about its original features — only
+    neighbourhood statistics. Self-loops ensure the node retains its own
+    identity. <code>GCNConv</code> in torch_geometric adds self-loops by default;
+    custom implementations must add them explicitly.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Node classification</h3>
+  <p>
+    Load the Cora citation dataset (<code>Planetoid</code> in torch_geometric).
+    Build a 2-layer GCN for node classification (predict the paper's topic
+    from its citation graph). Compare accuracy with a 2-layer GAT. Which
+    architecture performs better, and why?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — GraphSAGE comparison</h3>
+  <p>
+    Replace <code>GCNConv</code> with <code>SAGEConv</code> in the MUTAG
+    example. Compare test accuracy, training time, and the number of parameters.
+    Try different aggregation types: <code>"mean"</code>, <code>"max"</code>,
+    and <code>"lstm"</code>. Which aggregation works best for molecular graphs?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Attention visualisation</h3>
+  <p>
+    After training a GAT on MUTAG, extract the attention weights from the first
+    layer. For a single molecule (graph), visualise which bonds (edges) receive
+    the highest attention. Do the high-attention bonds correspond to
+    chemically meaningful functional groups?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Singapore MRT graph</h3>
+  <p>
+    Model the Singapore MRT network as a graph: stations are nodes with features
+    (daily ridership, number of exits, interchange status), edges are rail
+    connections with features (travel time, same-line or interchange). Predict
+    which stations are likely to be overcrowded during peak hours using node
+    classification.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>5.4 Transformers:</strong> GAT attention is structurally identical to
+  self-attention — learned weights on input elements. The difference: Transformers
+  attend globally, GATs attend locally (only neighbours).
+  <br>
+  <strong>5.7 Transfer Learning:</strong> GNNs rarely benefit from transfer
+  learning — graph tasks are typically task-specific because graph structures
+  vary dramatically across domains.
+  <br>
+  <strong>M3 Feature Engineering:</strong> node features are the graph equivalent
+  of tabular features. Everything you learned about feature scaling, encoding,
+  and selection applies to node feature vectors.
+  <br>
+  <strong>M6 Agents:</strong> multi-agent systems can be modelled as graphs
+  with agents as nodes and communication channels as edges.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  With GNNs, you have now covered all major deep learning data structures:
+  grids (CNN, Lesson 5.2), sequences (RNN/Transformer, Lessons 5.3-5.4),
+  generative models (VAE/GAN/Diffusion, Lessons 5.1/5.5), and graphs (GNN,
+  today). Each architecture is optimised for a different data structure —
+  the key skill is recognising which structure your data naturally has.
+</p>
+<p>
+  The message passing paradigm — aggregate neighbours, update self, repeat —
+  is a beautiful unification. CNNs are GNNs on a fixed grid. Transformers are
+  GNNs on a fully connected graph. Understanding message passing gives you a
+  conceptual framework that connects all the architectures you have learned.
+</p>
+<p>
+  The next two lessons consolidate: transfer learning (5.7) leverages
+  pre-trained models so you rarely train from scratch, and reinforcement
+  learning (5.8) introduces learning from interaction rather than static data.
+  Then Module 6 applies everything to LLMs and production systems.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../05/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    5.5 GANs and Diffusion
+  </a>
+  <a href="../07/textbook.html" class="next">
+    <span class="label">Next →</span>
+    5.7 Transfer Learning
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

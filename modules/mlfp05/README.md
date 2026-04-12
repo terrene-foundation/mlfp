@@ -1,24 +1,31 @@
-# Module 7: Deep Learning
+# Module 5: Deep Learning and Machine Learning Mastery in Vision and Transfer Learning
 
-**Kailash**: kailash-ml (OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer, ModelRegistry) | **Scaffolding**: 30%
+**Kailash**: kailash-ml (ModelVisualizer, OnnxBridge, InferenceServer, RLTrainer) | **Scaffolding**: 30%
 
-## Lecture (3h)
+## Description
 
-- **7A** Neural Network Foundations: linear regression as a neuron, hidden layers, XOR problem, depth vs width, hierarchical feature learning
-- **7B** Architecture & Training: activations (sigmoid, ReLU, GELU), loss functions (MSE, CrossEntropy), weight initialization (Xavier, He), backpropagation, chain rule, vanishing gradients
-- **7C** Optimisation & CNNs: SGD, momentum, Adam, learning rate scheduling, dropout, batch normalisation, convolution, pooling, CNN architectures, embeddings, ONNX export
+Every major DL architecture. One paradigm per lesson. All implemented.
 
-## Lab (3h) — 8 Exercises
+## Lessons (8)
 
-1. Linear regression as a single-neuron network (forward pass, MSE, gradient descent)
-2. Hidden layers and the XOR problem (multi-layer perceptron, decision boundaries)
-3. Activation functions comparison (sigmoid vs ReLU vs GELU, gradient flow analysis)
-4. Loss functions and weight initialization (CrossEntropy, Xavier vs He init)
-5. Backpropagation from scratch (chain rule, gradient checking, vanishing gradients)
-6. Optimizers and learning rate scheduling (SGD vs momentum vs Adam, cosine annealing)
-7. CNNs for image classification (convolution, pooling, dropout, OnnxBridge export)
-8. Capstone: end-to-end DL pipeline (TrainingPipeline → ModelRegistry → OnnxBridge → InferenceServer)
+1. **Autoencoders** — Vanilla, denoising, VAE (ELBO, reparameterisation), convolutional
+2. **CNNs and Computer Vision** — Convolution, pooling, ResNet, SE blocks, mixed precision, ViT
+3. **RNNs and Sequence Models** — LSTM (4 gates), GRU, multi-layer + residual, temporal attention
+4. **Transformers** — Self-attention from scratch, multi-head, positional encoding, BERT fine-tuning, ViT
+5. **Generative Models — GANs and Diffusion** — DCGAN, WGAN (gradient penalty), mode collapse, diffusion basics
+6. **Graph Neural Networks** — GCN, GraphSAGE, GAT, node/graph classification, message passing
+7. **Transfer Learning** — CV (ResNet fine-tuning), NLP (BERT), ONNX export, InferenceServer
+8. **Reinforcement Learning** — Bellman equations, DQN, PPO, custom Gymnasium environments
 
-## Datasets
+## Exercises (8)
 
-MNIST sample, Fashion-MNIST sample, HDB resale prices, synthetic spirals
+| # | Title | Dataset |
+|---|-------|---------|
+| 1 | Autoencoders | Synthetic / MNIST-like |
+| 2 | CNNs for Image Classification | Fashion-MNIST |
+| 3 | Sequence Models — RNNs and LSTMs | Financial time series |
+| 4 | Transformer Architecture | Text classification |
+| 5 | Generative Models — GANs | 2D synthetic data |
+| 6 | Graph Neural Networks | Karate Club / synthetic |
+| 7 | Transfer Learning with Transformers | Singapore text |
+| 8 | Reinforcement Learning | Inventory management |

@@ -1,1435 +1,1453 @@
-# Module 7: Deep Learning — Speaker Notes
+# Module 5: Deep Learning and ML Mastery in Vision and Transfer Learning — Speaker Notes
 
 Total time: ~180 minutes (3 hours)
+Audience: working professionals; instructors must scaffold for both novices (first deep network in M4) and practitioners (already train models at work).
+
+This module is the most technically dense in the programme. Every slide is labelled FOUNDATIONS, THEORY, or ADVANCED. Guide the room with those labels: green for everyone, blue for stretch, purple for bonus. All exercises are implemented in PyTorch (rewritten this session) with Kailash engines layered on top — ModelVisualizer for diagnostics, OnnxBridge for export, InferenceServer for serving, RLTrainer for RL loops.
 
 ---
 
-## Slide 1: Deep Learning: Architecture-Driven Feature Engineering
-
-**Time**: ~2 min
-**Talking points**:
-
-- Read the title slowly: "Architecture-Driven Feature Engineering." That phrase is the thesis of the whole module.
-- Deep learning does not replace feature engineering — it moves it inside the model. The architecture IS the feature engineer.
-- This is Module 7. Students have six modules of context. Respect that by connecting back: "In M3 you hand-crafted features. Today the network learns them."
-- If beginners look confused: "Instead of us deciding which features matter, we build a network and let it figure that out."
-- If experts look bored: "The key insight is representational learning — the hierarchy of transformations learned by the network is equivalent to a feature pipeline designed by a domain expert, except it is learned end-to-end."
-
-**Transition**: "Before we go deep, let me remind you where you have been..."
-
----
-
-## Slide 2: Recap: Your Journey So Far
+## Slide 1: Module 5 — Title
 
 **Time**: ~2 min
 **Talking points**:
 
-- Quick sweep: M1 data fluency, M2 statistics, M3 feature engineering, M4 supervised ML, M5 ML engineering, M6 unsupervised ML.
-- Do not re-teach. This is an anchor, not a lecture.
-- Point out the gap: "You can build a full ML pipeline, but the feature engineering step is still manual. Today we automate it."
-- If beginners look confused: "Think of everything we have done as building the foundations. Today we build the tower."
+- Welcome the room. Read the provocation aloud: "Every major DL architecture. One paradigm per lesson. All implemented."
+- This is the architecture module. 8 lessons, 8 paradigms, all coded end-to-end by the student. Nothing is left as "you will see this later."
+- Ask the room: "How many of you trained a neural network in Module 4?" Gauge the mix. You will calibrate the FOUNDATIONS vs ADVANCED balance based on the answer.
+- "If beginners look confused": "Module 4 gave you the toolkit — forward pass, backprop, optimisers. Today we use that toolkit to build every major architecture in modern deep learning."
+- "If experts look bored": "Even if you have used these architectures at work, very few people have implemented all of them from scratch in a single day. The progression is what matters — you will see how every paradigm shares the same foundation."
 
-**Transition**: "Here is what is new today..."
-
----
-
-## Slide 3: What's New in Module 7
-
-**Time**: ~2 min
-**Talking points**:
-
-- New concepts: neurons, layers, backpropagation, CNNs, embeddings, optimizers, regularization.
-- New Kailash engines: OnnxBridge, InferenceServer, ModelVisualizer (plus TrainingPipeline and ModelRegistry from M4 used in new ways).
-- This is the longest module — 12 sections. Reassure students: "We move from first principles to production in one session."
-- If beginners look confused: "We start from linear regression — something you already know — and grow it into a full deep learning system step by step."
-
-**Transition**: "Here is the full engine map so you can see how everything fits together..."
+**Transition**: "Here is exactly what you will be able to do by the end of today."
 
 ---
 
-## Slide 4: Cumulative Kailash Engine Map
+## Slide 2: What You Will Learn
 
 **Time**: ~2 min
 **Talking points**:
 
-- Show the map: M1 through M7 engines side by side.
-- Highlight the M7 additions: OnnxBridge, InferenceServer, ModelVisualizer.
-- "Every engine you learned before is still in play. We are adding the final layer: deep model export and serving."
-- If experts look bored: "OnnxBridge is the bridge between training (PyTorch) and production (any runtime). This is the pattern you will use in the real world."
+- Walk down the left column — these are concrete capabilities, not abstract topics. Autoencoders, CNNs, LSTMs, transformers, GANs, GNNs, transfer learning, RL.
+- Introduce the three depth layers on the right. This module uses them aggressively because the audience is mixed. A banker and a PhD sit in the same room; both leave having learned something new.
+- Reassure: "If you are new to deep learning, follow the green FOUNDATIONS markers. The blue THEORY slides go into derivations — welcome, but not required. The purple ADVANCED slides are bonus literature pointers."
+- "If beginners look confused": "Nobody is expected to follow every slide. If we hit a blue slide that feels too dense, just note the name and move on — the exercises only assume FOUNDATIONS."
+- "If experts look bored": "Stay for the derivations: VAE ELBO, scaled dot-product scaling, Bellman equations. These are the slides that get asked about in interviews."
 
-**Transition**: "Let me situate deep learning on the broader feature engineering spectrum..."
+**Transition**: "Eight lessons, one paradigm per lesson. Here is the journey."
 
 ---
 
-## Slide 5: The Feature Engineering Spectrum
-
-**Time**: ~3 min
-**Talking points**:
-
-- Draw the spectrum on the whiteboard if possible: raw data → manual features → learned features (shallow) → learned features (deep).
-- Traditional ML (M3-M4): we hand-craft features, feed them to a model.
-- Unsupervised ML (M6): the model finds structure, but features are still mostly manual.
-- Deep learning: the layers ARE the feature engineering pipeline — learned jointly with the task.
-- If beginners look confused: "Imagine a recipe. Traditional ML: you choose all the ingredients. Deep learning: the chef figures out the best ingredients for your taste automatically."
-- If experts look bored: "The spectrum maps to the bias-variance trade-off — manual features embed domain bias, learned features reduce it at the cost of needing more data and compute."
-
-**Transition**: "Let me start with a concrete historical moment that makes this real..."
-
----
-
-## Slide 6: Opening Case: The AlexNet Moment
-
-**Time**: ~3 min
-**Talking points**:
-
-- ImageNet 2012. Top-5 error: second place 26.2%, AlexNet 15.3%.
-- That 10-point gap was not incremental. It broke a decade-long plateau.
-- The audience: everyone had been doing hand-crafted features (HOG, SIFT, SURF). AlexNet used none of them.
-- If beginners look confused: "Imagine a competition to recognise cats in photos. For ten years, every team was hand-writing rules for what makes a cat. AlexNet said: show me a million photos and let me figure it out."
-- If experts look bored: "The AlexNet gap was so large that the community initially thought it was a mistake. The second-place team was using an ensemble of HOG-based SVMs. The architecture and GPU training were the entire delta."
-
-**Transition**: "So what did AlexNet actually do differently?"
-
----
-
-## Slide 7: What AlexNet Actually Did
-
-**Time**: ~3 min
-**Talking points**:
-
-- Five convolutional layers, three fully connected, ReLU activations, dropout, data augmentation, GPU training.
-- The insight: each layer learns increasingly abstract representations. Layer 1 = edges. Layer 3 = textures. Layer 5 = object parts.
-- "This is architecture-driven feature engineering in action. The architecture design IS the feature engineering decision."
-- If beginners look confused: "The first layer learns to see lines and edges. The next learns corners and curves. The deepest layers learn faces and wheels. The model builds its own feature vocabulary."
-- If experts look bored: "Zeiler and Fergus (2013) visualised AlexNet's learned filters. The Layer 1 Gabor-like filters emerged from random initialisation, which validated that convolution is the right inductive bias for images."
-
-**Transition**: "Why does this matter for you specifically?"
-
----
-
-## Slide 8: Why This Matters for You
-
-**Time**: ~3 min
-**Talking points**:
-
-- Three industries where DL displaced manual feature engineering: vision (AlexNet), NLP (BERT), tabular (M8 preview).
-- Practical takeaway: knowing when to use DL vs traditional ML is the professional skill.
-- "DL is not always better. More data, more compute, less interpretability. Your job is to know when the trade-off is worth it."
-- If beginners look confused: "Deep learning is a powerful tool, but it is not the only tool. We will teach you when to use it."
-- If experts look bored: "The modern practitioner's dilemma: a 3-layer MLP on good features often beats a ResNet on raw data. The decision is data-regime dependent."
-
-**Transition**: "Now let us build from the ground up. Section 7.1: linear regression as a neural network..."
-
----
-
-## Slide 9: 7.1 Linear Regression as a Neural Network
-
-**Time**: ~2 min
-**Talking points**:
-
-- Section marker. Pause. Let students know we are starting from something they already know.
-- "This section has one goal: show you that you already understand neural networks. You just did not know it yet."
-- If beginners look confused: "We learned linear regression in M2. Now we will see it is just the simplest possible neural network."
-
-**Transition**: "Let me show you the connection directly..."
-
----
-
-## Slide 10: Linear Regression IS a Neural Network
-
-**Time**: ~4 min
-**Talking points**:
-
-- Draw the diagram: one input layer, one output neuron, no hidden layers, no activation function (or identity activation).
-- y = Wx + b. That is linear regression. That is also a 1-layer neural network.
-- The same computation, two names. This is not a metaphor — it is literally the same math.
-- Walk through the notation: weights W = regression coefficients, bias b = intercept, output = prediction.
-- If beginners look confused: "The line y = mx + b that you drew in school IS a neural network. The 'm' is the weight, the 'b' is the bias."
-- If experts look bored: "The activation function is the identity — linear regression is a degenerate neural network with no non-linearity. Adding hidden layers with non-linear activations is what gives us the Universal Approximation property."
-
-**Transition**: "How do we train this? With gradient descent..."
-
----
-
-## Slide 11: Training: Gradient Descent
-
-**Time**: ~4 min
-**Talking points**:
-
-- Loss surface: imagine a bowl. Gradient descent rolls down the bowl to find the minimum.
-- The update rule: w_new = w_old - learning_rate \* gradient.
-- Three elements: loss function (MSE for regression), gradient (direction of steepest ascent), learning rate (step size).
-- Draw the 2D loss surface. Mark a random starting point. Show the path rolling down.
-- If beginners look confused: "Imagine you are blindfolded on a hillside. To find the valley (minimum loss), you feel which direction is steepest downhill and take a small step. That is gradient descent."
-- If experts look bored: "The loss surface for linear regression is convex — one global minimum, guaranteed convergence. Non-convex surfaces (deep networks) are why we need momentum, adaptive rates, and careful initialisation."
-
-**Transition**: "But wait — we already have an exact solution for linear regression. Why use gradient descent at all?"
-
----
-
-## Slide 12: From OLS to Gradient Descent: Why Bother?
-
-**Time**: ~3 min
-**Talking points**:
-
-- OLS: closed-form solution, O(n^3) matrix inversion, exact answer.
-- Gradient descent: iterative, O(n) per step, approximate, but scales to millions of parameters.
-- The key insight: you cannot invert a 100-million-parameter matrix. Gradient descent is the only tractable option.
-- "OLS is the sports car that only fits two people. Gradient descent is the bus that can carry everyone."
-- If beginners look confused: "With 10 features you can solve the equation exactly. With 10 million features — like in a real neural network — you cannot. Gradient descent is the only way."
-- If experts look bored: "The OLS normal equations require inverting X^T X — O(p^3) time and O(p^2) memory. With p = 10M parameters, that matrix would require petabytes of RAM. Gradient descent sidesteps this entirely."
-
-**Transition**: "Let me show you what this looks like in code..."
-
----
-
-## Slide 13: Code: Linear Regression as a Neural Network
-
-**Time**: ~4 min
-**Talking points**:
-
-- Walk through the code step by step: import TrainingPipeline, define ModelSpec with a single linear layer, no activation, MSE loss.
-- Emphasise: this is the same TrainingPipeline from M4. The engine is general — it handles everything from linear regression to ResNets.
-- Show the connection: the Kailash layer definition maps directly to the mathematical notation on the previous slide.
-- PAUSE. Ask: "What would we change to make this logistic regression?" (add sigmoid activation, change loss to BCE)
-- If beginners look confused: "The code is just the math written in Python. Weight, bias, forward pass, loss, gradient step — each line has a direct mathematical counterpart."
-- If experts look bored: "The TrainingPipeline abstracts away the gradient computation. Under the hood it is calling autograd. We will see exactly how that works in section 7.6."
-
-**Transition**: "Linear regression can only learn linear relationships. What if the world is non-linear? Section 7.2..."
-
----
-
-## Slide 14: 7.2 The Interaction Problem
-
-**Time**: ~2 min
-**Talking points**:
-
-- Section marker. The problem we are solving: linear regression cannot capture interactions between features.
-- Classic example: income and age interact. A 25-year-old earning $50k is unusual. A 50-year-old earning $50k is not. Linear models miss this.
-- "In M3, we hand-crafted interaction terms. Hidden layers do this automatically."
-- If beginners look confused: "Some patterns only appear when you look at two features together, not separately. Hidden layers learn those combinations automatically."
-
-**Transition**: "Here is how hidden layers solve this..."
-
----
-
-## Slide 15: Hidden Layers: Automatic Interaction Discovery
-
-**Time**: ~4 min
-**Talking points**:
-
-- Walk through the architecture: input layer → hidden layer (with non-linear activation) → output layer.
-- The hidden layer transforms the input space. Each hidden neuron learns a different linear combination of inputs, then applies a non-linearity.
-- The non-linearity is essential. Without it, multiple linear layers collapse back to one linear layer (composition of linear functions is linear).
-- Draw it: two input features, three hidden neurons, one output. Show how each hidden neuron looks at the inputs differently.
-- If beginners look confused: "Each hidden neuron is asking a different question about your data. One asks 'is feature A high AND feature B low?' Another asks 'are both features moderate?' The final output combines all those answers."
-- If experts look bored: "The hidden layer implements a non-linear basis expansion. This is equivalent to kernel methods — but learned rather than fixed. The Universal Approximation Theorem guarantees that one hidden layer with enough neurons can approximate any continuous function."
-
-**Transition**: "The cleanest illustration of why non-linearity matters is the XOR problem..."
-
----
-
-## Slide 16: The XOR Problem: Why Hidden Layers Matter
-
-**Time**: ~4 min
-**Talking points**:
-
-- XOR truth table: (0,0) → 0, (0,1) → 1, (1,0) → 1, (1,1) → 0. Try to draw a straight line separating 0s from 1s. You cannot.
-- This is linearly non-separable. A single-layer neural network (= linear regression/logistic regression) will fail.
-- Historical moment: Minsky and Papert (1969) used XOR to argue that perceptrons were useless. It killed the first AI winter.
-- Solution: add one hidden layer. Now the network can draw two lines and combine them.
-- If beginners look confused: "XOR means 'one OR the other, but not both.' You cannot separate the true cases from false cases with a straight line. One hidden layer lets the network draw curved boundaries."
-- If experts look bored: "XOR is the canonical example of a problem requiring at least one hidden layer. The hidden layer maps the input to a new space where the problem becomes linearly separable — this is the kernel trick intuition applied to learned representations."
-
-**Transition**: "What does the hidden layer actually learn when it solves XOR?"
-
----
-
-## Slide 17: What the Hidden Layer Actually Learns
-
-**Time**: ~3 min
-**Talking points**:
-
-- Show the learned weights after training on XOR. The two hidden neurons have learned different views of the input space.
-- Visualise the decision boundary: the network has transformed the input into a new space where XOR is linearly separable.
-- Key insight: this transformation is learned, not hand-crafted. The network figured out the right transformation from data.
-- "You just saw automatic feature engineering. The hidden layer is a learned feature extractor."
-- If beginners look confused: "The hidden layer re-draws the picture so the classes become separable. Then the output layer just draws a straight line in the new picture."
-- If experts look bored: "The hidden layer implements a learned manifold. For XOR, the optimal hidden representation is the NAND gate — which the network discovers without being told."
-
-**Transition**: "Now that we understand hidden layers, let us ask: where does DL's real power come from?"
-
----
-
-## Slide 18: 7.3 Where DL's Power Comes From
-
-**Time**: ~2 min
-**Talking points**:
-
-- Section marker. Three sources of DL power: depth (hierarchical learning), width (parallel hypotheses), and scale (data + compute).
-- Preview: this section explains WHY deep networks outperform shallow ones — not just empirically, but theoretically.
-- If beginners look confused: "We know DL works. This section explains why."
-
-**Transition**: "Let me start with the big picture — the power hierarchy..."
-
----
-
-## Slide 19: The Power Hierarchy
-
-**Time**: ~3 min
-**Talking points**:
-
-- The hierarchy: linear → shallow non-linear → deep → wide deep → scaled deep.
-- Each step adds a qualitatively different capability, not just more parameters.
-- The key insight: a deep network with fewer parameters can approximate functions that a shallow network requires exponentially more neurons to express.
-- "Depth is not just more of the same. It is a qualitative leap in expressiveness per parameter."
-- If beginners look confused: "Adding depth is like adding floors to a building. Each floor can see further. A 10-floor building is not just ten 1-floor buildings stacked — it changes what you can do."
-- If experts look bored: "The depth separation theorem (Telgarsky 2016) formalises this: certain functions require exponentially many neurons to represent with one hidden layer but only polynomially many with k hidden layers."
-
-**Transition**: "Let me make the hierarchy concrete with the concept of hierarchical feature learning..."
-
----
-
-## Slide 20: Depth = Hierarchical Feature Learning
-
-**Time**: ~4 min
-**Talking points**:
-
-- The canonical example: image recognition.
-- Layer 1: pixel intensity patterns → edges.
-- Layer 2: edges → corners and curves.
-- Layer 3: corners and curves → textures and shapes.
-- Layer 4: shapes → object parts (wheel, eye, wing).
-- Layer 5: object parts → objects (car, face, bird).
-- "The depth is the hierarchy. Each layer builds on the previous layer's vocabulary."
-- This is why we call it "deep learning" — the depth enables this hierarchy.
-- If beginners look confused: "Think of learning to read. Letters → syllables → words → sentences → meaning. Each level uses the previous level as building blocks. That is depth."
-- If experts look bored: "This hierarchical decomposition is why deep networks generalise better — they learn compositional structure that mirrors the compositionality of the real world (Bengio et al., 2009)."
-
-**Transition**: "But what about width? Is wider always better?"
-
----
-
-## Slide 21: Width vs Depth
-
-**Time**: ~4 min
-**Talking points**:
-
-- Width: more neurons per layer — more parallel hypotheses, more capacity.
-- Depth: more layers — more hierarchical abstraction, better generalisation per parameter.
-- The trade-off is empirical and task-dependent. For tabular data, sometimes wider is better. For images and text, deeper wins.
-- Walk through the comparison table: params, expressiveness, training difficulty, inductive bias.
-- PAUSE. Ask: "Given what you now know about images and hierarchical structure, why does depth beat width for vision tasks?"
-- If beginners look confused: "Width makes the network smarter in parallel. Depth makes it smarter in stages. For some problems, stages are better."
-- If experts look bored: "The theoretical analysis (Raghu et al., 2017) shows that deep ReLU networks have trajectory length that grows exponentially with depth but only polynomially with width. This is why depth generalises better on structured data."
-
-**Transition**: "Now let us get precise. Section 7.4: the neuron..."
-
----
-
-## Slide 22: 7.4 The Neuron
-
-**Time**: ~2 min
-**Talking points**:
-
-- Section marker. We now formalise everything we have been saying informally.
-- A neuron: takes a vector of inputs, computes a weighted sum plus bias, applies an activation function.
-- z = w^T x + b, output = activation(z).
-- If beginners look confused: "A neuron is just a little function. Inputs go in, it mixes them with weights, applies a squish function, and outputs a number."
-
-**Transition**: "Now stack neurons into layers, and think about the matrix operations..."
-
----
-
-## Slide 23: Layers as Matrix Operations
-
-**Time**: ~4 min
-**Talking points**:
-
-- A layer with n inputs and m neurons: weight matrix W of shape (m, n), bias vector b of shape (m,).
-- Forward pass: Z = W \* X + b, A = activation(Z).
-- "Everything in deep learning is matrix multiplication. GPUs are fast because they are matrix multiplication machines."
-- Walk through the shapes carefully. Dimension errors are the number-one debugging problem for students.
-- If beginners look confused: "Think of the weight matrix as a scoreboard. Each row scores a different neuron. Matrix multiplication fills the scoreboard for all inputs at once."
-- If experts look bored: "The batched forward pass is Z = XW^T + b — (batch x input) @ (input x output) = (batch x output). Getting comfortable with shape algebra is the single most important debugging skill in DL."
-
-**Transition**: "How many parameters does a network actually have?"
-
----
-
-## Slide 24: Parameter Count
-
-**Time**: ~3 min
-**Talking points**:
-
-- Walk through the formula: each layer has (inputs x outputs) weights plus outputs biases.
-- Example: input 784 → hidden 256 → hidden 128 → output 10.
-- Layer 1: 784 x 256 + 256 = 200,960. Layer 2: 256 x 128 + 128 = 32,896. Layer 3: 128 x 10 + 10 = 1,290. Total: ~235K.
-- Compare: GPT-2 has 117M, GPT-3 has 175B. Scale this intuition.
-- PAUSE. Let students calculate a small network parameter count on paper. Takes 2 minutes but cements the concept.
-- If beginners look confused: "For each connection between neurons, we have one number (weight). Plus one number per neuron (bias). Count the connections, add the neurons, that is your parameter count."
-- If experts look bored: "Flop count scales differently from parameter count. For inference, parameters dominate memory; flops dominate latency. The parameter/flop ratio is an important architecture efficiency metric."
-
-**Transition**: "Now the most important design decision in a layer: the activation function..."
-
----
-
-## Slide 25: Activation Functions: The Complete Catalog
-
-**Time**: ~3 min
-**Talking points**:
-
-- Overview slide: sigmoid, tanh, ReLU, Leaky ReLU, ELU, GELU, Softmax.
-- "This is the menu. The next few slides explain when to order each dish."
-- The rule of thumb: ReLU for hidden layers, GELU for transformers, Softmax for multi-class output.
-- If beginners look confused: "The activation function is the squish. Without it, all layers collapse into one. Different squish functions have different properties."
-
-**Transition**: "Start with the classics: sigmoid and tanh..."
-
----
-
-## Slide 26: Sigmoid and Tanh: The Originals
-
-**Time**: ~3 min
-**Talking points**:
-
-- Sigmoid: outputs (0, 1). Used in binary classification output layers and gates (LSTM).
-- Tanh: outputs (-1, 1). Zero-centred — better gradient flow than sigmoid.
-- The problem with both: saturation. At extreme inputs, gradients approach 0. This is vanishing gradients (preview of 7.7).
-- "Sigmoid and tanh are not wrong — they are just slow. ReLU solves the speed problem."
-- If beginners look confused: "Sigmoid squishes any number into 0 to 1 — good for probabilities. Tanh squishes to -1 to 1. Both flatten out at the extremes, which causes problems when training deep networks."
-- If experts look bored: "The saturation problem is not just slow convergence — it is catastrophic for deep networks. The maximum derivative of sigmoid is 0.25. With 10 layers, gradient magnitude is bounded by 0.25^10 which is approximately 10^-6."
-
-**Transition**: "The solution was ReLU..."
-
----
-
-## Slide 27: ReLU and Variants
-
-**Time**: ~4 min
-**Talking points**:
-
-- ReLU: max(0, x). Dead simple. Computationally trivial. Gradient is either 0 or 1 — no vanishing in the positive range.
-- Why it works: sparse activations (roughly half the neurons are zero at any time), faster training, better generalisation.
-- Variants: Leaky ReLU (small negative slope), ELU (smooth negative part), PReLU (learned slope).
-- The tradeoff: dying ReLU problem. Neurons can get stuck in the zero region and never recover. (Preview of 7.7.)
-- If beginners look confused: "ReLU says: if the input is negative, output 0. If positive, pass it through unchanged. That is it. But this simple rule makes training much faster."
-- If experts look bored: "The sparsity induced by ReLU is a form of implicit regularisation — the network is forced to use a subset of neurons for any given input, which is equivalent to a learned ensemble."
-
-**Transition**: "The most important modern variant: GELU..."
-
----
-
-## Slide 28: GELU: The Transformer Activation
-
-**Time**: ~3 min
-**Talking points**:
-
-- GELU: Gaussian Error Linear Unit. x \* Phi(x) where Phi is the Gaussian CDF.
-- Smooth near zero (unlike ReLU which has a kink), stochastic interpretation (activates probabilistically based on magnitude).
-- Used in BERT, GPT, and almost every modern transformer.
-- "You will use GELU in M8. Understand it here."
-- If beginners look confused: "GELU is a smoother version of ReLU. Instead of a hard cut at zero, it gradually fades. This smoothness helps transformers train more stably."
-- If experts look bored: "The stochastic interpretation: GELU(x) = x \* P(X <= x) where X ~ N(0,1). This means GELU randomly gates a neuron proportional to its magnitude — a principled form of dropout baked into the activation."
-
-**Transition**: "The output activation for multi-class problems: Softmax..."
-
----
-
-## Slide 29: Softmax: The Output Activation
-
-**Time**: ~3 min
-**Talking points**:
-
-- Softmax: converts a vector of real numbers into a probability distribution (sums to 1, all positive).
-- Formula: softmax(z_i) = exp(z_i) / sum(exp(z_j)).
-- Used as the final layer for multi-class classification.
-- Numerical stability: always compute log-softmax in practice (avoids overflow in exp).
-- If beginners look confused: "Softmax takes the network's raw scores for each class and converts them into percentages. The highest score gets the biggest percentage, but every class gets some."
-- If experts look bored: "The connection to temperature: softmax(z/T). T approaching 0 gives argmax (hard), T approaching infinity gives uniform. Temperature scaling is used in knowledge distillation and sampling from language models."
-
-**Transition**: "We have the architecture. Now we need to measure how wrong we are. Section 7.5: loss functions..."
-
----
-
-## Slide 30: 7.5 Loss Functions for Regression
-
-**Time**: ~4 min
-**Talking points**:
-
-- MSE: mean squared error. Penalises large errors quadratically. Sensitive to outliers.
-- MAE: mean absolute error. Robust to outliers. Non-differentiable at zero (use Huber loss instead).
-- Huber loss: MSE for small errors, MAE for large errors. Best of both.
-- When to use: MSE default, Huber when you have outliers, MAE when outliers dominate.
-- Show the curve shapes. Visual understanding is essential here.
-- If beginners look confused: "MSE is the straightforward 'how wrong am I?' score. Big mistakes are punished much more than small ones. MAE treats all mistakes equally. Huber is a hybrid."
-- If experts look bored: "The loss function defines the implicit noise model. MSE assumes Gaussian noise. MAE assumes Laplacian noise. Huber is a robustified Gaussian. Choosing the loss is choosing the probabilistic model."
-
-**Transition**: "For classification, we need different losses..."
-
----
-
-## Slide 31: Loss Functions for Classification
-
-**Time**: ~4 min
-**Talking points**:
-
-- Binary cross-entropy: -[y log(p) + (1-y) log(1-p)]. For binary classification with sigmoid output.
-- Categorical cross-entropy: -sum(y_i log(p_i)). For multi-class with softmax output.
-- The intuition: cross-entropy penalises confident wrong predictions extremely heavily.
-- Walk through a concrete example: true class = cat, predicted probability of cat = 0.01. Loss = -log(0.01) which is approximately 4.6. Very high.
-- PAUSE. Ask: "Why is it catastrophic to be very confident and very wrong?"
-- If beginners look confused: "Cross-entropy says: I don't care if you guess randomly, but if you are very sure and very wrong, I punish you heavily. This forces the model to be calibrated."
-- If experts look bored: "Cross-entropy is equivalent to minimising KL divergence between the predicted and true distributions. MLE for classification with categorical likelihood IS cross-entropy minimisation."
-
-**Transition**: "A preview of losses you will use in M8 and M9: embedding losses..."
-
----
-
-## Slide 32: Embedding Losses (Preview)
-
-**Time**: ~2 min
-**Talking points**:
-
-- Triplet loss: anchor, positive, negative. Pull matching pairs together, push non-matching pairs apart.
-- Contrastive loss: similar pairs should have small embedding distance, dissimilar pairs large.
-- InfoNCE: used in self-supervised learning (SimCLR, CLIP).
-- "These are preview slides. We will implement them in M8. Right now, understand that they exist."
-- If beginners look confused: "These losses teach the network to group similar things together in the hidden space. Useful for search, recommendation, and matching problems."
-- If experts look bored: "InfoNCE is the contrastive learning workhorse. It is equivalent to cross-entropy on negative samples — understanding this connection makes CLIP's training objective trivial to derive."
-
-**Transition**: "Before we can minimise the loss, we need to initialise the weights correctly..."
-
----
-
-## Slide 33: Weight Initialisation: Why It Matters
-
-**Time**: ~4 min
-**Talking points**:
-
-- Wrong init = broken training. Zero init: all neurons learn the same thing (symmetry problem). Too large: exploding gradients. Too small: vanishing gradients.
-- Xavier/Glorot init: preserves variance across layers for tanh/sigmoid networks.
-- He/Kaiming init: for ReLU networks. Accounts for the 50% zeroing. W ~ N(0, sqrt(2/n_in)).
-- Rule of thumb: Xavier for tanh/sigmoid, He for ReLU/Leaky ReLU.
-- If beginners look confused: "Think of initialisation like tuning a guitar. If the strings are too slack (small weights) or too tight (large weights), no sound comes out. We have formulas for the right tension."
-- If experts look bored: "Xavier derivation: assume linear activations, iid inputs with variance 1, then Var(output) = n_in _ Var(W) _ Var(input). To preserve variance: Var(W) = 1/n_in. The harmonic mean of n_in and n_out gives the Glorot formula."
-
-**Transition**: "For very deep networks, there is an even more precise approach..."
-
----
-
-## Slide 34: Fixup Initialisation for Deep ResNets
-
-**Time**: ~3 min
-**Talking points**:
-
-- Standard init breaks for networks with hundreds of layers. Fixup addresses this.
-- Key idea: scale initialisation by L^{-1/(2m-2)} where L is depth and m is layers per residual block.
-- Enables training very deep ResNets (1000+ layers) without batch normalisation.
-- "This is an advanced topic. Flag it: if you are training vanilla networks, use He init. If you are doing research on very deep networks, study Fixup."
-- If beginners look confused: "As networks get very deep, even careful initialisation is not enough. Fixup is a more precise formula for extreme depths."
-- If experts look bored: "Fixup is important because it decouples the question of whether BatchNorm is needed for training stability from whether it is needed for generalisation — they are separate concerns."
-
-**Transition**: "We have the network, the loss, and the init. Now: how do gradients actually flow backwards? Section 7.6: the chain rule..."
-
----
-
-## Slide 35: 7.6 The Chain Rule
-
-**Time**: ~3 min
-**Talking points**:
-
-- The chain rule from calculus: dz/dx = (dz/dy) \* (dy/dx).
-- In neural networks: to compute how the loss changes with respect to the first layer's weights, we chain together all the derivatives along the path.
-- "Backpropagation is just the chain rule applied systematically. That is all it is."
-- Write it on the board: dL/dW1 = (dL/dA2) _ (dA2/dZ2) _ (dZ2/dA1) _ (dA1/dZ1) _ (dZ1/dW1).
-- If beginners look confused: "The chain rule is like asking: if my speed affects my position, and my position affects my score, how does my speed affect my score? You multiply the two effects together."
-- If experts look bored: "The computational efficiency of backprop comes from the reverse-mode autodiff approach. Reverse mode is efficient for scalar outputs (like loss) — it is O(1) backwards passes regardless of input dimension."
-
-**Transition**: "Let me work through a concrete two-layer example..."
-
----
-
-## Slide 36: Worked Example: 2-Layer Network
-
-**Time**: ~5 min
-**Talking points**:
-
-- Walk through the forward pass step by step. Z1 = W1*X + b1, A1 = ReLU(Z1), Z2 = W2*A1 + b2, A2 = sigmoid(Z2), L = BCE(A2, y).
-- Now the backward pass: dL/dA2, dA2/dZ2, dZ2/dW2, dZ2/dA1, dA1/dZ1, dZ1/dW1.
-- DO NOT skip steps. Every line matters. This is the foundation of understanding autograd.
-- PAUSE after forward pass. Let students verify they follow. Then do backward.
-- If beginners look confused: "We just traced two paths: forward (compute prediction) and backward (compute blame). Backprop is just tracing blame backwards through the network."
-- If experts look bored: "Note the reuse of computations: A1 computed in forward pass is reused in the backward pass. This is why the memory overhead of training (vs inference) is proportional to the number of activations — they must be kept for the backward pass."
-
-**Transition**: "Now let us see all the gradients at once..."
-
----
-
-## Slide 37: Backward Pass: Computing Every Gradient
-
-**Time**: ~4 min
-**Talking points**:
-
-- Show the full gradient table: every parameter's gradient, written as a product of upstream gradients and local Jacobians.
-- Point out the pattern: each layer's gradient is the upstream gradient times the local derivative.
-- "The pattern is always: what comes back from above times what happens locally."
-- PAUSE. Give students 2 minutes to identify which gradients would be zero if ReLU was negative.
-- If beginners look confused: "Each gradient is a number telling us: increase this weight by 1, and the loss changes by this amount. Negative means increasing the weight reduces the loss — we should increase it."
-- If experts look bored: "The computational graph perspective: backprop traverses the DAG in topological reverse order, accumulating gradients. PyTorch's autograd builds this DAG dynamically on every forward pass — that is what 'dynamic computational graph' means."
-
-**Transition**: "Let us formalise this as the backpropagation algorithm..."
-
----
-
-## Slide 38: Backpropagation: The Algorithm
-
-**Time**: ~4 min
-**Talking points**:
-
-- Algorithm steps: (1) forward pass, store activations, (2) compute loss gradient, (3) backward pass, chain rule at each layer, (4) accumulate gradients, (5) update weights.
-- The memory implication: we must store all intermediate activations during forward pass for use in backward. Training memory roughly doubles versus inference.
-- Gradient accumulation: for large batches, accumulate gradients over mini-batches, update once.
-- If beginners look confused: "Forward: make a prediction. Backward: figure out how each weight contributed to the error. Update: adjust each weight proportionally."
-- If experts look bored: "Gradient checkpointing trades compute for memory: recompute activations during backward pass instead of storing them. Reduces memory from O(L) to O(sqrt(L)) at the cost of one extra forward pass. Essential for very large models."
-
-**Transition**: "The chain rule also applies to vectors. Let us be precise about Jacobians..."
-
----
-
-## Slide 39: Jacobians and Vector-Jacobian Products
-
-**Time**: ~3 min
-**Talking points**:
-
-- Scalar function, vector input: the gradient is a vector (same shape as input).
-- Vector function, vector input: the gradient is a Jacobian matrix.
-- In backprop we always need vector-Jacobian products (VJPs), not full Jacobians. This is the efficiency key.
-- PyTorch computes VJPs, not full Jacobians. That is why torch.autograd.grad(outputs, inputs, grad_outputs=v) exists.
-- If beginners look confused: "When the function takes a list of numbers and outputs a list, the derivative is a whole grid of numbers — the Jacobian. In practice, we never build the full grid; we only need the product with an upstream vector."
-- If experts look bored: "The VJP perspective formalises why reverse-mode autodiff is efficient: computing v^T J for any upstream vector v costs the same as one backward pass, regardless of the output dimension. This is why backprop scales to networks with billions of parameters."
-
-**Transition**: "How do we know our gradients are correct? Gradient checking..."
-
----
-
-## Slide 40: Gradient Checking: Debugging Backpropagation
-
-**Time**: ~3 min
-**Talking points**:
-
-- Finite difference approximation: dL/dw is approximately (L(w + epsilon) - L(w - epsilon)) / (2\*epsilon).
-- Compare analytical gradient (from backprop) to numerical gradient (from finite differences). Should match to 5+ decimal places.
-- "If they do not match, your backprop has a bug. This is the gold standard debugging tool."
-- Practical: torch.autograd.gradcheck() does this automatically.
-- If beginners look confused: "We can check our math by approximating the derivative with a tiny change. If our formula gives the same answer as the approximation, our formula is correct."
-- If experts look bored: "Finite difference only works for small networks because it requires 2 forward passes per parameter — O(n) cost for n parameters. For production debugging, use PyTorch anomaly detection mode: torch.autograd.set_detect_anomaly(True)."
-
-**Transition**: "Now we know how gradients flow. What if they disappear? Section 7.7: vanishing gradients..."
-
----
-
-## Slide 41: 7.7 Vanishing Gradients
-
-**Time**: ~4 min
-**Talking points**:
-
-- The problem: in deep networks with sigmoid/tanh, gradients get multiplied by derivatives less than 1 at every layer. After 10 layers: 0.25^10 is approximately 10^-6.
-- The symptom: first layers stop learning. Loss plateau. Monitoring early layer gradients shows near-zero values.
-- The solutions: ReLU activations, batch normalisation, residual connections.
-- Draw the gradient magnitude plot: x-axis = layer depth, y-axis = gradient magnitude. Show the exponential decay.
-- If beginners look confused: "Imagine passing a message through 20 people, each one whispering it slightly quieter. By the time it reaches the last person, there is no message. Vanishing gradients are the same problem for training signals."
-- If experts look bored: "The Lipschitz constant of the gradient is the key quantity. For sigmoid with derivative max 0.25, the product of 10 Lipschitz constants bounds the gradient magnitude. ResNets solve this by adding a skip connection with Lipschitz constant 1."
-
-**Transition**: "The opposite problem: exploding gradients..."
-
----
-
-## Slide 42: Exploding Gradients and Gradient Clipping
-
-**Time**: ~3 min
-**Talking points**:
-
-- Exploding gradients: gradient magnitudes grow exponentially with depth. Causes NaN losses, unstable training.
-- Common in RNNs (sequential multiplication of the same weight matrix).
-- Solution: gradient clipping. If gradient norm exceeds threshold, scale it down. torch.nn.utils.clip*grad_norm*(params, max_norm).
-- Practical value: max_norm = 1.0 is a common default for transformers.
-- If beginners look confused: "If vanishing gradients are too quiet a signal, exploding gradients are too loud — they cause the training to overshoot in wild directions. Clipping puts a volume limit on the signal."
-- If experts look bored: "Global gradient norm clipping vs per-layer clipping: global is the industry standard. The max_norm hyperparameter interacts with learning rate — reducing one often requires tuning the other."
-
-**Transition**: "One more failure mode specific to ReLU networks: dead neurons..."
-
----
-
-## Slide 43: Dead Neurons (Dying ReLU)
-
-**Time**: ~3 min
-**Talking points**:
-
-- Dead neurons: ReLU outputs 0 for all inputs. Gradient is 0. Weights never update. Neuron is permanently dead.
-- Cause: weights initialised too negative, learning rate too high (overshoot), large negative bias.
-- Detection: monitor the fraction of zero activations per layer. Above 50% is a warning sign.
-- Solutions: Leaky ReLU (never truly zero), ELU, careful initialisation, lower learning rate.
-- If beginners look confused: "Imagine a neuron that has given up. It outputs zero for everything, learns nothing, and can never recover. The fix is to use a slightly different activation function that never truly turns off."
-- If experts look bored: "Dead neuron fraction is a useful diagnostic. A healthy ReLU network has approximately 50% sparsity per layer — if you see 80%+ zeros in a layer, investigate. The dead fraction correlates with effective capacity loss."
-
-**Transition**: "Now let us scale up. Section 7.8: how do we train on multiple GPUs?"
-
----
-
-## Slide 44: 7.8 Parallelised Backpropagation
-
-**Time**: ~3 min
-**Talking points**:
-
-- Section marker. The problem: modern models are too large and too data-hungry for a single GPU.
-- Four parallelism strategies: data, model, pipeline, tensor.
-- "We are not just scaling compute. We are re-thinking how the computation is distributed."
-- If beginners look confused: "One GPU is like one worker. When the task is too big, you hire more workers. How you split the work is the strategy."
-- If experts look bored: "The combination of all four strategies is what enabled training at the scale of the largest modern language models. Understanding the trade-offs between them is essential for anyone doing large-scale ML."
-
-**Transition**: "Start with the simplest: data parallelism..."
-
----
-
-## Slide 45: Data Parallelism in Detail
-
-**Time**: ~4 min
-**Talking points**:
-
-- Split the batch across GPUs. Each GPU has a full model copy. Forward and backward passes happen in parallel.
-- Gradient synchronisation: after backward pass, all-reduce gradients across GPUs, apply the same update to all model copies.
-- PyTorch: torch.nn.parallel.DistributedDataParallel (DDP). Prefer over DataParallel (which has the GIL problem).
-- Scaling: near-linear speedup up to the point where communication overhead dominates.
-- If beginners look confused: "Give each worker a copy of the problem and a subset of the data. Workers solve their subset, share their findings, and all update their knowledge together."
-- If experts look bored: "All-reduce efficiency: ring-allreduce (used by NCCL) achieves 2\*(N-1)/N bandwidth efficiency where N is the number of GPUs. Communication becomes the bottleneck at large N unless using NVLink or InfiniBand."
-
-**Transition**: "What if the model itself does not fit on one GPU?"
-
----
-
-## Slide 46: Model Parallelism and the Bubble Problem
-
-**Time**: ~4 min
-**Talking points**:
-
-- Model parallelism: split the model across GPUs. GPU1 has layers 1-4, GPU2 has layers 5-8, etc.
-- The bubble problem: while GPU2 is computing, GPU1 is idle. GPU utilisation is terrible.
-- Naive model parallelism often has 50%+ idle time — worse than single GPU if not addressed.
-- Show the timeline diagram: one row per GPU, time on x-axis. The bubbles (idle periods) are visible.
-- If beginners look confused: "Imagine an assembly line where only one station works at a time. Everyone else waits. That is the bubble problem."
-- If experts look bored: "The bubble fraction is (p-1)/p where p is pipeline stages. For 4-way pipeline parallelism, 75% of the time is wasted with naive scheduling. Micro-batching reduces but does not eliminate this."
-
-**Transition**: "The solution is pipeline parallelism..."
-
----
-
-## Slide 47: Pipeline Parallelism: Filling the Bubbles
-
-**Time**: ~3 min
-**Talking points**:
-
-- Solution: split each mini-batch into micro-batches. While GPU2 processes micro-batch 1, GPU1 starts on micro-batch 2.
-- This fills the pipeline — like a factory assembly line at full speed.
-- GPipe (Google) and PipeDream (Microsoft) are the seminal implementations.
-- Bubble fraction reduces from (p-1)/p to (p-1)/(p + m - 1) where m is the number of micro-batches.
-- If beginners look confused: "Instead of waiting for the first batch to finish before sending the second, we overlap them. By the time GPU2 is processing piece 1, GPU1 is already working on piece 2."
-- If experts look bored: "PipeDream-2BW (2-buffer-weight) uses double buffering to allow weight updates without pipeline flush, improving throughput by roughly 2x over GPipe's synchronous approach."
-
-**Transition**: "The most fine-grained parallelism: tensor parallelism..."
-
----
-
-## Slide 48: Tensor Parallelism
-
-**Time**: ~3 min
-**Talking points**:
-
-- Split individual matrix multiplications across GPUs. Each GPU computes a slice of the weight matrix.
-- Used for the widest layers — attention heads in transformers, for example.
-- Megatron-LM (NVIDIA) pioneered this for transformer attention and FFN layers.
-- The communication pattern: after each tensor-parallel operation, you need an all-reduce. More communication than data parallelism.
-- If beginners look confused: "Tensor parallelism splits individual calculations, not just the data or the model layers. It is like having each worker compute a different column of a multiplication table simultaneously."
-- If experts look bored: "Tensor parallelism works within a node (NVLink bandwidth). Pipeline and data parallelism work across nodes. The 3D parallelism used to train the largest models combined all three: TP within node, PP across nodes, DP across replica groups."
-
-**Transition**: "A key memory optimisation: ZeRO..."
-
----
-
-## Slide 49: ZeRO: Zero Redundancy Optimiser
-
-**Time**: ~3 min
-**Talking points**:
-
-- ZeRO (DeepSpeed): eliminates redundancy in data parallelism. Each GPU stores only 1/N of the parameters, gradients, and optimizer states.
-- Three stages: ZeRO-1 (partition optimizer states), ZeRO-2 (plus gradients), ZeRO-3 (plus parameters).
-- ZeRO-3: memory per GPU = total model size / N GPUs. A 175B model across 1000 GPUs = 175M parameters per GPU.
-- Trade-off: more communication bandwidth required as we go from ZeRO-1 to ZeRO-3.
-- If beginners look confused: "Instead of every GPU holding a complete copy of the model, each GPU holds only its assigned piece. When needed, GPUs share their pieces with each other."
-- If experts look bored: "The memory reduction is clean: ZeRO-1 gives 4x (optimizer state), ZeRO-2 gives 8x, ZeRO-3 gives roughly 64x on a very large model vs baseline DP. The communication volume for ZeRO-3 is 1.5x baseline DP — a small price for the memory savings."
-
-**Transition**: "One more technique that touches both training speed and memory: mixed precision..."
-
----
-
-## Slide 50: Mixed Precision Training
-
-**Time**: ~3 min
-**Talking points**:
-
-- FP32 (32-bit): full precision, slow, large. FP16 (16-bit): half precision, fast, small, but range issues.
-- Mixed precision: forward pass and gradients in FP16, master weights and optimizer states in FP32.
-- Loss scaling: multiply loss by a large scalar before backward pass to prevent underflow in FP16 gradients.
-- Speedup: 2-3x on modern GPUs (Tensor Cores are optimised for FP16/BF16 matrix multiply).
-- BF16 (bfloat16): same range as FP32, lower precision. Preferred over FP16 for most modern hardware.
-- If beginners look confused: "We do the heavy lifting in a compressed format (FP16) which is twice as fast, and only keep the exact numbers (FP32) where precision really matters."
-- If experts look bored: "The numerical stability argument for BF16 over FP16: BF16 has the same 8 exponent bits as FP32, so the dynamic range is identical. FP16's limited range causes overflow in activations and gradients without loss scaling."
-
-**Transition**: "We have the infrastructure for training at scale. Now let us choose how to descend the loss surface. Section 7.9: optimisers..."
-
----
-
-## Slide 51: 7.9 SGD: Stochastic Gradient Descent
-
-**Time**: ~4 min
-**Talking points**:
-
-- SGD vs gradient descent: use a random mini-batch instead of the full dataset. Noisy but much faster per update.
-- Update rule: w = w - lr \* gradient(batch).
-- The noise is actually beneficial: acts as regularisation, helps escape shallow local minima.
-- Batch size trade-off: larger batch = less noise = more stable = better hardware utilisation = often worse generalisation.
-- PAUSE. Ask: "Why might noisy gradients help generalisation?" Let students think.
-- If beginners look confused: "Instead of looking at all our training data before each update, we look at a random sample. It is faster and, surprisingly, often finds better solutions."
-- If experts look bored: "The sharp minima / flat minima connection (Keskar et al., 2017): large-batch training finds sharper minima with worse generalisation. The noise from small batches helps find flatter minima which generalise better. This explains why optimal batch sizes are often surprisingly small."
-
-**Transition**: "SGD alone is too slow. We need momentum..."
-
----
-
-## Slide 52: SGD with Momentum
-
-**Time**: ~3 min
-**Talking points**:
-
-- Momentum: accumulate a velocity vector in directions of persistent gradient. v = beta*v + gradient, w = w - lr*v.
-- beta = 0.9 is the standard choice.
-- Physics analogy: momentum prevents a ball from stopping in a shallow valley and helps it roll through to the deeper one.
-- Two effects: smoother updates (reduces oscillation), faster progress in consistent directions.
-- If beginners look confused: "Momentum is like pushing a shopping cart. Even if there is a small bump, the cart keeps rolling. It smooths out the jerky movements of plain SGD."
-- If experts look bored: "Nesterov momentum (NAG) computes the gradient at the lookahead position: v = beta*v + gradient_at(w - beta*v), w = w - lr\*v. This gives slightly better convergence rates and is the default when using SGD with momentum in modern practice."
-
-**Transition**: "What about adapting the learning rate per parameter? AdaGrad and RMSProp..."
-
----
-
-## Slide 53: AdaGrad and RMSProp
-
-**Time**: ~4 min
-**Talking points**:
-
-- AdaGrad: accumulate squared gradients per parameter. Divide learning rate by sqrt of accumulated squared gradients. Rare parameters get larger updates.
-- Problem: accumulated squared gradients grow monotonically. Learning rate approaches 0 over time. Training stops.
-- RMSProp: exponential moving average of squared gradients instead of sum. Fixes the monotonic accumulation.
-- RMSProp: S = beta*S + (1-beta)*gradient^2, w = w - lr \* gradient / sqrt(S + epsilon).
-- If beginners look confused: "AdaGrad gives a smaller learning rate to parameters that have been updated a lot, and a larger rate to those updated rarely. The problem: eventually it stops updating everything. RMSProp fixes this with a forgetting mechanism."
-- If experts look bored: "AdaGrad has a beautiful theoretical motivation: it adapts to the geometry of the loss surface by diagonally preconditioning the gradient. The issue is that the diagonal preconditioner grows without bound. RMSProp's exponential averaging effectively normalises the geometry locally."
-
-**Transition**: "The combination of momentum and adaptive rates gives us Adam..."
-
----
-
-## Slide 54: Adam: The Default Optimiser
-
-**Time**: ~4 min
-**Talking points**:
-
-- Adam = RMSProp + momentum. Two moments: first moment (momentum), second moment (adaptive learning rate).
-- m = beta1*m + (1-beta1)*gradient (first moment, beta1=0.9)
-- v = beta2*v + (1-beta2)*gradient^2 (second moment, beta2=0.999)
-- Bias correction: m_hat = m/(1-beta1^t), v_hat = v/(1-beta2^t).
-- Update: w = w - lr \* m_hat / (sqrt(v_hat) + epsilon).
-- Defaults: lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8.
-- "Adam is your default. Use it unless you have a specific reason not to."
-- If beginners look confused: "Adam has two memories: one for the direction of movement (momentum), one for how fast each parameter has been changing (adaptive rate). It uses both to make smart updates."
-- If experts look bored: "The bias correction terms are important in early training — without them, the first few updates are dominated by the initialisation of m and v to zero, causing artificially small updates. This is especially noticeable with beta2=0.999."
-
-**Transition**: "Adam has one known flaw. AdamW fixes it..."
-
----
-
-## Slide 55: AdamW: Decoupled Weight Decay
-
-**Time**: ~3 min
-**Talking points**:
-
-- The flaw in Adam: L2 regularisation (weight decay) is not equivalent to proper weight decay when using adaptive learning rates.
-- In SGD: L2 reg in loss is equivalent to weight decay. In Adam: L2 reg in loss is not equal to weight decay (the adaptive scaling changes the effective magnitude).
-- AdamW: decouple weight decay from the gradient update. Apply weight decay directly to weights, not via the gradient.
-- Update: w = (1 - lr*lambda)*w - lr \* m_hat / (sqrt(v_hat) + epsilon).
-- "AdamW is the correct implementation. It is the default for all transformer training."
-- If beginners look confused: "AdamW is Adam but with regularisation done correctly. Just use AdamW instead of Adam."
-- If experts look bored: "The decoupling matters empirically: Loshchilov and Hutter (2019) showed AdamW consistently outperforms Adam+L2 across architectures. The intuition: adaptive scaling in Adam makes L2 penalise rare features less than frequent ones, which is the wrong behaviour."
-
-**Transition**: "A quick tour of cutting-edge optimisers..."
-
----
-
-## Slide 56: Cutting-Edge Optimisers
-
-**Time**: ~2 min
-**Talking points**:
-
-- Lion (ICML 2023): momentum only, no second moment. Memory efficient. 3x faster than AdamW in some benchmarks.
-- Adan: adaptive Nesterov momentum estimation. Better on vision tasks.
-- CAME: memory-efficient Adam variant using low-rank second moment approximation.
-- "These are research options. Use AdamW for production. Follow these only if AdamW is a bottleneck."
-- If experts look bored: "Lion was found via evolution strategy — the optimizer was literally evolved by a meta-learning system. This represents a new paradigm in optimizer design that sidesteps human intuition entirely."
-
-**Transition**: "How do we change the learning rate during training?"
-
----
-
-## Slide 57: Learning Rate Schedules
-
-**Time**: ~4 min
-**Talking points**:
-
-- Constant LR: baseline. Usually suboptimal.
-- Cosine annealing: decrease LR following a cosine curve from max to min. Most common in practice.
-- Warmup: start with very low LR, increase linearly, then apply schedule. Essential for transformers (stabilises early training).
-- Cyclical LR: oscillate between low and high LR. Can escape local minima.
-- One-cycle policy: warmup + cosine decay in one cycle. Often achieves better results faster.
-- Show the schedule plots. Students should be able to sketch these from memory.
-- If beginners look confused: "The learning rate is like the stride of a person looking for their keys. Start with big strides to cover ground, then take small steps to search carefully near the likely spot."
-- If experts look bored: "The warmup is theoretically motivated by the variance of the Adam estimators in early training: with t small, the bias-corrected second moment estimate has high variance, and large LR magnifies this. Warmup keeps the effective LR small until the estimates stabilise."
-
-**Transition**: "We can train well. Now how do we prevent overfitting? Section 7.10: regularisation..."
-
----
-
-## Slide 58: 7.10 Dropout
-
-**Time**: ~4 min
-**Talking points**:
-
-- Dropout: randomly zero out neurons with probability p during training. p=0.5 is common for FC layers, p=0.1-0.2 for transformer attention.
-- At inference: disable dropout, scale activations by (1-p). Or use inverted dropout (scale during training by 1/(1-p)).
-- Interpretation 1: ensemble of 2^n sub-networks. Inference = averaging them.
-- Interpretation 2: prevents co-adaptation. Each neuron must work independently.
-- If beginners look confused: "During training, we randomly mute half the neurons on each pass. This forces the network to not rely on any single neuron — each must learn something useful on its own."
-- If experts look bored: "The ensemble interpretation (Srivastava et al., 2014): geometric mean of 2^n networks with shared weights. Inference uses the full network as an approximation to the full ensemble. This connects dropout to Bayesian model averaging."
-
-**Transition**: "Dropout is less common in CNNs. Batch normalisation is more important there..."
-
----
-
-## Slide 59: Batch Normalisation
-
-**Time**: ~4 min
-**Talking points**:
-
-- BatchNorm: normalise activations within a mini-batch (zero mean, unit variance), then scale and shift with learned parameters gamma and beta.
-- Two benefits: (1) reduces internal covariate shift — each layer sees a stable distribution, (2) acts as regularisation (the batch statistics introduce noise).
-- At inference: use running mean/variance computed during training (not batch statistics).
-- Placement: after linear/conv layer, before activation. Or after activation — empirically both work, before is more common.
-- If beginners look confused: "BatchNorm is like a thermostat for activations. Each layer's output gets normalised to a standard range before being passed on. This keeps the scale stable as gradients flow."
-- If experts look bored: "The 'reduces internal covariate shift' explanation is contested (Santurkar et al., 2018 showed it does not actually reduce covariate shift). The actual mechanism appears to be smoothing the loss landscape — BatchNorm constrains the gradient norm, making the loss surface more Lipschitz."
-
-**Transition**: "BatchNorm does not work for small batches or sequence models. LayerNorm does..."
-
----
-
-## Slide 60: Layer Normalisation
-
-**Time**: ~3 min
-**Talking points**:
-
-- LayerNorm: normalise across the feature dimension for each sample, not across the batch.
-- Does not depend on batch size. Works identically at training and inference. No running statistics needed.
-- Used in transformers (BERT, GPT, and almost all modern architectures).
-- Comparison: BatchNorm = normalise each feature across the batch. LayerNorm = normalise all features for each sample.
-- If beginners look confused: "LayerNorm normalises each sample's activations independently. It does not need to look at the whole batch, so it works even for batch size of 1 — important for inference."
-- If experts look bored: "The architectural choice between BatchNorm and LayerNorm has practical implications: BatchNorm requires synchronisation across GPUs, while LayerNorm is trivially parallelisable. For distributed training, LayerNorm is strictly easier."
-
-**Transition**: "Other regularisation techniques that every practitioner should know..."
-
----
-
-## Slide 61: Other Regularisation Techniques
-
-**Time**: ~4 min
-**Talking points**:
-
-- L2 weight decay (AdamW): penalises large weights. The most universal regulariser.
-- Data augmentation: artificially expand the training set. Random crop, flip, colour jitter for images; synonym replacement for text.
-- Early stopping: stop when validation loss stops improving. Simple and effective.
-- Label smoothing: replace hard targets (0/1) with soft targets. Prevents overconfident predictions.
-- Mixup: train on linear interpolations of training examples. Forces the model to learn smooth decision boundaries.
-- "Regularisation is not one technique — it is a family. Stack them appropriately."
-- If beginners look confused: "All regularisation techniques share one goal: prevent the model from memorising training data. They just do it in different ways — shrinking weights, augmenting data, or softening targets."
-- If experts look bored: "Label smoothing has a calibration interpretation: it matches the confidence of the model's predictions to the actual accuracy. Hard labels push the model to be maximally confident, which leads to overconfidence. Smooth labels are the maximum entropy solution conditional on the correct class probability."
-
-**Transition**: "Now the most important architecture for images. Section 7.11: convolutional neural networks..."
-
----
-
-## Slide 62: 7.11 The Convolution Operation
-
-**Time**: ~5 min
-**Talking points**:
-
-- Convolution: slide a small filter (kernel) over the input, computing dot products at each position.
-- The key properties that make convolution right for images: (1) locality — nearby pixels are related, (2) translation equivariance — a cat in the top-left and a cat in the bottom-right should activate the same filters.
-- Walk through the mechanics: 3x3 kernel, stride 1, on a 5x5 input gives 3x3 output. Show the sliding window.
-- Output size formula: (W - K + 2P) / S + 1. Commit to memory.
-- Compare to fully connected: a 28x28 image with an FC layer of 1000 neurons needs 784,000 parameters. The same with a 3x3 conv needs 9 parameters (shared). Orders of magnitude fewer.
-- If beginners look confused: "A convolutional filter is like a detective looking for a specific pattern. It scans the whole image asking 'Is this pattern here?' at every position. Sharing the same filter across positions is why CNNs are so efficient."
-- If experts look bored: "The translation equivariance of convolution is an inductive bias. It is the reason CNNs need 100x less data than FCNs for image tasks — the architecture encodes the symmetry of the problem. Vision transformers achieve similar performance without this inductive bias, but require more data or pretraining."
-
-**Transition**: "The parameters of a convolutional layer..."
-
----
-
-## Slide 63: Convolution Parameters
-
-**Time**: ~3 min
-**Talking points**:
-
-- Kernel size: 3x3 (common), 5x5, 1x1 (pointwise — changes channels without spatial mixing).
-- Stride: step size of the sliding window. Stride 2 halves the spatial dimensions.
-- Padding: add zeros around the border. 'same' padding preserves spatial dimensions.
-- Dilation: gaps between kernel elements. Increases receptive field without more parameters.
-- Depth-wise separable convolutions: factored convolution (spatial + channel). Used in MobileNet — same expressiveness, 8-9x fewer FLOPs.
-- If beginners look confused: "Kernel size = how big the detective's magnifying glass is. Stride = how far it jumps between positions. Padding = adding a border so the output is the same size as the input."
-- If experts look bored: "Receptive field calculation: after L convolutional layers with kernel size K and stride 1, the receptive field is L*(K-1)+1. With dilation d, effective kernel size is d*(K-1)+1. Understanding receptive field is critical for debugging why a CNN cannot capture global structure."
-
-**Transition**: "How do we build a CNN from these pieces?"
-
----
-
-## Slide 64: CNN Architecture Components
-
-**Time**: ~4 min
-**Talking points**:
-
-- Standard block: Conv → BatchNorm → ReLU → (optional Pool).
-- Pooling: max pool (take the maximum in a window) or average pool. Reduces spatial dimensions, introduces translation invariance.
-- Global average pooling: reduce entire spatial map to a single number per channel. Replaces the flatten-then-FC approach.
-- Feature pyramid: early layers have high spatial resolution but few channels; deep layers have low resolution but many channels.
-- Show the typical progression: 224x224x3 → 112x112x64 → 56x56x128 → 28x28x256 → 7x7x512 → 1x1x1000.
-- If beginners look confused: "As we go deeper in a CNN, the image gets smaller but the number of filters grows. We trade spatial detail for richer feature abstractions."
-- If experts look bored: "The information bottleneck at the end (global average pooling) is a form of invariance: the final representation is invariant to where in the image the feature appears, only encoding what features are present and their strength."
-
-**Transition**: "How have CNN architectures evolved?"
-
----
-
-## Slide 65: Classic Architectures: The Evolution
-
-**Time**: ~3 min
-**Talking points**:
-
-- AlexNet (2012): 8 layers, dropout, data augmentation. The breakthrough.
-- VGG (2014): all 3x3 convolutions, very deep (16/19 layers). Showed that depth matters more than filter size.
-- Inception/GoogLeNet (2014): parallel paths with different kernel sizes. Multi-scale feature extraction.
-- ResNet (2015): skip connections. Made very deep networks (50, 101, 152 layers) trainable.
-- "Each generation solved a specific problem. AlexNet: can we train at all? VGG: does depth help? Inception: what kernel size? ResNet: how deep can we go?"
-- If beginners look confused: "Think of this as an arms race. Each year, researchers found a new trick to make networks deeper, faster, or more accurate."
-- If experts look bored: "The architectural innovations map directly to the theoretical problems: VGG addressed expressiveness via depth, Inception addressed multi-scale inductive bias, ResNet addressed the optimisation landscape."
-
-**Transition**: "ResNet is the most important architecture in deep learning history. Let us go deep on skip connections..."
-
----
-
-## Slide 66: ResNet: The Skip Connection Revolution
-
-**Time**: ~5 min
-**Talking points**:
-
-- The problem ResNet solved: adding more layers made networks WORSE (not just overfitting — training error went up). Degradation problem.
-- The insight: instead of learning H(x), learn F(x) = H(x) - x (the residual). Add the input x back directly.
-- Skip connection: output = F(x) + x. The identity path provides a gradient highway.
-- Why this works: (1) gradients can flow directly from loss to early layers, (2) layers only need to learn refinements, (3) the identity mapping is a trivial solution the network can fall back to.
-- He et al. (2015): ResNet-152 won ImageNet with 3.57% top-5 error. Humans were at roughly 5%.
-- If beginners look confused: "Instead of teaching each layer to do its job from scratch, ResNet says: just figure out what to add to what was already there. That is much easier to learn."
-- If experts look bored: "The residual connection ensures gradient magnitude is at least 1 along the skip path. This gives a lower bound on the gradient, preventing vanishing. The effective depth of a ResNet is stochastic — some forward passes use many residual blocks, others skip most of them via the skip connections."
-
-**Transition**: "A refinement that further improves training: pre-activation ResNets..."
-
----
-
-## Slide 67: Pre-Activation ResNet
-
-**Time**: ~2 min
-**Talking points**:
-
-- Original ResNet: Conv → BN → ReLU, then add skip.
-- Pre-activation ResNet: BN → ReLU → Conv, then add skip.
-- Benefit: the skip connection is a clean identity (no activation), providing an unobstructed gradient path.
-- Used in ResNet-1001 (1000 layers). Pre-activation was essential for that depth.
-- If beginners look confused: "By moving the normalisation before the convolution, the skip connection stays clean — the gradient flows straight through without being distorted."
-- If experts look bored: "The theoretical advantage: the pre-activation arrangement means the residual path has normalised inputs, which prevents the scale explosion that can occur with post-activation when the residual outputs accumulate across many layers."
-
-**Transition**: "CNNs are not just for classification. What else can they do?"
-
----
-
-## Slide 68: Beyond Image Classification
-
-**Time**: ~4 min
-**Talking points**:
-
-- Object detection: not just 'what' but 'where'. YOLO, SSD, Faster R-CNN.
-- Semantic segmentation: classify every pixel. FCN, U-Net.
-- Instance segmentation: detect and segment individual objects. Mask R-CNN.
-- Medical imaging: U-Net is the standard for biomedical image segmentation. Critical real-world application.
-- Key architecture: U-Net (encoder-decoder with skip connections). Show the architecture shape.
-- If beginners look confused: "Classification says 'there is a cat in this photo.' Detection says 'there is a cat and it is in the top-right corner.' Segmentation says 'these exact pixels are the cat.' Each is progressively harder."
-- If experts look bored: "U-Net's skip connections between encoder and decoder are different from ResNet's — they concatenate features rather than adding them. This preserves both high-level semantics (from the bottleneck) and low-level spatial detail (from the encoder). Essential for dense prediction tasks."
-
-**Transition**: "We have deep networks. What do their intermediate representations look like? Section 7.12: embeddings..."
-
----
-
-## Slide 69: 7.12 From Networks to Embeddings
-
-**Time**: ~3 min
-**Talking points**:
-
-- Section marker. The hidden layers of a trained network contain rich representations.
-- Embedding: a dense, low-dimensional vector representation of an object (image, text, user, product).
-- "The last hidden layer of a trained network IS an embedding space."
-- This section bridges Module 7 (architecture) to Module 8 (NLP/transformers) and Module 9 (RAG/agents).
-- If beginners look confused: "An embedding is a way to describe something with a list of numbers. A trained network has learned the best list of numbers for each thing it has seen."
-
-**Transition**: "What kinds of embeddings exist?"
-
----
-
-## Slide 70: Types of Embeddings
-
-**Time**: ~4 min
-**Talking points**:
-
-- Image embeddings: penultimate layer of a trained network. 2048-dimensional for ResNet-50.
-- Word embeddings: Word2Vec, GloVe. 300-dimensional. Words with similar meanings are close in embedding space.
-- Sentence embeddings: BERT [CLS] token. 768-dimensional. Used for semantic search.
-- User/item embeddings: collaborative filtering. Matrix factorisation. Used for recommendation.
-- Graph embeddings: Node2Vec, GraphSAGE. Encode graph structure.
-- The unifying principle: similar things should have similar embeddings (close in Euclidean or cosine distance).
-- If beginners look confused: "Imagine plotting every word on a map where similar words live close together. 'King' is close to 'queen', 'dog' is close to 'cat'. That map is the embedding space."
-- If experts look bored: "The dimensionality of the embedding space controls the capacity to encode semantic distinctions. Too low: semantically different things map to the same vector. Too high: sample inefficiency. The intrinsic dimensionality of natural language appears to be in the low hundreds, which is why 256-768 dimensional embeddings work so well."
-
-**Transition**: "How do we use these embeddings in downstream tasks?"
-
----
-
-## Slide 71: Using Embeddings Downstream
-
-**Time**: ~4 min
-**Talking points**:
-
-- Similarity search: find the k most similar items by embedding distance. Core of semantic search, recommendation.
-- Transfer learning: use embeddings as features for a new task. Fine-tune the last layer or all layers.
-- Clustering: embed all items, cluster in embedding space. K-means on embeddings is a powerful baseline.
-- Anomaly detection: points far from the cluster centres in embedding space are anomalies.
-- Kailash connection: FeatureStore (M3) + ModelRegistry (M4) together handle embedding storage and retrieval at scale.
-- If beginners look confused: "Once you have embeddings, you can measure similarity by distance. Close = similar. Far = different. This powers search, recommendations, and anomaly detection."
-- If experts look bored: "Approximate nearest neighbour (ANN) search — FAISS, ScaNN, HNSW — is the production-scale solution for embedding lookup. Exact cosine search is O(n\*d); ANN achieves O(log n) with small accuracy loss. This is the engineering backbone of RAG (Module 9)."
-
-**Transition**: "A landmark in generative deep learning: GANs..."
-
----
-
-## Slide 72: Generative Adversarial Networks (GANs)
-
-**Time**: ~4 min
-**Talking points**:
-
-- GAN setup: Generator G tries to create realistic fake data. Discriminator D tries to distinguish real from fake.
-- Min-max game: G tries to fool D, D tries to catch G. Equilibrium: G generates samples indistinguishable from real data.
-- Applications: image synthesis (StyleGAN), super-resolution, data augmentation, domain adaptation.
-- Training challenges: mode collapse (G produces only one type of output), oscillation (G and D never reach equilibrium).
-- Historical significance: Goodfellow et al. (2014) paper described as "the most important idea in the last decade" by Yann LeCun.
-- If beginners look confused: "Think of the generator as a counterfeiter and the discriminator as a detective. The counterfeiter gets better by learning from the detective's catches. Eventually the counterfeiter is so good the detective cannot tell the difference."
-- If experts look bored: "The GAN objective is a Jensen-Shannon divergence minimisation (original GAN) or Wasserstein distance (WGAN). The Wasserstein formulation solves mode collapse by providing smoother gradients even when distributions have disjoint support."
-
-**Transition**: "A related architecture: autoencoders..."
-
----
-
-## Slide 73: Autoencoders
-
-**Time**: ~3 min
-**Talking points**:
-
-- Autoencoder: encoder compresses input to a bottleneck embedding, decoder reconstructs the input.
-- Loss: reconstruction loss (MSE). No labels needed — unsupervised.
-- The bottleneck forces the network to learn a compact representation.
-- Variational Autoencoder (VAE): bottleneck is a probability distribution (mean + variance). Can sample from the latent space to generate new data.
-- Applications: anomaly detection, denoising, dimensionality reduction, generative modelling.
-- If beginners look confused: "An autoencoder is taught to compress something and then uncompress it. The compressed form in the middle is the embedding. If it can compress and decompress well, the compressed form must contain the essential information."
-- If experts look bored: "The ELBO objective for VAE: E[log p(x|z)] - KL(q(z|x) || p(z)). The first term is reconstruction quality, the second is a regularisation on the latent space. The reparameterisation trick makes the expectation differentiable with respect to the encoder parameters."
-
-**Transition**: "For structured data: graph neural networks..."
-
----
-
-## Slide 74: Graph Neural Networks
-
-**Time**: ~3 min
-**Talking points**:
-
-- Graphs: nodes (entities) + edges (relationships). Social networks, molecules, knowledge graphs, supply chains.
-- GNN: each node aggregates information from its neighbours, updates its own representation.
-- GCN, GAT, GraphSAGE: different aggregation strategies (mean, attention-weighted, sampled).
-- Applications: drug discovery (molecule property prediction), recommendation (user-item graphs), fraud detection (transaction graphs).
-- If beginners look confused: "A GNN updates each node's understanding by looking at who it is connected to. In a social network, your recommendation score depends on what your friends have liked."
-- If experts look bored: "The message-passing formalism unifies most GNN architectures: h_v = UPDATE(h_v, AGGREGATE({h_u : u in N(v)})). The expressiveness of GNNs is bounded by the Weisfeiler-Lehman graph isomorphism test — a fundamental theoretical result."
-
-**Transition**: "A new paradigm replacing RNNs for sequences: state space models..."
-
----
-
-## Slide 75: State Space Models
-
-**Time**: ~3 min
-**Talking points**:
-
-- State space models (SSMs): represent sequences as linear dynamical systems. Mamba, S4, H3.
-- Advantage over transformers: linear time complexity with sequence length (vs quadratic for attention).
-- The core idea: a hidden state evolves over time, combining the current input with past context.
-- Mamba (2023): selective SSM that adapts state transitions based on content. Close to transformer quality, much faster for long sequences.
-- If beginners look confused: "SSMs are like a very fast summariser. They maintain a running state that captures the important information from everything they have seen so far, updating it efficiently as new input arrives."
-- If experts look bored: "Mamba's selectivity mechanism is the key innovation: the discretisation parameters are input-dependent, giving the model content-aware gating similar to attention but at O(1) per step for autoregressive inference. This is why it is compelling for long-context tasks."
-
-**Transition**: "How do we actually implement all of this? PyTorch essentials..."
-
----
-
-## Slide 76: PyTorch Essentials
-
-**Time**: ~4 min
-**Talking points**:
-
-- The core PyTorch objects: Tensor (data + gradients), nn.Module (layer/model definition), Optimizer, DataLoader.
-- nn.Module anatomy: **init** (define layers), forward (define computation graph).
-- The training loop skeleton: zero_grad, forward, loss, backward, step.
-- Device management: .to(device) — move everything to the same device (CPU or CUDA).
-- torch.no_grad() for inference; torch.enable_grad() inside custom contexts.
-- "PyTorch is the tool. Understanding the training loop is the skill."
-- If beginners look confused: "PyTorch is a Python library for building neural networks. The key concept: everything is a tensor (like a NumPy array but with automatic gradient tracking)."
-- If experts look bored: "The compile API (torch.compile() in PyTorch 2.0) applies kernel fusion and graph-level optimisations transparently. On modern hardware, it gives 1.5-2x speedup with no code changes. Always apply it before production training runs."
-
-**Transition**: "Let me show you the complete training loop in one slide..."
-
----
-
-## Slide 77: The Complete Training Loop
-
-**Time**: ~5 min
-**Talking points**:
-
-- Walk through every line: load batch, zero gradients (critical — they accumulate by default), forward pass, compute loss, backward pass, gradient clipping, optimizer step.
-- The eval loop: model.eval(), torch.no_grad(), compute validation metrics.
-- ModelVisualizer: use to log metrics, plot training curves, compare runs.
-- PAUSE. Do not rush this slide. This loop is the foundation of everything.
-- COMMON MISTAKE: forgetting optimizer.zero_grad(). Gradients accumulate across batches, causing bizarre training behaviour. Mention this explicitly.
-- If beginners look confused: "This is the heartbeat of training. Predict, measure error, calculate blame, adjust. Repeat. Everything else is details."
-- If experts look bored: "The canonical pattern is: gradient accumulation for large effective batch sizes, gradient clipping, and cosine LR with warmup. These three together cover 90% of practical training scenarios."
-
-**Transition**: "When training goes wrong, how do we debug it?"
-
----
-
-## Slide 78: Debugging DL Models
-
-**Time**: ~4 min
-**Talking points**:
-
-- The debugging flowchart: (1) check loss is decreasing, (2) check gradient magnitudes per layer, (3) check activation statistics, (4) check data loading, (5) check training vs validation gap.
-- Common pathologies and their signatures:
-  - NaN loss: exploding gradients or division by zero
-  - Loss plateaus immediately: dead neurons or too-small learning rate
-  - Train loss low, val loss high: overfitting
-  - Both losses not moving: learning rate too low or wrong loss for the task
-  - Loss oscillates wildly: learning rate too high
-- ModelVisualizer: visualise all of these with one call.
-- If beginners look confused: "Think of debugging DL as diagnosing a patient. Each symptom (NaN, plateau, oscillation) points to a different root cause. Learn the symptoms and their causes."
-- If experts look bored: "The loss landscape perspective: NaN = gradient overflow past the landscape boundary; plateau = stuck in a flat region or saddle; oscillation = too large step size causing bouncing. Each diagnosis has a precise geometric interpretation."
-
-**Transition**: "Model trained. Now let us take it to production. OnnxBridge..."
-
----
-
-## Slide 79: OnnxBridge: Export and Optimise
-
-**Time**: ~5 min
-**Talking points**:
-
-- ONNX (Open Neural Network Exchange): framework-agnostic model format. Train in PyTorch, deploy anywhere.
-- OnnxBridge handles: export, graph optimisation, quantisation (FP32 → INT8 → 4x speedup), validation.
-- Quantisation types: post-training quantisation (easy), quantisation-aware training (better quality, more work).
-- Deployment targets: ONNX Runtime (CPU/GPU/NPU), TensorRT (NVIDIA), CoreML (Apple), TFLite (mobile).
-- Kailash pattern: TrainingPipeline trains → ModelRegistry stores → OnnxBridge exports → InferenceServer serves.
-- PAUSE. Draw the full pipeline on the board: training → ONNX export → deployment.
-- If beginners look confused: "ONNX is like a universal file format for AI models — like PDF for documents. OnnxBridge is the tool that converts your model to this format and optimises it for deployment."
-- If experts look bored: "The ONNX graph optimisation passes include: constant folding, common subexpression elimination, operator fusion. For a ResNet-50, fusion of Conv+BN+ReLU reduces latency by roughly 30%. The optimisation graph is available via onnxruntime.backend.run."
-
-**Transition**: "Once exported, how do we serve it?"
-
----
-
-## Slide 80: InferenceServer: Serving Models
-
-**Time**: ~4 min
-**Talking points**:
-
-- InferenceServer: wrap any model (ONNX, PyTorch, etc.) in a production-ready serving endpoint.
-- Features: batching (combine multiple requests), caching (store frequent results), monitoring (latency, throughput, error rate).
-- Dynamic batching: automatically group concurrent requests into batches. Critical for GPU efficiency.
-- Scaling: horizontal scaling (multiple InferenceServer replicas), vertical scaling (larger GPU).
-- Integration: expose via Nexus REST endpoint or gRPC for high-throughput.
-- If beginners look confused: "InferenceServer is the waiter at a restaurant. It takes orders from multiple customers (requests), groups them into batches for the kitchen (GPU), and returns the results efficiently."
-- If experts look bored: "The batching strategy is a queuing theory problem. Under Poisson arrival, the optimal dynamic batching policy depends on the distribution of request latency requirements. The trade-off: larger batch = higher throughput but higher P99 latency. Set batch size to match your SLA."
-
-**Transition**: "How do we monitor training and diagnose model quality?"
-
----
-
-## Slide 81: ModelVisualizer: Training History
-
-**Time**: ~4 min
-**Talking points**:
-
-- ModelVisualizer: visual analysis of training runs. Plots loss curves, gradient norms, activation statistics, weight distributions.
-- Integration with TrainingPipeline: automatic logging. No manual code.
-- Key visualisations: (1) train/val loss curves — diagnose overfitting, (2) gradient flow plot — diagnose vanishing/exploding gradients, (3) activation heatmaps — diagnose dead neurons, (4) weight distribution histograms — diagnose initialisation issues.
-- Comparison: overlay multiple runs for hyperparameter comparison.
-- If beginners look confused: "ModelVisualizer shows you the inside of training. Instead of just watching the loss number change, you can see the health of every layer in real time."
-- If experts look bored: "The gradient flow plot (gradient magnitude per layer) is the single most informative diagnostic for deep networks. A healthy network shows roughly uniform gradient magnitude across layers. Exponential decay = vanishing gradients. Exponential growth = exploding gradients."
-
-**Transition**: "Let us wrap up. Module 7 summary by level..."
-
----
-
-## Slide 82: Module 7 Summary by Level
-
-**Time**: ~3 min
-**Talking points**:
-
-- Beginner takeaways: linear regression is a neural network, layers learn features automatically, backprop is the chain rule, use Adam, use ReLU, use OnnxBridge for deployment.
-- Intermediate takeaways: initialisation matters, BatchNorm vs LayerNorm trade-offs, ResNet skip connections, parallelism strategies.
-- Advanced takeaways: gradient dynamics, optimiser theory, tensor parallelism, ZeRO, architectural trade-offs.
-- "Everyone got something different from today. That is by design."
-- If beginners look worried about the advanced content: "Do not try to retain everything. Retain the practical pattern, and come back to the theory when you hit a real problem."
-
-**Transition**: "Let me show you the complete feature engineering spectrum with DL added..."
-
----
-
-## Slide 83: The Feature Engineering Spectrum: Complete
-
-**Time**: ~3 min
-**Talking points**:
-
-- Return to the spectrum from Slide 5. Now fill in the DL quadrant.
-- Manual features (M3) → learned shallow features (M4 via ensembles) → learned deep features (M7).
-- The spectrum is not a ranking. Traditional ML with good features often beats DL on small tabular datasets.
-- "Know where you are on the spectrum for each problem. Choose the right tool."
-- If experts look bored: "The spectrum maps to the bias-variance trade-off and data regime. Manual features = high bias, low variance. Deep models = low bias, high variance. The cross-over point is approximately 10K-100K samples for tabular data."
-
-**Transition**: "The theory-to-engine map..."
-
----
-
-## Slide 84: Theory-to-Engine Map: Module 7
-
-**Time**: ~2 min
-**Talking points**:
-
-- Walk through the mapping: architecture theory → nn.Module → TrainingPipeline; backprop → automatic gradient in TrainingPipeline; parallelism → ZeRO/DDP in TrainingPipeline; export → OnnxBridge; serving → InferenceServer; diagnostics → ModelVisualizer.
-- "Every theory concept from today has a Kailash engine that handles the implementation. Your job is to configure, not implement."
-- If beginners look confused: "This is the map from what we learned to what to type. Keep it as a reference."
-
-**Transition**: "Now let us set up for the lab..."
-
----
-
-## Slide 85: Lab Setup
-
-**Time**: ~5 min
-**Talking points**:
-
-- Walk through the three formats: local Python, Jupyter notebook, Google Colab.
-- Data loading: ASCENTDataLoader handles all three automatically.
-- Lab exercises: (1) linear regression → MLP, (2) CNN on image data, (3) embedding extraction and downstream task, (4) full pipeline: TrainingPipeline → OnnxBridge → InferenceServer.
-- Encourage pair work. DL debugging is faster with two pairs of eyes.
-- Check: does everyone have their environment set up? Run the setup check cell first.
-- If students have CUDA: "If you have a GPU, set device='cuda'. If not, CPU is fine for the lab exercises — they are designed to run in under 10 minutes."
-- If experts want to go further: "The bonus exercise is training a ResNet with full mixed-precision, gradient clipping, cosine LR schedule, and ModelVisualizer integration."
-
-**Transition**: "While you set up, let me give you some discussion questions to think about..."
-
----
-
-## Slide 86: Discussion Prompts
-
-**Time**: ~5 min
-**Talking points**:
-
-- Prompt 1: "When would you choose a traditional ML model (M4) over a deep network (M7)? Give three criteria."
-- Prompt 2: "Your training loss is 0.02 but validation loss is 0.85. What are the three most likely causes and what do you check first?"
-- Prompt 3: "You need to deploy a model to a mobile phone with a 50ms latency requirement. Walk through your pipeline from training to deployment."
-- Let pairs discuss for 3 minutes before opening to the full room.
-- Do not answer too quickly. Silence is productive here.
-- If no one responds: "Start with Prompt 2 — overfitting is something everyone has seen."
-
-**Transition**: "Here is what I will assess on..."
-
----
-
-## Slide 87: Assessment Preview
-
-**Time**: ~3 min
-**Talking points**:
-
-- Assessment structure: theory questions (30%), code debugging (30%), architecture design (40%).
-- Theory: derive the backprop equations for a 2-layer network (work from first principles, not memorisation).
-- Code debugging: given a broken training loop, identify and fix five bugs. Use gradient checking to validate.
-- Architecture design: given a problem description, choose architecture, justify activation function, initialisation, optimiser, and regularisation choices.
-- "The assessment is designed so that copying from the slides does not help. You need to understand, not memorise."
-- If students look anxious: "The code debugging section is the easiest if you have done the labs. The bugs in the assessment are the same patterns as the bugs in the exercises."
-
-**Transition**: "One last look ahead. Module 8 builds directly on everything we did today..."
-
----
-
-## Slide 88: Preview: Module 8 — NLP & Transformers
-
-**Time**: ~3 min
-**Talking points**:
-
-- Module 8 takes the DL foundations from M7 and applies them to text.
-- The transformer is a deep network with a specific architecture: attention mechanisms instead of convolutions.
-- GELU activation (learned in 7.4), LayerNorm (7.10), embeddings (7.12), and AdamW (7.9) all reappear in M8.
-- New engines: AutoMLEngine for text, ModelVisualizer for attention maps.
-- "Everything from today was not just DL theory. It was the foundation for transformers. M8 is where it pays off."
-- If beginners look excited: "The attention mechanism is the innovation that made BERT and modern language models possible. We will derive it from scratch in M8."
-- If experts are eager: "The transformer can be understood as a graph neural network on a fully-connected graph — a framing that unifies convolution, attention, and message-passing under one theoretical framework."
-
-**Transition**: "Thank you. Module 7 is complete."
-
----
-
-## Slide 89: Deep Learning: Architecture-Driven Feature Engineering (Back Cover)
+## Slide 3: Your Journey — 8 Lessons
 
 **Time**: ~1 min
 **Talking points**:
 
-- Close the loop: "We opened with AlexNet and the question of why architecture drives feature learning. You can now answer that question."
-- Three takeaways to leave the room with: (1) depth = hierarchical feature learning, (2) backpropagation = the chain rule, (3) OnnxBridge + InferenceServer = your path to production.
-- Point to the next session: "Module 8, NLP and Transformers. See you there."
-- Leave room visible. Do not advance past this slide.
+- Walk through the table quickly — do not read every row. Highlight the progression. Autoencoders bridge from M4. CNNs add spatial. RNNs add temporal. Transformers replace both with attention. GANs generate. GNNs handle graphs. Transfer learning applies everything. RL learns from interaction.
+- Key framing: "Each lesson is 15-25 minutes of theory plus an exercise. The exercises build on each other — the conv layers you use in 5.1 become the backbone of 5.2."
+- "If beginners look confused": "Think of each lesson as one new vocabulary word for deep learning. By the end of the day, you will speak all eight."
+
+**Transition**: "You will use four Kailash engines today."
 
 ---
+
+## Slide 4: Kailash Engines in Module 5
+
+**Time**: ~2 min
+**Talking points**:
+
+- Introduce each engine briefly. OnnxBridge exports any trained model to ONNX format for deployment. InferenceServer serves predictions with warm_cache for production. ModelVisualizer creates training curves, latent space plots, attention maps. RLTrainer wraps DQN, PPO, SAC training loops.
+- Emphasise the teaching pattern: "You learn the theory first, build the model in PyTorch, then see how the Kailash engine automates or extends it. That way, when the engine gives you an unexpected result, you know how to debug it."
+- "If beginners look confused": "You can think of these as power tools. We will show you the hand-tool version first so you understand what the power tool is doing underneath."
+- "If experts look bored": "OnnxBridge and InferenceServer are the production story. Even if you know ONNX, the server abstraction — predict, predict_batch, warm_cache, PredictionResult — saves a lot of boilerplate for serving."
+
+**Transition**: "Before we start building, let us make sure everyone has the M4 toolkit fresh."
+
+---
+
+## Slide 5: DL Toolkit Refresher (from M4)
+
+**Time**: ~3 min
+**Talking points**:
+
+- Recap the M4 toolkit: forward pass, backpropagation, gradient descent (SGD, Adam), dropout, batch normalisation. Everything we build today sits on top of these five ideas.
+- Do the quick exercise: "Build a 2-layer classifier in your head. Input -> Linear -> ReLU -> Linear -> Softmax. Loss is cross-entropy. Optimiser is Adam. If that feels familiar, you are ready."
+- Name the shift explicitly: M4 trained networks to predict labels (supervised). M5 trains networks to learn representations — compressed (autoencoders), spatial (CNNs), temporal (RNNs), attended (transformers), generated (GANs), transferred (transfer learning), interactive (RL).
+- "If beginners look confused": "If any of those words from M4 feel shaky, flag it now. We can spend two minutes on backprop before Lesson 5.1 — it will save you 30 minutes of confusion later."
+- "If experts look bored": "The shift from supervised labels to learned representations is what modern deep learning is really about. Every architecture today is a different answer to the question: 'What structure should the latent space have?'"
+
+**[PAUSE FOR QUESTIONS — 2 min]**
+
+**Transition**: "Our first architecture is the gentlest — the autoencoder."
+
+---
+
+## Slide 6: Lesson 5.1 — Autoencoders (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. Read the provocation: "What if the network had to describe itself in fewer words than it has?"
+- Frame the metaphor: compress then reconstruct. If the network can rebuild the input from a compressed version, it has learned the essential structure.
+- "If beginners look confused": "Think of the game where you describe a movie in three words and a friend has to guess the movie. If they guess right, your three words captured the essential plot."
+
+**Transition**: "Three components, one idea — encode, bottleneck, decode."
+
+---
+
+## Slide 7: The Autoencoder Architecture
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk through the three components: encoder compresses, latent space is the bottleneck, decoder reconstructs. The bottleneck is what makes the architecture useful — if the latent dimension were as large as the input, the network would just copy.
+- Hammer home "auto": the target IS the input. No labels needed. This is unsupervised learning.
+- Use the book-summary analogy: summarise a book in one sentence (encoder). Someone else rewrites the book from your sentence (decoder). The better the summary, the closer the rewrite.
+- "If beginners look confused": "Every autoencoder is just these three boxes. Everything we do today — denoising, VAE, convolutional — changes ONE of these three boxes."
+- "If experts look bored": "The auto in autoencoder is historically important — it distinguished self-supervised reconstruction from supervised training, long before 'self-supervised learning' became a buzzword."
+
+**Transition**: "So what does the loss function look like?"
+
+---
+
+## Slide 8: Reconstruction Loss
+
+**Time**: ~2 min
+**Talking points**:
+
+- Show the equation: L_recon = || x - decoder(encoder(x)) ||^2. Mean squared error between input and reconstruction.
+- Explain what this measures: pixel-by-pixel difference for images, feature-by-feature difference for tabular data. Lower loss = better reconstruction = better features.
+- Mention alternatives: binary cross-entropy for normalised inputs (common on MNIST), perceptual loss (compare in feature space), SSIM for structural similarity.
+- "If beginners look confused": "MSE just measures how far apart two things are, averaged over every dimension. It is the same idea as measuring the distance between two points, but in a much higher dimensional space."
+- "If experts look bored": "The choice of reconstruction loss is an implicit prior on the generative distribution. MSE assumes Gaussian noise on pixels. BCE assumes Bernoulli. That is why the loss affects what the autoencoder prioritises."
+
+**Transition**: "The simplest autoencoder is fully connected."
+
+---
+
+## Slide 9: Variant 1 — Vanilla Autoencoder
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk through the code block. Encoder: Linear(input_dim, 128) -> ReLU -> Linear(128, latent_dim). Decoder mirrors it. Sigmoid on the output because MNIST pixels are in [0,1].
+- Key insight box: if latent_dim equals input_dim, the network just copies. The bottleneck is what forces learning.
+- When to use: dimensionality reduction (nonlinear PCA), feature extraction for downstream tasks, anomaly detection (high reconstruction error = anomaly).
+- "If beginners look confused": "In the exercise you will feed MNIST digits in with latent_dim=32. The network has to squeeze 784 pixels down to 32 numbers and then rebuild. That forces it to learn what makes a digit a digit."
+- "If experts look bored": "Vanilla AE is a nonlinear PCA. If you used a single linear layer with no activation, you would exactly recover the PCA solution."
+
+**Transition**: "Now what if we corrupt the input to force robust features?"
+
+---
+
+## Slide 10: Variant 2 — Denoising Autoencoder (DAE)
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk through the three steps: corrupt the input with noise, train to reconstruct the clean version, force learning of robust features.
+- Show the equation: L_DAE = || x - decoder(encoder(x_tilde)) ||^2 where x_tilde = x + epsilon. The target is the ORIGINAL clean input, not the noisy version.
+- Cover the noise types: Gaussian, masking (randomly zero inputs), salt-and-pepper.
+- "If beginners look confused": "Imagine a student who can only practise with blurry photocopies of textbook diagrams. They cannot memorise the exact pixels — they have to learn what the diagram MEANS. That is why denoising works."
+- "If experts look bored": "DAE is a form of regularisation and early self-supervised learning. Masking noise in particular is the direct ancestor of BERT's masked language modelling, which we see in Lesson 5.4."
+
+**Transition**: "Now the architectural jump — what if the latent space were a probability distribution?"
+
+---
+
+## Slide 11: Variant 3 — Variational Autoencoder (VAE)
+
+**Time**: ~3 min
+**Talking points**:
+
+- The key innovation: the encoder outputs mu and sigma (mean and standard deviation), not a fixed point. You SAMPLE the latent code from a Gaussian parameterised by those outputs.
+- Why it matters: you can GENERATE new data by sampling from the latent space. Vanilla AE can only reconstruct; VAE can create.
+- Use the coordinate analogy: "Vanilla AE says this digit lives at (3.2, -1.7). VAE says this digit lives SOMEWHERE AROUND (3.2, -1.7) with some uncertainty. That fuzziness means nearby points are also valid digits — which is what lets you generate."
+- Formally, the encoder approximates the posterior q_phi(z|x) approximates p(z|x) and the decoder models the likelihood p_theta(x|z).
+- "If beginners look confused": "The practical punchline is: VAE is the first model we build that can make NEW MNIST digits. You will literally generate a new handwritten 7 from pure noise in the exercise."
+- "If experts look bored": "This is amortised variational inference. The encoder is the inference network — we are learning an approximation to the intractable true posterior, and the ELBO is the training signal."
+
+**Transition**: "The VAE loss is called the ELBO. Here it is."
+
+---
+
+## Slide 12: VAE Loss — The ELBO
+
+**Time**: ~4 min
+**Talking points**:
+
+- Write the ELBO carefully: L_VAE = E_q[log p(x|z)] - D_KL(q_phi(z|x) || p(z)). Two terms. Maximise this (or minimise its negative in practice).
+- Term 1 is the reconstruction: how well does the decoder rebuild the input from a sample z. Familiar from vanilla AE.
+- Term 2 is the KL divergence: how close is the learned latent distribution to the prior N(0, I). This acts as a regulariser. Without it, the VAE collapses back to a vanilla AE with isolated latent points and no generative capacity.
+- Advanced box: the KL for Gaussians has a closed form. No sampling needed for that term. Write it out: D_KL = -(1/2) Sum (1 + log sigma^2 - mu^2 - sigma^2).
+- "If beginners look confused": "Term 1 says 'reconstruct well.' Term 2 says 'keep the latent space tidy.' You need both — reconstruction alone gives you a vanilla AE; tidiness alone gives you random noise."
+- "If experts look bored": "ELBO = Evidence Lower BOund. It is a lower bound on log p(x), the true data likelihood. Maximising ELBO maximises a lower bound on the log-likelihood — we cannot compute the true likelihood because of the intractable posterior."
+
+**Transition**: "But we just said the latent code is sampled. How does gradient flow through a random sample?"
+
+---
+
+## Slide 13: The Reparameterisation Trick
+
+**Time**: ~4 min
+**Talking points**:
+
+- State the problem plainly: sampling z ~ N(mu, sigma^2) is stochastic. Gradients cannot flow through random sampling. Backprop breaks.
+- Solution: z = mu + sigma * epsilon, where epsilon ~ N(0, I). Move the randomness out to an INPUT. Now gradients flow through mu and sigma because they are deterministic paths.
+- Walk through the three practical steps: encoder outputs mu and log(sigma^2) (log-variance for numerical stability), sample epsilon from a standard normal, compute z = mu + exp(0.5 * log sigma^2) * epsilon.
+- Ask the room: "Why log-variance instead of variance directly?" Answer: numerical stability and ensuring sigma is always positive via the exponential.
+- "If beginners look confused": "The trick is moving the coin flip from inside the network to outside. Now the network only has to decide WHERE to sample (mu) and HOW WIDE (sigma). The actual coin flip is a fixed input, not a trainable operation."
+- "If experts look bored": "This is the single most elegant idea in the VAE paper. The reparameterisation gradient has lower variance than the score-function gradient (REINFORCE), which is why VAEs train so much better than early stochastic networks."
+
+**Transition**: "Now let us swap fully connected layers for convolutions."
+
+---
+
+## Slide 14: Variant 4 — Convolutional Autoencoder
+
+**Time**: ~3 min
+**Talking points**:
+
+- Motivation: fully connected layers ignore spatial structure. Conv layers preserve spatial relationships. Far fewer parameters for image data.
+- Architecture: encoder uses Conv2d + ReLU + MaxPool to downsample. Decoder uses ConvTranspose2d + ReLU to upsample. Mirror structure.
+- Walk through the dimensions: 28x28x1 -> 14x14x16 -> 7x7x4 in the encoder. Decoder reverses.
+- "If beginners look confused": "The conv layer is just a sliding filter — we see exactly how it works in the very next lesson. For now, trust that it keeps spatial structure."
+- "If experts look bored": "ConvTranspose has its own artefacts (checkerboard patterns) that modern architectures address with nearest-neighbour upsampling + regular conv."
+
+**Transition**: "There are many more variants — here is a quick survey."
+
+---
+
+## Slide 15: Additional Autoencoder Variants (Survey)
+
+**Time**: ~2 min
+**Talking points**:
+
+- Quick walk through the table: Sparse AE (L1 penalty on activations), Contractive AE (Jacobian penalty), Stacked AE (layerwise pretraining), Recurrent AE (LSTM encoder-decoder), CVAE (conditional VAE).
+- Advanced box: VQ-VAE (Vector Quantised) discretises the latent space. Used in DALL-E 1. Bridges autoencoders and modern generative AI.
+- "Students do not implement these — the four variants you build in the exercise cover the core ideas."
+- "If experts look bored": "VQ-VAE is worth knowing for anyone interested in modern generative models. The discrete latent space is what lets you use a transformer as the prior — which is exactly how DALL-E 1 and VQ-GAN work."
+
+**Transition**: "Time to build. Here is the exercise."
+
+---
+
+## Slide 16: Exercise 5.1 — Autoencoder Workshop
+
+**Time**: ~1 min
+**Talking points**:
+
+- Five tasks: vanilla AE on MNIST (latent_dim=32), denoising AE with noise comparison, VAE with reparameterisation, VAE generation from pure noise, convolutional AE.
+- Assessment: all four variants trained, VAE produces plausible new images, latent space visualised (t-SNE or PCA), reconstruction quality compared.
+- Stretch goal: interpolate between two digits in VAE latent space. Watch the smooth transition — 7 morphing into 1 through the latent space is the most fun moment of the morning.
+- Note: exercise uses PyTorch directly. ModelVisualizer provides the latent space plots once you hand it the trained model.
+
+**Transition**: "Quick summary before we move to CNNs."
+
+---
+
+## Slide 17: Lesson 5.1 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- One-line takeaway: autoencoders learn compressed representations by reconstructing their own input through a bottleneck.
+- Three key equations to remember: reconstruction loss, ELBO, reparameterisation.
+- Bridge: the convolutional autoencoder encoder is essentially a CNN feature extractor. In Lesson 5.2 we replace the decoder with a classifier head — and we have a CNN.
+
+**Transition**: "The conv layers we just used have a whole architecture of their own. Let us go deeper."
+
+---
+
+## Slide 18: Lesson 5.2 — CNNs and Computer Vision (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. Read the provocation: "What if the model could see edges, textures, and objects — the way you do?"
+- Frame it: CNNs are the workhorse of computer vision. You already used conv layers in the autoencoder; now we build a full classification pipeline and look at how the architecture evolved from 1998 to today.
+- "If experts look bored": "We cover LeNet to ResNet to ViT in one lesson. The arc is short but every step matters."
+
+**Transition**: "Start with the building block — the convolution."
+
+---
+
+## Slide 19: The Convolution Operation
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk through filter (kernel), stride, padding, feature map. A filter is a small matrix (e.g. 3x3) that slides over the input. Stride is how far it moves each step. Padding adds zeros around the border.
+- Output size formula: (W - F + 2P) / S + 1. Essential for architecture design.
+- Worked example: 28x28 input, 3x3 filter, stride 2, no padding -> (28 - 3 + 0) / 2 + 1 = 13. Ask students to compute a few more on scratch paper.
+- "If beginners look confused": "Think of a magnifying glass scanning a photo, looking for a specific pattern. At each position it outputs a number — how strongly the pattern matches there. The feature map is that grid of numbers."
+- "If experts look bored": "The output size formula is a constraint you hit immediately when designing networks. Every architecture paper starts with 'we use 3x3 convs with stride 1 and padding 1 to preserve spatial size.' Now you know why."
+
+**Transition**: "After conv comes pooling — how we build hierarchy."
+
+---
+
+## Slide 20: Pooling and Feature Hierarchy
+
+**Time**: ~2 min
+**Talking points**:
+
+- Pooling reduces spatial dimensions: max pooling (dominant in practice), average pooling, global average pooling (GAP).
+- Feature hierarchy insight: early layers learn low-level features (edges, textures), deep layers learn high-level features (objects, faces). This is the empirical reason transfer learning works.
+- GAP over FC: increasingly preferred at the end of networks. Fewer parameters, less overfitting.
+- "If beginners look confused": "Max pooling just takes the brightest pixel in each 2x2 block. It makes the feature map smaller and keeps the strongest signal."
+- "If experts look bored": "GAP replacing FC layers is the architectural trick that made transfer learning robust — you can attach a single linear classifier head to any pre-trained GAP output."
+
+**Transition**: "Now let us trace how CNNs evolved."
+
+---
+
+## Slide 21: CNN Architecture Evolution
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk the timeline: LeNet-5 (1998, handwritten digits, 7 layers), AlexNet (2012, deeper, ReLU, dropout, the ImageNet breakthrough), VGGNet (2014, very small 3x3 filters, depth matters), GoogLeNet/Inception (2015, multiple filter sizes in parallel).
+- The trend is clear: deeper networks learn better features, but training them is hard. Each architecture solved the training problem of the previous generation.
+- "If beginners look confused": "For most of the last decade, the recipe was 'take the best architecture, train it bigger on more data.' The architectures we talk about now are the ones that survived."
+- "If experts look bored": "The Inception module foreshadows many later ideas — parallel pathways, channel mixing. It is the architectural ancestor of modern multi-branch designs."
+
+**Transition**: "And then came ResNet — the single most important architectural innovation in modern deep learning."
+
+---
+
+## Slide 22: ResNet — Skip Connections
+
+**Time**: ~4 min
+**Talking points**:
+
+- The equation: H(x) = F(x) + x. The network learns a residual F(x), and the identity x is added back. Skip connection.
+- Why it matters: walk through the gradient. Even if F(x) has vanishing gradients, the +1 from the identity ensures signal flows. This is why ResNets can be 152 layers deep where VGG fails beyond 20.
+- Architectural reframing: "Instead of learning to transform x into something new, the network learns what to ADD to x. If nothing needs to change, the network outputs zero — and that is much easier to learn than an identity function from scratch."
+- "If beginners look confused": "Think of it like editing a Wikipedia article. It is much easier to suggest 'add this sentence' than to rewrite the whole article. ResNet's skip connection lets each layer suggest small edits."
+- "If experts look bored": "Residual connections also make the loss landscape smoother — there is a famous paper visualising the loss surface of ResNet vs VGG. The ResNet surface is convex-looking; VGG's is chaotic."
+
+**Transition**: "Modern CNNs add a few more tricks on top. First — SE blocks."
+
+---
+
+## Slide 23: Modern Enhancement — SE Blocks
+
+**Time**: ~3 min
+**Talking points**:
+
+- Squeeze-and-Excitation block: s = sigmoid(W2 * ReLU(W1 * GAP(x))). Global average pool, then two FC layers, then sigmoid, then rescale channels.
+- Intuition: not all feature channels are equally important for every input. SE learns to boost relevant channels and suppress irrelevant ones. Per-channel gating.
+- Minimal parameter overhead, measurable accuracy gains. Can be added to any CNN architecture — ResNet, VGG, MobileNet.
+- "If beginners look confused": "Imagine the conv layer produces 64 channels. SE looks at all 64 and says 'channel 17 is very relevant for this input — turn it up. Channel 42 is noise — turn it down.' It is a learned equaliser."
+- "If experts look bored": "SE won the ImageNet 2017 classification challenge as SENet. It is the template for all later attention-over-channels designs, including many vision transformer variants."
+
+**Transition**: "There are a few more training tricks that separate research-grade from production-grade CNN training."
+
+---
+
+## Slide 24: Modern Training Enhancements
+
+**Time**: ~3 min
+**Talking points**:
+
+- Kaiming initialisation: proper for ReLU networks. Fixes the variance blow-up that plagued early deep networks.
+- Mixed precision training: FP16 for most operations, FP32 for accumulation. Roughly free 2x speedup on modern GPUs.
+- Mixup augmentation: combine two images linearly, combine their labels linearly. Produces smoother decision boundaries.
+- Label smoothing: replace one-hot labels with (1 - epsilon) for the target class and epsilon/(K-1) elsewhere. Prevents overconfident predictions.
+- Gradient flow analysis: monitor the gradient norms at each layer during training. Signals when vanishing or exploding.
+- "If beginners look confused": "Use all of these in the exercise. They each give a small accuracy bump and compound together."
+- "If experts look bored": "Mixup is a form of vicinal risk minimisation — training on the vicinity of each data point. It is interpretable as Bayesian data augmentation."
+
+**Transition**: "One more preview — Vision Transformers. They matter but we cover them fully in Lesson 5.4."
+
+---
+
+## Slide 25: Vision Transformers (ViT) — Brief Introduction
+
+**Time**: ~2 min
+**Talking points**:
+
+- Key idea: split an image into patches (e.g. 16x16 squares), treat each patch as a token, feed the sequence of tokens through a transformer encoder. Classification head on top.
+- This is 2020's breakthrough paper "An Image is Worth 16x16 Words." ViT matched CNN performance on ImageNet at scale.
+- Brief intro only — full attention derivation comes in Lesson 5.4. The seed is planted: transformers are not just for text.
+- "If beginners look confused": "Do not worry about attention yet. The only thing to remember is that images can be chopped into patches and fed through the same architecture we will build for text. That is the magic."
+- "If experts look bored": "ViT scales better than CNNs above a certain dataset size threshold (around 300M images). Below that, CNNs with strong inductive biases still win. That is why mixed architectures like Swin are common in practice."
+
+**Transition**: "Now let us meet the first Kailash engine of the day — OnnxBridge."
+
+---
+
+## Slide 26: Kailash Bridge — OnnxBridge
+
+**Time**: ~2 min
+**Talking points**:
+
+- OnnxBridge wraps the PyTorch ONNX exporter with validation and metadata. Students export their trained CNN at the end of the exercise. This is the first step toward production deployment, completed fully in Lesson 5.7.
+- Why ONNX: it is the cross-platform neural network format. One file loads in Python, C++, JavaScript, mobile, and edge runtimes. You train once, deploy anywhere.
+- Pattern: train in PyTorch, export with OnnxBridge, serve with InferenceServer (Lesson 5.7).
+- "If beginners look confused": "You do not need to understand ONNX internals. The engine takes your trained model and writes a file. Someone else on your team can load that file on a different device and run predictions."
+- "If experts look bored": "OnnxBridge validates the exported graph against the original PyTorch model on sample inputs. This catches the classic export bugs — dynamic shapes, unsupported operators, mismatched dtypes."
+
+**Transition**: "Time to build. Here is the exercise."
+
+---
+
+## Slide 27: Exercise 5.2 — CNN Classification Pipeline
+
+**Time**: ~1 min
+**Talking points**:
+
+- Progressive build: start with a simple CNN, add a ResBlock, add an SE block, apply modern training enhancements. You should see clear accuracy jumps at each stage.
+- Dataset: Fashion-MNIST or mask detection. Both are in the data loader.
+- Final step: export to ONNX with OnnxBridge. This connects to the deployment story in Lesson 5.7.
+- Note: exercise uses PyTorch. Kailash layers on top for visualisation and export.
+
+**Transition**: "Quick reference for the key formulas."
+
+---
+
+## Slide 28: Lesson 5.2 Key Formulas
+
+**Time**: ~1 min
+**Talking points**:
+
+- Four formulas to carry forward: conv output size (W - F + 2P) / S + 1, ResNet skip H(x) = F(x) + x, SE gating s = sigmoid(W2 ReLU(W1 GAP(x))), Kaiming init variance 2/n_in for ReLU.
+- "Students should be able to compute conv output sizes by hand and explain in one sentence why the +x in ResNet prevents vanishing gradients."
+
+**Transition**: "Lesson summary."
+
+---
+
+## Slide 29: Lesson 5.2 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- CNNs capture spatial features through convolutions, pooling, and hierarchical depth. ResNet skip connections enable deep networks to train. SE blocks add channel recalibration. Modern training tricks compound for real accuracy gains.
+- Bridge: CNNs handle spatial data (images, grids). What about sequential data (text, time series)? We need an architecture that remembers previous inputs. That is the RNN.
+
+**Transition**: "From space to time."
+
+---
+
+## Slide 30: Lesson 5.3 — RNNs and Sequence Models (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. The transition from spatial to temporal deserves a pause.
+- The key difference: in an image, pixel (3,4) is always next to pixel (3,5). In a sequence, the meaning of a word depends on what came before. Order matters. History matters.
+- "If experts look bored": "RNNs feel dated in 2026, but they are still the clearest way to teach sequence modelling and they still ship in production — especially LSTMs on edge devices where transformers are too heavy."
+
+**Transition**: "What makes an RNN recurrent?"
+
+---
+
+## Slide 31: Recurrent Neural Networks
+
+**Time**: ~3 min
+**Talking points**:
+
+- Draw the unrolled RNN on the whiteboard. The same weight matrix W is applied at every time step. The hidden state h_t carries memory from previous steps.
+- Equation: h_t = tanh(W_x x_t + W_h h_{t-1} + b).
+- Introduce the central problem: vanishing gradients. When you unroll the RNN over many time steps, gradients either shrink to zero or explode. Long-range dependencies are unreachable.
+- This is why vanilla RNNs forget: by time step 20, the influence of time step 1 has been multiplied by W_h twenty times and effectively erased.
+- "If beginners look confused": "Imagine whispering a message down a line of 20 people. By the end, the message is unrecognisable. The vanilla RNN has this exact problem."
+- "If experts look bored": "The vanishing gradient analysis goes back to Bengio 1994. It motivated every subsequent architecture in this lesson."
+
+**Transition**: "LSTM is the fix."
+
+---
+
+## Slide 32: LSTM — Long Short-Term Memory
+
+**Time**: ~3 min
+**Talking points**:
+
+- The LSTM has four components: cell state (the memory highway), forget gate, input gate, output gate.
+- Key architectural insight: the cell state C_t is updated by ADDITION, not multiplication. Gradients flow through the addition unchanged. Even if f_t is near 1, the gradient passes through.
+- This is the cell state highway — long-range gradients travel along C_t without being crushed by repeated multiplication.
+- "If beginners look confused": "You do not have to memorise all the equations. What matters is the idea: the LSTM has a separate memory pathway that gradients can travel down without being squashed."
+- "If experts look bored": "LSTM is a decade ahead of its time — Hochreiter and Schmidhuber 1997. The cell-state pathway is structurally identical to residual connections, which the computer vision community rediscovered as ResNet in 2015."
+
+**Transition**: "Let us derive all five gate equations."
+
+---
+
+## Slide 33: LSTM — All Five Equations
+
+**Time**: ~4 min
+**Talking points**:
+
+- Walk through each equation slowly. Concatenation [h_{t-1}, x_t] means the gate decision depends on BOTH the previous hidden state and the current input.
+- Forget gate: f_t = sigma(W_f [h_{t-1}, x_t] + b_f). Decides what to throw away from the cell state.
+- Input gate: i_t = sigma(W_i [h_{t-1}, x_t] + b_i). Decides what new information to store.
+- Candidate: C_tilde = tanh(W_C [h_{t-1}, x_t] + b_C). New candidate values.
+- Cell update: C_t = f_t * C_{t-1} + i_t * C_tilde. Forget some old, add some new.
+- All gates use sigmoid (output in [0,1]) because they are soft binary decisions. The candidate uses tanh (output in [-1,1]) because it represents new information.
+- "If beginners look confused": "Forget some of the past. Decide what new thing to remember. Add them together. That is the cell update."
+- "If experts look bored": "The sigmoid/tanh pairing is empirical. GRU simplifies by merging gates; QRNN replaces tanh with parallel convolutions. The LSTM design has survived mostly untouched for 28 years."
+
+**Transition**: "One more equation — how the hidden state comes out."
+
+---
+
+## Slide 34: LSTM — Output Gate and Hidden State
+
+**Time**: ~3 min
+**Talking points**:
+
+- Output gate: o_t = sigma(W_o [h_{t-1}, x_t] + b_o). Decides which parts of the cell state to expose.
+- Hidden state: h_t = o_t * tanh(C_t). The cell state is squashed through tanh, then masked by the output gate.
+- h_t goes to the next time step AND is used for prediction at the current time step. C_t is internal memory only — it never leaves the cell.
+- "If beginners look confused": "Think of C_t as private notes and h_t as what you say out loud. The output gate decides which parts of your notes to share."
+- "If experts look bored": "The tanh(C_t) squash is what keeps the hidden state bounded. Without it, the cell state could grow unboundedly over long sequences, causing numerical issues in downstream layers."
+
+**Transition**: "GRU is the simpler cousin of LSTM."
+
+---
+
+## Slide 35: GRU — Gated Recurrent Unit
+
+**Time**: ~3 min
+**Talking points**:
+
+- GRU merges the forget and input gates into a single update gate z_t. Adds a reset gate r_t that controls how much of the previous hidden state to use when computing the new candidate.
+- Fewer parameters, faster training, similar performance on most tasks.
+- In practice, try both on your task and pick whichever trains better.
+- "If beginners look confused": "GRU and LSTM do the same job. GRU has fewer knobs. For most problems it is the practical default."
+- "If experts look bored": "Empirically the gap between GRU and LSTM is within noise for most benchmarks. The cases where LSTM wins are extremely long sequences and certain reinforcement learning settings."
+
+**Transition**: "Now the idea that leads us to transformers — attention."
+
+---
+
+## Slide 36: Attention Mechanisms for Sequences
+
+**Time**: ~3 min
+**Talking points**:
+
+- The bottleneck problem with RNNs: the entire sequence context must fit in the final hidden state. For long sequences, information is lost.
+- Attention's answer: instead of forcing everything through the last hidden state, let the model weight ALL hidden states by relevance and combine them.
+- Temporal attention: for each prediction, compute attention weights over all time steps. Weighted sum of hidden states becomes the context.
+- This is the seed of self-attention in Lesson 5.4.
+- "If beginners look confused": "Instead of making the student write a 500-word essay from memory, give them permission to look back at the source text and highlight the sentences they need. That is attention."
+- "If experts look bored": "The Bahdanau attention paper (2014) introduced additive attention for neural machine translation. The shift from encoder-decoder with a bottleneck to encoder-decoder with attention was the prelude to 'Attention Is All You Need' three years later."
+
+**Transition**: "How do we measure sequence models?"
+
+---
+
+## Slide 37: Sequence Model Metrics
+
+**Time**: ~2 min
+**Talking points**:
+
+- Perplexity: PP = exp(-1/N Sum log P(w_i)). Standard metric for language models. Lower is better. Intuitively, "how surprised is the model on average per token."
+- BLEU: n-gram overlap between machine and human translations. Mentioned for completeness.
+- Sequence accuracy: did the whole predicted sequence match? Strict metric.
+- Cross-entropy loss: the training objective itself. Related to perplexity via PP = exp(cross entropy).
+- For the exercise, students use MAE/RMSE on time series prediction and cross-entropy on text generation. BLEU is not assessed in this module.
+- "If experts look bored": "Perplexity is the exponential of cross-entropy, so a perplexity of 100 means the model is as uncertain as if it were choosing uniformly among 100 options. A good English language model today is around 10-20."
+
+**Transition**: "Two practical applications bring RNNs to life."
+
+---
+
+## Slide 38: Applications — Finance and Text
+
+**Time**: ~2 min
+**Talking points**:
+
+- Financial time series: LSTM on Singapore stock prices. Use technical indicators (RSI, MACD, Bollinger Bands) as features. Real professional context.
+- Text generation: character-level LSTM trained on Shakespeare. Generate new Shakespearean-sounding text. Fun and pedagogically effective — students see a working generative model before we reach GANs.
+- Both are from-scratch PyTorch implementations using nn.LSTM and nn.GRU.
+- "If beginners look confused": "Stock prices are just a sequence of numbers over time. Shakespeare is a sequence of characters. Same architecture, different data."
+- "If experts look bored": "The Shakespeare exercise is Karpathy's classic char-RNN from 2015. Still a beautifully instructive baseline."
+
+**Transition**: "Time for the sequence exercise."
+
+---
+
+## Slide 39: Exercise 5.3 — Sequence Modelling
+
+**Time**: ~1 min
+**Talking points**:
+
+- Three tasks: LSTM for stock prediction with technical indicators, GRU vs LSTM comparison, character-level LSTM for Shakespeare generation. Bonus: add a temporal attention layer.
+- Critical: gradient clipping is non-negotiable for RNN training. clip_grad_norm_ to 1.0 or 5.0. Without it, exploding gradients crash training on the first long sequence.
+- Students should include gradient clipping in every RNN training loop they ever write.
+
+**Transition**: "Quick summary before transformers."
+
+---
+
+## Slide 40: Lesson 5.3 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- RNNs process sequences one step at a time, carrying a hidden state. Vanilla RNNs forget quickly due to vanishing gradients. LSTMs and GRUs add gated cell states that preserve long-range information. Attention lets the model look back across all time steps.
+- Bridge: the attention mechanism is the seed. What if attention was ALL you needed? That is the question the transformer paper answered.
+
+**Transition**: "The paper that changed everything."
+
+---
+
+## Slide 41: Lesson 5.4 — Transformers (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. This is "Attention Is All You Need," Vaswani et al. 2017. The paper that made GPT, BERT, Claude, and every modern LLM possible.
+- The lesson derives self-attention from scratch. By the end, students will have implemented it in PyTorch without looking at a reference.
+- "If beginners look confused": "Every AI product you have heard about in the last three years is built on this architecture. What we cover in the next 25 minutes is the foundation of the industry."
+
+**Transition**: "Start with the core idea — query, key, value."
+
+---
+
+## Slide 42: Self-Attention — The Core Idea
+
+**Time**: ~3 min
+**Talking points**:
+
+- Every input token is projected into three vectors: Query (Q), Key (K), Value (V). These are learned linear projections of the same input.
+- The Q of one token asks a question. The K of every other token advertises what it contains. The dot product Q . K measures similarity. Softmax turns similarities into weights. The weighted sum of values is the output.
+- Use the library analogy: "If you are looking for information about cats, your query is 'cats.' Each book on the shelf has a key — its title. You compare your query against every key. High similarity = high attention weight. The weighted sum of the books' contents (values) is what you read."
+- "If beginners look confused": "Three copies of the same input, each with a different purpose. Query says what you want. Key says what I have. Value says what I contain. That is the whole trick."
+- "If experts look bored": "QKV is also the generalisation of content-based memory addressing. Neural Turing Machines used something similar before transformers formalised it."
+
+**Transition**: "Now the equation."
+
+---
+
+## Slide 43: Scaled Dot-Product Attention
+
+**Time**: ~4 min
+**Talking points**:
+
+- Write the equation: Attention(Q, K, V) = softmax(Q K^T / sqrt(d_k)) V.
+- Walk through each step: (1) compute Q K^T — a matrix of raw similarity scores between every query and every key, (2) divide by sqrt(d_k) — the scaling, (3) softmax over each row — turn scores into weights, (4) multiply by V — weighted sum of values.
+- The scaling is crucial and often asked in interviews. Without it, for large d_k the dot products become large, the softmax saturates (nearly one-hot), and gradients vanish.
+- For d_k = 512, the expected magnitude of dot products is around sqrt(512) approximately 22.6. Without scaling, softmax would produce essentially a hard argmax. Scaling keeps the distribution soft.
+- "If beginners look confused": "The key insight: this one equation is the entire transformer block. Everything else is just stacking and normalising this operation."
+- "If experts look bored": "The dot-product form is efficient because it can be computed as a single batched matrix multiplication. Additive attention (from Bahdanau) requires a small MLP at every pair, which is much slower."
+
+**Transition**: "Why exactly do we divide by sqrt(d_k)?"
+
+---
+
+## Slide 44: Why Divide by sqrt(d_k)?
+
+**Time**: ~3 min
+**Talking points**:
+
+- Derivation: assume each component of Q and K has mean 0 and variance 1. The dot product Q . K = sum of d_k such products, so has variance d_k. Standard deviation sqrt(d_k).
+- Without scaling, dot products grow with dimension. Softmax of a large value becomes a one-hot vector. Gradients at the non-peak positions are zero. Training stalls.
+- Dividing by sqrt(d_k) restores variance to O(1) regardless of dimension. Softmax stays soft. Gradients flow.
+- "If beginners look confused": "It is a variance stabilisation trick. Keep the input to softmax in a reasonable range so the gradients do not die."
+- "If experts look bored": "This is the same kind of argument behind layer normalisation, Kaiming init, and batch norm — maintain unit variance through the network. It is everywhere once you see it. And yes, the scaling question appears in actual ML interviews — companies ask this."
+
+**Transition**: "One head is not enough. Multi-head attention."
+
+---
+
+## Slide 45: Multi-Head Attention
+
+**Time**: ~3 min
+**Talking points**:
+
+- Equation: MultiHead(Q, K, V) = Concat(head_1, ..., head_h) W^O. Each head is scaled dot-product attention with its own learned projections.
+- Intuition: different heads attend to different relationships. One head might learn syntactic dependencies, another semantic similarity, another positional patterns.
+- Compute trick: per-head dimension is reduced proportionally (d_model / h), so total compute stays roughly the same as a single head at full dimension.
+- Use the analogy: "Instead of one person reading a document, 8 people each read it for a different purpose, then combine their notes."
+- "If beginners look confused": "Multi-head attention is just running the attention operation 8 times in parallel with different learned projections, then concatenating the results. Diversity of attention patterns."
+- "If experts look bored": "Empirically, different heads specialise — there are famous visualisations showing heads that attend to subject-verb, head of phrase, punctuation boundaries. But many heads are redundant, which is why pruning research exists."
+
+**Transition**: "One problem — transformers have no idea about order."
+
+---
+
+## Slide 46: Positional Encoding
+
+**Time**: ~3 min
+**Talking points**:
+
+- Attention is permutation-invariant. If you shuffle the tokens, the output shuffles the same way. So the transformer has no inherent sense of order.
+- Fix: add a position vector to each token embedding. The original paper uses sinusoidal encodings. Each dimension oscillates at a different frequency.
+- Equation: PE(pos, 2i) = sin(pos / 10000^(2i/d)), PE(pos, 2i+1) = cos(pos / 10000^(2i/d)).
+- Low dimensions change slowly (capture global position). High dimensions change rapidly (capture local position).
+- The sinusoidal form has a nice property: the model can learn to attend to RELATIVE positions because PE(pos + k) is a linear function of PE(pos) for any fixed offset k.
+- "If beginners look confused": "Add a position label to each token so the model knows what came first. The sine/cosine form is one clean way to do it."
+- "If experts look bored": "Learned positional embeddings (used in BERT) also work and are often preferred in practice. Rotary position embeddings (RoPE) are the current SOTA for long-context models."
+
+**Transition**: "Now the full architecture — encoder and decoder."
+
+---
+
+## Slide 47: Transformer Architecture
+
+**Time**: ~3 min
+**Talking points**:
+
+- Encoder block: multi-head self-attention -> residual + layer norm -> feed-forward -> residual + layer norm. Stack N of these.
+- Decoder block: masked multi-head self-attention -> residual + layer norm -> cross-attention to encoder -> residual + layer norm -> feed-forward -> residual + layer norm. Stack N of these.
+- The decoder has two types of attention: masked self-attention (prevents looking at future tokens during autoregressive generation) and cross-attention (queries are from the decoder, keys and values are from the encoder).
+- Residual connections and layer norm are critical for training stability. Removing either causes training to diverge.
+- "If beginners look confused": "The encoder understands the input. The decoder generates the output, token by token, looking back at the encoder whenever it needs context. That is translation in one paragraph."
+- "If experts look bored": "Modern LLMs like GPT use decoder-only architectures (no encoder, no cross-attention). BERT uses encoder-only. Only translation and sequence-to-sequence tasks still use the full encoder-decoder."
+
+**Transition**: "The transformer family tree."
+
+---
+
+## Slide 48: Transformer Variants
+
+**Time**: ~2 min
+**Talking points**:
+
+- Three branches of the family: encoder-only (BERT, RoBERTa — understanding, classification), decoder-only (GPT, LLaMA — generation), encoder-decoder (T5, BART — translation, summarisation).
+- Efficiency variants: Transformer-XL (segment-level recurrence for long contexts), Reformer, Longformer (sparse attention patterns for long sequences).
+- ViT: decoder-only applied to image patches.
+- Students should know the landscape, not memorise every variant. The distinction that matters is encoder vs decoder vs both.
+- BERT is the fine-tuning exercise in this lesson. GPT is the generation paradigm covered in M6.
+- "If experts look bored": "The encoder-only vs decoder-only choice maps directly to discriminative vs generative. BERT's masked language modelling is bidirectional; GPT's causal masking is autoregressive. Both are self-supervised pretraining objectives."
+
+**Transition**: "Consolidation moment — we have seen four paradigms."
+
+---
+
+## Slide 49: Consolidation — Four Paradigms Compared
+
+**Time**: ~3 min
+**Talking points**:
+
+- Students have now seen autoencoder, CNN, RNN, and Transformer. Pause here and connect them.
+- Quick matching game. Call on the room: "If I give you a dataset of satellite images, which architecture?" (CNN or ViT.) "Patient records over time?" (LSTM or Transformer.) "Unlabelled images for pretraining?" (Autoencoder or self-supervised ViT.) "A social network?" (GNN, coming in 5.6.)
+- The table on the slide shows data type -> architecture -> when to use. Keep it on screen while you work through examples.
+- "If beginners look confused": "You do not need to choose architectures in the exercise — we tell you which one. But by the end of the day, you should be able to look at a new problem and pick the right family in 30 seconds."
+- "If experts look bored": "The architecture choice is increasingly converging — transformers can do all of this. But the inductive biases still matter: CNNs for small vision data, LSTMs for edge devices, MLPs for tabular. No silver bullet."
+
+**[PAUSE FOR QUESTIONS — 2 min]**
+
+**Transition**: "Time for the transformer exercise."
+
+---
+
+## Slide 50: Exercise 5.4 — Transformers
+
+**Time**: ~1 min
+**Talking points**:
+
+- Three tasks: (1) implement scaled dot-product attention from scratch in PyTorch — no library calls, just torch.matmul and torch.softmax, (2) fine-tune BERT for text classification using HuggingFace (TREC-6 dataset), (3) compare accuracy and training time with an LSTM baseline from Lesson 5.3.
+- The from-scratch implementation is crucial. Students should be able to write the attention function without a reference by the end.
+- The LSTM comparison quantifies the transformer advantage on this task — usually a few accuracy points and a different training profile.
+
+**Transition**: "Key formulas reference."
+
+---
+
+## Slide 51: Lesson 5.4 Key Formulas
+
+**Time**: ~1 min
+**Talking points**:
+
+- Four equations to know by heart: scaled dot-product attention, multi-head attention, sinusoidal positional encoding, layer norm.
+- "These four lines are the core of every modern AI product. If you remember nothing else from today, remember these."
+
+**Transition**: "Summary and bridge."
+
+---
+
+## Slide 52: Lesson 5.4 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- Self-attention lets every token attend to every other token. Scaling by sqrt(d_k) stabilises training. Multi-head runs attention in parallel with diverse patterns. Positional encoding restores order. The full transformer stacks these blocks with residuals and layer norm.
+- Bridge: we have covered four paradigms for LEARNING from data. Now we shift to GENERATING new data. Enter the GAN.
+
+**Transition**: "Two networks playing a game."
+
+---
+
+## Slide 53: Lesson 5.5 — GANs and Diffusion (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. GANs are one of the most creative ideas in machine learning.
+- Set up the core concept: a generator creates fake data, a discriminator tries to tell fake from real. They train against each other. The competition drives both to improve.
+- "If beginners look confused": "Imagine a forger and a detective. The forger gets better at faking, the detective gets better at spotting fakes, and they keep training each other up."
+
+**Transition**: "Meet the two players."
+
+---
+
+## Slide 54: GAN — Generator vs Discriminator
+
+**Time**: ~3 min
+**Talking points**:
+
+- Generator G: takes random noise z from a prior distribution, outputs a fake sample G(z) that should look real.
+- Discriminator D: takes a sample (real or fake), outputs probability that the sample is real.
+- Training is alternating: update D to better distinguish, update G to better fool.
+- The loss is binary cross-entropy on the discriminator outputs.
+- "If beginners look confused": "Two networks, two losses, alternating updates. That is the whole framework. The tricky part is making the alternation stable."
+- "If experts look bored": "The zero-sum framing is beautiful but brittle. In practice, you balance G and D carefully. If D is too strong, G gets zero gradients. If G is too strong, D can only guess randomly and cannot provide signal."
+
+**Transition**: "The mathematical objective."
+
+---
+
+## Slide 55: GAN Minimax Objective
+
+**Time**: ~3 min
+**Talking points**:
+
+- The objective: min_G max_D [E_x[log D(x)] + E_z[log(1 - D(G(z)))]]. Discriminator maximises this (distinguish well), generator minimises it (fool D).
+- The inner max is solved at D*(x) = p_data(x) / (p_data(x) + p_G(x)). Substituting back gives a Jensen-Shannon divergence between real and generated distributions.
+- Practical training trick: instead of minimising log(1 - D(G(z))), maximise log D(G(z)). The original objective has vanishing gradients when G is poor (D(G(z)) close to 0 means log(1 - 0) close to 0, flat gradient). The trick gives sharp gradients early in training.
+- "If beginners look confused": "The formula looks scary but the idea is simple: two players playing a game. The math just makes the game rules precise."
+- "If experts look bored": "This is the non-saturating loss from Goodfellow's original paper. Many modern GAN papers skip the derivation and just use it. The JS divergence interpretation also motivates WGAN — JS is discontinuous when distributions do not overlap, which is why vanilla GANs are unstable."
+
+**Transition**: "Let us look at the architectural standard — DCGAN."
+
+---
+
+## Slide 56: DCGAN — Deep Convolutional GAN
+
+**Time**: ~3 min
+**Talking points**:
+
+- DCGAN established the standard architecture guidelines for convolutional GANs: no max pooling (use strided convolutions instead), batch normalisation in both G and D, ReLU in G except the last layer (tanh), LeakyReLU in D.
+- Generator: starts from a noise vector, uses ConvTranspose2d to upsample to an image. Each layer doubles spatial dimension while halving channels.
+- Discriminator: standard CNN that outputs a single probability.
+- These guidelines are empirical but effective. This is what students implement in the exercise.
+- "If beginners look confused": "DCGAN is just 'take a CNN and turn it into a generator plus a discriminator with these specific rules.' The rules came from trying many things and writing down what worked."
+- "If experts look bored": "DCGAN was 2015. The guidelines have held up surprisingly well — modern GAN architectures still use most of them. Progressive growing (StyleGAN) and attention (SAGAN) are the main refinements since."
+
+**Transition**: "WGAN is the stability upgrade."
+
+---
+
+## Slide 57: WGAN — Wasserstein GAN
+
+**Time**: ~3 min
+**Talking points**:
+
+- Key idea: replace Jensen-Shannon divergence with Wasserstein distance (Earth Mover's Distance). Gradients are smooth everywhere — even when real and generated distributions do not overlap.
+- Equation: min_G max_D [E[D(x)] - E[D(G(z))]] with a Lipschitz constraint on D.
+- Original WGAN enforced the constraint with weight clipping. Modern WGAN-GP uses a gradient penalty: add lambda * (||grad D||_2 - 1)^2 to the discriminator loss.
+- Practical benefits: fewer mode collapse issues, the discriminator loss correlates with image quality, training is much more stable.
+- "If beginners look confused": "WGAN fixes the training instability of vanilla GAN by using a better distance between distributions. You get cleaner training curves and less 'did the model collapse?' debugging."
+- "If experts look bored": "The Lipschitz constraint is what makes Wasserstein distance computable via the Kantorovich-Rubinstein duality. Gradient penalty is an elegant soft enforcement — it penalises the discriminator when its gradient norm strays from 1."
+
+**Transition**: "The GAN family in one table."
+
+---
+
+## Slide 58: GAN Variants (Survey)
+
+**Time**: ~2 min
+**Talking points**:
+
+- Survey table: Conditional GAN (cGAN — class-conditioned generation), CycleGAN (unpaired image-to-image translation — horses to zebras), StyleGAN (style-based generation, progressive growing, high-resolution faces), Pix2Pix (paired image-to-image), BigGAN (large-scale, class-conditional ImageNet).
+- Evaluation metric: FID (Frechet Inception Distance). Lower is better. Standard for comparing generative models. Students compute FID in the exercise.
+- StyleGAN is mentioned for awareness — it produces the famous "this person does not exist" images.
+- "If experts look bored": "FID measures the Frechet distance between Inception-v3 feature distributions of real and generated samples. It correlates with human quality judgments better than Inception Score, but it still has known failure modes — it can miss mode dropping and reward texture artefacts."
+
+**Transition**: "Diffusion is the current state of the art."
+
+---
+
+## Slide 59: Diffusion Models (Brief)
+
+**Time**: ~3 min
+**Talking points**:
+
+- DDPM (Denoising Diffusion Probabilistic Models): gradually add Gaussian noise to an image over T steps until it becomes pure noise. Then train a network to REVERSE that process — predict the noise at each step so you can subtract it out.
+- Generation: start from pure noise, apply the trained denoising network iteratively until you recover a clean sample.
+- Advantages over GANs: more stable training, better diversity, no mode collapse.
+- Disadvantages: slow generation (many forward passes), compute-intensive training.
+- Stable Diffusion is the practical application students have likely encountered — text-to-image generation deployed at massive scale.
+- Students do not implement diffusion models in this module (too compute-intensive for a single exercise), but they should know the category.
+- "If beginners look confused": "Start from noise and clean it up step by step. Each step the network says 'I think this pixel should be a little less noisy like this.' After enough steps, you have an image."
+- "If experts look bored": "The connection to score matching (Song and Ermon) and continuous-time stochastic differential equations gives the field its mathematical depth. Classifier-free guidance is the key trick that made conditional diffusion work for text-to-image."
+
+**Transition**: "Training GANs is notoriously hard. Let us name the failure modes."
+
+---
+
+## Slide 60: GAN Training Challenges
+
+**Time**: ~2 min
+**Talking points**:
+
+- Mode collapse: the generator produces only a few output modes, ignoring the diversity of the real distribution. Classic symptom: every fake looks the same.
+- Training instability: loss oscillates, sudden quality drops, non-convergence.
+- Evaluation difficulty: loss values do not correspond to image quality in vanilla GAN (but they do in WGAN).
+- Mitigations: WGAN-GP (most stable default), spectral normalisation, one-sided label smoothing, balanced update ratios.
+- "Use WGAN-GP as your default for new projects. It is the most stable variant and the training dynamics are predictable."
+- "If beginners look confused": "GAN training is more like a weather system than a deterministic optimisation. Expect oscillation. Monitor sample quality, not just loss numbers."
+
+**Transition**: "Exercise time."
+
+---
+
+## Slide 61: Exercise 5.5 — Generative Models
+
+**Time**: ~1 min
+**Talking points**:
+
+- Three tasks: implement DCGAN on a small image dataset, implement WGAN-GP and compare training stability visually, compute FID for both.
+- Key comparison: WGAN-GP loss decreases smoothly and correlates with quality; DCGAN loss oscillates and does not correlate. Students should see this in their own training curves.
+- Discuss when to use GANs vs diffusion vs VAE: images -> GAN or diffusion, text -> transformers, time-series -> VAE or LSTM.
+
+**Transition**: "Lesson summary."
+
+---
+
+## Slide 62: Lesson 5.5 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- GANs learn to generate by adversarial competition. WGAN stabilises training with Wasserstein distance. Diffusion models are the current SOTA by noising and denoising. FID is the standard evaluation metric.
+- Bridge: we have covered grids (CNN), sequences (RNN, Transformer), and generation (VAE, GAN, diffusion). The next data structure is graphs — irregular, connected, variable-size.
+
+**Transition**: "Into the graph world."
+
+---
+
+## Slide 63: Lesson 5.6 — Graph Neural Networks (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. Graphs are everywhere: social networks, molecular structures, knowledge graphs, citation networks, road networks.
+- The key insight: a node's representation depends on its neighbours. GNNs generalise deep learning to non-Euclidean data.
+- "If beginners look confused": "Whenever your data has connections — people who know people, atoms bonded to atoms, web pages linked to web pages — that is a graph. GNNs are how we learn from it."
+
+**Transition**: "Start with the vocabulary."
+
+---
+
+## Slide 64: Graph Data — Nodes, Edges, Adjacency
+
+**Time**: ~2 min
+**Talking points**:
+
+- Graph G = (V, E). V is the set of nodes (vertices). E is the set of edges (connections between nodes).
+- Adjacency matrix A: element A_ij is 1 if there is an edge between node i and j, 0 otherwise. For large sparse graphs, stored as an edge list.
+- Node features X: each node has a feature vector. For a social network, this might be user demographics. For molecules, atom types.
+- Combine A and X to produce learned representations of each node.
+- "If beginners look confused": "A graph is just a table of connections plus a table of node properties. The model learns to smear information along the connections."
+
+**Transition**: "The GCN operation."
+
+---
+
+## Slide 65: GCN — Graph Convolutional Networks
+
+**Time**: ~4 min
+**Talking points**:
+
+- Equation: H^(l+1) = sigma(D^(-1/2) A D^(-1/2) H^(l) W^(l)). Looks scary, intuition is simple.
+- Walk through: H^(l) is the layer-l node features. A is the adjacency matrix. D is the degree matrix. D^(-1/2) A D^(-1/2) is symmetric normalisation.
+- Plain English: for each node, average your neighbours' features (normalised by node degree), multiply by a learnable weight matrix, apply activation.
+- The normalisation is the spectral theory connection — it is the symmetric normalised Laplacian from graph signal processing. You do not need the math; you need the intuition: "smoothed average of neighbours."
+- After L layers, a node's representation reflects its L-hop neighbourhood. 2-3 layers is usually sufficient. More layers cause oversmoothing — all nodes become indistinguishable.
+- "If beginners look confused": "Each layer, every node looks at its neighbours, averages their features, transforms, and updates. Do that twice and each node has seen information from 2 hops away."
+- "If experts look bored": "The connection to spectral graph theory is via the graph Laplacian L = I - D^(-1/2) A D^(-1/2). The normalisation prevents feature magnitudes from exploding for high-degree nodes and supports the Chebyshev polynomial approximation from the original Kipf and Welling paper."
+
+**Transition**: "Two important variants."
+
+---
+
+## Slide 66: GraphSAGE and GAT
+
+**Time**: ~3 min
+**Talking points**:
+
+- GraphSAGE (Sample and Aggregate): instead of using the full neighbourhood, SAMPLE a fixed number of neighbours at each layer. This makes GNNs scalable to very large graphs. Also supports inductive learning — can handle unseen nodes at inference time (unlike transductive GCN).
+- GAT (Graph Attention Network): learn attention weights over neighbours. Different neighbours get different importance. Equation: e_ij = LeakyReLU(a^T [Wh_i || Wh_j]), then softmax over j.
+- GCN treats all neighbours equally. GAT learns to weight them. GraphSAGE makes them scalable.
+- These three cover the core GNN design space: spectral (GCN), sampling (GraphSAGE), attention (GAT).
+- "If beginners look confused": "GCN is 'average your friends.' GraphSAGE is 'average a random subset of your friends to handle big networks.' GAT is 'weight your friends by how similar they are to you.'"
+- "If experts look bored": "GAT connects directly back to Lesson 5.4 — it is essentially self-attention restricted to a graph's edge structure. GIN (Graph Isomorphism Networks) is another important variant that achieves theoretical maximum expressiveness for distinguishing graph structures."
+
+**Transition**: "What can GNNs actually predict?"
+
+---
+
+## Slide 67: GNN Task Types
+
+**Time**: ~2 min
+**Talking points**:
+
+- Three task levels. Node classification: predict a label for each node (e.g. fraud detection, topic classification of research papers). Graph classification: predict a label for a whole graph (e.g. toxicity of a molecule). Link prediction: predict whether an edge should exist (e.g. recommender systems).
+- Each task needs a different head on top of the GNN body. For graph classification, you aggregate all node embeddings with a readout function (sum, mean, max pooling). For link prediction, you score pairs of node embeddings.
+- "If beginners look confused": "Same GNN body, different heads, different tasks. Like the classification vs regression split in M3."
+
+**Transition**: "Exercise time."
+
+---
+
+## Slide 68: Exercise 5.6 — Graph Neural Networks
+
+**Time**: ~1 min
+**Talking points**:
+
+- Task: graph classification on TUDataset using torch_geometric. Compare GCN vs GAT. Visualise attention weights and learned node embeddings.
+- torch_geometric handles the graph data loading and batching. You focus on building the architecture.
+- The attention weight visualisation is the highlight — it shows which molecular bonds or social connections the model considers important. Interpretability for free.
+- Note: exercise uses PyTorch Geometric (built on PyTorch), not Kailash-specific tooling.
+
+**Transition**: "Lesson summary."
+
+---
+
+## Slide 69: Lesson 5.6 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- GNNs extend deep learning to graph-structured data through message passing. GCN averages neighbours. GraphSAGE samples them. GAT attends over them. Three task types: node, graph, link.
+- Bridge: after six lessons building architectures from scratch, students are ready for the practical shortcut — start with pre-trained models and fine-tune.
+
+**Transition**: "The most practical technique in modern DL."
+
+---
+
+## Slide 70: Lesson 5.7 — Transfer Learning (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. Transfer learning is the technique almost every practitioner uses every day. Very few professionals train from scratch anymore.
+- Pre-trained models on ImageNet (vision) and large text corpora (language) provide universal features that transfer to almost any downstream task.
+- "If beginners look confused": "For the rest of your career, this is how you will build models for new problems. Start with someone else's pre-trained model. Swap the head. Fine-tune. Done."
+
+**Transition**: "The paradigm."
+
+---
+
+## Slide 71: The Transfer Learning Paradigm
+
+**Time**: ~2 min
+**Talking points**:
+
+- Pre-training: train a large model on a massive dataset (ImageNet, The Pile, etc.). Learns general features — edges, textures, grammar, semantics.
+- Fine-tuning: take those features, attach a new classifier head, train on your small target dataset. Much faster, much less data needed.
+- Why it works: early layers learn universal features that transfer across tasks. Later layers learn task-specific features that you replace.
+- The smaller your dataset, the more you benefit from transfer learning. Below 10k examples, transfer learning is essentially required.
+- "If beginners look confused": "You do not have ImageNet-scale data. Someone else does. Use their trained model as the starting point for yours."
+- "If experts look bored": "The scaling laws literature makes this explicit: pretrained compute transfers logarithmically to downstream tasks. More pretraining compute means better downstream, with diminishing returns."
+
+**Transition**: "Let us fine-tune ResNet for computer vision."
+
+---
+
+## Slide 72: CV Transfer Learning — ResNet Fine-Tuning
+
+**Time**: ~3 min
+**Talking points**:
+
+- Walk through the code: load pretrained ResNet from torchvision, freeze the early layers (requires_grad = False), replace the final fully connected layer with a new classifier for your number of classes, train with a LOW learning rate (1e-4 or lower).
+- Key decisions: which layers to freeze, what learning rate to use, how much data augmentation. Progressive unfreezing is the safest strategy — start with only the head, then unfreeze one block at a time.
+- Low learning rate is critical — too high and you destroy the pre-trained features.
+- Data augmentation matters more for small target datasets — random crop, flip, colour jitter, mixup.
+- Real applications: mask detection, medical imaging, satellite imagery.
+- "If beginners look confused": "The recipe is: load a model, freeze most of it, swap the last layer, train at a very low learning rate. Three lines of PyTorch, massive accuracy improvement over training from scratch."
+- "If experts look bored": "The 'which layers to freeze' question is task-dependent. For very dissimilar domains (satellite imagery vs natural images), you unfreeze more layers. For similar domains, keep most frozen."
+
+**Transition**: "Now the NLP side."
+
+---
+
+## Slide 73: NLP Transfer Learning — BERT Fine-Tuning
+
+**Time**: ~3 min
+**Talking points**:
+
+- Same pattern as CV but with BERT. Use HuggingFace Transformers: load a pre-trained BERT checkpoint, add a classification head, fine-tune on your labelled text data.
+- Key hyperparameters: learning rate (2e-5 to 5e-5 is standard), number of epochs (3-5 is typical), batch size (16-32).
+- Lightning-based training loop wraps the standard PyTorch fit/validate pattern.
+- Mention adapter modules as a preview of M6: instead of fine-tuning all weights, insert small bottleneck layers between transformer blocks and only train those. This is the idea behind LoRA and parameter-efficient fine-tuning.
+- "If beginners look confused": "Same pattern as ResNet — load pretrained, swap the head, fine-tune low-LR. HuggingFace makes it three lines."
+- "If experts look bored": "BERT fine-tuning is being displaced by zero-shot and few-shot prompting with larger decoder-only LLMs. But for specialised domains with labelled data, fine-tuning BERT-sized encoders is still the highest-accuracy-per-dollar option."
+
+**Transition**: "One big table to internalise."
+
+---
+
+## Slide 74: Architecture Selection Guide
+
+**Time**: ~2 min
+**Talking points**:
+
+- The table on the slide is a key reference for professional practice. Walk through every row:
+- Images -> CNN or ViT. Always use transfer learning (ImageNet pretrained).
+- Text -> Transformer. Always use transfer learning (BERT or GPT pretrained).
+- Sequences -> LSTM or Transformer. Sometimes transfer (domain-specific pretraining helps).
+- Graphs -> GNN. Rarely transfer — usually train for the specific task.
+- Tabular data -> Gradient boosting (XGBoost, LightGBM). Never transfer. Train from scratch.
+- The "tabular data resists transfer" point is important. Many professionals work with tabular data — the advice is to use XGBoost or LightGBM, not deep learning. This connects back to M4 supervised learning.
+- "If beginners look confused": "Memorise this table. It will save you from months of wrong-architecture projects."
+
+**Transition**: "Two Kailash engines together — OnnxBridge and InferenceServer."
+
+---
+
+## Slide 75: Kailash Bridge — OnnxBridge + InferenceServer
+
+**Time**: ~3 min
+**Talking points**:
+
+- OnnxBridge exports. InferenceServer serves. Together they are the deployment story.
+- Export: OnnxBridge takes a trained PyTorch model and writes an ONNX file with validation.
+- Serve: InferenceServer loads the ONNX file, exposes predict (single), predict_batch (many), warm_cache (pre-load for fast first prediction). Returns a structured PredictionResult object, not raw numpy arrays.
+- The warm_cache call matters in production — it pre-loads the model so the first real prediction is as fast as the hundredth. Avoids the cold-start problem.
+- Pattern: train anything in PyTorch, export with OnnxBridge, serve with InferenceServer. Works for any model trained in this module — CNN, transformer, GNN, all of them.
+- "If beginners look confused": "Two functions. Export(). Serve(). You do not need to understand the internals. You just need to know when to call each."
+- "If experts look bored": "The PredictionResult object carries metadata — model version, prediction timestamp, input schema, confidence scores. It is the structured alternative to the numpy-arrays-everywhere antipattern."
+
+**Transition**: "The exercise."
+
+---
+
+## Slide 76: Exercise 5.7 — Transfer Learning Pipeline
+
+**Time**: ~1 min
+**Talking points**:
+
+- Most practical exercise in the module. Two tasks: fine-tune ResNet for mask detection, fine-tune BERT for text classification. For each: export to ONNX with OnnxBridge, deploy with InferenceServer, serve at least one prediction through predict() and one through predict_batch().
+- Comparison: fine-tuned vs trained-from-scratch baseline. Transfer should win convincingly, especially on small datasets.
+- Note: exercise uses PyTorch + HuggingFace, wrapped with Kailash engines for the production pipeline.
+
+**Transition**: "Lesson summary."
+
+---
+
+## Slide 77: Lesson 5.7 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- Transfer learning takes pre-trained models and fine-tunes them on target tasks. Low learning rate, partial freezing, data augmentation. ResNet for CV, BERT for NLP. OnnxBridge exports, InferenceServer serves.
+- Bridge: all seven lessons so far learn from STATIC data (images, text, sequences, graphs). The last lesson is different. RL learns from INTERACTION with an environment.
+
+**Transition**: "The final paradigm."
+
+---
+
+## Slide 78: Lesson 5.8 — Reinforcement Learning (Title)
+
+**Time**: ~1 min
+**Talking points**:
+
+- Title the lesson. RL is the final paradigm in this module. It completes the DL picture: supervised (labelled data), unsupervised (structure discovery), generative (creating data), and now RL (learning from interaction).
+- This lesson connects directly to RLHF for LLM alignment in M6 — PPO, which we cover today, is the algorithm behind RLHF.
+- "If beginners look confused": "All the models so far learned from a fixed dataset. An RL agent doesn't have a dataset — it has an environment it can interact with. It takes actions, sees rewards, and learns a strategy."
+
+**Transition**: "The paradigm shift."
+
+---
+
+## Slide 79: The RL Paradigm Shift
+
+**Time**: ~2 min
+**Talking points**:
+
+- Supervised learning: input X, output y, fixed dataset, minimise loss. Static. Independent samples.
+- RL: no dataset. Agent interacts with environment, takes action, receives reward, transitions to new state. Dynamic. Sequential. Correlated samples. Delayed rewards.
+- Four hard problems RL agents face that supervised models do not: delayed rewards (credit assignment), sparse rewards (most steps give no feedback), exploration vs exploitation (do I try something new or exploit what I know?), non-stationarity (the data distribution changes as the agent learns).
+- "If beginners look confused": "Supervised learning is a student with a textbook. RL is a baby learning to walk — falling, getting up, trying again, with no manual."
+- "If experts look bored": "The non-stationarity is what makes RL hard. The agent's policy changes, which changes the state distribution, which changes what it should learn. No convergence guarantees like supervised learning."
+
+**Transition**: "The vocabulary of RL."
+
+---
+
+## Slide 80: RL Fundamentals
+
+**Time**: ~3 min
+**Talking points**:
+
+- Five core concepts:
+- Agent: the learner (neural network).
+- Environment: everything outside the agent. Provides observations and rewards.
+- State: the agent's knowledge of the environment at time t.
+- Action: what the agent does.
+- Reward: a scalar signal from the environment indicating how well the agent is doing.
+- Episode: a sequence of (state, action, reward) steps from start until termination.
+- Policy pi(a|s): a mapping from states to actions. Can be deterministic or stochastic.
+- Value function V(s): expected cumulative reward starting from state s. Q(s, a) is the same for (state, action) pairs.
+- "If beginners look confused": "Think of a game. The agent is the player, the environment is the game, the state is the screen, the action is the controller input, the reward is the score. The policy is your strategy. The value function is how good you think a given screen is."
+
+**Transition**: "The equations that make RL possible."
+
+---
+
+## Slide 81: Bellman Equations
+
+**Time**: ~4 min
+**Talking points**:
+
+- Bellman expectation: V(s) = E[R_{t+1} + gamma * V(S_{t+1}) | S_t = s]. The value of a state is the immediate reward plus the discounted value of the next state. Recursive.
+- Bellman optimality: Q*(s, a) = E[R_{t+1} + gamma * max_{a'} Q*(S_{t+1}, a')]. The max over next actions makes it OPTIMAL — the agent picks the best future action.
+- Gamma is the discount factor (typically 0.9 to 0.99). Higher gamma = more forward-looking. Lower = more myopic.
+- Why it matters: the recursive definition is what makes dynamic programming and Q-learning possible. If you can estimate Q* well, the optimal policy is just argmax_a Q*(s, a).
+- "If beginners look confused": "The value of RIGHT NOW is the reward you get now plus a shrunken version of the value of the next moment. Do the same thing at the next moment, and you get a recursion that covers the whole future."
+- "If experts look bored": "Bellman equations underlie all of dynamic programming, policy iteration, value iteration, and modern deep RL. The max in the optimality equation is what makes Q-learning off-policy — you can learn about the optimal policy while following a different behaviour policy."
+
+**Transition**: "The first deep RL algorithm — DQN."
+
+---
+
+## Slide 82: DQN — Deep Q-Network
+
+**Time**: ~4 min
+**Talking points**:
+
+- DQN is the entry point for deep RL. It uses a neural network to approximate Q(s, a). Trained to minimise the Bellman loss: L = E[(r + gamma * max_{a'} Q(s', a'; theta^-) - Q(s, a; theta))^2].
+- Three innovations that made it work:
+- Experience replay: store transitions in a buffer, sample random minibatches for training. Breaks correlation in sequential data.
+- Target network: a separate, slowly updated copy of Q for computing the target r + gamma * max Q(s', a'; theta^-). Stabilises training.
+- Epsilon-greedy: with probability epsilon take a random action, else take argmax Q. Balances exploration and exploitation.
+- Application: customer churn prevention. The action is "intervene or not." The state is customer history. The reward is retention.
+- "If beginners look confused": "DQN is Q-learning plus a neural network plus two tricks to keep it stable. Pick the action with the highest Q-value most of the time, explore sometimes."
+- "If experts look bored": "The 2015 DeepMind Atari paper is the historical landmark. Every subsequent deep RL algorithm — DDPG, SAC, PPO — addresses limitations of DQN."
+
+**Transition**: "DQN handles discrete actions. What about continuous?"
+
+---
+
+## Slide 83: Policy Gradient Methods
+
+**Time**: ~3 min
+**Talking points**:
+
+- DQN works for DISCRETE actions (choose from a menu). But continuous actions (how much to adjust temperature, how much discount to offer) need a different approach.
+- Policy gradient methods learn the policy pi(a|s) directly. The gradient of expected return with respect to policy parameters is estimated from rollouts.
+- Actor-critic architecture: the actor learns the policy (what to do), the critic learns the value function (how good it is). The critic's estimate reduces variance in the policy gradient update.
+- "If beginners look confused": "Instead of learning 'how good is each action,' learn 'what action should I take' directly. Then a second network helps reduce noise in the updates."
+- "If experts look bored": "Policy gradient via REINFORCE has high variance. Actor-critic subtracts a baseline (the critic's V(s)) which dramatically reduces variance without biasing the estimator. The advantage A(s, a) = Q(s, a) - V(s) is the key quantity."
+
+**Transition**: "Five algorithms in one overview slide."
+
+---
+
+## Slide 84: Five Algorithms, Five Applications
+
+**Time**: ~2 min
+**Talking points**:
+
+- DQN — customer churn prevention (discrete actions, intervene or not).
+- DDPG — manufacturing control (continuous actions, set machine parameters).
+- SAC — dynamic pricing (continuous actions, handles uncertainty, entropy regularisation).
+- A2C — resource allocation (discrete or continuous, variance reduction via baseline).
+- PPO — supply chain optimisation (clipped objective, prevents destructively large updates).
+- Students implement DQN and PPO in the exercise. The other three are covered conceptually.
+- "Pick the algorithm by action space and stability requirements. Discrete: DQN or PPO. Continuous: SAC or PPO. Very unstable environment: PPO."
+
+**Transition**: "Two continuous-action algorithms."
+
+---
+
+## Slide 85: DDPG and SAC
+
+**Time**: ~3 min
+**Talking points**:
+
+- DDPG (Deep Deterministic Policy Gradient): extends DQN to continuous actions. Deterministic policy mu(s). Actor-critic. Off-policy (can reuse old experience via replay buffer).
+- SAC (Soft Actor-Critic): adds entropy regularisation to the objective. Encourages exploration by preferring policies that are stochastic unless the environment rewards determinism.
+- Both are off-policy, both scale well to high-dimensional continuous action spaces.
+- SAC is generally preferred in modern practice — more stable than DDPG, less hyperparameter sensitive.
+- "If beginners look confused": "DDPG is continuous-action DQN. SAC is DDPG plus 'stay exploratory' as part of the loss. Both are off-policy, which means they can train from a replay buffer."
+- "If experts look bored": "SAC's entropy coefficient alpha is auto-tuned in modern implementations, which removes the main hyperparameter pain point. This is the default choice for continuous robotics benchmarks."
+
+**Transition**: "A simpler actor-critic."
+
+---
+
+## Slide 86: A2C — Advantage Actor-Critic
+
+**Time**: ~2 min
+**Talking points**:
+
+- A2C is the simplest actor-critic algorithm. Synchronous version of A3C (Asynchronous Advantage Actor-Critic).
+- Advantage function A(s, a) = Q(s, a) - V(s). Tells the actor how much better or worse an action was compared to the baseline.
+- Reduces variance in the policy gradient. Training is more stable than pure REINFORCE.
+- Can be on-policy (uses current rollouts only), which makes it simpler but less sample-efficient than off-policy methods.
+- "If beginners look confused": "The advantage tells the actor 'this action was better than average, do more of it' or 'this was worse, do less.' Using the baseline makes training much smoother."
+
+**Transition**: "And the flagship algorithm — PPO."
+
+---
+
+## Slide 87: PPO — Proximal Policy Optimization
+
+**Time**: ~4 min
+**Talking points**:
+
+- PPO is the most important RL algorithm to know in 2026. Robust, stable, widely deployed, and the algorithm behind RLHF.
+- Core idea: when updating the policy, do not move too far from the old policy in a single step. Too large a step can destroy everything the agent has learned.
+- Clipped objective: L^CLIP = E[min(r_t * A_t, clip(r_t, 1 - epsilon, 1 + epsilon) * A_t)], where r_t = pi_new(a|s) / pi_old(a|s) is the probability ratio.
+- The clipping achieves the trust-region constraint of TRPO (do not change the policy too much) with a simple min + clip operation. Much simpler to implement, similar empirical performance.
+- The M6 connection: RLHF uses PPO to align LLMs with human preferences. DPO later achieves the same goal without the reward model. The chain is: Lesson 5.4 (transformers) -> Lesson 5.7 (transfer) -> Lesson 5.8 (PPO) -> Module 6 (alignment).
+- "If beginners look confused": "Take small steps. Do not let the new policy stray too far from the old one. That is literally the whole algorithm."
+- "If experts look bored": "PPO is a first-order approximation to TRPO. It trades theoretical optimality for simplicity and gets around 95% of the performance. The clipped objective is one of the most pragmatic tricks in modern RL."
+
+**Transition**: "To use RL for business problems, you need a custom environment."
+
+---
+
+## Slide 88: Custom Gymnasium Environments
+
+**Time**: ~3 min
+**Talking points**:
+
+- Custom environments are where RL becomes practical for business. The Gymnasium API is the standard (successor to OpenAI Gym).
+- Required methods: reset() (start a new episode, return initial observation), step(action) (apply action, return next observation, reward, termination flag, info dict).
+- Define the observation space, action space, and reward function.
+- The reward function is the most important design decision. It defines what "success" means. Bad reward design = reward hacking. Good reward design = aligned behaviour.
+- Examples you will build in the exercise: customer churn environment (state = customer features, action = intervention type, reward = retention + cost), supply chain environment (state = inventory levels, action = order quantity, reward = profit - holding costs - stockouts).
+- "If beginners look confused": "Three functions: reset, step, and a reward formula. That is the whole environment. The hard part is designing the reward so the agent learns what you actually want."
+- "If experts look bored": "Reward shaping is where most business RL projects live or die. Specification gaming is a real failure mode — the agent finds a way to maximise reward that violates the spirit of the task."
+
+**Transition**: "Meet the last Kailash engine — RLTrainer."
+
+---
+
+## Slide 89: Kailash Bridge — RLTrainer
+
+**Time**: ~3 min
+**Talking points**:
+
+- RLTrainer wraps the RL training loop with Kailash's standard interface. Supports all five algorithms (DQN, DDPG, SAC, A2C, PPO) with a unified API.
+- Usage pattern: instantiate with an environment and algorithm name, call train(total_steps), call evaluate() to run the trained policy and report metrics.
+- RLTrainer handles the replay buffer, target network updates, logging, and checkpointing. Students focus on the environment and reward function — not the training loop plumbing.
+- Note: exercise uses RLTrainer layered on PyTorch-based RL implementations.
+- "If beginners look confused": "You write the environment. RLTrainer handles everything else. Two lines of code go from 'I have an environment' to 'I have a trained agent.'"
+- "If experts look bored": "The unified interface lets you swap algorithms with a one-line change. Useful for the classic 'try PPO, try SAC, see which one works better for your problem' workflow."
+
+**Transition**: "The exercise."
+
+---
+
+## Slide 90: Exercise 5.8 — Reinforcement Learning
+
+**Time**: ~1 min
+**Talking points**:
+
+- Two tasks: implement DQN for customer churn prevention (discrete action), implement PPO for supply chain optimisation (continuous action). For each: design the environment, define the reward function, train with RLTrainer, evaluate the learned policy, compare with a rule-based baseline.
+- The RLHF bridge to M6 is critical. Students who understand PPO here will have a head start on understanding LLM alignment in M6.
+- Creative part: designing reward functions that capture the business objective without gameable loopholes.
+
+**Transition**: "Key formulas."
+
+---
+
+## Slide 91: Lesson 5.8 Key Formulas
+
+**Time**: ~1 min
+**Talking points**:
+
+- Four equations: Bellman expectation, Bellman optimality, DQN loss, PPO clipped objective.
+- Bellman equations are the foundation. DQN loss turns Bellman into a supervised learning problem. PPO clips the policy update for stability.
+- "These four lines are the foundation of deep RL. Internalise them."
+
+**Transition**: "Lesson summary."
+
+---
+
+## Slide 92: Lesson 5.8 Summary
+
+**Time**: ~1 min
+**Talking points**:
+
+- RL learns from interaction, not fixed datasets. Bellman equations define optimal value functions. DQN uses neural Q-networks. PPO clips the policy update. Custom Gymnasium environments enable business applications. RLTrainer handles the loop.
+- Bridge to M6: RL is the last building block. M6 combines everything — transformers (Lesson 5.4), transfer learning (Lesson 5.7), and RL (Lesson 5.8) — into RLHF for LLM alignment. The progression is complete.
+
+**Transition**: "Module-level consolidation."
+
+---
+
+## Slide 93: Module 5 — Complete Formula Reference
+
+**Time**: ~2 min
+**Talking points**:
+
+- This is the cheat sheet. Walk through quickly, connecting each formula to its lesson context.
+- Autoencoder reconstruction loss. VAE ELBO. Reparameterisation trick. Conv output size. ResNet skip. SE block. LSTM forget gate. GRU update gate. Scaled dot-product attention. Positional encoding. GAN minimax. GCN propagation. Bellman equation. PPO clipped objective.
+- "You should have all of these memorised or readily derivable by the end of the module. If any feel unfamiliar, that is a signal to revisit the corresponding lesson."
+
+**Transition**: "And the decision tree for when to use what."
+
+---
+
+## Slide 94: Architecture Decision Tree
+
+**Time**: ~2 min
+**Talking points**:
+
+- Practical summary for choosing architectures. Three questions:
+- What data type? (Images -> CNN/ViT. Text -> Transformer. Sequences -> LSTM/Transformer. Graphs -> GNN. Tabular -> Gradient boosting, not DL.)
+- What goal? (Classify -> Supervised. Generate -> VAE/GAN/Diffusion/Transformer. Control -> RL.)
+- Transfer learning by default — unless you have a good reason not to.
+- "In a new project, start here. Data type -> architecture family. Goal -> training paradigm. Then ask: is there a pretrained model I can fine-tune? The answer is almost always yes."
+- "If beginners look confused": "Three questions, done. You can solve 90% of new problems by answering them."
+
+**Transition**: "End of module assessment."
+
+---
+
+## Slide 95: End of Module Assessment
+
+**Time**: ~2 min
+**Talking points**:
+
+- Project format: choose a problem in your domain, apply the architecture decision tree, train a model, evaluate it, export to ONNX with OnnxBridge, deploy with InferenceServer.
+- Assessment rubric: (1) architecture choice is justified, (2) model is trained to reasonable convergence, (3) evaluation uses appropriate metrics, (4) deployment pipeline works end-to-end.
+- Open-ended but structured. You pick the domain. The methodology is fixed.
+- Quiz component covers the formula reference and architecture decision tree.
+- "The project is where everything comes together. Pick a problem you actually care about. The methodology you apply is the methodology you will use for the rest of your career."
+
+**Transition**: "Module complete."
+
+---
+
+## Slide 96: Module 5 Complete
+
+**Time**: ~1 min
+**Talking points**:
+
+- Thank the class. Module 5 is the most technically dense in the programme.
+- Recap the progression: autoencoders compress, CNNs see space, RNNs remember time, transformers attend, GANs generate, GNNs connect, transfer learning scales, RL interacts.
+- "Students who have completed all 8 lessons and exercises have a solid foundation in every major deep learning paradigm. Module 6 builds on this: LLMs, alignment, governance, and production AI."
+- Read the closing line: "Every major DL architecture. One paradigm per lesson. All implemented."
+- "If beginners look confused": "You did it. You now know more deep learning than most people who call themselves data scientists. Take a moment."
+- "If experts look bored": "You have seen the lineage. Every modern AI system is a composition of these building blocks. Module 6 is where the compositions get interesting."
+
+**Transition**: "See you in Module 6 for LLMs and alignment."
+
+---
+
+**End of speaker notes for Module 5 — Deep Learning and ML Mastery in Vision and Transfer Learning.**
+
+Timing summary:
+- Intro + overview (Slides 1-5): ~10 min
+- Lesson 5.1 Autoencoders (Slides 6-17): ~30 min
+- Lesson 5.2 CNNs (Slides 18-29): ~26 min
+- Lesson 5.3 RNNs (Slides 30-40): ~22 min
+- Lesson 5.4 Transformers (Slides 41-52): ~26 min (+2 min Q&A pause)
+- Lesson 5.5 GANs (Slides 53-62): ~20 min
+- Lesson 5.6 GNNs (Slides 63-69): ~14 min
+- Lesson 5.7 Transfer Learning (Slides 70-77): ~16 min
+- Lesson 5.8 RL (Slides 78-92): ~34 min
+- Module-level close (Slides 93-96): ~7 min
+
+Realistic total including pauses and transitions: approximately 180-200 minutes. Instructors running short on time should compress Lesson 5.6 (GNNs) and the module close; instructors running long should trim the GAN variants survey (Slide 58) and the DDPG/SAC slide (Slide 85). The four highest-priority slides that must not be cut: 13 (reparameterisation), 22 (ResNet), 43-44 (scaled dot-product attention), 87 (PPO). These are the conceptual anchors of the module.

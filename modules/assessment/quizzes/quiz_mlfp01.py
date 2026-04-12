@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 1 — AI-Resilient Assessment Questions
+"""MLFP 1 — AI-Resilient Assessment Questions
 
 Statistics, Probability & Data Fluency
 Covers: Python basics, Polars, DataExplorer, PreprocessingPipeline, ModelVisualizer

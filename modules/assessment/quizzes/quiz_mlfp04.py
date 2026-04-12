@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 6 — AI-Resilient Assessment Questions
+"""MLFP 4 — AI-Resilient Assessment Questions
 
 Alignment, Governance, RL & Deployment
 Covers: SFT, DPO, RL (PPO/SAC), model merging, PACT, governed agents,
@@ -163,7 +163,7 @@ QUIZ = {
                 "\n"
                 "org_dict = {\n"
                 "    'organization': {\n"
-                "        'name': 'ASCENT Demo',\n"
+                "        'name': 'MLFP Demo',\n"
                 "        'departments': [{'name': 'data_science', 'teams': [...]}]\n"
                 "    }\n"
                 "}\n"
@@ -421,7 +421,7 @@ QUIZ = {
             "type": "process_doc",
             "difficulty": "advanced",
             "question": (
-                "You are presenting the completed ASCENT capstone to the Terrene Foundation board. "
+                "You are presenting the completed MLFP capstone to the Terrene Foundation board. "
                 "The system includes: SFT-tuned credit explanation model (kailash-align), "
                 "governed multi-agent pipeline (kailash-pact), RL-optimised inventory agent "
                 "(kailash-ml RLTrainer), and all served via Nexus. "

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.2</span>
+  EM Algorithm and Gaussian Mixture Models
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~4 min per slide
+</p>
+
+<p>
+  This is the mathematically densest lesson in the first half of M4. The
+  pedagogical challenge: the math is intimidating but the algorithm is
+  simple. Keep coming back to the 20-line implementation — students who
+  can read code can understand EM through the code even if the Jensen
+  inequality argument is beyond them today. Save the ELBO for the
+  Advanced audience cue.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>EM Algorithm and Gaussian Mixture Models</h3>
+  <p>
+    Frame it: "Yesterday K-means gave every customer a single label. That
+    is a convenient lie. Today we remove the lie and learn how to say
+    '70% cluster A, 30% cluster B'. The cost is exactly one new algorithm —
+    EM — which you will implement in 20 lines by the end of this session."
+  </p>
+  <div class="audience-cue beginner">
+    "If the name 'Expectation-Maximisation' sounds scary, ignore it — by the end it will just be two alternating steps you can write on a napkin."
+  </div>
+  <div class="transition">→ "Hard labels lie. Here's why."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Hard labels lie</span></div>
+  <h3>Hard labels lie</h3>
+  <p>
+    Give a concrete example: "Customer A buys twice a month and spends
+    moderately. Is she 'high-value' or 'average'? K-means picks one. The
+    honest answer is 'somewhere between'. GMM gives you that somewhere."
+  </p>
+  <p>
+    Key business point: soft assignments unlock decisions you cannot make
+    with hard labels. "Should we send this customer a loyalty offer? Depends
+    on how likely she is to be a loyal customer. If K-means says 'yes
+    cluster 2' but GMM says 'only 45% cluster 2', maybe don't."
+  </p>
+  <div class="transition">→ "Here's the picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Hard vs soft diagram</span></div>
+  <h3>Hard vs soft in one picture</h3>
+  <p>
+    Walk the two panels. Same data, same boundary point. K-means commits;
+    GMM reports. Point out that GMM also gives you the cluster <em>shapes</em>
+    via the covariance matrices — the ellipses in the right panel.
+  </p>
+  <div class="transition">→ "Let's make this rigorous. GMM has a generative story."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>Generative story</span></div>
+  <h3>The generative story</h3>
+  <p>
+    Walk the two steps. Emphasise that this is <em>how the data was
+    generated</em>, not how we classify it. "Nature rolls a weighted
+    die — the $\pi_k$ — to pick a cluster, then samples from that cluster's
+    Gaussian." Reverse-engineering this story IS the clustering problem.
+  </p>
+  <div class="audience-cue expert">
+    "This is our first example of a latent variable model. The cluster assignment $z$ is latent — we see $x$ but not $z$. Half of classical ML is latent variable models trained with EM or MCMC."
+  </div>
+  <div class="transition">→ "And the problem is: we can't maximise the likelihood directly."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Why hard</span></div>
+  <h3>Why maximising the likelihood is hard</h3>
+  <p>
+    Point at the "log of a sum" expression. "If the sum inside the log
+    was a single term, we could take derivatives and solve. But a log of
+    a sum has no closed-form maximum. We need a clever workaround — and
+    that workaround is EM."
+  </p>
+  <div class="transition">→ "Here is the loop."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>EM loop diagram</span></div>
+  <h3>The EM loop</h3>
+  <p>
+    Walk the four boxes. Initialise → E-step → M-step → check convergence
+    → loop back. The structure is identical to gradient descent in spirit:
+    pick a starting point, iterate, stop when things stop improving. The
+    difference is that each step here has a closed form.
+  </p>
+  <div class="transition">→ "E-step first."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>E-step derivation</span></div>
+  <h3>E-step: responsibilities via Bayes' rule</h3>
+  <p>
+    Walk the formula slowly. The numerator is "prior on cluster $k$ times
+    likelihood of $\mathbf{x}_n$ under cluster $k$". The denominator
+    normalises across clusters. This is exactly Bayes' rule from M2.
+  </p>
+  <div class="audience-cue beginner">
+    "If you forget the formula, remember the story: 'Given everything I know about $\mathbf{x}_n$ and the current cluster parameters, what's the probability this point came from cluster $k$?' That is $r_{nk}$."
+  </div>
+  <div class="audience-cue expert">
+    "The responsibilities define the posterior $q(z)$ over latent variables in the ELBO decomposition. EM is block-coordinate ascent on $\mathbb{E}_{q}[\log p(x,z)] + \mathbb{H}(q)$ — the E-step fixes $\theta$ and maximises over $q$, the M-step fixes $q$ and maximises over $\theta$."
+  </div>
+  <div class="transition">→ "Given responsibilities, the M-step is a weighted average."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>M-step</span></div>
+  <h3>M-step: weighted means</h3>
+  <p>
+    Walk each formula. $N_k$ is "effective number of points in cluster $k$".
+    $\mu_k$ is "weighted mean of the data, weighted by responsibility".
+    $\Sigma_k$ is "weighted covariance around the new mean". $\pi_k$ is
+    "fraction of effective mass". Every formula is just a weighted MLE.
+  </p>
+  <div class="transition">→ "The magic: EM is guaranteed to improve."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Convergence</span></div>
+  <h3>Convergence guarantee</h3>
+  <p>
+    State the guarantee clearly: "Every EM iteration is guaranteed to not
+    decrease the log-likelihood. This is why the algorithm converges."
+    For the beginner audience that's enough — they should trust the
+    guarantee and move on.
+  </p>
+  <div class="audience-cue expert">
+    "The proof is Jensen's inequality applied to the expectation of $\log p(x, z)$ under $q(z)$. The resulting lower bound is the ELBO — evidence lower bound — which EM monotonically improves. This framework generalises to variational inference, which we use in M6 for LLM fine-tuning."
+  </div>
+  <p>
+    Warn about local maxima: "Like K-means, EM can get stuck. Always run
+    3-5 random initialisations and keep the best log-likelihood."
+  </p>
+  <div class="transition">→ "Now let's write it in 20 lines."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Code 1/2</span></div>
+  <h3>Twenty lines of EM (1/2)</h3>
+  <p>
+    Walk the code. Random initialisation with identity covariances (point
+    at this — students will get singular matrices if they try to init with
+    zeros). Then the E-step: compute responsibilities with
+    <code>mvn.pdf</code>, stack them, normalise.
+  </p>
+  <div class="transition">→ "And the M-step plus convergence check."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Code 2/2</span></div>
+  <h3>Twenty lines of EM (2/2)</h3>
+  <p>
+    Walk through $N_k$, $\pi$, $\mu$, $\Sigma$. Point at the
+    covariance computation — it is the single trickiest line. The outer
+    product <code>diff.T @ diff</code> gives the unweighted scatter; the
+    weighting by <code>r[:, k:k+1]</code> makes it the weighted scatter.
+  </p>
+  <p>
+    Convergence check: compare new log-likelihood to old, stop if the
+    change is less than tolerance. The <code>1e-12</code> additions are
+    there to avoid log(0) when a point has zero density under every
+    cluster (numerical safety).
+  </p>
+  <div class="transition">→ "How many clusters? BIC answers this."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>BIC</span></div>
+  <h3>Picking $K$ with BIC</h3>
+  <p>
+    Walk the BIC formula. "$-2\log \hat{\mathcal{L}}$ rewards fit.
+    $p \log N$ penalises complexity. Lower is better. Try $K = 2$ to $10$
+    and pick the minimum. In practice, BIC often agrees with silhouette on
+    the right K, but disagrees when there are clusters of very different
+    sizes."
+  </p>
+  <div class="transition">→ "One more knob: covariance type."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Covariance types</span></div>
+  <h3>Covariance types: tied, diag, full</h3>
+  <p>
+    Walk the table. In business data with $D &lt; 20$ features,
+    <code>full</code> is fine. Above that, switch to <code>diag</code>.
+    For very high dimensions (say image features), use <code>tied</code>
+    to share a single covariance across clusters — this is essentially
+    Linear Discriminant Analysis.
+  </p>
+  <div class="transition">→ "And one more thing: GMMs are everywhere in modern ML."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Mixture of Experts</span></div>
+  <h3>Mixture of Experts — where GMM meets GPT-4</h3>
+  <p>
+    Introduce MoE. "Replace the constant $\pi_k$ with a function of the
+    input. Now different inputs pick different experts. Modern large
+    language models — Mixtral, DeepSeek, GPT-4 — use this pattern to scale
+    to hundreds of billions of parameters efficiently."
+  </p>
+  <div class="audience-cue expert">
+    "MoE in transformers routes tokens through a few experts at a time, selected by a softmax over a small gating network. Training uses load-balancing losses to prevent expert collapse. It is a direct descendant of Jacobs, Jordan, Nowlan and Hinton's 1991 MoE paper."
+  </div>
+  <div class="transition">→ "Let's run EM on real data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>Worked example: 3 Gaussians in 2D</h3>
+  <p>
+    Walk the code. Generate 3 ground-truth Gaussians. Run EM. Compare
+    against sklearn. Point out that both should report very similar
+    log-likelihoods — this is the self-consistency check that validates
+    your implementation.
+  </p>
+  <div class="transition">→ "The payoff: find the uncertain customers."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Uncertain points</span></div>
+  <h3>The uncertain points are where the money is</h3>
+  <p>
+    Business framing: "In a real customer segmentation pipeline, the
+    points with $\max_k r_{nk} &lt; 0.6$ are the ambiguous ones. They are
+    exactly the customers worth manual review — you cannot act on them
+    with confidence from an automated system alone."
+  </p>
+  <p>
+    Drive home: this is information K-means threw away. It is the kind
+    of decision-making value that soft clustering unlocks.
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four rookie mistakes</h3>
+  <p>
+    Walk all four. #1 (zero-init covariance) is the single most common
+    bug in homegrown EM implementations. #4 (full covariance in high dims)
+    is the most common cause of poor sklearn GMM results.
+  </p>
+  <div class="transition">→ "How this connects forward."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~3 min</span><span>Recap</span></div>
+  <h3>Cross-references and recap</h3>
+  <p>
+    Quick recap. Call out the forward connection to 4.7: "The ALS
+    algorithm we'll see in the recommender systems lesson has exactly
+    the same alternating structure as EM. One day 'fix $U$, solve for
+    $V$'; next day 'fix $V$, solve for $U$'. Same idea, different
+    problem." This makes the pivot less surprising when we get there.
+  </p>
+  <div class="transition">→ End of lesson. Exercise 2 implements EM from scratch.</div>
+</div>
+
+</main>
+</body>
+</html>

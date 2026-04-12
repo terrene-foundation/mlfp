@@ -2,350 +2,330 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP03 — Exercise 5: Deep Learning with ONNX Export
+# MLFP03 — Exercise 5: Class Imbalance and Calibration
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Train a CNN on medical image data with LR scheduling and
-#   gradient monitoring. Export to ONNX via OnnxBridge for deployment.
+# OBJECTIVE: Compare SMOTE, cost-sensitive learning, Focal Loss, and
+#   threshold optimisation for handling class imbalance. Calibrate after.
 #
 # TASKS:
-#   1. Load and prepare image data
-#   2. Build CNN architecture with residual connections
-#   3. Train with cosine annealing LR scheduler
-#   4. Monitor gradients and training dynamics
-#   5. Export to ONNX with OnnxBridge
-#   6. Validate ONNX model matches PyTorch predictions
+#   1. Establish baseline (no imbalance handling)
+#   2. SMOTE oversampling — why it often fails in practice
+#   3. Cost-sensitive learning (sample weights)
+#   4. Focal Loss (derive γ parameter effect)
+#   5. Threshold optimisation from cost matrix
+#   6. Post-hoc calibration (Platt scaling, isotonic regression)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 import polars as pl
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    average_precision_score,
+    roc_auc_score,
+    f1_score,
+    precision_recall_curve,
+    classification_report,
+    brier_score_loss,
+)
+from sklearn.calibration import CalibratedClassifierCV
+import lightgbm as lgb
 
-from kailash_ml import ModelVisualizer
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
+from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load and prepare data
-# ══════════════════════════════════════════════════════════════════════
-# Using synthetic data matching ChestX-ray14 characteristics
-# In production, load from mlfp03/chest_xray_subset/
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
+credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
 
-# Synthetic data matching medical image properties
-n_samples = 5000
-n_channels = 1  # Grayscale X-rays
-img_size = 64  # Downsampled for training speed
-n_classes = 5  # Multi-label: 5 conditions
-
-rng = np.random.default_rng(42)
-X_images = rng.standard_normal((n_samples, n_channels, img_size, img_size)).astype(
-    np.float32
-)
-# Multi-label: each sample can have multiple conditions
-y_labels = (rng.random((n_samples, n_classes)) > 0.85).astype(np.float32)
-
-print(f"=== Medical Image Data ===")
-print(f"Images: {X_images.shape} (N, C, H, W)")
-print(f"Labels: {y_labels.shape} (N, classes)")
-print(f"Positive rates per class: {y_labels.mean(axis=0).round(3)}")
-
-# Split
-split = int(0.8 * n_samples)
-X_train, X_test = X_images[:split], X_images[split:]
-y_train, y_test = y_labels[:split], y_labels[split:]
-
-# DataLoaders
-train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
-test_ds = TensorDataset(torch.from_numpy(X_test), torch.from_numpy(y_test))
-train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_ds, batch_size=64)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build CNN with residual connections
-# ══════════════════════════════════════════════════════════════════════
-
-
-class ResBlock(nn.Module):
-    """Residual block: skip connection preserves gradient flow."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
-
-    def forward(self, x):
-        residual = x
-        # TODO: pass x through conv1 -> bn1 -> relu
-        out = ____  # Hint: torch.relu(self.bn1(self.conv1(x)))
-        # TODO: pass out through conv2 -> bn2 (no relu yet)
-        out = ____  # Hint: self.bn2(self.conv2(out))
-        # TODO: return relu(out + residual) — the skip connection
-        return ____  # Hint: torch.relu(out + residual)
-
-
-class MedicalCNN(nn.Module):
-    """CNN for multi-label medical image classification."""
-
-    def __init__(self, n_classes: int = 5):
-        super().__init__()
-        # TODO: define self.features as nn.Sequential with:
-        #   Conv2d(1->32, 3, padding=1) -> BatchNorm2d(32) -> ReLU -> MaxPool2d(2)
-        #   -> ResBlock(32)
-        #   -> Conv2d(32->64, 3, padding=1) -> BatchNorm2d(64) -> ReLU -> MaxPool2d(2)
-        #   -> ResBlock(64)
-        #   -> AdaptiveAvgPool2d(4)
-        self.features = nn.Sequential(
-            ____,  # Hint: nn.Conv2d(1, 32, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(32)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(32)
-            ____,  # Hint: nn.Conv2d(32, 64, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(64)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(64)
-            ____,  # Hint: nn.AdaptiveAvgPool2d(4)
-        )
-        # TODO: define self.classifier as nn.Sequential:
-        #   Flatten -> Linear(64*4*4 -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> n_classes)
-        self.classifier = nn.Sequential(
-            ____,  # Hint: nn.Flatten()
-            ____,  # Hint: nn.Linear(64 * 4 * 4, 128)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.Dropout(0.3)
-            ____,  # Hint: nn.Linear(128, n_classes)
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        return self.classifier(x)
-
-
-model = MedicalCNN(n_classes=n_classes).to(device)
-print(f"\n=== Model Architecture ===")
-total_params = sum(p.numel() for p in model.parameters())
-trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total parameters: {total_params:,}")
-print(f"Trainable: {trainable_params:,}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train with cosine annealing LR
-# ══════════════════════════════════════════════════════════════════════
-
-criterion = nn.BCEWithLogitsLoss()  # Multi-label: BCE per class
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-
-# Cosine annealing: LR decays from max to min following cosine curve
-n_epochs = 20
-# TODO: create CosineAnnealingLR scheduler with T_max=n_epochs, eta_min=1e-6
-scheduler = ____  # Hint: optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
-
-# Training loop with gradient monitoring
-history = {
-    "train_loss": [],
-    "val_loss": [],
-    "lr": [],
-    "grad_norm": [],
-}
-
-for epoch in range(n_epochs):
-    # Train
-    model.train()
-    train_losses = []
-    epoch_grad_norms = []
-
-    for X_batch, y_batch in train_loader:
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-        # TODO: zero gradients, forward pass, compute loss, backprop
-        ____  # Hint: optimizer.zero_grad()
-        logits = ____  # Hint: model(X_batch)
-        loss = ____  # Hint: criterion(logits, y_batch)
-        ____  # Hint: loss.backward()
-
-        # TODO: compute total gradient norm (sum of squared L2 norms, then sqrt)
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                # TODO: add squared L2 norm of p.grad.data to total_norm
-                total_norm += ____  # Hint: p.grad.data.norm(2).item() ** 2
-        total_norm = total_norm**0.5
-        epoch_grad_norms.append(total_norm)
-
-        # Gradient clipping (prevents exploding gradients)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        # TODO: update model weights
-        ____  # Hint: optimizer.step()
-        train_losses.append(loss.item())
-
-    # Validate
-    model.eval()
-    val_losses = []
-    with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            # TODO: forward pass through model
-            logits = ____  # Hint: model(X_batch)
-            val_losses.append(criterion(logits, y_batch).item())
-
-    # Record
-    history["train_loss"].append(np.mean(train_losses))
-    history["val_loss"].append(np.mean(val_losses))
-    history["lr"].append(scheduler.get_last_lr()[0])
-    history["grad_norm"].append(np.mean(epoch_grad_norms))
-
-    # TODO: step the LR scheduler at end of each epoch
-    ____  # Hint: scheduler.step()
-
-    if (epoch + 1) % 5 == 0:
-        print(
-            f"Epoch {epoch + 1}/{n_epochs}: "
-            f"train_loss={history['train_loss'][-1]:.4f}, "
-            f"val_loss={history['val_loss'][-1]:.4f}, "
-            f"lr={history['lr'][-1]:.6f}, "
-            f"grad_norm={history['grad_norm'][-1]:.4f}"
-        )
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate model
-# ══════════════════════════════════════════════════════════════════════
-
-model.eval()
-all_preds = []
-all_labels = []
-
-with torch.no_grad():
-    for X_batch, y_batch in test_loader:
-        X_batch = X_batch.to(device)
-        logits = model(X_batch)
-        probs = torch.sigmoid(logits).cpu().numpy()
-        all_preds.append(probs)
-        all_labels.append(y_batch.numpy())
-
-y_pred = np.vstack(all_preds)
-y_true = np.vstack(all_labels)
-
-print(f"\n=== Model Evaluation ===")
-class_names = [
-    "Condition_A",
-    "Condition_B",
-    "Condition_C",
-    "Condition_D",
-    "Condition_E",
-]
-for i, name in enumerate(class_names):
-    if y_true[:, i].sum() > 0:
-        from sklearn.metrics import roc_auc_score as auc_fn
-
-        auc = auc_fn(y_true[:, i], y_pred[:, i])
-        print(f"  {name}: AUC={auc:.4f}, prevalence={y_true[:, i].mean():.3f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Export to ONNX with OnnxBridge
-# ══════════════════════════════════════════════════════════════════════
-
-bridge = OnnxBridge()
-
-# Check compatibility
-compat = bridge.check_compatibility(model, framework="pytorch")
-print(f"\n=== ONNX Compatibility ===")
-print(f"Compatible: {compat.compatible}")
-print(f"Confidence: {compat.confidence}")
-
-# TODO: export model to ONNX using bridge.export()
-#       with framework="pytorch", output_path="medical_cnn.onnx", n_features=None
-export_result = bridge.export(
-    model=____,  # Hint: model
-    framework=____,  # Hint: "pytorch"
-    output_path=____,  # Hint: "medical_cnn.onnx"
-    n_features=____,  # Hint: None (not needed for CNN)
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
 )
 
-print(f"\nExport result: {export_result.success}")
-if export_result.onnx_path:
-    print(f"ONNX path: {export_result.onnx_path}")
-    if export_result.model_size_bytes:
-        print(f"Model size: {export_result.model_size_bytes / 1024:.1f} KB")
-    print(f"Export time: {export_result.export_time_seconds:.2f}s")
+X_train, y_train, col_info = to_sklearn_input(
+    result.train_data,
+    feature_columns=[c for c in result.train_data.columns if c != "default"],
+    target_column="default",
+)
+X_test, y_test, _ = to_sklearn_input(
+    result.test_data,
+    feature_columns=[c for c in result.test_data.columns if c != "default"],
+    target_column="default",
+)
+
+pos_rate = y_train.mean()
+print(
+    f"Default rate: {pos_rate:.2%} (imbalance ratio: {(1 - pos_rate) / pos_rate:.0f}:1)"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Validate ONNX model
+# TASK 1: Baseline — no imbalance handling
 # ══════════════════════════════════════════════════════════════════════
 
-if export_result.success and export_result.onnx_path:
-    sample_input = torch.from_numpy(X_test[:10]).to(device)
+# TODO: Create and fit a baseline LGBMClassifier with n_estimators=300
+baseline = (
+    ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+)
+baseline.fit(X_train, y_train)
 
-    # TODO: validate ONNX model against PyTorch using bridge.validate()
-    #       with onnx_path=export_result.onnx_path, sample_input=sample_input,
-    #       tolerance=1e-4
-    validation = bridge.validate(
-        model=____,  # Hint: model
-        onnx_path=____,  # Hint: export_result.onnx_path
-        sample_input=____,  # Hint: sample_input
-        tolerance=____,  # Hint: 1e-4
+# TODO: Get predicted probabilities for the positive class
+y_proba_base = ____  # Hint: baseline.predict_proba(X_test)[:, 1]
+
+print(f"\n=== Baseline (no correction) ===")
+print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_base):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_proba_base):.4f}")
+print(f"Brier:   {brier_score_loss(y_test, y_proba_base):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: SMOTE — and why it often fails
+# ══════════════════════════════════════════════════════════════════════
+# SMOTE creates synthetic minority examples by interpolating between
+# nearest neighbours. Problems:
+# 1. Lipschitz violation: interpolation assumes smooth decision boundary
+# 2. Noisy minority: amplifies noise in the minority class
+# 3. High-dimensional collapse: in high dimensions, nearest neighbours
+#    are nearly equidistant, making interpolation meaningless
+
+from imblearn.over_sampling import SMOTE
+
+# TODO: Create a SMOTE instance and resample the training data
+smote = ____  # Hint: SMOTE(random_state=42)
+X_smote, y_smote = smote.fit_resample(X_train, y_train)
+
+print(f"\n=== SMOTE ===")
+print(f"Before SMOTE: {len(y_train):,} (pos={y_train.sum():.0f})")
+print(f"After SMOTE:  {len(y_smote):,} (pos={y_smote.sum():.0f})")
+
+smote_model = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+smote_model.fit(X_smote, y_smote)
+
+# TODO: Get predicted probabilities from the SMOTE-trained model
+y_proba_smote = ____  # Hint: smote_model.predict_proba(X_test)[:, 1]
+
+print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_smote):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_proba_smote):.4f}")
+print(f"Brier:   {brier_score_loss(y_test, y_proba_smote):.4f}")
+
+print("\nSMOTE Failure Taxonomy:")
+print("  1. Lipschitz: interpolated samples may cross decision boundary")
+print("  2. Noise: noisy minority examples get amplified")
+print("  3. Dimensionality: with 45 features, NN distances converge")
+print(f"  → 92% citation rate in papers, ~6% production deployment")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Cost-sensitive learning (sample weights)
+# ══════════════════════════════════════════════════════════════════════
+# Weight minority class higher in the loss function.
+# LightGBM supports scale_pos_weight and sample_weight.
+
+# Method A: scale_pos_weight
+# TODO: Compute scale_pos_weight as ratio of negative to positive rate
+scale_weight = ____  # Hint: (1 - pos_rate) / pos_rate
+
+# TODO: Create LGBMClassifier with scale_pos_weight set
+cost_model_a = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, scale_pos_weight=scale_weight, random_state=42, verbose=-1)
+cost_model_a.fit(X_train, y_train)
+y_proba_cost_a = cost_model_a.predict_proba(X_test)[:, 1]
+
+# Method B: custom sample weights (from cost matrix)
+# Cost matrix: FP costs $100 (wasted investigation), FN costs $10,000 (undetected default)
+cost_fn = 10_000
+cost_fp = 100
+
+# TODO: Create sample_weights array: cost_fn for positives, cost_fp for negatives
+sample_weights = ____  # Hint: np.where(y_train == 1, cost_fn, cost_fp)
+
+cost_model_b = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+
+# TODO: Fit cost_model_b with the sample_weight argument
+cost_model_b.fit(
+    X_train, y_train, sample_weight=____
+)  # Hint: sample_weight=sample_weights
+y_proba_cost_b = cost_model_b.predict_proba(X_test)[:, 1]
+
+print(f"\n=== Cost-Sensitive Learning ===")
+print(f"Method A (scale_pos_weight={scale_weight:.1f}):")
+print(f"  AUC-ROC: {roc_auc_score(y_test, y_proba_cost_a):.4f}")
+print(f"  AUC-PR:  {average_precision_score(y_test, y_proba_cost_a):.4f}")
+print(f"Method B (cost matrix: FN=${cost_fn:,}, FP=${cost_fp:,}):")
+print(f"  AUC-ROC: {roc_auc_score(y_test, y_proba_cost_b):.4f}")
+print(f"  AUC-PR:  {average_precision_score(y_test, y_proba_cost_b):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Focal Loss
+# ══════════════════════════════════════════════════════════════════════
+# Focal Loss: FL(p) = -α(1-p)^γ log(p)
+# γ > 0 down-weights easy examples (well-classified)
+# γ = 0 reduces to standard cross-entropy
+# γ = 2 is the original setting (Lin et al., 2017)
+
+
+def focal_loss_lgb(y_true, y_pred, gamma=2.0, alpha=0.25):
+    """Custom focal loss for LightGBM."""
+    p = 1.0 / (1.0 + np.exp(-y_pred))  # sigmoid
+    grad = alpha * (
+        -((1 - p) ** gamma)
+        * (gamma * p * np.log(np.clip(p, 1e-8, 1)) + (1 - p))
+        * y_true
+        + p**gamma
+        * (gamma * (1 - p) * np.log(np.clip(1 - p, 1e-8, 1)) + p)
+        * (1 - y_true)
     )
+    hess = np.abs(grad) * (1 - np.abs(grad))
+    hess = np.clip(hess, 1e-8, None)
+    return grad, hess
 
-    print(f"\n=== ONNX Validation ===")
-    print(f"Valid: {validation.valid}")
-    print(f"Max difference: {validation.max_diff:.8f}")
-    print(f"Mean difference: {validation.mean_diff:.8f}")
-    print(f"Samples tested: {validation.n_samples}")
+
+# TODO: Create LGBMClassifier with a custom focal loss objective (gamma=2.0)
+#       Pass objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0)
+focal_model = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1, objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0))
+focal_model.fit(X_train, y_train)
+y_raw_focal = focal_model.predict_proba(X_test)[:, 1]
+
+# Note: custom objective outputs are not calibrated probabilities
+# Need post-hoc calibration
+print(f"\n=== Focal Loss (γ=2.0) ===")
+print(f"AUC-ROC: {roc_auc_score(y_test, y_raw_focal):.4f}")
+print(f"AUC-PR:  {average_precision_score(y_test, y_raw_focal):.4f}")
+print(
+    f"Brier:   {brier_score_loss(y_test, y_raw_focal):.4f} (uncalibrated — expected to be poor)"
+)
+
+# Compare γ values
+for gamma in [0.0, 0.5, 1.0, 2.0, 5.0]:
+    m = lgb.LGBMClassifier(
+        n_estimators=300,
+        random_state=42,
+        verbose=-1,
+        objective=lambda y_true, y_pred, g=gamma: focal_loss_lgb(
+            y_true, y_pred, gamma=g
+        ),
+    )
+    m.fit(X_train, y_train)
+    y_p = m.predict_proba(X_test)[:, 1]
+    print(f"  γ={gamma:.1f}: AUC-PR={average_precision_score(y_test, y_p):.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Visualise training dynamics
+# TASK 5: Threshold optimisation from cost matrix
+# ══════════════════════════════════════════════════════════════════════
+# Optimal threshold: t* = cost_FP / (cost_FP + cost_FN)
+# This minimises expected total cost
+
+# Use best model so far
+best_proba = y_proba_cost_a
+
+# TODO: Derive the optimal threshold from the cost matrix
+optimal_threshold = ____  # Hint: cost_fp / (cost_fp + cost_fn)
+print(f"\n=== Threshold Optimisation ===")
+print(f"Cost matrix: FP=${cost_fp:,}, FN=${cost_fn:,}")
+print(f"Optimal threshold: {optimal_threshold:.4f}")
+print(f"Default threshold (0.5) would miss many defaults!")
+
+# Evaluate at different thresholds
+thresholds = np.arange(0.01, 0.50, 0.01)
+best_cost = float("inf")
+best_t = 0.5
+
+for t in thresholds:
+    y_pred_t = (best_proba >= t).astype(int)
+    fp = ((y_pred_t == 1) & (y_test == 0)).sum()
+    fn = ((y_pred_t == 0) & (y_test == 1)).sum()
+    total_cost = fp * cost_fp + fn * cost_fn
+    if total_cost < best_cost:
+        best_cost = total_cost
+        best_t = t
+
+print(f"Empirically optimal threshold: {best_t:.3f}")
+print(f"Minimum total cost: ${best_cost:,.0f}")
+
+# Compare with default threshold
+y_pred_default = (best_proba >= 0.5).astype(int)
+fp_d = ((y_pred_default == 1) & (y_test == 0)).sum()
+fn_d = ((y_pred_default == 0) & (y_test == 1)).sum()
+cost_default = fp_d * cost_fp + fn_d * cost_fn
+print(f"Cost at threshold=0.5: ${cost_default:,.0f}")
+print(
+    f"Savings from optimisation: ${cost_default - best_cost:,.0f} ({(cost_default - best_cost) / cost_default:.1%})"
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Post-hoc calibration
 # ══════════════════════════════════════════════════════════════════════
 
+# TODO: Create a Platt-scaled (sigmoid) calibrated version of cost_model_a using cv=5
+platt_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="sigmoid", cv=5)
+platt_model.fit(X_train, y_train)
+y_proba_platt = platt_model.predict_proba(X_test)[:, 1]
+
+# TODO: Create an isotonic regression calibrated version of cost_model_a using cv=5
+iso_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="isotonic", cv=5)
+iso_model.fit(X_train, y_train)
+y_proba_iso = iso_model.predict_proba(X_test)[:, 1]
+
+print(f"\n=== Calibration Comparison ===")
+print(f"{'Method':<20} {'Brier':>8} {'AUC-PR':>8}")
+print("─" * 40)
+print(
+    f"{'Uncalibrated':<20} {brier_score_loss(y_test, y_proba_cost_a):>8.4f} {average_precision_score(y_test, y_proba_cost_a):>8.4f}"
+)
+print(
+    f"{'Platt Scaling':<20} {brier_score_loss(y_test, y_proba_platt):>8.4f} {average_precision_score(y_test, y_proba_platt):>8.4f}"
+)
+print(
+    f"{'Isotonic':<20} {brier_score_loss(y_test, y_proba_iso):>8.4f} {average_precision_score(y_test, y_proba_iso):>8.4f}"
+)
+
+# Visualise calibration curves
 viz = ModelVisualizer()
 
-# Loss curves
-fig_loss = viz.training_history(
-    {"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]},
-    x_label="Epoch",
-)
-fig_loss.update_layout(title="Training and Validation Loss")
-fig_loss.write_html("ex5_loss_curves.html")
+for name, proba in [
+    ("Uncalibrated", y_proba_cost_a),
+    ("Platt", y_proba_platt),
+    ("Isotonic", y_proba_iso),
+]:
+    fig = viz.calibration_curve(y_test, proba)
+    fig.update_layout(title=f"Calibration: {name}")
+    fig.write_html(f"ex2_calibration_{name.lower()}.html")
 
-# LR schedule
-fig_lr = viz.training_history(
-    {"Learning Rate": history["lr"]},
-    x_label="Epoch",
-)
-fig_lr.update_layout(title="Cosine Annealing LR Schedule")
-fig_lr.write_html("ex5_lr_schedule.html")
+# Final comparison
+all_results = {
+    "Baseline": {
+        "AUC_PR": average_precision_score(y_test, y_proba_base),
+        "Brier": brier_score_loss(y_test, y_proba_base),
+    },
+    "SMOTE": {
+        "AUC_PR": average_precision_score(y_test, y_proba_smote),
+        "Brier": brier_score_loss(y_test, y_proba_smote),
+    },
+    "Cost-Sensitive": {
+        "AUC_PR": average_precision_score(y_test, y_proba_cost_a),
+        "Brier": brier_score_loss(y_test, y_proba_cost_a),
+    },
+    "Focal(γ=2)": {
+        "AUC_PR": average_precision_score(y_test, y_raw_focal),
+        "Brier": brier_score_loss(y_test, y_raw_focal),
+    },
+    "Cost+Platt": {
+        "AUC_PR": average_precision_score(y_test, y_proba_platt),
+        "Brier": brier_score_loss(y_test, y_proba_platt),
+    },
+}
 
-# Gradient norms
-fig_grad = viz.training_history(
-    {"Gradient Norm": history["grad_norm"]},
-    x_label="Epoch",
-)
-fig_grad.update_layout(title="Gradient Norm During Training")
-fig_grad.write_html("ex5_gradient_norms.html")
+fig = viz.metric_comparison(all_results)
+fig.update_layout(title="Class Imbalance Methods Comparison")
+fig.write_html("ex2_imbalance_comparison.html")
+print("\nSaved: ex2_imbalance_comparison.html")
 
-print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
-
-print("\n✓ Exercise 5 complete — CNN training + ONNX export")
-print("  Next: Exercise 6 deploys this ONNX model via InferenceServer + Nexus")
+print("\n✓ Exercise 3 complete — class imbalance handling + calibration")

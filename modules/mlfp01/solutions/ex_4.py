@@ -4,14 +4,29 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP01 — Exercise 4: Joins and Multi-Table Data
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Combine data from multiple tables using Polars joins, then
-#   aggregate the enriched dataset to produce a district-level summary
-#   that incorporates spatial context (MRT proximity, school density).
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Write conditional logic for branching decisions (if/elif/else)
+#   - Import and use external packages
+#   - Join multiple DataFrames on shared keys using .join()
+#   - Reason about which join type to use (left vs inner vs outer)
+#   - Handle missing values that arise after a join with fill_null()
+#
+# PREREQUISITES: Complete Exercise 3 first (functions, group_by/agg).
+#
+# ESTIMATED TIME: 45-60 minutes
 #
 # TASKS:
 #   1. Inspect HDB, MRT, and school datasets independently
 #   2. Enrich HDB transactions with spatial joins (left join on town)
 #   3. Build a comprehensive district-level summary with group_by/agg
+#
+# DATASET: Three Singapore datasets joined together:
+#   - HDB resale transactions (Housing & Development Board, data.gov.sg)
+#   - MRT station proximity by town (pre-computed from LTA data)
+#   - School density by town (pre-computed from MOE data)
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -31,6 +46,15 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet")
 # These contain pre-computed proximity data keyed on town name
 mrt_stations = loader.load("mlfp_assessment", "mrt_stations.parquet")
 schools = loader.load("mlfp_assessment", "schools.parquet")
+
+print("=" * 60)
+print("  MLFP01 Exercise 4: Joins and Multi-Table Data")
+print("=" * 60)
+print(f"\n  Data loaded:")
+print(f"    hdb_resale.parquet        ({hdb.height:,} rows)")
+print(f"    mrt_stations.parquet      ({mrt_stations.height:,} rows)")
+print(f"    schools.parquet           ({schools.height:,} rows)")
+print(f"  You're ready to start!\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -70,6 +94,18 @@ print(f"  Matched (will join):    {len(matched)}")
 print(f"  Unmatched (will be NULL after left join): {len(unmatched)}")
 if unmatched:
     print(f"  Unmatched towns: {sorted(unmatched)}")
+# INTERPRETATION: "Unmatched" towns will get NULL values for MRT distance
+# after a left join. This is not always an error — it may mean those towns
+# have no nearby MRT data yet. A left join keeps them; an inner join drops them.
+# Always decide consciously: "do I want to keep or drop unmatched rows?"
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert hdb.height > 0, "HDB dataset is empty"
+assert mrt_stations.height > 0, "MRT stations dataset is empty"
+assert schools.height > 0, "Schools dataset is empty"
+assert "town" in hdb.columns, "HDB dataset should have a 'town' column"
+assert "town" in mrt_stations.columns, "MRT dataset should have a 'town' column"
+print("\n✓ Checkpoint 1 passed — all three datasets loaded and inspected\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -126,6 +162,23 @@ for col in ("nearest_mrt", "distance_to_mrt_km", "school_count"):
     nc = hdb_enriched[col].null_count()
     pct = nc / hdb_enriched.height
     print(f"  {col} nulls: {nc:,} ({pct:.1%})")
+# INTERPRETATION: After a left join, every HDB row is preserved.
+# Null counts in the joined columns reveal how complete the auxiliary
+# datasets are. If school_count has 0 nulls, every town was matched.
+# If distance_to_mrt_km has nulls, those towns lack MRT coverage data.
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+# Left join should preserve all original HDB rows
+assert hdb_enriched.height == hdb.height, (
+    f"Left join changed row count: {hdb.height} → {hdb_enriched.height}"
+)
+assert "nearest_mrt" in hdb_enriched.columns, "nearest_mrt column should be added"
+assert "school_count" in hdb_enriched.columns, "school_count column should be added"
+# school_count should have no nulls (we filled with 0)
+assert hdb_enriched["school_count"].null_count() == 0, (
+    "school_count should have no nulls after fill_null(0)"
+)
+print("\n✓ Checkpoint 2 passed — enrichment joins preserved all rows and filled nulls\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -190,14 +243,50 @@ print(
 )
 
 # Does MRT proximity correlate with price?
-corr_mrt_price = district_summary["distance_to_mrt_km"].pearson_corr(
-    district_summary["median_price"]
-)
-corr_school_price = district_summary["school_count"].pearson_corr(
-    district_summary["median_price"]
-)
+corr_mrt_price = district_summary.select(
+    pl.corr("distance_to_mrt_km", "median_price")
+).item()
+corr_school_price = district_summary.select(
+    pl.corr("school_count", "median_price")
+).item()
 print(f"\nCorrelation: MRT distance ↔ median price: {corr_mrt_price:.3f}")
 print(f"Correlation: school count ↔ median price:  {corr_school_price:.3f}")
 print("(Positive = more schools / closer MRT → higher price)")
+# INTERPRETATION: A negative corr_mrt_price means closer MRT → higher price
+# (distance is smaller, price is higher). A positive corr_school_price means
+# more schools → higher price. These correlations are not causal — they reflect
+# that desirable amenities cluster in the same neighbourhoods. Controlling for
+# flat type and size would be needed to isolate the MRT effect.
 
-print("\n✓ Exercise 4 complete — joins and multi-table aggregation")
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert district_summary.height > 0, "district_summary should have rows"
+# One row per town
+assert district_summary.height == hdb_enriched["town"].unique().len(), (
+    "district_summary should have one row per town"
+)
+assert "iqr_price" in district_summary.columns, "iqr_price should be computed"
+assert isinstance(corr_mrt_price, float), "Pearson correlation should return a float"
+print("\n✓ Checkpoint 3 passed — district summary with spatial features built correctly\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 58)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 58)
+print("""
+  ✓ Dataset inspection: checking grain, keys, and null counts before joining
+  ✓ Left join: .join(how="left") preserves all rows from the left table
+  ✓ Join key overlap: set intersection to predict NULL rates after join
+  ✓ Pre-join aggregation: aggregate the right table before joining
+  ✓ fill_null(): replacing NULLs introduced by a left join
+  ✓ .first() in agg(): extracting a town-level value from transaction rows
+  ✓ Pearson correlation: measuring linear relationships between columns
+
+  NEXT: In Exercise 5, you'll move into time-series analysis with
+  window functions. You'll compute rolling averages and year-over-year
+  price changes — without leaving the DataFrame — using rolling_mean()
+  and shift() with .over() partitioning. You'll also see lazy evaluation
+  (scan_csv / collect) for the first time as a performance tool.
+""")

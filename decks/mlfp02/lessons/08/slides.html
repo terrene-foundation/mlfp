@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.8 — Capstone: Statistical Analysis Project | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.8</p>
+  <h1>Capstone — Statistical Analysis Project</h1>
+  <p style="font-size: 0.7em; color: #64748B;">FeatureEngineer · FeatureStore · end-to-end analysis · reporting</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 60 minutes</strong> &nbsp;·&nbsp; <strong>Capstone:</strong> all of M2 in one project
+  </div>
+  <div class="slide-footer">MLFP — Module 2</div>
+</section>
+
+<section>
+  <h2>The statistical analysis pipeline</h2>
+  <figure style="text-align: center; margin-top: 1em;">
+    <svg viewBox="0 0 720 140" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a28s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <g font-family="Inter" font-size="11">
+        <rect x="10" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="55" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Load</text>
+        <text x="55" y="80" text-anchor="middle" font-size="9" fill="#64748B">Profile</text>
+        <line x1="100" y1="65" x2="125" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
+        <rect x="130" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="175" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Describe</text>
+        <line x1="220" y1="65" x2="245" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
+        <rect x="250" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="295" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Engineer</text>
+        <line x1="340" y1="65" x2="365" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
+        <rect x="370" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="415" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Model</text>
+        <line x1="460" y1="65" x2="485" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
+        <rect x="490" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="535" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Test</text>
+        <line x1="580" y1="65" x2="605" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
+        <rect x="610" y="40" width="100" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+        <text x="660" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Report</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>FeatureEngineer</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import FeatureEngineer
+
+engineer = FeatureEngineer()
+df_feat = engineer.create_temporal_features(
+    df, date_col="date",
+    features=["lag_1", "rolling_mean_6", "month"]
+)
+df_feat = engineer.create_interactions(
+    df_feat, pairs=[("floor_area", "age")]
+)
+  </code></pre>
+  <div style="background: #F0FDFA; padding: 12px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Pattern:</strong> domain knowledge decides <em>which</em> features. The engine handles <em>how</em>.
+  </div>
+</section>
+
+<section>
+  <h2>FeatureStore: point-in-time correctness</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import FeatureStore
+
+store = FeatureStore()
+store.register(name="hdb_features", df=df_feat,
+               timestamp_col="date", entity_col="town")
+
+# Features as of Jan 2024 — no future data leakage
+features = store.get_features(
+    name="hdb_features", as_of="2024-01-01"
+)
+  </code></pre>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #3B82F6;">🔵 Theory:</strong>
+    Point-in-time correctness prevents data leakage in time-series problems.
+  </div>
+</section>
+
+<section>
+  <h2>Feature lifecycle</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a28f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <rect x="20" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="85" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Create</text>
+      <text x="85" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">FeatureEngineer</text>
+      <line x1="155" y1="90" x2="195" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
+      <rect x="200" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="265" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Store</text>
+      <text x="265" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">FeatureStore</text>
+      <line x1="335" y1="90" x2="375" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
+      <rect x="380" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="445" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Retrieve</text>
+      <text x="445" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Point-in-time</text>
+      <line x1="515" y1="90" x2="555" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
+      <rect x="560" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="625" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Train</text>
+      <text x="625" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">TrainingPipeline</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Three project options</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Option</th><th>Data</th><th>Key technique</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A — Wine quality</strong></td><td>Chemical properties</td><td>Linear regression + interactions</td></tr>
+      <tr><td><strong>B — Economic indicators</strong></td><td>Singapore CPI + employment</td><td>Time-series regression + temporal features</td></tr>
+      <tr><td><strong>C — Experiment design</strong></td><td>E-commerce A/B test</td><td>CUPED + SRM detection</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.85em; margin-top: 1em;">All follow the same pipeline: load → describe → engineer → model → test → report.</p>
+</section>
+
+<section>
+  <h2>Step 1: Load and profile</h2>
+  <pre><code class="language-python" data-trim>
+df = loader.load("mlfp02", "wine_quality.csv")
+profile = run_profile(explorer, df)
+print(f"Shape: {df.shape}")
+print(f"Alerts: {len(profile.alerts)}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Step 2: EDA</h2>
+  <pre><code class="language-python" data-trim>
+# Correlation with target
+for col in df.columns:
+    if col != "quality":
+        r = df.select(
+            pl.corr(pl.col(col), pl.col("quality"))
+        ).item()
+        print(f"  {col}: r = {r:.3f}")
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">Identify the top 3-5 predictors by correlation strength.</p>
+</section>
+
+<section>
+  <h2>Step 3: Engineer + store features</h2>
+  <pre><code class="language-python" data-trim>
+df_eng = engineer.create_interactions(
+    df, pairs=[("alcohol", "volatile_acidity")]
+)
+store.register(name="wine_features", df=df_eng)
+print(f"Features stored: {df_eng.shape[1]}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Step 4: Model</h2>
+  <pre><code class="language-python" data-trim>
+pipeline = TrainingPipeline(model="linear_regression")
+result = pipeline.fit(
+    df_eng.drop("quality"), df_eng["quality"]
+)
+print(f"R²: {result.r_squared:.4f}")
+print(f"Adj R²: {result.adj_r_squared:.4f}")
+  </code></pre>
+</section>
+
+<section>
+  <h2>Step 5: Hypothesis tests</h2>
+  <pre><code class="language-python" data-trim>
+# Which predictors are significant at alpha = 0.05?
+for name, coef in result.coefficients.items():
+    if coef.p_value < 0.05:
+        print(f"  {name}: beta={coef.value:+.4f}, "
+              f"t={coef.t_stat:.2f}, p={coef.p_value:.4f}")
+  </code></pre>
+  <p style="font-size: 0.85em;">Report effect sizes alongside p-values. "Alcohol increases quality by 0.3 points per percent ($p < 0.001$)."</p>
+</section>
+
+<section>
+  <h2>Step 6: Report</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Summary:</strong> what did you find? (2-3 sentences)</li>
+    <li><strong>Key predictors:</strong> effect direction, magnitude, significance</li>
+    <li><strong>Model fit:</strong> $R^2$, adjusted $R^2$, $F$-statistic</li>
+    <li><strong>Limitations:</strong> missing data, selection bias, confounders</li>
+    <li><strong>Recommendation:</strong> what should the stakeholder do?</li>
+  </ul>
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #22C55E;">🟢 Foundations:</strong>
+    A non-technical reader should understand every sentence in the report.
+  </div>
+</section>
+
+<section>
+  <h2>Three mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>1. Feature leakage from the future</strong>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>2. Features without domain rationale</strong>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>3. p-values without effect sizes</strong>
+  </div>
+</section>
+
+<section>
+  <h2>Module 2 complete</h2>
+  <ul style="font-size: 0.85em;">
+    <li>Probability and Bayesian thinking (2.1)</li>
+    <li>Parameter estimation (2.2)</li>
+    <li>Bootstrapping and hypothesis testing (2.3)</li>
+    <li>A/B testing and experiment design (2.4)</li>
+    <li>Linear regression (2.5)</li>
+    <li>Logistic regression and ANOVA (2.6)</li>
+    <li>CUPED and causal inference (2.7)</li>
+    <li><strong>Capstone — today (2.8)</strong></li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Module 3 — Supervised ML. Feature selection, regularisation,
+    the model zoo, gradient boosting, SHAP, fairness, production deployment.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
+</body>
+</html>

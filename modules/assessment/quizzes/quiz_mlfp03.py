@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 4 — AI-Resilient Assessment Questions
+"""MLFP 3 — AI-Resilient Assessment Questions
 
 Unsupervised ML, NLP & Deep Learning
 Covers: clustering, EM/GMM, PCA, EnsembleEngine, NLP (TF-IDF/BERTopic),

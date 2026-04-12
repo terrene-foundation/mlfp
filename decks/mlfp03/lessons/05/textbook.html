@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.5 — Model Evaluation, Imbalance, and Calibration | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.5</span>
+  Model Evaluation, Imbalance, and Calibration
+</h1>
+
+<p class="lead">
+  A model that reports 0.8 should mean "80% chance". A model with 92%
+  accuracy on 10%-positive data is not necessarily any good. In the next
+  75 minutes you will learn how to evaluate classifiers honestly on
+  imbalanced data using precision, recall, F1, ROC, PR, and log-loss;
+  handle imbalance with SMOTE, cost-sensitive learning, and focal loss;
+  and calibrate model probabilities so they can be used as decision
+  thresholds. The running dataset is Singapore credit scoring with a 100:1
+  business cost ratio: missing a default costs $10 000; a false alarm
+  costs $100.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Confusion Matrix and Its Offspring</h2>
+
+<p>
+  Every classification metric ultimately comes from the 2×2 confusion
+  matrix that counts predictions against labels.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="13">
+    <text x="350" y="25" text-anchor="middle" font-weight="700">Confusion matrix</text>
+    <text x="350" y="65" text-anchor="middle" font-size="11" fill="#64748B">Actual</text>
+    <text x="100" y="140" text-anchor="middle" font-size="11" fill="#64748B" transform="rotate(-90 100 140)">Predicted</text>
+
+    <!-- headers -->
+    <text x="280" y="85" text-anchor="middle" font-size="11">Negative</text>
+    <text x="440" y="85" text-anchor="middle" font-size="11">Positive</text>
+    <text x="175" y="125" text-anchor="end"    font-size="11">Negative</text>
+    <text x="175" y="185" text-anchor="end"    font-size="11">Positive</text>
+
+    <!-- cells -->
+    <rect x="200" y="95"  width="160" height="60" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+    <text x="280" y="120" text-anchor="middle" font-weight="700" fill="#166534">TN</text>
+    <text x="280" y="140" text-anchor="middle" font-size="11" fill="#166534">true negative</text>
+
+    <rect x="360" y="95"  width="160" height="60" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="440" y="120" text-anchor="middle" font-weight="700" fill="#B45309">FN</text>
+    <text x="440" y="140" text-anchor="middle" font-size="11" fill="#B45309">false negative</text>
+
+    <rect x="200" y="155" width="160" height="60" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="280" y="180" text-anchor="middle" font-weight="700" fill="#B45309">FP</text>
+    <text x="280" y="200" text-anchor="middle" font-size="11" fill="#B45309">false positive</text>
+
+    <rect x="360" y="155" width="160" height="60" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+    <text x="440" y="180" text-anchor="middle" font-weight="700" fill="#166534">TP</text>
+    <text x="440" y="200" text-anchor="middle" font-size="11" fill="#166534">true positive</text>
+
+    <text x="600" y="130" fill="#475569" font-size="11">Type I error</text>
+    <text x="600" y="145" fill="#475569" font-size="11">= FP = "false alarm"</text>
+    <text x="600" y="185" fill="#475569" font-size="11">Type II error</text>
+    <text x="600" y="200" fill="#475569" font-size="11">= FN = "missed hit"</text>
+  </g>
+</svg>
+<figcaption>The confusion matrix. Every downstream metric is a ratio of the four cells.</figcaption>
+</figure>
+
+<h3>The formulas you must know</h3>
+
+$$\text{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN}$$
+
+$$\text{Precision} = \frac{TP}{TP + FP} \qquad \text{Recall} = \frac{TP}{TP + FN}$$
+
+$$F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$$
+
+<p>
+  Precision asks "when I predicted positive, how often was I right?".
+  Recall asks "of the actual positives, how many did I catch?". F1 is
+  their harmonic mean — it punishes extreme imbalance between the two.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations — Accuracy is lying on imbalanced data</span>
+  <p>
+    On our 12%-positive credit data, predicting "no default" for every
+    single applicant scores 88% accuracy. F1 for that same classifier is
+    exactly zero (precision = 0, recall = 0). If you only report accuracy,
+    you cannot distinguish a useful model from the one that gives up.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>ROC and PR Curves: Threshold-Free Views</h2>
+
+<p>
+  A classifier outputs a probability score. A threshold turns that score
+  into a hard prediction. Different thresholds give different
+  precision/recall trade-offs. Instead of picking one threshold, ROC and
+  PR curves show the trade-off at <em>every</em> threshold.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <!-- ROC -->
+    <text x="180" y="25" text-anchor="middle" font-weight="700">ROC Curve</text>
+    <line x1="60"  y1="240" x2="300" y2="240" stroke="#334155"/>
+    <line x1="60"  y1="50"  x2="60"  y2="240" stroke="#334155"/>
+    <text x="180" y="260" text-anchor="middle" font-size="11">FPR = FP / (FP + TN)</text>
+    <text x="30"  y="145" text-anchor="middle" font-size="11" transform="rotate(-90 30 145)">TPR (Recall)</text>
+    <line x1="60" y1="240" x2="300" y2="50" stroke="#94A3B8" stroke-dasharray="3 3"/>
+    <path d="M 60 240 Q 80 80, 200 60 T 300 50" fill="rgba(13,148,136,0.18)" stroke="#0D9488" stroke-width="2.5"/>
+    <text x="210" y="160" fill="#0F766E" font-size="11" font-weight="600">AUC = 0.87</text>
+    <text x="250" y="220" fill="#64748B" font-size="10" font-style="italic">chance line</text>
+
+    <!-- PR -->
+    <text x="540" y="25" text-anchor="middle" font-weight="700">Precision-Recall Curve</text>
+    <line x1="420" y1="240" x2="660" y2="240" stroke="#334155"/>
+    <line x1="420" y1="50"  x2="420" y2="240" stroke="#334155"/>
+    <text x="540" y="260" text-anchor="middle" font-size="11">Recall</text>
+    <text x="390" y="145" text-anchor="middle" font-size="11" transform="rotate(-90 390 145)">Precision</text>
+    <line x1="420" y1="220" x2="660" y2="220" stroke="#94A3B8" stroke-dasharray="3 3"/>
+    <text x="655" y="216" text-anchor="end" font-size="10" fill="#64748B">base rate = 0.12</text>
+    <path d="M 420 70 Q 520 90, 580 140 T 660 220" fill="rgba(13,148,136,0.18)" stroke="#0D9488" stroke-width="2.5"/>
+    <text x="500" y="120" fill="#0F766E" font-size="11" font-weight="600">AP = 0.48</text>
+  </g>
+</svg>
+<figcaption>ROC plots TPR against FPR; PR plots precision against recall. ROC is misleading on imbalanced data; PR is honest.</figcaption>
+</figure>
+
+<h3>Why ROC-AUC fails on imbalanced data</h3>
+
+<p>
+  ROC is defined by the true positive rate (TPR = recall) against the
+  false positive rate ($FPR = FP / (FP + TN)$). When the negative class
+  is huge, $TN$ dwarfs $FP$ and $FPR$ barely moves even when $FP$ grows
+  by thousands. So the ROC curve still hugs the upper-left corner — the
+  AUC looks great — while precision is quietly atrocious.
+</p>
+
+<p>
+  Precision-recall has no such blind spot. It ignores $TN$ entirely.
+  $\text{Precision} = TP/(TP + FP)$ punishes every false positive,
+  regardless of how many true negatives there are. For the credit data:
+</p>
+
+<ul>
+  <li>Predict "no default" for everyone: ROC-AUC = 0.5, AP ≈ 0.12 (the base rate).</li>
+  <li>Predict top 5% by score as default: ROC-AUC might be 0.92, AP around 0.45.</li>
+  <li>Report AP as your honest number; ROC-AUC is a sanity check at best.</li>
+</ul>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — AUC-PR vs AUC-ROC</span>
+  <p>
+    AUC-PR (average precision) is the integral of precision over the
+    recall axis. On highly imbalanced data, two models with nearly
+    identical ROC-AUC can have PR-AUCs that differ by 30%. The rule of
+    thumb: if the positive class is below 20%, report PR-AUC; if above
+    20%, either works.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Handling Imbalance: Four Techniques</h2>
+
+<h3>1. SMOTE — synthetic minority oversampling</h3>
+
+<p>
+  SMOTE (Chawla et al., 2002) creates synthetic minority-class examples
+  by interpolating between each minority example and its $k$ nearest
+  minority neighbours. For a minority point $x_i$ with a neighbour
+  $x_{nn}$, a synthetic point is $x_{\text{new}} = x_i + \alpha(x_{nn} - x_i)$
+  for $\alpha \in [0, 1]$.
+</p>
+
+<p>
+  Pros: the training set becomes balanced without duplicating existing
+  points. Cons: SMOTE breaks badly when (a) minority points are clustered
+  in dense regions and SMOTE interpolates across the gap creating
+  implausible samples, (b) the feature space has high dimensionality and
+  "nearest" is no longer informative (the curse again), (c) minority
+  points are noise, in which case SMOTE amplifies the noise.
+</p>
+
+<div class="callout warning">
+  <span class="label">⚠ SMOTE is not a free lunch</span>
+  <p>
+    SMOTE-trained models are not automatically better. Modern
+    practitioners usually prefer cost-sensitive learning or focal loss —
+    both of which do not fabricate data. SMOTE remains useful when you
+    must use a model family that ignores sample weights; otherwise pick
+    a technique that adjusts the loss directly.
+  </p>
+</div>
+
+<h3>2. Cost-sensitive learning — weights in the loss</h3>
+
+<p>
+  If missing a default costs $10 000 and a false alarm costs $100, tell
+  the model that. Pass <code>sample_weight</code> or
+  <code>class_weight</code> into the classifier:
+</p>
+
+<pre><code class="language-python">from sklearn.ensemble import RandomForestClassifier
+# class_weight='balanced' sets weights inversely proportional to class frequencies
+model = RandomForestClassifier(class_weight="balanced")
+
+# Or a custom cost ratio that matches the business
+model = RandomForestClassifier(class_weight={0: 1, 1: 100})
+</code></pre>
+
+<p>
+  The loss is now $\sum_i w_i L(y_i, \hat{y}_i)$ and the optimiser
+  naturally cares more about the high-weight examples. No fake data, no
+  distribution distortion.
+</p>
+
+<h3>3. Focal loss — down-weight easy examples</h3>
+
+<p>
+  Focal loss (Lin et al., 2017) was invented for dense object detection
+  where the imbalance is extreme (1000+ background boxes per foreground
+  box). It modifies binary cross-entropy to down-weight already-correctly-
+  classified examples:
+</p>
+
+$$\text{FL}(p_t) \;=\; -\alpha_t \,(1 - p_t)^\gamma\, \log(p_t)$$
+
+<p>
+  where $p_t$ is the predicted probability for the true class,
+  $\alpha_t$ balances classes, and $\gamma \ge 0$ is the focusing
+  parameter. When $\gamma = 0$, focal loss is just weighted
+  cross-entropy. When $\gamma > 0$, the factor $(1 - p_t)^\gamma$ is
+  tiny for well-classified examples and close to 1 for hard ones. The
+  loss automatically focuses on the hard cases.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — Why focal loss works</span>
+  <p>
+    Standard cross-entropy on an easy example with $p_t = 0.9$ still
+    contributes $-\log(0.9) \approx 0.1$ — enough that over millions of
+    easy examples it dominates the gradient. Focal loss with $\gamma = 2$
+    multiplies that by $(1 - 0.9)^2 = 0.01$, reducing the contribution
+    100×. Hard examples with $p_t = 0.3$ get multiplied by
+    $(1 - 0.3)^2 = 0.49$ — barely changed. Net effect: the gradient is
+    dominated by hard examples and the model keeps learning on them.
+  </p>
+</div>
+
+<h3>4. Threshold tuning from the business cost matrix</h3>
+
+<p>
+  The default threshold 0.5 is rarely optimal. With a cost matrix
+  $(c_{FP}, c_{FN})$, the expected cost of predicting positive is:
+</p>
+
+$$\mathbb{E}[\text{cost}] = c_{FP}(1 - p) + c_{FN} \cdot 0$$
+
+<p>
+  and of predicting negative is:
+</p>
+
+$$\mathbb{E}[\text{cost}] = c_{FP} \cdot 0 + c_{FN} \cdot p$$
+
+<p>
+  You should predict positive iff $c_{FN} \cdot p > c_{FP}(1 - p)$, i.e.
+  when $p > c_{FP} / (c_{FP} + c_{FN})$. For our 100:1 cost matrix that
+  is $p > 100 / 10100 \approx 0.0099$. The optimal threshold is about
+  1%, not 50%. Any doubt the model has about a loan is enough to flag
+  it when the cost of missing a default is 100× the cost of a false
+  alarm.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Calibration: Making Probabilities Mean What They Say</h2>
+
+<p>
+  A model is <strong>well-calibrated</strong> if, among the samples it
+  predicts with probability $p$, exactly a fraction $p$ are positive.
+  Raw gradient-boosted classifiers are typically <em>over-confident</em>
+  — they output probabilities closer to 0 and 1 than the truth warrants.
+  That is fine if you only care about rankings but catastrophic if you
+  feed the probabilities into downstream cost calculations.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <text x="350" y="25" text-anchor="middle" font-weight="700">Reliability diagram</text>
+    <line x1="80"  y1="270" x2="620" y2="270" stroke="#334155"/>
+    <line x1="80"  y1="50"  x2="80"  y2="270" stroke="#334155"/>
+    <text x="350" y="298" text-anchor="middle" font-size="11">Predicted probability</text>
+    <text x="40"  y="160" text-anchor="middle" font-size="11" transform="rotate(-90 40 160)">Observed frequency</text>
+    <!-- perfect line -->
+    <line x1="80" y1="270" x2="620" y2="50" stroke="#10B981" stroke-dasharray="3 3"/>
+    <text x="590" y="80" fill="#047857" font-size="10">perfect</text>
+    <!-- over-confident curve (S shape) -->
+    <path d="M 80 270 Q 200 260, 280 230 Q 340 190, 400 160 Q 460 130, 520 110 Q 580 80, 620 50" fill="none" stroke="#DC2626" stroke-width="2.5"/>
+    <circle cx="160" cy="260" r="4" fill="#DC2626"/>
+    <circle cx="250" cy="235" r="4" fill="#DC2626"/>
+    <circle cx="340" cy="195" r="4" fill="#DC2626"/>
+    <circle cx="430" cy="145" r="4" fill="#DC2626"/>
+    <circle cx="520" cy="100" r="4" fill="#DC2626"/>
+    <text x="440" y="220" fill="#B91C1C" font-size="11" font-weight="600">raw GBM: over-confident</text>
+    <!-- calibrated curve (close to perfect) -->
+    <path d="M 80 270 Q 180 245, 280 200 Q 380 150, 480 100 Q 560 70, 620 50" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-dasharray="5 3"/>
+    <text x="200" y="195" fill="#1D4ED8" font-size="11" font-weight="600">after Platt scaling</text>
+  </g>
+</svg>
+<figcaption>Reliability diagram: bin predictions by probability, compute the observed positive rate in each bin, plot. The identity line is perfect calibration.</figcaption>
+</figure>
+
+<h3>Platt scaling — fit a sigmoid on the model scores</h3>
+
+<p>
+  Platt scaling (1999) fits a one-parameter sigmoid $\sigma(Ax + B)$ on
+  top of the raw model output. Find $A, B$ by maximum likelihood on a
+  held-out calibration set. Cheap — one parameter plus a bias — and
+  works when the uncalibrated scores have an approximately sigmoidal
+  shape relative to the truth.
+</p>
+
+<h3>Isotonic regression — non-parametric calibration</h3>
+
+<p>
+  When the miscalibration is not sigmoidal, isotonic regression fits a
+  non-decreasing piecewise-constant function instead. More flexible than
+  Platt, but needs more data (at least a few hundred samples per
+  calibration fold) to avoid overfitting.
+</p>
+
+<pre><code class="language-python">from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import GradientBoostingClassifier
+
+base = GradientBoostingClassifier()
+
+# Sigmoid (Platt)
+cal_platt = CalibratedClassifierCV(base, method="sigmoid", cv=5)
+cal_platt.fit(X_tr, y_tr)
+
+# Isotonic
+cal_iso = CalibratedClassifierCV(base, method="isotonic", cv=5)
+cal_iso.fit(X_tr, y_tr)</code></pre>
+
+<h3>The Brier score — a proper scoring rule</h3>
+
+<p>
+  How do you measure calibration quality? The <strong>Brier score</strong>
+  is the mean squared error between predicted probability and actual
+  label:
+</p>
+
+$$\text{BS} \;=\; \frac{1}{N}\sum_{i=1}^{N}(p_i - y_i)^2$$
+
+<p>
+  Lower is better. Brier is a <em>proper</em> scoring rule: the expected
+  Brier is minimised uniquely by reporting the true probability. A model
+  that cheats by pushing everything to 0 or 1 scores worse than one that
+  reports honest uncertainty. Report Brier after calibration to show the
+  improvement.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: End-to-End on Credit Scoring</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Train a LightGBM on 12%-positive credit data. Compare: (baseline,
+    SMOTE, class_weight, threshold tuned, calibrated). Report accuracy,
+    AUC-PR, Brier, and business cost at the optimal threshold. Show which
+    combination wins.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Baseline.</span>
+    <pre><code class="language-python">import lightgbm as lgb
+import numpy as np
+from sklearn.metrics import (
+    average_precision_score, brier_score_loss,
+    precision_recall_curve,
+)
+
+base = lgb.LGBMClassifier(n_estimators=400, learning_rate=0.05)
+base.fit(X_tr, y_tr)
+p_base = base.predict_proba(X_te)[:, 1]
+
+print(f"Baseline  AUC-PR = {average_precision_score(y_te, p_base):.4f}")
+print(f"Baseline  Brier  = {brier_score_loss(y_te, p_base):.4f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Cost-sensitive class weights.</span>
+    <pre><code class="language-python">weighted = lgb.LGBMClassifier(n_estimators=400, learning_rate=0.05,
+                              class_weight={0: 1, 1: 100})
+weighted.fit(X_tr, y_tr)
+p_w = weighted.predict_proba(X_te)[:, 1]</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Threshold from the cost matrix.</span>
+    <pre><code class="language-python">COST_FP, COST_FN = 100, 10_000
+thresh_opt = COST_FP / (COST_FP + COST_FN)  # ≈ 0.0099
+
+pred_opt = (p_w >= thresh_opt).astype(int)
+fp = ((pred_opt == 1) & (y_te == 0)).sum()
+fn = ((pred_opt == 0) & (y_te == 1)).sum()
+cost = fp * COST_FP + fn * COST_FN
+print(f"Total business cost at t={thresh_opt:.4f}: ${cost:,}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Post-hoc calibration.</span>
+    <pre><code class="language-python">from sklearn.calibration import CalibratedClassifierCV
+
+cal = CalibratedClassifierCV(weighted, method="isotonic", cv=3)
+cal.fit(X_tr, y_tr)
+p_cal = cal.predict_proba(X_te)[:, 1]
+
+print(f"Calibrated  Brier = {brier_score_loss(y_te, p_cal):.4f}")</code></pre>
+    <p>
+      The Brier score should drop from ~0.11 to ~0.08 after calibration.
+      The ranking (AUC-PR) stays almost the same — calibration only moves
+      probabilities, not orderings.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1 — Reporting accuracy on imbalanced data</span>
+  <p>
+    Already warned twice in the course. This one is the cheque your
+    stakeholders will cash — so you must not write it in the first place.
+    Report AUC-PR and Brier after calibration.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2 — SMOTE-ing the test set</span>
+  <p>
+    SMOTE is training-only. If you SMOTE the test set, you are
+    measuring the model against synthetic points that do not exist in
+    production. Split first, SMOTE the training split only.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3 — Leaving the threshold at 0.5</span>
+  <p>
+    The default 0.5 is the Bayes-optimal threshold only if the two error
+    costs are equal and the classes are balanced. Neither holds in most
+    real problems. Derive the threshold from the cost matrix.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Derive the cost-optimal threshold</h3>
+  <p>
+    Given $(c_{FP}, c_{FN}) = (100, 10\,000)$, show that you should
+    predict positive iff $p > 0.0099$. Now repeat for (1000, 1000):
+    what threshold? And for (100, 10)?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Reliability diagram from scratch</h3>
+  <p>
+    Using a trained model, bin the predicted probabilities into 10 bins
+    of width 0.1. For each bin compute the mean prediction and the
+    observed positive rate. Plot both as a step function against $y = x$.
+    Is your model over-confident or under-confident?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Focal loss gamma sweep</h3>
+  <p>
+    Train an XGBoost with a custom focal-loss objective at
+    $\gamma \in \{0, 1, 2, 5\}$. Plot AUC-PR against $\gamma$. Find the
+    sweet spot for your dataset.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Every model trained in Lessons 3.3 and 3.4 can be calibrated using the
+  techniques from this lesson. Lesson 3.6 takes the calibrated credit
+  model and runs a fairness audit on it with SHAP. Lesson 3.8 feeds the
+  calibrated probabilities into conformal prediction for distribution-free
+  prediction intervals — the final layer of trustworthy uncertainty.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You know why accuracy lies, when to use ROC vs PR, how SMOTE works and
+  why it often doesn't, how cost-sensitive learning lets the business
+  drive the optimisation, how focal loss down-weights easy examples, and
+  how to recover calibrated probabilities from an over-confident tree
+  ensemble. You can compute the cost-optimal decision threshold from a
+  business cost matrix in one line.
+</p>
+<p>
+  Most importantly, you now see evaluation as an <em>engineering</em>
+  problem, not an afterthought. A model that scores 0.92 AUC and a model
+  that scores 0.88 can be an order of magnitude apart in business cost,
+  and only the evaluation you built today tells you which is which.
+</p>
+<p>
+  In Lesson 3.6 we ask a different kind of question: <em>should</em> this
+  model be deployed? SHAP, LIME, and the fairness impossibility theorem
+  come next.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../04/textbook.html" class="prev"><span class="label">← Previous</span>3.4 Gradient Boosting</a>
+  <a href="../06/textbook.html" class="next"><span class="label">Next →</span>3.6 Interpretability and Fairness</a>
+</nav>
+
+</main>
+</body>
+</html>

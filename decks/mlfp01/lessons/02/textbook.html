@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.2 — Filtering and Transforming Data | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.2</span>
+  Filtering and Transforming Data
+</h1>
+
+<p class="lead">
+  Twelve rows of weather is the toy problem. Today we jump to 500,000 rows
+  of real Singapore HDB resale transactions and learn the three operations
+  that take a dataset from "everything" to "exactly the rows and columns I
+  need to answer my question": <strong>filter</strong>, <strong>select</strong>,
+  and <strong>with_columns</strong>. By the end you will chain them together
+  into a single readable pipeline — the Polars idiom that the rest of the
+  course assumes.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Every analysis you will ever do starts with too much data. Singapore's
+  Housing &amp; Development Board publishes every public-housing resale
+  transaction since 1990 — about 900,000 rows spanning 26 towns, seven flat
+  types, four decades. A question like <em>"what is the median price of a
+  4-room flat in Bishan last year?"</em> touches fewer than 300 of those
+  rows. Your first job is to throw away the 899,700 you do not need.
+</p>
+
+<p>
+  Beginners throw data away badly. They copy the file into Excel, drag-filter
+  columns, paste values elsewhere, lose track of what they did, and end up
+  with spreadsheets nobody can reproduce. Polars makes the same work
+  <em>declarative</em>: you write an expression describing which rows you
+  want, and the engine executes it. The expression is code — it can be read,
+  reviewed, versioned, and re-run.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-t2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Raw data -->
+  <rect x="20" y="40" width="180" height="180" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="110" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Raw dataset</text>
+  <text x="110" y="70" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">~500,000 rows</text>
+  <text x="110" y="88" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">14 columns</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#94A3B8">
+    <text x="110" y="115" text-anchor="middle">month · town · flat_type</text>
+    <text x="110" y="132" text-anchor="middle">block · street_name</text>
+    <text x="110" y="149" text-anchor="middle">storey_range · area_sqm</text>
+    <text x="110" y="166" text-anchor="middle">flat_model · lease</text>
+    <text x="110" y="183" text-anchor="middle">remaining_lease · price</text>
+    <text x="110" y="200" text-anchor="middle">…</text>
+  </g>
+
+  <line x1="205" y1="130" x2="275" y2="130" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-t2)"/>
+  <text x="240" y="120" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">filter</text>
+
+  <rect x="280" y="70" width="180" height="120" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="370" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">After filter</text>
+  <text x="370" y="100" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">~300 rows</text>
+  <text x="370" y="118" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">14 columns</text>
+  <text x="370" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town == "BISHAN"</text>
+  <text x="370" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">flat_type == "4 ROOM"</text>
+
+  <line x1="465" y1="130" x2="535" y2="130" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-t2)"/>
+  <text x="500" y="120" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">select + with_columns</text>
+
+  <rect x="540" y="90" width="220" height="80" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+  <text x="650" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Analysis-ready</text>
+  <text x="650" y="115" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">~300 rows</text>
+  <text x="650" y="133" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">4 columns + price_per_sqm</text>
+  <text x="650" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">ready to answer question</text>
+</svg>
+<figcaption>The universal narrowing pipeline. Filter rows, select columns, derive new ones — then you are ready to ask the actual question.</figcaption>
+</figure>
+
+<p>
+  These three operations — filter, select, with_columns — are the vocabulary
+  of the entire Polars library. Every later lesson in this module (joins,
+  windows, visualisation, profiling, pipelines) builds on them. Once you can
+  chain them confidently, you can express ninety percent of the data work
+  real professionals do.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Boolean expressions</h3>
+
+<p>
+  A <strong>boolean</strong> is a value that is either <code>True</code> or
+  <code>False</code>. Python has six comparison operators that produce
+  booleans:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Operator</th><th>Meaning</th><th>Example</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>==</code></td><td>equal to</td><td><code>"BISHAN" == "BISHAN"</code></td><td><code>True</code></td></tr>
+    <tr><td><code>!=</code></td><td>not equal to</td><td><code>"BISHAN" != "JURONG"</code></td><td><code>True</code></td></tr>
+    <tr><td><code>&gt;</code></td><td>greater than</td><td><code>500_000 &gt; 350_000</code></td><td><code>True</code></td></tr>
+    <tr><td><code>&lt;</code></td><td>less than</td><td><code>100 &lt; 50</code></td><td><code>False</code></td></tr>
+    <tr><td><code>&gt;=</code></td><td>greater or equal</td><td><code>500_000 &gt;= 500_000</code></td><td><code>True</code></td></tr>
+    <tr><td><code>&lt;=</code></td><td>less or equal</td><td><code>26.5 &lt;= 28.0</code></td><td><code>True</code></td></tr>
+  </tbody>
+</table>
+
+<p>
+  Underscores inside numbers (<code>500_000</code>) are a Python syntax
+  convenience: they are ignored by the interpreter but let you separate
+  thousands for readability. <code>500_000</code> and <code>500000</code>
+  are the same number.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    Note that <code>=</code> (one equals sign) is <em>assignment</em>
+    — "set this variable". <code>==</code> (two equals signs) is
+    <em>comparison</em> — "are these two equal?". This is the single most
+    common error new Python programmers make. Python will refuse to run
+    <code>if price = 500_000</code> which is the language protecting you.
+  </p>
+</div>
+
+<h3>Polars column expressions</h3>
+
+<p>
+  In Polars, a <strong>column expression</strong> is a recipe that describes
+  what to do with a column — without actually doing it yet. The building
+  block is <code>pl.col("column_name")</code>, which means "the column with
+  this name". You can combine expressions with the same operators you use on
+  regular Python values:
+</p>
+
+<pre><code class="language-python">pl.col("resale_price") > 500_000
+# → an expression: "the resale_price column, compared to 500,000"
+
+pl.col("town") == "BISHAN"
+# → an expression: "the town column, compared to the string BISHAN"
+
+pl.col("floor_area_sqm") * pl.col("price_per_sqm")
+# → an expression: "floor area times price per sqm"
+</code></pre>
+
+<p>
+  On its own, an expression does nothing. It becomes useful when you hand it
+  to a method like <code>filter</code>, <code>with_columns</code>, or
+  <code>select</code>, which tells Polars "apply this expression across the
+  whole DataFrame".
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-expr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4F46E5"/>
+    </marker>
+  </defs>
+  <!-- Expression box -->
+  <rect x="30" y="30" width="300" height="80" rx="10" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="180" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#4F46E5">Expression (a recipe)</text>
+  <text x="180" y="85" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">pl.col("price") &gt; 500_000</text>
+
+  <line x1="335" y1="70" x2="440" y2="70" stroke="#4F46E5" stroke-width="2.5" marker-end="url(#arrow-expr)"/>
+  <text x="387" y="60" text-anchor="middle" font-family="Inter" font-size="11" fill="#4F46E5">handed to method</text>
+
+  <!-- Method box -->
+  <rect x="445" y="30" width="300" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="595" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Method (applies recipe)</text>
+  <text x="595" y="85" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">df.filter(...)</text>
+
+  <!-- Result -->
+  <rect x="200" y="160" width="380" height="80" rx="10" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+  <text x="390" y="185" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">New DataFrame (only matching rows)</text>
+  <text x="390" y="215" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">filtered_df</text>
+
+  <line x1="180" y1="115" x2="290" y2="155" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+  <line x1="595" y1="115" x2="485" y2="155" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+</svg>
+<figcaption>Polars is declarative: you build an <em>expression</em> that describes the work, hand it to a <em>method</em> that executes it, and receive a new DataFrame. Expressions are cheap — only calling the method triggers computation.</figcaption>
+</figure>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Separating the <em>description</em> of work from its <em>execution</em> is
+    what lets Polars optimise your pipeline. When you write
+    <code>df.filter(A).filter(B).select(C)</code>, Polars can reorder
+    the filters, push them down below <code>select</code>, or fuse them into
+    a single scan — none of which would be safe if filters mutated the
+    DataFrame in place. You will see this again in Lesson 1.5 when we
+    introduce lazy frames, where the separation becomes explicit.
+  </p>
+</div>
+
+<h3>Combining conditions with <code>&amp;</code> and <code>|</code></h3>
+
+<p>
+  Real filters usually have more than one condition. Polars uses the bitwise
+  operators <code>&amp;</code> (and) and <code>|</code> (or) to combine
+  expressions, and you <strong>must</strong> wrap each condition in
+  parentheses:
+</p>
+
+<pre><code class="language-python">(pl.col("town") == "BISHAN") & (pl.col("flat_type") == "4 ROOM")
+# → True only if BOTH conditions hold
+
+(pl.col("town") == "BISHAN") | (pl.col("town") == "TOA PAYOH")
+# → True if EITHER condition holds
+</code></pre>
+
+<div class="callout warning">
+  <span class="label">⚠ The parentheses are not optional</span>
+  <p>
+    Python's <code>&amp;</code> has higher precedence than <code>==</code>, so
+    <code>pl.col("town") == "BISHAN" &amp; pl.col("flat_type") == "4 ROOM"</code>
+    is parsed as <code>pl.col("town") == ("BISHAN" &amp; pl.col("flat_type")) == "4 ROOM"</code>
+    which is gibberish. Parenthesise every condition and the problem
+    disappears.
+  </p>
+</div>
+
+<p>
+  For sets of acceptable values, <code>.is_in([...])</code> is cleaner than
+  chaining a dozen OR conditions:
+</p>
+
+<pre><code class="language-python">central = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
+df.filter(pl.col("town").is_in(central))
+</code></pre>
+
+<h3>Method chaining</h3>
+
+<p>
+  Polars methods almost always return a new DataFrame, which lets you chain
+  them like a conversation: <em>take this, then filter it, then select these
+  columns, then sort it</em>. The fluent style reads top to bottom like a
+  recipe:
+</p>
+
+<pre><code class="language-python">result = (
+    hdb
+    .filter(pl.col("year") >= 2020)
+    .filter(pl.col("price_tier").is_in(["premium", "luxury"]))
+    .select("transaction_date", "town", "flat_type", "resale_price")
+    .sort("resale_price", descending=True)
+)
+</code></pre>
+
+<p>
+  The outer parentheses let you put each step on its own line. Every line is
+  a separate method call on the DataFrame produced by the previous line. When
+  you read a chain later, you can delete any step and still get a valid
+  pipeline — which makes debugging a matter of bisection.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 340" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-chain" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="250" y="20" width="260" height="40" rx="6" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="380" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">hdb  (500,000 rows)</text>
+  <line x1="380" y1="60" x2="380" y2="85" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
+  <text x="520" y="78" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.filter(year ≥ 2020)</text>
+
+  <rect x="250" y="88" width="260" height="40" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="380" y="113" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">180,000 rows</text>
+  <line x1="380" y1="128" x2="380" y2="153" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
+  <text x="520" y="146" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.filter(tier in premium/luxury)</text>
+
+  <rect x="250" y="156" width="260" height="40" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+  <text x="380" y="181" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">32,000 rows</text>
+  <line x1="380" y1="196" x2="380" y2="221" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
+  <text x="520" y="214" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.select(date, town, type, price)</text>
+
+  <rect x="250" y="224" width="260" height="40" rx="6" fill="#99F6E4" stroke="#0D9488" stroke-width="2"/>
+  <text x="380" y="249" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0F766E">32,000 rows × 4 cols</text>
+  <line x1="380" y1="264" x2="380" y2="289" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arrow-chain)"/>
+  <text x="520" y="282" font-family="JetBrains Mono" font-size="11" fill="#0D9488">.sort("resale_price", desc)</text>
+
+  <rect x="250" y="292" width="260" height="40" rx="6" fill="#14B8A6" stroke="#0D9488" stroke-width="2"/>
+  <text x="380" y="317" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="white">result — ready to show</text>
+</svg>
+<figcaption>Each method consumes the DataFrame from the step above and produces the DataFrame for the step below. Row and column counts shrink as the pipeline narrows to exactly what the question needs.</figcaption>
+</figure>
+
+<h3><code>with_columns</code>: deriving new features</h3>
+
+<p>
+  <code>with_columns</code> adds new columns (or replaces existing ones)
+  without removing any others. It is how you <strong>engineer features</strong>
+  — new fields computed from the fields you already have.
+</p>
+
+<pre><code class="language-python">hdb = hdb.with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)
+</code></pre>
+
+<p>
+  <code>.alias("name")</code> tells Polars what to call the new column. You
+  can add several columns in one call — more efficient than chaining multiple
+  <code>with_columns</code> because Polars can plan them together:
+</p>
+
+<pre><code class="language-python">hdb = hdb.with_columns(
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)
+</code></pre>
+
+<h3><code>when / then / otherwise</code>: conditional columns</h3>
+
+<p>
+  Sometimes the new column depends on a condition — "if price is under
+  350k call it budget, else if under 500k call it mid-range, else luxury".
+  Polars expresses this with <code>pl.when(...).then(...).otherwise(...)</code>,
+  which chains like an if/elif/else:
+</p>
+
+<pre><code class="language-python">hdb = hdb.with_columns(
+    pl.when(pl.col("resale_price") < 350_000).then(pl.lit("budget"))
+    .when(pl.col("resale_price") < 500_000).then(pl.lit("mid_range"))
+    .when(pl.col("resale_price") < 700_000).then(pl.lit("premium"))
+    .otherwise(pl.lit("luxury"))
+    .alias("price_tier")
+)
+</code></pre>
+
+<p>
+  <code>pl.lit(value)</code> wraps a constant into an expression — without it,
+  Polars would interpret the string <code>"budget"</code> as a column name and
+  raise an error. Any time you mean "the literal value X", use
+  <code>pl.lit(X)</code>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: PreprocessingPipeline (preview)</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Lesson 1.8 introduces <code>PreprocessingPipeline</code>, which automates
+    type inference, missing-value imputation, encoding, and scaling. Today you
+    are hand-building the same transformations with Polars — that is the
+    right order. You need to understand what <code>filter</code>,
+    <code>with_columns</code>, and <code>when/then</code> do before you
+    delegate them to an engine. Writing the transformations manually today
+    will make the engine's output readable when you meet it later.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Finding Bishan's Million-Dollar Flats</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Load the HDB resale dataset (~500,000 rows) and answer: <em>how many
+    4-room flats in Bishan sold for more than S$800,000 in 2023, and what
+    was their median price per square metre?</em>
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load the data and take the 30-second look.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+
+print(f"Shape: {hdb.shape}")
+print(f"Columns: {hdb.columns}")
+print(hdb.head(3))</code></pre>
+    <p>
+      Typical output: <code>Shape: (500123, 11)</code> — roughly half a
+      million transactions. The columns include <code>month</code>,
+      <code>town</code>, <code>flat_type</code>, <code>floor_area_sqm</code>,
+      <code>resale_price</code>, and several others we will ignore today.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Add the two derived columns we need: a proper year integer (to filter
+       by 2023) and price per square metre (to answer the final question).</p>
+    <pre><code class="language-python">hdb = hdb.with_columns(
+    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)</code></pre>
+    <p>
+      <code>str.slice(0, 4)</code> takes the first four characters of the
+      <code>month</code> string (e.g. <code>"2023-07"</code> →
+      <code>"2023"</code>), and <code>cast(pl.Int32)</code> converts that
+      string to an integer so we can compare it with <code>==</code> or
+      <code>&gt;=</code>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Build the filter chain. We want Bishan, 4-room, 2023, and price &gt;
+       800,000. Each condition goes in its own parenthesised block,
+       combined with <code>&amp;</code>.</p>
+    <pre><code class="language-python">million_dollar = hdb.filter(
+    (pl.col("town") == "BISHAN")
+    & (pl.col("flat_type") == "4 ROOM")
+    & (pl.col("year") == 2023)
+    & (pl.col("resale_price") > 800_000)
+)
+
+print(f"Matching transactions: {million_dollar.height}")</code></pre>
+    <p>
+      The exact count depends on the snapshot of the dataset, but in the
+      2023 HDB data this filter returns a handful of rows — "million-dollar
+      HDBs" are rare but exist. The headline pattern is what matters.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Compute the median price per square metre across those matching rows
+       and format a summary.</p>
+    <pre><code class="language-python">if million_dollar.height > 0:
+    median_psm = million_dollar["price_per_sqm"].median()
+    median_price = million_dollar["resale_price"].median()
+    print(f"Bishan 4-room &gt; S$800k, 2023:")
+    print(f"  Transactions:       {million_dollar.height}")
+    print(f"  Median price:       S${median_price:,.0f}")
+    print(f"  Median price / sqm: S${median_psm:,.0f}")
+else:
+    print("No matching transactions")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Rewrite the whole thing as a single chained pipeline. Read it top to
+       bottom and see how each line narrows the result.</p>
+    <pre><code class="language-python">summary = (
+    hdb
+    .with_columns(
+        pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
+        (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+    )
+    .filter(
+        (pl.col("town") == "BISHAN")
+        & (pl.col("flat_type") == "4 ROOM")
+        & (pl.col("year") == 2023)
+        & (pl.col("resale_price") > 800_000)
+    )
+    .select("month", "town", "resale_price", "floor_area_sqm", "price_per_sqm")
+    .sort("resale_price", descending=True)
+)
+
+print(summary)</code></pre>
+    <p>
+      That is the canonical shape of a Polars analysis: enrich, filter,
+      select, sort. From here you could pipe the result into a chart, a CSV
+      export, or an aggregation — without ever having to re-read the original
+      500,000 rows.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Boolean Algebra</h2>
+
+<p>
+  Behind the scenes, Polars is evaluating boolean expressions across the
+  whole column at once — a single logical operation applied to hundreds of
+  thousands of rows simultaneously. The rules that govern those operations
+  are the same boolean algebra you meet in a first discrete-maths course.
+</p>
+
+<p>
+  Let $A$ and $B$ be two boolean values (each is <code>True</code> or
+  <code>False</code>). Then:
+</p>
+
+<div class="annotated-equation">
+  $$A \land B = \text{True} \iff A = \text{True and } B = \text{True}$$
+  <div class="annotations">
+    <span>$\land$ — "and", Polars <code>&amp;</code></span>
+    <span>both must hold</span>
+  </div>
+</div>
+
+<div class="annotated-equation">
+  $$A \lor B = \text{True} \iff A = \text{True or } B = \text{True}$$
+  <div class="annotations">
+    <span>$\lor$ — "or", Polars <code>|</code></span>
+    <span>at least one must hold</span>
+  </div>
+</div>
+
+<p>
+  These combine to form the <strong>truth table</strong> you will carry in
+  your head for the rest of your data career:
+</p>
+
+<table>
+  <thead>
+    <tr><th>$A$</th><th>$B$</th><th>$A \land B$</th><th>$A \lor B$</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>T</td><td>T</td><td>T</td><td>T</td></tr>
+    <tr><td>T</td><td>F</td><td>F</td><td>T</td></tr>
+    <tr><td>F</td><td>T</td><td>F</td><td>T</td></tr>
+    <tr><td>F</td><td>F</td><td>F</td><td>F</td></tr>
+  </tbody>
+</table>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: De Morgan's laws</span>
+  <p>
+    The equivalence $\lnot(A \land B) \equiv (\lnot A) \lor (\lnot B)$ is a
+    De Morgan's law. In Polars terms: "not (A and B)" is the same as "(not A)
+    or (not B)". This matters when you flip a filter. "I want rows where the
+    town is <em>not</em> one of these three" can be written either as
+    <code>~pl.col("town").is_in([...])</code> or as "rows where the town is
+    not A <em>and</em> not B <em>and</em> not C". De Morgan guarantees the
+    two forms are equivalent.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Missing parentheses around conditions</span>
+  <p>
+    <code>df.filter(pl.col("a") == 1 &amp; pl.col("b") == 2)</code> looks
+    reasonable but is parsed as <code>pl.col("a") == (1 &amp; pl.col("b")) == 2</code>.
+    Always write <code>(pl.col("a") == 1) &amp; (pl.col("b") == 2)</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Using Python <code>and</code> instead of <code>&amp;</code></span>
+  <p>
+    Python's built-in <code>and</code>/<code>or</code> return the first
+    <em>falsy</em>/<em>truthy</em> value — they do not work element-wise on
+    columns. Polars expressions must use <code>&amp;</code> and <code>|</code>.
+    If you write <code>pl.col("a") == 1 and pl.col("b") == 2</code> Polars
+    will raise a confusing error about "boolean ambiguity". The fix is always
+    the same: use the bitwise operators.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Forgetting to assign the result</span>
+  <p>
+    Polars DataFrames are (for practical purposes) immutable. Writing
+    <code>hdb.filter(...)</code> on a line by itself computes the filtered
+    DataFrame and immediately discards it. Always capture the result:
+    <code>filtered = hdb.filter(...)</code> or overwrite:
+    <code>hdb = hdb.with_columns(...)</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Bare strings in <code>when / then</code></span>
+  <p>
+    In <code>pl.when(...).then("budget")</code>, Polars interprets
+    <code>"budget"</code> as a column name and looks for a column called
+    "budget". If there is no such column you get a cryptic error. Wrap
+    constants with <code>pl.lit(...)</code>:
+    <code>pl.when(...).then(pl.lit("budget"))</code>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — A single-town filter</h3>
+  <p>
+    Filter the HDB data to only the town of <code>"JURONG WEST"</code> and
+    print the number of matching rows.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — A compound filter</h3>
+  <p>
+    Find all 5-room flats in any of the four central towns
+    (<code>"BISHAN"</code>, <code>"TOA PAYOH"</code>, <code>"QUEENSTOWN"</code>,
+    <code>"BUKIT MERAH"</code>) priced under S$900,000. Use
+    <code>.is_in(...)</code> for the town condition.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — A derived column with a condition</h3>
+  <p>
+    Add a column called <code>large_flat</code> that is <code>True</code>
+    when the floor area is at least 100 sqm and <code>False</code> otherwise.
+    <em>Hint:</em> you can use a plain comparison expression — Polars will
+    fill the new column with the resulting booleans:
+    <code>with_columns((pl.col("floor_area_sqm") &gt;= 100).alias("large_flat"))</code>.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise D — A full pipeline</h3>
+  <p>
+    Build a single chain that: filters to 2022 and 2023, keeps only 4- and
+    5-room flats, computes price per square metre, selects the columns
+    <code>month, town, flat_type, price_per_sqm</code>, and sorts by
+    <code>price_per_sqm</code> descending. Print the top 10 rows.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 1.1 introduced the DataFrame; this lesson narrowed it down. Lesson
+  1.3 extends filtering with <code>group_by</code> and <code>agg</code> —
+  the same selection logic but summarising each group. Lesson 1.4 adds
+  conditional logic at the Python level (<code>if/elif/else</code>), which
+  complements the column-level <code>when/then</code> you met today.
+  Lesson 1.5 shows that a filter inside a <code>.lazy()</code> chain becomes
+  a plan that Polars can optimise before executing. Every later module
+  (feature engineering in Module 2, model training in Module 3) assumes you
+  can filter, select, and derive columns without looking up the syntax.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In under an hour you went from looking at a twelve-row dataset to filtering
+  half a million rows of real Singapore property transactions down to the
+  exact subset needed to answer a business question. The three verbs —
+  <code>filter</code>, <code>with_columns</code>, <code>select</code> — and
+  the glue of method chaining cover the vast majority of the data
+  manipulation you will do in this course.
+</p>
+<p>
+  The biggest shift today was the move from <em>imperative</em> thinking
+  ("do this, then this, then this") to <em>declarative</em> thinking ("here
+  is what I want"). Polars expressions describe the answer; the engine
+  figures out how to compute it. That separation is what makes the code
+  both fast and reviewable.
+</p>
+<p>
+  In Lesson 1.3 we leave "one filter at a time" behind and meet
+  <code>group_by</code> — the single most useful pattern in analytics.
+  Instead of asking "how much did Bishan 4-rooms cost?", you will ask "what
+  was the median price for <em>every</em> town and <em>every</em> flat
+  type?", and Polars will produce the entire table in one call.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../01/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.1 Your First Data Exploration
+  </a>
+  <a href="../03/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.3 Functions and Aggregation
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

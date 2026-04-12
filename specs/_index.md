@@ -2,7 +2,7 @@
 
 ML Foundations for Professionals — Terrene Open Academy
 6 modules x 8 lessons = 48 lessons (~192 contact hours)
-Authoritative spec: v2 (2026-04-09). Read relevant spec files before acting.
+Authoritative spec: v2 (2026-04-09, updated 2026-04-12). Read relevant spec files before acting.
 
 ## Spec Files
 
@@ -19,3 +19,4 @@ Authoritative spec: v2 (2026-04-09). Read relevant spec files before acting.
 | [r5-mapping.md](r5-mapping.md) | R5 PCML_DIS_R5 deck/notebook to MLFP lesson mapping | `r5` `source` `mapping` `decks` `notebooks` |
 | [ascent-additions.md](ascent-additions.md) | Topics needing new content in ASCENT source program | `ascent` `gaps` `new-content` |
 | [redteam-resolutions.md](redteam-resolutions.md) | Red-team findings, completeness audit, and resolutions applied | `redteam` `audit` `fixes` |
+| [exercise-mapping.md](exercise-mapping.md) | Exercise-to-lesson mapping, gap analysis, reorganization guide | `exercises` `mapping` `gaps` `reorg` |

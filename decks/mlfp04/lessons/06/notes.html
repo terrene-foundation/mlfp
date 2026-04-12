@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.6 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.6</span>
+  NLP — From Text to Topics
+</h1>
+
+<p class="lead">Total time: ~75 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~4 min per slide</p>
+
+<p>
+  This lesson covers the most common NLP feature extraction pipeline:
+  representing text as numbers, discovering topics, and evaluating topic
+  quality. The conceptual load is moderate — TF-IDF is intuitive once you
+  explain it as "surprise weighting". The real challenge is keeping three
+  topic methods (NMF, LDA, BERTopic) distinct in the learners' minds.
+  Use the comparison table on Slide 14 as the anchor. Emphasise the
+  NMF-to-matrix-factorisation thread — it is the setup for 4.7's PIVOT.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>NLP — From Text to Topics</h3>
+  <p>
+    Frame: "Everything we have done so far used numbers as input —
+    temperatures, prices, pixel values. Today we work with text. The
+    question is: how do you turn words into numbers that a model can
+    learn from? Three answers: TF-IDF (classical), word embeddings
+    (neural preview), and topic models (discovery). By the end you
+    will have run all three on Singapore news articles."
+  </p>
+  <div class="transition">→ "Why text data matters."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>Text: the most common unstructured data</h3>
+  <p>
+    Make it concrete: "Think of your own organisation. How many
+    emails did your team send last month? How many support tickets?
+    How many Slack messages? Nobody reads all of them. Topic modelling
+    reads them for you and tells you: 40% are billing complaints, 25%
+    are feature requests, 15% are onboarding questions. That is
+    actionable intelligence from unstructured text."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of it as automatic labelling.
+    You have thousands of unlabelled documents. Topic modelling gives
+    each one a set of labels — without anyone reading them."
+  </div>
+  <div class="transition">→ "The pipeline: text → vectors → topics → features."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Pipeline diagram</span></div>
+  <h3>Text analysis pipeline</h3>
+  <p>
+    Walk the four-box pipeline left to right. Emphasise: "The biggest
+    decision is at box 2 — do you use TF-IDF (sparse, fast, interpretable)
+    or BERT embeddings (dense, semantic, heavier)? That choice cascades
+    to box 3: NMF/LDA work on TF-IDF; BERTopic works on dense embeddings."
+  </p>
+  <div class="transition">→ "Let's start with the classical approach: TF-IDF."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~4 min</span><span>TF-IDF</span></div>
+  <h3>TF-IDF — weighting words by importance</h3>
+  <p>
+    Walk the formula piece by piece. "TF is just a count — how many
+    times does this word appear in this document. IDF is the surprise
+    factor: if the word appears in every document, idf is zero.
+    Multiply them: frequent-in-this-doc AND rare-across-corpus = high
+    TF-IDF. That is exactly the word that distinguishes this document
+    from others."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>The newspaper analogy:</strong> "In a newspaper, the word
+    'Singapore' appears in every article — it tells you nothing about
+    the article's topic. The word 'CHAS' appears only in healthcare
+    articles — it tells you everything. TF-IDF captures this
+    mathematically."
+  </div>
+  <div class="transition">→ "TF-IDF has two weaknesses. BM25 fixes them."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>BM25</span></div>
+  <h3>BM25 — TF-IDF's smarter cousin</h3>
+  <p>
+    Do not dwell on the formula — point out the two fixes: "First,
+    the numerator saturates: repeating a word 100 times does not
+    give 100x weight, it asymptotes to about $k_1 + 1$. Second,
+    longer documents are penalised via the length ratio in the
+    denominator. These two fixes are why BM25 replaced TF-IDF in
+    every production search engine."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention the BM25+ variant and that
+    the Okapi parameters ($k_1 = 1.2$, $b = 0.75$) are empirically
+    robust — most practitioners never tune them.
+  </div>
+  <div class="transition">→ "TF-IDF and BM25 are sparse. What about meaning?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Word embeddings</span></div>
+  <h3>Word embeddings — dense semantic vectors</h3>
+  <p>
+    The diagram does the heavy lifting. Point at the sparse side:
+    "happy and joyful are completely different dimensions — no
+    similarity captured." Point at the dense side: "now they are
+    nearby in vector space. This is the distributional hypothesis:
+    words that appear in similar contexts have similar meanings."
+  </p>
+  <p>
+    Name the three: Word2Vec (the original), GloVe (global
+    statistics), FastText (subword, handles typos and OOV). Tell
+    them: "Today we use these as tools — plug in and get vectors.
+    In Lesson 4.8 we will understand how the neural network that
+    produces them actually works. That understanding is the bridge
+    to deep learning."
+  </p>
+  <div class="transition">→ "Now: discovering topics."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>LDA story</span></div>
+  <h3>LDA — the generative story</h3>
+  <p>
+    Walk the three-step story slowly. "Imagine an author writing a
+    document. First they decide what topics to write about (60%
+    transport, 30% policy, 10% economics). Then for each word they
+    flip a topic coin, and given the topic, they pick a word from
+    that topic's vocabulary. LDA says: if that is how documents are
+    written, I can reverse-engineer the topics from the words."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners struggle with the generative concept:</strong>
+    "Don't worry about the math behind inference. The key idea is
+    that each document is a mix of topics and each topic is a mix
+    of words. LDA discovers both mixes simultaneously."
+  </div>
+  <div class="transition">→ "The plate diagram shows the same story formally."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Plate diagram</span></div>
+  <h3>LDA plate notation</h3>
+  <p>
+    Walk the Greek letters. "Alpha controls how spread the topic
+    mixture is per document. Beta controls how spread the word
+    distribution is per topic. Theta is what we want to learn —
+    the topic mix for each document. Phi is the other thing we
+    want to learn — the word mix for each topic. Z is the latent
+    variable — the topic assigned to each word position. W is the
+    only thing we observe — the actual words."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> briefly mention collapsed Gibbs
+    sampling vs variational inference. Both integrate out theta and
+    phi to sample z directly.
+  </div>
+  <div class="transition">→ "A simpler approach: NMF."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>NMF</span></div>
+  <h3>NMF — topics via matrix factorisation</h3>
+  <p>
+    Connect to PCA: "In 4.3 we factorised X into U Sigma V^T with
+    PCA. NMF does the same but forces both factors to be non-negative.
+    Why? Because word counts are never negative and topic weights
+    should not be negative. The non-negativity constraint makes
+    NMF topics sparser and more interpretable than PCA components."
+  </p>
+  <p>
+    Setup for the PIVOT: "Hold this thought: NMF factorises a
+    document-word matrix. In 4.7 we factorise a user-item matrix.
+    Same math, different data. That is the PIVOT."
+  </p>
+  <div class="transition">→ "The modern approach: BERTopic."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>BERTopic</span></div>
+  <h3>BERTopic — the 2020s upgrade</h3>
+  <p>
+    Walk the four-step pipeline diagram. "Step 1: embed every
+    document with a pre-trained sentence transformer — now each
+    document is a dense 384-dimensional vector. Step 2: UMAP
+    reduces to 5 dimensions. Step 3: HDBSCAN clusters — no need
+    to specify K. Step 4: c-TF-IDF extracts the most representative
+    words per cluster. Done."
+  </p>
+  <p>
+    Emphasise the advantage: "BERTopic captures semantic similarity.
+    If one article says 'MRT breakdown' and another says 'subway
+    disruption', TF-IDF treats them as unrelated. BERTopic puts
+    them in the same topic."
+  </p>
+  <div class="transition">→ "Let's see the code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>BERTopic code</span></div>
+  <h3>BERTopic in practice</h3>
+  <p>
+    Run the code live if possible. Four lines: create the embedding
+    model, create BERTopic, fit_transform, print topics. The output
+    shows topic IDs, counts, and representative words. Mention the
+    Kailash ModelVisualizer integration for heatmap visualisation.
+  </p>
+  <div class="transition">→ "How do we know if the topics are good?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>NPMI</span></div>
+  <h3>NPMI — evaluating topic quality</h3>
+  <p>
+    Walk the formula: "NPMI measures whether the top words of a
+    topic co-occur in a reference corpus more than chance. If they
+    do, the topic is coherent — the words belong together. If they
+    don't, the topic is noise — random words lumped together."
+  </p>
+  <p>
+    Hammer the warning: "LDA reports perplexity as a training
+    metric. Do NOT use it to compare models. Perplexity measures
+    how well the model predicts held-out words, not whether the
+    topics make sense to a human. Use NPMI."
+  </p>
+  <div class="transition">→ "Let's see TF-IDF + NMF on real data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>TF-IDF + NMF on Singapore news</h3>
+  <p>
+    Walk the code line by line. Emphasise the TfidfVectorizer
+    parameters: max_features=5000 limits vocabulary, stop_words
+    removes English stopwords, min_df=5 removes ultra-rare terms,
+    max_df=0.7 removes terms appearing in more than 70% of docs.
+    These four parameters handle 90% of preprocessing.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners ask about stop_words:</strong> "These are
+    words like 'the', 'is', 'and' — they appear everywhere and
+    tell you nothing about the topic. Removing them is standard."
+  </div>
+  <div class="transition">→ "Now compare the three methods."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Comparison</span></div>
+  <h3>Three methods compared</h3>
+  <p>
+    This is the anchor table. Make them write it down or photograph
+    it. "NMF: fast, interpretable, needs you to set K. LDA: soft
+    assignments, generative model, also needs K. BERTopic: semantic,
+    auto-K, heavier compute. For a quick exploration on a medium
+    corpus, NMF. For probabilistic soft assignments, LDA. For the
+    best quality on large corpora, BERTopic."
+  </p>
+  <div class="transition">→ "Four things to avoid."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four common mistakes</h3>
+  <p>
+    Walk each one. #3 (perplexity) is the most common in practice.
+    Tell the anecdote: "I have seen data scientists spend weeks
+    tuning LDA hyperparameters to minimise perplexity, then present
+    topics that make zero sense to the business. NPMI would have
+    caught that in five minutes."
+  </p>
+  <div class="transition">→ "Where this connects."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Connections</span></div>
+  <h3>Connections</h3>
+  <p>
+    Walk the four links. The most important is the 4.7 PIVOT:
+    "NMF factorises a document-word matrix. In 4.7, matrix
+    factorisation factorises a user-item matrix. The learned
+    factors are embeddings — features discovered by optimisation.
+    That is the bridge between unsupervised methods and deep
+    learning."
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Run through the checklist. Preview 4.7: "Next we take the
+    matrix factorisation idea from NMF and apply it to users
+    and items. The result: recommender systems. And the insight
+    that comes with it — optimisation drives feature discovery —
+    is the PIVOT that connects everything in M4 to deep learning."
+  </p>
+  <div class="transition">→ End of lesson.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    4.5 Speaker Notes
+  </a>
+  <a href="../07/notes.html" class="next">
+    <span class="label">Next →</span>
+    4.7 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

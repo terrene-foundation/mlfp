@@ -44,3 +44,19 @@ classroom/
 
 # Claude Code
 .claude/worktrees/
+
+# Test venv from exercise validation
+.test_venv/
+
+# Stray output files from exercise runs
+ex*_*.html
+ex*_*.onnx
+*.db
+mlfp*_experiments.db
+
+# Generated PDFs (large binaries — build locally)
+pdf/
+scripts/pdf-build.log
+
+# Data cache
+.data_cache/

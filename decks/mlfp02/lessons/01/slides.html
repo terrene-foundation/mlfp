@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.1 — Probability and Bayesian Thinking | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.1</p>
+  <h1>Probability and Bayesian Thinking</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Conditional probability · Bayes' theorem · Distributions · Expected value
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 45 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> Module 1 &nbsp; · &nbsp;
+    <strong>Outcome:</strong> Bayesian update on HDB prices
+  </div>
+  <div class="slide-footer">MLFP — ML Foundations for Professionals</div>
+</section>
+
+<section>
+  <h2>From exploration to inference</h2>
+  <p>
+    M1: "what does the data look like?" — mean, std, shape, charts.
+  </p>
+  <p>
+    M2: "how confident am I in what I see?" — uncertainty, updating,
+    decisions.
+  </p>
+  <div style="background: #F0FDFA; padding: 16px; border-left: 4px solid #0D9488; margin-top: 1.5em;">
+    The language of uncertainty is <strong>probability</strong>. The operator
+    that updates beliefs is <strong>Bayes' theorem</strong>. Today we meet
+    both.
+  </div>
+</section>
+
+<section>
+  <h2>Probability is a weight on an event</h2>
+  <p>For any event $A$ in a sample space:</p>
+  \[ 0 \;\le\; P(A) \;\le\; 1, \qquad P(A) + P(A') \;=\; 1 \]
+  <p>Joint and conditional probability:</p>
+  \[ P(A, B) \;=\; P(A \mid B)\,P(B) \;=\; P(B \mid A)\,P(A) \]
+  <p style="font-size: 0.85em;">
+    Conditional $P(A \mid B) = P(A,B)/P(B)$ just renormalises inside the world
+    where $B$ happened.
+  </p>
+</section>
+
+<section>
+  <h2>Deriving Bayes' theorem</h2>
+  <p>Start from the two equivalent forms of the joint:</p>
+  \[ P(A \mid B)\,P(B) \;=\; P(B \mid A)\,P(A) \]
+  <p>Divide both sides by $P(B)$:</p>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ P(A \mid B) \;=\; \frac{P(B \mid A)\,P(A)}{P(B)} \]
+  </div>
+  <p style="font-size: 0.85em;">
+    <strong>Posterior</strong> = <strong>likelihood</strong> × <strong>prior</strong> ÷ <strong>evidence</strong>.
+  </p>
+</section>
+
+<section>
+  <h2>The COVID ART tree</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="80" cy="160" r="20" fill="#0D9488"/>
+      <text x="80" y="165" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="white">Pop</text>
+      <line x1="100" y1="160" x2="240" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <line x1="100" y1="160" x2="240" y2="240" stroke="#0D9488" stroke-width="2"/>
+      <text x="150" y="105" font-family="Inter" font-size="12" fill="#64748B">P(T)=0.01</text>
+      <text x="150" y="215" font-family="Inter" font-size="12" fill="#64748B">P(T')=0.99</text>
+      <rect x="240" y="60" width="140" height="40" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="310" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Infected</text>
+      <rect x="240" y="220" width="140" height="40" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+      <text x="310" y="245" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#475569">Not infected</text>
+      <line x1="380" y1="80" x2="520" y2="40" stroke="#22C55E" stroke-width="2"/>
+      <line x1="380" y1="80" x2="520" y2="120" stroke="#22C55E" stroke-width="2"/>
+      <text x="450" y="55" font-family="Inter" font-size="11" fill="#15803D">P(+|T)=0.90</text>
+      <line x1="380" y1="240" x2="520" y2="200" stroke="#EF4444" stroke-width="2"/>
+      <line x1="380" y1="240" x2="520" y2="280" stroke="#EF4444" stroke-width="2"/>
+      <text x="450" y="215" font-family="Inter" font-size="11" fill="#B91C1C">P(+|T')=0.02</text>
+      <rect x="520" y="20" width="160" height="40" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+      <text x="600" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#15803D">T ∧ + = 0.0090</text>
+      <rect x="520" y="180" width="160" height="40" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+      <text x="600" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#B91C1C">T' ∧ + = 0.0198</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>You test positive — how worried?</h2>
+  <p>Prior: $P(T) = 0.01$. Sensitivity 90%, false-positive 2%.</p>
+  \[ P(+) = (0.90)(0.01) + (0.02)(0.99) = 0.0288 \]
+  \[ P(T \mid +) = \frac{(0.90)(0.01)}{0.0288} \approx 0.3125 \]
+  <div style="background: #FEF3C7; padding: 12px 16px; border-left: 4px solid #F59E0B; margin-top: 1em;">
+    <strong>31% — not 90%.</strong> Two out of three positive tests are false
+    positives. The base rate dominates when prevalence is low.
+  </div>
+</section>
+
+<section>
+  <h2>Distributions — the shapes of uncertainty</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Normal</text>
+        <path d="M 20,190 Q 110,40 200,190" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+        <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+        <text x="110" y="215" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Measurements</text>
+      </g>
+      <g transform="translate(240,0)">
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#4F46E5">Beta</text>
+        <path d="M 20,190 Q 60,70 110,70 Q 160,70 200,190" fill="none" stroke="#4F46E5" stroke-width="2.5"/>
+        <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+        <text x="110" y="215" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Proportions</text>
+      </g>
+      <g transform="translate(480,0)">
+        <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F59E0B">Poisson</text>
+        <rect x="30" y="150" width="14" height="40" fill="#F59E0B"/>
+        <rect x="54" y="110" width="14" height="80" fill="#F59E0B"/>
+        <rect x="78" y="70" width="14" height="120" fill="#F59E0B"/>
+        <rect x="102" y="80" width="14" height="110" fill="#F59E0B"/>
+        <rect x="126" y="110" width="14" height="80" fill="#F59E0B"/>
+        <rect x="150" y="140" width="14" height="50" fill="#F59E0B"/>
+        <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+        <text x="110" y="215" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Counts</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Expected value and variance</h2>
+  \[ E[X] \;=\; \sum_i p_i\,x_i \]
+  <p>The two forms of variance are equivalent:</p>
+  \[ \text{Var}(X) = E[(X-\mu)^2] = E[X^2] - \mu^2 \]
+  <pre><code class="language-python" data-trim>
+# Expand the square
+# E[(X - μ)²] = E[X² - 2μX + μ²]
+#             = E[X²] - 2μE[X] + μ²
+#             = E[X²] - 2μ² + μ²
+#             = E[X²] - μ²
+  </code></pre>
+</section>
+
+<section>
+  <h2>Conjugate priors — Bayes without integrals</h2>
+  <p>
+    <strong>Normal–Normal</strong> (for a mean, known variance):
+  </p>
+  \[ \mu_{\text{post}} = \frac{\sigma^2\,\mu_0 + n\,\sigma_0^2\,\bar{x}}{\sigma^2 + n\,\sigma_0^2} \]
+  <p>
+    <strong>Beta–Binomial</strong> (for a proportion):
+  </p>
+  \[ p \mid \text{data} \;\sim\; \text{Beta}(\alpha + k,\, \beta + n - k) \]
+  <p style="font-size: 0.85em; color: #64748B;">
+    The posterior stays in the same family — the update becomes arithmetic
+    on the parameters.
+  </p>
+</section>
+
+<section>
+  <h2>HDB 4-room Tampines — the update</h2>
+  <pre><code class="language-python" data-trim>
+mu_0, sigma_0 = 480_000, 40_000     # prior (2019 baseline)
+x_bar, sigma, n = 542_000, 60_000, 30  # recent data
+
+pp = 1 / sigma_0**2
+pd = n / sigma**2
+
+mu_post  = (pp*mu_0 + pd*x_bar) / (pp + pd)
+sigma_p  = (1 / (pp + pd))**0.5
+
+# mu_post  ≈ 533,000
+# sigma_p  ≈   9,600
+  </code></pre>
+  <p style="font-size: 0.85em;">The posterior sits between prior and sample, pulled toward the data because $n$ gives it more precision.</p>
+</section>
+
+<section>
+  <h2>As $n$ grows, the data wins</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg">
+      <line x1="60" y1="270" x2="680" y2="270" stroke="#94A3B8"/>
+      <line x1="60" y1="40"  x2="60"  y2="270" stroke="#94A3B8"/>
+      <text x="60" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">480K</text>
+      <text x="680" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">560K</text>
+      <!-- Prior -->
+      <path d="M 60,270 Q 200,80 340,270" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="200" y="70" text-anchor="middle" font-family="Inter" font-size="12" fill="#4F46E5">Prior</text>
+      <!-- Likelihood -->
+      <path d="M 340,270 Q 520,60 680,270" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="540" y="50" text-anchor="middle" font-family="Inter" font-size="12" fill="#F59E0B">Likelihood (data)</text>
+      <!-- Posterior -->
+      <path d="M 280,270 Q 460,30 640,270" fill="none" stroke="#0D9488" stroke-width="3"/>
+      <text x="460" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Posterior</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Credible vs confidence</h2>
+  <div style="background: #EFF6FF; padding: 14px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin: 1em 0;">
+    <strong>Credible interval (Bayesian):</strong> "given the prior and the
+    data, there is a 95% probability the true mean is in [a, b]". What most
+    people intuitively want.
+  </div>
+  <div style="background: #FEF3C7; padding: 14px 18px; border-left: 4px solid #F59E0B; border-radius: 4px; margin: 1em 0;">
+    <strong>Confidence interval (frequentist):</strong> "if we repeated the
+    experiment many times, 95% of the computed intervals would contain the
+    true mean". NOT a probability statement about this specific interval.
+  </div>
+  <p style="font-size: 0.85em;">Lesson 2.2 develops the frequentist CI in full.</p>
+</section>
+
+<section>
+  <h2>The friendship paradox</h2>
+  <p>
+    Your friends, on average, have more friends than you do. Not an insult —
+    a sampling effect.
+  </p>
+  \[ E[Y] \;=\; \frac{E[X^2]}{E[X]} \;\ge\; E[X] \]
+  <p style="font-size: 0.85em;">
+    Sampling through relationships over-represents high-degree nodes. The
+    way you sample shapes what you see.
+  </p>
+  <div style="background: #F0FDF4; padding: 12px 16px; border-left: 4px solid #22C55E; margin-top: 1em;">
+    <strong>🟢 Practical:</strong> surveys through existing users, customer
+    feedback forms, and social-media polls all suffer from this.
+  </div>
+</section>
+
+<section>
+  <h2>Three rookie mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>1. Confusing $P(A|B)$ with $P(B|A)$.</strong>
+    Sensitivity ≠ positive predictive value. Use Bayes.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>2. Ignoring the base rate.</strong>
+    "90% accurate" is useless without $P(T)$.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>3. Treating priors as fixed.</strong>
+    Two analysts with different priors get different posteriors. Data will
+    eventually reconcile them.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Derive Bayes' theorem from the definition of conditional probability</li>
+    <li>✓ Apply Bayes to medical testing and flag base-rate fallacies</li>
+    <li>✓ Name five distributions and when each is appropriate</li>
+    <li>✓ Compute $E[X]$ and $\text{Var}(X)$ in both forms</li>
+    <li>✓ Run a Normal–Normal conjugate update on HDB data</li>
+    <li>✓ Distinguish credible from confidence intervals</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.2 — MLE, MAP, CLT, and the frequentist
+    confidence interval.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    width: 1280,
+    height: 720,
+    margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

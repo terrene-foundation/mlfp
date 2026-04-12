@@ -1,19 +1,31 @@
-# Module 4: Unsupervised ML, NLP & Deep Learning
+# Module 3: Supervised Machine Learning for Building and Deploying Models
 
-**Kailash**: kailash-ml (AutoMLEngine, EnsembleEngine, DriftMonitor, InferenceServer), Nexus | **Scaffolding**: 40%
+**Kailash**: Core SDK (WorkflowBuilder), DataFlow, kailash-ml (TrainingPipeline, AutoMLEngine, HyperparameterSearch, ModelRegistry, EnsembleEngine, DriftMonitor, ModelVisualizer) | **Scaffolding**: 50%
 
-## Lecture (3h)
-- **4A** Unsupervised ML: spectral clustering, HDBSCAN, GMM (EM algorithm), PCA/t-SNE/UMAP, anomaly detection (Isolation Forest, LOF)
-- **4B** NLP: TF-IDF/BM25, Word2Vec/GloVe, LDA/NMF/BERTopic, sentiment analysis
-- **4C** Deep Learning: universal approximation, residual connections, attention mechanism, BatchNorm/LayerNorm, CNN, LSTM/GRU, training dynamics
+## Description
 
-## Lab (3h) — 6 Exercises
-1. Clustering comparison: K-means vs spectral vs HDBSCAN vs GMM on customer data
-2. UMAP + anomaly detection on fraud transaction data
-3. BERTopic on Singapore news corpus with temporal evolution
-4. DriftMonitor: deploy model, simulate drift, detect with PSI + KS test
-5. Deep learning: CNN on chest X-ray subset with LR scheduling, mixed precision
-6. InferenceServer + Nexus: deploy as API + CLI + MCP
+The ML pipeline — from feature engineering to production deployment. Builds on M2's regression foundation. Focus on the PIPELINE and advanced models.
 
-## Datasets
-E-commerce Transactions (200K), Credit Card Fraud (Kaggle, 284K), Singapore News (50K), ChestX-ray14 (10K subset)
+## Lessons (8)
+
+1. **Feature Engineering, ML Pipeline, and Feature Selection** — Domain-driven features, filter/wrapper/embedded selection, leakage detection
+2. **Bias-Variance, Regularisation, and Cross-Validation** — Bias-variance decomposition, L1/L2/ElasticNet, k-fold, nested CV
+3. **The Complete Supervised Model Zoo** — SVM, KNN, Naive Bayes, decision trees, random forests, comparison framework
+4. **Gradient Boosting Deep Dive** — AdaBoost, XGBoost (2nd-order Taylor), LightGBM (GOSS), CatBoost
+5. **Model Evaluation, Imbalance, and Calibration** — Metrics taxonomy, SMOTE, cost-sensitive, Focal Loss, Platt scaling
+6. **Interpretability and Fairness** — SHAP, LIME, ALE, disparate impact, equalized odds, impossibility theorem
+7. **Workflow Orchestration, Model Registry, and Hyperparameter Search** — WorkflowBuilder, custom nodes, Bayesian optimisation
+8. **Production Pipeline — DataFlow, Drift, and Deployment** — DataFlow CRUD, DriftMonitor (PSI, KS), model cards
+
+## Exercises (8)
+
+| # | Title | Dataset |
+|---|-------|---------|
+| 1 | Feature Engineering | ICU clinical data |
+| 2 | Bias-Variance and Regularisation | HDB resale |
+| 3 | The Complete Supervised Model Zoo | E-commerce / HDB |
+| 4 | Gradient Boosting Deep Dive | Credit scoring |
+| 5 | Class Imbalance and Calibration | Credit scoring |
+| 6 | SHAP, LIME, and Fairness | Credit scoring |
+| 7 | Workflow Orchestration and Custom Nodes | ML pipeline |
+| 8 | Production Pipeline Project | Full pipeline |

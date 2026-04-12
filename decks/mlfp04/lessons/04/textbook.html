@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.4 — Anomaly Detection and Ensembles | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.4</span>
+  Anomaly Detection and Ensembles
+</h1>
+
+<p class="lead">
+  Clustering asked which group a point belongs to. Anomaly detection
+  asks the opposite question: which points do not belong to any group?
+  Today you will learn four methods — statistical (Z-score, IQR),
+  Isolation Forest, and Local Outlier Factor — and the ensemble pattern
+  for blending their scores into a single trustworthy signal. By the end
+  you will be able to detect fraudulent financial transactions without
+  any labelled fraud examples.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Fraud, defective products, faulty sensors, network intrusions, churn
+  precursors — every business has rare but critical events that matter
+  more than the common ones. You usually do not have enough labelled
+  examples to train a supervised classifier (fraud may be 0.1% of
+  transactions). Anomaly detection finds the strange points <em>without
+  labels</em>, by modelling what "normal" looks like and flagging
+  everything that deviates.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Anomalies: the points that don't fit the bulk distribution</text>
+  <rect x="40" y="40" width="640" height="200" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <!-- Normal cloud -->
+  <g fill="#3B82F6" opacity="0.6">
+    <circle cx="150" cy="140" r="3"/><circle cx="170" cy="150" r="3"/><circle cx="190" cy="130" r="3"/>
+    <circle cx="200" cy="160" r="3"/><circle cx="220" cy="140" r="3"/><circle cx="240" cy="155" r="3"/>
+    <circle cx="260" cy="135" r="3"/><circle cx="250" cy="175" r="3"/><circle cx="180" cy="175" r="3"/>
+    <circle cx="155" cy="170" r="3"/><circle cx="275" cy="160" r="3"/><circle cx="210" cy="180" r="3"/>
+    <circle cx="230" cy="120" r="3"/><circle cx="175" cy="195" r="3"/><circle cx="255" cy="115" r="3"/>
+    <circle cx="165" cy="185" r="3"/><circle cx="195" cy="145" r="3"/><circle cx="290" cy="130" r="3"/>
+    <circle cx="305" cy="155" r="3"/><circle cx="320" cy="145" r="3"/><circle cx="310" cy="175" r="3"/>
+    <circle cx="140" cy="150" r="3"/><circle cx="270" cy="180" r="3"/><circle cx="280" cy="135" r="3"/>
+  </g>
+  <!-- Second cluster -->
+  <g fill="#22C55E" opacity="0.6">
+    <circle cx="440" cy="90" r="3"/><circle cx="455" cy="100" r="3"/><circle cx="470" cy="85" r="3"/>
+    <circle cx="480" cy="110" r="3"/><circle cx="465" cy="120" r="3"/><circle cx="445" cy="115" r="3"/>
+    <circle cx="500" cy="95" r="3"/><circle cx="475" cy="105" r="3"/><circle cx="460" cy="90" r="3"/>
+  </g>
+  <!-- Outliers -->
+  <circle cx="600" cy="200" r="6" fill="#EF4444" stroke="black" stroke-width="1.5"/>
+  <text x="615" y="205" font-size="11" fill="#EF4444">outlier A (far from all)</text>
+  <circle cx="380" cy="50" r="6" fill="#EF4444" stroke="black" stroke-width="1.5"/>
+  <text x="395" y="55" font-size="11" fill="#EF4444">outlier B (wrong direction)</text>
+  <circle cx="355" cy="200" r="6" fill="#EF4444" stroke="black" stroke-width="1.5"/>
+  <text x="370" y="205" font-size="11" fill="#EF4444">outlier C (between clusters)</text>
+</svg>
+<figcaption>Three types of outliers: far from any cluster (A), far in a rare direction (B), and in a low-density gap between clusters (C). Different methods catch different types.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    Anomaly detection is an unsupervised problem with a supervised
+    <em>framing</em>: you are implicitly classifying points as "normal"
+    or "anomalous". But you do not have labels — you have to infer
+    normality from the shape of the data itself.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Statistical outliers: Z-score and IQR</h3>
+
+<p>
+  The simplest anomaly detectors look at one feature at a time. The
+  <strong>Z-score method</strong> standardises and thresholds:
+</p>
+
+<div class="annotated-equation">
+  $$ z_i \;=\; \frac{x_i - \bar{x}}{s} \qquad\text{flag as outlier if } |z_i| > 3 $$
+</div>
+
+<p>
+  The "3-sigma rule" catches the ~0.27% of points that would be in the
+  tails of a normal distribution. The trade-off is obvious: the method
+  assumes the data is normally distributed, which is rarely true for
+  business quantities (revenue, session duration, basket size are
+  right-skewed), and a few extreme values inflate both $\bar{x}$ and $s$,
+  hiding everything else.
+</p>
+
+<p>
+  The <strong>IQR method</strong> is more robust:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{outlier if } x &lt; Q_1 - 1.5\,\text{IQR}\quad\text{or}\quad x > Q_3 + 1.5\,\text{IQR} $$
+</div>
+
+<p>
+  where $\text{IQR} = Q_3 - Q_1$ is the interquartile range. Because
+  quartiles are not affected by extreme values, IQR is the standard
+  univariate outlier rule for skewed data. It is also the method behind
+  box plot whiskers.
+</p>
+
+<h3>Winsorisation</h3>
+
+<p>
+  <strong>Winsorising</strong> is a related technique — instead of
+  removing outliers, cap them at a percentile (typically 1st and 99th).
+  This preserves sample size and makes downstream statistics robust
+  without losing information about the fact that a point was extreme.
+  In production, winsorise before you cluster or regress, not instead
+  of investigating outliers.
+</p>
+
+<h3>Isolation Forest</h3>
+
+<p>
+  Statistical methods only look at one feature at a time. Real anomalies
+  are usually strange <em>combinations</em> of normal values — a small
+  transaction is normal, a midnight transaction is normal, but a small
+  midnight transaction from a new device is suspicious. You need a
+  multivariate method.
+</p>
+
+<p>
+  <strong>Isolation Forest</strong> is a beautifully simple idea: anomalies
+  are points that can be "isolated" with fewer random splits. Build a
+  random tree by picking a feature and a split value uniformly at random.
+  Count how many splits are needed to isolate each point into its own
+  leaf. Normal points require many splits (they are in the dense core);
+  anomalies require few (they are out on their own).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="340" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Isolation Forest: anomalies isolate in fewer random splits</text>
+  <rect x="30" y="40" width="620" height="200" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <g fill="#3B82F6" opacity="0.6">
+    <circle cx="200" cy="130" r="3"/><circle cx="220" cy="140" r="3"/><circle cx="240" cy="155" r="3"/>
+    <circle cx="260" cy="130" r="3"/><circle cx="280" cy="145" r="3"/><circle cx="300" cy="135" r="3"/>
+    <circle cx="210" cy="155" r="3"/><circle cx="250" cy="145" r="3"/><circle cx="270" cy="160" r="3"/>
+    <circle cx="290" cy="155" r="3"/><circle cx="230" cy="125" r="3"/><circle cx="260" cy="170" r="3"/>
+  </g>
+  <circle cx="520" cy="80" r="5" fill="#EF4444" stroke="black"/>
+  <!-- First split separates outlier -->
+  <line x1="420" y1="40" x2="420" y2="240" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 3"/>
+  <text x="425" y="50" font-size="11" fill="#F59E0B">split 1</text>
+  <text x="470" y="220" font-size="12" fill="#EF4444" font-weight="600">outlier: isolated after 1 split</text>
+  <!-- Many splits for dense cluster -->
+  <line x1="245" y1="40" x2="245" y2="240" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="275" y1="40" x2="275" y2="240" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="190" y1="148" x2="320" y2="148" stroke="#64748B" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="180" y="210" font-size="12" fill="#3B82F6" font-weight="600">normal: needs many splits</text>
+</svg>
+<figcaption>A single random split separates the outlier from the cluster. Many more splits are needed to isolate individual points within the cluster.</figcaption>
+</figure>
+
+<p>
+  Formally, the anomaly score is
+</p>
+
+<div class="annotated-equation">
+  $$ s(\mathbf{x}, n) \;=\; 2^{-E(h(\mathbf{x}))/c(n)} $$
+</div>
+
+<p>
+  where $E(h(\mathbf{x}))$ is the average path length from root to the
+  leaf containing $\mathbf{x}$ across all trees, $n$ is the sample size,
+  and $c(n)$ is the expected path length of a random binary tree with $n$
+  leaves. $s$ is near 1 for strong anomalies, near 0.5 for normal
+  points, and below 0.5 if the point looks "more typical than average".
+  Typical threshold: $s > 0.6$ flags the point as anomalous.
+</p>
+
+<h3>LOF (Local Outlier Factor)</h3>
+
+<p>
+  Isolation Forest is a <em>global</em> method — it does not care whether
+  a point is in a dense region or a sparse one. <strong>LOF</strong> is
+  local: it measures the density around a point and compares it to the
+  density around its neighbours. A point in a region much sparser than
+  its neighbours is flagged.
+</p>
+
+<p>
+  Formally, let $N_k(\mathbf{x})$ be the $k$ nearest neighbours of
+  $\mathbf{x}$ and let $\text{lrd}_k(\mathbf{x})$ be the local reachability
+  density (inverse of the average reachability distance to neighbours).
+  Then
+</p>
+
+<div class="annotated-equation">
+  $$ \text{LOF}_k(\mathbf{x}) \;=\; \frac{1}{|N_k(\mathbf{x})|}\sum_{\mathbf{o} \in N_k(\mathbf{x})}\ \frac{\text{lrd}_k(\mathbf{o})}{\text{lrd}_k(\mathbf{x})} $$
+</div>
+
+<p>
+  $\text{LOF} \approx 1$ means "same density as neighbours" (normal).
+  $\text{LOF} &gt; 1.5$ typically flags an anomaly. LOF is the right
+  choice when your data has clusters of varying density — a point that
+  is "close" by absolute distance can still be an outlier relative to
+  its own neighbourhood.
+</p>
+
+<h3>Score blending and the EnsembleEngine</h3>
+
+<p>
+  Each method catches different anomalies. Z-score catches tail events on
+  individual features. Isolation Forest catches multivariate outliers.
+  LOF catches local density anomalies. Running all three and blending
+  the scores gives you a more robust detector than any single method.
+</p>
+
+<p>
+  The blending pattern is: (1) convert each method's output to a
+  normalised score in $[0, 1]$; (2) average them (or take max, or
+  weighted sum); (3) apply a single threshold. The
+  <strong>EnsembleEngine</strong> in kailash-ml provides four modes —
+  <code>blend()</code>, <code>stack()</code>, <code>bag()</code>, and
+  <code>boost()</code> — for both classification and anomaly detection.
+</p>
+
+<pre><code class="language-python">from kailash_ml import EnsembleEngine
+
+ensemble = EnsembleEngine()
+scores = {
+    "z_score": z_scores,
+    "iforest": iforest.decision_function(X),
+    "lof": -lof.negative_outlier_factor_,
+}
+blended = ensemble.blend(scores, normalise=True, agg="mean")
+anomalies = blended > 0.7</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations</h2>
+
+<h3>Expected path length in a random binary tree</h3>
+
+<p>
+  The normalisation constant $c(n)$ in Isolation Forest is the expected
+  path length from root to leaf in a random binary search tree with $n$
+  elements — a classical result:
+</p>
+
+<div class="annotated-equation">
+  $$ c(n) \;=\; 2 H(n-1) - 2(n-1)/n \qquad\text{where } H(k) \approx \ln k + 0.5772 $$
+</div>
+
+<p>
+  This is what makes the anomaly score comparable across different
+  sample sizes: without the $c(n)$ normalisation, a point's raw path
+  length would scale with $\log n$ and the scores would not be
+  interpretable.
+</p>
+
+<h3>Why unsupervised anomaly detection works at all</h3>
+
+<p>
+  Every method here rests on a single assumption: <em>anomalies are rare
+  and different</em>. If anomalies make up more than ~10% of your data,
+  or if they look indistinguishable from normal points until you know
+  the label, unsupervised detection fails and you need a supervised
+  classifier (or semi-supervised methods with a small labelled set).
+  Always check: is the assumption justified for your problem?
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: EnsembleEngine and DriftMonitor</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Two engines matter here. <strong>EnsembleEngine</strong> blends
+    multiple anomaly detectors (or classifiers) using a unified API.
+    <strong>DriftMonitor</strong> uses the same anomaly-detection
+    machinery in production to compare incoming data against a
+    reference distribution — "is today's data strangely different from
+    yesterday's?" This is how you turn an offline analysis into a
+    production monitoring signal. We will use DriftMonitor in M5 for
+    model-serving checks.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Detecting Fraud in Financial Transactions</h2>
+
+<pre><code class="language-python">import numpy as np
+import polars as pl
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import StandardScaler
+
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+tx = loader.load("mlfp04", "financial_transactions.parquet")
+
+features = ["amount", "hour", "recipient_count_24h", "location_distance_km"]
+X = StandardScaler().fit_transform(
+    tx.drop_nulls(subset=features).select(features).to_numpy()
+)
+
+# Method 1: univariate Z-score on amount
+z = np.abs((X[:, 0] - X[:, 0].mean()) / X[:, 0].std())
+z_flag = z > 3
+
+# Method 2: Isolation Forest
+iforest = IsolationForest(contamination=0.01, random_state=42).fit(X)
+iforest_scores = -iforest.decision_function(X)  # higher = more anomalous
+
+# Method 3: LOF
+lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01)
+lof.fit_predict(X)
+lof_scores = -lof.negative_outlier_factor_
+
+# Blend the three into a single score
+def normalise(x):
+    return (x - x.min()) / (x.max() - x.min() + 1e-9)
+
+blended = (normalise(z.astype(float)) + normalise(iforest_scores) + normalise(lof_scores)) / 3
+anomalies = blended > 0.7
+
+print(f"Flagged {anomalies.sum()} of {len(anomalies)} transactions "
+      f"({anomalies.mean():.2%}) as anomalous")</code></pre>
+
+<p>
+  The key pedagogical point: look at the overlap between the methods'
+  flags. Transactions caught by all three are almost certainly
+  anomalous. Transactions caught by only one method deserve human
+  review — the single flag might be a real signal or a quirk of that
+  specific detector. Blending gives you a confidence gradient you can
+  act on.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Setting contamination too high.</strong> <code>contamination</code> tells Isolation Forest and LOF "approximately what fraction of the data should I flag". Setting it to 0.1 when your real anomaly rate is 0.001 forces the method to label many normal points as anomalies. Tune carefully and be honest about the base rate.</li>
+  <li><strong>Using Z-score on skewed data.</strong> For revenue, session duration, basket size — anything right-skewed — use IQR or log-transform first.</li>
+  <li><strong>Not standardising before multivariate methods.</strong> Same rule as clustering: scale-sensitive methods need standardised inputs.</li>
+  <li><strong>Treating anomaly scores as probabilities.</strong> They are not — different methods use different ranges and scales. Always normalise to $[0, 1]$ before blending or thresholding.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 4.</strong></p>
+  <ol>
+    <li>Load the financial transactions dataset.</li>
+    <li>Apply Z-score (on amount), Isolation Forest, and LOF.</li>
+    <li>Normalise and blend the three scores.</li>
+    <li>Inspect the overlap between methods: Venn diagram of flagged points.</li>
+    <li>Use EnsembleEngine to reproduce the blend with its API.</li>
+    <li>Write a one-paragraph business explanation for the top 10 flagged transactions.</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to M1:</strong> Z-score and IQR originally appeared as data cleaning tools. Today they are anomaly detectors — same math, different purpose.</li>
+  <li><strong>Back to Lesson 4.1:</strong> HDBSCAN's noise label ($-1$) is already an anomaly detector. The methods in this lesson are more flexible — you can combine them.</li>
+  <li><strong>Forward to M5 (drift monitoring):</strong> DriftMonitor in production uses the same algorithms to flag "is today's data different from last week's?"</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  Anomaly detection is deceptively hard in practice. The algorithms are
+  simple; the difficulty is the labelling. Because you do not have a
+  ground truth, you cannot compute precision or recall — the only way
+  to evaluate a detector is to investigate the top-$k$ flagged points
+  and ask a domain expert "is this an anomaly?". The engineering lesson
+  is that unsupervised methods are starting points, not finish lines.
+  They tell you where to look, and a human decides what to do.
+</p>
+
+</main>
+</body>
+</html>

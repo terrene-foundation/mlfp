@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.3 — RNNs and Sequence Models | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5: Deep Learning</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 5.3</span>
+  RNNs and Sequence Models
+</h1>
+
+<p class="lead">
+  Convolutions handle grids; recurrent networks handle sequences. In this
+  lesson you meet the vanilla RNN, then the Long Short-Term Memory (LSTM)
+  cell and its four gates, then the GRU. You will derive all six LSTM
+  gate equations, see why the cell state is a "gradient highway", and
+  train an LSTM on a synthetic financial time series that looks a lot
+  like an SGX stock price.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why Sequences Are Different</h2>
+
+<p>
+  A sequence is an ordered list: words in a sentence, prices in a
+  time series, trip points in a taxi route, heart rates in an ECG. Two
+  properties distinguish sequence data from images:
+</p>
+
+<ul>
+  <li><strong>Variable length.</strong> One sentence has 5 words, another
+      has 50. A CNN with a fixed input size cannot handle this
+      gracefully.</li>
+  <li><strong>Temporal dependency.</strong> The meaning of a word depends
+      on the words before it ("bank" near "river" vs "bank" near
+      "deposit"). The price tomorrow depends on prices today and last
+      week.</li>
+</ul>
+
+<p>
+  The idea of a <strong>recurrent network</strong> is to maintain a
+  hidden state $h_t$ that summarises everything seen so far, and update
+  it step by step as each new input arrives:
+</p>
+
+<div class="annotated-equation">
+  $$h_t \;=\; \phi(W_{xh} \, x_t + W_{hh} \, h_{t-1} + b_h)$$
+  <div class="annotations">
+    <span>$x_t$ — input at step $t$</span>
+    <span>$h_{t-1}$ — previous hidden state</span>
+    <span>$\phi$ — non-linearity (tanh)</span>
+  </div>
+</div>
+
+<p>
+  The <em>same</em> weight matrices $W_{xh}$ and $W_{hh}$ are reused at
+  every time step — just like a conv filter reuses weights across
+  positions. That weight sharing is what lets a recurrent network handle
+  any length of sequence with a fixed number of parameters.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="rnn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Four time steps -->
+  <g font-family="Inter" font-size="13">
+    <rect x="40"  y="90" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+    <text x="95"  y="115" text-anchor="middle" font-weight="700" fill="#0D9488">RNN cell</text>
+    <text x="95"  y="135" text-anchor="middle" font-size="11" fill="#1E293B">h₁ = f(x₁, h₀)</text>
+
+    <rect x="200" y="90" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+    <text x="255" y="115" text-anchor="middle" font-weight="700" fill="#0D9488">RNN cell</text>
+    <text x="255" y="135" text-anchor="middle" font-size="11" fill="#1E293B">h₂ = f(x₂, h₁)</text>
+
+    <rect x="360" y="90" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+    <text x="415" y="115" text-anchor="middle" font-weight="700" fill="#0D9488">RNN cell</text>
+    <text x="415" y="135" text-anchor="middle" font-size="11" fill="#1E293B">h₃ = f(x₃, h₂)</text>
+
+    <rect x="520" y="90" width="110" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+    <text x="575" y="115" text-anchor="middle" font-weight="700" fill="#0D9488">RNN cell</text>
+    <text x="575" y="135" text-anchor="middle" font-size="11" fill="#1E293B">h₄ = f(x₄, h₃)</text>
+  </g>
+  <!-- Inputs -->
+  <g font-family="JetBrains Mono" font-size="14" fill="#3B82F6">
+    <text x="95"  y="50" text-anchor="middle">x₁</text>
+    <text x="255" y="50" text-anchor="middle">x₂</text>
+    <text x="415" y="50" text-anchor="middle">x₃</text>
+    <text x="575" y="50" text-anchor="middle">x₄</text>
+  </g>
+  <!-- Input arrows -->
+  <line x1="95"  y1="58" x2="95"  y2="88" stroke="#3B82F6" stroke-width="2" marker-end="url(#rnn-arrow)"/>
+  <line x1="255" y1="58" x2="255" y2="88" stroke="#3B82F6" stroke-width="2" marker-end="url(#rnn-arrow)"/>
+  <line x1="415" y1="58" x2="415" y2="88" stroke="#3B82F6" stroke-width="2" marker-end="url(#rnn-arrow)"/>
+  <line x1="575" y1="58" x2="575" y2="88" stroke="#3B82F6" stroke-width="2" marker-end="url(#rnn-arrow)"/>
+  <!-- Hidden state flow -->
+  <line x1="150" y1="120" x2="198" y2="120" stroke="#F59E0B" stroke-width="3" marker-end="url(#rnn-arrow)"/>
+  <line x1="310" y1="120" x2="358" y2="120" stroke="#F59E0B" stroke-width="3" marker-end="url(#rnn-arrow)"/>
+  <line x1="470" y1="120" x2="518" y2="120" stroke="#F59E0B" stroke-width="3" marker-end="url(#rnn-arrow)"/>
+  <text x="174" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B45309">h₁</text>
+  <text x="334" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B45309">h₂</text>
+  <text x="494" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#B45309">h₃</text>
+  <!-- Final output -->
+  <line x1="575" y1="150" x2="575" y2="195" stroke="#0D9488" stroke-width="2" marker-end="url(#rnn-arrow)"/>
+  <text x="575" y="215" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">ŷ</text>
+  <!-- Note -->
+  <text x="360" y="25" text-anchor="middle" font-family="Inter" font-style="italic" font-size="12" fill="#64748B">
+    Same weights at every time step (unrolled view)
+  </text>
+</svg>
+<figcaption>An RNN unrolled through time: one cell, reused four times, carrying a hidden state forward.</figcaption>
+</figure>
+
+<h3>Vanishing and exploding gradients</h3>
+
+<p>
+  The elegant picture has a cruel flaw. When you backpropagate through a
+  long sequence, the gradient of the loss with respect to $h_1$ involves
+  a <em>product</em> of $T$ Jacobians — one per time step. If each is
+  smaller than 1, the product shrinks exponentially (<strong>vanishing
+  gradient</strong>) and $h_1$ never gets updated. If each is larger
+  than 1, it blows up (<strong>exploding gradient</strong>) and training
+  NaNs out.
+</p>
+
+<p>
+  Vanilla RNNs are almost unusable on sequences longer than ~20 steps
+  for this reason. The fix came in 1997 from Hochreiter and Schmidhuber:
+  the <strong>LSTM cell</strong>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The LSTM Cell</h2>
+
+<p>
+  An LSTM adds a second state on top of the hidden state $h_t$: a
+  <strong>cell state</strong> $C_t$. The cell state flows forward with
+  only additive updates, protected by three gates that choose what to
+  remember, what to add, and what to reveal. The additive path is a
+  gradient highway — it does <em>not</em> get multiplied by a Jacobian
+  at every step, so gradients do not vanish.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 340" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="lstm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Big cell box -->
+  <rect x="40" y="40" width="680" height="260" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="380" y="28" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">LSTM cell</text>
+  <!-- Cell state line on top (highway) -->
+  <line x1="40" y1="90" x2="720" y2="90" stroke="#F59E0B" stroke-width="4"/>
+  <text x="60" y="80" font-family="Inter" font-size="11" fill="#B45309">C_{t-1}</text>
+  <text x="695" y="80" font-family="Inter" font-size="11" fill="#B45309">C_t</text>
+  <!-- Forget gate -->
+  <rect x="100" y="130" width="100" height="50" rx="4" fill="#FEE2E2" stroke="#DC2626" stroke-width="2"/>
+  <text x="150" y="150" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#991B1B">forget f_t</text>
+  <text x="150" y="167" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7F1D1D">σ</text>
+  <circle cx="150" cy="90" r="12" fill="#FECACA" stroke="#DC2626" stroke-width="2"/>
+  <text x="150" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#991B1B">×</text>
+  <line x1="150" y1="130" x2="150" y2="102" stroke="#DC2626" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <!-- Input gate -->
+  <rect x="240" y="130" width="90" height="50" rx="4" fill="#DBEAFE" stroke="#2563EB" stroke-width="2"/>
+  <text x="285" y="150" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E40AF">input i_t</text>
+  <text x="285" y="167" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E3A8A">σ</text>
+  <!-- Candidate -->
+  <rect x="345" y="130" width="100" height="50" rx="4" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+  <text x="395" y="150" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#14532D">cand C̃_t</text>
+  <text x="395" y="167" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#166534">tanh</text>
+  <!-- multiply -->
+  <circle cx="340" cy="90" r="12" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="340" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#B45309">×</text>
+  <line x1="285" y1="130" x2="335" y2="100" stroke="#2563EB" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <line x1="395" y1="130" x2="346" y2="100" stroke="#16A34A" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <!-- add -->
+  <circle cx="460" cy="90" r="14" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="460" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#B45309">+</text>
+  <line x1="352" y1="90" x2="448" y2="90" stroke="#F59E0B" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <!-- Output gate -->
+  <rect x="520" y="130" width="100" height="50" rx="4" fill="#F3E8FF" stroke="#9333EA" stroke-width="2"/>
+  <text x="570" y="150" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#6B21A8">output o_t</text>
+  <text x="570" y="167" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#581C87">σ</text>
+  <!-- tanh on cell state -->
+  <rect x="520" y="230" width="100" height="40" rx="4" fill="#F0FDF4" stroke="#16A34A" stroke-width="2"/>
+  <text x="570" y="256" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#166534">tanh(C_t)</text>
+  <circle cx="660" cy="200" r="14" fill="#F3E8FF" stroke="#9333EA" stroke-width="2"/>
+  <text x="660" y="205" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#6B21A8">×</text>
+  <line x1="570" y1="180" x2="640" y2="200" stroke="#9333EA" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <line x1="620" y1="250" x2="658" y2="215" stroke="#16A34A" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <line x1="660" y1="185" x2="660" y2="110" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="660" y1="90" x2="660" y2="186" stroke="#F59E0B" stroke-width="2" stroke-dasharray="3 2"/>
+  <!-- Output h_t -->
+  <line x1="675" y1="200" x2="720" y2="200" stroke="#0D9488" stroke-width="2" marker-end="url(#lstm-arrow)"/>
+  <text x="720" y="218" text-anchor="end" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">h_t</text>
+  <!-- Inputs -->
+  <line x1="70" y1="280" x2="720" y2="280" stroke="#94A3B8" stroke-width="1"/>
+  <text x="40" y="285" font-family="JetBrains Mono" font-size="11" fill="#64748B">x_t, h_{t-1}</text>
+</svg>
+<figcaption>LSTM cell: the orange horizontal line is the cell-state highway. Four gates (red forget, blue input, green candidate, purple output) control what flows in and out.</figcaption>
+</figure>
+
+<h3>All six gate equations</h3>
+
+<p>
+  Let $[h_{t-1}, x_t]$ denote the concatenation of the previous hidden
+  state and the current input. The LSTM update rule is:
+</p>
+
+<div class="annotated-equation">
+$$\begin{aligned}
+f_t &= \sigma\!\bigl(W_f \, [h_{t-1}, x_t] + b_f\bigr) & \text{(forget gate)}\\[2pt]
+i_t &= \sigma\!\bigl(W_i \, [h_{t-1}, x_t] + b_i\bigr) & \text{(input gate)}\\[2pt]
+\tilde{C}_t &= \tanh\!\bigl(W_C \, [h_{t-1}, x_t] + b_C\bigr) & \text{(candidate cell)}\\[2pt]
+C_t &= f_t \odot C_{t-1} + i_t \odot \tilde{C}_t & \text{(cell update)}\\[2pt]
+o_t &= \sigma\!\bigl(W_o \, [h_{t-1}, x_t] + b_o\bigr) & \text{(output gate)}\\[2pt]
+h_t &= o_t \odot \tanh(C_t) & \text{(hidden state)}
+\end{aligned}$$
+</div>
+
+<p>Read row by row:</p>
+
+<ul>
+  <li><strong>Forget gate $f_t$.</strong> A sigmoid in $[0, 1]$ per cell
+      dimension. Multiplies $C_{t-1}$ elementwise — zero means "forget
+      this component", one means "keep it entirely".</li>
+  <li><strong>Input gate $i_t$.</strong> Another sigmoid: how much of
+      the new candidate to let into the cell state.</li>
+  <li><strong>Candidate $\tilde{C}_t$.</strong> A tanh in $[-1, 1]$:
+      the new content to potentially add.</li>
+  <li><strong>Cell update.</strong> Combine: forget some of the past,
+      accept some of the new. The update is <em>additive</em> — this is
+      the gradient highway.</li>
+  <li><strong>Output gate $o_t$.</strong> How much of the cell state to
+      expose as the hidden state.</li>
+  <li><strong>Hidden state $h_t$.</strong> Output-gated tanh of the
+      cell state.</li>
+</ul>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — Why the cell state dodges vanishing gradients</span>
+  <p>
+    In a vanilla RNN, $\partial h_t / \partial h_{t-1}$ is a product
+    involving $W_{hh}$ and a tanh derivative. Repeated over $T$ steps
+    it becomes a product of matrices with small singular values, which
+    decays exponentially. In an LSTM, the cell-state update is
+    $C_t = f_t \odot C_{t-1} + (\text{stuff})$. If the forget gate
+    $f_t \approx 1$, then $\partial C_t / \partial C_{t-1} \approx I$ —
+    essentially no decay. The gradient flows backward through the cell
+    state nearly unchanged over hundreds of time steps.
+  </p>
+</div>
+
+<h3>The GRU</h3>
+
+<p>
+  The GRU (Gated Recurrent Unit, 2014) simplifies the LSTM by merging
+  the forget and input gates into a single <em>update gate</em> and
+  dropping the separate cell state:
+</p>
+
+<div class="annotated-equation">
+$$\begin{aligned}
+z_t &= \sigma(W_z \, [h_{t-1}, x_t])             & \text{(update gate)}\\
+r_t &= \sigma(W_r \, [h_{t-1}, x_t])             & \text{(reset gate)}\\
+\tilde{h}_t &= \tanh(W \, [r_t \odot h_{t-1}, x_t])\\
+h_t &= (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+\end{aligned}$$
+</div>
+
+<p>
+  Fewer parameters, faster to train, usually competitive with LSTM.
+  Rule of thumb: try a GRU first; if it underfits, upgrade to LSTM; if
+  you need really long contexts (1000+ tokens), use a Transformer
+  (Lesson 5.4).
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ModelVisualizer for sequences</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>ModelVisualizer</code> also knows how to plot sequence-model
+    outputs: prediction-vs-actual curves, forecast intervals, and rolling
+    error bands. You will use it every time you train a recurrent model
+    in Module 5.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: LSTM on a synthetic price series</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build an LSTM that predicts the next value of a noisy sine-plus-trend
+    "price" series — a proxy for a stock on the Singapore Exchange.
+    Compare vanilla RNN vs LSTM vs GRU.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — synthetic series.</span>
+    <pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
+
+torch.manual_seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def make_series(n=2000, seq_len=50):
+    t = np.arange(n + seq_len).astype(np.float32)
+    trend = 0.002 * t
+    season = 0.5 * np.sin(2 * np.pi * t / 25) + 0.3 * np.sin(2 * np.pi * t / 8)
+    noise = 0.1 * np.random.randn(len(t)).astype(np.float32)
+    series = trend + season + noise
+    X = np.stack([series[i:i+seq_len] for i in range(n)])         # (n, L)
+    y = series[seq_len:seq_len+n]                                 # (n,)
+    return X[..., None], y                                        # (n, L, 1)
+
+X_np, y_np = make_series()
+X = torch.from_numpy(X_np).to(device)
+y = torch.from_numpy(y_np).to(device)
+loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — an LSTM regressor.</span>
+    <pre><code class="language-python">class LSTMRegressor(nn.Module):
+    def __init__(self, input_size=1, hidden_size=32, num_layers=2):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.1,
+        )
+        self.head = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out, (h_n, c_n) = self.lstm(x)      # out: (B, L, H)
+        last = out[:, -1, :]                # take final time step
+        return self.head(last).squeeze(-1)  # (B,)</code></pre>
+    <p>
+      <code>nn.LSTM</code> implements all six gate equations above for
+      you. <code>batch_first=True</code> makes the expected input shape
+      $(B, L, F)$ instead of the older $(L, B, F)$ convention. We take
+      the output at the last time step as our regression head input.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — train with gradient clipping.</span>
+    <pre><code class="language-python">model = LSTMRegressor().to(device)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+history = []
+
+for epoch in range(30):
+    running = 0.0
+    for xb, yb in loader:
+        pred = model(xb)
+        loss = F.mse_loss(pred, yb)
+        opt.zero_grad()
+        loss.backward()
+        # ★ gradient clipping — essential for recurrent networks
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        opt.step()
+        running += loss.item() * xb.size(0)
+    history.append(running / len(loader.dataset))
+print(f"Final LSTM MSE: {history[-1]:.5f}")</code></pre>
+    <p>
+      The star line is <code>clip_grad_norm_</code>. It rescales the
+      gradient vector so its L2 norm never exceeds 1.0. Without it,
+      occasional exploding-gradient spikes ruin training for long
+      sequences. For LSTMs and Transformers, clipping is standard
+      practice — always on.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — GRU and vanilla RNN baselines.</span>
+    <pre><code class="language-python">class GRURegressor(LSTMRegressor):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.lstm = nn.GRU(**{**dict(input_size=1, hidden_size=32,
+                                     num_layers=2, batch_first=True, dropout=0.1)})
+
+class RNNRegressor(LSTMRegressor):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.lstm = nn.RNN(input_size=1, hidden_size=32, num_layers=2,
+                           batch_first=True, nonlinearity='tanh')</code></pre>
+    <p>
+      Subclassing with the same head; only the recurrent core differs.
+      You should observe: vanilla RNN struggles to get below a modest
+      plateau; GRU and LSTM both converge to noticeably lower MSE. On
+      longer sequences (seq_len > 100), the vanilla RNN gap becomes
+      dramatic.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — temporal attention (optional).</span>
+    <p>
+      Instead of taking the last time step, compute a weighted sum of all
+      time steps where the weights are learned:
+    </p>
+    <pre><code class="language-python">class AttentionLSTM(nn.Module):
+    def __init__(self, input_size=1, hidden_size=32):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.attn = nn.Linear(hidden_size, 1)
+        self.head = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)                            # (B, L, H)
+        scores = self.attn(out).squeeze(-1)              # (B, L)
+        weights = F.softmax(scores, dim=-1).unsqueeze(-1)
+        context = (weights * out).sum(dim=1)             # (B, H)
+        return self.head(context).squeeze(-1)</code></pre>
+    <p>
+      This is a foreshadowing of Lesson 5.4 — the idea that "attend to
+      a weighted combination of all time steps" is exactly what the
+      Transformer generalises and takes to its logical conclusion.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Sequence-Model Metrics</h2>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>Formula</th><th>Use for</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MSE / MAE</td>
+      <td>$\frac{1}{N}\sum (y_i - \hat{y}_i)^2$</td>
+      <td>Regression — price forecasts, demand</td>
+    </tr>
+    <tr>
+      <td>Perplexity</td>
+      <td>$\exp\!\bigl(-\frac{1}{N}\sum \log P(w_i)\bigr)$</td>
+      <td>Language modelling</td>
+    </tr>
+    <tr>
+      <td>BLEU</td>
+      <td>n-gram precision with brevity penalty</td>
+      <td>Machine translation</td>
+    </tr>
+    <tr>
+      <td>Sequence accuracy</td>
+      <td>Fraction of sequences classified correctly</td>
+      <td>Sentence / utterance classification</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — Teacher forcing vs free-running</span>
+  <p>
+    When training a sequence-to-sequence model, you can either feed the
+    ground-truth previous token as input (teacher forcing) or feed the
+    model's own previous prediction (free-running). Teacher forcing is
+    faster to train but creates <em>exposure bias</em>: at inference time
+    the model has to condition on its own outputs, which it never saw
+    during training. Scheduled sampling mixes the two to mitigate this.
+    Transformers largely sidestep the issue with parallel attention
+    training.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Forgetting gradient clipping</span>
+  <p>
+    RNNs without gradient clipping explode on ~1% of batches and NaN
+    your loss. Always add
+    <code>torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)</code>
+    between <code>loss.backward()</code> and <code>opt.step()</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Wrong <code>batch_first</code> convention</span>
+  <p>
+    PyTorch's recurrent layers default to
+    <code>(seq_len, batch, features)</code> shape. Modern practice is
+    <code>batch_first=True</code> which gives
+    <code>(batch, seq_len, features)</code>. Mix them up and every
+    dimension is off by one axis — the bug is silent because shapes
+    still "work", they just mean different things.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Using LSTM state across unrelated sequences</span>
+  <p>
+    By default <code>nn.LSTM</code> initialises the hidden state to
+    zeros at the start of each forward pass — correct. If you manually
+    pass the previous batch's final state as the next batch's initial
+    state (across <em>unrelated</em> sequences), you contaminate each
+    sequence with another's hidden memory. Only do stateful RNN training
+    deliberately, for a single long stream cut into chunks.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Sequence length too long for available memory</span>
+  <p>
+    Backprop-through-time stores activations for every step. A seq_len
+    of 1000 with a hidden size of 512 and batch 32 can eat many GBs.
+    Truncated BPTT (reset gradients every $k$ steps) is the fix when
+    memory bites.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Gradient norms over time</h3>
+  <p>
+    For vanilla RNN, LSTM, and GRU, log the L2 norm of each layer's
+    gradient after <code>loss.backward()</code>. Plot all three on the
+    same axis across epochs. The vanilla RNN gradient should look
+    erratic or tend toward zero; the LSTM should stay healthy.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Change the sequence length</h3>
+  <p>
+    Retrain the LSTM on sequence lengths 10, 50, 100, 200. At what
+    length does final MSE stop improving? At what length does the
+    vanilla RNN break completely?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Attention head visualisation</h3>
+  <p>
+    Using the <code>AttentionLSTM</code>, plot the attention weights for
+    a handful of test sequences as a heat map (one row per sequence, one
+    column per time step). Do the weights concentrate at any particular
+    positions? If your data had a recent dominant pattern, you should
+    see the recent steps light up.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The temporal attention idea you previewed at the end of this lesson is
+  exactly what the <a href="../04/textbook.html">Transformer (5.4)</a>
+  generalises and takes to its logical conclusion — a pure-attention
+  model with no recurrence at all. The LSTM's cell-state gradient
+  highway is the direct ancestor of ResNet's skip connections (5.2).
+  The gradient clipping trick you added here is standard for <em>any</em>
+  recurrent or attention-based model, including Transformers.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In 60 minutes you built vanilla RNN, LSTM, and GRU regressors; derived
+  all six LSTM gate equations; explained why the cell state acts as a
+  gradient highway; applied gradient clipping as standard practice; and
+  added a temporal attention head to an LSTM. You compared the three on
+  a synthetic financial time series and saw the vanilla RNN struggle on
+  longer sequences while LSTM and GRU converged reliably.
+</p>
+<p>
+  Lesson 5.4 takes the attention idea and makes it the <em>only</em>
+  mechanism — no recurrence, pure parallel self-attention. That is the
+  Transformer, and it changed the entire NLP field in 2017.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../02/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    5.2 CNNs and Computer Vision
+  </a>
+  <a href="../04/textbook.html" class="next">
+    <span class="label">Next →</span>
+    5.4 Transformers
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

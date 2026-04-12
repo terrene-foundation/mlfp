@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.6 — NLP: Text to Topics | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.6</span>
+  NLP — From Text to Topics
+</h1>
+
+<p class="lead">
+  Text is the most common unstructured data type in every business:
+  product reviews, support tickets, news articles, chat logs, legal
+  contracts. Today you will turn raw text into numbers with TF-IDF and
+  BM25, learn how LDA generates topics probabilistically, and watch
+  BERTopic combine transformer embeddings with clustering to produce
+  the most interpretable topic models available in 2026. By the end
+  you will be able to extract and evaluate topics from Singapore news
+  articles and explain what the numbers in a topic model actually mean.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Every week your company generates thousands of text artefacts —
+  tickets, emails, reviews, reports. Nobody has time to read them all.
+  <em>Topic modelling</em> discovers the themes automatically: clusters
+  of words that appear together in documents, each corresponding to a
+  theme like "billing complaints", "feature requests", or "Q4 legal
+  updates". The themes become features (how much of this document is
+  about billing?) and the features drive downstream decisions
+  (auto-route to the right team).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Text → vectors → topics → features</text>
+  <rect x="30" y="40" width="140" height="150" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="100" y="60" text-anchor="middle" font-size="12" font-weight="600">Raw text</text>
+  <text x="40" y="85" font-size="10" fill="#64748B">"MRT delay again..."</text>
+  <text x="40" y="105" font-size="10" fill="#64748B">"Best hawker in CBD..."</text>
+  <text x="40" y="125" font-size="10" fill="#64748B">"HDB price rose 5%..."</text>
+  <text x="40" y="145" font-size="10" fill="#64748B">"Budget 2026 measures..."</text>
+
+  <line x1="180" y1="115" x2="220" y2="115" stroke="#0D9488" stroke-width="2"/>
+  <polygon points="220,115 214,111 214,119" fill="#0D9488"/>
+
+  <rect x="230" y="40" width="140" height="150" fill="#F0FDFA" stroke="#0D9488"/>
+  <text x="300" y="60" text-anchor="middle" font-size="12" font-weight="600" fill="#0D9488">TF-IDF / BERT</text>
+  <text x="240" y="95" font-family="JetBrains Mono" font-size="10">[0.1, 0.8, 0.0, ...]</text>
+  <text x="240" y="115" font-family="JetBrains Mono" font-size="10">[0.5, 0.0, 0.3, ...]</text>
+  <text x="240" y="135" font-family="JetBrains Mono" font-size="10">[0.0, 0.1, 0.9, ...]</text>
+  <text x="240" y="155" font-family="JetBrains Mono" font-size="10">[0.2, 0.2, 0.7, ...]</text>
+
+  <line x1="380" y1="115" x2="420" y2="115" stroke="#0D9488" stroke-width="2"/>
+  <polygon points="420,115 414,111 414,119" fill="#0D9488"/>
+
+  <rect x="430" y="40" width="140" height="150" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="500" y="60" text-anchor="middle" font-size="12" font-weight="600" fill="#F59E0B">LDA / BERTopic</text>
+  <text x="440" y="90" font-size="10">Topic 0: transport</text>
+  <text x="440" y="110" font-size="10">Topic 1: food</text>
+  <text x="440" y="130" font-size="10">Topic 2: housing</text>
+  <text x="440" y="150" font-size="10">Topic 3: policy</text>
+
+  <line x1="580" y1="115" x2="620" y2="115" stroke="#0D9488" stroke-width="2"/>
+  <polygon points="620,115 614,111 614,119" fill="#0D9488"/>
+
+  <rect x="630" y="40" width="60" height="150" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="660" y="60" text-anchor="middle" font-size="11" font-weight="600" fill="#4F46E5">Features</text>
+  <text x="660" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="9">p(topic|doc)</text>
+  <text x="660" y="130" text-anchor="middle" font-size="10" fill="#64748B">downstream</text>
+  <text x="660" y="145" text-anchor="middle" font-size="10" fill="#64748B">models</text>
+</svg>
+<figcaption>The text analysis pipeline: documents become vectors via TF-IDF or transformer embeddings, then topic models discover themes, which become features for downstream supervised tasks.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>TF-IDF derivation</h3>
+
+<p>
+  The first step in any text pipeline is to turn documents into
+  vectors. The simplest approach — <em>bag of words</em> — counts how
+  many times each term appears in each document. This overweights
+  common words (the, and, to). <strong>TF-IDF</strong> (term frequency
+  times inverse document frequency) fixes this by downweighting terms
+  that appear in many documents.
+</p>
+
+<div class="annotated-equation">
+  $$ \text{tf}(t, d) \;=\; \frac{\text{count}(t \text{ in } d)}{\text{len}(d)} $$
+  $$ \text{idf}(t) \;=\; \log \frac{N}{\text{df}(t)} $$
+  $$ \text{tfidf}(t, d) \;=\; \text{tf}(t, d) \cdot \text{idf}(t) $$
+</div>
+
+<p>
+  where $N$ is the number of documents and $\text{df}(t)$ is the number
+  of documents containing term $t$. The intuition: a word that appears
+  in <em>every</em> document (the) has $\text{idf} = \log(N/N) = 0$,
+  contributing nothing. A word that appears in <em>one</em> document
+  has $\text{idf} = \log N$, contributing a lot. TF-IDF vectors are
+  the workhorse of classical NLP — sparse, interpretable, fast to
+  compute.
+</p>
+
+<h3>BM25 — TF-IDF's smarter cousin</h3>
+
+<p>
+  TF-IDF has two weaknesses: it is linear in term frequency (repeating
+  a word 10 times contributes 10×, even though the 10th repetition
+  tells you almost nothing new) and it does not account for document
+  length (a term in a 10-word tweet should count more than the same
+  term in a 10,000-word report). <strong>BM25</strong> fixes both:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{BM25}(t, d) \;=\; \text{idf}(t) \cdot \frac{(k_1 + 1)\,\text{tf}(t,d)}{\text{tf}(t,d) + k_1 \left(1 - b + b\,\frac{|d|}{\text{avg}|d|}\right)} $$
+</div>
+
+<p>
+  where $k_1 \approx 1.2$ and $b \approx 0.75$ are the standard
+  parameters. The term-frequency contribution saturates (no matter
+  how many times a word appears, it contributes at most $k_1 + 1$),
+  and document length is normalised against the corpus average.
+  BM25 is the ranking function behind Elasticsearch and Apache Lucene
+  — if you have used Google's search, you have used a variant of
+  BM25.
+</p>
+
+<h3>Word embeddings — a preview</h3>
+
+<p>
+  TF-IDF represents each term as a one-hot dimension. "Bank" (financial)
+  and "bank" (river) map to the same dimension. "Happy" and "joyful"
+  map to different dimensions. This is the <em>semantic</em> limitation
+  of sparse representations.
+</p>
+
+<p>
+  <strong>Word2Vec</strong>, <strong>GloVe</strong>, and <strong>FastText</strong>
+  solve this by learning <em>dense</em> vectors where similar words
+  have similar coordinates. The principle: "words that appear in
+  similar contexts have similar meanings" (the distributional
+  hypothesis). Skip-gram Word2Vec trains a small neural network to
+  predict the context of a target word, and the hidden-layer weights
+  become the embeddings.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — preview of the pivot</span>
+  <p>
+    How does Word2Vec learn these vectors? It uses gradient descent
+    on a classification loss. The hidden layer activations <em>are</em>
+    the word embeddings — features learned by optimisation. We will
+    meet this idea explicitly in Lesson 4.8: hidden layers are
+    automated feature engineering with error feedback.
+  </p>
+</div>
+
+<h3>Latent Dirichlet Allocation (LDA)</h3>
+
+<p>
+  LDA is a generative model for text. Its story:
+</p>
+
+<ol>
+  <li>For each topic $k$, draw a word distribution $\boldsymbol{\phi}_k$ from a Dirichlet prior.</li>
+  <li>For each document $d$, draw a topic distribution $\boldsymbol{\theta}_d$ from another Dirichlet.</li>
+  <li>For each word position in document $d$: first draw a topic $z$ from $\boldsymbol{\theta}_d$, then draw a word from $\boldsymbol{\phi}_z$.</li>
+</ol>
+
+<p>
+  Inference reverses the story: given the words, find the most likely
+  topic distributions. This is usually done with variational inference
+  or collapsed Gibbs sampling. Each fitted document is represented as
+  a distribution over topics — a soft assignment, just like GMM's
+  responsibilities.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">LDA plate notation — the generative story</text>
+  <!-- Outer plate: document -->
+  <rect x="40" y="50" width="640" height="180" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3" rx="8"/>
+  <text x="660" y="220" text-anchor="end" font-size="11" fill="#64748B">N documents (plate)</text>
+
+  <!-- Inner plate: word position -->
+  <rect x="240" y="100" width="400" height="110" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3" rx="8"/>
+  <text x="620" y="200" text-anchor="end" font-size="11" fill="#64748B">per word (plate)</text>
+
+  <!-- alpha -->
+  <circle cx="90" cy="140" r="20" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="90" y="145" text-anchor="middle" font-family="Inter" font-size="14">α</text>
+  <text x="90" y="180" text-anchor="middle" font-size="11" fill="#64748B">doc prior</text>
+
+  <!-- theta -->
+  <circle cx="170" cy="140" r="20" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="170" y="145" text-anchor="middle" font-family="Inter" font-size="14">θ</text>
+  <text x="170" y="180" text-anchor="middle" font-size="11" fill="#64748B">doc topics</text>
+
+  <!-- z -->
+  <circle cx="320" cy="140" r="20" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="320" y="145" text-anchor="middle" font-family="Inter" font-size="14">z</text>
+  <text x="320" y="180" text-anchor="middle" font-size="11" fill="#64748B">topic</text>
+
+  <!-- w -->
+  <circle cx="430" cy="140" r="20" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="430" y="145" text-anchor="middle" font-family="Inter" font-size="14">w</text>
+  <text x="430" y="180" text-anchor="middle" font-size="11" fill="#64748B">word (obs)</text>
+
+  <!-- phi -->
+  <circle cx="540" cy="140" r="20" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="540" y="145" text-anchor="middle" font-family="Inter" font-size="14">φ</text>
+  <text x="540" y="180" text-anchor="middle" font-size="11" fill="#64748B">topic words</text>
+
+  <!-- beta -->
+  <circle cx="620" cy="140" r="20" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="620" y="145" text-anchor="middle" font-family="Inter" font-size="14">β</text>
+  <text x="620" y="180" text-anchor="middle" font-size="11" fill="#64748B">word prior</text>
+
+  <!-- arrows -->
+  <g stroke="#475569" stroke-width="1.5" fill="none">
+    <line x1="110" y1="140" x2="150" y2="140"/><polygon points="150,140 144,136 144,144" fill="#475569"/>
+    <line x1="190" y1="140" x2="300" y2="140"/><polygon points="300,140 294,136 294,144" fill="#475569"/>
+    <line x1="340" y1="140" x2="410" y2="140"/><polygon points="410,140 404,136 404,144" fill="#475569"/>
+    <line x1="520" y1="140" x2="450" y2="140"/><polygon points="450,140 456,136 456,144" fill="#475569"/>
+    <line x1="600" y1="140" x2="560" y2="140"/><polygon points="560,140 566,136 566,144" fill="#475569"/>
+  </g>
+</svg>
+<figcaption>LDA plate notation. Greek letters are hyperparameters (priors); $\theta$ and $\phi$ are learned; $z$ is latent; $w$ is observed. Plates denote repetition.</figcaption>
+</figure>
+
+<h3>NMF — the matrix factorisation view</h3>
+
+<p>
+  Non-negative Matrix Factorisation (NMF) decomposes the TF-IDF matrix
+  into $W H$ where both $W$ and $H$ have non-negative entries. $W$
+  rows become topic weights for each document; $H$ rows become word
+  weights for each topic. NMF is faster than LDA, gives sparser and
+  often more interpretable topics, and is our go-to when the corpus is
+  medium-sized and the task is exploratory.
+</p>
+
+<h3>BERTopic</h3>
+
+<p>
+  <strong>BERTopic</strong> is the 2020s upgrade to topic modelling. It
+  replaces TF-IDF with transformer embeddings (typically
+  sentence-transformers), reduces them with UMAP, clusters with HDBSCAN,
+  then computes a <em>class-based TF-IDF (c-TF-IDF)</em> to extract
+  representative words for each cluster. The result: topics that
+  capture semantic relationships (not just co-occurrence) and
+  automatically determine their own number.
+</p>
+
+<pre><code class="language-python">from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+topic_model = BERTopic(embedding_model=model, min_topic_size=15)
+topics, probs = topic_model.fit_transform(sg_news_articles)
+print(topic_model.get_topic_info().head(10))</code></pre>
+
+<h3>Coherence metrics — how good is a topic?</h3>
+
+<p>
+  Topic model quality is hard to evaluate objectively. The standard
+  approach is <strong>coherence</strong> — how often do the top words
+  of a topic co-occur in a reference corpus? A common variant is
+  <strong>NPMI</strong> (normalised pointwise mutual information):
+</p>
+
+<div class="annotated-equation">
+  $$ \text{NPMI}(w_i, w_j) \;=\; \frac{\log\bigl(P(w_i, w_j) / (P(w_i)\,P(w_j))\bigr)}{-\log P(w_i, w_j)} $$
+</div>
+
+<p>
+  NPMI lives in $[-1, 1]$: positive for words that co-occur more than
+  chance, negative otherwise. Average NPMI over the top 10 words of
+  each topic and across topics — higher is better. NPMI is the metric
+  reported in most modern topic modelling papers.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Kailash integration: ModelVisualizer for topics</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash's <code>ModelVisualizer</code> has a
+    <code>topic_heatmap()</code> helper that takes a fitted topic
+    model and produces a term × topic Plotly heatmap — the visual
+    equivalent of printing the top words per topic. For BERTopic, it
+    wraps BERTopic's own visualisation API. Use it in reports to
+    stakeholders who want to see the topics at a glance.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Singapore News Articles</h2>
+
+<pre><code class="language-python">import polars as pl
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import NMF, LatentDirichletAllocation
+
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+news = loader.load("mlfp04", "sg_news.parquet")
+corpus = news["article_body"].to_list()
+
+# Method 1: TF-IDF + NMF
+vec = TfidfVectorizer(max_features=5000, stop_words="english", min_df=5, max_df=0.7)
+X_tfidf = vec.fit_transform(corpus)
+nmf = NMF(n_components=10, random_state=42).fit(X_tfidf)
+
+for k, topic in enumerate(nmf.components_):
+    top_words = [vec.get_feature_names_out()[i] for i in topic.argsort()[-10:][::-1]]
+    print(f"Topic {k}: {', '.join(top_words)}")
+
+# Method 2: LDA
+lda = LatentDirichletAllocation(n_components=10, random_state=42).fit(X_tfidf)
+for k, topic in enumerate(lda.components_):
+    top_words = [vec.get_feature_names_out()[i] for i in topic.argsort()[-10:][::-1]]
+    print(f"LDA Topic {k}: {', '.join(top_words)}")</code></pre>
+
+<p>
+  Typical outputs on Singapore news: topics emerge as "transport and
+  MRT", "HDB and property", "Budget and policy", "food and hawker
+  culture", "ASEAN diplomacy", etc. The LDA topics are usually softer
+  (each topic has broad word distributions), while NMF topics are
+  sparser and cleaner. Pick the method that matches your downstream
+  need — NMF for visualisation-friendly single themes, LDA when you
+  need soft topic assignments for mixture features.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Skipping stopword removal.</strong> Without stopwords removed, your top words will be "the", "and", "to", "of". Always use a stopword list for the target language.</li>
+  <li><strong>Too few or too many topics.</strong> LDA and NMF both require you to set $K$. Start with 10 – 20 and tune with coherence.</li>
+  <li><strong>Evaluating on perplexity.</strong> LDA's likelihood-based metric does not correlate with human judgments of topic quality. Use NPMI instead.</li>
+  <li><strong>Running BERTopic on tiny datasets.</strong> BERTopic needs a few hundred documents minimum. For smaller corpora, fall back to TF-IDF + NMF.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 6.</strong></p>
+  <ol>
+    <li>Load the Singapore news corpus.</li>
+    <li>Vectorise with TF-IDF (5000 features, English stopwords).</li>
+    <li>Fit NMF with $K = 10$ and LDA with $K = 10$. Print top-10 words per topic.</li>
+    <li>Fit BERTopic with a sentence-transformer model.</li>
+    <li>Compute NPMI coherence for all three and compare.</li>
+    <li>Interpret the topics — give each a human-readable label.</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to Lesson 4.3:</strong> NMF is a non-negative PCA relative — same low-rank idea, different constraint.</li>
+  <li><strong>Back to Lesson 4.5:</strong> Topic modelling is association rule mining for words and documents. Same discovery mindset, different objects.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> NMF is the closest classical technique to matrix factorisation — in 4.7 we will factorise user-item ratings the same way NMF factorises document-word counts.</li>
+  <li><strong>Forward to M5 (LLMs):</strong> BERTopic is a stepping stone to transformer-based NLP. The sentence embeddings it uses are produced by a frozen BERT model — we will train and fine-tune such models in M5.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  Notice what happened today. We started with a bag-of-words view —
+  each term is its own dimension — and ended with dense embeddings
+  produced by a transformer model. Somewhere in the middle we said
+  "how does Word2Vec learn these vectors?" and promised to answer it
+  in 4.8. That answer is the biggest pivot in the curriculum. You are
+  now one lesson away from it. In 4.7 you will watch collaborative
+  filtering factorise a user-item matrix using the <em>same</em> math
+  that NMF uses to factorise a document-word matrix — and you will
+  see for the first time that <em>optimisation discovers features</em>.
+</p>
+
+</main>
+</body>
+</html>

@@ -4,9 +4,18 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP01 — Exercise 3: Functions and Aggregation
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Write reusable Python functions and use Polars group_by/agg
-#   to compute district-level statistics — the foundation of every
-#   data summary you will write in this course.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Define functions that accept parameters and return values
+#   - Use loops to process collections and iterate over DataFrame rows
+#   - Aggregate data by groups using group_by() + agg()
+#   - Apply multiple statistics (mean, median, std, quantile) in one call
+#   - Write reusable helper functions for common data analysis tasks
+#
+# PREREQUISITES: Complete Exercise 2 first (filtering, with_columns, chaining).
+#
+# ESTIMATED TIME: 45-60 minutes
 #
 # TASKS:
 #   1. Write helper functions with def, parameters, and return values
@@ -14,6 +23,12 @@
 #   3. Compute mean, median, std, count, and quantiles per district
 #   4. Apply functions inside Polars expressions with map_elements()
 #   5. Build a ranked district report and iterate over it with a for loop
+#
+# DATASET: Singapore HDB resale flat transactions
+#   Source: Housing & Development Board (data.gov.sg)
+#   Rows: ~500,000 transactions | Columns: month, town, flat_type,
+#   floor_area_sqm, resale_price, and more
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,6 +47,12 @@ hdb = hdb.with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
     pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
 )
+
+print("=" * 60)
+print("  MLFP01 Exercise 3: Functions and Aggregation")
+print("=" * 60)
+print(f"\n  Data loaded: hdb_resale.parquet ({hdb.height:,} rows, {hdb.width} columns)")
+print(f"  You're ready to start!\n")
 
 print("=== HDB Resale Dataset ===")
 print(f"Shape: {hdb.shape}")
@@ -89,6 +110,15 @@ print(price_range_label(720_000))
 test_prices = pl.Series("prices", [300_000, 400_000, 500_000, 600_000, 700_000])
 print(f"IQR of test prices: {format_sgd(compute_iqr(test_prices))}")
 
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert format_sgd(485_000) == "S$485,000", f"format_sgd returned: {format_sgd(485_000)}"
+assert "Mid-range" in price_range_label(485_000), "485k should be Mid-range"
+assert "Luxury" in price_range_label(720_000), "720k should be Luxury"
+assert compute_iqr(test_prices) == 200_000.0, (
+    f"IQR of test series should be 200,000, got {compute_iqr(test_prices)}"
+)
+print("\n✓ Checkpoint 1 passed — all three functions work correctly\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: group_by() + agg() — the aggregation pattern
@@ -125,6 +155,22 @@ district_stats = (
 print(f"\n=== District Statistics ===")
 print(f"Districts: {district_stats.height}")
 print(district_stats.head(5))
+# INTERPRETATION: Sorting by median_price shows the hierarchy of Singapore's
+# housing market. Districts at the top (e.g., Queenstown, Bishan) command
+# premium prices because of central location, MRT access, and strong demand.
+# The spread between min_price and max_price within a district reflects how
+# diverse the housing stock is — some districts have both studio-sized and
+# executive flats.
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert district_stats.height > 0, "district_stats should have rows"
+assert "transaction_count" in district_stats.columns, "Missing transaction_count column"
+assert "median_price" in district_stats.columns, "Missing median_price column"
+# The most expensive district should be at the top (sorted descending)
+top_median = district_stats["median_price"][0]
+bottom_median = district_stats["median_price"][-1]
+assert top_median >= bottom_median, "Results should be sorted by median_price descending"
+print("\n✓ Checkpoint 2 passed — group_by/agg producing correct district statistics\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -156,6 +202,21 @@ print(
         "cv_price_pct",
     ).head(10)
 )
+# INTERPRETATION: cv_price_pct (Coefficient of Variation) is key here.
+# A district with CV=25% has prices clustered tightly around the mean.
+# A district with CV=40%+ has a wide mix — budget HDBs beside premium ones.
+# Districts with high CV are harder to generalise about — always segment them.
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert "iqr_price" in district_stats.columns, "iqr_price column should be added"
+assert "cv_price_pct" in district_stats.columns, "cv_price_pct column should be added"
+# IQR should equal q75 - q25 for the first row
+row = district_stats.row(0, named=True)
+expected_iqr = row["q75_price"] - row["q25_price"]
+assert abs(row["iqr_price"] - expected_iqr) < 1, (
+    f"iqr_price mismatch: {row['iqr_price']} vs {expected_iqr}"
+)
+print("\n✓ Checkpoint 3 passed — derived columns computed from aggregates correctly\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -191,6 +252,17 @@ annual_volume = (
 
 print(f"\n=== Annual Volume: Bishan (sample) ===")
 print(annual_volume.filter(pl.col("town") == "BISHAN"))
+# INTERPRETATION: Comparing transaction counts across years reveals market
+# cycles. A sudden drop may indicate policy intervention (e.g., cooling
+# measures). A spike often follows a policy relaxation or economic stimulus.
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+# Each (town, flat_type) pair should produce exactly one row
+n_unique_pairs = hdb.select(["town", "flat_type"]).unique().height
+assert town_flat_stats.height == n_unique_pairs, (
+    f"Expected {n_unique_pairs} groups, got {town_flat_stats.height}"
+)
+print("\n✓ Checkpoint 4 passed — multi-key group_by producing one row per group pair\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -237,5 +309,37 @@ print(f"  Average district median:   {format_sgd(all_medians.mean())}")
 print(
     f"  Price spread (max - min):  {format_sgd(all_medians.max() - all_medians.min())}"
 )
+# INTERPRETATION: The spread between the most and least expensive districts
+# quantifies Singapore's housing inequality. A wide spread (>S$200k) indicates
+# that geography still matters significantly — where you buy affects your
+# long-term asset value, not just your monthly commute.
 
-print("\n✓ Exercise 3 complete — functions and group_by/agg aggregation")
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert all_medians.max() > all_medians.min(), (
+    "Most expensive should be more than least expensive"
+)
+assert top_15.height == 15, "Top 15 should have exactly 15 rows"
+print("\n✓ Checkpoint 5 passed — for loop and district report generated correctly\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 58)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 58)
+print("""
+  ✓ Functions: def, parameters, return, type hints
+  ✓ Conditional logic: if/elif/else inside functions
+  ✓ group_by() + agg(): the core pattern for grouped statistics
+  ✓ Multiple aggregations: mean, median, std, min, max, quantile
+  ✓ Multi-key grouping: group by (town, flat_type) simultaneously
+  ✓ for loops: .iter_rows(named=True) to process each row as a dict
+  ✓ Reusable helpers: functions that format, classify, and compute
+
+  NEXT: In Exercise 4, you'll combine data from multiple tables
+  using joins — merging HDB transactions with MRT station proximity
+  and school density data. You'll learn when to use left vs inner
+  joins, how to handle NULLs after a join, and how to enrich a
+  dataset with spatial context.
+""")

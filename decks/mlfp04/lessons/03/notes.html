@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.3 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.3</span>
+  Dimensionality Reduction
+</h1>
+
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~5 min per slide
+</p>
+
+<p>
+  This lesson has the best ratio of pedagogical payoff to mathematical
+  density in M4. PCA is the one algorithm in classical ML with a clean
+  closed-form derivation, and walking through it gives students a rare
+  moment of "oh, the math actually works out". Spend extra time on the
+  loadings — they are what makes PCA interpretable and what stakeholders
+  care about.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Dimensionality Reduction</h3>
+  <p>
+    Open: "In 4.1 and 4.2 we asked 'which group'. Today we ask a
+    different question: 'which axis'. Not 'where does this point live'
+    but 'along which direction does the data vary the most'. That
+    question has a beautiful closed-form answer, and it will teach you
+    half of linear algebra along the way."
+  </p>
+  <div class="transition">→ "Let's motivate it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Motivation</span></div>
+  <h3>From "which group" to "which axis"</h3>
+  <p>
+    Give a concrete example: "Your feature table has 50 columns. Six of
+    them are variants of 'total amount' (spend, revenue, basket value,
+    lifetime value, etc). They are 95% correlated. The model treats them
+    as independent information and overfits. PCA replaces the six with
+    one or two linear combinations that capture the same signal without
+    the redundancy."
+  </p>
+  <div class="audience-cue beginner">
+    "Think of it as 'find the single column that best summarises a bunch of related columns, then repeat'."
+  </div>
+  <div class="transition">→ "Here's what it looks like geometrically."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Rotation diagram</span></div>
+  <h3>PCA rotates the axes to the data</h3>
+  <p>
+    Walk the two panels. The left shows data elongated along the
+    $y = -x$ diagonal in the original coordinates. Most of the variance
+    is along that diagonal but PC1 does not exist yet — the axes are
+    $x_1$ and $x_2$. On the right, PCA has found new axes aligned with
+    the data: PC1 along the diagonal, PC2 perpendicular. Projecting
+    onto PC1 alone recovers almost all the information.
+  </p>
+  <div class="transition">→ "How does PCA find PC1? Variance maximisation."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~6 min</span><span>Lagrangian derivation</span></div>
+  <h3>Deriving PCA — one Lagrangian</h3>
+  <p>
+    Walk the derivation step by step on the board. "We want the direction
+    $\mathbf{w}$ that maximises the variance of the projections.
+    Constraint: $\mathbf{w}$ must be a unit vector, otherwise we could
+    cheat by making it huge. Lagrangian, take the derivative, set to
+    zero, and we get $C \mathbf{w} = \lambda \mathbf{w}$ — an eigenvalue
+    equation."
+  </p>
+  <p>
+    Pause here: "This is rare. Most ML problems have no closed form.
+    PCA is one of a handful of problems where the optimisation reduces
+    to linear algebra you already know."
+  </p>
+  <div class="audience-cue beginner">
+    "If the algebra is hazy, remember the conclusion: PCA solves the problem by computing eigenvectors of the covariance matrix. The biggest eigenvalue gives you PC1."
+  </div>
+  <div class="audience-cue expert">
+    "The Rayleigh quotient $\mathbf{w}^\top C \mathbf{w} / \mathbf{w}^\top \mathbf{w}$ is maximised at the top eigenvector — this is the variational characterisation of eigenvalues. Same idea appears in spectral clustering and graph Laplacians."
+  </div>
+  <div class="transition">→ "In practice, we use SVD instead."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~5 min</span><span>SVD</span></div>
+  <h3>SVD = PCA's computational engine</h3>
+  <p>
+    Walk the diagram. "Every $N \times D$ matrix factorises as $U \Sigma V^\top$.
+    $V$'s columns are the principal component directions. Σ's diagonal
+    gives you the singular values, and the variance captured by each
+    component is $\sigma_i^2 / (N-1)$."
+  </p>
+  <p>
+    Explain why SVD is preferred: "Forming $X^\top X$ squares the
+    condition number and loses precision. SVD skips this step and works
+    on $X$ directly. Every production PCA library — sklearn, PyTorch,
+    JAX — uses SVD under the hood."
+  </p>
+  <div class="transition">→ "Now the practical question: how many components?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Scree plot</span></div>
+  <h3>Scree plot: how many components?</h3>
+  <p>
+    Walk the plot. "Bars descend because components are sorted by
+    variance. The elbow is at $k \approx 4$ in this example — after that,
+    adding more components buys you little." Explain the two heuristics:
+    visual elbow (subjective) vs variance threshold (objective). Use
+    both, agree on the answer.
+  </p>
+  <div class="transition">→ "But components are just numbers unless you interpret them."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Loadings</span></div>
+  <h3>Loadings make PCA interpretable</h3>
+  <p>
+    Walk the code and the example. "If PC1 has large positive loadings on
+    spend, visits, and items, it is an 'overall activity' axis. If PC2 has
+    positive loading on account age and negative on recent clicks, it is
+    a 'tenure vs novelty' axis. These names are what the stakeholder
+    cares about. A scree plot without loadings is an academic exercise."
+  </p>
+  <div class="audience-cue beginner">
+    "You name PCs the same way you name clusters — look at which original features dominate, and give it a human-meaningful label."
+  </div>
+  <div class="transition">→ "Next: what if the structure is curved?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Kernel PCA</span></div>
+  <h3>Kernel PCA — for curved structure</h3>
+  <p>
+    Brief. "PCA can only rotate. For S-curves, spirals, rings — curved
+    manifolds — you need kernel PCA. It applies PCA in a higher-dim
+    feature space via the kernel trick. RBF kernel is the default.
+    Scales only to a few thousand points because it builds an $N \times N$
+    matrix."
+  </p>
+  <div class="transition">→ "And for visualisation, two non-linear methods."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>t-SNE</span></div>
+  <h3>t-SNE: good for plots, bad for features</h3>
+  <p>
+    Walk the KL formula at a high level. "t-SNE defines a notion of
+    closeness in high-dim space and another in low-dim space, then
+    shoves the low-dim points around until the two notions match. The
+    result is gorgeous visualisations but non-deterministic, with no
+    inverse transform."
+  </p>
+  <div class="audience-cue expert">
+    "t-SNE's pairwise distributions use Gaussian kernels in high-dim and Student's t in low-dim. The heavy tails of the t distribution prevent the 'crowding problem' where many points want to be near the origin in 2D."
+  </div>
+  <p>
+    Most importantly: "Never use t-SNE output as features for a
+    downstream model. The stochasticity means your model gets different
+    inputs every time you run it. Use it only for visualisation."
+  </p>
+  <div class="transition">→ "UMAP fixes most of t-SNE's problems."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>UMAP</span></div>
+  <h3>UMAP: newer, faster, better defaults</h3>
+  <p>
+    Key points: faster, preserves more global structure, has inverse
+    transform, deterministic with a seed. This is our default choice for
+    any visualisation task.
+  </p>
+  <div class="transition">→ "Side-by-side table."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Comparison table</span></div>
+  <h3>t-SNE vs UMAP at a glance</h3>
+  <p>
+    Walk the table quickly. Recap: UMAP for almost everything. t-SNE
+    only if you already know exactly why you need it. "In the exercise
+    you will try both and see the difference."
+  </p>
+  <div class="transition">→ "One more theoretical result."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Eckart-Young</span></div>
+  <h3>Eckart-Young: PCA is optimal</h3>
+  <p>
+    State the theorem informally: "Among all rank-$k$ approximations of
+    a matrix, the truncated SVD is the best in Frobenius norm. PCA is
+    provably optimal for linear compression — you cannot beat it with a
+    better linear method."
+  </p>
+  <div class="audience-cue expert">
+    "The proof uses the fact that the Frobenius norm is orthogonally invariant and the singular values are ordered. Extends to nuclear norm via Mirsky's theorem, which is why nuclear-norm minimisation is the convex relaxation of rank minimisation in matrix completion."
+  </div>
+  <div class="transition">→ "So how many components does your data actually need?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Intrinsic dimension</span></div>
+  <h3>Intrinsic dimension</h3>
+  <p>
+    Brief. Three ways to estimate: scree elbow, variance threshold,
+    participation ratio. If the intrinsic dimension is close to the
+    number of features, PCA will not help much — you cannot compress
+    data that has no redundancy.
+  </p>
+  <div class="transition">→ "Let's see it on real data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>Worked example: compress customer features</h3>
+  <p>
+    Walk the code. Point at the result: "15 features, 6 components for
+    90% variance. Downstream models will train on 6 inputs instead of
+    15." Forward-connect: "In the exercise you will compare a logistic
+    regression trained on the raw features vs on the PCA features."
+  </p>
+  <div class="transition">→ "Kailash wraps this."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Kailash engine</span></div>
+  <h3>Kailash ModelVisualizer</h3>
+  <p>
+    Quick. "ModelVisualizer has a scree_plot helper that takes a fitted
+    PCA and returns a Plotly figure with top-3 loadings annotated. This
+    is the figure we give to stakeholders."
+  </p>
+  <div class="transition">→ "Four rookie mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four rookie mistakes</h3>
+  <p>
+    Walk all four. #2 (t-SNE as feature extractor) is the career-limiting
+    one — the student fixes it in the review and learns the lesson.
+  </p>
+  <div class="transition">→ "Decision matrix."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>When to use which</span></div>
+  <h3>When to use which</h3>
+  <p>
+    Walk the table. PCA is 80% of the answer for business data. UMAP for
+    visualisation. Kernel PCA only for small non-linear problems. t-SNE
+    rarely.
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist. Preview 4.4: "Next we ask a new question — what
+    about the points that don't fit into any cluster? Anomaly detection."
+  </p>
+  <div class="transition">→ End of lesson. Hand out Exercise 3.</div>
+</div>
+
+</main>
+</body>
+</html>

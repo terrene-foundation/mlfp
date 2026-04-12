@@ -1,0 +1,592 @@
+/**
+ * MLFP Textbook CSS — for self-study reading
+ * Terrene Open Academy / Terrene Foundation
+ *
+ * Designed for long-form reading with clear hierarchy,
+ * three-layer markers, and printable to PDF/DOCX.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+:root {
+  /* Match deck theme palette */
+  --mlfp-primary: #0D9488;       /* Teal */
+  --mlfp-depth: #4F46E5;         /* Indigo */
+  --mlfp-bg: #FFFFFF;
+  --mlfp-bg-alt: #F8FAFC;        /* Slate 50 */
+  --mlfp-text: #1E293B;          /* Slate 800 */
+  --mlfp-text-muted: #64748B;    /* Slate 500 */
+  --mlfp-border: #E2E8F0;        /* Slate 200 */
+  --mlfp-code-bg: #F1F5F9;       /* Slate 100 */
+  --mlfp-code-text: #334155;     /* Slate 700 */
+
+  /* Three-layer markers */
+  --mlfp-foundations: #22C55E;   /* Green */
+  --mlfp-theory: #3B82F6;        /* Blue */
+  --mlfp-advanced: #8B5CF6;      /* Purple */
+  --mlfp-warning: #F59E0B;       /* Amber */
+  --mlfp-success: #10B981;       /* Emerald */
+  --mlfp-kailash: #14B8A6;       /* Teal */
+
+  /* Layout */
+  --mlfp-content-width: 760px;
+  --mlfp-line-height: 1.7;
+  --mlfp-base-font: 18px;
+}
+
+/* ── Base typography ──────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: var(--mlfp-base-font);
+  line-height: var(--mlfp-line-height);
+  color: var(--mlfp-text);
+  background: var(--mlfp-bg);
+  margin: 0;
+  padding: 0;
+}
+
+main.textbook {
+  max-width: var(--mlfp-content-width);
+  margin: 0 auto;
+  padding: 60px 32px 120px;
+}
+
+/* ── Top navigation ───────────────────────────────────── */
+
+nav.top-nav {
+  position: sticky;
+  top: 0;
+  background: var(--mlfp-bg);
+  border-bottom: 1px solid var(--mlfp-border);
+  padding: 16px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  z-index: 100;
+}
+
+nav.top-nav .brand {
+  font-weight: 700;
+  color: var(--mlfp-primary);
+}
+
+nav.top-nav a {
+  color: var(--mlfp-text-muted);
+  text-decoration: none;
+  margin-left: 16px;
+}
+
+nav.top-nav a:hover {
+  color: var(--mlfp-primary);
+}
+
+/* ── Headings ─────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--mlfp-text);
+  margin-top: 2.5em;
+  margin-bottom: 0.6em;
+}
+
+h1.lesson-title {
+  font-size: 2.4em;
+  border-bottom: 3px solid var(--mlfp-primary);
+  padding-bottom: 16px;
+  margin-top: 0;
+}
+
+h1.lesson-title .lesson-number {
+  display: block;
+  font-size: 0.45em;
+  font-weight: 500;
+  color: var(--mlfp-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+h2 {
+  font-size: 1.6em;
+  color: var(--mlfp-primary);
+  border-bottom: 1px solid var(--mlfp-border);
+  padding-bottom: 6px;
+}
+
+h3 { font-size: 1.3em; color: var(--mlfp-depth); }
+h4 { font-size: 1.1em; }
+
+/* ── Body text ────────────────────────────────────────── */
+
+p {
+  margin: 1em 0;
+}
+
+p.lead {
+  font-size: 1.15em;
+  color: var(--mlfp-text-muted);
+  font-style: italic;
+  border-left: 4px solid var(--mlfp-primary);
+  padding: 8px 0 8px 18px;
+  margin-bottom: 1.5em;
+}
+
+a {
+  color: var(--mlfp-depth);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--mlfp-primary);
+}
+
+strong { font-weight: 700; }
+em { font-style: italic; }
+
+/* ── Lists ────────────────────────────────────────────── */
+
+ul, ol {
+  padding-left: 1.6em;
+  margin: 1em 0;
+}
+
+li {
+  margin: 0.4em 0;
+}
+
+li > ul, li > ol {
+  margin: 0.4em 0;
+}
+
+/* ── Code ─────────────────────────────────────────────── */
+
+code {
+  font-family: "JetBrains Mono", "Fira Code", Consolas, "SF Mono", monospace;
+  font-size: 0.92em;
+  background: var(--mlfp-code-bg);
+  color: var(--mlfp-code-text);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--mlfp-border);
+}
+
+pre {
+  background: #1E293B;          /* Slate 800 dark for prose contrast */
+  color: #F1F5F9;
+  padding: 18px 22px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1.5em 0;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid #334155;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Inline syntax highlighting (with highlight.js classes) */
+.hljs-keyword { color: #C792EA; }
+.hljs-string { color: #C3E88D; }
+.hljs-comment { color: #546E7A; font-style: italic; }
+.hljs-number { color: #F78C6C; }
+.hljs-function { color: #82AAFF; }
+.hljs-built_in { color: #FFCB6B; }
+
+/* ── Three-layer callouts ─────────────────────────────── */
+
+.callout {
+  margin: 1.8em 0;
+  padding: 18px 24px;
+  border-left: 5px solid;
+  border-radius: 6px;
+  background: var(--mlfp-bg-alt);
+}
+
+.callout > .label {
+  font-size: 0.78em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.callout > p:first-of-type {
+  margin-top: 0;
+}
+
+.callout > p:last-of-type {
+  margin-bottom: 0;
+}
+
+.callout.foundations {
+  border-color: var(--mlfp-foundations);
+  background: rgba(34, 197, 94, 0.06);
+}
+.callout.foundations > .label {
+  color: var(--mlfp-foundations);
+}
+
+.callout.theory {
+  border-color: var(--mlfp-theory);
+  background: rgba(59, 130, 246, 0.06);
+}
+.callout.theory > .label {
+  color: var(--mlfp-theory);
+}
+
+.callout.advanced {
+  border-color: var(--mlfp-advanced);
+  background: rgba(139, 92, 246, 0.06);
+}
+.callout.advanced > .label {
+  color: var(--mlfp-advanced);
+}
+
+.callout.warning {
+  border-color: var(--mlfp-warning);
+  background: rgba(245, 158, 11, 0.07);
+}
+.callout.warning > .label {
+  color: var(--mlfp-warning);
+}
+
+.callout.success {
+  border-color: var(--mlfp-success);
+  background: rgba(16, 185, 129, 0.07);
+}
+.callout.success > .label {
+  color: var(--mlfp-success);
+}
+
+.callout.kailash {
+  border-color: var(--mlfp-kailash);
+  background: linear-gradient(90deg, rgba(20, 184, 166, 0.10), rgba(20, 184, 166, 0.04));
+}
+.callout.kailash > .label {
+  color: var(--mlfp-kailash);
+}
+
+/* ── Math (KaTeX) ─────────────────────────────────────── */
+
+.katex-display {
+  margin: 1.5em 0;
+  padding: 16px;
+  background: var(--mlfp-bg-alt);
+  border: 1px solid var(--mlfp-border);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* ── Tables ───────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.95em;
+}
+
+th, td {
+  padding: 10px 14px;
+  border: 1px solid var(--mlfp-border);
+  text-align: left;
+}
+
+th {
+  background: var(--mlfp-primary);
+  color: white;
+  font-weight: 600;
+}
+
+tr:nth-child(even) {
+  background: var(--mlfp-bg-alt);
+}
+
+/* ── Blockquotes (worked examples, key insights) ──────── */
+
+blockquote {
+  margin: 1.5em 0;
+  padding: 12px 22px;
+  border-left: 4px solid var(--mlfp-text-muted);
+  background: var(--mlfp-bg-alt);
+  color: var(--mlfp-text-muted);
+  font-style: italic;
+}
+
+/* ── Worked example boxes ─────────────────────────────── */
+
+.worked-example {
+  margin: 2em 0;
+  padding: 24px 28px;
+  background: var(--mlfp-bg-alt);
+  border: 1px solid var(--mlfp-border);
+  border-radius: 8px;
+  border-left: 5px solid var(--mlfp-depth);
+}
+
+.worked-example > h3:first-child {
+  margin-top: 0;
+  color: var(--mlfp-depth);
+  font-size: 1.1em;
+}
+
+.worked-example .step {
+  margin: 1.2em 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--mlfp-border);
+}
+
+.worked-example .step-label {
+  font-weight: 700;
+  color: var(--mlfp-depth);
+}
+
+/* ── Try it yourself ──────────────────────────────────── */
+
+.try-it {
+  margin: 2em 0;
+  padding: 22px 26px;
+  background: rgba(13, 148, 136, 0.04);
+  border: 1px dashed var(--mlfp-primary);
+  border-radius: 8px;
+}
+
+.try-it > h3:first-child {
+  margin-top: 0;
+  color: var(--mlfp-primary);
+  font-size: 1.05em;
+}
+
+/* ── Cross-references ─────────────────────────────────── */
+
+.xref {
+  font-size: 0.92em;
+  color: var(--mlfp-text-muted);
+  font-style: italic;
+}
+
+.xref a {
+  color: var(--mlfp-primary);
+}
+
+/* ── Reflection / summary section ─────────────────────── */
+
+.reflection {
+  margin: 2.5em 0 0;
+  padding: 28px;
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.06), rgba(79, 70, 229, 0.04));
+  border-radius: 12px;
+  border: 1px solid var(--mlfp-border);
+}
+
+.reflection > h2:first-child {
+  margin-top: 0;
+  color: var(--mlfp-primary);
+  border: none;
+  padding-bottom: 0;
+}
+
+/* ── Lesson navigation ────────────────────────────────── */
+
+.lesson-nav {
+  display: flex;
+  justify-content: space-between;
+  margin: 4em 0 0;
+  padding: 24px 0;
+  border-top: 1px solid var(--mlfp-border);
+  gap: 16px;
+}
+
+.lesson-nav a {
+  flex: 1;
+  padding: 16px 20px;
+  background: var(--mlfp-bg-alt);
+  border: 1px solid var(--mlfp-border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--mlfp-text);
+  transition: all 0.15s;
+}
+
+.lesson-nav a:hover {
+  background: var(--mlfp-primary);
+  color: white;
+  border-color: var(--mlfp-primary);
+}
+
+.lesson-nav a .label {
+  display: block;
+  font-size: 0.78em;
+  color: var(--mlfp-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.lesson-nav a:hover .label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.lesson-nav a.next {
+  text-align: right;
+}
+
+/* ── Print/PDF export ─────────────────────────────────── */
+
+@media print {
+  nav.top-nav { display: none; }
+  main.textbook { max-width: none; padding: 24px; }
+  body { font-size: 11pt; }
+  h1.lesson-title { page-break-before: always; }
+  pre, .callout, .worked-example, .try-it { page-break-inside: avoid; }
+  .lesson-nav { display: none; }
+  a { color: var(--mlfp-text); text-decoration: none; }
+}
+
+/* ── Mobile ───────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  main.textbook { padding: 32px 20px 80px; }
+  h1.lesson-title { font-size: 1.8em; }
+  h2 { font-size: 1.3em; }
+  body { font-size: 16px; }
+  .lesson-nav { flex-direction: column; }
+}
+
+/* ── Diagrams & illustrations ─────────────────────────── */
+
+figure.diagram {
+  margin: 2em 0;
+  padding: 24px;
+  background: white;
+  border: 1px solid var(--mlfp-border);
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+figure.diagram svg,
+figure.diagram img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+figure.diagram figcaption {
+  margin-top: 14px;
+  font-size: 0.9em;
+  color: var(--mlfp-text-muted);
+  font-style: italic;
+}
+
+/* SVG defaults — make diagrams responsive and crisp */
+svg.illustration {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mermaid diagram container */
+.mermaid {
+  margin: 2em 0;
+  padding: 20px;
+  background: white;
+  border: 1px solid var(--mlfp-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* Side-by-side layout for comparing concepts */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 1.5em 0;
+}
+
+.compare-grid > .col {
+  padding: 18px 20px;
+  background: var(--mlfp-bg-alt);
+  border-radius: 6px;
+  border: 1px solid var(--mlfp-border);
+}
+
+.compare-grid > .col > h4 {
+  margin-top: 0;
+  color: var(--mlfp-primary);
+}
+
+@media (max-width: 768px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+
+/* Process flow (boxes connected by arrows) */
+.process-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 1.5em 0;
+  flex-wrap: wrap;
+}
+
+.process-flow .step-box {
+  padding: 14px 20px;
+  background: var(--mlfp-primary);
+  color: white;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  min-width: 120px;
+}
+
+.process-flow .arrow {
+  font-size: 1.5em;
+  color: var(--mlfp-text-muted);
+}
+
+/* Annotated equation — explanation under each variable */
+.annotated-equation {
+  margin: 2em auto;
+  padding: 20px;
+  text-align: center;
+  background: var(--mlfp-bg-alt);
+  border-radius: 8px;
+  border: 1px solid var(--mlfp-border);
+  font-size: 1.1em;
+}
+
+.annotated-equation .annotations {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.85em;
+  color: var(--mlfp-text-muted);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.annotated-equation .annotations span {
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid var(--mlfp-border);
+  border-radius: 12px;
+}

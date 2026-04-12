@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.1 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.1</span>
+  Clustering
+</h1>
+
+<p class="lead">
+  Total time: ~90 minutes &nbsp;·&nbsp; 20 slides &nbsp;·&nbsp; ~4 minutes per slide average
+</p>
+
+<p>
+  This is the first lesson of the unsupervised module. Students have been in
+  "label-and-loss" mode for all of M3, so the first 10 minutes are about
+  mindset shift. Keep reminding them: no ground truth, no error signal, just
+  structure. The most common blocker is students trying to "validate" their
+  clustering against some true label — there is no such thing today.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div>
+  <h3>Clustering</h3>
+  <p>
+    Open with a framing: "In M3 we built models that predicted a known outcome.
+    Today we stop predicting and start <em>discovering</em>. The data does not
+    tell you what it means — you have to find meaning." Set the 90-minute
+    expectation up front. By the end, they should be able to run the full
+    clustering pipeline on the e-commerce customer data.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners look nervous:</strong> "We are not adding a new algorithm on top of M3 — we are removing one piece (the labels). If anything, the first clustering algorithm you will see is simpler than linear regression."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "You have almost certainly used K-means. The parts you have probably not seen carefully are the gap statistic, HDBSCAN's stability extraction, and the double opt-in pattern in AutoMLEngine."
+  </div>
+  <div class="transition">→ "Let us start with why we even need unsupervised learning."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>M3 → M4 motivation</span></div>
+  <h3>From M3 to M4: the no-label problem</h3>
+  <p>
+    Describe the scenario concretely: "Your marketing manager walks in with
+    10,000 rows. She says 'I want three or four segments — something we can
+    price differently.' There is no label. There is no RMSE to minimise.
+    What do you do?" Pause. Let them sit with it for 5 seconds. The answer —
+    clustering — is the whole module.
+  </p>
+  <div class="transition">→ "Clustering in one picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Workflow diagram</span></div>
+  <h3>Clustering in one picture</h3>
+  <p>
+    Walk the diagram left to right. Unlabelled blob → coloured groups →
+    business meaning. Emphasise the last box: <strong>the algorithm finds
+    the groups, the human finds the meaning</strong>. If all you do is
+    produce "cluster 0, cluster 1, cluster 2" and walk away, you have
+    failed the task.
+  </p>
+  <div class="transition">→ "Let us start with the workhorse — K-means."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>K-means algorithm</span></div>
+  <h3>K-means: alternate two trivial steps</h3>
+  <p>
+    Walk the two-step loop on the board. Emphasise that both steps are
+    <em>monotonic</em> — assign strictly decreases or holds inertia, update
+    strictly decreases or holds inertia — which is why the algorithm must
+    converge. Converging to a local optimum is a different problem (solved
+    by k-means++ init).
+  </p>
+  <div class="audience-cue beginner">
+    "If the formula looks scary: read it as 'for every cluster, sum the squared distance from each point to its centroid, then add all those up'. That's it. K-means tries to make that number as small as possible."
+  </div>
+  <div class="audience-cue expert">
+    "The inertia is the unnormalised variance — minimising it is equivalent to maximising the Calinski-Harabasz ratio for fixed K. This is why CH often agrees with K-means' own choice: it is measuring the same thing."
+  </div>
+  <div class="transition">→ "Here's what convergence looks like visually."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Convergence snapshots</span></div>
+  <h3>K-means convergence in three snapshots</h3>
+  <p>
+    Walk the three panels. In iteration 0 the centroids are randomly
+    initialised (grey points, badly placed centroids). By iteration 3 the
+    centroids are migrating toward the true cluster centres. At convergence,
+    every point's colour matches its nearest centroid and no further
+    movement is possible.
+  </p>
+  <div class="transition">→ "But you still have to pick K."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Picking K</span></div>
+  <h3>Picking K: elbow vs silhouette</h3>
+  <p>
+    Show the code. Emphasise that the elbow method is visual and three
+    analysts will pick three different elbows. The silhouette score gives
+    an objective number. In practice, try silhouette for K from 2 to 10,
+    and take the max. If the silhouette is flat, your data does not have a
+    clear K.
+  </p>
+  <div class="transition">→ "And what exactly is the silhouette?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Silhouette derivation</span></div>
+  <h3>Silhouette in one equation</h3>
+  <p>
+    Walk through $a(i)$, $b(i)$, and $s(i)$ one at a time. $a$ is the
+    intra-cluster distance (small is good). $b$ is the nearest-neighbour
+    cluster distance (large is good). The silhouette rewards $b$ being
+    much larger than $a$.
+  </p>
+  <div class="audience-cue beginner">
+    "$s(i) = 1$ means point $i$ is sitting right on top of its own cluster and miles from any other. $s(i) = 0$ means it could go either way. $s(i) = -1$ means it is in the wrong cluster entirely."
+  </div>
+  <div class="audience-cue expert">
+    "Silhouette is well-defined for any metric, not just Euclidean. For cosine distance on TF-IDF vectors (we will see this in 4.6), it is still a valid quality score — the denominator normalises out the scale."
+  </div>
+  <div class="transition">→ "K-means is not the only game. Let us meet its cousin — the dendrogram."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Dendrogram</span></div>
+  <h3>Hierarchical clustering: one tree, many cuts</h3>
+  <p>
+    The beauty of hierarchical clustering is that you do not have to commit
+    to $K$ up front. Build the tree once, then cut it at whatever level
+    produces the right number of clusters for your question. Point out the
+    red dashed line: cutting there yields {A,B,C}, {D,E}, {F,G,H}. Move the
+    line up and you get two clusters; move it down and you get five.
+  </p>
+  <div class="transition">→ "The choice that matters most is linkage."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Linkage table</span></div>
+  <h3>Linkage: how do you measure cluster distance?</h3>
+  <p>
+    Walk the table row by row. Single linkage is the "friend-of-a-friend"
+    approach and produces long chains — good for connectivity problems,
+    bad for blob detection. Complete linkage is paranoid and produces
+    tight balls. Average linkage is the compromise. Ward's linkage is the
+    K-means-compatible choice and is usually the default.
+  </p>
+  <div class="transition">→ "K-means and Ward both assume blobs. Real data has outliers."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~5 min</span><span>DBSCAN</span></div>
+  <h3>DBSCAN: density, not centroids</h3>
+  <p>
+    Describe the three-way classification: core, border, noise. Walk the
+    diagram. Two knobs: $\varepsilon$ (how far is "nearby") and
+    <code>min_samples</code> (how many neighbours make a dense region).
+    Key selling point: DBSCAN does not force every point into a cluster.
+    Outliers get label $-1$.
+  </p>
+  <div class="audience-cue beginner">
+    "If a point has at least 5 friends within 0.3 units of it, it is a core point. If it has fewer friends but one of them is a core point, it is a border point. If neither, it is noise."
+  </div>
+  <div class="transition">→ "One $\varepsilon$ does not fit clusters of different densities. Enter HDBSCAN."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>HDBSCAN</span></div>
+  <h3>HDBSCAN: DBSCAN at every density</h3>
+  <p>
+    Explain the key insight: HDBSCAN builds the <em>full hierarchy</em> of
+    DBSCAN clusterings across all values of $\varepsilon$ and picks the
+    single clustering that is most stable across the range. In practice,
+    you only set <code>min_cluster_size</code> and HDBSCAN does the rest.
+    This is our default when we do not know the right $K$ and suspect
+    varying density.
+  </p>
+  <div class="transition">→ "One more algorithm for the topology-aware case."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Spectral</span></div>
+  <h3>Spectral clustering in one line</h3>
+  <p>
+    Keep this brief. Mention that it exists, that it handles non-convex
+    clusters, and that it is $O(n^3)$. Most students will never use it on
+    business data but should recognise it on a scikit-learn cheatsheet.
+  </p>
+  <div class="audience-cue expert">
+    "Spectral clustering on the k-nearest-neighbour graph is equivalent to minimising the normalised cut of the graph. This connects to graph neural networks — we will see why in M5 optional content."
+  </div>
+  <div class="transition">→ "How do we judge which clustering is best?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Three metrics</span></div>
+  <h3>Three metrics, one decision</h3>
+  <p>
+    Walk the table. No single metric is sufficient. In practice, if
+    silhouette, DB, and CH all agree, you have a good clustering. If they
+    disagree, something is off — usually the number of clusters or the
+    feature set.
+  </p>
+  <div class="transition">→ "And there is a deeper question — do the clusters even exist?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Gap statistic</span></div>
+  <h3>Gap statistic — does the structure even exist?</h3>
+  <p>
+    This is the most underused concept in clustering. All the other metrics
+    will happily give you an "optimal" $K$ for pure noise. The gap statistic
+    compares your data's dispersion to the dispersion under a null
+    reference — if your data is no better than noise, the gap is not
+    significantly positive, and the honest answer is $K = 1$ (no clusters).
+  </p>
+  <div class="audience-cue expert">
+    "The null reference is typically uniform over the bounding box of your data or uniform over the principal-component box. Sample ~50 null datasets, compute $W_K^\star$ on each, take the mean for the expectation."
+  </div>
+  <div class="transition">→ "The Kailash way to sweep all of this automatically."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~4 min</span><span>AutoMLEngine</span></div>
+  <h3>Kailash AutoMLEngine — clustering sweep with guardrails</h3>
+  <p>
+    Show the config. Emphasise two things: (1) the engine does the whole
+    sweep for you with <code>agent=False</code> — no LLM involvement, just
+    random search over K-means/GMM/HDBSCAN with silhouette scoring; and
+    (2) the double opt-in pattern. You must both set <code>agent=True</code>
+    AND install <code>kailash-ml[agents]</code>. This is deliberate — LLM
+    calls cost money and introduce non-determinism.
+  </p>
+  <div class="transition">→ "One universal rule before we run anything."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Standardisation</span></div>
+  <h3>Standardise, always</h3>
+  <p>
+    Drill this hard. Every distance-based algorithm — K-means, hierarchical,
+    DBSCAN, HDBSCAN, spectral — needs standardised features. Otherwise the
+    feature with the biggest range (usually "income" or "total spend")
+    dominates and the clustering reduces to a 1D partition of that column.
+  </p>
+  <div class="transition">→ "Worked example: the e-commerce customers."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~5 min</span><span>Worked example</span></div>
+  <h3>Worked example: e-commerce customer segmentation</h3>
+  <p>
+    Walk the six-step pipeline. Point them at
+    <code>modules/mlfp04/solutions/ex_1.py</code> for the full script. The
+    key pedagogical moment is step 5: after the algorithm returns labels,
+    the human profiles the clusters and gives them names.
+  </p>
+  <div class="transition">→ "What profiling looks like in practice."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~4 min</span><span>Profile table</span></div>
+  <h3>From cluster to business meaning</h3>
+  <p>
+    Walk the four rows. Cluster 0 has above-average frequency, above-average
+    monetary value, and below-average recency — "loyal high-value". Cluster 2
+    has low frequency, low value, and high recency — "dormant". Each name
+    should suggest an action the business can take.
+  </p>
+  <div class="audience-cue beginner">
+    "If you can't name a cluster, you haven't profiled it enough. Go back to the data and ask: what makes these customers different from the average? Three or four features should jump out."
+  </div>
+  <div class="transition">→ "And here is what you must not do."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four rookie mistakes</h3>
+  <p>
+    Walk all four. Number 1 is the single biggest time-waster in clustering.
+    Number 4 is the single biggest career-limiting mistake — a clustering
+    that lives only in a notebook is wasted work.
+  </p>
+  <div class="transition">→ "Recap and what is next."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 20</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist out loud. Ask for a show of hands on the last bullet
+    ("profile clusters with business names") — if they cannot do that, they
+    should not do the exercise yet. Preview 4.2: soft clustering via the
+    EM algorithm. "You will implement EM in 20 lines and prove that it
+    always improves the log-likelihood."
+  </p>
+  <div class="transition">→ End of lesson. Hand out Exercise 1.</div>
+</div>
+
+</main>
+</body>
+</html>

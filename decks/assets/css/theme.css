@@ -14,23 +14,23 @@
 
 :root {
   /* Primary palette */
-  --ascent-primary: #0D9488;      /* Teal — primary accent */
-  --ascent-depth: #4F46E5;        /* Indigo — depth accent */
-  --ascent-bg: #FFFFFF;           /* White background */
-  --ascent-bg-alt: #F8FAFC;       /* Slate 50 — alternate bg */
-  --ascent-text: #1E293B;         /* Slate 800 — body text */
-  --ascent-code-text: #334155;    /* Slate 700 — code text */
-  --ascent-code-bg: #F8FAFC;      /* Slate 50 — code background */
+  --mlfp-primary: #0D9488;      /* Teal — primary accent */
+  --mlfp-depth: #4F46E5;        /* Indigo — depth accent */
+  --mlfp-bg: #FFFFFF;           /* White background */
+  --mlfp-bg-alt: #F8FAFC;       /* Slate 50 — alternate bg */
+  --mlfp-text: #1E293B;         /* Slate 800 — body text */
+  --mlfp-code-text: #334155;    /* Slate 700 — code text */
+  --mlfp-code-bg: #F8FAFC;      /* Slate 50 — code background */
 
   /* Semantic colors */
-  --ascent-alert: #F59E0B;        /* Amber — warnings */
-  --ascent-error: #F43F5E;        /* Rose — errors/critical */
-  --ascent-success: #10B981;      /* Emerald — success */
+  --mlfp-alert: #F59E0B;        /* Amber — warnings */
+  --mlfp-error: #F43F5E;        /* Rose — errors/critical */
+  --mlfp-success: #10B981;      /* Emerald — success */
 
   /* Three-layer markers */
-  --ascent-foundations: #22C55E;   /* Green — everyone follows */
-  --ascent-theory: #3B82F6;       /* Blue — mathematical depth */
-  --ascent-advanced: #8B5CF6;     /* Purple — expert insight */
+  --mlfp-foundations: #22C55E;   /* Green — everyone follows */
+  --mlfp-theory: #3B82F6;       /* Blue — mathematical depth */
+  --mlfp-advanced: #8B5CF6;     /* Purple — expert insight */
 }
 
 /* ── Base ──────────────────────────────────────────────── */
@@ -38,26 +38,58 @@
 .reveal {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 24px;
-  color: var(--ascent-text);
+  color: var(--mlfp-text);
 }
 
 .reveal .slides {
   text-align: left;
 }
 
-/* Reveal.js sections fill the configured canvas (1280x720).
-   Padding creates internal margins. Content must not exceed
-   the canvas bounds after Reveal's scale transform is applied. */
+/* Reveal.js sections fill the configured canvas (1280×720).
+   Padding creates internal margins on all four sides.
+   Content MUST NOT exceed the canvas bounds — overflow is clipped. */
 .reveal .slides section {
-  padding: 32px 48px !important;
+  padding: 40px 56px !important;   /* generous margins: top/bottom 40, left/right 56 */
   overflow: hidden;
+  box-sizing: border-box;
+  height: 100%;                    /* fill the canvas */
 }
 
-/* All direct children must stay within the padded content area */
+/* All direct children stay within the padded content area */
 .reveal .slides section > * {
   max-width: 100%;
+  max-height: calc(720px - 80px);  /* canvas height minus top+bottom padding */
   overflow-wrap: break-word;
   word-wrap: break-word;
+}
+
+/* SVGs and images: never overflow the slide */
+.reveal .slides section svg,
+.reveal .slides section img {
+  max-width: 100%;
+  max-height: 480px;               /* leave room for title + text */
+  height: auto;
+}
+
+/* Tables: scroll horizontally if too wide, never overflow */
+.reveal .slides section table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Code blocks: scroll if too tall, never overflow the slide */
+.reveal .slides section pre {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Lists: prevent runoff at the bottom */
+.reveal .slides section ul,
+.reveal .slides section ol {
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 /* Slide page number (bottom-right) */
@@ -74,7 +106,7 @@
 .reveal h1 {
   font-size: 1.8em;
   font-weight: 700;
-  color: var(--ascent-primary);
+  color: var(--mlfp-primary);
   margin-bottom: 0.3em;
   line-height: 1.1;
 }
@@ -82,16 +114,16 @@
 .reveal h2 {
   font-size: 1.4em;
   font-weight: 600;
-  color: var(--ascent-text);
+  color: var(--mlfp-text);
   margin-bottom: 0.3em;
-  border-bottom: 2px solid var(--ascent-primary);
+  border-bottom: 2px solid var(--mlfp-primary);
   padding-bottom: 0.15em;
 }
 
 .reveal h3 {
   font-size: 1.05em;
   font-weight: 600;
-  color: var(--ascent-depth);
+  color: var(--mlfp-depth);
   margin-bottom: 0.2em;
 }
 
@@ -112,21 +144,21 @@
 }
 
 .marker-foundations {
-  background: var(--ascent-foundations);
+  background: var(--mlfp-foundations);
 }
 
 .marker-theory {
-  background: var(--ascent-theory);
+  background: var(--mlfp-theory);
 }
 
 .marker-advanced {
-  background: var(--ascent-advanced);
+  background: var(--mlfp-advanced);
 }
 
 /* ── Code blocks ──────────────────────────────────────── */
 
 .reveal pre {
-  background: var(--ascent-code-bg);
+  background: var(--mlfp-code-bg);
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   padding: 16px 20px;
@@ -139,7 +171,7 @@
 
 .reveal code {
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
-  color: var(--ascent-code-text);
+  color: var(--mlfp-code-text);
 }
 
 .reveal pre code {
@@ -147,7 +179,7 @@
 }
 
 .reveal p code, .reveal li code {
-  background: var(--ascent-code-bg);
+  background: var(--mlfp-code-bg);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.85em;
@@ -158,7 +190,7 @@
 
 .equation-box {
   background: #EFF6FF;
-  border: 2px solid var(--ascent-theory);
+  border: 2px solid var(--mlfp-theory);
   border-radius: 8px;
   padding: 16px 20px;
   margin: 12px 0;
@@ -177,8 +209,8 @@
 .term-bias { color: #DC2626; font-weight: 600; }
 .term-variance { color: #2563EB; font-weight: 600; }
 .term-noise { color: #6B7280; font-weight: 600; }
-.term-input { color: var(--ascent-primary); font-weight: 600; }
-.term-output { color: var(--ascent-depth); font-weight: 600; }
+.term-input { color: var(--mlfp-primary); font-weight: 600; }
+.term-output { color: var(--mlfp-depth); font-weight: 600; }
 .term-param { color: #D97706; font-weight: 600; }
 
 /* ── Callout boxes ────────────────────────────────────── */
@@ -192,32 +224,32 @@
 
 .callout-foundations {
   background: #F0FDF4;
-  border-left: 4px solid var(--ascent-foundations);
+  border-left: 4px solid var(--mlfp-foundations);
 }
 
 .callout-theory {
   background: #EFF6FF;
-  border-left: 4px solid var(--ascent-theory);
+  border-left: 4px solid var(--mlfp-theory);
 }
 
 .callout-advanced {
   background: #FAF5FF;
-  border-left: 4px solid var(--ascent-advanced);
+  border-left: 4px solid var(--mlfp-advanced);
 }
 
 .callout-warning {
   background: #FFFBEB;
-  border-left: 4px solid var(--ascent-alert);
+  border-left: 4px solid var(--mlfp-alert);
 }
 
 .callout-error {
   background: #FFF1F2;
-  border-left: 4px solid var(--ascent-error);
+  border-left: 4px solid var(--mlfp-error);
 }
 
 .callout-kailash {
   background: #F0FDFA;
-  border-left: 4px solid var(--ascent-primary);
+  border-left: 4px solid var(--mlfp-primary);
 }
 
 /* ── Two-column layout ────────────────────────────────── */
@@ -257,7 +289,7 @@
 }
 
 .reveal table th {
-  background: var(--ascent-primary);
+  background: var(--mlfp-primary);
   color: white;
   padding: 8px 12px;
   text-align: left;
@@ -270,14 +302,14 @@
 }
 
 .reveal table tr:nth-child(even) td {
-  background: var(--ascent-bg-alt);
+  background: var(--mlfp-bg-alt);
 }
 
 /* ── Kailash bridge slides ────────────────────────────── */
 
 .kailash-bridge {
   background: linear-gradient(135deg, #F0FDFA 0%, #ECFDF5 100%);
-  border: 2px solid var(--ascent-primary);
+  border: 2px solid var(--mlfp-primary);
   border-radius: 12px;
   padding: 16px 20px;
   margin: 12px 0;
@@ -286,7 +318,7 @@
 }
 
 .kailash-bridge h3 {
-  color: var(--ascent-primary);
+  color: var(--mlfp-primary);
   margin-bottom: 8px;
 }
 
@@ -299,7 +331,7 @@
 
 .theory-to-engine .arrow {
   font-size: 1.5em;
-  color: var(--ascent-primary);
+  color: var(--mlfp-primary);
 }
 
 /* ── Title slide ──────────────────────────────────────── */
@@ -322,7 +354,7 @@
 .title-slide .provocation {
   font-size: 1.3em;
   font-style: italic;
-  color: var(--ascent-depth);
+  color: var(--mlfp-depth);
   margin-top: 1em;
 }
 

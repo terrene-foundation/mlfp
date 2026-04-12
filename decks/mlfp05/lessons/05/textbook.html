@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.5 — Generative Models: GANs and Diffusion | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5: Deep Learning</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 5.5</span>
+  Generative Models: GANs and Diffusion
+</h1>
+
+<p class="lead">
+  A generative model learns to produce new samples that look like the
+  training data. The VAE in Lesson 5.1 already did this with a
+  reconstruction loss plus KL regulariser. Today we meet two
+  alternatives: the <strong>Generative Adversarial Network</strong>,
+  which trains a generator and a discriminator in a minimax game, and
+  the <strong>diffusion model</strong>, which noises data progressively
+  and learns to reverse the process. You implement a DCGAN-style MLP
+  generator and a WGAN-GP, debug mode collapse, and get a tour of DDPM.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The GAN Setup</h2>
+
+<p>
+  A GAN has two networks playing a zero-sum game:
+</p>
+
+<ul>
+  <li>A <strong>generator</strong> $G_\theta : \mathbb{R}^{d_z} \to \mathbb{R}^{D}$
+      maps a latent noise vector $z \sim \mathcal{N}(0, I)$ to a
+      generated sample $G(z)$.</li>
+  <li>A <strong>discriminator</strong> $D_\phi : \mathbb{R}^{D} \to [0, 1]$
+      tries to tell real samples from generated ones. It outputs the
+      probability that its input is real.</li>
+</ul>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="gan-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Noise -->
+  <rect x="20" y="40" width="120" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="80" y="72" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">z ~ N(0, I)</text>
+  <!-- Generator -->
+  <rect x="180" y="30" width="130" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="245" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Generator G</text>
+  <text x="245" y="82" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">wants to fool D</text>
+  <!-- Fake -->
+  <rect x="350" y="40" width="120" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="410" y="72" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">G(z)</text>
+  <!-- Real -->
+  <rect x="350" y="170" width="120" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="410" y="202" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#15803D">x ~ data</text>
+  <!-- Discriminator -->
+  <rect x="510" y="95" width="130" height="70" rx="6" fill="#FEE2E2" stroke="#DC2626" stroke-width="2"/>
+  <text x="575" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#991B1B">Discriminator D</text>
+  <text x="575" y="147" text-anchor="middle" font-family="Inter" font-size="11" fill="#7F1D1D">real or fake?</text>
+  <!-- Arrows -->
+  <line x1="140" y1="65" x2="178" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#gan-arrow)"/>
+  <line x1="310" y1="65" x2="348" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#gan-arrow)"/>
+  <line x1="470" y1="65" x2="520" y2="115" stroke="#3B82F6" stroke-width="2" marker-end="url(#gan-arrow)"/>
+  <line x1="470" y1="195" x2="520" y2="150" stroke="#22C55E" stroke-width="2" marker-end="url(#gan-arrow)"/>
+  <!-- Adversary loop -->
+  <path d="M 575 165 Q 575 240 245 240 Q 245 110 245 105" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#gan-arrow)"/>
+  <text x="400" y="255" text-anchor="middle" font-family="Inter" font-style="italic" font-size="11" fill="#B45309">gradient of "fool D" flows back into G</text>
+</svg>
+<figcaption>The GAN adversarial loop: G creates fakes, D tries to classify real vs fake, the gradient of D's mistake trains G to produce better fakes.</figcaption>
+</figure>
+
+<h3>The minimax objective</h3>
+
+<p>
+  Goodfellow's 2014 paper frames it as a two-player game:
+</p>
+
+<div class="annotated-equation">
+  $$\min_{G} \max_{D} \; \mathbb{E}_{x \sim p_{\text{data}}}\![\log D(x)] \;+\; \mathbb{E}_{z \sim p_z}\![\log(1 - D(G(z)))]$$
+  <div class="annotations">
+    <span>$D(x)$ — prob real is real</span>
+    <span>$D(G(z))$ — prob fake looks real</span>
+    <span>$\min_G \max_D$ — adversary</span>
+  </div>
+</div>
+
+<p>
+  D wants to push the first term up (recognise real) and the second up
+  (recognise fake). G wants to push the second term <em>down</em>
+  (fool D). At the optimum, if both networks are infinitely expressive
+  and trained to convergence, $p_G = p_{\text{data}}$ — G exactly
+  matches the true distribution.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — The JS divergence connection</span>
+  <p>
+    At the optimum of D, the GAN objective reduces to
+    $2 \cdot \mathrm{JS}(p_{\text{data}} \| p_G) - \log 4$, where JS is
+    the Jensen-Shannon divergence — a symmetric variant of KL. So
+    minimising the original GAN loss with respect to G is minimising
+    JS divergence between real and generated. Unlike KL, JS is always
+    finite, which is (one) reason GANs can be trained on supports that
+    don't overlap.
+  </p>
+</div>
+
+<h3>Training dynamics</h3>
+
+<p>
+  In practice you alternate:
+</p>
+
+<ol>
+  <li><strong>Update D:</strong> sample a real batch and a fake batch,
+      compute the standard binary cross-entropy loss, step D's
+      parameters.</li>
+  <li><strong>Update G:</strong> sample new fakes, compute a loss that
+      is <em>high</em> when D correctly classifies them as fake, step G.</li>
+</ol>
+
+<p>
+  The loss for G is often written as
+  $\max \; \mathbb{E}_z[\log D(G(z))]$ rather than
+  $\min \; \mathbb{E}_z[\log(1 - D(G(z)))]$ — mathematically equivalent
+  at the optimum but gives a stronger gradient when D is confident the
+  fakes are fake (early training).
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>DCGAN-style Generator and Discriminator</h2>
+
+<p>
+  A DCGAN (Radford et al. 2015) uses convolutions for image data. For
+  the simple 2-D distribution we will use today, MLPs are enough.
+</p>
+
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class Generator(nn.Module):
+    def __init__(self, z_dim=8, out_dim=2):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(z_dim, 64), nn.ReLU(),
+            nn.Linear(64, 64), nn.ReLU(),
+            nn.Linear(64, out_dim),
+        )
+    def forward(self, z):
+        return self.net(z)
+
+class Discriminator(nn.Module):
+    def __init__(self, in_dim=2):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, 64), nn.LeakyReLU(0.2),
+            nn.Linear(64, 64), nn.LeakyReLU(0.2),
+            nn.Linear(64, 1),      # logit, no sigmoid
+        )
+    def forward(self, x):
+        return self.net(x).squeeze(-1)
+</code></pre>
+
+<p>
+  Discriminators traditionally use LeakyReLU (not plain ReLU) because
+  dead neurons in D stall training for G. Leaky avoids this by letting
+  a small gradient through for negative inputs.
+</p>
+
+<h3>The training loop</h3>
+
+<pre><code class="language-python">opt_g = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
+opt_d = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
+
+for epoch in range(200):
+    for real in real_loader:
+        bs = real.size(0)
+        # ─── 1. Update D ─────────────────────────────────
+        z = torch.randn(bs, z_dim, device=device)
+        fake = G(z).detach()
+        d_real = D(real)
+        d_fake = D(fake)
+        loss_d = F.binary_cross_entropy_with_logits(
+            d_real, torch.ones_like(d_real)
+        ) + F.binary_cross_entropy_with_logits(
+            d_fake, torch.zeros_like(d_fake)
+        )
+        opt_d.zero_grad(); loss_d.backward(); opt_d.step()
+
+        # ─── 2. Update G ─────────────────────────────────
+        z = torch.randn(bs, z_dim, device=device)
+        d_fake = D(G(z))
+        # "non-saturating" loss: G wants D to say 1 on fakes
+        loss_g = F.binary_cross_entropy_with_logits(
+            d_fake, torch.ones_like(d_fake)
+        )
+        opt_g.zero_grad(); loss_g.backward(); opt_g.step()
+</code></pre>
+
+<p>
+  The <code>betas=(0.5, 0.999)</code> is standard for GANs —
+  momentum 0.5 is more stable than the default 0.9. The
+  <code>.detach()</code> on the fake tensor when updating D stops
+  gradients from flowing into G during D's update (we only want D's
+  parameters to move).
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mode Collapse — the Main Failure Mode</h2>
+
+<p>
+  GANs are notoriously unstable. The most famous failure is
+  <strong>mode collapse</strong>: the generator finds <em>one</em> fake
+  that fools the current discriminator and keeps producing it over and
+  over. If the true distribution has eight Gaussian blobs in 2-D, mode
+  collapse makes the generator emit only one of them (or at worst, a
+  single point).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- True distribution: 8 gaussians on a ring -->
+  <g font-family="Inter" font-size="11">
+    <text x="140" y="20" text-anchor="middle" font-weight="700" fill="#15803D">True distribution</text>
+    <g fill="#22C55E" opacity="0.6">
+      <circle cx="140" cy="50" r="12"/>
+      <circle cx="200" cy="80" r="12"/>
+      <circle cx="220" cy="135" r="12"/>
+      <circle cx="190" cy="190" r="12"/>
+      <circle cx="140" cy="215" r="12"/>
+      <circle cx="90" cy="190" r="12"/>
+      <circle cx="60" cy="135" r="12"/>
+      <circle cx="80" cy="80" r="12"/>
+    </g>
+  </g>
+  <!-- Mode collapse: G only produces one -->
+  <g font-family="Inter" font-size="11">
+    <text x="380" y="20" text-anchor="middle" font-weight="700" fill="#DC2626">Mode collapse</text>
+    <g fill="#DC2626" opacity="0.35">
+      <circle cx="380" cy="50" r="12"/>
+      <circle cx="440" cy="80" r="12"/>
+      <circle cx="460" cy="135" r="12"/>
+      <circle cx="430" cy="190" r="12"/>
+      <circle cx="380" cy="215" r="12"/>
+      <circle cx="330" cy="190" r="12"/>
+      <circle cx="300" cy="135" r="12"/>
+      <circle cx="320" cy="80" r="12"/>
+    </g>
+    <g fill="#DC2626">
+      <circle cx="440" cy="80" r="16"/>
+      <circle cx="445" cy="78" r="3" fill="#FEE2E2"/>
+    </g>
+  </g>
+  <!-- WGAN-GP -->
+  <g font-family="Inter" font-size="11">
+    <text x="620" y="20" text-anchor="middle" font-weight="700" fill="#0D9488">WGAN-GP</text>
+    <g fill="#0D9488" opacity="0.7">
+      <circle cx="620" cy="50" r="12"/>
+      <circle cx="680" cy="80" r="12"/>
+      <circle cx="700" cy="135" r="12"/>
+      <circle cx="670" cy="190" r="12"/>
+      <circle cx="620" cy="215" r="12"/>
+      <circle cx="570" cy="190" r="12"/>
+      <circle cx="540" cy="135" r="12"/>
+      <circle cx="560" cy="80" r="12"/>
+    </g>
+  </g>
+</svg>
+<figcaption>Mode collapse: the generator ignores most modes and emits only one. WGAN-GP penalises the discriminator into giving gradients everywhere, which keeps the generator honest.</figcaption>
+</figure>
+
+<h3>WGAN and the Wasserstein distance</h3>
+
+<p>
+  Arjovsky et al. (2017) replaced JS divergence with the
+  <strong>Wasserstein-1 (Earth Mover) distance</strong>. Instead of a
+  probability, the "critic" (what we call D in Wasserstein land) outputs
+  a real number; the loss is simply the difference of critic outputs
+  on real and fake:
+</p>
+
+<div class="annotated-equation">
+  $$\min_{G} \max_{D} \; \mathbb{E}_{x \sim p_{\text{data}}}\![D(x)] \;-\; \mathbb{E}_{z \sim p_z}\![D(G(z))]$$
+  <div class="annotations">
+    <span>No sigmoid, no BCE</span>
+    <span>Requires D to be 1-Lipschitz</span>
+    <span>= Wasserstein-1 distance</span>
+  </div>
+</div>
+
+<p>
+  The Wasserstein formulation only equals the Earth Mover distance if
+  D is 1-Lipschitz — its outputs cannot change by more than 1 when its
+  input changes by 1. The original WGAN enforced this by clipping D's
+  weights to $[-0.01, 0.01]$ after each step (crude, limits model
+  capacity). WGAN-GP (Gulrajani et al. 2017) replaced weight clipping
+  with a <strong>gradient penalty</strong>:
+</p>
+
+<div class="annotated-equation">
+  $$\mathcal{L}_D = \mathbb{E}[D(G(z))] - \mathbb{E}[D(x)] + \lambda \, \mathbb{E}_{\hat{x}}\!\bigl[(\|\nabla_{\hat{x}} D(\hat{x})\|_2 - 1)^2\bigr]$$
+  <div class="annotations">
+    <span>$\hat{x}$ — random interpolation</span>
+    <span>$\lambda$ — penalty weight (usually 10)</span>
+    <span>target gradient norm = 1</span>
+  </div>
+</div>
+
+<p>
+  The penalty term pushes the gradient norm of D along a random line
+  between real and fake toward 1 — the Lipschitz constraint. Works far
+  better than weight clipping: it preserves model capacity, trains
+  more stably, and almost eliminates mode collapse in practice.
+</p>
+
+<pre><code class="language-python">def gradient_penalty(D, real, fake, device):
+    batch_size = real.size(0)
+    alpha = torch.rand(batch_size, 1, device=device)
+    interpolated = alpha * real + (1 - alpha) * fake
+    interpolated.requires_grad_(True)
+    d_inter = D(interpolated)
+    grads = torch.autograd.grad(
+        outputs=d_inter,
+        inputs=interpolated,
+        grad_outputs=torch.ones_like(d_inter),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    gp = ((grads.norm(2, dim=1) - 1) ** 2).mean()
+    return gp
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Evaluating Generative Models: FID</h2>
+
+<p>
+  How do you know if your generator is any good? Human evaluation is
+  expensive and subjective. The standard automatic metric for image
+  generation is the <strong>Fréchet Inception Distance</strong> (FID):
+</p>
+
+<div class="annotated-equation">
+  $$\text{FID}(r, g) \;=\; \|\mu_r - \mu_g\|_2^2 \;+\; \text{Tr}\!\bigl(\Sigma_r + \Sigma_g - 2(\Sigma_r \Sigma_g)^{1/2}\bigr)$$
+  <div class="annotations">
+    <span>$\mu_r, \Sigma_r$ — stats of real features</span>
+    <span>$\mu_g, \Sigma_g$ — stats of generated</span>
+    <span>Tr — matrix trace</span>
+  </div>
+</div>
+
+<p>
+  FID passes both real and generated images through a pre-trained
+  Inception network, extracts a pool of activations, fits Gaussians to
+  both, and measures the Fréchet distance between them. Lower is
+  better. FID below 20 is "you can probably ship it"; below 5 is
+  "very close to real".
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Diffusion Models in One Page</h2>
+
+<p>
+  Diffusion models (DDPM, Ho et al. 2020; Stable Diffusion 2022) take
+  a completely different approach. Instead of adversarial training,
+  they:
+</p>
+
+<ol>
+  <li><strong>Forward process:</strong> progressively add Gaussian noise
+      to a training image over $T$ steps until it is pure noise.</li>
+  <li><strong>Reverse process:</strong> train a network (usually a UNet)
+      to predict the noise that was added at each step, so the process
+      can be reversed.</li>
+  <li><strong>Sampling:</strong> start from pure noise, apply the
+      reverse process $T$ times, end with a generated sample.</li>
+</ol>
+
+<p>
+  The training objective is simply MSE between the predicted noise and
+  the actual noise added at each step. There is no adversary, no mode
+  collapse, and the quality is generally higher than GANs. The cost is
+  that sampling requires $T$ forward passes (typically 50–1000 steps),
+  whereas a GAN samples in one forward pass. Recent distillation
+  techniques (consistency models) bring diffusion sampling down to
+  1–4 steps.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — Diffusion vs GAN vs VAE decision</span>
+  <p>
+    For high-quality image generation with large models and compute,
+    diffusion is the current SOTA. For fast sampling, GANs are still
+    competitive. For structured representations (where you want the
+    latent to mean something), VAEs remain the tool of choice. For
+    conditional generation with text (Stable Diffusion, Midjourney),
+    diffusion plus a text encoder is the dominant stack.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: DCGAN and WGAN-GP on Eight Gaussians</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build a GAN and a WGAN-GP on a 2-D "eight Gaussians on a ring"
+    toy distribution. Observe mode collapse in the vanilla GAN.
+    Observe WGAN-GP recovering all eight modes. This mirrors
+    exercise 5 of M5.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — the target distribution.</span>
+    <pre><code class="language-python">def make_eight_gaussians(n):
+    angles = torch.linspace(0, 2 * math.pi, 9)[:-1]
+    centers = torch.stack([torch.cos(angles), torch.sin(angles)], dim=1)
+    idx = torch.randint(0, 8, (n,))
+    points = centers[idx] + 0.05 * torch.randn(n, 2)
+    return points</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — vanilla GAN training (as shown above).</span>
+    <p>Expect to see the generator collapse onto one or two of the
+       eight modes after a few hundred steps. Plot the generated
+       samples every 100 steps to watch it happen.</p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — WGAN-GP update rule.</span>
+    <pre><code class="language-python">for epoch in range(200):
+    for real in real_loader:
+        # ── Critic (D) update ──
+        z = torch.randn(bs, z_dim, device=device)
+        fake = G(z).detach()
+        d_real = D(real)
+        d_fake = D(fake)
+        gp = gradient_penalty(D, real, fake, device)
+        loss_d = d_fake.mean() - d_real.mean() + 10.0 * gp
+        opt_d.zero_grad(); loss_d.backward(); opt_d.step()
+
+        # ── Generator update (every n_critic steps) ──
+        z = torch.randn(bs, z_dim, device=device)
+        loss_g = -D(G(z)).mean()
+        opt_g.zero_grad(); loss_g.backward(); opt_g.step()</code></pre>
+    <p>
+      The critic loss is just the difference of means plus gradient
+      penalty. The generator loss is the negative critic output — G
+      wants to make the critic produce large values on its fakes.
+      Typically you take $n_{\text{critic}} = 5$ critic steps per
+      generator step, though the 1:1 ratio works fine on this toy
+      problem.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — visualise the samples.</span>
+    <pre><code class="language-python">G.eval()
+with torch.no_grad():
+    z = torch.randn(2000, z_dim, device=device)
+    samples = G(z).cpu()
+
+# scatter plot real vs generated — the eight modes should be visible
+from kailash_ml import ModelVisualizer
+viz = ModelVisualizer()
+viz.plot_2d_distribution(real.cpu(), samples,
+                         title="Real vs WGAN-GP samples")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Forgetting <code>.detach()</code> on D's update</span>
+  <p>
+    When updating D, the fake samples come from G. If you do not
+    detach them, gradients will flow through G during D's backward
+    pass and corrupt G's parameters. Always
+    <code>fake = G(z).detach()</code> when training D.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: BCE on WGAN, Wasserstein on GAN</span>
+  <p>
+    Vanilla GAN uses <code>binary_cross_entropy_with_logits</code>.
+    WGAN uses plain means (no sigmoid, no BCE). Mixing them up is a
+    rite of passage. Symptom: WGAN "loss" is meaningless numbers
+    because you accidentally applied a sigmoid somewhere.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Wrong gradient penalty target</span>
+  <p>
+    WGAN-GP penalises the gradient norm toward 1, not toward 0. The
+    penalty is $(\|\nabla\|_2 - 1)^2$, not $\|\nabla\|_2^2$.
+    Targetting zero is a "one-sided" variant sometimes used in
+    WGAN-LP but it is not the canonical WGAN-GP loss.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Learning rates too high</span>
+  <p>
+    GAN training is fragile. Standard LRs for Adam are 2e-4 for both
+    G and D. Beta_1 = 0.5 (not 0.9). These are the Radford et al. DCGAN
+    defaults and they are a decent starting point. Do not deviate
+    without a good reason.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Induce mode collapse</h3>
+  <p>
+    Train the vanilla GAN for 500 steps. Plot the generated samples
+    every 50 steps as a scatter. Identify the exact step where the
+    generator abandons all but one mode. What does the discriminator
+    look like at that moment?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Recover with WGAN-GP</h3>
+  <p>
+    Run WGAN-GP on the same data for the same number of steps. Verify
+    that all eight modes are populated in the final samples. Quantify:
+    bin the samples into the eight nearest-mode categories and compute
+    the proportion in each. Compare to the true uniform-over-modes
+    ground truth.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Gradient penalty ablation</h3>
+  <p>
+    Train WGAN without the gradient penalty (set $\lambda = 0$). Does
+    the critic's gradient norm drift away from 1? Does training
+    become unstable? Add back $\lambda = 10$ and compare.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  GAN generators are structurally very similar to VAE decoders
+  (Lesson 5.1) — they take a latent and emit a sample. The difference
+  is the training signal: VAEs optimise reconstruction + KL; GANs
+  optimise an adversarial game. Diffusion models descend from the
+  denoising autoencoder (also 5.1): the forward process is just
+  progressive corruption and the reverse process is progressive
+  denoising. The discriminator is a standard classifier CNN
+  (Lesson 5.2). In Module 6, we use diffusion as a building block for
+  text-to-image systems and revisit FID for alignment metrics.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You built a vanilla GAN, diagnosed mode collapse on eight Gaussians,
+  upgraded to WGAN-GP with a gradient penalty, and restored coverage of
+  all eight modes. You derived the original GAN minimax objective and
+  its WGAN replacement, understood why the Wasserstein formulation
+  needs a Lipschitz constraint, and met the gradient penalty as the
+  practical way to enforce it. You also met diffusion models as the
+  current high-quality alternative — no adversary, no mode collapse,
+  higher sample quality, slower sampling.
+</p>
+<p>
+  Lesson 5.6 takes deep learning to its most unusual data structure:
+  graphs. Message passing, graph convolutions, and attention-based
+  aggregation on the edges of a network.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../04/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    5.4 Transformers
+  </a>
+  <a href="../06/textbook.html" class="next">
+    <span class="label">Next →</span>
+    5.6 Graph Neural Networks
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -2,29 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 1: LLM Architecture and Tokenization
+# MLFP06 — Exercise 1: Prompt Engineering
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Understand decoder-only transformer internals — tokenization,
-#   KV cache, parameter counting — and make your first LLM call via Delegate.
+# OBJECTIVE: Master zero-shot, few-shot, and chain-of-thought prompting
+#   via Delegate, comparing structured output quality across strategies.
 #
 # TASKS:
-#   1. Implement BPE tokenizer from scratch
-#   2. Calculate model parameter count from architecture spec
-#   3. Estimate KV cache memory requirements
-#   4. Make first Delegate call with cost budget
-#   5. Compare tokenizer output vs model's built-in tokenizer
+#   1. Zero-shot classification with Delegate
+#   2. Few-shot with example selection
+#   3. Chain-of-thought prompting
+#   4. Build a custom Signature for structured extraction
+#   5. Compare accuracy across prompting strategies
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
 import os
-import re
-from collections import Counter
 
 import polars as pl
 
 from kaizen_agents import Delegate
+from kaizen import Signature, InputField, OutputField
+from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
 
 from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
@@ -39,315 +39,251 @@ print(f"LLM Model: {model}")
 loader = MLFPDataLoader()
 reports = loader.load("mlfp06", "sg_company_reports.parquet")
 
-sample_texts = reports.select("text").head(5).to_series().to_list()
-sample_text = (
-    sample_texts[0] if sample_texts else "Singapore is a global financial hub."
-)
-
-print(f"Loaded {reports.height:,} documents")
+# TODO: Select first 10 documents as sample.
+# Hint: reports.head(10)
+sample_docs = ____
+print(f"Loaded {reports.height:,} documents for classification")
 print(f"Columns: {reports.columns}")
-print(f"Sample text (first 200 chars): {sample_text[:200]}...")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Implement BPE tokenizer from scratch
+# TASK 1: Zero-shot classification with Delegate
 # ══════════════════════════════════════════════════════════════════════
 
-
-def get_word_freqs(text: str) -> dict[str, int]:
-    """Split text into words and count frequencies."""
-    words = re.findall(r"\w+|[^\w\s]", text.lower())
-    return Counter(words)
+CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufacturing"]
 
 
-def get_pair_freqs(vocab: dict[str, int]) -> Counter:
-    """Count frequencies of adjacent character pairs across the vocabulary."""
-    pairs = Counter()
-    for word, freq in vocab.items():
-        chars = list(word)
-        for i in range(len(chars) - 1):
-            pairs[(chars[i], chars[i + 1])] += freq
-    return pairs
+async def zero_shot_classify(text: str) -> str:
+    """Classify a document using zero-shot prompting."""
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
 
+    # TODO: Build a zero-shot classification prompt with categories and text.
+    # Hint: f-string with CATEGORIES, text[:800], and instruction to respond with only the category name
+    prompt = ____
 
-def merge_pair(pair: tuple[str, str], vocab: dict[str, int]) -> dict[str, int]:
-    """Merge the most frequent pair in the vocabulary."""
-    new_vocab = {}
-    bigram = "".join(pair)
-    for word, freq in vocab.items():
-        new_word = word.replace(pair[0] + pair[1], bigram)
-        new_vocab[new_word] = freq
-    return new_vocab
-
-
-def train_bpe(
-    text: str, num_merges: int = 50
-) -> tuple[list[tuple[str, str]], dict[str, int]]:
-    """Train BPE tokenizer on text for a given number of merges."""
-    word_freqs = get_word_freqs(text)
-    # Start with character-level vocabulary
-    vocab = {}
-    for word, freq in word_freqs.items():
-        vocab[" ".join(list(word))] = freq
-
-    merges = []
-    for i in range(num_merges):
-        pair_freqs = get_pair_freqs({w: f for w, f in vocab.items() if " " in w})
-        if not pair_freqs:
-            break
-        # TODO: Use Counter.most_common() to find the highest-frequency pair
-        best_pair = ____
-        merges.append(best_pair)
-        new_vocab = {}
-        bigram = " ".join(best_pair)
-        replacement = "".join(best_pair)
-        for word, freq in vocab.items():
-            new_word = word.replace(bigram, replacement)
-            new_vocab[new_word] = freq
-        vocab = new_vocab
-
-    return merges, vocab
-
-
-def tokenize_bpe(text: str, merges: list[tuple[str, str]]) -> list[str]:
-    """Tokenize text using learned BPE merges."""
-    words = re.findall(r"\w+|[^\w\s]", text.lower())
-    tokens = []
-    for word in words:
-        chars = list(word)
-        for pair in merges:
-            i = 0
-            while i < len(chars) - 1:
-                if chars[i] == pair[0] and chars[i + 1] == pair[1]:
-                    chars[i] = pair[0] + pair[1]
-                    del chars[i + 1]
-                else:
-                    i += 1
-        tokens.extend(chars)
-    return tokens
-
-
-# Train our BPE tokenizer
-merges, vocab = train_bpe(sample_text, num_merges=50)
-bpe_tokens = tokenize_bpe(sample_text[:500], merges)
-
-print(f"\n=== BPE Tokenizer ===")
-print(f"Learned {len(merges)} merge rules")
-print(f"Top 10 merges: {merges[:10]}")
-print(f"Vocab size: {len(vocab)}")
-print(f"Sample tokenization ({len(bpe_tokens)} tokens): {bpe_tokens[:30]}...")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Calculate model parameter count from architecture spec
-# ══════════════════════════════════════════════════════════════════════
-
-
-def count_parameters(
-    vocab_size: int,
-    d_model: int,
-    n_layers: int,
-    n_heads: int,
-    d_ff: int,
-) -> dict[str, int]:
-    """Calculate parameter count for a decoder-only transformer.
-
-    Components:
-    - Token embedding: vocab_size * d_model
-    - Position embedding: max_seq_len * d_model (assume 4096)
-    - Per layer:
-      - QKV projection: 3 * d_model * d_model
-      - Output projection: d_model * d_model
-      - FFN up: d_model * d_ff
-      - FFN down: d_ff * d_model
-      - Layer norms: 2 * d_model (weights) + 2 * d_model (biases)
-    - Final layer norm: d_model + d_model
-    - LM head: d_model * vocab_size (often tied with embedding)
-    """
-    max_seq_len = 4096
-    token_emb = vocab_size * d_model
-    pos_emb = max_seq_len * d_model
-
-    # TODO: Calculate attention parameters per layer (Q, K, V projections + output)
-    attn_per_layer = ____
-    # TODO: Calculate feed-forward parameters per layer (up + down projections)
-    ffn_per_layer = ____
-    # Layer norms (2 per layer: pre-attention + pre-FFN)
-    ln_per_layer = 2 * (d_model + d_model)  # weight + bias each
-
-    per_layer = attn_per_layer + ffn_per_layer + ln_per_layer
-    all_layers = n_layers * per_layer
-
-    final_ln = d_model + d_model
-    lm_head = d_model * vocab_size  # Assume untied
-
-    total = token_emb + pos_emb + all_layers + final_ln + lm_head
-
-    return {
-        "token_embedding": token_emb,
-        "position_embedding": pos_emb,
-        "attention_per_layer": attn_per_layer,
-        "ffn_per_layer": ffn_per_layer,
-        "layernorm_per_layer": ln_per_layer,
-        "total_transformer_layers": all_layers,
-        "final_layernorm": final_ln,
-        "lm_head": lm_head,
-        "total_parameters": total,
-    }
-
-
-# GPT-2 Small equivalent
-params = count_parameters(
-    vocab_size=50_257,
-    d_model=768,
-    n_layers=12,
-    n_heads=12,
-    d_ff=3072,
-)
-
-print(f"\n=== Parameter Count (GPT-2 Small equiv) ===")
-for component, count in params.items():
-    print(f"  {component}: {count:>15,}")
-print(f"  Total: {params['total_parameters'] / 1e6:.1f}M parameters")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Estimate KV cache memory requirements
-# ══════════════════════════════════════════════════════════════════════
-
-
-def estimate_kv_cache(
-    batch_size: int,
-    seq_len: int,
-    n_layers: int,
-    n_heads: int,
-    d_head: int,
-    dtype_bytes: int = 2,  # FP16
-) -> dict[str, float]:
-    """Estimate KV cache memory in bytes.
-
-    KV cache stores key and value tensors for each layer and head.
-    Per token: 2 (K+V) * n_layers * n_heads * d_head * dtype_bytes
-    Total: batch_size * seq_len * per_token
-    """
-    # TODO: Calculate bytes per token for KV cache (2 for K+V * layers * heads * d_head * dtype)
-    per_token = ____
-    total_bytes = batch_size * seq_len * per_token
-    total_gb = total_bytes / (1024**3)
-
-    return {
-        "bytes_per_token": per_token,
-        "total_bytes": total_bytes,
-        "total_mb": total_bytes / (1024**2),
-        "total_gb": total_gb,
-        "batch_size": batch_size,
-        "seq_len": seq_len,
-    }
-
-
-# Estimate for a 7B-class model
-kv_cache = estimate_kv_cache(
-    batch_size=1,
-    seq_len=4096,
-    n_layers=32,
-    n_heads=32,
-    d_head=128,
-    dtype_bytes=2,
-)
-
-print(f"\n=== KV Cache Memory (7B model, seq_len=4096) ===")
-print(f"  Bytes per token: {kv_cache['bytes_per_token']:,}")
-print(f"  Total memory: {kv_cache['total_mb']:.1f} MB ({kv_cache['total_gb']:.3f} GB)")
-print(f"  At seq_len=32768: {kv_cache['total_mb'] * 8:.1f} MB")
-
-# Show how KV cache scales with sequence length
-print(f"\n  KV Cache Scaling:")
-for seq in [512, 1024, 2048, 4096, 8192, 16384, 32768]:
-    kv = estimate_kv_cache(1, seq, 32, 32, 128, 2)
-    print(f"    seq_len={seq:>6}: {kv['total_mb']:>8.1f} MB")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Make first Delegate call with cost budget
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def first_delegate_call():
-    """Make a simple Delegate call to analyze document text."""
-
-    # TODO: Create a Delegate with model and max_llm_cost_usd=1.0
-    delegate = Delegate(____)
-
-    prompt = f"""Analyze this Singapore company report excerpt and identify:
-1. Key financial metrics mentioned
-2. Industry sector
-3. Overall sentiment (positive/negative/neutral)
-
-Text: {sample_text[:1000]}"""
-
-    print(f"\n=== First Delegate Call ===")
-    print(f"Prompt length: {len(prompt)} characters")
-
-    response_text = ""
-    # TODO: Use delegate.run() to stream events, collecting text from each event
-    async for event in ____:
-        if hasattr(event, "text"):
-            response_text += event.text
-
-    print(f"Response ({len(response_text)} chars):")
-    print(response_text[:500])
-
-    return response_text
-
-
-delegate_response = asyncio.run(first_delegate_call())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Compare tokenizer output vs model's built-in tokenizer
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def compare_tokenizers():
-    """Ask the Delegate to tokenize the same text and compare."""
-
-    delegate = Delegate(
-        model=model,
-        max_llm_cost_usd=0.5,
-    )
-
-    test_sentence = "Singapore's financial sector grew 8.2% in Q3."
-
-    # Our BPE tokenization
-    our_tokens = tokenize_bpe(test_sentence, merges)
-
-    # Ask the model about its tokenization
-    prompt = f"""How would a modern LLM tokenizer break this sentence into tokens?
-Sentence: "{test_sentence}"
-
-List each token on a separate line, wrapped in | delimiters like |token|.
-Then explain why some words are split into subwords."""
-
-    response_text = ""
+    response = ""
     async for event in delegate.run(prompt):
         if hasattr(event, "text"):
-            response_text += event.text
+            response += event.text
 
-    print(f"\n=== Tokenizer Comparison ===")
-    print(f"Test sentence: '{test_sentence}'")
-    print(f"\nOur BPE ({len(our_tokens)} tokens): {our_tokens}")
-    print(f"\nModel's perspective:")
-    print(response_text[:400])
-
-    print(f"\n  Key differences:")
-    print(f"  - Our BPE: trained on a single document, small vocab")
-    print(f"  - Production tokenizers: trained on billions of tokens")
-    print(f"  - BPE principle is the same — merge frequent pairs")
-    print(f"  - More training data = better subword boundaries")
+    return response.strip()
 
 
-asyncio.run(compare_tokenizers())
+async def run_zero_shot():
+    """Run zero-shot classification on sample documents."""
+    print(f"\n=== Zero-Shot Classification ===")
+    results = []
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
+    for i, text in enumerate(texts[:5]):
+        category = await zero_shot_classify(text)
+        print(f"  Doc {i+1}: {category}")
+        results.append(category)
+    return results
 
-print(
-    "\n✓ Exercise 1 complete — LLM architecture, tokenization, and first Delegate call"
+
+zero_shot_results = asyncio.run(run_zero_shot())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Few-shot with example selection
+# ══════════════════════════════════════════════════════════════════════
+
+FEW_SHOT_EXAMPLES = [
+    {
+        "text": "Revenue increased 15% driven by strong loan growth and net interest margin expansion.",
+        "category": "Financial",
+    },
+    {
+        "text": "The company launched its new cloud-native SaaS platform serving enterprise clients across APAC.",
+        "category": "Technology",
+    },
+    {
+        "text": "Clinical trials for the new oncology drug showed 40% improvement in patient outcomes.",
+        "category": "Healthcare",
+    },
+    {
+        "text": "The integrated township development in Jurong added 2,500 residential units to the portfolio.",
+        "category": "Real Estate",
+    },
+    {
+        "text": "Factory automation reduced production cycle time by 30% at the Tuas semiconductor fab.",
+        "category": "Manufacturing",
+    },
+]
+
+
+async def few_shot_classify(text: str) -> str:
+    """Classify a document using few-shot prompting with examples."""
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
+
+    # TODO: Build examples_text by joining each example's text and category.
+    # Hint: "\n".join(f'Text: "{ex["text"]}"\nCategory: {ex["category"]}\n' for ex in FEW_SHOT_EXAMPLES)
+    examples_text = ____
+
+    prompt = f"""Classify Singapore company reports into categories. Here are examples:
+
+{examples_text}
+Now classify this report:
+Text: "{text[:800]}"
+Category:"""
+
+    response = ""
+    # TODO: Stream the response from delegate.run(prompt).
+    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+    ____
+
+    return response.strip()
+
+
+async def run_few_shot():
+    """Run few-shot classification on sample documents."""
+    print(f"\n=== Few-Shot Classification ===")
+    results = []
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
+    for i, text in enumerate(texts[:5]):
+        category = await few_shot_classify(text)
+        print(f"  Doc {i+1}: {category}")
+        results.append(category)
+    return results
+
+
+few_shot_results = asyncio.run(run_few_shot())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Chain-of-thought prompting
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def cot_classify(text: str) -> str:
+    """Classify using chain-of-thought reasoning."""
+    # TODO: Create a Delegate with model and cost budget.
+    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = ____
+
+    # TODO: Write a CoT prompt that instructs step-by-step reasoning before classification.
+    # Hint: Include CATEGORIES, steps (identify key terms, match to category, state final classification), and text[:800]
+    prompt = ____
+
+    response = ""
+    # TODO: Stream the response from delegate.run(prompt).
+    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+    ____
+
+    # Extract final category from reasoning
+    lines = response.strip().split("\n")
+    final_category = lines[-1].strip() if lines else "Unknown"
+    return response.strip(), final_category
+
+
+async def run_cot():
+    """Run chain-of-thought classification."""
+    print(f"\n=== Chain-of-Thought Classification ===")
+    results = []
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
+    for i, text in enumerate(texts[:3]):
+        reasoning, category = await cot_classify(text)
+        print(f"\n  Doc {i+1} reasoning (excerpt): {reasoning[:200]}...")
+        print(f"  Final: {category}")
+        results.append(category)
+    return results
+
+
+cot_results = asyncio.run(run_cot())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Custom Signature for structured extraction
+# ══════════════════════════════════════════════════════════════════════
+
+
+class ReportExtraction(Signature):
+    """Extract structured information from a company report."""
+
+    report_text: str = InputField(description="Company report text excerpt")
+
+    # TODO: Define OutputField for category (one of the 5 categories)
+    category: str = ____
+    # TODO: Define OutputField for key_entities (list of named entities)
+    key_entities: list[str] = ____
+    # TODO: Define OutputField for financial_metrics (list of figures/percentages)
+    financial_metrics: list[str] = ____
+    # TODO: Define OutputField for sentiment (positive/negative/neutral)
+    sentiment: str = ____
+    # TODO: Define OutputField for confidence (0-1 float)
+    # Hint: OutputField(description="Classification confidence 0-1")
+    confidence: float = ____
+
+
+async def structured_extract():
+    """Use SimpleQAAgent for structured extraction."""
+    # TODO: Create SimpleQAAgent with ReportExtraction signature, model, and cost budget.
+    # Hint: SimpleQAAgent(signature=ReportExtraction, model=model, max_llm_cost_usd=1.0)
+    agent = ____
+
+    print(f"\n=== Structured Extraction (Signature) ===")
+    # TODO: Extract text column as a Python list.
+    # Hint: sample_docs.select("text").to_series().to_list()
+    texts = ____
+    results = []
+    for i, text in enumerate(texts[:3]):
+        # TODO: Run the agent with report_text input.
+        # Hint: await agent.run(report_text=text[:800])
+        result = ____
+        print(f"\n  Doc {i+1}:")
+        print(f"    Category: {result.category}")
+        print(f"    Entities: {result.key_entities[:5]}")
+        print(f"    Metrics: {result.financial_metrics[:3]}")
+        print(f"    Sentiment: {result.sentiment}")
+        print(f"    Confidence: {result.confidence}")
+        results.append(result)
+    return results
+
+
+structured_results = asyncio.run(structured_extract())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Compare accuracy across prompting strategies
+# ══════════════════════════════════════════════════════════════════════
+
+comparison = pl.DataFrame(
+    {
+        "strategy": ["Zero-Shot", "Few-Shot", "Chain-of-Thought"],
+        "doc_1": [
+            zero_shot_results[0] if zero_shot_results else "N/A",
+            few_shot_results[0] if few_shot_results else "N/A",
+            cot_results[0] if cot_results else "N/A",
+        ],
+        "doc_2": [
+            zero_shot_results[1] if len(zero_shot_results) > 1 else "N/A",
+            few_shot_results[1] if len(few_shot_results) > 1 else "N/A",
+            cot_results[1] if len(cot_results) > 1 else "N/A",
+        ],
+        "doc_3": [
+            zero_shot_results[2] if len(zero_shot_results) > 2 else "N/A",
+            few_shot_results[2] if len(few_shot_results) > 2 else "N/A",
+            cot_results[2] if len(cot_results) > 2 else "N/A",
+        ],
+    }
 )
+
+print(f"\n=== Strategy Comparison ===")
+print(comparison)
+print(f"\nKey insights:")
+print(f"  Zero-shot: fast, no examples needed, may hallucinate categories")
+print(f"  Few-shot: more consistent, requires curated examples")
+print(f"  CoT: best for ambiguous cases, slower and more expensive")
+print(f"  Signature: guarantees structure, best for pipelines")
+
+print("\n✓ Exercise 2 complete — prompt engineering strategies compared")

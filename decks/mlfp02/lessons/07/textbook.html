@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.7 — CUPED and Causal Inference | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.7</span>
+  CUPED and Causal Inference
+</h1>
+
+<p class="lead">
+  A/B tests from Lesson 2.4 are the gold standard for causal inference, but
+  they are often noisy — the variance in your metric swamps the treatment
+  effect. This lesson introduces the single most impactful variance-reduction
+  technique in industry (CUPED), shows how to detect when your experiment is
+  broken (SRM), and extends causal reasoning to settings where randomisation
+  is impossible (Difference-in-Differences). By the end you will be able to
+  cut experiment variance by up to 50% and measure policy effects from
+  observational data.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>CUPED: Control Using Pre-Experiment Data</h2>
+
+<p>
+  CUPED is variance reduction using a covariate that is measured
+  <em>before</em> the experiment starts. The idea is simple: if you know a
+  user's spending last month, you can adjust their spending this month by
+  how much it deviates from their historical average. The adjusted metric
+  has lower variance, which means you can detect smaller effects or
+  declare significance faster.
+</p>
+
+<h3>The derivation</h3>
+
+<p>
+  Let $Y$ be the post-experiment metric and $X$ be the pre-experiment
+  covariate. Define the adjusted metric:
+</p>
+
+$$Y_{\text{adj}} = Y - \theta \cdot (X - \mathbb{E}[X])$$
+
+<p>
+  We want to choose $\theta$ to minimise the variance of $Y_{\text{adj}}$:
+</p>
+
+<div class="annotated-equation">
+  $$\text{Var}(Y_{\text{adj}}) = \text{Var}(Y) - 2\theta \cdot \text{Cov}(Y, X) + \theta^2 \cdot \text{Var}(X)$$
+  <div class="annotations">
+    <span>quadratic in $\theta$</span>
+    <span>minimum at $\theta^* = \text{Cov}(Y, X) / \text{Var}(X)$</span>
+  </div>
+</div>
+
+<p>
+  Substituting $\theta^*$ back:
+</p>
+
+<div class="annotated-equation">
+  $$\boxed{\;\text{Var}(Y_{\text{adj}}) = \text{Var}(Y)(1 - \rho^2)\;}$$
+  <div class="annotations">
+    <span>$\rho$ = correlation between $Y$ and $X$</span>
+    <span>$\rho = 0.7 \Rightarrow 51\%$ variance reduction</span>
+  </div>
+</div>
+
+<p>
+  The key insight: the higher the correlation $\rho$ between the pre and
+  post metrics, the more variance CUPED removes. For e-commerce spending,
+  $\rho$ between last month and this month is typically 0.6-0.8, giving
+  36-64% variance reduction.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Before CUPED -->
+  <text x="180" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Before CUPED</text>
+  <rect x="30" y="35" width="300" height="220" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+  <!-- Wide distribution -->
+  <ellipse cx="180" cy="145" rx="120" ry="80" fill="#F43F5E" opacity="0.15"/>
+  <line x1="180" y1="65" x2="180" y2="225" stroke="#F43F5E" stroke-dasharray="4 3" stroke-width="1"/>
+  <text x="180" y="250" text-anchor="middle" font-family="Inter" font-size="11" fill="#F43F5E">Wide distribution — hard to detect effect</text>
+
+  <!-- After CUPED -->
+  <text x="540" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#22C55E">After CUPED</text>
+  <rect x="390" y="35" width="300" height="220" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <!-- Narrow distribution -->
+  <ellipse cx="540" cy="145" rx="60" ry="80" fill="#22C55E" opacity="0.15"/>
+  <line x1="540" y1="65" x2="540" y2="225" stroke="#22C55E" stroke-dasharray="4 3" stroke-width="1"/>
+  <text x="540" y="250" text-anchor="middle" font-family="Inter" font-size="11" fill="#22C55E">Narrow distribution — effect is visible</text>
+</svg>
+<figcaption>CUPED compresses the distribution by removing variance explained by the pre-experiment covariate. The treatment effect becomes easier to detect.</figcaption>
+</figure>
+
+<h3>Implementation</h3>
+
+<pre><code class="language-python">import polars as pl
+import numpy as np
+
+# Pre-experiment: last month's spending per user
+# Post-experiment: this month's spending per user
+df = loader.load("mlfp02", "ab_test_cuped.parquet")
+
+X_pre = df["spend_pre"].to_numpy()
+Y_post = df["spend_post"].to_numpy()
+
+# Compute optimal theta
+theta = np.cov(Y_post, X_pre)[0, 1] / np.var(X_pre)
+
+# Adjusted metric
+Y_adj = Y_post - theta * (X_pre - X_pre.mean())
+
+print(f"Var(Y):     {np.var(Y_post):.2f}")
+print(f"Var(Y_adj): {np.var(Y_adj):.2f}")
+print(f"Reduction:  {1 - np.var(Y_adj)/np.var(Y_post):.1%}")</code></pre>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    CUPED is mathematically identical to the residuals of a linear regression
+    of $Y$ on $X$. The optimal $\theta$ is the regression coefficient
+    $\hat\beta = \text{Cov}(Y, X) / \text{Var}(X)$. The adjusted metric is
+    the residual $Y - \hat\beta X$. CUPED is regression adjustment applied
+    to A/B test analysis.
+  </p>
+</div>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    CUPED requires that the pre-experiment covariate is <em>independent of
+    the treatment assignment</em>. Since $X$ is measured before the
+    experiment, this is guaranteed by the randomisation. If you use a
+    post-experiment covariate, you risk adjusting away the treatment effect
+    itself.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>SRM: Sample Ratio Mismatch</h2>
+
+<p>
+  Before analysing any A/B test, check the split. If you randomised 50/50
+  but observe 52/48, something may be wrong — bot filtering, redirect bugs,
+  or population filters could be biasing one arm.
+</p>
+
+<h3>Detection</h3>
+
+<pre><code class="language-python">from scipy import stats as scipy_stats
+
+n_control = 4800
+n_treatment = 5200
+n_total = n_control + n_treatment
+
+# Expected 50/50
+chi2 = (n_control - n_total/2)**2 / (n_total/2) + \
+       (n_treatment - n_total/2)**2 / (n_total/2)
+p_srm = 1 - scipy_stats.chi2.cdf(chi2, df=1)
+
+print(f"Chi-squared: {chi2:.2f}, p = {p_srm:.4f}")
+if p_srm < 0.01:
+    print("SRM detected — investigate before analysing results")</code></pre>
+
+<div class="callout warning">
+  <span class="label">⚠ Warning</span>
+  <p>
+    If SRM is detected, do not trust the A/B test results. Common causes:
+    bots filtered unevenly, a redirect failing for one variant, or a
+    population filter applied after randomisation. Fix the root cause and
+    re-run the experiment.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Difference-in-Differences</h2>
+
+<p>
+  When randomisation is impossible — you cannot randomly assign Singapore's
+  cooling measures policy to some districts and not others — you need
+  observational causal inference. Difference-in-Differences (DiD) compares
+  the change in a treated group to the change in an untreated group:
+</p>
+
+<div class="annotated-equation">
+  $$\text{ATT} = (\bar{Y}_{\text{treat,post}} - \bar{Y}_{\text{treat,pre}}) - (\bar{Y}_{\text{control,post}} - \bar{Y}_{\text{control,pre}})$$
+  <div class="annotations">
+    <span>ATT = Average Treatment Effect on the Treated</span>
+    <span>first difference removes level effects; second difference removes time effects</span>
+  </div>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 300" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr27d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <!-- Axes -->
+  <line x1="80" y1="250" x2="650" y2="250" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="80" y1="40" x2="80" y2="250" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="365" y="280" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">Time</text>
+  <text x="50" y="145" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B" transform="rotate(-90 50 145)">Outcome</text>
+
+  <!-- Policy line -->
+  <line x1="365" y1="40" x2="365" y2="250" stroke="#F59E0B" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="365" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#F59E0B">Policy change</text>
+
+  <!-- Control group -->
+  <line x1="120" y1="200" x2="340" y2="180" stroke="#3B82F6" stroke-width="2.5"/>
+  <line x1="390" y1="170" x2="620" y2="150" stroke="#3B82F6" stroke-width="2.5"/>
+  <circle cx="120" cy="200" r="4" fill="#3B82F6"/>
+  <circle cx="340" cy="180" r="4" fill="#3B82F6"/>
+  <circle cx="390" cy="170" r="4" fill="#3B82F6"/>
+  <circle cx="620" cy="150" r="4" fill="#3B82F6"/>
+  <text x="630" y="148" font-family="Inter" font-size="11" fill="#3B82F6">Control</text>
+
+  <!-- Treatment group -->
+  <line x1="120" y1="160" x2="340" y2="140" stroke="#0D9488" stroke-width="2.5"/>
+  <line x1="390" y1="100" x2="620" y2="70" stroke="#0D9488" stroke-width="2.5"/>
+  <circle cx="120" cy="160" r="4" fill="#0D9488"/>
+  <circle cx="340" cy="140" r="4" fill="#0D9488"/>
+  <circle cx="390" cy="100" r="4" fill="#0D9488"/>
+  <circle cx="620" cy="70" r="4" fill="#0D9488"/>
+  <text x="630" y="68" font-family="Inter" font-size="11" fill="#0D9488">Treated</text>
+
+  <!-- Counterfactual -->
+  <line x1="390" y1="130" x2="620" y2="110" stroke="#0D9488" stroke-dasharray="4 3" stroke-width="1.5" opacity="0.5"/>
+  <text x="540" y="125" font-family="Inter" font-size="10" fill="#64748B">counterfactual</text>
+
+  <!-- ATT bracket -->
+  <line x1="625" y1="70" x2="625" y2="110" stroke="#F43F5E" stroke-width="2"/>
+  <text x="660" y="95" font-family="Inter" font-weight="600" font-size="11" fill="#F43F5E">ATT</text>
+
+  <text x="230" y="270" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Pre-period</text>
+  <text x="505" y="270" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Post-period</text>
+</svg>
+<figcaption>DiD: the gap between the treated group's actual outcome and its counterfactual (what would have happened without treatment) is the ATT. The control group's trend estimates the counterfactual.</figcaption>
+</figure>
+
+<h3>The parallel trends assumption</h3>
+
+<p>
+  DiD requires that, <em>absent treatment</em>, the treated and control
+  groups would have followed parallel trends. You cannot test this directly
+  (it is about the counterfactual), but you can check it in the pre-period:
+</p>
+
+<pre><code class="language-python"># Check parallel trends in pre-period
+pre_treated = df.filter(
+    (pl.col("group") == "treated") & (pl.col("period") == "pre")
+)
+pre_control = df.filter(
+    (pl.col("group") == "control") & (pl.col("period") == "pre")
+)
+
+# Compute monthly growth rates for both groups
+# If trends are parallel, growth rates should be similar</code></pre>
+
+<div class="callout warning">
+  <span class="label">⚠ Warning</span>
+  <p>
+    If the pre-period trends are not parallel, DiD is invalid. The
+    treatment effect estimate will be biased by the divergent trends.
+    Placebo tests — running DiD on a fake treatment date in the pre-period
+    — help diagnose this.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: CUPED on E-Commerce A/B Test</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Apply CUPED to an e-commerce A/B test. Compare the variance and
+    p-values with and without CUPED adjustment.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load and split by group.</span>
+    <pre><code class="language-python">df = loader.load("mlfp02", "ab_test_cuped.parquet")
+control = df.filter(pl.col("group") == "control")
+treatment = df.filter(pl.col("group") == "treatment")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Naive t-test (no CUPED).</span>
+    <pre><code class="language-python">from scipy import stats as scipy_stats
+
+t_naive, p_naive = scipy_stats.ttest_ind(
+    treatment["spend_post"].to_numpy(),
+    control["spend_post"].to_numpy(),
+)
+print(f"Naive: t = {t_naive:.3f}, p = {p_naive:.4f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — CUPED adjustment.</span>
+    <pre><code class="language-python">for group_df in [control, treatment]:
+    X = group_df["spend_pre"].to_numpy()
+    Y = group_df["spend_post"].to_numpy()
+    theta = np.cov(Y, X)[0, 1] / np.var(X)
+    Y_adj = Y - theta * (X - X.mean())
+    # Store adjusted values back</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — CUPED t-test.</span>
+    <pre><code class="language-python">t_cuped, p_cuped = scipy_stats.ttest_ind(
+    treatment_adj, control_adj,
+)
+print(f"CUPED: t = {t_cuped:.3f}, p = {p_cuped:.4f}")
+print(f"Variance reduction: "
+      f"{1 - np.var(Y_adj_all)/np.var(Y_all):.1%}")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Using a post-experiment covariate in CUPED</span>
+  <p>
+    The covariate must be measured <em>before</em> randomisation. A
+    post-experiment covariate may be affected by the treatment, and
+    adjusting for it removes part of the effect you are trying to measure.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Ignoring SRM</span>
+  <p>
+    Always check the split before analysing results. A 52/48 split on a
+    50/50 experiment is a red flag — the p-value on your treatment effect
+    is meaningless if the groups are systematically different.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Applying DiD without checking parallel trends</span>
+  <p>
+    DiD with divergent pre-trends gives a biased estimate. Always plot the
+    pre-period trends and run a placebo test.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — CUPED variance reduction</h3>
+  <p>
+    Implement CUPED on the experiment data. Compute the correlation
+    $\rho$ between pre and post metrics. Verify that the variance
+    reduction matches the formula $1 - \rho^2$.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — SRM detection</h3>
+  <p>
+    Write a function that takes control and treatment counts, runs a
+    chi-squared test, and returns whether SRM is detected at the 1% level.
+    Test it on three scenarios: 5000/5000 (no SRM), 4800/5200 (borderline),
+    4500/5500 (clear SRM).
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — DiD on cooling measures</h3>
+  <p>
+    Using Singapore HDB resale data, estimate the effect of cooling measures
+    on prices in affected districts vs unaffected districts. Check parallel
+    trends in the 12 months before the policy. Run a placebo test.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  CUPED extends the A/B testing framework from Lesson 2.4 with the regression
+  machinery from 2.5. SRM uses the chi-squared test from 2.3. DiD connects
+  to the ceteris paribus interpretation of regression coefficients from 2.5.
+  In Module 3, you will use ExperimentTracker to automate CUPED and SRM
+  checks as part of a model evaluation pipeline.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You now have three tools for causal inference: randomised experiments
+  (2.4), CUPED for making those experiments more powerful (today), and DiD
+  for when randomisation is impossible (also today). Together with the
+  statistical foundation from 2.1-2.6, you can design, analyse, and
+  interpret experiments with the rigour of a professional data scientist.
+</p>
+<p>
+  Lesson 2.8 is the capstone: you will execute a complete statistical
+  analysis project from data to recommendations, using FeatureStore for
+  point-in-time correctness and FeatureEngineer for automated feature
+  creation.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.6 Logistic Regression
+  </a>
+  <a href="../08/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.8 Capstone — Statistical Analysis Project
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.4 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.4</span>
+  Joins and Multi-Table Data
+</h1>
+
+<p class="lead">
+  Total time: ~55 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~4 min average
+</p>
+
+<p>
+  This is the first time learners combine multiple data sources. The main
+  trap is silent row loss from inner joins — make sure every student sees
+  that trap live. The second trap is unhandled nulls. If they leave this
+  lesson with those two instincts, you have won.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Joins and Multi-Table Data</h3>
+  <p>
+    Open with: "Every real question is a join question. HDB prices alone
+    tell you a lot, but they tell you far more when you combine them with
+    MRT proximity and school counts. Today we learn how to do that in
+    Polars."
+  </p>
+  <div class="transition">→ "Three tables, one enriched result."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Three-table diagram</span></div>
+  <h3>Real questions need multiple tables</h3>
+  <p>
+    Walk the three source tables on the left. "HDB transactions — 500,000
+    rows, one per sale. MRT stations — one row per town, tells you the
+    closest station. Schools — one row per school, we'll aggregate to one
+    per town."
+  </p>
+  <p>
+    Then the big joined table on the right. "Every HDB row now carries its
+    town's spatial context — nearest MRT, distance, school count. Ready
+    for analysis."
+  </p>
+  <div class="transition">→ "Before we join, two Python tools we need."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Imports</span></div>
+  <h3>Imports: loading libraries</h3>
+  <p>
+    Walk the three forms. <code>import X</code>, <code>import X as Y</code>,
+    <code>from X import name</code>. Tell them the Polars convention is
+    always <code>import polars as pl</code>.
+  </p>
+  <p>
+    Make the "install once, import anywhere" point. PyPI has hundreds of
+    thousands of packages. Every ML and data tool they will ever use is one
+    <code>pip install</code> away.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of import like borrowing a book
+    from the library. The library has millions of books. You borrow the
+    ones you need for today's project."
+  </div>
+  <div class="transition">→ "And if/elif/else."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>if/elif/else code</span></div>
+  <h3><code>if / elif / else</code>: code-level decisions</h3>
+  <p>
+    Walk the price_range_label example. "Python checks each condition in
+    order. The first one that's True wins. Everything after is skipped."
+  </p>
+  <p>
+    Contrast with Lesson 1.2's <code>pl.when / then / otherwise</code>:
+    "That one chooses values inside a column — it operates on the whole
+    column at once. <code>if/elif/else</code> chooses what the program
+    <em>does</em> at the code level. Different jobs, same logic shape."
+  </p>
+  <div class="transition">→ "Follow the flow."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Flow diagram</span></div>
+  <h3>Flow of an if/elif/else</h3>
+  <p>
+    Walk the diagram. Price enters the top. First check fails, arrow down.
+    Second check passes, arrow to result. Other branches are greyed out —
+    never evaluated.
+  </p>
+  <p>
+    Emphasise: "Once a branch matches, the rest are skipped. This is why
+    the order matters — if you put Luxury first with a catch-all, nothing
+    else would ever run."
+  </p>
+  <div class="transition">→ "Now the main event. Joins."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Basic join code</span></div>
+  <h3>The basic join</h3>
+  <p>
+    Run it live. Point at each argument: "left DataFrame before
+    <code>.join</code>, right DataFrame as the first positional argument,
+    <code>on</code> names the key, <code>how</code> is the join type."
+  </p>
+  <p>
+    Print the shape before and after. Make them see that left join
+    preserves row count. "Same number of rows — we added columns without
+    adding or removing rows."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Under the hood Polars builds a hash map
+    from the right-side key column, then scans the left side, looking each
+    key up in the hash map. Single-pass, parallel, SIMD-accelerated."
+  </div>
+  <div class="transition">→ "Four join types you need to know."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Join types venn</span></div>
+  <h3>Four join types</h3>
+  <p>
+    Walk the four venn diagrams. For each, describe what survives in the
+    output:
+  </p>
+  <ul>
+    <li><strong>Inner:</strong> only rows where the key appears on both sides. Good for "give me only the matches".</li>
+    <li><strong>Left:</strong> all left rows, matches from the right. Good for enrichment — "keep every HDB row and attach MRT where available".</li>
+    <li><strong>Right:</strong> mirror image. Rarely used — you can always swap sides and use left.</li>
+    <li><strong>Outer/Full:</strong> every row from both sides. Good for reconciliation — "show me everything from both sources, flag what's missing".</li>
+  </ul>
+  <p>
+    Then the rule of thumb: "For enrichment, which is the main job in
+    Module 1, use left join 95% of the time. Inner is a gotcha — you lose
+    rows silently."
+  </p>
+  <div class="transition">→ "Always check keys before joining."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Key overlap check</span></div>
+  <h3>Check the keys <em>before</em> joining</h3>
+  <p>
+    Run it live. "HDB has 26 towns. MRT has 24 towns. Matched 24. Two HDB
+    towns have no MRT data — those will become nulls under a left join, or
+    disappear under an inner join."
+  </p>
+  <p>
+    Make this a habit they form today. "Every join, key check first. It
+    takes two lines and catches most bugs."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Sets are just uniqueness containers.
+    <code>set(list)</code> gives you the unique values. <code>&amp;</code>
+    on two sets gives you the intersection. <code>-</code> gives you the
+    difference."
+  </div>
+  <div class="transition">→ "When keys aren't unique on one side, aggregate first."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Aggregate before join</span></div>
+  <h3>Aggregate one side if keys aren't unique</h3>
+  <p>
+    Explain the problem: "Schools has one row per school. If we joined
+    directly, every HDB transaction in Bishan would be duplicated for every
+    school in Bishan — eight copies of every row if Bishan has eight
+    schools. We don't want that."
+  </p>
+  <p>
+    Show the fix: group the schools table to one row per town first, then
+    join. This is a common pre-join step whenever the 'right side' is
+    granular.
+  </p>
+  <div class="transition">→ "And handling the nulls the join produces."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Null handling</span></div>
+  <h3>Handling nulls after a left join</h3>
+  <p>
+    Three options: count, fill, drop. Walk each. The <code>fill_null(0)</code>
+    example is the most common — "no school data" means "zero schools",
+    and filling with zero lets arithmetic continue working.
+  </p>
+  <p>
+    The strict rule: "Never let a post-join null silently propagate. Decide
+    on the first line after the join: fill, drop, or flag. If you skip this
+    decision the nulls will bite you in the next aggregation."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Nulls in Polars are a separate state
+    from NaN. <code>null_count()</code>, <code>fill_null()</code>, and
+    <code>is_not_null()</code> are the core three methods — they work on
+    every dtype."
+  </div>
+  <div class="transition">→ "The set theory behind it."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Set operations</span></div>
+  <h3>Set theory under the hood</h3>
+  <p>
+    Walk the three formulas. Intersection — both sides. Union — either side.
+    Difference — left but not right. Every join type maps to one of these
+    set operations on the keys.
+  </p>
+  <p>
+    Tell them: "Once you see joins as set operations, the choice becomes
+    mechanical. Inner = intersection. Left = all-of-H, matches-from-M.
+    Outer = union. Difference = the unmatched rows."
+  </p>
+  <div class="transition">→ "Putting it all together."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Desirability classifier</span></div>
+  <h3>A desirability classifier</h3>
+  <p>
+    Walk the function. It uses if/elif/else on two inputs (distance and
+    schools) to classify towns into tiers. Point out the
+    <code>if distance_km is None</code> guard — without it the comparison
+    would fail for unmatched towns.
+  </p>
+  <p>
+    Then show how it connects to the group_by: aggregate to town level,
+    apply the function. This is the full pipeline — load, join, aggregate,
+    classify.
+  </p>
+  <div class="transition">→ "Four traps to avoid."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four traps when joining</h3>
+  <p>
+    Walk each one. The inner/left mistake is the one that burns everyone.
+    Show it live: run an inner join, show the row count drop, ask what
+    happened. Then the left-join version preserves the count.
+  </p>
+  <p>
+    The Cartesian-product mistake is less common but catastrophic when it
+    happens. Show the ugly version: join schools directly, watch the row
+    count explode 5× or 10×.
+  </p>
+  <p>
+    The case-mismatch trap: "BISHAN" vs "Bishan" is a real Singapore
+    example — different agencies capitalise differently. Teach them to
+    normalise with <code>str.to_uppercase()</code> before joining.
+  </p>
+  <div class="transition">→ "Reflect and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the six bullets. Pause on each. Ask them to silently confirm.
+  </p>
+  <p>
+    Tease 1.5: "Today we joined three tables on a shared town key. Tomorrow
+    we pivot from space to time. You'll use window functions to compute
+    3-month rolling averages, year-over-year price changes, and trend
+    rankings. Polars has the fastest window implementation in any open
+    DataFrame library — and you'll see why."
+  </p>
+  <div class="transition">→ End of Lesson 1.4.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.3 Speaker Notes
+  </a>
+  <a href="../05/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.5 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 2.8</span>
+  Capstone — Statistical Analysis Project
+</h1>
+
+<p class="lead">Total time: ~60 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3.5 min per slide average</p>
+
+<p>
+  This is the capstone. The new content (FeatureEngineer, FeatureStore) is
+  light — most of the lesson is applying skills from 2.1-2.7 to a real
+  project. Let learners choose their project option early (Slide 6) and
+  then walk the wine quality example as the guided demo. The exercise time
+  is the heart of the lesson — give at least 25 minutes for independent work.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Capstone — Statistical Analysis Project</h3>
+  <p>"This is it — everything from Module 2 in one project. Choose a dataset, run the full pipeline, and present your findings."</p>
+  <div class="transition">→ "The pipeline."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Pipeline</span></div>
+  <h3>The statistical analysis pipeline</h3>
+  <p>Walk the six stages. Point out which lesson each stage comes from.</p>
+  <div class="transition">→ "Two new engines."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 3-5</span><span>~8 min</span><span>FeatureEngineer + FeatureStore</span></div>
+  <h3>FeatureEngineer and FeatureStore</h3>
+  <p>
+    <strong>Slide 3:</strong> Walk the FeatureEngineer code. "Domain knowledge
+    decides which features to create. The engine handles the implementation.
+    Temporal features for time-series, interactions for non-linear relationships."
+  </p>
+  <p>
+    <strong>Slide 4:</strong> Walk the FeatureStore code. Emphasise point-in-time
+    correctness. "When you ask for features as of January, you get January's
+    data — not March's. This prevents data leakage."
+  </p>
+  <p>
+    <strong>Slide 5:</strong> Walk the lifecycle diagram. "Create features,
+    store them, retrieve them at the right point in time, train. This is the
+    pattern every ML team uses."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of FeatureStore as a library
+    catalogue. You check out the book (features) that existed on the date
+    you need — not tomorrow's edition."
+  </div>
+  <div class="transition">→ "Choose your project."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Project options</span></div>
+  <h3>Three project options</h3>
+  <p>
+    Let learners choose. Option A (wine) is the most straightforward — good
+    for beginners. Option B (economic indicators) is the most technically
+    interesting — good for experts. Option C (experiment design) is the
+    most creative — good for learners who enjoyed 2.4 and 2.7.
+  </p>
+  <div class="transition">→ "The guided example uses wine quality."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 7-12</span><span>~15 min</span><span>Guided example</span></div>
+  <h3>Wine quality pipeline (6 slides)</h3>
+  <p>
+    Run the wine quality example live, step by step. For each slide:
+  </p>
+  <ul>
+    <li><strong>Slide 7 (Load):</strong> Show shape and alerts.</li>
+    <li><strong>Slide 8 (EDA):</strong> Compute correlations with quality. Identify top predictors: alcohol, volatile acidity, sulphates.</li>
+    <li><strong>Slide 9 (Engineer):</strong> Create the alcohol-acidity interaction. Store features.</li>
+    <li><strong>Slide 10 (Model):</strong> Fit regression. Report $R^2$.</li>
+    <li><strong>Slide 11 (Test):</strong> Show significant coefficients with effect sizes. Emphasise: "p-values without effect sizes are useless."</li>
+    <li><strong>Slide 12 (Report):</strong> Walk the report structure. A non-technical reader should understand every sentence.</li>
+  </ul>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "After the guided example, try adding
+    polynomial terms, interaction selection via LASSO (preview of M3),
+    or a bootstrap confidence interval on the key coefficient."
+  </div>
+  <div class="transition">→ "Traps."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Mistakes</span></div>
+  <h3>Three mistakes</h3>
+  <p>Walk each briefly. Mistake 3 (p-values without effect sizes) is the most important for the report.</p>
+  <div class="transition">→ "Module 2 complete."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection</span></div>
+  <h3>Module 2 complete</h3>
+  <p>
+    Walk the lesson list. Bridge to Module 3: "You can now reason about
+    uncertainty, test hypotheses, and build regression models. Module 3
+    takes this foundation and adds the ML engineering layer: regularisation,
+    the complete model zoo, gradient boosting, SHAP, fairness, and
+    production deployment. Same pipeline; much more powerful models."
+  </p>
+  <div class="transition">→ End of Module 2. Celebrate — this was hard.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    2.7 Speaker Notes
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Next →</span>
+    Module 2 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

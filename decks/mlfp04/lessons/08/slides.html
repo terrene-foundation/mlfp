@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.8 — DL Foundations | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.8</p>
+  <h1>DL Foundations — Neural Networks and the Training Toolkit</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Forward pass · Backprop · Activations · Dropout · Batch norm · Optimisers</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #E0E7FF; border-left: 4px solid #4F46E5;">
+    <strong>⏱ 120 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> build a neural network from scratch with full training toolkit
+  </div>
+</section>
+
+<section>
+  <h2>The bridge from 4.7</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 160" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="280" height="100" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="160" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#92400E">Matrix Factorisation (4.7)</text>
+      <text x="30" y="80" font-size="11">R ≈ U V^T → linear embeddings</text>
+      <text x="30" y="100" font-size="11">Optimisation → feature discovery</text>
+
+      <line x1="310" y1="80" x2="370" y2="80" stroke="#0D9488" stroke-width="3"/>
+      <polygon points="370,80 364,76 364,84" fill="#0D9488"/>
+      <text x="340" y="70" text-anchor="middle" font-size="9" fill="#0D9488">add non-linearity</text>
+
+      <rect x="380" y="30" width="280" height="100" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+      <text x="520" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#4F46E5">Neural Network (4.8)</text>
+      <text x="390" y="80" font-size="11">ŷ = f(W₂·f(W₁·x+b₁)+b₂)</text>
+      <text x="390" y="100" font-size="11">Non-linear embeddings</text>
+    </svg>
+  </figure>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> linear regression is a NN with 0 hidden layers. Add layers → non-linear expressiveness.
+  </div>
+</section>
+
+<section>
+  <h2>Network architecture</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <circle cx="80" cy="60" r="16" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+        <circle cx="80" cy="120" r="16" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+        <circle cx="80" cy="180" r="16" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+        <text x="80" y="220" text-anchor="middle" font-size="10" fill="#22C55E" font-weight="600">Input</text>
+      </g>
+      <g>
+        <circle cx="240" cy="50" r="16" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <circle cx="240" cy="120" r="16" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <circle cx="240" cy="190" r="16" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <text x="240" y="220" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">Hidden 1</text>
+      </g>
+      <g>
+        <circle cx="390" cy="85" r="16" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <circle cx="390" cy="155" r="16" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+        <text x="390" y="220" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">Hidden 2</text>
+      </g>
+      <g>
+        <circle cx="520" cy="120" r="16" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="520" y="124" text-anchor="middle" font-size="10">ŷ</text>
+        <text x="520" y="220" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">Output</text>
+      </g>
+      <g stroke="#CBD5E1" stroke-width="0.8" opacity="0.5">
+        <line x1="96" y1="60" x2="224" y2="50"/><line x1="96" y1="60" x2="224" y2="120"/><line x1="96" y1="60" x2="224" y2="190"/>
+        <line x1="96" y1="120" x2="224" y2="50"/><line x1="96" y1="120" x2="224" y2="120"/><line x1="96" y1="120" x2="224" y2="190"/>
+        <line x1="96" y1="180" x2="224" y2="50"/><line x1="96" y1="180" x2="224" y2="120"/><line x1="96" y1="180" x2="224" y2="190"/>
+        <line x1="256" y1="50" x2="374" y2="85"/><line x1="256" y1="50" x2="374" y2="155"/>
+        <line x1="256" y1="120" x2="374" y2="85"/><line x1="256" y1="120" x2="374" y2="155"/>
+        <line x1="256" y1="190" x2="374" y2="85"/><line x1="256" y1="190" x2="374" y2="155"/>
+        <line x1="406" y1="85" x2="504" y2="120"/><line x1="406" y1="155" x2="504" y2="120"/>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Each connection = weight. Each node = linear transform + activation. Hidden activations = <strong>embeddings</strong>.</p>
+</section>
+
+<section>
+  <h2>Forward pass</h2>
+  \[ \mathbf{z}^{(l)} = W^{(l)} \mathbf{a}^{(l-1)} + \mathbf{b}^{(l)} \quad,\quad \mathbf{a}^{(l)} = f(\mathbf{z}^{(l)}) \]
+  <pre><code class="language-python" data-trim>
+z1 = X @ W1 + b1;    a1 = relu(z1)
+z2 = a1 @ W2 + b2;   a2 = relu(z2)
+z3 = a2 @ W3 + b3;   y_hat = z3
+  </code></pre>
+</section>
+
+<section>
+  <h2>Loss function</h2>
+  <p>Regression: Mean Squared Error</p>
+  \[ \mathcal{L} = \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 \]
+  <p>Classification: Cross-Entropy</p>
+  \[ \mathcal{L} = -\frac{1}{n} \sum_{i=1}^{n} \sum_{c=1}^{C} y_{ic} \log \hat{y}_{ic} \]
+</section>
+
+<section>
+  <h2>Backpropagation — chain rule</h2>
+  \[ \frac{\partial \mathcal{L}}{\partial W^{(1)}} = \frac{\partial \mathcal{L}}{\partial \hat{y}} \cdot \frac{\partial \hat{y}}{\partial \mathbf{a}^{(2)}} \cdot \frac{\partial \mathbf{a}^{(2)}}{\partial \mathbf{z}^{(2)}} \cdot \frac{\partial \mathbf{z}^{(2)}}{\partial \mathbf{a}^{(1)}} \cdot \frac{\partial \mathbf{a}^{(1)}}{\partial \mathbf{z}^{(1)}} \cdot \frac{\partial \mathbf{z}^{(1)}}{\partial W^{(1)}} \]
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> just the product rule from calculus, applied layer by layer from output to input.
+  </div>
+</section>
+
+<section>
+  <h2>Gradient descent</h2>
+  \[ W \leftarrow W - \eta \, \frac{\partial \mathcal{L}}{\partial W} \]
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 500 200" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 50 180 Q 150 20 250 100 Q 350 180 450 40" stroke="#3B82F6" stroke-width="2" fill="none"/>
+      <circle cx="120" cy="80" r="5" fill="#EF4444"/>
+      <text x="140" y="78" font-size="10" fill="#EF4444">start</text>
+      <line x1="120" y1="85" x2="180" y2="95" stroke="#EF4444" stroke-width="1.5"/>
+      <polygon points="180,95 174,88 176,96" fill="#EF4444"/>
+      <circle cx="250" cy="100" r="6" fill="#22C55E"/>
+      <text x="270" y="98" font-size="10" fill="#22C55E">minimum</text>
+      <text x="250" y="190" text-anchor="middle" font-size="10" fill="#64748B">Step size = learning rate × gradient</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Activation functions</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- ReLU -->
+      <rect x="20" y="10" width="200" height="80" fill="#F0FDF4" stroke="#22C55E" rx="4"/>
+      <text x="120" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">ReLU: max(0, z)</text>
+      <line x1="40" y1="70" x2="120" y2="70" stroke="#94A3B8" stroke-width="1"/>
+      <line x1="120" y1="70" x2="200" y2="30" stroke="#22C55E" stroke-width="2"/>
+      <text x="120" y="85" text-anchor="middle" font-size="9" fill="#64748B">Default hidden</text>
+
+      <!-- Sigmoid -->
+      <rect x="240" y="10" width="200" height="80" fill="#EFF6FF" stroke="#3B82F6" rx="4"/>
+      <text x="340" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#3B82F6">Sigmoid: 1/(1+e^-z)</text>
+      <path d="M 260 65 Q 300 65 340 45 Q 380 25 420 25" stroke="#3B82F6" stroke-width="2" fill="none"/>
+      <text x="340" y="85" text-anchor="middle" font-size="9" fill="#64748B">Binary output</text>
+
+      <!-- Softmax -->
+      <rect x="460" y="10" width="200" height="80" fill="#FEF3C7" stroke="#F59E0B" rx="4"/>
+      <text x="560" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">Softmax</text>
+      <text x="560" y="55" text-anchor="middle" font-size="10">e^zi / Σ e^zj</text>
+      <text x="560" y="85" text-anchor="middle" font-size="9" fill="#64748B">Multi-class output</text>
+
+      <!-- GELU -->
+      <rect x="20" y="110" width="200" height="70" fill="#F5F3FF" stroke="#8B5CF6" rx="4"/>
+      <text x="120" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">GELU: z·Φ(z)</text>
+      <text x="120" y="165" text-anchor="middle" font-size="9" fill="#64748B">Transformers (M5.4)</text>
+
+      <!-- Tanh -->
+      <rect x="240" y="110" width="200" height="70" fill="#FFF1F2" stroke="#F43F5E" rx="4"/>
+      <text x="340" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#F43F5E">Tanh: (e^z-e^-z)/(e^z+e^-z)</text>
+      <text x="340" y="165" text-anchor="middle" font-size="9" fill="#64748B">RNNs (M5.3)</text>
+
+      <!-- Leaky ReLU -->
+      <rect x="460" y="110" width="200" height="70" fill="#F0FDFA" stroke="#14B8A6" rx="4"/>
+      <text x="560" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#14B8A6">Leaky ReLU: max(0.01z, z)</text>
+      <text x="560" y="165" text-anchor="middle" font-size="9" fill="#64748B">Avoids dead neurons</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Dropout — regularisation by deletion</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg">
+      <text x="130" y="20" text-anchor="middle" font-weight="600" font-size="11">Training (dropout ON)</text>
+      <circle cx="50" cy="60" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="50" cy="110" r="12" fill="#FEE2E2" stroke="#EF4444" stroke-width="2" stroke-dasharray="3 2"/>
+      <circle cx="50" cy="160" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="160" cy="60" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="160" cy="110" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="160" cy="160" r="12" fill="#FEE2E2" stroke="#EF4444" stroke-width="2" stroke-dasharray="3 2"/>
+      <text x="50" y="110" text-anchor="middle" font-size="8" fill="#EF4444">X</text>
+      <text x="160" y="160" text-anchor="middle" font-size="8" fill="#EF4444">X</text>
+
+      <text x="380" y="20" text-anchor="middle" font-weight="600" font-size="11">Inference (dropout OFF)</text>
+      <circle cx="310" cy="60" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="310" cy="110" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="310" cy="160" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="420" cy="60" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="420" cy="110" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="420" cy="160" r="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    </svg>
+  </figure>
+  <p>Randomly zero out neurons during training (p = 0.1–0.5). Forces redundant representations. Off at inference.</p>
+</section>
+
+<section>
+  <h2>Batch normalisation</h2>
+  \[ \hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}} \;,\quad y_i = \gamma\,\hat{x}_i + \beta \]
+  <ul style="font-size: 0.85em;">
+    <li>Normalise each layer's inputs to zero mean, unit variance.</li>
+    <li>$\gamma$, $\beta$ are learnable — network can undo the normalisation if needed.</li>
+    <li>Stabilises training, enables higher learning rates, slight regularisation effect.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Optimisers</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Optimiser</th><th>Key idea</th><th>When to use</th></tr></thead>
+    <tbody>
+      <tr><td>SGD + momentum</td><td>Exponential average of gradients</td><td>Fine-grained control</td></tr>
+      <tr><td>RMSProp</td><td>Per-parameter learning rate</td><td>Non-stationary problems</td></tr>
+      <tr><td>Adam</td><td>Momentum + RMSProp</td><td>Default first choice</td></tr>
+      <tr><td>AdamW</td><td>Decoupled weight decay</td><td>Transformers, modern default</td></tr>
+    </tbody>
+  </table>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> start with Adam. Switch to AdamW for transformers. Use SGD only if you need fine control.
+  </div>
+</section>
+
+<section>
+  <h2>Learning rate schedules + early stopping</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg">
+      <text x="300" y="15" text-anchor="middle" font-weight="600" font-size="11" fill="#475569">Warmup + Cosine Decay</text>
+      <line x1="50" y1="150" x2="550" y2="150" stroke="#E2E8F0" stroke-width="1"/>
+      <line x1="50" y1="30" x2="50" y2="150" stroke="#E2E8F0" stroke-width="1"/>
+      <text x="40" y="30" text-anchor="end" font-size="9" fill="#64748B">lr</text>
+      <text x="550" y="165" text-anchor="end" font-size="9" fill="#64748B">epoch</text>
+      <!-- Warmup phase -->
+      <line x1="50" y1="145" x2="130" y2="40" stroke="#F59E0B" stroke-width="2"/>
+      <text x="90" y="170" text-anchor="middle" font-size="9" fill="#F59E0B">warmup</text>
+      <!-- Cosine decay -->
+      <path d="M 130 40 Q 250 45 340 90 Q 430 135 550 145" stroke="#3B82F6" stroke-width="2" fill="none"/>
+      <text x="340" y="170" text-anchor="middle" font-size="9" fill="#3B82F6">cosine decay</text>
+      <!-- Early stop marker -->
+      <line x1="420" y1="30" x2="420" y2="150" stroke="#EF4444" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="430" y="40" font-size="9" fill="#EF4444">early stop</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Hidden layers = automated feature engineering</h2>
+  <div class="callout-slide advanced">
+    <strong>🟣 Advanced:</strong> hidden activations are <em>learned representations</em>. First layer: simple features. Deeper layers: complex compositions. Output layer: supervised prediction on learned features. This is <strong>representation learning</strong>.
+  </div>
+  <ul style="font-size: 0.85em;">
+    <li>Hidden layers perform <em>unsupervised</em> feature discovery.</li>
+    <li>Output layer performs <em>supervised</em> prediction.</li>
+    <li>Node values = embeddings (same as 4.7, but non-linear).</li>
+  </ul>
+</section>
+
+<section>
+  <h2>From-scratch code</h2>
+  <pre><code class="language-python" data-trim>
+def forward(X, W1, b1, W2, b2, W3, b3):
+    z1 = X @ W1 + b1;   a1 = np.maximum(0, z1)  # ReLU
+    z2 = a1 @ W2 + b2;  a2 = np.maximum(0, z2)
+    z3 = a2 @ W3 + b3;  y_hat = z3
+    return z1, a1, z2, a2, z3, y_hat
+
+# Training loop
+for epoch in range(500):
+    _, a1, _, a2, _, y_hat = forward(X, W1, b1, W2, b2, W3, b3)
+    loss = np.mean((y_hat - y) ** 2)
+    # Backprop + update (see textbook for full code)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Zero init</strong> — symmetry never broken. Use He init for ReLU.</li>
+    <li><strong>Dropout at inference</strong> — predictions become noisy. Turn it off.</li>
+    <li><strong>LR too high</strong> — loss oscillates. Start 10⁻³, use schedule.</li>
+    <li><strong>No early stopping</strong> — overfits for 1000 epochs when 200 was enough.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Cross-references</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>4.7 PIVOT:</strong> MF learns linear embeddings → NN learns non-linear ones.</li>
+    <li><strong>M2 regression:</strong> 0 hidden layers = linear regression.</li>
+    <li><strong>M5:</strong> CNN, RNN, Transformer, GAN — all specialised NNs with this toolkit.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Build a neural network from scratch (forward, backprop, update).</li>
+    <li>✓ Explain how hidden layers are automated feature engineering.</li>
+    <li>✓ Select activation, optimiser, and loss function.</li>
+    <li>✓ Apply dropout, batch norm, LR schedule, early stopping.</li>
+    <li>✓ Connect MF embeddings (4.7) to NN embeddings (non-linear).</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> Module 5 — specialised architectures. Autoencoders, CNNs, RNNs, Transformers, GANs, GNNs, Transfer Learning, RL. The toolkit you learned today powers all of them.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

@@ -2,440 +2,311 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP03 — Exercise 7: Deep Learning Foundations
+# MLFP03 — Exercise 7: Workflow Orchestration and Custom Nodes
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build intuition for deep learning from a simple linear
-#   network up to a CNN with ResBlocks. Train with LR scheduling and
-#   gradient monitoring. Export to ONNX via OnnxBridge for deployment.
+# OBJECTIVE: Build an ML pipeline using Kailash WorkflowBuilder — load,
+#   preprocess, train, evaluate, persist to DataFlow. Learn the
+#   runtime.execute(workflow.build()) pattern.
 #
 # TASKS:
-#   1. Simple linear network — forward pass, backprop by hand
-#   2. Build CNN architecture with residual connections (ResBlock)
-#   3. Train with cosine annealing LR scheduler
-#   4. Monitor gradients and training dynamics
-#   5. Export to ONNX with OnnxBridge
-#   6. Validate ONNX model matches PyTorch predictions
+#   1. Build a Kailash workflow for the ML pipeline
+#   2. Define @db.model for evaluation results (DataFlow)
+#   3. Execute the workflow with LocalRuntime
+#   4. Persist results with db.express
+#   5. Define ModelSignature (input/output schema for trained models)
+#   6. Query persisted results
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import numpy as np
-import polars as pl
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+import asyncio
+import os
 
-from kailash_ml import ModelVisualizer
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
+import polars as pl
+from dotenv import load_dotenv
+
+from kailash.workflow.builder import WorkflowBuilder
+from kailash.runtime import LocalRuntime
+from kailash_dataflow import DataFlow, field
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
+from kailash_ml.interop import to_sklearn_input
+from kailash_ml.engines.training_pipeline import TrainingPipeline, ModelSpec, EvalSpec
 
 from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Simple linear network — forward pass and backprop by hand
-# ══════════════════════════════════════════════════════════════════════
-# Before building a CNN, understand the building blocks:
-# a single linear layer followed by sigmoid — binary classification.
-#
-# Forward pass:  z = Wx + b,  ŷ = σ(z)
-# Loss:          L = -y log(ŷ) - (1-y) log(1-ŷ)   (binary cross-entropy)
-# Backward pass: ∂L/∂W = (ŷ - y) x'  ,  ∂L/∂b = (ŷ - y)
-# Update:        W ← W - η ∂L/∂W
-
-rng_simple = np.random.default_rng(42)
-n_simple = 200
-n_feats_simple = 4
-
-# XOR-like binary classification problem
-X_simple = rng_simple.standard_normal((n_simple, n_feats_simple)).astype(np.float32)
-y_simple = ((X_simple[:, 0] > 0) ^ (X_simple[:, 1] > 0)).astype(np.float32)
-
-print(f"=== Simple Linear Network (by hand) ===")
-print(
-    f"Task: XOR-like binary classification ({n_simple} samples, {n_feats_simple} features)"
-)
-print(f"Class balance: {y_simple.mean():.2f}")
-
-# TODO: Create a single-layer PyTorch network for binary classification.
-#   nn.Linear takes (in_features, out_features). For binary output: out_features=1.
-simple_net = ____  # Hint: nn.Linear(n_feats_simple, 1)
-
-# TODO: Create SGD optimizer with lr=0.1 for simple_net parameters.
-simple_opt = ____  # Hint: torch.optim.SGD(simple_net.parameters(), lr=0.1)
-
-# TODO: Choose the correct loss for binary classification with raw logits.
-simple_crit = ____  # Hint: nn.BCEWithLogitsLoss()
-
-X_t = torch.from_numpy(X_simple)
-y_t = torch.from_numpy(y_simple).unsqueeze(1)
-
-simple_losses = []
-for epoch in range(50):
-    # TODO: Zero the gradients before each forward pass.
-    ____  # Hint: simple_opt.zero_grad()
-
-    # TODO: Run forward pass through simple_net.
-    logits = ____  # Hint: simple_net(X_t)
-
-    # TODO: Compute the loss using simple_crit.
-    loss = ____  # Hint: simple_crit(logits, y_t)
-
-    # TODO: Backpropagate the loss.
-    ____  # Hint: loss.backward()
-
-    # TODO: Update the parameters.
-    ____  # Hint: simple_opt.step()
-
-    simple_losses.append(loss.item())
-
-with torch.no_grad():
-    preds = torch.sigmoid(simple_net(X_t)).numpy().flatten()
-    acc = ((preds > 0.5) == y_simple).mean()
-
-print(f"After 50 epochs: loss={simple_losses[-1]:.4f}, accuracy={acc:.4f}")
-print(f"  Note: linear model cannot learn XOR — needs hidden layers (non-linearity)")
-
-# Add one hidden layer — now it CAN learn XOR
-# TODO: Define a 2-layer network using nn.Sequential.
-#   Layer 1: Linear(n_feats_simple, 16) + ReLU
-#   Layer 2: Linear(16, 1)
-hidden_net = nn.Sequential(
-    ____,  # Hint: nn.Linear(n_feats_simple, 16)
-    ____,  # Hint: nn.ReLU()
-    ____,  # Hint: nn.Linear(16, 1)
-)
-
-# TODO: Create Adam optimizer with lr=0.01 for hidden_net parameters.
-hidden_opt = ____  # Hint: torch.optim.Adam(hidden_net.parameters(), lr=0.01)
-
-hidden_losses = []
-for epoch in range(100):
-    hidden_opt.zero_grad()
-    loss = simple_crit(hidden_net(X_t), y_t)
-    loss.backward()
-    hidden_opt.step()
-    hidden_losses.append(loss.item())
-
-with torch.no_grad():
-    preds_h = torch.sigmoid(hidden_net(X_t)).numpy().flatten()
-    acc_h = ((preds_h > 0.5) == y_simple).mean()
-
-print(f"Hidden layer (16 units): loss={hidden_losses[-1]:.4f}, accuracy={acc_h:.4f}")
-print(f"  ReLU non-linearity enables learning non-linear boundaries like XOR")
-print(f"\nKey insight:")
-print(f"  Linear: z = Wx + b  (hyperplane decision boundary)")
-print(f"  ReLU:   max(0, z)   (piecewise-linear, can approximate any function)")
-print(f"  Depth:  stacking layers = composing functions = exponential expressivity")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1b: Load and prepare image data
-# ══════════════════════════════════════════════════════════════════════
-# Using synthetic data matching ChestX-ray14 characteristics
-# In production, load from mlfp03/chest_xray_subset/
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
+credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
 
-# Load pre-extracted features (flattened images or embeddings)
-# For the exercise, we create synthetic data matching medical image properties
-n_samples = 5000
-n_channels = 1  # Grayscale X-rays
-img_size = 64  # Downsampled for training speed
-n_classes = 5  # Multi-label: 5 conditions
 
-rng = np.random.default_rng(42)
-X_images = rng.standard_normal((n_samples, n_channels, img_size, img_size)).astype(
-    np.float32
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Build a Kailash ML workflow
+# ══════════════════════════════════════════════════════════════════════
+# WorkflowBuilder: nodes, connections, runtime.execute(workflow.build())
+# This is the Kailash Core SDK pattern for orchestrating multi-step operations.
+
+# TODO: Create a WorkflowBuilder with name "credit_scoring_pipeline"
+workflow = ____  # Hint: WorkflowBuilder("credit_scoring_pipeline")
+
+# TODO: Add a DataPreprocessNode named "preprocess" with the config below
+workflow.add_node(
+    ____,  # Hint: "DataPreprocessNode"
+    "preprocess",
+    {
+        "data_source": "sg_credit_scoring",
+        "target": "default",
+        "train_size": 0.8,
+        "seed": 42,
+        "normalize": False,
+        "categorical_encoding": "ordinal",
+        "imputation_strategy": "median",
+    },
 )
-# Multi-label: each sample can have multiple conditions
-y_labels = (rng.random((n_samples, n_classes)) > 0.85).astype(np.float32)
 
-print(f"=== Medical Image Data ===")
-print(f"Images: {X_images.shape} (N, C, H, W)")
-print(f"Labels: {y_labels.shape} (N, classes)")
-print(f"Positive rates per class: {y_labels.mean(axis=0).round(3)}")
+# TODO: Add a ModelTrainNode named "train" connected to "preprocess"
+workflow.add_node(
+    ____,  # Hint: "ModelTrainNode"
+    "train",
+    {
+        "model_class": "lightgbm.LGBMClassifier",
+        "hyperparameters": {
+            "n_estimators": 500,
+            "learning_rate": 0.1,
+            "max_depth": 6,
+            "scale_pos_weight": 7.3,
+        },
+    },
+    connections=____,  # Hint: ["preprocess"]
+)
 
-# Split
-split = int(0.8 * n_samples)
-X_train, X_test = X_images[:split], X_images[split:]
-y_train, y_test = y_labels[:split], y_labels[split:]
+# TODO: Add a ModelEvalNode named "evaluate" connected to "train"
+workflow.add_node(
+    ____,  # Hint: "ModelEvalNode"
+    "evaluate",
+    {
+        "metrics": ["accuracy", "f1", "auc_roc", "auc_pr", "log_loss"],
+    },
+    connections=____,  # Hint: ["train"]
+)
 
-# DataLoaders
-train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
-test_ds = TensorDataset(torch.from_numpy(X_test), torch.from_numpy(y_test))
-train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_ds, batch_size=64)
+# TODO: Add a PersistNode named "persist" connected to "evaluate"
+workflow.add_node(
+    ____,  # Hint: "PersistNode"
+    "persist",
+    {
+        "storage": "sqlite:///mlfp02_models.db",
+    },
+    connections=____,  # Hint: ["evaluate"]
+)
 
+# TODO: Create a LocalRuntime and execute the built workflow
+#       MUST call workflow.build() — never pass the builder directly
+runtime = ____  # Hint: LocalRuntime()
+print("=== Executing Workflow ===")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build CNN with residual connections
-# ══════════════════════════════════════════════════════════════════════
+# TODO: Execute the workflow; unpack into (results, run_id)
+results, run_id = ____  # Hint: runtime.execute(workflow.build())
 
-
-class ResBlock(nn.Module):
-    """Residual block: skip connection preserves gradient flow."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        # TODO: Define two Conv2d layers (3x3 kernel, same padding) and
-        #   two BatchNorm2d layers. Both convolutions keep channels constant.
-        self.conv1 = ____  # Hint: nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn1 = ____  # Hint: nn.BatchNorm2d(channels)
-        self.conv2 = ____  # Hint: nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn2 = ____  # Hint: nn.BatchNorm2d(channels)
-
-    def forward(self, x):
-        residual = x
-        # TODO: Apply conv1 → bn1 → relu, then conv2 → bn2.
-        out = ____  # Hint: torch.relu(self.bn1(self.conv1(x)))
-        out = ____  # Hint: self.bn2(self.conv2(out))
-        # TODO: Add the skip connection (residual) and apply relu.
-        return ____  # Hint: torch.relu(out + residual)
-
-
-class MedicalCNN(nn.Module):
-    """CNN for multi-label medical image classification."""
-
-    def __init__(self, n_classes: int = 5):
-        super().__init__()
-        # TODO: Define the feature extractor using nn.Sequential.
-        #   Block: Conv2d(1→32, 3x3, pad=1) → BN → ReLU → MaxPool2d(2)
-        #          → ResBlock(32)
-        #          → Conv2d(32→64, 3x3, pad=1) → BN → ReLU → MaxPool2d(2)
-        #          → ResBlock(64)
-        #          → AdaptiveAvgPool2d(4)
-        self.features = nn.Sequential(
-            ____,  # Hint: nn.Conv2d(1, 32, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(32)
-            nn.ReLU(),
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(32)
-            ____,  # Hint: nn.Conv2d(32, 64, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(64)
-            nn.ReLU(),
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(64)
-            ____,  # Hint: nn.AdaptiveAvgPool2d(4)
-        )
-        # TODO: Define the classifier head.
-        #   Flatten → Linear(64*4*4, 128) → ReLU → Dropout(0.3) → Linear(128, n_classes)
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            ____,  # Hint: nn.Linear(64 * 4 * 4, 128)
-            nn.ReLU(),
-            ____,  # Hint: nn.Dropout(0.3)
-            ____,  # Hint: nn.Linear(128, n_classes)
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        return self.classifier(x)
-
-
-model = MedicalCNN(n_classes=n_classes).to(device)
-print(f"\n=== Model Architecture ===")
-total_params = sum(p.numel() for p in model.parameters())
-trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total parameters: {total_params:,}")
-print(f"Trainable: {trainable_params:,}")
+print(f"Run ID: {run_id}")
+print(f"Node results: {list(results.keys())}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train with cosine annealing LR
+# TASK 2: Define @db.model for evaluation results
+# ══════════════════════════════════════════════════════════════════════
+# DataFlow uses declarative models — define once, get CRUD for free.
+# The @db.model decorator registers the class with the DataFlow engine.
+
+db = DataFlow("sqlite:///mlfp02_models.db")
+
+
+# TODO: Decorate with @db.model
+____
+
+
+class ModelEvaluation:
+    """Stores evaluation results for trained models."""
+
+    id: int = field(primary_key=True)
+    model_name: str = field()
+    dataset: str = field()
+    accuracy: float = field()
+    f1_score: float = field()
+    auc_roc: float = field()
+    auc_pr: float = field()
+    log_loss: float = field()
+    train_size: int = field()
+    test_size: int = field()
+    feature_count: int = field()
+
+
+# TODO: Decorate with @db.model
+____
+
+
+class ModelArtifact:
+    """Stores model metadata and serialisation path."""
+
+    id: int = field(primary_key=True)
+    model_name: str = field()
+    version: int = field()
+    artifact_path: str = field()
+    is_production: bool = field(default=False)
+    created_by: str = field(default="mlfp02")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Train and evaluate manually (parallel to workflow)
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Choose the correct multi-label loss (BCE per class, with raw logits).
-criterion = ____  # Hint: nn.BCEWithLogitsLoss()
+import lightgbm as lgb
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    average_precision_score,
+    log_loss,
+)
 
-# TODO: Create AdamW optimizer with lr=1e-3, weight_decay=1e-4.
-optimizer = ____  # Hint: optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
 
-# Cosine annealing: LR decays from max to min following cosine curve
-n_epochs = 20
-# TODO: Create CosineAnnealingLR scheduler. T_max=n_epochs, eta_min=1e-6.
-scheduler = ____  # Hint: optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
+X_train, y_train, col_info = to_sklearn_input(
+    result.train_data,
+    feature_columns=[c for c in result.train_data.columns if c != "default"],
+    target_column="default",
+)
+X_test, y_test, _ = to_sklearn_input(
+    result.test_data,
+    feature_columns=[c for c in result.test_data.columns if c != "default"],
+    target_column="default",
+)
 
-# Training loop with gradient monitoring
-history = {
-    "train_loss": [],
-    "val_loss": [],
-    "lr": [],
-    "grad_norm": [],
+model = lgb.LGBMClassifier(
+    n_estimators=500,
+    learning_rate=0.1,
+    max_depth=6,
+    scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
+    random_state=42,
+    verbose=-1,
+)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+y_proba = model.predict_proba(X_test)[:, 1]
+
+eval_metrics = {
+    "accuracy": accuracy_score(y_test, y_pred),
+    "f1": f1_score(y_test, y_pred),
+    "auc_roc": roc_auc_score(y_test, y_proba),
+    "auc_pr": average_precision_score(y_test, y_proba),
+    "log_loss": log_loss(y_test, y_proba),
 }
 
-for epoch in range(n_epochs):
-    # Train
-    model.train()
-    train_losses = []
-    epoch_grad_norms = []
+print(f"\n=== Manual Evaluation ===")
+for metric, value in eval_metrics.items():
+    print(f"  {metric}: {value:.4f}")
 
-    for X_batch, y_batch in train_loader:
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
-        optimizer.zero_grad()
-        logits = model(X_batch)
-        loss = criterion(logits, y_batch)
-        loss.backward()
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Persist results with db.express
+# ══════════════════════════════════════════════════════════════════════
 
-        # Gradient monitoring: track gradient norm
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                total_norm += p.grad.data.norm(2).item() ** 2
-        total_norm = total_norm**0.5
-        epoch_grad_norms.append(total_norm)
 
-        # TODO: Clip gradients to max_norm=1.0 to prevent exploding gradients.
-        ____  # Hint: torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+async def persist_results():
+    """Store evaluation results and model metadata in DataFlow."""
+    await db.initialize()
 
-        optimizer.step()
-        train_losses.append(loss.item())
+    # TODO: Create a ModelEvaluation record using db.express.create
+    eval_record = await db.express.create(
+        ____,  # Hint: "ModelEvaluation"
+        {
+            "model_name": "lgbm_credit_v1",
+            "dataset": "sg_credit_scoring",
+            "accuracy": eval_metrics["accuracy"],
+            "f1_score": eval_metrics["f1"],
+            "auc_roc": eval_metrics["auc_roc"],
+            "auc_pr": eval_metrics["auc_pr"],
+            "log_loss": eval_metrics["log_loss"],
+            "train_size": X_train.shape[0],
+            "test_size": X_test.shape[0],
+            "feature_count": X_train.shape[1],
+        },
+    )
+    print(f"\nPersisted evaluation: ID={eval_record['id']}")
 
-    # Validate
-    model.eval()
-    val_losses = []
-    with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            logits = model(X_batch)
-            val_losses.append(criterion(logits, y_batch).item())
+    # TODO: Create a ModelArtifact record using db.express.create
+    artifact_record = await db.express.create(
+        ____,  # Hint: "ModelArtifact"
+        {
+            "model_name": "lgbm_credit_v1",
+            "version": 1,
+            "artifact_path": "models/lgbm_credit_v1.pkl",
+            "is_production": False,
+            "created_by": "mlfp02_ex4",
+        },
+    )
+    print(f"Persisted artifact: ID={artifact_record['id']}")
 
-    # Record
-    history["train_loss"].append(np.mean(train_losses))
-    history["val_loss"].append(np.mean(val_losses))
-    history["lr"].append(scheduler.get_last_lr()[0])
-    history["grad_norm"].append(np.mean(epoch_grad_norms))
+    return eval_record, artifact_record
 
-    # TODO: Step the LR scheduler at the end of each epoch.
-    ____  # Hint: scheduler.step()
 
-    if (epoch + 1) % 5 == 0:
+eval_record, artifact_record = asyncio.run(persist_results())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Define ModelSignature
+# ══════════════════════════════════════════════════════════════════════
+# ModelSignature is the input/output contract for a trained model.
+
+from kailash_ml.types import ModelSignature, FeatureSchema, FeatureField
+
+# TODO: Create a FeatureSchema with all training features as float64
+input_schema = ____  # Hint: FeatureSchema(name="credit_model_input", features=[FeatureField(name=f, dtype="float64") for f in col_info["feature_columns"]], entity_id_column="application_id")
+
+# TODO: Create a ModelSignature with the input schema and output columns
+signature = ____  # Hint: ModelSignature(input_schema=input_schema, output_columns=["default_probability", "default_label"], output_dtypes=["float64", "int64"], model_type="classifier")
+
+print(f"\n=== ModelSignature ===")
+print(f"Input features: {len(signature.input_schema.features)}")
+print(f"Output: {signature.output_columns}")
+print(f"Model type: {signature.model_type}")
+print(f"\nModelSignature is the contract between model and deployment.")
+print("InferenceServer (M4) validates inputs against this signature.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Query persisted results
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def query_results():
+    """Query stored evaluations to compare models."""
+    # TODO: List all ModelEvaluation records using db.express.list
+    evals = await db.express.list(____)  # Hint: "ModelEvaluation"
+    print(f"\n=== Persisted Evaluations ({len(evals)}) ===")
+    for e in evals:
         print(
-            f"Epoch {epoch + 1}/{n_epochs}: "
-            f"train_loss={history['train_loss'][-1]:.4f}, "
-            f"val_loss={history['val_loss'][-1]:.4f}, "
-            f"lr={history['lr'][-1]:.6f}, "
-            f"grad_norm={history['grad_norm'][-1]:.4f}"
+            f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}"
         )
 
+    # TODO: List all ModelArtifact records using db.express.list
+    artifacts = await db.express.list(____)  # Hint: "ModelArtifact"
+    print(f"\nModel Artifacts ({len(artifacts)}):")
+    for a in artifacts:
+        status = "PRODUCTION" if a["is_production"] else "staging"
+        print(f"  {a['model_name']} v{a['version']}: {status}")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate model
-# ══════════════════════════════════════════════════════════════════════
-
-model.eval()
-all_preds = []
-all_labels = []
-
-with torch.no_grad():
-    for X_batch, y_batch in test_loader:
-        X_batch = X_batch.to(device)
-        logits = model(X_batch)
-        probs = torch.sigmoid(logits).cpu().numpy()
-        all_preds.append(probs)
-        all_labels.append(y_batch.numpy())
-
-y_pred = np.vstack(all_preds)
-y_true = np.vstack(all_labels)
-
-print(f"\n=== Model Evaluation ===")
-class_names = [
-    "Condition_A",
-    "Condition_B",
-    "Condition_C",
-    "Condition_D",
-    "Condition_E",
-]
-for i, name in enumerate(class_names):
-    if y_true[:, i].sum() > 0:
-        from sklearn.metrics import roc_auc_score as auc_fn
-
-        auc = auc_fn(y_true[:, i], y_pred[:, i])
-        print(f"  {name}: AUC={auc:.4f}, prevalence={y_true[:, i].mean():.3f}")
+    await db.close()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Export to ONNX with OnnxBridge
-# ══════════════════════════════════════════════════════════════════════
+asyncio.run(query_results())
 
-# TODO: Instantiate OnnxBridge.
-bridge = ____  # Hint: OnnxBridge()
-
-# TODO: Check model compatibility using bridge.check_compatibility.
-#   Pass framework="pytorch".
-compat = ____  # Hint: bridge.check_compatibility(model, framework="pytorch")
-print(f"\n=== ONNX Compatibility ===")
-print(f"Compatible: {compat.compatible}")
-print(f"Confidence: {compat.confidence}")
-
-# TODO: Export the model to ONNX using bridge.export.
-#   output_path="medical_cnn.onnx", framework="pytorch", n_features=None (CNN).
-export_result = ____  # Hint: bridge.export(model=model, framework="pytorch", output_path="medical_cnn.onnx", n_features=None)
-
-print(f"\nExport result: {export_result.success}")
-if export_result.onnx_path:
-    print(f"ONNX path: {export_result.onnx_path}")
-    if export_result.model_size_bytes:
-        print(f"Model size: {export_result.model_size_bytes / 1024:.1f} KB")
-    print(f"Export time: {export_result.export_time_seconds:.2f}s")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Validate ONNX model
-# ══════════════════════════════════════════════════════════════════════
-
-if export_result.success and export_result.onnx_path:
-    sample_input = torch.from_numpy(X_test[:10]).to(device)
-
-    # TODO: Validate the ONNX model against PyTorch using bridge.validate.
-    #   Pass model, onnx_path, sample_input, tolerance=1e-4.
-    validation = ____  # Hint: bridge.validate(model=model, onnx_path=export_result.onnx_path, sample_input=sample_input, tolerance=1e-4)
-
-    print(f"\n=== ONNX Validation ===")
-    print(f"Valid: {validation.valid}")
-    print(f"Max difference: {validation.max_diff:.8f}")
-    print(f"Mean difference: {validation.mean_diff:.8f}")
-    print(f"Samples tested: {validation.n_samples}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# Visualise training dynamics
-# ══════════════════════════════════════════════════════════════════════
-
-viz = ModelVisualizer()
-
-# Loss curves
-fig_loss = viz.training_history(
-    {"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]},
-    x_label="Epoch",
-)
-fig_loss.update_layout(title="Training and Validation Loss")
-fig_loss.write_html("ex5_loss_curves.html")
-
-# LR schedule
-fig_lr = viz.training_history(
-    {"Learning Rate": history["lr"]},
-    x_label="Epoch",
-)
-fig_lr.update_layout(title="Cosine Annealing LR Schedule")
-fig_lr.write_html("ex5_lr_schedule.html")
-
-# Gradient norms
-fig_grad = viz.training_history(
-    {"Gradient Norm": history["grad_norm"]},
-    x_label="Epoch",
-)
-fig_grad.update_layout(title="Gradient Norm During Training")
-fig_grad.write_html("ex5_gradient_norms.html")
-
-print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
-
-print("\nExercise 7 complete — CNN training + ONNX export")
-print("  Next: Exercise 8 deploys this ONNX model via InferenceServer + Nexus")
+print("\n✓ Exercise 5 complete — Kailash workflow orchestration + DataFlow persistence")
+print("  Pattern: WorkflowBuilder → runtime.execute(workflow.build()) → db.express")

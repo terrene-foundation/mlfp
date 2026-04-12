@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 2.2</span>
+  Parameter Estimation and Inference
+</h1>
+
+<p class="lead">
+  Total time: ~45 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~2.5 min per slide average
+</p>
+
+<p>
+  This is the densest math lesson of M2. Your pacing must be careful:
+  derive, pause, check. Bessel's correction is where most learners lose
+  the thread — spend the time. The payoff is that every statistical test
+  in the rest of M2 has a principled foundation after today.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~1 min</span><span>Title</span></div>
+  <h3>Parameter Estimation and Inference</h3>
+  <p>
+    Open with: "Yesterday Bayes gave us the update loop — prior, data,
+    posterior. Today we ask: if I have no prior, just data, what's my
+    best guess? The answer is MLE, and as a bonus we'll prove the $n-1$
+    you've been typing for two weeks."
+  </p>
+  <div class="transition">→ "Population vs sample."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Population vs sample</span></div>
+  <h3>Population vs sample</h3>
+  <p>
+    Pound this in: parameters ($\mu, \sigma^2$) are fixed but unknown.
+    Statistics ($\bar x, s^2$) are random — their value changes with each
+    sample. "The population is a ghost. We never see it. All we have is a
+    finite sample, and our job is to reason back to the ghost."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Concrete:</strong> "There is some true mean HDB price in
+    Singapore right now. No one knows it exactly — prices change every
+    minute, and we can't measure all of them. When I pull 30 transactions
+    and average them, I get <em>an estimate</em>. Tomorrow I'll pull 30
+    different ones and get a slightly different estimate. Both are guesses
+    at the same ghost."
+  </div>
+  <div class="transition">→ "Those guesses have a distribution of their own."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Sampling distribution</span></div>
+  <h3>The sampling distribution of $\bar X$</h3>
+  <p>
+    State the two facts: $E[\bar X] = \mu$ (unbiased) and
+    $\text{Var}(\bar X) = \sigma^2 / n$ (variance shrinks with $n$).
+    Then state the CLT — "whatever the shape of the population, the
+    sample mean is approximately Normal for large $n$".
+  </p>
+  <p>
+    Walk the CLT statement: "take $(\bar X - \mu)$ — the centred sample
+    mean. Divide by the standard error — that's the standardised sample
+    mean. It converges to a standard Normal."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention Lindeberg–Lévy for i.i.d. and
+    Lindeberg–Feller when the $X_i$ have different distributions. Finite
+    variance is the key condition; infinite variance (Cauchy) breaks it.
+  </div>
+  <div class="transition">→ "The classic picture: skewed population, Normal averages."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~2 min</span><span>CLT visualisation</span></div>
+  <h3>CLT: the HDB example</h3>
+  <p>
+    Walk the three panels: skewed population on the left, slightly less
+    skewed with $n=5$ averages, nearly Normal with $n=100$ averages.
+    "HDB prices are right-skewed: lots of cheap flats, a long tail of
+    luxury units. But if I keep averaging 100 of them, the average is
+    Normal. This is why CLT is magic."
+  </p>
+  <div class="transition">→ "Now MLE."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>MLE intro</span></div>
+  <h3>MLE: pick parameters that make the data likely</h3>
+  <p>
+    Say it in English first: "Given a parametric model, write down the
+    probability of your data under any particular parameter values. Then
+    find the parameter values that make that probability as large as
+    possible."
+  </p>
+  <p>
+    Show the product form of the likelihood. "Because the data points
+    are independent, the joint probability is just the product of the
+    per-point densities." Then explain why we take logs: "Products are
+    nasty to differentiate; sums are not. Logs turn products into sums,
+    and log is monotonic so the location of the max is unchanged."
+  </p>
+  <div class="transition">→ "Let's solve for $\hat\mu$."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Solving for mu</span></div>
+  <h3>Solving for $\hat\mu$</h3>
+  <p>
+    Take the partial, set to zero, solve. Walk each step: the derivative
+    of $-\frac{1}{2\sigma^2}\sum(x_i - \mu)^2$ with respect to $\mu$ is
+    $\frac{1}{\sigma^2}\sum(x_i - \mu)$. Set to zero. $\sum x_i = n\mu$.
+    Divide by $n$. Done.
+  </p>
+  <p>
+    Punchline: "The MLE of the mean is the sample mean. You've been
+    using MLE since Lesson 1.1 without knowing it."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners freeze on partial derivatives:</strong> "Think of
+    the log-likelihood as a hill with two axes — $\mu$ and $\sigma^2$.
+    The top of the hill is where both slopes are zero. The partial tells
+    us the slope in the $\mu$ direction; setting it to zero means 'the
+    hill is flat in this direction'."
+  </div>
+  <div class="transition">→ "And for sigma squared."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Solving for sigma²</span></div>
+  <h3>Solving for $\hat\sigma^2$</h3>
+  <p>
+    Partial with respect to $\sigma^2$, set to zero, solve. The key
+    rearrangement: multiply by $2\sigma^4$ to clear the fractions. The
+    final formula divides by $n$, not $n-1$.
+  </p>
+  <p>
+    Pause here. "This is the MLE of the variance — and it's <em>biased</em>.
+    It systematically underestimates the truth. Why? Because we used the
+    sample mean $\bar X$ as our centre of mass. The sample mean is, by
+    construction, the number that <em>minimises</em> the sum of squared
+    deviations. Centering on it instead of on the unknown true $\mu$
+    makes the sum too small."
+  </p>
+  <div class="transition">→ "Time to prove Bessel's correction."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Bessel derivation</span></div>
+  <h3>Bessel's correction</h3>
+  <p>
+    Walk the three lines of the derivation:
+  </p>
+  <ol>
+    <li>"Write $X_i - \bar X = (X_i - \mu) - (\bar X - \mu)$. Square it and sum."</li>
+    <li>"Take expectations. Each $E[(X_i - \mu)^2]$ is $\sigma^2$. There are $n$ of them."</li>
+    <li>"And $E[(\bar X - \mu)^2]$ is the variance of the sample mean, which is $\sigma^2/n$. Multiply by $n$."</li>
+  </ol>
+  <p>
+    The result: $n\sigma^2 - \sigma^2 = (n-1)\sigma^2$. Divide by $n$ and
+    you get $\frac{n-1}{n}\sigma^2$ — biased low. Divide by $n-1$ and
+    you get exactly $\sigma^2$ — unbiased.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners can't follow the algebra:</strong> "You don't
+    need to reproduce this proof. What you need to remember is:
+    dividing by $n$ underestimates. Dividing by $n-1$ is the honest
+    answer. That's why <code>describe()</code> has been using $n-1$ all
+    along."
+  </div>
+  <div class="transition">→ "Let's make the intuition stick."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~2 min</span><span>n-1 intuition</span></div>
+  <h3>Why $n - 1$: the intuition</h3>
+  <p>
+    Give the two-point example. "Ten and 14. Mean is 12. Deviations are
+    $-2$ and $2$. Squared deviations are $4$ and $4$. Sum is $8$. If I
+    divide by $n=2$, I get variance 4. If I divide by $n-1=1$, I get 8."
+  </p>
+  <p>
+    "Which is right? With only two points, how certain can you really be
+    about the spread? The $n-1$ answer — 8 — is honest. The $n$ answer —
+    4 — is pretending you know more than you do."
+  </p>
+  <div class="transition">→ "Confidence intervals."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Confidence intervals</span></div>
+  <h3>Confidence intervals from the CLT</h3>
+  <p>
+    "CLT says the sample mean is approximately $N(\mu, \sigma^2/n)$. So
+    $\bar X - \mu$ divided by the standard error is approximately $N(0,1)$.
+    The 95% central region of $N(0,1)$ runs from $-1.96$ to $+1.96$. Solve
+    for $\mu$: the CI is $\bar x \pm 1.96 \cdot s/\sqrt n$."
+  </p>
+  <p>
+    Then the small-$n$ caveat: "When $n$ is small and you have to
+    estimate $\sigma$ with $s$, the ratio isn't quite Normal — it's
+    Student's $t$ with $n-1$ degrees of freedom. Slightly fatter tails.
+    Replace $1.96$ with the $t$ critical value."
+  </p>
+  <p>
+    Then the interpretation warning. This is the same point from 2.1 but
+    with sharper teeth. "A 95% CI is a statement about the procedure — if
+    you repeated the experiment, 95% of your intervals would cover the
+    truth. For any <em>specific</em> interval you compute, it either
+    contains the true mean or it doesn't. You don't know which."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> point out that this is exactly why
+    many practitioners prefer Bayesian credible intervals — the
+    interpretation is cleaner when the data is fixed.
+  </div>
+  <div class="transition">→ "And MAP bridges back to Bayes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>MAP</span></div>
+  <h3>MAP: MLE plus a prior</h3>
+  <p>
+    "MAP is just MLE with an extra term — the log of your prior. That
+    term acts as a regulariser, pulling the estimate toward the prior
+    mean. In machine learning it becomes L2 or L1 penalties; it's the
+    same idea."
+  </p>
+  <p>
+    "When $n$ is small, the prior dominates. When $n$ is large, the
+    likelihood dominates and MAP converges to MLE. This is where Bayesian
+    and frequentist methods meet in the middle."
+  </p>
+  <div class="transition">→ "Hands on the keyboard."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>GDP worked example</span></div>
+  <h3>Worked: Singapore GDP growth (closed-form)</h3>
+  <p>
+    Load the economic indicators, pull GDP growth, compute both variances.
+    Show that their ratio is $n / (n-1)$. "This is Bessel's correction in
+    numbers. You can feel it now."
+  </p>
+  <div class="transition">→ "And then the same thing with scipy.minimize."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Numerical MLE</span></div>
+  <h3>Worked: Numerical MLE with scipy</h3>
+  <p>
+    Walk the code. Define the negative log-likelihood (scipy minimises, so
+    we negate). Wrap $\sigma$ in exp so the optimiser can range freely.
+    Call <code>minimize</code>. Compare to the closed-form answer.
+  </p>
+  <p>
+    "Why do this for Normal, where we have a closed form? Because the
+    next model — logistic regression — has no closed form. You'll reach
+    for exactly this pattern in 2.6."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that BFGS uses a Hessian
+    approximation — the inverse Hessian at the MLE is the asymptotic
+    covariance of the parameters. That's where standard errors come from.
+  </div>
+  <div class="transition">→ "Building the CI."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>95% CI</span></div>
+  <h3>95% CI from the sample</h3>
+  <p>
+    Compute the standard error. Look up the $t$ critical value.
+    Construct the interval. Print.
+  </p>
+  <p>
+    Then the simulation check: "Run 1,000 fake samples. Count how many
+    CIs contain the truth. You should get close to 950. That's what
+    '95% confidence' actually means."
+  </p>
+  <div class="transition">→ "One last thing: when does MLE break?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>MLE failure modes</span></div>
+  <h3>When MLE fails</h3>
+  <p>
+    Walk the four failure modes quickly. Small $n$ → huge variance. Use
+    MAP. Multimodal → local optimum. Restart from multiple points.
+    Misspecified model → confidently wrong. Do goodness-of-fit. Heavy
+    tails → outliers dominate. Use a robust likelihood.
+  </p>
+  <p>
+    "MLE is not magic. It assumes the model is right. When the model is
+    right it's optimal. When it's wrong, MLE will tell you a very precise
+    number that is also very wrong."
+  </p>
+  <div class="transition">→ "Recap and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullet list. Pause after each. Tease 2.3: "Now that you can
+    <em>estimate</em> parameters, we need to <em>decide</em>. Did the
+    conversion rate actually go up, or is it noise? The answer is
+    hypothesis testing — and when the formulas break, the bootstrap."
+  </p>
+  <div class="transition">→ End of Lesson 2.2. Ten-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../01/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    2.1 Speaker Notes
+  </a>
+  <a href="../03/notes.html" class="next">
+    <span class="label">Next →</span>
+    2.3 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

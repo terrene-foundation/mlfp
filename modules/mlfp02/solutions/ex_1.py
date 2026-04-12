@@ -4,22 +4,38 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP02 — Exercise 1: Probability and Bayesian Thinking
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Apply Bayesian inference with conjugate priors, compute
-#   posteriors analytically, and compare credible vs confidence intervals.
-#   Visualise posteriors using ModelVisualizer.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Apply Bayes' theorem using the Normal-Normal conjugate prior
+#   - Compute MLE for a Normal distribution and quantify estimation uncertainty
+#   - Distinguish Bayesian credible intervals from frequentist confidence intervals
+#   - Explain why data overwhelms the prior as sample size grows
+#   - Visualise posterior distributions and compare interval methods
+#
+# PREREQUISITES: Complete M1 — you should be comfortable loading data,
+#   computing summary statistics, and reading Polars DataFrames.
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
 #   1. Compute MLE for HDB resale price parameters (Normal distribution)
-#   2. Specify conjugate priors (Normal-Normal for mean, Gamma for precision)
+#   2. Specify conjugate priors (Normal-Normal for mean)
 #   3. Derive and compute posterior distributions analytically
 #   4. Compare Bayesian credible intervals with bootstrap confidence intervals
 #   5. Visualise posteriors and bootstrap distributions using ModelVisualizer
+#
+# DATASET: HDB resale flat transactions (Singapore)
+#   Source: data.gov.sg — public housing resale records
+#   Filtered to: 4-ROOM flats, 2020 onwards
+#   Key column: resale_price (SGD)
 #
 # THEORY:
 #   Normal-Normal conjugate: prior μ ~ N(μ₀, σ₀²), likelihood x ~ N(μ, σ²)
 #   Posterior: μ|x ~ N(μₙ, σₙ²) where:
 #     μₙ = (μ₀/σ₀² + n*x̄/σ²) / (1/σ₀² + n/σ²)
 #     σₙ² = 1 / (1/σ₀² + n/σ²)
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -32,10 +48,14 @@ from scipy import stats
 from shared import MLFPDataLoader
 
 
-# ── Data Loading ───────────────────────────────���──────────────────────
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet")
+
+print("=" * 60)
+print("  MLFP02 Exercise 1: Probability and Bayesian Thinking")
+print("=" * 60)
 
 # Focus on a specific flat type and recent period for clearer analysis
 hdb_recent = hdb.filter(
@@ -44,16 +64,16 @@ hdb_recent = hdb.filter(
 )
 
 prices = hdb_recent["resale_price"].to_numpy().astype(np.float64)
-print(f"Sample: {len(prices)} 4-room HDB transactions (2020+)")
-print(f"Price range: ${prices.min():,.0f} – ${prices.max():,.0f}")
-print(f"Sample mean: ${prices.mean():,.0f}")
-print(f"Sample std:  ${prices.std():,.0f}")
+print(f"\n  Data loaded: {len(prices):,} 4-room HDB transactions (2020+)")
+print(f"  Price range: ${prices.min():,.0f} – ${prices.max():,.0f}")
+print(f"  Sample mean: ${prices.mean():,.0f}")
+print(f"  Sample std:  ${prices.std():,.0f}\n")
 
 
-# ════════════════════════════════════════���═════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 1: Maximum Likelihood Estimation (MLE)
 # ══════════════════════════════════════════════════════════════════════
-# For X ~ N(��, σ²): MLE gives μ̂ = x̄, σ̂² = (1/n)Σ(xᵢ - x̄)²
+# For X ~ N(μ, σ²): MLE gives μ̂ = x̄, σ̂² = (1/n)Σ(xᵢ - x̄)²
 # MLE is asymptotically efficient (achieves Cramér-Rao lower bound)
 
 n = len(prices)
@@ -72,11 +92,22 @@ print(f"σ̂ = ${mle_std:,.0f}")
 print(f"Fisher information I(μ) = {fisher_info:.4f}")
 print(f"Cramér-Rao lower bound: Var(μ̂) ≥ {cramer_rao_bound:.2f}")
 print(f"MLE standard error: ${mle_se:,.2f}")
+# INTERPRETATION: The standard error (${mle_se:,.0f}) is the precision of
+# our mean estimate. With n={n:,} transactions the MLE converges well —
+# the Cramér-Rao bound guarantees this is the most efficient estimator.
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert n > 0, "No data loaded — check the filter conditions"
+assert mle_mean > 0, "MLE mean should be positive (price cannot be zero)"
+assert mle_std > 0, "MLE std should be positive"
+assert mle_se > 0, "Standard error should be positive"
+assert mle_se < mle_std, "SE of mean should be much smaller than std of prices"
+print("\n✓ Checkpoint 1 passed — MLE estimates computed correctly\n")
 
 
-# ═══════════════════════════════════════════════���══════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 2: Specify conjugate priors
-# ═════════════���═══════════════════════════════���════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Prior belief: Singapore 4-room HDB prices centre around $500K
 # with moderate uncertainty (σ₀ = $100K)
 #
@@ -95,19 +126,21 @@ sigma_0 = 100_000.0  # Prior std: moderate uncertainty
 sigma_known = mle_std
 
 print(f"\n=== Prior Specification ===")
-print(f"Prior: μ ~ N(μ₀={mu_0:,.0f}, σ��={sigma_0:,.0f})")
+print(f"Prior: μ ~ N(μ₀={mu_0:,.0f}, σ₀={sigma_0:,.0f})")
 print(f"Likelihood: X|μ ~ N(μ, σ²) with σ={sigma_known:,.0f} (plug-in)")
+# INTERPRETATION: A $500K prior mean reflects market knowledge before
+# seeing this dataset. The $100K prior std encodes our uncertainty —
+# we'd be surprised if the true mean were below $300K or above $700K.
 
 
-# ═════════════════��═════════════════���═════════════════════════════��════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 3: Compute posterior analytically
-# ═════════════════════════════��══════════════════════════════��═════════
+# ══════════════════════════════════════════════════════════════════════
 # Posterior: μ|x ~ N(μₙ, σₙ²)
 #   precision_0 = 1/σ₀²     (prior precision)
 #   precision_data = n/σ²    (data precision)
 #   σₙ² = 1 / (precision_0 + precision_data)
-#   μₙ = σₙ² * (μ₀ * precision_0 + n * x̄ * precision_data / n)
-#      = σ��² * (μ₀/σ₀² + n*x̄/σ²)
+#   μₙ = σₙ² * (μ₀/σ₀² + n*x̄/σ²)
 
 precision_prior = 1.0 / sigma_0**2
 precision_data = n / sigma_known**2
@@ -127,16 +160,29 @@ print(f"Data precision:      {precision_data:.2e}")
 print(f"Posterior precision:  {precision_posterior:.2e}")
 print(f"Data-to-prior precision ratio: {precision_data / precision_prior:.0f}x")
 print(f"  → Posterior is dominated by {'data' if precision_data > precision_prior else 'prior'}")
+# INTERPRETATION: When data precision >> prior precision, the posterior mean
+# is almost identical to the MLE. The prior is "washed out" by the data.
+# This is why with large n, Bayesian and frequentist results converge.
 
 # 95% credible interval (highest posterior density for symmetric Normal = quantile-based)
 ci_95_lower = mu_n - 1.96 * sigma_n
 ci_95_upper = mu_n + 1.96 * sigma_n
 print(f"\n95% Bayesian credible interval: [${ci_95_lower:,.2f}, ${ci_95_upper:,.2f}]")
+# INTERPRETATION: A credible interval has a direct probability interpretation:
+# "Given the data, there is a 95% probability that the true mean price lies in
+# this range." This is stronger than the frequentist CI interpretation.
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert precision_data > 0, "Data precision must be positive"
+assert sigma_n < sigma_0, "Posterior std should be narrower than prior (data adds info)"
+assert ci_95_lower < mu_n < ci_95_upper, "Posterior mean must be within its own CI"
+assert abs(mu_n - mle_mean) < sigma_0, "Posterior should be close to MLE with large n"
+print("\n✓ Checkpoint 2 passed — posterior distribution computed correctly\n")
 
 
-# ══════════════════════════════��═══════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 4: Bootstrap confidence intervals for comparison
-# ═══════════════════════════��═══════════════════════════════���══════════
+# ══════════════════════════════════════════════════════════════════════
 # Non-parametric bootstrap: resample with replacement, compute statistic
 # BCa (bias-corrected accelerated) is the gold standard but we'll also
 # compute percentile CIs for comparison.
@@ -182,11 +228,21 @@ print(f"With n={n:,} observations, the data overwhelms the prior.")
 print(f"All intervals are very tight (±${(normal_ci_upper - normal_ci_lower)/2:,.0f})")
 print(f"because the standard error of the mean is ${mle_se:,.2f}.")
 print(f"The Bayesian posterior is almost identical to the MLE — data dominates.")
+# INTERPRETATION: All four methods agree because n is large. Bootstrap percentile
+# and BCa will diverge for small n or skewed distributions. BCa is preferred
+# as it corrects for both bias and skewness in the bootstrap distribution.
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert boot_ci_lower < boot_ci_upper, "Bootstrap CI lower must be below upper"
+assert bca_ci_lower < bca_ci_upper, "BCa CI lower must be below upper"
+assert normal_ci_lower < mle_mean < normal_ci_upper, "MLE mean should be within normal CI"
+assert len(bootstrap_means) == n_bootstrap, "Should have exactly n_bootstrap samples"
+print("\n✓ Checkpoint 3 passed — bootstrap CIs computed correctly\n")
 
 
-# ════���══════════════════════════════��══════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 5: Visualise with ModelVisualizer
-# ══════════════��═══════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
@@ -240,10 +296,14 @@ fig_convergence.update_layout(title="Bootstrap Mean Convergence")
 fig_convergence.write_html("ex1_bootstrap_convergence.html")
 print("Saved: ex1_bootstrap_convergence.html")
 
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert abs(running_means[-1] - mle_mean) < mle_se * 3, "Bootstrap mean should converge to MLE mean"
+print("\n✓ Checkpoint 4 passed — bootstrap convergence verified\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5b: Bayesian estimation across flat types
-# ══════════════════════════��═══════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Apply the same Normal-Normal conjugate to each flat type
 # to see how prior vs data balance differs with sample size
 
@@ -286,6 +346,10 @@ for ft, r in results_by_type.items():
         f"{ft:<12} {r['n']:>8,} ${r['mle_mean']:>10,.0f} "
         f"${r['posterior_mean']:>10,.0f} ${r['posterior_std']:>8,.2f} {r['prior_weight']:>7.3f}%"
     )
+# INTERPRETATION: Flat types with fewer transactions (e.g. 2 ROOM, EXECUTIVE)
+# show a larger prior weight — the posterior is pulled toward $500K more
+# than for 4 ROOM or 5 ROOM which have abundant data. This is Bayesian
+# regularisation in action: less data → prior matters more.
 
 # Visualise comparison across flat types
 flat_type_metrics = {
@@ -299,5 +363,33 @@ fig_flat = viz.metric_comparison(flat_type_metrics)
 fig_flat.update_layout(title="MLE vs Bayesian Posterior Mean by Flat Type")
 fig_flat.write_html("ex1_flat_type_comparison.html")
 print("\nSaved: ex1_flat_type_comparison.html")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+for ft, r in results_by_type.items():
+    assert r["posterior_std"] < sigma_0, f"{ft}: posterior std should shrink from prior"
+    assert 0 < r["prior_weight"] < 100, f"{ft}: prior weight must be between 0 and 100%"
+print("\n✓ Checkpoint 5 passed — flat type posteriors all valid\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 60)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 60)
+print("""
+  ✓ MLE: μ̂ = x̄, σ̂² = (1/n)Σ(xᵢ - x̄)² — most efficient estimator
+  ✓ Cramér-Rao bound: MLE achieves minimum possible variance
+  ✓ Normal-Normal conjugate: prior + likelihood → posterior analytically
+  ✓ Posterior precision = prior precision + data precision (additive)
+  ✓ Credible interval: direct P(μ ∈ CI | data) — Bayesian statement
+  ✓ Bootstrap CI: non-parametric alternative, BCa for small/skewed samples
+  ✓ With large n: posterior ≈ MLE, prior is overwhelmed by data
+
+  NEXT: In Exercise 2, you'll implement MLE from scratch using
+  scipy.optimize.minimize, add a prior to get MAP estimation,
+  and diagnose three cases where MLE fails (small n, multimodal
+  data, misspecified likelihood). Singapore GDP growth data.
+""")
 
 print("\n✓ Exercise 1 complete — Bayesian inference with conjugate priors")

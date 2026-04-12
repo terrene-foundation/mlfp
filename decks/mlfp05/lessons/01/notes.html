@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.1 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.1</span>
+  Autoencoders
+</h1>
+
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 18 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
+
+<p>
+  This is the first lesson of Module 5 and the class is in new territory:
+  "unsupervised deep learning". The audience has just finished M4 (classical
+  ML plus a neural‑network bridge), so they know forward passes, loss
+  functions and optimisers. What they do not yet know is how to build a
+  model with <em>no labels</em>. Autoencoders are the cleanest entry point
+  — the target <em>is</em> the input — which makes this lesson a natural
+  on‑ramp to the rest of the module.
+</p>
+
+<p>
+  Target distribution of time: 15 min on the vanilla AE (set up loop, show
+  it works), 10 min on denoising (tiny tweak), 25 min on the VAE (the
+  conceptually heavy part — ELBO + reparameterisation), 10 min on the
+  convolutional variant and sampling demos.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Autoencoders</h3>
+  <p>
+    Open by naming the transition. "Module 4 was classical ML and the
+    first neural networks you trained by hand. Module 5 is every major
+    deep‑learning architecture, one per lesson. We start with the simplest
+    — the autoencoder — because you already know every trick it needs."
+  </p>
+  <p>
+    Show the minute budget on the title slide. Tell them explicitly the
+    ELBO and reparameterisation trick take the longest — not because they
+    are hard, but because they are unfamiliar. Warn them that the code is
+    short and they should focus on <em>why</em>, not <em>how</em>.
+  </p>
+  <div class="transition">→ "Four tools, one idea."</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>One idea powers four tools</h3>
+  <p>
+    Walk the four bullets. Each one is a separate industry — retail,
+    real estate, finance, healthcare — all solved by the same base
+    architecture with a small twist. Emphasise that the first three
+    (dimensionality reduction, denoising, anomaly detection) are
+    applications of vanilla and denoising AEs; generation requires the
+    VAE, which we build up to slowly.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> the anomaly detection one is the most
+    intuitive. Train on normal fraud‑free transactions. A fraudster's
+    transaction doesn't look like the training data, so it reconstructs
+    badly. The reconstruction error becomes a fraud score for free.
+  </div>
+  <div class="transition">→ "Now the architecture — it's simpler than it looks."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Architecture diagram</span></div>
+  <h3>Encoder → bottleneck → decoder</h3>
+  <p>
+    Walk the diagram left to right. Point at the input block: "high
+    dimensional — an image, a vector, whatever". Point at the encoder
+    trapezoid: "getting narrower — that's the key shape". Point at the
+    latent: "this is where learning happens". Then the decoder trapezoid
+    widening back out, then the reconstruction.
+  </p>
+  <p>
+    Name the loss explicitly: "we train it by minimising
+    <code>||x − x̂||²</code>. That's it. No labels, no targets — the input
+    <em>is</em> the target."
+  </p>
+  <p>
+    Emphasise the bottleneck's role: "if the latent were as wide as the
+    input, the network would trivially learn the identity and learn
+    nothing. The narrowness is what forces it to compress."
+  </p>
+  <div class="transition">→ "Now the 15 lines of PyTorch."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Vanilla AE code</span></div>
+  <h3>Vanilla AE in 15 lines of PyTorch</h3>
+  <p>
+    Walk every line. Encoder is two Linear layers with a ReLU in between,
+    ending at latent dimension 8. Decoder is the mirror — Linear up to 64,
+    ReLU, Linear back to 256, sigmoid to squash outputs to [0, 1].
+  </p>
+  <p>
+    Stop at the sigmoid: "this is a common beginner trap — the activation
+    at the output must match the <em>range</em> of your data. Our pixels
+    are in [0, 1], so sigmoid is correct. If your data were in [-1, 1],
+    you would use tanh. If unbounded, nothing."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that the encoder/decoder need
+    not be symmetric — you can have asymmetric capacity. But for clarity,
+    mirror designs are the default.
+  </div>
+  <div class="transition">→ "And the training loop is familiar."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~2 min</span><span>Training loop</span></div>
+  <h3>Training loop — the usual suspects</h3>
+  <p>
+    Tell them: "this is exactly the loop from M4.8 — Adam optimiser, MSE
+    loss, <code>.backward()</code>, <code>.step()</code>. The only
+    difference is that the <em>input is also the target</em>. Both
+    encoder and decoder parameters are in one optimiser, so one
+    <code>.step()</code> call updates both. Never use two optimisers for
+    an autoencoder."
+  </p>
+  <p>
+    Run it live if you have the time. 20 epochs on 2000 blobs takes
+    about 10 seconds on CPU. Show the loss going down.
+  </p>
+  <div class="transition">→ "Now a tiny tweak gives us the denoising AE."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Denoising AE</span></div>
+  <h3>Denoising AE — corrupt input, clean target</h3>
+  <p>
+    Emphasise: "this is <em>exactly</em> the vanilla AE with one change.
+    We add noise to the input before feeding it in, but the target stays
+    the clean original. So the loss is
+    <code>mse(ae(noisy)[0], clean)</code>."
+  </p>
+  <p>
+    Why does this work? "Because the encoder now must throw away the noise
+    and keep the signal. It cannot just memorise pixel patterns — those
+    patterns change every mini‑batch. It has to learn features that are
+    invariant to the noise. That's a powerful free regulariser."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> compare to studying for an exam with
+    the answers blurry. You cannot memorise the exact words, so you have
+    to understand the concepts. Same idea.
+  </div>
+  <div class="transition">→ "But neither vanilla nor denoising can generate new data. Why not?"</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Why AE cannot generate</span></div>
+  <h3>Vanilla AE cannot generate new data</h3>
+  <p>
+    Demo it: pass a random latent vector to the decoder and show the
+    output is nonsense. Ask the class: "why?" Take one or two answers.
+  </p>
+  <p>
+    Then give the real answer: "the latent space is not a probability
+    distribution — it's a set of isolated points, one per training
+    example. Each training image gets mapped to its own little spot and
+    the in‑between is undefined. The decoder was never trained on
+    anything between the points, so it has no idea what to output there."
+  </p>
+  <p>
+    Set up the need: "we want the latent space to be <em>continuous</em>
+    and <em>smooth</em> so that random samples always land somewhere
+    sensible. That's what the VAE gives us."
+  </p>
+  <div class="transition">→ "Enter the variational autoencoder."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>VAE intuition</span></div>
+  <h3>Variational AE — make the latent a distribution</h3>
+  <p>
+    The big idea: "instead of encoding x to a single point, encode it to
+    a <em>distribution</em>. The encoder emits a mean and a variance.
+    We sample from that distribution to get z. Then we decode."
+  </p>
+  <p>
+    "Why does this help? Because we can add a KL term that says 'hey,
+    encoder, make your distribution look like a standard normal'. That
+    forces all the training examples' distributions to overlap around
+    the origin. Now sampling from <code>N(0, I)</code> always lands in
+    populated territory."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention this is variational inference —
+    we're approximating the true posterior <code>p(z|x)</code> with a
+    parametric family <code>q_φ(z|x)</code>. The math drops out of the
+    ELBO derivation.
+  </div>
+  <div class="transition">→ "Now the math — don't panic, it's two lines."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>ELBO derivation</span></div>
+  <h3>The ELBO — two terms</h3>
+  <p>
+    Walk the ELBO equation. "Two terms. The first is a reconstruction
+    likelihood — how well does the decoder explain x given z. For
+    Gaussian likelihood it becomes MSE plus a constant. The second is
+    a KL divergence — how far is the encoder's distribution from the
+    prior <code>N(0, I)</code>."
+  </p>
+  <p>
+    Then show the closed form: "for Gaussian <em>q</em> and Gaussian
+    prior, KL has a closed form — one line of Python, no Monte Carlo.
+    That is why VAEs are fast to train."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners flinch at KL:</strong> "Think of KL as a
+    distance between distributions. Zero if they are identical, larger
+    if they differ. We penalise the distance so the encoder doesn't
+    wander off into unused parts of the latent space."
+  </div>
+  <div class="transition">→ "But we still need to differentiate through the sample — that's the trick."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Reparameterisation</span></div>
+  <h3>The reparameterisation trick</h3>
+  <p>
+    Set up the problem first: "autograd cannot differentiate through a
+    random sample. If we write <code>z = torch.normal(mu, sigma)</code>,
+    then <code>.backward()</code> has no idea how to propagate a gradient
+    through <code>torch.normal</code> — it's not a differentiable op."
+  </p>
+  <p>
+    Then the trick: "<em>but</em> we can rewrite the sample as
+    <code>z = mu + sigma * epsilon</code> where epsilon is noise drawn
+    once outside the computation graph. Now epsilon is just an input, and
+    mu and sigma are regular tensors with gradients. Autograd sails
+    through."
+  </p>
+  <p>
+    Show the three‑line Python. Pause on
+    <code>std = torch.exp(0.5 * logvar)</code> and explain why the
+    encoder outputs log‑variance (it's unconstrained in sign).
+  </p>
+  <div class="transition">→ "A picture makes it clearer."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~2 min</span><span>Reparameterisation diagram</span></div>
+  <h3>Why the trick is necessary</h3>
+  <p>
+    Walk the diagram. "Input flows into two encoder heads — one for mu,
+    one for sigma. Both are differentiable. Epsilon enters from the
+    bottom — it's an external input, not part of the graph. They get
+    combined in the yellow <code>z = mu + sigma*eps</code> box, which is
+    differentiable. Then decoder."
+  </p>
+  <p>
+    Emphasise the solid vs dashed arrows: "solid arrows carry gradients
+    back during <code>.backward()</code>. Dashed arrow (epsilon) doesn't
+    — autograd treats it as a constant. But because mu and sigma are on
+    the solid path, their gradients still flow through the whole thing."
+  </p>
+  <div class="transition">→ "The full VAE loss in code."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>VAE loss code</span></div>
+  <h3>VAE loss in code</h3>
+  <p>
+    Walk the three lines. "Reconstruction is MSE with sum reduction —
+    sum so that the two terms are on comparable scales per batch. KL is
+    the closed form we derived on the previous slide, translated
+    directly into PyTorch. Return the total and the components for
+    logging."
+  </p>
+  <p>
+    Then warn about posterior collapse: "if KL dominates, the encoder
+    learns <code>mu = 0, sigma = 1</code> for every input. Then sampling
+    is fine but the decoder has nothing to condition on — it becomes a
+    plain generator with no connection to x. Two fixes: β‑VAE (multiply
+    KL by a small constant) or KL warm‑up (start with β=0 and ramp to 1
+    over a few epochs)."
+  </p>
+  <div class="transition">→ "Payoff time — generate new images."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Sampling new data</span></div>
+  <h3>Generating new images</h3>
+  <p>
+    Show the three lines. Emphasise <code>torch.randn</code> — that's
+    the prior sample. Pass through the decoder. Out comes 16 new images
+    that are not in the training set.
+  </p>
+  <p>
+    Run the demo if you can. The blobs are not stunning — they are
+    blurry Gaussians — but they are <em>new</em> Gaussians, different
+    centres and widths from any you trained on. That's generation.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the blurriness is a known VAE problem
+    — Gaussian likelihood favours mean reconstructions. GANs (Lesson 5.5)
+    produce sharper samples but are harder to train. Diffusion models
+    (also 5.5) give the best of both worlds.
+  </div>
+  <div class="transition">→ "The convolutional variant — swap in Conv2d."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Convolutional AE</span></div>
+  <h3>Convolutional AE — for images</h3>
+  <p>
+    Walk the code. "For image‑shaped inputs, linear layers waste
+    parameters. We use Conv2d to downsample in the encoder — stride 2
+    each layer halves the spatial size. For the decoder we use
+    ConvTranspose2d to upsample back. Everything else stays the same —
+    same loss, same training loop."
+  </p>
+  <p>
+    Mention that this is a preview of CNNs in Lesson 5.2. Students
+    don't need to understand Conv2d in depth yet — they just need to
+    recognise the mirror structure.
+  </p>
+  <div class="transition">→ "Four variants, one table."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Comparison</span></div>
+  <h3>Four variants at a glance</h3>
+  <p>
+    Walk the table. The key column is the last one — only the VAE can
+    generate new data. All four can reconstruct, compress, and detect
+    anomalies. Only the VAE's latent space is a proper distribution.
+  </p>
+  <p>
+    Tell them: "when you hear 'autoencoder' in the wild, 80% of the time
+    they mean vanilla or denoising. When they mean generation, they say
+    VAE explicitly. When they mean a specific architecture, they say
+    convolutional."
+  </p>
+  <div class="transition">→ "Kailash engine for visualisation."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~2 min</span><span>ModelVisualizer</span></div>
+  <h3>ModelVisualizer for training curves</h3>
+  <p>
+    Introduce the Kailash engine. "Throughout Module 5 you will use
+    <code>ModelVisualizer</code> for training curves, latent scatter
+    plots, reconstruction galleries, and confusion matrices. It is not a
+    matplotlib wrapper — it handles layout, titles, and HTML export for
+    you. Two lines of code instead of fifteen."
+  </p>
+  <p>
+    Run the two‑line example. Show the plot. Move on.
+  </p>
+  <div class="transition">→ "Four common traps, then we close."</div>
+</div>
+
+<!-- Slide 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four traps</h3>
+  <ol>
+    <li><strong>log σ² is not σ.</strong> This is the single most
+        common bug in VAE code. The symptom is NaN loss after a few
+        epochs. Fix: always use <code>std = torch.exp(0.5 * logvar)</code>.</li>
+    <li><strong>Loss must match output activation.</strong> If you end
+        with sigmoid, use MSE or binary cross‑entropy. If you end with
+        nothing, MSE is fine. Never pair sigmoid with
+        BCEWithLogitsLoss.</li>
+    <li><strong>Posterior collapse.</strong> Symptom: KL term drops to
+        near zero, the decoder ignores z. Fix: β‑VAE or warm‑up.</li>
+    <li><strong>Linear AE ≈ PCA.</strong> If you forget ReLUs, your
+        deep AE is just a roundabout PCA. Non‑linearity is where the
+        representation power lives.</li>
+  </ol>
+  <div class="transition">→ "Wrap up and preview 5.2."</div>
+</div>
+
+<!-- Slide 18 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Reflection</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullet list. Pause after each one and let them mentally
+    confirm. This is a long lesson and they need the reinforcement.
+  </p>
+  <p>
+    Bridge to 5.2: "Today's autoencoder had a flat MLP bottleneck.
+    Lesson 5.2 replaces the bottleneck with a stack of convolutional
+    layers and skip connections — LeNet, AlexNet, VGG, ResNet — and
+    introduces squeeze‑and‑excitation blocks that are standard in
+    production CV models today. You will also meet ONNX export via
+    OnnxBridge for the first time."
+  </p>
+  <p>
+    Take 5 minutes for questions. Common ones: "why are VAE samples so
+    blurry?" (Gaussian likelihood favours means — GANs and diffusion fix
+    this), "can I use a VAE for text?" (yes but it's tricky — posterior
+    collapse is much worse for discrete data), "what if my data is not
+    in [0, 1]?" (adjust the output activation and loss to match).
+  </p>
+  <div class="transition">→ End of Lesson 5.1. 10‑minute break before 5.2.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 5 Index
+  </a>
+  <a href="../02/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.2 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

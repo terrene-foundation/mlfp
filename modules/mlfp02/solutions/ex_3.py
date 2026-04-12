@@ -4,8 +4,19 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP02 — Exercise 3: Hypothesis Testing
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Apply the Neyman-Pearson framework with power analysis,
-#   multiple testing corrections, and permutation tests.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Formulate null and alternative hypotheses for business questions
+#   - Compute statistical power and minimum detectable effect (MDE)
+#   - Apply multiple testing corrections to control false positives
+#   - Implement a permutation test as a distribution-free alternative
+#   - Correctly interpret p-values (not as P(H₀ is true))
+#
+# PREREQUISITES: Complete Exercise 2 — you should understand MLE, confidence
+#   intervals, and how to evaluate statistical models with AIC.
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
 #   1. Load e-commerce A/B test data and perform sanity checks (SRM)
@@ -15,12 +26,17 @@
 #   5. Apply multiple testing corrections (Bonferroni, BH-FDR)
 #   6. Implement a permutation test as distribution-free alternative
 #
+# DATASET: E-commerce A/B test — user-level conversion and revenue data
+#   Source: Simulated from real e-commerce patterns
+#   Columns: group (control/treatment), converted (0/1), revenue (SGD)
+#
 # THEORY:
 #   - Neyman-Pearson: H₀ vs H₁, Type I (α) vs Type II (β) errors
 #   - Power = 1 - β = P(reject H₀ | H₁ true)
 #   - SRM: χ² test on observed vs expected sample sizes
 #   - Bonferroni: α_adj = α/m (controls FWER)
 #   - BH-FDR: rank p-values, reject if p(k) ≤ (k/m)α (controls FDR)
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -36,16 +52,27 @@ from shared import MLFPDataLoader
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-ab_data = loader.load("mlfp01", "ecommerce_ab_test.csv")
+ab_data = loader.load("mlfp02", "experiment_data.parquet")
 
-print("=== A/B Test Data ===")
-print(f"Shape: {ab_data.shape}")
-print(f"Columns: {ab_data.columns}")
+print("=" * 60)
+print("  MLFP02 Exercise 3: Hypothesis Testing")
+print("=" * 60)
+print(f"\n  Data loaded: experiment_data.parquet")
+print(f"  Shape: {ab_data.shape}")
+print(f"  Columns: {ab_data.columns}")
 print(ab_data.head(5))
 
-# Separate groups
-control = ab_data.filter(pl.col("group") == "control")
-treatment = ab_data.filter(pl.col("group") == "treatment")
+# Separate groups — combine any non-control groups as treatment
+control = ab_data.filter(pl.col("experiment_group") == "control")
+treatment = ab_data.filter(pl.col("experiment_group") != "control")
+
+# Derive a binary 'converted' column from metric_value > 0 if not present
+if "converted" not in ab_data.columns:
+    ab_data = ab_data.with_columns(
+        (pl.col("metric_value") > 0).cast(pl.Int8).alias("converted")
+    )
+    control = ab_data.filter(pl.col("experiment_group") == "control")
+    treatment = ab_data.filter(pl.col("experiment_group") != "control")
 
 n_control = control.height
 n_treatment = treatment.height
@@ -79,14 +106,24 @@ print(f"χ² statistic: {chi2_stat:.4f}")
 print(f"p-value: {srm_p_value:.6f}")
 
 if srm_p_value < 0.01:
-    print("⚠ SRM DETECTED — investigate randomisation before trusting results!")
+    print("SRM DETECTED — investigate randomisation before trusting results!")
 else:
-    print("✓ No SRM detected — sample split is consistent with 50/50")
+    print("No SRM detected — sample split is consistent with 50/50")
+# INTERPRETATION: SRM is the most important sanity check in any experiment.
+# Even a p-value of 0.04 (>0.01) is worth investigating — prefer p > 0.1 for
+# clean experiments. SRM does not mean the experiment is invalid, but it
+# signals that causal claims should be made more cautiously.
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert 0 <= srm_p_value <= 1, "SRM p-value must be between 0 and 1"
+assert chi2_stat >= 0, "Chi-squared statistic must be non-negative"
+assert n_control + n_treatment == n_total, "Control + treatment must equal total"
+print("\n✓ Checkpoint 1 passed — SRM check completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Power analysis — minimum detectable effect (MDE)
-# ══════════════════════════════════════════════════════��═══════════════
+# ══════════════════════════════════════════════════════════════════════
 # Given our sample size, what's the smallest effect we can detect
 # at α=0.05 with 80% power?
 #
@@ -111,6 +148,9 @@ print(f"α = {alpha}, Power = {power_target:.0%}")
 print(f"z_{{α/2}} = {z_alpha_half:.3f}, z_β = {z_beta:.3f}")
 print(f"Minimum Detectable Effect (MDE): {mde:.6f} ({mde:.4%} absolute)")
 print(f"Relative MDE: {mde / p_control:.2%} of baseline")
+# INTERPRETATION: An MDE of 0.5% absolute means we can reliably detect
+# a treatment that changes conversion by at least 0.5 percentage points.
+# Smaller effects exist but require more data to detect with 80% power.
 
 # Power curve: what power do we achieve at different effect sizes?
 effect_sizes = np.linspace(0, mde * 3, 100)
@@ -125,6 +165,13 @@ print(f"\nPower at selected effect sizes:")
 for es_mult in [0.5, 1.0, 1.5, 2.0]:
     idx = int(es_mult / 3 * 99)
     print(f"  Effect = {effect_sizes[idx]:.4%}: Power = {powers[idx]:.1%}")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert 0 < mde < 1, "MDE must be a valid proportion (between 0 and 1)"
+assert 0 < p_control < 1, "Baseline conversion rate must be a valid proportion"
+assert len(powers) == len(effect_sizes), "Should have one power value per effect size"
+assert powers[-1] > powers[0], "Power should increase with effect size"
+print("\n✓ Checkpoint 2 passed — power analysis completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -151,6 +198,16 @@ print(f"z-statistic: {z_stat:.4f}")
 print(f"p-value: {p_value_conversion:.6f}")
 print(f"Cohen's h: {cohens_h:.4f}")
 print(f"{'SIGNIFICANT' if p_value_conversion < alpha else 'NOT significant'} at α={alpha}")
+# INTERPRETATION: A small p-value means the observed difference is unlikely
+# under H₀ (no treatment effect). It does NOT mean the effect is large or
+# important — a tiny effect with huge n can be highly significant. Always
+# report effect size (Cohen's h) alongside the p-value.
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert 0 <= p_value_conversion <= 1, "p-value must be between 0 and 1"
+assert 0 < p_treatment < 1, "Treatment conversion rate must be a valid proportion"
+assert se_diff > 0, "Standard error of difference must be positive"
+print("\n✓ Checkpoint 3 passed — primary metric test completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -230,6 +287,9 @@ m = len(metrics_results)
 fwer = 1 - (1 - alpha) ** m
 print(f"\nNumber of tests (m): {m}")
 print(f"Family-wise error rate (uncorrected): {fwer:.4f} ({fwer:.1%})")
+# INTERPRETATION: With m=4 tests at α=0.05, the probability of at least one
+# false positive exceeds 18%! Multiple testing corrections are essential
+# in any A/B test that measures more than one metric.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -282,6 +342,10 @@ print(f"Target FDR: {alpha}")
 for i, name in enumerate(metric_names):
     sig = "SIGNIFICANT" if bh_significant_mask[i] else "not significant"
     print(f"  {name}: p={p_values[i]:.6f}, q={q_values[i]:.6f} → {sig}")
+# INTERPRETATION: BH-FDR allows more discoveries than Bonferroni (it controls
+# the expected fraction of false discoveries rather than the probability of ANY
+# false discovery). In exploratory settings with many metrics, BH-FDR is preferred.
+# In confirmatory settings (one primary metric), Bonferroni is more appropriate.
 
 # Summary comparison
 print(f"\n=== Correction Comparison ===")
@@ -291,6 +355,13 @@ for i, name in enumerate(metric_names):
     bonf = "sig" if bonferroni_significant[i] else "ns"
     bh = "sig" if bh_significant_mask[i] else "ns"
     print(f"{name:<20} {p_values[i]:>10.6f} {bonf:>12} {bh:>12}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert all(0 <= q <= 1 for q in q_values), "All q-values must be valid probabilities"
+assert all(q_values >= p_values), "q-values (adjusted) must be >= raw p-values"
+assert sum(bonferroni_significant) <= sum(bh_significant_mask) + m, \
+    "BH-FDR should generally reject at least as many as Bonferroni"
+print("\n✓ Checkpoint 4 passed — multiple testing corrections applied\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -329,9 +400,20 @@ print(f"Observed difference: {observed_diff:+.6f}")
 print(f"Permutation p-value: {perm_p_value:.6f}")
 print(f"Parametric p-value:  {p_value_conversion:.6f}")
 print(f"Agreement: {'YES' if (perm_p_value < alpha) == (p_value_conversion < alpha) else 'NO'}")
+# INTERPRETATION: The permutation test makes no distributional assumptions — it
+# asks "what is the probability of observing this difference if group labels are
+# meaningless?" Agreement with the parametric test builds confidence. Disagreement
+# suggests the parametric test's distributional assumption may be violated.
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert 0 <= perm_p_value <= 1, "Permutation p-value must be between 0 and 1"
+assert len(perm_diffs) == n_permutations, "Should have exactly n_permutations permutation statistics"
+assert abs(perm_diffs.mean()) < abs(observed_diff) * 0.5, \
+    "Permutation null distribution should be centred near zero"
+print("\n✓ Checkpoint 5 passed — permutation test completed\n")
 
 
-# ══════════════════════════════════════════════════════���═══════════════
+# ══════════════════════════════════════════════════════════════════════
 # Visualise results with ModelVisualizer
 # ══════════════════════════════════════════════════════════════════════
 
@@ -355,5 +437,29 @@ fig_power = viz.training_history(power_metrics, x_label="Effect Size Index")
 fig_power.update_layout(title="Statistical Power vs Effect Size")
 fig_power.write_html("ex3_power_curve.html")
 print("Saved: ex3_power_curve.html")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 60)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 60)
+print("""
+  ✓ SRM: χ² test detects broken randomisation before trusting results
+  ✓ MDE: given n and α, compute the smallest detectable effect at 80% power
+  ✓ Two-proportion z-test for conversion rates; Mann-Whitney for skewed revenue
+  ✓ p-value: P(data | H₀ true) — NOT P(H₀ is true)
+  ✓ FWER: probability of ANY false positive inflates with more tests
+  ✓ Bonferroni: most conservative correction, α_adj = α/m
+  ✓ BH-FDR: less conservative, controls expected fraction of false discoveries
+  ✓ Permutation test: distribution-free, makes no parametric assumptions
+
+  NEXT: In Exercise 4 you'll design a complete A/B experiment from scratch —
+  writing hypotheses before data collection, computing required sample sizes,
+  simulating data with a known effect (positive control), and creating a
+  structured data collection plan following the Why/What/Where/How/Frequency
+  framework. You'll also confront SRM on real data.
+""")
 
 print("\n✓ Exercise 3 complete — hypothesis testing with multiple testing correction")

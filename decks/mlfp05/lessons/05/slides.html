@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.5 — Generative Models: GANs and Diffusion | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.5</p>
+  <h1>Generative Models — GANs and Diffusion</h1>
+  <p style="font-size: 0.7em; color: #64748B;">DCGAN · WGAN-GP · Mode collapse · DDPM · FID evaluation</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> implement DCGAN and WGAN, understand diffusion, evaluate with FID
+  </div>
+</section>
+
+<section>
+  <h2>The GAN setup — a minimax game</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="60" width="140" height="80" rx="8" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="90" y="90" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">Generator G</text>
+      <text x="90" y="112" text-anchor="middle" font-size="10">z → fake sample</text>
+      <line x1="165" y1="100" x2="260" y2="70" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="260,70 254,74 252,66" fill="#3B82F6"/>
+      <text x="210" y="62" font-size="9" fill="#3B82F6">fake</text>
+
+      <rect x="270" y="30" width="160" height="140" rx="8" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="350" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">Discriminator D</text>
+      <text x="350" y="85" text-anchor="middle" font-size="10">real or fake?</text>
+      <text x="350" y="110" text-anchor="middle" font-size="10">P(real) ∈ [0,1]</text>
+      <text x="350" y="150" text-anchor="middle" font-size="9" fill="#64748B">Classifies both inputs</text>
+
+      <rect x="20" y="10" width="140" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="90" y="32" text-anchor="middle" font-size="11" fill="#22C55E">Real data x</text>
+      <line x1="165" y1="28" x2="260" y2="55" stroke="#22C55E" stroke-width="2"/>
+      <polygon points="260,55 254,49 252,57" fill="#22C55E"/>
+      <text x="210" y="32" font-size="9" fill="#22C55E">real</text>
+
+      <line x1="435" y1="100" x2="500" y2="100" stroke="#475569" stroke-width="2"/>
+      <polygon points="500,100 494,96 494,104" fill="#475569"/>
+      <text x="550" y="95" font-size="11" fill="#475569">Loss signal</text>
+      <text x="550" y="112" font-size="10" fill="#64748B">back to both</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>GAN minimax objective</h2>
+  \[ \min_G \max_D \;\bigl[\mathbb{E}_{x \sim p_{\text{data}}}[\log D(x)] + \mathbb{E}_{z \sim p_z}[\log(1 - D(G(z)))]\bigr] \]
+  <ul style="font-size: 0.85em;">
+    <li>$D$ wants to maximise — correctly classify real and fake.</li>
+    <li>$G$ wants to minimise — fool $D$ into calling fakes real.</li>
+    <li>Training alternates: update $D$ for $k$ steps, then update $G$ for 1 step.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>DCGAN architecture</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="50" width="80" height="80" rx="4" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="60" y="85" text-anchor="middle" font-size="10" font-weight="600">z</text>
+      <text x="60" y="100" text-anchor="middle" font-size="9" fill="#64748B">100-d noise</text>
+
+      <line x1="105" y1="90" x2="135" y2="90" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="135,90 129,86 129,94" fill="#3B82F6"/>
+
+      <rect x="140" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="190" y="75" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
+      <text x="190" y="95" text-anchor="middle" font-size="9">+ BatchNorm</text>
+      <text x="190" y="112" text-anchor="middle" font-size="9">+ ReLU</text>
+
+      <line x1="245" y1="90" x2="275" y2="90" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="275,90 269,86 269,94" fill="#3B82F6"/>
+
+      <rect x="280" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="330" y="75" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
+      <text x="330" y="95" text-anchor="middle" font-size="9">+ BatchNorm</text>
+      <text x="330" y="112" text-anchor="middle" font-size="9">+ ReLU</text>
+
+      <line x1="385" y1="90" x2="415" y2="90" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="415,90 409,86 409,94" fill="#3B82F6"/>
+
+      <rect x="420" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="470" y="80" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
+      <text x="470" y="100" text-anchor="middle" font-size="9">+ Tanh</text>
+
+      <line x1="525" y1="90" x2="555" y2="90" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="555,90 549,86 549,94" fill="#3B82F6"/>
+
+      <rect x="560" y="50" width="80" height="80" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="600" y="85" text-anchor="middle" font-size="10" font-weight="600" fill="#22C55E">Image</text>
+      <text x="600" y="100" text-anchor="middle" font-size="9" fill="#22C55E">28x28</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">DCGAN rules: no max pooling, no FC layers, batch norm everywhere except output, Tanh at generator output.</p>
+</section>
+
+<section>
+  <h2>Mode collapse — the GAN failure mode</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="20" width="250" height="140" fill="#DCFCE7" stroke="#22C55E" rx="6"/>
+      <text x="145" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#22C55E">Healthy training</text>
+      <circle cx="60" cy="100" r="8" fill="#22C55E" opacity="0.5"/><circle cx="90" cy="80" r="8" fill="#22C55E" opacity="0.5"/>
+      <circle cx="120" cy="120" r="8" fill="#22C55E" opacity="0.5"/><circle cx="160" cy="90" r="8" fill="#22C55E" opacity="0.5"/>
+      <circle cx="200" cy="110" r="8" fill="#22C55E" opacity="0.5"/><circle cx="230" cy="70" r="8" fill="#22C55E" opacity="0.5"/>
+      <text x="145" y="155" text-anchor="middle" font-size="10" fill="#64748B">Diverse samples</text>
+
+      <rect x="310" y="20" width="250" height="140" fill="#FEE2E2" stroke="#EF4444" rx="6"/>
+      <text x="435" y="45" text-anchor="middle" font-weight="600" font-size="12" fill="#EF4444">Mode collapse</text>
+      <circle cx="410" cy="95" r="8" fill="#EF4444" opacity="0.5"/><circle cx="420" cy="100" r="8" fill="#EF4444" opacity="0.5"/>
+      <circle cx="430" cy="90" r="8" fill="#EF4444" opacity="0.5"/><circle cx="440" cy="105" r="8" fill="#EF4444" opacity="0.5"/>
+      <circle cx="450" cy="95" r="8" fill="#EF4444" opacity="0.5"/><circle cx="425" cy="98" r="8" fill="#EF4444" opacity="0.5"/>
+      <text x="435" y="155" text-anchor="middle" font-size="10" fill="#64748B">All samples look the same</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Generator finds one output that fools D and repeats it. WGAN fixes this.</p>
+</section>
+
+<section>
+  <h2>WGAN — Wasserstein distance</h2>
+  \[ \min_G \max_{D \in \mathcal{D}} \;\bigl[\mathbb{E}_{x}[D(x)] - \mathbb{E}_{z}[D(G(z))]\bigr] \]
+  <ul style="font-size: 0.85em;">
+    <li>Replaces JS divergence with Wasserstein (Earth Mover's) distance.</li>
+    <li>Gradient penalty (WGAN-GP) enforces the Lipschitz constraint.</li>
+    <li>More stable training, meaningful loss curve, reduced mode collapse.</li>
+  </ul>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> WGAN loss correlates with sample quality — you can actually use it to monitor training.
+  </div>
+</section>
+
+<section>
+  <h2>DDPM — Denoising Diffusion</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 160" xmlns="http://www.w3.org/2000/svg">
+      <text x="340" y="15" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">Forward: add noise progressively → Reverse: learn to denoise</text>
+      <rect x="20" y="40" width="80" height="80" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="60" y="75" text-anchor="middle" font-size="10" font-weight="600" fill="#22C55E">x₀</text>
+      <text x="60" y="95" text-anchor="middle" font-size="9">clean</text>
+
+      <line x1="105" y1="80" x2="145" y2="80" stroke="#94A3B8" stroke-width="1.5"/>
+      <polygon points="145,80 139,76 139,84" fill="#94A3B8"/>
+      <text x="125" y="70" text-anchor="middle" font-size="8" fill="#94A3B8">+noise</text>
+
+      <rect x="150" y="40" width="80" height="80" rx="4" fill="#F1F5F9" stroke="#CBD5E1"/>
+      <text x="190" y="80" text-anchor="middle" font-size="10">x₁</text>
+
+      <line x1="235" y1="80" x2="275" y2="80" stroke="#94A3B8" stroke-width="1.5"/>
+      <polygon points="275,80 269,76 269,84" fill="#94A3B8"/>
+
+      <rect x="280" y="40" width="80" height="80" rx="4" fill="#E2E8F0" stroke="#94A3B8"/>
+      <text x="320" y="80" text-anchor="middle" font-size="10">...</text>
+
+      <line x1="365" y1="80" x2="405" y2="80" stroke="#94A3B8" stroke-width="1.5"/>
+      <polygon points="405,80 399,76 399,84" fill="#94A3B8"/>
+
+      <rect x="410" y="40" width="80" height="80" rx="4" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="450" y="75" text-anchor="middle" font-size="10">x_T</text>
+      <text x="450" y="95" text-anchor="middle" font-size="9" fill="#94A3B8">pure noise</text>
+
+      <line x1="495" y1="80" x2="535" y2="80" stroke="#3B82F6" stroke-width="2"/>
+      <polygon points="535,80 529,76 529,84" fill="#3B82F6"/>
+      <text x="515" y="70" text-anchor="middle" font-size="8" fill="#3B82F6">denoise</text>
+
+      <rect x="540" y="40" width="120" height="80" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="600" y="70" text-anchor="middle" font-weight="600" font-size="10" fill="#3B82F6">UNet ε_θ</text>
+      <text x="600" y="90" text-anchor="middle" font-size="9">predicts noise</text>
+      <text x="600" y="107" text-anchor="middle" font-size="9">at each step</text>
+    </svg>
+  </figure>
+  <ul style="font-size: 0.85em;">
+    <li>More stable than GANs. Better diversity. No mode collapse.</li>
+    <li>Slower to sample (many denoising steps). Active research on speed.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>FID — evaluating generated samples</h2>
+  \[ \text{FID} = \|\mu_r - \mu_g\|^2 + \text{Tr}\bigl(\Sigma_r + \Sigma_g - 2(\Sigma_r \Sigma_g)^{1/2}\bigr) \]
+  <ul style="font-size: 0.85em;">
+    <li>Compare statistics of real vs generated features (from Inception network).</li>
+    <li>Lower FID = closer to real data. FID = 0 means identical distributions.</li>
+    <li>Standard metric. Report it for every generative model.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>When to use what</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Model</th><th>Best for</th><th>Weakness</th></tr></thead>
+    <tbody>
+      <tr><td>VAE (5.1)</td><td>Smooth latent space, interpolation</td><td>Blurry outputs</td></tr>
+      <tr><td>GAN</td><td>Sharp images, fast sampling</td><td>Training instability, mode collapse</td></tr>
+      <tr><td>Diffusion</td><td>Best quality and diversity</td><td>Slow sampling</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>DCGAN training loop</h2>
+  <pre><code class="language-python" data-trim>
+for epoch in range(epochs):
+    for real_batch in dataloader:
+        # Train D: maximise log D(x) + log(1-D(G(z)))
+        z = torch.randn(batch_size, latent_dim)
+        fake = generator(z)
+        d_loss = -torch.mean(torch.log(D(real_batch))
+                           + torch.log(1 - D(fake.detach())))
+        d_loss.backward(); d_opt.step()
+
+        # Train G: minimise log(1-D(G(z)))
+        z = torch.randn(batch_size, latent_dim)
+        fake = generator(z)
+        g_loss = -torch.mean(torch.log(D(fake)))
+        g_loss.backward(); g_opt.step()
+  </code></pre>
+</section>
+
+<section>
+  <h2>WGAN-GP training differences</h2>
+  <pre><code class="language-python" data-trim>
+# Critic (not discriminator) — no sigmoid
+# Gradient penalty replaces weight clipping
+alpha = torch.rand(batch_size, 1, 1, 1)
+interp = alpha * real + (1 - alpha) * fake.detach()
+interp.requires_grad_(True)
+d_interp = critic(interp)
+gradients = torch.autograd.grad(d_interp, interp,
+    grad_outputs=torch.ones_like(d_interp),
+    create_graph=True)[0]
+gp = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+d_loss = d_fake.mean() - d_real.mean() + 10 * gp
+  </code></pre>
+</section>
+
+<section>
+  <h2>Singapore applications</h2>
+  <ul>
+    <li><strong>Synthetic data:</strong> generate realistic financial transactions for fraud model training (privacy-safe).</li>
+    <li><strong>Data augmentation:</strong> generate rare disease images for medical diagnosis training at NUS.</li>
+    <li><strong>Simulation:</strong> generate realistic traffic patterns for LTA planning models.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Training G too aggressively</strong> — D must stay ahead. Use k=5 D steps per G step.</li>
+    <li><strong>Ignoring mode collapse</strong> — monitor sample diversity, not just D loss.</li>
+    <li><strong>No FID evaluation</strong> — visual inspection is subjective. Report FID.</li>
+    <li><strong>Using GANs when diffusion is better</strong> — if quality matters more than speed, use diffusion.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Implement DCGAN and WGAN with training loops.</li>
+    <li>✓ Explain mode collapse and how WGAN addresses it.</li>
+    <li>✓ Describe DDPM forward/reverse process.</li>
+    <li>✓ Evaluate generated data with FID.</li>
+    <li>✓ Select VAE vs GAN vs diffusion for a task.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> 5.6 — Graph Neural Networks. Patterns in connected data.
+  </div>
+</section>
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

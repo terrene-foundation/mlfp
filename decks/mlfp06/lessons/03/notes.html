@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.3 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.3</span>
+  Preference Alignment — DPO and GRPO
+</h1>
+
+<p class="lead">Total time: ~60 minutes · 19 slides · ~3 min per slide average</p>
+
+<p>
+  This is the most math-heavy lesson in M6. The core move is the
+  derivation of DPO from the RLHF objective — walk it slowly, on the
+  whiteboard if possible, and let students see that DPO is not
+  "different from RLHF" but rather "RLHF's closed-form solution". Once
+  they see that, the rest of the lesson (GRPO, evaluation) slots in
+  easily.
+</p>
+
+<!-- 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Preference Alignment — DPO and GRPO</h3>
+  <p>
+    Open with the framing: "Yesterday you made the model fit Singapore
+    domain Q&amp;A. Today we make it <em>good</em>. Fitting is not the
+    same as being good."
+  </p>
+  <p>
+    Deliverable: one DPO run that takes the SFT adapter from 6.2 and
+    measurably raises the refusal rate on a set of unsafe Singapore
+    prompts without raising it on benign ones.
+  </p>
+  <div class="transition">→ "Why SFT alone is not enough."</div>
+</div>
+
+<!-- 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>Why alignment is not just more fine-tuning</h3>
+  <p>
+    Read the MAS derivative quote aloud. Let them sit with it. "What
+    does SFT tell the model? Answer the question in the shape of the
+    training data. What does alignment tell the model? Prefer responses
+    that a human auditor would approve of over responses that a human
+    auditor would flag."
+  </p>
+  <p>
+    Introduce pairwise preferences as the native data shape. "It is
+    much easier for a labeller to pick A over B than to score A on a
+    scale of 1 to 10. Human judgement is naturally comparative."
+  </p>
+  <div class="transition">→ "The classical recipe — three stages."</div>
+</div>
+
+<!-- 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>RLHF three stages</span></div>
+  <h3>Classical RLHF — three stages</h3>
+  <p>
+    Walk the diagram left to right. Stage 1 is what you did yesterday —
+    SFT. Stage 2 trains a separate reward model on preference pairs.
+    Stage 3 runs PPO to optimise the policy against the reward model.
+  </p>
+  <p>
+    Tell them why the community wanted a shortcut: "Stage 2's reward
+    model can be exploited — the policy finds prompts that maximise
+    reward without actually being good. Stage 3's PPO has many
+    hyperparameters and is unstable. Two separate networks, two
+    separate training loops, many ways to fail."
+  </p>
+  <div class="transition">→ "The RLHF objective, written out."</div>
+</div>
+
+<!-- 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>RLHF objective</span></div>
+  <h3>The RLHF objective</h3>
+  <p>
+    Read the objective aloud. "Maximise expected reward under the
+    policy, minus beta times KL to the reference. Beta controls how
+    far we let the policy drift from SFT."
+  </p>
+  <p>
+    Point out the KL as a <em>soft</em> constraint — it does not
+    forbid drift, it penalises it. "The higher beta is, the harder it
+    is to drift. Low beta is aggressive alignment; high beta is
+    conservative alignment."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> recognise this as a
+    KL-regularised bandit problem. The closed-form solution on the
+    next slide is standard stat-mech — the maximum-entropy policy
+    under a linear-in-reward constraint.
+  </div>
+  <div class="transition">→ "The key insight — closed form."</div>
+</div>
+
+<!-- 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Closed form</span></div>
+  <h3>Closed-form optimum</h3>
+  <p>
+    This is the linchpin. Walk the formula slowly. "The optimum policy
+    is the reference policy, reweighted by the exponent of reward over
+    beta, normalised by Z." Pause. "What this means: <em>given the
+    reference and the reward, you can write down the optimum without
+    training</em>. Training is just a way to find the policy that
+    matches this formula."
+  </p>
+  <p>
+    Then rearrange for r_phi. "Rewards are implicitly determined by
+    the ratio of the optimum policy to the reference." Pause again.
+    "In other words, the reward model is redundant — if we know pi_ref
+    and pi_star, we know r_phi up to a prompt-dependent constant."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are lost:</strong> "Do not try to memorise
+    the formula. The takeaway is: the optimal aligned policy has a
+    closed-form relationship to the reference and the reward. That
+    means we can train without ever building the reward network."
+  </div>
+  <div class="transition">→ "Bradley-Terry turns the ratio into a probability."</div>
+</div>
+
+<!-- 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Bradley-Terry</span></div>
+  <h3>Bradley-Terry preference model</h3>
+  <p>
+    Introduce the Bradley-Terry model. "Given two items with scores,
+    the probability that one beats the other is the sigmoid of the
+    score difference. It is the standard model for pairwise
+    preferences — used in chess Elo rankings long before LLMs."
+  </p>
+  <p>
+    Substitute our expression for r_phi. Pause at the Z(x) cancellation.
+    "Notice that Z(x) depends only on x, not on y. When you subtract
+    r_phi(y_w) from r_phi(y_l), the Z(x) terms cancel. That means we
+    never have to compute the partition function. The reward model
+    vanishes."
+  </p>
+  <div class="transition">→ "And here is the DPO loss — almost free."</div>
+</div>
+
+<!-- 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>DPO loss</span></div>
+  <h3>The DPO loss</h3>
+  <p>
+    Read the loss aloud. "Negative log of sigmoid of beta times the
+    difference in log-ratios of chosen to reference, minus log-ratios
+    of rejected to reference. Take the expectation over preference
+    pairs. Minimise."
+  </p>
+  <p>
+    Deliver the punchline: "DPO turns preference alignment into binary
+    classification. The classifier's weights are the aligned policy's
+    weights. No reward model. No PPO. No critic. One loss, one
+    optimiser, done."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that DPO is a special case
+    of a broader family called preference optimisation, alongside
+    IPO, KTO, ORPO. All start from the same RLHF objective with
+    different assumptions about the preference model.
+  </div>
+  <div class="transition">→ "Let's run it."</div>
+</div>
+
+<!-- 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~2 min</span><span>DPO config</span></div>
+  <h3>DPO in 15 lines of config</h3>
+  <p>
+    Walk the config. Highlight three things: (1) method="dpo" — the
+    only meaningful change from SFT, (2) dpo_beta=0.1 — the new
+    hyperparameter, (3) learning_rate=5e-6 — 40x smaller than SFT.
+  </p>
+  <p>
+    Explain the LR difference: "DPO's gradients are larger than SFT's
+    because the loss is a log-sigmoid of a log-ratio difference. Same
+    learning rate as SFT would blow up training in the first few
+    steps."
+  </p>
+  <div class="transition">→ "And the one hyperparameter that matters."</div>
+</div>
+
+<!-- 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Beta</span></div>
+  <h3>Choosing $\beta$</h3>
+  <p>
+    Walk the table. Low beta = aggressive, high beta = conservative.
+    Default to 0.1.
+  </p>
+  <p>
+    Tell them the tuning rule: "Only tune beta if (a) training
+    plateaus with no eval gain, or (b) the eval-set MMLU score drops
+    noticeably. Otherwise leave it at 0.1."
+  </p>
+  <div class="transition">→ "GRPO is 2024-25's evolution."</div>
+</div>
+
+<!-- 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>GRPO</span></div>
+  <h3>GRPO — 2024–25's upgrade</h3>
+  <p>
+    Walk the diagram. "DPO uses two samples per prompt and a binary
+    label. GRPO uses G samples per prompt and real-valued scores. The
+    extra samples carry more information per rollout."
+  </p>
+  <p>
+    The key trick: <em>no separate value network</em>. "In PPO you
+    needed a critic to estimate the baseline reward. GRPO replaces
+    the critic with the group mean — the advantage of each sample is
+    just its reward minus the average reward of its siblings."
+  </p>
+  <p>
+    Name the provenance: "This is the DeepSeek recipe. DeepSeek-Math
+    was the first big win in 2024, DeepSeek-R1 in January 2025 pushed
+    it to the state of the art on reasoning benchmarks."
+  </p>
+  <div class="transition">→ "The objective, compared to PPO."</div>
+</div>
+
+<!-- 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>GRPO objective</span></div>
+  <h3>GRPO objective</h3>
+  <p>
+    Walk the loss. "If you know PPO, this is PPO without a critic and
+    with group-normalised advantages. The min-of-clipped-ratio is the
+    same PPO trick to bound per-step updates. The KL-to-reference
+    keeps the policy from collapsing."
+  </p>
+  <p>
+    Tell them when it matters: "GRPO shines on tasks where you can
+    automatically score a response — unit test pass/fail, math answer
+    correctness, rubric-based grading. Human-labelled pairwise
+    preferences do not benefit as much; DPO is the right tool for
+    that regime."
+  </p>
+  <div class="transition">→ "Quick comparison."</div>
+</div>
+
+<!-- 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>DPO vs GRPO table</span></div>
+  <h3>DPO vs GRPO — when to use which</h3>
+  <p>
+    Walk the table. The summary: "DPO for pairwise human feedback,
+    GRPO for rollout-based automatic reward. On Singapore domain
+    safety (this lesson), you almost certainly want DPO because the
+    feedback is human pairs."
+  </p>
+  <div class="transition">→ "Training is half the job. Evaluation is the other half."</div>
+</div>
+
+<!-- 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>LLM-as-judge biases</span></div>
+  <h3>LLM-as-judge — biases to know</h3>
+  <p>
+    Walk the three biases. Position: the judge prefers whichever
+    response appears in position A or B. Verbosity: longer responses
+    look more authoritative. Self-enhancement: judges prefer responses
+    from their own model family.
+  </p>
+  <p>
+    Give the remediation for each. Position → swap and average.
+    Verbosity → normalise length or instruct for conciseness.
+    Self-enhancement → use a different judge family.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> Liang et al. 2023 quantified these
+    biases on MT-Bench. Position bias is typically 5–15% of the
+    judgement variance; verbosity bias is smaller but persistent.
+  </div>
+  <div class="transition">→ "Standard benchmarks."</div>
+</div>
+
+<!-- 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Benchmarks</span></div>
+  <h3>Standard benchmarks — the big four</h3>
+  <p>
+    Walk the list. MMLU is the headline general-knowledge benchmark.
+    HellaSwag catches memorisation. HumanEval tests code. MT-Bench
+    tests conversation.
+  </p>
+  <p>
+    Tell them the rule: "Run all four before and after alignment.
+    Expect task-specific metrics to improve and general-capability
+    benchmarks to stay flat. If MMLU drops, you have catastrophic
+    forgetting — stop or raise beta."
+  </p>
+  <div class="transition">→ "How to run them."</div>
+</div>
+
+<!-- 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>lm-eval-harness</span></div>
+  <h3>lm-eval-harness in 10 lines</h3>
+  <p>
+    Walk the code. Point out the <code>peft</code> argument — it loads
+    the LoRA adapter on top of the base model, so you get the aligned
+    policy under evaluation. This is how the registry pays off: one
+    line and you are benchmarking the thing you trained.
+  </p>
+  <div class="transition">→ "Now measure the actual safety win."</div>
+</div>
+
+<!-- 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Refusal detection</span></div>
+  <h3>Measure the safety win</h3>
+  <p>
+    Walk the code. Simple substring match on common refusal phrases.
+    Not perfect, but it catches 90%+ of real refusals with zero cost.
+  </p>
+  <p>
+    Give them expected numbers: "SFT-only model might refuse 30% of
+    unsafe Singapore prompts because it learned some polite refusals
+    from its generic instruction data. After DPO, that should jump to
+    85%+. A 50-point delta is the quantitative evidence that your
+    alignment run worked."
+  </p>
+  <div class="transition">→ "And the critical sanity check."</div>
+</div>
+
+<!-- 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Benign sanity check</span></div>
+  <h3>Sanity check: benign refusal rate</h3>
+  <p>
+    This is the guardrail. "A model that refuses every prompt has a
+    100% refusal rate on unsafe prompts — and is useless. You must
+    also measure refusal rate on <em>benign</em> prompts and verify
+    it stays near zero."
+  </p>
+  <p>
+    Name the failure mode: "catastrophic refusal". Give the fix:
+    stop training or raise beta. "There is a Pareto frontier
+    between safety and helpfulness. Your job is to find the operating
+    point your product needs, not the extreme."
+  </p>
+  <div class="transition">→ "Four things that will bite you."</div>
+</div>
+
+<!-- 18 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four common mistakes</h3>
+  <p>
+    Walk each one. Wrong LR is the most common day-one error. Noisy
+    preferences is the subtle one that quietly ruins results. Self-
+    enhancement judging is the inflation trap. Catastrophic refusal
+    is the "my alignment worked too well" trap.
+  </p>
+  <div class="transition">→ "Reflect and move on."</div>
+</div>
+
+<!-- 19 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Reflection / bridge</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Read the bullets. Pause on "derive the DPO loss from the RLHF
+    objective" — that is the mathematical unlock of this lesson.
+  </p>
+  <p>
+    Tease 6.4: "Sometimes the model does not need to be re-trained —
+    it just needs the right <em>facts</em> in front of it. Lesson 6.4
+    builds a full RAG pipeline: chunk documents, embed them, retrieve
+    the most relevant chunks, inject them into the prompt, and let
+    the model generate a grounded answer. We use Singapore regulatory
+    documents as the corpus. By the end you will know when to reach
+    for fine-tuning and when to reach for RAG — they solve different
+    problems."
+  </p>
+  <p>
+    Take 5 minutes for questions. Common ones: "Which beta should I
+    start with?" (0.1), "Can I combine SFT and DPO?" (yes — train
+    SFT first, then DPO on the SFT model), "When should I use GRPO
+    instead?" (when you have automatic scoring), "How do I know my
+    judge is unbiased?" (measure position-swap flip rate).
+  </p>
+  <div class="transition">→ End of Lesson 6.3.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/notes.html" class="prev"><span class="label">← Previous</span>6.2 Speaker Notes</a>
+  <a href="../04/notes.html" class="next"><span class="label">Next →</span>6.4 Speaker Notes</a>
+</nav>
+
+</main>
+</body>
+</html>

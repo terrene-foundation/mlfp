@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.4 — A/B Testing and Experiment Design | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.4</span>
+  A/B Testing and Experiment Design
+</h1>
+
+<p class="lead">
+  An A/B test is a hypothesis test with a budget, a timeline, a randomisation
+  scheme, and a stakeholder waiting for an answer. This lesson assembles
+  everything from 2.3 into an end-to-end experimental workflow:
+  pre-registering hypotheses, computing sample sizes before data collection,
+  running sanity checks (SRM detection), applying the right test, and
+  delivering a business recommendation.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why experiments beat observation</h2>
+
+<p>
+  The fundamental problem of causal inference is that we can never see the
+  counterfactual — we see what happened in the treatment group, and we see
+  what happened in a different group, but we never see what would have
+  happened to the treatment group <em>without</em> treatment. Randomisation
+  is the one reliable way to ensure that the treatment and control groups
+  are, on average, identical in every way except the treatment.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <rect x="40" y="80" width="200" height="100" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="140" y="115" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Population</text>
+  <text x="140" y="140" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E293B">1,000 eligible users</text>
+
+  <line x1="240" y1="110" x2="330" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#a24)"/>
+  <line x1="240" y1="150" x2="330" y2="190" stroke="#0D9488" stroke-width="2" marker-end="url(#a24)"/>
+  <defs>
+    <marker id="a24" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="275" y="60" font-family="Inter" font-size="11" fill="#64748B">random</text>
+
+  <rect x="340" y="50" width="180" height="70" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="430" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Control (A)</text>
+  <text x="430" y="100" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Old experience</text>
+
+  <rect x="340" y="160" width="180" height="70" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="430" y="190" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">Treatment (B)</text>
+  <text x="430" y="210" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">New experience</text>
+
+  <line x1="520" y1="85"  x2="620" y2="85"  stroke="#64748B" stroke-width="1.5" marker-end="url(#a24)"/>
+  <line x1="520" y1="195" x2="620" y2="195" stroke="#64748B" stroke-width="1.5" marker-end="url(#a24)"/>
+
+  <rect x="620" y="60" width="80" height="50" rx="6" fill="white" stroke="#94A3B8"/>
+  <text x="660" y="92" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">ȳ_A</text>
+  <rect x="620" y="170" width="80" height="50" rx="6" fill="white" stroke="#94A3B8"/>
+  <text x="660" y="202" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">ȳ_B</text>
+</svg>
+<figcaption>A randomised experiment. Random assignment ensures the two groups are statistically identical except for the treatment, so the difference $\bar y_B - \bar y_A$ estimates the causal effect.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Pre-registering the hypothesis</h2>
+
+<p>
+  Before you touch the data you must commit to:
+</p>
+
+<ol>
+  <li>The <strong>unit of randomisation</strong> (user, session, device).</li>
+  <li>The <strong>metric</strong> you are testing — one primary metric, up to three secondary.</li>
+  <li>The <strong>direction</strong> of the alternative ("treatment improves conversion").</li>
+  <li>The <strong>decision rule</strong> — $\alpha$, power target, and minimum detectable effect.</li>
+  <li>The <strong>stopping criterion</strong> — when to stop collecting data.</li>
+</ol>
+
+<p>
+  Pre-registration is not bureaucracy; it is the discipline that keeps you
+  from p-hacking your way to a false positive. The most common failure mode
+  of industrial A/B tests is running until the metric is significant and
+  then stopping — a procedure that guarantees a false positive rate far
+  higher than $\alpha$.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Power analysis: sizing the experiment</h2>
+
+<p>
+  In Lesson 2.3 you saw the power formula. Rearranged for sample size per
+  arm:
+</p>
+
+<div class="annotated-equation">
+  $$n \;=\; \left(\frac{z_{1-\alpha/2} + z_{1-\beta}}{\delta/\sigma}\right)^2 \cdot 2$$
+  <div class="annotations">
+    <span>$\delta$ — minimum effect you care about</span>
+    <span>$\sigma$ — per-user std of the metric</span>
+    <span>$z_{1-\alpha/2}, z_{1-\beta}$ — Normal quantiles</span>
+  </div>
+</div>
+
+<p>
+  For a proportion test with a baseline conversion rate $p_0$ and an
+  absolute lift $\Delta$, the per-arm sample size is:
+</p>
+
+$$n \;=\; \frac{2\,(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2}$$
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Axes -->
+  <line x1="60" y1="220" x2="680" y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="60" y1="40"  x2="60"  y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="680" y="245" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">sample size n →</text>
+  <text x="40" y="130" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 40 130)">power</text>
+
+  <!-- 0.8 line -->
+  <line x1="60" y1="80" x2="680" y2="80" stroke="#22C55E" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <text x="685" y="85" font-family="Inter" font-size="11" fill="#22C55E">0.8</text>
+
+  <!-- Power curve small effect -->
+  <path d="M 60,215 Q 200,200 400,150 T 680,90" fill="none" stroke="#EF4444" stroke-width="2.5"/>
+  <text x="420" y="155" font-family="Inter" font-size="11" fill="#EF4444">small effect (δ=1%)</text>
+
+  <!-- Power curve big effect -->
+  <path d="M 60,210 Q 150,150 250,100 T 680,55" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+  <text x="250" y="90" font-family="Inter" font-size="11" fill="#0D9488">big effect (δ=5%)</text>
+</svg>
+<figcaption>Power curves. Bigger effects need less data. To detect a 1% lift you need roughly 25× more users than to detect a 5% lift (power scales with $\delta^2$).</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Sanity checks: Sample Ratio Mismatch</h2>
+
+<p>
+  Before you look at the outcome metric, look at the allocation. If you
+  randomised 50/50 and the logs show 52/48, something is wrong with the
+  pipeline — the randomiser may be broken, bot filtering may be unequal, or
+  a redirect bug may be dropping some users. This is called a
+  <strong>Sample Ratio Mismatch (SRM)</strong>, and its presence
+  invalidates every subsequent analysis.
+</p>
+
+<p>
+  Test for SRM with a one-df chi-squared test:
+</p>
+
+<div class="annotated-equation">
+  $$\chi^2 \;=\; \sum_{k} \frac{(O_k - E_k)^2}{E_k}$$
+  <div class="annotations">
+    <span>$O_k$ — observed count in arm $k$</span>
+    <span>$E_k$ — expected under the randomisation ratio</span>
+  </div>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Strict SRM threshold</span>
+  <p>
+    Use $p < 0.0001$ — not $0.05$ — as your SRM alarm. SRM is a
+    data-quality red flag; the only reason to run the test is to catch
+    catastrophic pipeline errors. If you use a loose threshold, you will
+    false-alarm on many healthy experiments and waste engineering time
+    debugging nothing.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Data Collection Framework</h2>
+
+<p>
+  Before you instrument an experiment you need to answer five questions.
+  This is the Why/What/Where/How/Frequency framework from the original MLFP
+  curriculum; it scales from one-off A/B tests to enterprise data pipelines.
+</p>
+
+<div class="compare-grid">
+  <div>
+    <h4>Why</h4>
+    <ul>
+      <li>What hypothesis is being tested?</li>
+      <li>What is the value/impact of answering it?</li>
+      <li>What decision will the result drive?</li>
+    </ul>
+  </div>
+  <div>
+    <h4>What</h4>
+    <ul>
+      <li>What is the ideal information?</li>
+      <li>What do you have budget/time for?</li>
+      <li>Primary + secondary + guardrail metrics</li>
+    </ul>
+  </div>
+  <div>
+    <h4>Where</h4>
+    <ul>
+      <li>Internal sources: CRM, POS, app events, finance</li>
+      <li>External sources: Kaggle, data.gov.sg, vendor APIs</li>
+      <li>Existing vs to be instrumented</li>
+    </ul>
+  </div>
+  <div>
+    <h4>How</h4>
+    <ul>
+      <li>At start: review, discover, validate existing data</li>
+      <li>Continuous: automated (real-time / batch)</li>
+      <li>Human augmented: manual annotation, QA</li>
+    </ul>
+  </div>
+</div>
+
+<p>
+  The fifth question — <strong>frequency</strong> — is about cadence.
+  Per-transaction vs batch; collection frequency vs analysis frequency; and
+  the minimum duration required for statistical power. A seven-day
+  experiment cannot see weekly cycles. An experiment that runs for fewer
+  users than your MDE requires is a wasted experiment.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common data collection pitfalls</h2>
+
+<table>
+  <thead><tr><th>Pitfall</th><th>Symptom</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Data silos</td><td>Metrics in different systems never joined</td><td>Shared identifier, ETL into one table</td></tr>
+    <tr><td>Red tape</td><td>Need three sign-offs to access the data</td><td>Pre-approved experiment whitelist</td></tr>
+    <tr><td>Inconsistent schemas</td><td>Same field in different formats across sources</td><td>Schema validation at ingest (covered in M3)</td></tr>
+    <tr><td>Aggregated-only data</td><td>Only daily totals available, not user-level</td><td>Push for transaction-level instrumentation</td></tr>
+    <tr><td>Selection bias</td><td>Only users who completed the funnel are logged</td><td>Log exposure, not just conversion</td></tr>
+    <tr><td>Temporal leakage</td><td>Experiment window overlaps with marketing campaigns</td><td>Coordinate with marketing calendar</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ExperimentTracker</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>ExperimentTracker</code> is where the pre-registered hypothesis,
+    the power analysis output, the SRM test, the primary test, and the final
+    decision all live. When a reviewer asks "was the sample size set before
+    or after the results?", the tracker answers with timestamps. In the
+    exercise you will log a full experiment end-to-end to
+    <code>ExperimentTracker</code> so that a colleague could reproduce every
+    number.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml.experiment_tracking import ExperimentTracker
+
+tracker = ExperimentTracker("ab_bogo_campaign_2024q4")
+
+tracker.log_hypothesis(
+    primary_metric="conversion_rate",
+    direction="increase",
+    mde=0.01,                # 1 percentage point lift
+    alpha=0.05,
+    power=0.80,
+)
+
+tracker.log_sample_size(n_per_arm=7_850, computed_at="2024-10-01")</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: BOGO A/B Experiment</h2>
+
+<div class="worked-example">
+  <h3>📝 The setup</h3>
+  <p>
+    A Singapore e-commerce platform wants to know whether a Buy-One-Get-One
+    (BOGO) promotion increases conversion rate. Baseline conversion is
+    $p_0 = 0.08$. The product manager cares about detecting a $\Delta = 0.01$
+    (one percentage point) lift with 80% power at $\alpha = 0.05$.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Compute required sample size.</span>
+    <pre><code class="language-python">import numpy as np
+from scipy import stats
+
+p0, delta = 0.08, 0.01
+alpha, power_target = 0.05, 0.80
+
+z_alpha = stats.norm.ppf(1 - alpha / 2)
+z_beta  = stats.norm.ppf(power_target)
+n_per_arm = int(np.ceil(
+    2 * (z_alpha + z_beta)**2 * p0 * (1 - p0) / delta**2
+))
+print(f"n per arm = {n_per_arm:,}")</code></pre>
+    <p>
+      Expect around $n \approx 5{,}800$ per arm. Run for at least that many
+      per group before peeking.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Load the data and check allocation (SRM).</span>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+df = MLFPDataLoader().load("mlfp02", "ab_test.parquet")
+
+counts = df.group_by("arm").agg(pl.len().alias("n"))
+print(counts)
+
+n_c = counts.filter(pl.col("arm") == "control")["n"][0]
+n_t = counts.filter(pl.col("arm") == "treatment")["n"][0]
+expected = [(n_c + n_t) / 2] * 2
+chi2, p_srm = stats.chisquare([n_c, n_t], f_exp=expected)
+print(f"SRM chi² = {chi2:.3f}, p = {p_srm:.4f}")
+assert p_srm > 1e-4, "SRM detected! Investigate pipeline."</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Run the primary test.</span>
+    <pre><code class="language-python">from statsmodels.stats.proportion import proportions_ztest, confint_proportions_2indep
+
+k_c = df.filter(pl.col("arm") == "control")["converted"].sum()
+k_t = df.filter(pl.col("arm") == "treatment")["converted"].sum()
+
+z, p = proportions_ztest([k_t, k_c], [n_t, n_c])
+lift = k_t / n_t - k_c / n_c
+lo, hi = confint_proportions_2indep(k_t, n_t, k_c, n_c, method="wald")
+
+print(f"Lift     = {lift:.4f}")
+print(f"95% CI   = [{lo:.4f}, {hi:.4f}]")
+print(f"p-value  = {p:.4f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Report.</span>
+    <p>
+      A business-ready summary uses plain language, reports uncertainty, and
+      avoids "we prove the treatment works":
+    </p>
+    <div class="callout foundations">
+      <strong>Recommendation:</strong> Ship BOGO. The treatment increased
+      conversion rate by 1.3 percentage points (95% CI: 0.6 to 2.0,
+      $p = 0.003$), exceeding the pre-registered MDE of 1pp. At current
+      traffic, this corresponds to approximately $\$240{,}000$ additional
+      revenue per quarter. No SRM detected; no guardrail metrics degraded.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Peeking</span>
+  <p>
+    Checking the p-value every hour and stopping as soon as it crosses
+    $0.05$. This inflates the false-positive rate far above $\alpha$. If
+    you must monitor, use a sequential test (Lesson 2.7).
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Running without power analysis</span>
+  <p>
+    An underpowered experiment produces two bad outcomes: (1) no
+    significance, so you dismiss a real effect; (2) significance by luck,
+    so you ship something with a much smaller true effect than the
+    observed one. Pre-register the sample size.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Ignoring SRM</span>
+  <p>
+    If allocation is off, the outcome analysis is meaningless. SRM comes
+    first. Skip this at your peril.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Sample size sensitivity</h3>
+  <p>
+    How many users do you need per arm to detect a 0.5pp lift from a
+    baseline of 8% with 80% power? A 2pp lift? How does $n$ scale with
+    $\Delta$?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Simulate an SRM</h3>
+  <p>
+    Generate an experiment with 10,000 users per arm from a 50/50 randomiser.
+    Then deliberately drop 2% of the control group to simulate a bot filter
+    that only runs on one arm. Run the chi-squared test. Does it detect
+    the SRM?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Full data collection plan</h3>
+  <p>
+    For a hypothetical experiment measuring whether a new checkout flow
+    reduces cart abandonment, write a one-page data collection plan
+    answering Why / What / Where / How / Frequency. Include primary,
+    secondary, and at least one guardrail metric.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The power formula from Lesson 2.3 becomes the sample size calculator
+  here. The multiple testing corrections from 2.3 apply whenever you have
+  more than one metric. Lesson 2.7 revisits A/B testing with CUPED
+  variance reduction and Bayesian sequential tests, letting you get
+  acceptable results with roughly half the sample size.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You can now run an experiment from start to finish: formulate the
+  hypothesis, compute the sample size, instrument the data collection,
+  check for SRM, run the primary test, and write a recommendation a
+  business owner can act on. That workflow is 90% of industrial A/B testing
+  capacity.
+</p>
+<p>
+  The remaining 10% — variance reduction, sequential testing, and causal
+  inference when you cannot randomise — is the subject of Lesson 2.7. But
+  first, we turn to the other half of M2: regression.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../03/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.3 Bootstrapping and Hypothesis Testing
+  </a>
+  <a href="../05/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.5 Linear Regression
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

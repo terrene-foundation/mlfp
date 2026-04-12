@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.6 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.6</span>
+  Data Visualisation
+</h1>
+
+<p class="lead">Total time: ~55 minutes · 15 slides · ~3.5 min average</p>
+
+<p>
+  Visualisation is a design lesson as much as a code lesson. The learners
+  are used to numbers and code; today introduces perception and taste.
+  Show lots of good/bad examples. Run every chart live so they see the
+  interactive Plotly output.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Data Visualisation</h3>
+  <p>
+    Open with: "A good chart answers a question faster than the best table
+    in the world. A bad chart misleads its reader in seconds. The gap
+    between good and bad is learnable — and today we learn it."
+  </p>
+  <div class="transition">→ "The first rule."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>One-question rule</span></div>
+  <h3>One chart, one question</h3>
+  <p>
+    Spend time on this. Every chart the learners make for the rest of their
+    career should start with the question in a single sentence. "Which
+    district grew fastest?" — a chart. "Everything about HDB" — a disaster.
+  </p>
+  <p>
+    Tell them: "If you cannot state the question, you are not ready to
+    build the chart. Go back and figure out what decision the reader is
+    supposed to make."
+  </p>
+  <div class="transition">→ "Now the perception layer."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Gestalt principles</span></div>
+  <h3>Gestalt principles: how eyes group shapes</h3>
+  <p>
+    Walk each of the four panels. Proximity — close dots look grouped.
+    Similarity — same colour looks grouped. Enclosure — a box binds tightly.
+    Continuity — the eye follows a line as a trend.
+  </p>
+  <p>
+    Tell them: "This is why line charts work for time-series. The eye
+    interpolates between points automatically. You don't have to tell the
+    reader 'this is a trend' — they see it."
+  </p>
+  <p>
+    The history: "These principles are from 1920s German psychology.
+    Nothing more recent has replaced them. Every chart guideline in every
+    book you will read traces back to this list."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "You don't need to memorise the names.
+    Just remember: if you put two dots close together or colour them the
+    same, readers will think they belong together. That's enormously
+    useful."
+  </div>
+  <div class="transition">→ "Now the six chart types."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Six chart types table</span></div>
+  <h3>Six chart types cover 95% of questions</h3>
+  <p>
+    Walk the table. For each, ask learners to imagine a concrete HDB
+    question that fits. "How is price distributed?" — histogram. "How has
+    price changed?" — line. "Which town is most expensive?" — horizontal
+    bar. Build the vocabulary.
+  </p>
+  <p>
+    Make the 95% point explicit. "You don't need to learn 40 chart types.
+    Six will take you through most of your career. Specialists exist for
+    the other 5%."
+  </p>
+  <div class="transition">→ "The scientific backing."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Cleveland-McGill ranking</span></div>
+  <h3>🔵 Cleveland–McGill perceptual ranking</h3>
+  <p>
+    This is the single most useful chart-design insight in the lesson.
+    Walk the ranked list. Position on a common scale (bar lengths on a
+    common axis) is the most accurate task the eye can perform. Colour
+    hue is the worst.
+  </p>
+  <p>
+    Tell them: "If you remember one thing from this lesson: when a
+    comparison matters, use bars. If the comparison doesn't matter, use
+    whatever you like. If you want to hide the comparison, use a pie
+    chart."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Cleveland and McGill ran controlled
+    experiments in 1984 where they asked people to estimate quantities
+    from different chart types. The ranking is empirical, not opinion.
+    Every modern chart library's defaults (including Plotly's) were shaped
+    by this paper."
+  </div>
+  <div class="transition">→ "The tool."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>ModelVisualizer API</span></div>
+  <h3>ModelVisualizer API</h3>
+  <p>
+    Walk the code. Point at each argument. "Data — a Polars DataFrame.
+    Column — which column to chart. Title — one-sentence takeaway. Returns
+    a Plotly Figure, which has <code>.show()</code> for Jupyter and
+    <code>.write_html()</code> for saving."
+  </p>
+  <p>
+    Tell them: "Every chart method follows this shape. Once you learn one,
+    you can guess the rest. Same engine across M1 EDA and M5 model
+    evaluation — consistent look and feel."
+  </p>
+  <div class="transition">→ "Chart 1 — histogram."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Histogram</span></div>
+  <h3>Histogram — distribution</h3>
+  <p>
+    Run it live. Show the right skew — most transactions in the 350k-600k
+    range, a long tail of expensive flats. Ask what this means for mean
+    versus median ("mean &gt; median for right-skewed data").
+  </p>
+  <p>
+    Point at the bins. "40 bins is usually a good starting number. 10 is
+    too coarse — you'll miss multi-modal shapes. 200 is too fine — every
+    bin looks like noise."
+  </p>
+  <div class="transition">→ "Chart 2 — scatter."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Scatter</span></div>
+  <h3>Scatter — relationship between two numbers</h3>
+  <p>
+    The sample-first rule. Run it once without sampling — show the grey
+    blob that 500k points produces. Then run with sample(5000) and show
+    the clear positive slope.
+  </p>
+  <p>
+    Point at the spread. "At 100 sqm, prices range from 400k to over 900k.
+    Area alone explains maybe 40-50% of price variance. The other half is
+    town, floor level, lease. That's what the ML models in M3 will
+    learn."
+  </p>
+  <div class="transition">→ "Chart 3 — bar."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Bar</span></div>
+  <h3>Bar — ranking categories</h3>
+  <p>
+    Run it. Point at the horizontal orientation. "Town names are long —
+    horizontal bars let them be readable. Vertical bars would require
+    rotated labels, which are harder to read."
+  </p>
+  <p>
+    Emphasise the sort. "Always sort bar charts by the value you're
+    comparing. Unsorted bars force the reader to scan back and forth — you
+    are making them do work the chart should have done."
+  </p>
+  <div class="transition">→ "Chart 4 — line."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Line</span></div>
+  <h3>Line — change over time</h3>
+  <p>
+    Run it. "This is continuity in action. Your eye follows the line and
+    reads it as a trend — you don't consciously compute the slope, you
+    see it."
+  </p>
+  <p>
+    Note: "We're using <code>training_history</code> for a non-ML line
+    chart because it's a general-purpose line plotter. Plotly-native
+    <code>go.Scatter</code> with <code>mode='lines'</code> is an
+    alternative if you want more control."
+  </p>
+  <div class="transition">→ "Chart 5 — heatmap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Heatmap</span></div>
+  <h3>Heatmap — correlations at a glance</h3>
+  <p>
+    Run it. Walk the diagonal (each variable perfectly correlated with
+    itself = 1). Point at the off-diagonals. "resale_price correlates
+    strongly with price_per_sqm because they share the numerator."
+  </p>
+  <p>
+    Tell them: "Colour encodes magnitude. Diverging palette around zero —
+    red for negative, blue for positive. This is the one place colour
+    encodes quantity well — because the comparison is between two
+    colours, not among many."
+  </p>
+  <div class="transition">→ "Chart 6 — stacked bar."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Stacked bar</span></div>
+  <h3>Stacked bar — composition</h3>
+  <p>
+    Run it. "Each bar is one town, split by flat type. The total height
+    is the number of transactions; the colour segments are the mix."
+  </p>
+  <p>
+    Note the caveat: "Stacked bars are good for one comparison at a time
+    — either the total across towns, or the share within a single town.
+    Comparing 3-room share across towns is actually hard because the
+    baseline moves. For share comparisons, use 100% stacked bars."
+  </p>
+  <div class="transition">→ "Charts to avoid."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Anti-patterns</span></div>
+  <h3>Four charts to avoid</h3>
+  <p>
+    Walk each. The 3D ban is firm. Show a 3D bar chart — point at how the
+    back bars look shorter than the front bars even when they're taller.
+    "You cannot compare quantities through perspective."
+  </p>
+  <p>
+    The pie chart rule: "Five slices is the usable limit. Ten slices is
+    unreadable. Twenty slices is hostile. Most pie charts should have been
+    horizontal bars."
+  </p>
+  <p>
+    The truncated-axis rule: "Bar charts encode the value in the bar
+    length. If your bars start at 400 instead of 0, you've lied about the
+    lengths. Never truncate a bar-chart y-axis."
+  </p>
+  <div class="transition">→ "And titles."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Titles</span></div>
+  <h3>Title = takeaway, not topic</h3>
+  <p>
+    Walk the before/after. Tell them: "The title is the first thing the
+    reader reads. Often the only thing. Put the conclusion there — 'central
+    districts command a 60% premium' — not the topic."
+  </p>
+  <p>
+    This is a habit shift they will resist at first. Keep pushing.
+  </p>
+  <div class="transition">→ "Reflect and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Reflection</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets. Pause on each.
+  </p>
+  <p>
+    Tease 1.7: "Today you hand-built six charts. Tomorrow you'll meet the
+    engine that does the entire EDA for you. Point DataExplorer at any
+    dataset, and it profiles every column, surfaces eight kinds of quality
+    alerts, and generates a suite of diagnostic visualisations — the same
+    charts you just built, at scale."
+  </p>
+  <div class="transition">→ End of Lesson 1.6.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.5 Speaker Notes
+  </a>
+  <a href="../07/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.7 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,25 +1,31 @@
-# Module 9: LLMs, AI Agents & RAG
+# Module 6: Machine Learning with Language Models and Agentic Workflows
 
-**Kailash**: Kaizen (Delegate, BaseAgent, Signature, ReActAgent, Pipeline), Nexus, MCP | **Scaffolding**: 25%
+**Kailash**: Kaizen, kailash-align, kailash-pact, kailash-nexus, kailash-mcp | **Scaffolding**: 20%
 
-## Lecture (3h)
+## Description
 
-- **9A** LLM Architecture: decoder-only transformers, KV cache, scaling laws, pre-training, post-training, model timeline
-- **9B** Prompting: zero-shot, few-shot, chain-of-thought, prompt engineering best practices
-- **9C** RAG Systems: document chunking, embeddings, vector databases, hybrid search, re-ranking, RAGAS evaluation
-- **9D-H** Agents & Deployment: ReAct architecture, Kaizen agents, multi-agent orchestration, MCP integration, Nexus multi-channel deployment
+Build LLM applications, fine-tune models, deploy governed agents. All engineering, all code.
 
-## Lab (3h) — 8 Exercises
+## Lessons (8)
 
-1. LLM architecture and tokenization (BPE, parameter counting, KV cache, first Delegate call)
-2. Prompt engineering (zero-shot, few-shot, chain-of-thought, structured extraction)
-3. RAG fundamentals (document chunking, embeddings, vector similarity, retrieval)
-4. Advanced RAG and evaluation (hybrid search, re-ranking, faithfulness metrics)
-5. Building agents with Kaizen (ReActAgent, custom tools, BaseAgent with Signature)
-6. Multi-agent orchestration (specialist agents, Pipeline.router(), supervisor pattern)
-7. MCP integration (MCPServer, tool registration, agent-driven ML via MCP)
-8. Capstone: agent deployment via Nexus (RAG agent, multi-channel, session persistence)
+1. **LLM Fundamentals, Prompt Engineering, and Structured Output** — Scaling laws, prompt techniques (zero/few-shot, CoT), Kaizen Delegate/Signature
+2. **LLM Fine-tuning — LoRA, Adapters, and the Technique Landscape** — LoRA from scratch, adapter layers, 10-technique survey, model merging, quantisation
+3. **Preference Alignment — DPO and GRPO** — DPO (Bradley-Terry), GRPO (DeepSeek-R1), LLM-as-judge, eval benchmarks
+4. **RAG Systems** — Chunking, dense/sparse/hybrid retrieval, RAGAS evaluation, HyDE
+5. **AI Agents — ReAct, Tool Use, and Function Calling** — ReAct loop, custom tools, cost budgets, agent design framework
+6. **Multi-Agent Orchestration and MCP** — Supervisor-worker, A2A, agent memory, MCP server
+7. **AI Governance Engineering** — PACT (D/T/R), operating envelopes, budget cascading, audit trails
+8. **Capstone — Full Production Platform** — Nexus (API+CLI+MCP), RBAC, DriftMonitor, end-to-end integration
 
-## Datasets
+## Exercises (8)
 
-Singapore company reports, Singapore regulations
+| # | Title | Dataset |
+|---|-------|---------|
+| 1 | Prompt Engineering | Classification task |
+| 2 | LoRA Fine-Tuning | IMDB sentiment |
+| 3 | DPO Preference Alignment | Preference pairs |
+| 4 | RAG Fundamentals | SDK documentation |
+| 5 | Building Agents with Kaizen | Data analysis |
+| 6 | Multi-Agent Orchestration | ML pipeline |
+| 7 | AI Governance with PACT | Organisation YAML |
+| 8 | Capstone — Governed ML System | Full platform |

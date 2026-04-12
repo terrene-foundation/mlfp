@@ -2,317 +2,372 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 4: Loss Functions and Weight Initialization
+# MLFP05 — Exercise 4: Transformer Architecture
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Compare MSE vs CrossEntropy loss on classification, and
-#   Xavier vs He initialization on deep networks.
+# OBJECTIVE: Build a mini transformer encoder from components — positional
+#   encoding, multi-head attention, feed-forward network, layer
+#   normalization, and residual connections.
 #
 # TASKS:
-#   1. Implement CrossEntropy from scratch
-#   2. Compare MSE vs CE on same classification task
-#   3. Implement Xavier and He initialization
-#   4. Train 10-layer network with each init strategy
-#   5. Visualize gradient flow per layer
+#   1. Implement sinusoidal positional encoding
+#   2. Build transformer encoder layer (attention + FFN + LayerNorm + residual)
+#   3. Stack layers into full encoder
+#   4. Train on text classification task
+#   5. Visualize attention patterns per layer with ModelVisualizer
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import math
 import random
+import re
+from collections import Counter
 
 import polars as pl
 
-from kailash_ml import DataExplorer, ModelVisualizer
+from kailash_ml import DataExplorer, ModelVisualizer, TrainingPipeline
 
 from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-random.seed(42)
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Implement CrossEntropy from scratch
-# ══════════════════════════════════════════════════════════════════════
-
-
-def softmax(z: list[float]) -> list[float]:
-    """Softmax: exp(z_i) / sum(exp(z_j))."""
-    max_z = max(z)
-    exp_z = [math.exp(zi - max_z) for zi in z]
-    total = sum(exp_z)
-    return [e / total for e in exp_z]
-
-
-def cross_entropy_loss(y_true: list[float], y_pred: list[float]) -> float:
-    """Cross-entropy: -sum(y_true * log(y_pred)).
-
-    y_true: one-hot encoded label
-    y_pred: softmax probabilities
-    """
-    # TODO: Implement cross-entropy loss.
-    # Hint: eps = 1e-8; -sum(yt * math.log(yp + eps) for yt, yp in zip(y_true, y_pred))
-    eps = 1e-8
-    return ____
-
-
-def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
-    """MSE: (1/n) * sum((y_true - y_pred)^2)."""
-    n = len(y_true)
-    return sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred)) / n
-
-
-# Demonstrate on a single example
-y_true = [0.0, 0.0, 1.0, 0.0, 0.0]  # class 2
-y_confident = [0.01, 0.01, 0.95, 0.01, 0.02]
-y_uncertain = [0.15, 0.20, 0.30, 0.20, 0.15]
-y_wrong = [0.60, 0.20, 0.05, 0.10, 0.05]
-
-print("=== Loss Function Comparison ===")
-print(f"True label: class 2 (one-hot: {y_true})")
-print(f"\n{'Prediction':>12} | {'CE Loss':>8} | {'MSE Loss':>8}")
-print("-" * 38)
-for name, pred in [
-    ("confident", y_confident),
-    ("uncertain", y_uncertain),
-    ("wrong", y_wrong),
-]:
-    ce = cross_entropy_loss(y_true, pred)
-    mse = mse_loss(y_true, pred)
-    print(f"{name:>12} | {ce:8.4f} | {mse:8.4f}")
-
-print(f"\nKey: CE penalizes wrong predictions MUCH more harshly.")
-print(
-    f"  CE(wrong) / CE(confident) = {cross_entropy_loss(y_true, y_wrong) / cross_entropy_loss(y_true, y_confident):.1f}x"
-)
-print(
-    f"  MSE(wrong) / MSE(confident) = {mse_loss(y_true, y_wrong) / mse_loss(y_true, y_confident):.1f}x"
-)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compare MSE vs CE on same classification task
-# ══════════════════════════════════════════════════════════════════════
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp05", "mnist_sample.parquet")
+df = loader.load("mlfp05", "sg_news_articles.parquet")
 
 explorer = DataExplorer()
 summary = explorer.analyze(df)
+print(f"=== Dataset: {df.height} articles ===")
+print(summary)
 
-feature_cols = [c for c in df.columns if c != "label"]
-X = [
-    [pixel / 255.0 for pixel in row]
-    for row in df.select(feature_cols).to_numpy().tolist()
+
+# ── Helpers ───────────────────────────────────────────────────────────
+
+
+def tokenize(text: str) -> list[str]:
+    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+
+
+corpus = df.select("text").to_series().to_list()
+word_counts = Counter(tok for t in corpus for tok in tokenize(t))
+vocab = ["<pad>", "<cls>", "<unk>"] + [
+    w for w, c in word_counts.most_common(2000) if c >= 2
 ]
-y_labels = df["label"].to_list()
-n_classes = 10
-Y = [[1.0 if j == label else 0.0 for j in range(n_classes)] for label in y_labels]
+word_to_idx = {w: i for i, w in enumerate(vocab)}
+vocab_size = len(vocab)
+d_model = 32
 
-n_features = len(X[0])
-train_size = min(200, len(X))
+# Random token embeddings
+token_embeddings = [
+    [random.gauss(0, 0.1) for _ in range(d_model)] for _ in range(vocab_size)
+]
 
-print(f"\n=== MNIST Classification ===")
-print(f"Features: {n_features}, Train samples: {train_size}, Classes: {n_classes}")
-
-
-def train_with_loss(loss_type: str, epochs: int = 15) -> list[float]:
-    """Train a simple network with specified loss function."""
-    hidden = 32
-    scale = math.sqrt(2.0 / (n_features + hidden))
-    W1 = [[random.gauss(0, scale) for _ in range(hidden)] for _ in range(n_features)]
-    b1 = [0.0] * hidden
-    scale2 = math.sqrt(2.0 / (hidden + n_classes))
-    W2 = [[random.gauss(0, scale2) for _ in range(n_classes)] for _ in range(hidden)]
-    b2 = [0.0] * n_classes
-
-    lr = 0.01
-    losses = []
-
-    for epoch in range(epochs):
-        epoch_loss = 0.0
-        for idx in range(train_size):
-            x = X[idx]
-            y = Y[idx]
-
-            # Forward: hidden layer with ReLU
-            h = [
-                max(0.0, sum(x[i] * W1[i][j] for i in range(n_features)) + b1[j])
-                for j in range(hidden)
-            ]
-
-            # Forward: output with softmax
-            z_out = [
-                sum(h[j] * W2[j][k] for j in range(hidden)) + b2[k]
-                for k in range(n_classes)
-            ]
-            out = softmax(z_out)
-
-            # Loss
-            if loss_type == "ce":
-                loss = cross_entropy_loss(y, out)
-            else:
-                loss = mse_loss(y, out)
-            epoch_loss += loss
-
-        losses.append(epoch_loss / train_size)
-
-    return losses
-
-
-print(f"\nTraining with MSE loss...")
-mse_losses = train_with_loss("mse")
-print(f"Training with CrossEntropy loss...")
-ce_losses = train_with_loss("ce")
-
-viz = ModelVisualizer()
-loss_comparison = pl.DataFrame(
-    {
-        "epoch": list(range(len(mse_losses))),
-        "mse_loss": mse_losses,
-        "ce_loss": ce_losses,
-    }
-)
-fig = viz.plot_training_curves(loss_comparison)
-
-print(f"\n  MSE final loss:  {mse_losses[-1]:.4f}")
-print(f"  CE final loss:   {ce_losses[-1]:.4f}")
-print(f"  CE converges faster because its gradient is (y_pred - y_true),")
-print(f"  while MSE gradient includes sigmoid derivative (can saturate).")
+print(f"Vocabulary: {vocab_size}, d_model: {d_model}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Implement Xavier and He initialization
+# TASK 1: Sinusoidal positional encoding
 # ══════════════════════════════════════════════════════════════════════
 
 
-def xavier_init(fan_in: int, fan_out: int) -> list[list[float]]:
-    """Xavier/Glorot: N(0, sqrt(2 / (fan_in + fan_out))).
-
-    Best for: sigmoid, tanh, GELU activations.
+def sinusoidal_positional_encoding(max_len: int, d_model: int) -> list[list[float]]:
+    """PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+    PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
     """
-    # TODO: Compute Xavier standard deviation and generate weight matrix.
-    # Hint: std = math.sqrt(2.0 / (fan_in + fan_out))
-    # Hint: return [[random.gauss(0, std) for _ in range(fan_out)] for _ in range(fan_in)]
-    std = ____
-    return ____
+    pe = []
+    for pos in range(max_len):
+        row = [0.0] * d_model
+        for i in range(0, d_model, 2):
+            # TODO: Compute the denominator for positional encoding.
+            # Hint: 10000.0 ** (i / d_model)
+            denom = ____
+            row[i] = math.sin(pos / denom)
+            if i + 1 < d_model:
+                row[i + 1] = math.cos(pos / denom)
+        pe.append(row)
+    return pe
 
 
-def he_init(fan_in: int, fan_out: int) -> list[list[float]]:
-    """He/Kaiming: N(0, sqrt(2 / fan_in)).
+max_seq_len = 50
+pos_enc = sinusoidal_positional_encoding(max_seq_len, d_model)
 
-    Best for: ReLU activations (accounts for half the neurons being dead).
-    """
-    # TODO: Compute He standard deviation and generate weight matrix.
-    # Hint: std = math.sqrt(2.0 / fan_in)
-    # Hint: return [[random.gauss(0, std) for _ in range(fan_out)] for _ in range(fan_in)]
-    std = ____
-    return ____
+print(f"\n--- Positional Encoding ---")
+print(f"Shape: {len(pos_enc)}x{len(pos_enc[0])}")
+for pos in [0, 1, 10, 49]:
+    print(
+        f"  pos={pos}: [{pos_enc[pos][0]:.3f}, {pos_enc[pos][1]:.3f}, ..., {pos_enc[pos][-1]:.3f}]"
+    )
 
-
-def zero_init(fan_in: int, fan_out: int) -> list[list[float]]:
-    """Zero initialization (bad — for demonstration only)."""
-    return [[0.0 for _ in range(fan_out)] for _ in range(fan_in)]
-
-
-# Show the variance of initialized weights
-print(f"\n=== Initialization Comparison ===")
-for name, init_fn in [("Xavier", xavier_init), ("He", he_init), ("Zero", zero_init)]:
-    W = init_fn(784, 128)
-    flat = [w for row in W for w in row]
-    mean_w = sum(flat) / len(flat)
-    var_w = sum((w - mean_w) ** 2 for w in flat) / len(flat)
-    print(f"  {name:>6}: mean={mean_w:.6f}, var={var_w:.6f}")
-
-print(f"\n  Xavier var target: 2/(784+128) = {2/(784+128):.6f}")
-print(f"  He var target:     2/784       = {2/784:.6f}")
+print(f"\nProperties:")
+print(f"  - Unique encoding per position (no learned parameters)")
+print(f"  - Captures relative position via dot product")
+print(f"  - Generalizes to longer sequences than seen during training")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Train 10-layer network with each init strategy
+# TASK 2: Transformer encoder layer
 # ══════════════════════════════════════════════════════════════════════
 
 
-def build_deep_network(n_layers: int, init_fn) -> list[dict]:
-    """Build a deep network with specified initialization."""
-    layers = []
-    dims = [n_features] + [64] * n_layers + [n_classes]
-
-    for i in range(len(dims) - 1):
-        W = init_fn(dims[i], dims[i + 1])
-        b = [0.0] * dims[i + 1]
-        layers.append({"W": W, "b": b, "in": dims[i], "out": dims[i + 1]})
-
-    return layers
+def softmax(scores: list[float]) -> list[float]:
+    max_s = max(scores) if scores else 0
+    exps = [math.exp(s - max_s) for s in scores]
+    total = sum(exps)
+    return [e / total for e in exps]
 
 
-def forward_deep(x: list[float], layers: list[dict]) -> list[list[float]]:
-    """Forward pass through deep network, returning activations per layer."""
-    activations = [x]
-    current = x
+def layer_norm(x: list[float], eps: float = 1e-6) -> list[float]:
+    """Layer normalization: normalize across the feature dimension."""
+    mean = sum(x) / len(x)
+    var = sum((v - mean) ** 2 for v in x) / len(x)
+    std = math.sqrt(var + eps)
+    return [(v - mean) / std for v in x]
 
-    for i, layer in enumerate(layers):
-        z = [
-            sum(current[j] * layer["W"][j][k] for j in range(layer["in"]))
-            + layer["b"][k]
-            for k in range(layer["out"])
+
+def feed_forward(
+    x: list[float],
+    W1: list[list[float]],
+    b1: list[float],
+    W2: list[list[float]],
+    b2: list[float],
+) -> list[float]:
+    """FFN(x) = ReLU(xW1 + b1)W2 + b2."""
+    d_ff = len(W1[0])
+    hidden = [0.0] * d_ff
+    for j in range(d_ff):
+        val = b1[j]
+        for k in range(len(x)):
+            val += x[k] * W1[k][j]
+        hidden[j] = max(0.0, val)  # ReLU
+
+    d_out = len(W2[0])
+    output = [0.0] * d_out
+    for j in range(d_out):
+        val = b2[j]
+        for k in range(d_ff):
+            val += hidden[k] * W2[k][j]
+        output[j] = val
+    return output
+
+
+def residual_add(x: list[float], sublayer_out: list[float]) -> list[float]:
+    """Residual connection: x + sublayer(x)."""
+    return [a + b for a, b in zip(x, sublayer_out)]
+
+
+class TransformerEncoderLayer:
+    """Single transformer encoder layer: self-attention + FFN + residuals + LayerNorm."""
+
+    def __init__(self, d_model: int, n_heads: int, d_ff: int):
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_k = d_model // n_heads
+        scale = 1.0 / math.sqrt(self.d_k)
+
+        # Attention weights
+        self.W_q = [
+            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
+            for _ in range(n_heads)
+        ]
+        self.W_k = [
+            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
+            for _ in range(n_heads)
+        ]
+        self.W_v = [
+            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
+            for _ in range(n_heads)
+        ]
+        self.W_o = [
+            [random.gauss(0, scale) for _ in range(d_model)] for _ in range(d_model)
         ]
 
-        if i < len(layers) - 1:
-            current = [max(0.0, zi) for zi in z]  # ReLU
-        else:
-            current = softmax(z)  # Output
+        # FFN weights
+        ff_scale = 1.0 / math.sqrt(d_ff)
+        self.W1 = [
+            [random.gauss(0, ff_scale) for _ in range(d_ff)] for _ in range(d_model)
+        ]
+        self.b1 = [0.0] * d_ff
+        self.W2 = [
+            [random.gauss(0, scale) for _ in range(d_model)] for _ in range(d_ff)
+        ]
+        self.b2 = [0.0] * d_model
 
-        activations.append(current)
+    def self_attention(
+        self, X: list[list[float]]
+    ) -> tuple[list[list[float]], list[list[list[float]]]]:
+        """Multi-head self-attention."""
+        all_heads = []
+        all_weights = []
+        for h in range(self.n_heads):
+            Q = [
+                [
+                    sum(X[i][k] * self.W_q[h][k][j] for k in range(self.d_model))
+                    for j in range(self.d_k)
+                ]
+                for i in range(len(X))
+            ]
+            K = [
+                [
+                    sum(X[i][k] * self.W_k[h][k][j] for k in range(self.d_model))
+                    for j in range(self.d_k)
+                ]
+                for i in range(len(X))
+            ]
+            V = [
+                [
+                    sum(X[i][k] * self.W_v[h][k][j] for k in range(self.d_model))
+                    for j in range(self.d_k)
+                ]
+                for i in range(len(X))
+            ]
 
-    return activations
+            scale = math.sqrt(self.d_k)
+            scores = [
+                [
+                    sum(Q[i][d] * K[j][d] for d in range(self.d_k)) / scale
+                    for j in range(len(K))
+                ]
+                for i in range(len(Q))
+            ]
+            weights = [softmax(row) for row in scores]
+            head_out = [
+                [
+                    sum(weights[i][j] * V[j][d] for j in range(len(V)))
+                    for d in range(self.d_k)
+                ]
+                for i in range(len(Q))
+            ]
+            all_heads.append(head_out)
+            all_weights.append(weights)
+
+        # Concatenate + project
+        concat = [[] for _ in range(len(X))]
+        for i in range(len(X)):
+            for h in range(self.n_heads):
+                concat[i].extend(all_heads[h][i])
+
+        output = [
+            [
+                sum(concat[i][k] * self.W_o[k][j] for k in range(self.d_model))
+                for j in range(self.d_model)
+            ]
+            for i in range(len(X))
+        ]
+        return output, all_weights
+
+    def forward(
+        self, X: list[list[float]]
+    ) -> tuple[list[list[float]], list[list[list[float]]]]:
+        """Full encoder layer: attention → residual → LayerNorm → FFN → residual → LayerNorm."""
+        attn_out, attn_weights = self.self_attention(X)
+        # TODO: Apply residual connection + layer norm after attention.
+        # Hint: [layer_norm(residual_add(X[i], attn_out[i])) for i in range(len(X))]
+        normed1 = ____
+
+        ffn_out = [
+            feed_forward(normed1[i], self.W1, self.b1, self.W2, self.b2)
+            for i in range(len(normed1))
+        ]
+        # TODO: Apply residual connection + layer norm after FFN.
+        # Hint: [layer_norm(residual_add(normed1[i], ffn_out[i])) for i in range(len(normed1))]
+        normed2 = ____
+
+        return normed2, attn_weights
 
 
-print(f"\n=== Deep Network (10 layers) ===")
-n_deep_layers = 10
+n_heads = 4
+d_ff = 64
+layer = TransformerEncoderLayer(d_model, n_heads, d_ff)
 
-for name, init_fn in [("Xavier", xavier_init), ("He", he_init)]:
-    # TODO: Build a deep network with the given init function.
-    # Hint: build_deep_network(n_deep_layers, init_fn)
-    layers = ____
+# Test with sample input
+sample_tokens = tokenize(corpus[0] if corpus else "singapore economy growth")[:10]
+sample_indices = [word_to_idx.get(t, 2) for t in sample_tokens]
+sample_input = [
+    [token_embeddings[idx][d] + pos_enc[pos][d] for d in range(d_model)]
+    for pos, idx in enumerate(sample_indices)
+]
 
-    # Forward pass one sample
-    activations = forward_deep(X[0], layers)
-
-    # Check activation magnitudes per layer
-    print(f"\n  {name} init — activation magnitudes:")
-    for i, act in enumerate(activations[1:], 1):
-        mean_act = sum(abs(a) for a in act) / len(act)
-        zero_frac = sum(1 for a in act if abs(a) < 1e-6) / len(act)
-        print(f"    Layer {i:2d}: mean|act|={mean_act:.6f}, dead={zero_frac:.1%}")
+layer_out, layer_attn = layer.forward(sample_input)
+print(f"\n--- Encoder Layer ---")
+print(
+    f"Input: {len(sample_input)}x{d_model}, Output: {len(layer_out)}x{len(layer_out[0])}"
+)
+print(f"Attention heads: {n_heads}, FFN dim: {d_ff}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Visualize gradient flow per layer
+# TASK 3: Stack layers into full encoder
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Gradient Flow Analysis ===")
-print(f"For a 10-layer network with ReLU activation:")
-print(f"")
-print(f"Xavier init: var(act) decreases per layer (designed for tanh)")
-print(f"  -> Gradients shrink as they backpropagate (vanishing)")
-print(f"He init: var(act) stays ~constant (designed for ReLU)")
-print(f"  -> Gradients maintain magnitude (stable training)")
-print(f"")
-print(f"Rule of thumb:")
-print(f"  Sigmoid/Tanh -> Xavier (accounts for both directions)")
-print(f"  ReLU/variants -> He (accounts for dead half)")
 
-# Compute theoretical gradient scaling
-print(f"\n  Xavier gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / (64 + 64)) ** (layer_idx / 2)
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
+class TransformerEncoder:
+    """Stack of N transformer encoder layers."""
 
-print(f"\n  He gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / 64) ** (layer_idx / 2) * (0.5 ** (layer_idx / 2))
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
+    def __init__(self, n_layers: int, d_model: int, n_heads: int, d_ff: int):
+        self.layers = [
+            TransformerEncoderLayer(d_model, n_heads, d_ff) for _ in range(n_layers)
+        ]
 
-print("\n✓ Exercise 4 complete — loss functions and initialization strategies compared")
+    def forward(self, X: list[list[float]]) -> tuple[list[list[float]], list]:
+        """Forward through all layers, collecting attention weights."""
+        all_layer_attn = []
+        hidden = X
+        for layer in self.layers:
+            hidden, attn_weights = layer.forward(hidden)
+            all_layer_attn.append(attn_weights)
+        return hidden, all_layer_attn
+
+
+n_layers = 3
+encoder = TransformerEncoder(n_layers, d_model, n_heads, d_ff)
+enc_output, all_attn = encoder.forward(sample_input)
+
+print(f"\n--- Full Encoder ({n_layers} layers) ---")
+print(f"Output shape: {len(enc_output)}x{len(enc_output[0])}")
+print(f"Attention maps collected: {len(all_attn)} layers x {n_heads} heads")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Train on text classification task
+# ══════════════════════════════════════════════════════════════════════
+
+# TODO: Configure TrainingPipeline for text classification on the "category" target.
+# Hint: TrainingPipeline(model_type="text_classifier", target="category", features=["text"])
+pipeline = ____
+
+# TODO: Fit the pipeline on the dataframe.
+# Hint: pipeline.fit(df)
+result = ____
+predictions = pipeline.predict(df)
+
+print(f"\n=== TrainingPipeline Text Classification ===")
+print(f"Training result: {result}")
+print(f"Predictions shape: {predictions.height} rows")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Visualize attention patterns per layer
+# ══════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+for layer_idx in range(n_layers):
+    for head_idx in range(min(2, n_heads)):  # Show first 2 heads per layer
+        weights = all_attn[layer_idx][head_idx]
+        fig = viz.plot_embeddings(
+            embeddings=weights,
+            labels=sample_tokens,
+            method="tsne",
+            title=f"Layer {layer_idx} Head {head_idx} Attention",
+        )
+
+print(f"\n=== Attention Pattern Analysis ===")
+print(f"Layer 0: tends to capture local/syntactic patterns")
+print(f"Layer 1: tends to capture broader semantic relationships")
+print(f"Layer 2: tends to capture task-specific patterns")
+print(f"\nThis hierarchy is why deeper transformers capture more complex patterns.")
+
+print("\n✓ Exercise 6 complete — mini transformer encoder from scratch")

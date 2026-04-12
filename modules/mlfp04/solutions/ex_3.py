@@ -2,298 +2,553 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 3: Reinforcement Learning
+# MLFP04 — Exercise 3: Dimensionality Reduction
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use RLTrainer with PPO/SAC on an inventory management
-#   environment. Compare RL policy vs heuristic baseline.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Derive PCA from SVD and verify the connection numerically
+#   - Read scree plots and choose n_components by variance threshold
+#   - Interpret PCA loadings to understand what each PC represents
+#   - Apply t-SNE and UMAP for nonlinear 2D visualisation
+#   - Select between PCA, t-SNE, and UMAP based on use case
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 1 (clustering — PCA is often used as preprocessing)
+#   - MLFP02 Lesson 2.5 (linear regression and linear algebra concepts)
+#
+# ESTIMATED TIME: 60-90 minutes
 #
 # TASKS:
-#   1. Set up Gymnasium environment (inventory management)
-#   2. Configure RLTrainer with PPO
-#   3. Train RL agent
-#   4. Implement heuristic baseline for comparison
-#   5. Evaluate and compare policies
-#   6. Track with ExperimentTracker
+#   1. PCA via SVD — explained variance, reconstruction error, loadings
+#   2. Scree plot and cumulative variance — choosing n_components
+#   3. PCA loadings — which features drive each principal component
+#   4. Reconstruction error as a function of retained components
+#   5. t-SNE — local structure, perplexity hyperparameter
+#   6. UMAP — global structure, hyperparameter tuning, out-of-sample
+#
+# DATASET: E-commerce customer data (from MLFP03)
+#   Features: 10+ numeric customer behaviour metrics
+#   Goal: compress to 2-5 dimensions while retaining 90%+ variance
+#   Key question: which features drive the first principal component?
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-
 import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
+import polars as pl
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
 
-from kailash.db.connection import ConnectionManager
-from kailash_ml.rl.trainer import RLTrainer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
 from kailash_ml import ModelVisualizer
+from kailash_ml.interop import to_sklearn_input
 
-from shared.kailash_helpers import setup_environment
+from shared import MLFPDataLoader
 
-setup_environment()
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Custom Gymnasium environment — inventory management
-# ══════════════════════════════════════════════════════════════════════
-
-
-class InventoryEnv(gym.Env):
-    """Simplified inventory management environment.
-
-    State: [current_stock, day_of_week, demand_trend]
-    Action: order_quantity (0 to max_order)
-    Reward: revenue from sales - holding cost - stockout penalty - order cost
-    """
-
-    metadata = {"render_modes": []}
-
-    def __init__(self):
-        super().__init__()
-        self.max_stock = 100
-        self.max_order = 50
-        self.max_steps = 30  # One month
-
-        self.observation_space = spaces.Box(
-            low=np.array([0, 0, 0], dtype=np.float32),
-            high=np.array([self.max_stock, 6, 2], dtype=np.float32),
-        )
-        self.action_space = spaces.Discrete(self.max_order + 1)
-
-        self.rng = np.random.default_rng()
-        self.reset()
-
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self.rng = np.random.default_rng(seed)
-        self.stock = 50
-        self.day = 0
-        self.step_count = 0
-        self.total_revenue = 0
-        self.total_cost = 0
-        return self._get_obs(), {}
-
-    def _get_obs(self):
-        # Demand trend: 0=low, 1=normal, 2=high
-        trend = 1 + 0.5 * np.sin(2 * np.pi * self.day / 7)  # Weekly seasonality
-        return np.array([self.stock, self.day % 7, trend], dtype=np.float32)
-
-    def step(self, action):
-        order_qty = int(action)
-
-        # Receive order (1-day lead time from yesterday's order is simplified away)
-        self.stock = min(self.stock + order_qty, self.max_stock)
-
-        # Generate demand (stochastic with weekly pattern)
-        base_demand = 15
-        day_factor = 1.0 + 0.3 * np.sin(2 * np.pi * self.day / 7)
-        demand = max(0, int(self.rng.poisson(base_demand * day_factor)))
-
-        # Fulfill demand
-        sold = min(demand, self.stock)
-        stockout = demand - sold
-        self.stock -= sold
-
-        # Economics
-        revenue = sold * 10.0  # $10 per unit sold
-        holding_cost = self.stock * 0.50  # $0.50 per unit per day
-        stockout_penalty = stockout * 5.0  # $5 per lost sale
-        order_cost = order_qty * 3.0  # $3 per unit ordered
-
-        reward = revenue - holding_cost - stockout_penalty - order_cost
-        self.total_revenue += revenue
-        self.total_cost += holding_cost + stockout_penalty + order_cost
-
-        self.day += 1
-        self.step_count += 1
-        terminated = self.step_count >= self.max_steps
-        truncated = False
-
-        return (
-            self._get_obs(),
-            reward,
-            terminated,
-            truncated,
-            {
-                "sold": sold,
-                "demand": demand,
-                "stockout": stockout,
-                "stock": self.stock,
-                "order": order_qty,
-            },
-        )
+try:
+    import umap as umap_lib
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
+    print("umap-learn not installed — UMAP tasks will use PCA fallback")
 
 
-# Register environment
-env = InventoryEnv()
-print(f"=== Inventory Management Environment ===")
-print(f"Observation space: {env.observation_space}")
-print(f"Action space: {env.action_space}")
-print(f"Episode length: {env.max_steps} days")
+# ── Data Loading ──────────────────────────────────────────────────────
+
+loader = MLFPDataLoader()
+customers = loader.load("mlfp03", "ecommerce_customers.parquet")
+
+feature_cols = [
+    c
+    for c, d in zip(customers.columns, customers.dtypes)
+    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c not in ("customer_id",)
+]
+
+X_raw, _, col_info = to_sklearn_input(
+    customers.drop_nulls(subset=feature_cols),
+    feature_columns=feature_cols,
+)
+
+scaler = StandardScaler()
+X = scaler.fit_transform(X_raw)
+
+n_samples, n_features = X.shape
+print(f"=== E-commerce Customer Data ===")
+print(f"Samples: {n_samples:,}, Features: {n_features}")
+print(f"Feature names: {feature_cols}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure RLTrainer with PPO
+# TASK 1: PCA via SVD — the connection explained
 # ══════════════════════════════════════════════════════════════════════
+# PCA finds directions of maximum variance (principal components).
+# It is equivalent to computing the Singular Value Decomposition (SVD):
+#
+#   X = U S V'
+#
+# where:
+#   U : (n, n) — left singular vectors (sample coordinates)
+#   S : (n, p) — diagonal matrix of singular values σ_1 ≥ σ_2 ≥ ... ≥ 0
+#   V : (p, p) — right singular vectors (principal directions in feature space)
+#
+# Connection to PCA:
+#   - Columns of V = principal component directions (loadings)
+#   - Scores (projected data) = U S  or equivalently  X V
+#   - Explained variance for PC_k = σ_k² / (n - 1)
+#   - Total variance = Σ_k σ_k² / (n - 1) = Σ_j Var(X_j)
 
+print(f"\n=== PCA via SVD ===")
 
-async def train_rl():
-    trainer = RLTrainer()
+# Manual SVD on mean-centred data (X already standardised = mean-centred + scaled)
+U, S, Vt = np.linalg.svd(X, full_matrices=False)
 
-    print(f"\n=== Training PPO Agent ===")
-    result = await trainer.train(
-        env=env,
-        algorithm="ppo",
-        config={
-            "total_timesteps": 50_000,
-            "learning_rate": 3e-4,
-            "n_steps": 2048,
-            "batch_size": 64,
-            "n_epochs": 10,
-            "gamma": 0.99,
-            "gae_lambda": 0.95,
-            "clip_range": 0.2,  # PPO clip: L^CLIP = min(r_t A_t, clip(r_t, 1-ε, 1+ε) A_t)
-            "seed": 42,
-        },
-    )
+# Explained variance from singular values
+explained_variance = S**2 / (n_samples - 1)
+total_variance = explained_variance.sum()
+explained_variance_ratio = explained_variance / total_variance
+cumulative_evr = np.cumsum(explained_variance_ratio)
 
-    print(f"Training complete:")
-    print(f"  Mean reward: {result.mean_reward:.2f}")
-    print(f"  Std reward: {result.std_reward:.2f}")
-    print(f"  Training time: {result.training_time_seconds:.0f}s")
-
-    return trainer, result
-
-
-trainer, rl_result = asyncio.run(train_rl())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Heuristic baseline — (s, S) policy
-# ══════════════════════════════════════════════════════════════════════
-# Classic inventory policy: if stock < s, order up to S
-
-
-def evaluate_policy(env, policy_fn, n_episodes=100, seed=42):
-    """Evaluate a policy over multiple episodes."""
-    rng = np.random.default_rng(seed)
-    rewards = []
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=int(rng.integers(0, 10000)))
-        total_reward = 0
-        done = False
-        while not done:
-            action = policy_fn(obs)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            total_reward += reward
-            done = terminated or truncated
-        rewards.append(total_reward)
-    return np.array(rewards)
-
-
-# Heuristic: (s, S) policy with s=20, S=60
-def ss_policy(obs):
-    """(s, S) reorder policy: if stock < s, order up to S."""
-    stock = obs[0]
-    s, S = 20, 60  # Reorder point and order-up-to level
-    if stock < s:
-        return min(int(S - stock), 50)  # Order up to S
-    return 0  # Don't order
-
-
-# Random baseline
-def random_policy(obs):
-    return np.random.randint(0, 51)
-
-
-# Evaluate all policies
-heuristic_rewards = evaluate_policy(env, ss_policy)
-
-
-async def evaluate_rl():
-    rl_rewards = await trainer.evaluate(env, n_episodes=100)
-    return rl_rewards
-
-
-rl_rewards = asyncio.run(evaluate_rl())
-random_rewards = evaluate_policy(env, random_policy)
-
-print(f"\n=== Policy Comparison ===")
-print(f"{'Policy':<15} {'Mean':>10} {'Std':>10} {'Min':>10} {'Max':>10}")
-print("─" * 55)
-for name, rewards in [
-    ("Random", random_rewards),
-    ("(s,S) Heuristic", heuristic_rewards),
-    ("PPO", rl_rewards),
-]:
+print(f"Total variance (should ≈ n_features={n_features}): {total_variance:.2f}")
+print(f"\nTop 10 Principal Components:")
+print(f"{'PC':>4} {'Singular Value':>16} {'Expl. Var':>12} {'Expl. Var %':>12} {'Cumulative %':>14}")
+print("─" * 62)
+for i in range(min(10, n_features)):
     print(
-        f"{name:<15} {rewards.mean():>10.1f} {rewards.std():>10.1f} "
-        f"{rewards.min():>10.1f} {rewards.max():>10.1f}"
+        f"{i+1:>4} {S[i]:>16.4f} {explained_variance[i]:>12.4f} "
+        f"{explained_variance_ratio[i]:>11.2%} {cumulative_evr[i]:>13.2%}"
     )
 
+# Verify against sklearn PCA
+pca_full = PCA(n_components=n_features)
+pca_full.fit(X)
+max_diff = np.abs(pca_full.explained_variance_ratio_ - explained_variance_ratio).max()
+print(f"\nSVD vs sklearn PCA max difference: {max_diff:.2e} (should be ≈ 0)")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert max_diff < 1e-6, f"SVD and sklearn PCA should agree to 6 decimal places, got {max_diff:.2e}"
+assert abs(total_variance - n_features) < 0.1, \
+    f"Total variance of standardised data should ≈ n_features ({n_features}), got {total_variance:.2f}"
+assert abs(cumulative_evr[-1] - 1.0) < 1e-6, "Cumulative explained variance should sum to 1.0"
+# INTERPRETATION: PCA via SVD is exact — sklearn's implementation is numerically
+# identical to the manual SVD computation. This verifies the connection:
+# the right singular vectors V^T are the principal directions, and σ²/(n-1)
+# are the eigenvalues of the covariance matrix (= explained variance per PC).
+print("\n✓ Checkpoint 1 passed — PCA via SVD verified against sklearn\n")
+
+# Principal directions (loadings): rows of Vt = columns of V
+# PC_k direction = Vt[k, :] — a unit vector in feature space
+print(f"\nPC1 direction (first {n_features} values):")
+print(f"  {Vt[0].round(3)}")
+print(f"  ||PC1|| = {np.linalg.norm(Vt[0]):.6f} (should be 1.0 — unit vector)")
+
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Visualise training and comparison
+# TASK 2: Scree plot and choosing n_components
 # ══════════════════════════════════════════════════════════════════════
+# The scree plot shows explained variance ratio per component.
+# "Elbow" = the point where marginal variance explained drops sharply.
+# A common rule: retain components until cumulative variance ≥ 90-95%.
+
+n_95 = np.searchsorted(cumulative_evr, 0.95) + 1
+n_90 = np.searchsorted(cumulative_evr, 0.90) + 1
+n_80 = np.searchsorted(cumulative_evr, 0.80) + 1
+
+print(f"\n=== Variance Thresholds ===")
+print(f"Components for 80% variance: {n_80}")
+print(f"Components for 90% variance: {n_90}")
+print(f"Components for 95% variance: {n_95}")
+print(f"  (Original: {n_features} features → {n_95}x compression for 95% retention)")
+
+# Kaiser criterion: retain components with eigenvalue > 1
+# (only meaningful for standardised data where total variance = n_features)
+n_kaiser = (explained_variance > 1.0).sum()
+print(f"\nKaiser criterion (eigenvalue > 1): {n_kaiser} components")
+print(f"  Eigenvalue = explained variance per component")
+print(f"  Threshold 1.0 means the component captures more than one original feature")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert n_95 <= n_features, f"95% threshold should require fewer components than features ({n_features})"
+assert n_90 <= n_95, "90% threshold should require fewer components than 95% threshold"
+assert n_80 <= n_90, "80% threshold should require fewer components than 90% threshold"
+assert 1 <= n_kaiser <= n_features, "Kaiser criterion should select at least 1 component"
+# INTERPRETATION: The scree plot elbow shows diminishing returns. For most ML
+# tasks, retaining 90-95% variance (not 100%) is better: the remaining 5-10%
+# is often noise, and removing it improves generalisation. This is the
+# PCA 'denoising' effect — compress, then reconstruct to remove noise.
+print("\n✓ Checkpoint 2 passed — variance thresholds computed for component selection\n")
 
 viz = ModelVisualizer()
 
-fig = viz.metric_comparison(
+# Scree plot
+fig_scree = viz.training_history(
     {
-        "Random": {
-            "Mean_Reward": random_rewards.mean(),
-            "Std_Reward": random_rewards.std(),
-        },
-        "(s,S) Heuristic": {
-            "Mean_Reward": heuristic_rewards.mean(),
-            "Std_Reward": heuristic_rewards.std(),
-        },
-        "PPO": {"Mean_Reward": rl_rewards.mean(), "Std_Reward": rl_rewards.std()},
-    }
+        "Explained Variance %": (explained_variance_ratio[:20] * 100).tolist(),
+        "Cumulative %": (cumulative_evr[:20] * 100).tolist(),
+    },
+    x_label="Principal Component",
 )
-fig.update_layout(title="Inventory Management: Policy Comparison")
-fig.write_html("ex5_rl_comparison.html")
-print("\nSaved: ex5_rl_comparison.html")
+fig_scree.update_layout(title="Scree Plot: Explained Variance by Component")
+fig_scree.write_html("ex3_scree_plot.html")
+print("\nSaved: ex3_scree_plot.html")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Track with ExperimentTracker
+# TASK 3: PCA loadings — feature contributions to each PC
 # ══════════════════════════════════════════════════════════════════════
+# Loadings = correlation between original features and principal components.
+# Loading[j, k] = Vt[k, j] * sqrt(explained_variance[k]) / std(X_j)
+# (for standardised data this simplifies to Vt[k, j] * sqrt(λ_k))
+#
+# |Loading| close to 1 → feature j strongly drives PC_k
+# |Loading| close to 0 → feature j barely contributes to PC_k
+
+n_components_to_inspect = min(5, n_features)
+loadings = Vt[:n_components_to_inspect, :].T  # (n_features, n_pcs)
+
+print(f"\n=== PCA Loadings (top {n_components_to_inspect} PCs) ===")
+print(f"{'Feature':<30}", end="")
+for i in range(n_components_to_inspect):
+    print(f"{'PC' + str(i+1):>10}", end="")
+print()
+print("─" * (30 + 10 * n_components_to_inspect))
+
+for j, feat in enumerate(feature_cols):
+    print(f"{feat:<30}", end="")
+    for i in range(n_components_to_inspect):
+        val = loadings[j, i]
+        marker = " ★" if abs(val) > 0.4 else "  "
+        print(f"{val:>9.3f}{marker[1]}", end="")
+    print()
+
+print("\n★ = strong loading (|loading| > 0.4)")
+print("\nInterpretation:")
+print("  PC1: the direction capturing most customer variation")
+print("  Features with large |loading| on PC1 are the primary drivers")
+print("  Features with near-zero loading on PC1 are orthogonal to it")
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert loadings.shape == (n_features, n_components_to_inspect), \
+    f"Loadings should have shape (n_features, n_pcs_inspected)"
+# Each column of loadings (= row of Vt) should be a unit vector
+for i in range(n_components_to_inspect):
+    col_norm = np.linalg.norm(loadings[:, i])
+    assert abs(col_norm - 1.0) < 1e-6, \
+        f"PC{i+1} loading vector should be unit length, got {col_norm:.6f}"
+# INTERPRETATION: PCA loadings reveal the 'recipe' for each principal component.
+# A loading of 0.7 for 'total_spend' on PC1 means that PC1 is mostly driven by
+# spending behaviour. Negative loadings mean the feature decreases PC1.
+# This is how you assign business meaning to the abstract PC dimensions.
+print("\n✓ Checkpoint 3 passed — PCA loadings are unit-norm vectors\n")
 
 
-async def track_experiment():
-    conn = ConnectionManager("sqlite:///mlfp04_experiments.db")
-    await conn.initialize()
-    tracker = ExperimentTracker(conn)
-    await tracker.initialize()
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Reconstruction error as a function of retained components
+# ══════════════════════════════════════════════════════════════════════
+# Reconstruction: X̂ = X_proj @ Vt[:k, :]  (project and back-project)
+# Reconstruction MSE = ||X - X̂||² / (n * p)
+# = Σ_{i > k} σ_i² / (n * p)  (exactly the unexplained variance)
 
-    exp_id = await tracker.create_experiment(
-        name="mlfp04_reinforcement_learning",
-        description="RL inventory management — PPO vs heuristic",
+n_components_range = list(range(1, min(n_features + 1, 31)))
+reconstruction_errors = []
+
+for k in n_components_range:
+    pca_k = PCA(n_components=k)
+    X_proj = pca_k.fit_transform(X)
+    X_recon = pca_k.inverse_transform(X_proj)
+    mse = np.mean((X - X_recon) ** 2)
+    reconstruction_errors.append(mse)
+
+print(f"\n=== Reconstruction Error ===")
+print(f"{'Components':>12} {'MSE':>12} {'% Variance Retained':>22}")
+print("─" * 50)
+for k, mse in zip(n_components_range[::3], reconstruction_errors[::3]):
+    pct_retained = 1.0 - mse / np.mean(X ** 2)
+    print(f"{k:>12} {mse:>12.4f} {pct_retained:>21.2%}")
+
+fig_recon = viz.training_history(
+    {"Reconstruction MSE": reconstruction_errors},
+    x_label="Number of PCA Components",
+)
+fig_recon.update_layout(title="PCA: Reconstruction Error vs Components Retained")
+fig_recon.write_html("ex3_reconstruction_error.html")
+print("\nSaved: ex3_reconstruction_error.html")
+
+# Recommended n_components for downstream tasks
+n_for_embedding = n_90  # Retain 90% variance before applying t-SNE/UMAP
+print(f"\nUsing {n_for_embedding} PCA components (90% variance) as t-SNE/UMAP input")
+print("  Pre-reducing with PCA improves t-SNE/UMAP speed and removes noise")
+
+pca_pre = PCA(n_components=n_for_embedding, random_state=42)
+X_pca = pca_pre.fit_transform(X)
+print(f"  Reduced: {X.shape} → {X_pca.shape}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert reconstruction_errors[0] > reconstruction_errors[-1], \
+    "Reconstruction error should decrease as more components are retained"
+assert reconstruction_errors[-1] < 0.1, \
+    "With all components retained, reconstruction error should be near zero"
+assert X_pca.shape[1] == n_for_embedding, \
+    f"Pre-reduced PCA should have {n_for_embedding} components"
+# INTERPRETATION: Reconstruction error measures information lost by compression.
+# With k components: error = Σ_{i > k} σ_i² / (n*p) — exactly the unexplained
+# variance. The reconstruction error curve is the complement of the scree plot.
+# The sweet spot is where additional components add little new information.
+print("\n✓ Checkpoint 4 passed — reconstruction error decreases with more components\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: t-SNE — local structure, perplexity
+# ══════════════════════════════════════════════════════════════════════
+# t-SNE minimises KL divergence between:
+#   - High-dimensional pairwise similarity (Gaussian kernel)
+#   - Low-dimensional pairwise similarity (Student-t kernel)
+#
+# Properties:
+#   - Preserves LOCAL structure (nearby points stay nearby)
+#   - Global distances are NOT preserved (clusters can appear far apart)
+#   - No out-of-sample extension (must refit for new points)
+#   - O(n log n) with Barnes-Hut approximation
+#
+# Key hyperparameter: perplexity
+#   - Roughly: effective number of nearest neighbours
+#   - Low (5-10): focuses on very local structure, isolates small clusters
+#   - High (50-100): more global perspective, smoother embeddings
+#   - Rule of thumb: 5 ≤ perplexity ≤ n/3
+
+# Subsample for speed (t-SNE is slow on large datasets)
+rng = np.random.default_rng(42)
+n_tsne = min(3000, n_samples)
+idx_tsne = rng.choice(n_samples, n_tsne, replace=False)
+X_tsne_input = X_pca[idx_tsne]
+
+print(f"\n=== t-SNE (n={n_tsne}) ===")
+print(f"{'Perplexity':>12} {'KL Divergence':>16} {'Time':>8}")
+print("─" * 40)
+
+import time
+tsne_results = {}
+for perplexity in [5, 30, 50]:
+    t0 = time.time()
+    tsne = TSNE(
+        n_components=2,
+        perplexity=perplexity,
+        max_iter=1000,
+        random_state=42,
+        init="pca",
+        learning_rate="auto",
     )
+    embedding = tsne.fit_transform(X_tsne_input)
+    elapsed = time.time() - t0
 
-    for run_name, rewards, run_params in [
-        ("random_baseline", random_rewards, {"policy": "random"}),
-        ("ss_heuristic", heuristic_rewards, {"policy": "(s,S)", "s": "20", "S": "60"}),
-        ("ppo_agent", rl_rewards, {"algorithm": "PPO", "timesteps": "50000"}),
-    ]:
-        async with tracker.run(exp_id, run_name=run_name) as run:
-            await run.log_params(run_params)
-            await run.log_metrics(
-                {
-                    "mean_reward": float(rewards.mean()),
-                    "std_reward": float(rewards.std()),
-                    "min_reward": float(rewards.min()),
-                    "max_reward": float(rewards.max()),
-                }
-            )
-            await run.set_tag("domain", "rl-inventory")
+    tsne_results[perplexity] = {
+        "embedding": embedding,
+        "kl_divergence": tsne.kl_divergence_,
+    }
 
-    print(f"\nLogged 3 runs to ExperimentTracker")
-    await conn.close()
+    # Cluster quality in the embedding
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=4, random_state=42, n_init=5)
+    labels_2d = km.fit_predict(embedding)
+    sil = silhouette_score(embedding, labels_2d) if len(set(labels_2d)) > 1 else -1.0
+
+    print(f"{perplexity:>12} {tsne.kl_divergence_:>16.4f} {elapsed:>7.1f}s")
+    print(f"  Silhouette in 2D embedding: {sil:.4f}")
+
+print("\nt-SNE perplexity guidance:")
+print("  perplexity=5  : micro-clusters, many small tight groups")
+print("  perplexity=30 : balanced (default recommendation)")
+print("  perplexity=50 : smoother, fewer isolated clusters")
+print("  NEVER interpret inter-cluster distances — not meaningful!")
+
+# Key t-SNE warnings
+print("\nt-SNE pitfalls:")
+print("  1. Cluster sizes in t-SNE do NOT reflect real cluster sizes")
+print("  2. Distances between clusters are NOT meaningful")
+print("  3. Different runs give different layouts (random seed matters)")
+print("  4. No out-of-sample extension — new points require full refit")
 
 
-asyncio.run(track_experiment())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: UMAP — global structure, hyperparameter tuning
+# ══════════════════════════════════════════════════════════════════════
+# UMAP uses a fuzzy topological approach:
+#   1. Build a weighted k-NN graph (high-dimensional)
+#   2. Optimise a low-dimensional layout to match graph structure
+#
+# Advantages over t-SNE:
+#   - Preserves BOTH local AND global structure
+#   - Supports out-of-sample transform (transform new points)
+#   - Faster: O(n) amortised
+#   - Can embed into any dimensionality (not just 2D)
+#
+# Key hyperparameters:
+#   n_neighbors: size of local neighbourhood (like perplexity in t-SNE)
+#     - Small: focuses on local structure, captures fine detail
+#     - Large: more global structure, smoother embedding
+#   min_dist: minimum distance between points in embedding
+#     - Small (0.0): tightly packed clusters
+#     - Large (1.0): spread out, more continuous
 
-print("\n✓ Exercise 3 complete — RL inventory management with PPO")
+print(f"\n=== UMAP Hyperparameter Comparison ===")
+
+if UMAP_AVAILABLE:
+    umap_configs = [
+        {"n_neighbors": 5,  "min_dist": 0.1,  "label": "local (n_nbrs=5)"},
+        {"n_neighbors": 15, "min_dist": 0.1,  "label": "default (n_nbrs=15)"},
+        {"n_neighbors": 50, "min_dist": 0.5,  "label": "global (n_nbrs=50)"},
+    ]
+
+    umap_results = {}
+    for cfg in umap_configs:
+        t0 = time.time()
+        reducer = umap_lib.UMAP(
+            n_components=2,
+            n_neighbors=cfg["n_neighbors"],
+            min_dist=cfg["min_dist"],
+            random_state=42,
+            metric="euclidean",
+        )
+        # Fit on subsample, then transform full dataset (out-of-sample extension)
+        reducer.fit(X_pca[idx_tsne])
+        embedding_full = reducer.transform(X_pca)   # All samples
+        elapsed = time.time() - t0
+
+        km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
+            embedding_full
+        )
+        sil = silhouette_score(embedding_full, km_labels) if len(set(km_labels)) > 1 else -1.0
+
+        umap_results[cfg["label"]] = {
+            "embedding": embedding_full,
+            "silhouette": sil,
+            "time": elapsed,
+        }
+        print(f"  {cfg['label']:<30}: silhouette={sil:.4f}, time={elapsed:.1f}s")
+
+    print("\nOut-of-sample: UMAP supports reducer.transform(new_X)")
+    print("  This is critical for production — new customers can be embedded")
+    print("  without refitting the entire model")
+    print("\nUMAP vs t-SNE decision guide:")
+    print("  Use t-SNE:  exploratory visualisation, understanding local clusters")
+    print("  Use UMAP:   need out-of-sample transform, large datasets, global structure")
+
+else:
+    # PCA fallback for environments without umap-learn
+    pca_2d = PCA(n_components=2, random_state=42)
+    embedding_2d = pca_2d.fit_transform(X_pca)
+    km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(embedding_2d)
+    sil = silhouette_score(embedding_2d, km_labels) if len(set(km_labels)) > 1 else -1.0
+    print(f"  PCA 2D fallback: silhouette={sil:.4f}")
+
+    umap_results = {"PCA 2D": {"embedding": embedding_2d, "silhouette": sil, "time": 0.0}}
+
+    print("\nInstall umap-learn to run UMAP: pip install umap-learn")
+    print("UMAP benefits: preserves global structure, out-of-sample transform")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Method comparison summary
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Dimensionality Reduction Method Comparison ===")
+print(f"""
+┌──────────────────┬─────────────┬──────────────┬───────────────┬──────────────┐
+│ Method           │ Linear?     │ Global Struct│ Out-of-Sample │ Speed        │
+├──────────────────┼─────────────┼──────────────┼───────────────┼──────────────┤
+│ PCA              │ Yes         │ Yes          │ Yes           │ O(np min(n,p))│
+│ t-SNE            │ No          │ Local only   │ No            │ O(n log n)   │
+│ UMAP             │ No          │ Both         │ Yes           │ O(n)         │
+└──────────────────┴─────────────┴──────────────┴───────────────┴──────────────┘
+
+Practical Recommendations:
+  1. Always PCA first: removes noise, speeds up t-SNE/UMAP
+  2. PCA for production: interpretable loadings, fast, invertible
+  3. t-SNE for exploration: visualise cluster structure in 2D
+  4. UMAP for production embedding: out-of-sample transform available
+  5. Report n_components chosen and % variance retained
+""")
+
+# Visualise PCA 2D projection
+pca_2d_final = PCA(n_components=2, random_state=42)
+X_pca_2d = pca_2d_final.fit_transform(X)
+
+fig_pca2d = viz.training_history(
+    {"PC2 vs PC1": X_pca_2d[:, 1].tolist()},
+    x_label="PC1 Score",
+)
+fig_pca2d.update_layout(title=f"PCA 2D Projection ({explained_variance_ratio[:2].sum():.1%} variance)")
+fig_pca2d.write_html("ex3_pca_2d.html")
+
+# Method silhouette comparison
+method_silhouettes = {}
+for perp, res in tsne_results.items():
+    km_l = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(res["embedding"])
+    method_silhouettes[f"t-SNE p={perp}"] = {"Silhouette": silhouette_score(res["embedding"], km_l)}
+
+for label, res in umap_results.items():
+    method_silhouettes[f"UMAP {label}"] = {"Silhouette": res["silhouette"]}
+
+km_pca_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(X_pca)
+method_silhouettes[f"PCA {n_for_embedding}d"] = {
+    "Silhouette": silhouette_score(X_pca, km_pca_labels)
+}
+
+fig_methods = viz.metric_comparison(method_silhouettes)
+fig_methods.update_layout(title="Dimensionality Reduction: 2D Cluster Quality Comparison")
+fig_methods.write_html("ex3_method_comparison.html")
+print("Saved: ex3_scree_plot.html, ex3_reconstruction_error.html")
+print("Saved: ex3_pca_2d.html, ex3_method_comparison.html")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert len(tsne_results) == 3, "Should test t-SNE at 3 perplexity values"
+for perp, res in tsne_results.items():
+    assert "embedding" in res, f"t-SNE result for perplexity={perp} should have embedding"
+    assert res["embedding"].shape[1] == 2, "t-SNE should produce 2D embeddings"
+    assert res["kl_divergence"] > 0, "KL divergence should be positive"
+# INTERPRETATION: KL divergence measures how well the 2D embedding preserves
+# the high-dimensional neighbourhood structure. Lower is better, but be careful:
+# a very low KL divergence at high perplexity may mean t-SNE collapsed all
+# points. Always visually inspect t-SNE plots alongside the KL metric.
+print("\n✓ Checkpoint 5 passed — t-SNE computed at 3 perplexity levels\n")
+
+print("\n✓ Exercise 3 complete — PCA via SVD + t-SNE + UMAP")
+print("  Key takeaways:")
+print("  1. PCA = SVD; explained variance = σ_k²/(n-1); scree plot → choose k")
+print("  2. Loadings reveal which features drive each principal component")
+print("  3. Reconstruction error = unexplained variance = Σ_{i>k} σ_i²")
+print("  4. t-SNE: local structure only, no out-of-sample transform")
+print("  5. UMAP: global + local, supports transform() — production-ready")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ PCA via SVD: X = U Σ V^T; PC directions = rows of V^T
+  ✓ Scree plot: choose k where cumulative explained variance ≥ 90%
+  ✓ Loadings: unit vectors showing which features drive each PC
+  ✓ Reconstruction error: compression quality without labels
+  ✓ t-SNE: local structure, no out-of-sample, non-deterministic
+  ✓ UMAP: local + global, out-of-sample transform, production-ready
+
+  DECISION GUIDE:
+    PCA        → production (fast, invertible, interpretable)
+    t-SNE      → exploratory visualisation only
+    UMAP       → visualisation + feature extraction (supports transform)
+
+  KEY PITFALL: t-SNE cluster sizes and inter-cluster distances are
+  meaningless artefacts. Only within-cluster relative distances are
+  interpretable. Never draw business conclusions from t-SNE topology.
+
+  NEXT: Exercise 4 uses UMAP + anomaly detection to find fraudulent
+  transactions in a credit card dataset. You'll blend multiple detectors
+  (IsolationForest + LOF) using EnsembleEngine.blend() to beat any
+  single method on average precision.
+""")
+print("═" * 70)

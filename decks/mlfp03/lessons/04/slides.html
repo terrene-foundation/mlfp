@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.4 — Gradient Boosting Deep Dive | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.48em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.4</p>
+  <h1>Gradient Boosting Deep Dive</h1>
+  <p style="font-size: 0.7em; color: #64748B;">XGBoost · LightGBM · CatBoost · the second-order Taylor derivation</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 75 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> 3.3 &nbsp; · &nbsp;
+    <strong>Outcome:</strong> derive the split gain and pick the right booster
+  </div>
+  <div class="slide-footer">MLFP — Module 3: Supervised ML</div>
+</section>
+
+<section>
+  <h2>Bagging vs Boosting</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <text x="190" y="25" text-anchor="middle" font-weight="700" fill="#0D9488">Bagging (parallel)</text>
+        <rect x="60" y="50" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+        <text x="120" y="75" text-anchor="middle">tree 1</text>
+        <rect x="60" y="100" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+        <text x="120" y="125" text-anchor="middle">tree 2</text>
+        <rect x="60" y="150" width="120" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+        <text x="120" y="175" text-anchor="middle">tree 3</text>
+        <rect x="210" y="100" width="120" height="40" rx="6" fill="#DCFCE7" stroke="#15803D" stroke-width="2"/>
+        <text x="270" y="125" text-anchor="middle" font-weight="700">average</text>
+        <text x="190" y="230" text-anchor="middle" fill="#047857" font-size="11" font-style="italic">reduces variance</text>
+
+        <text x="570" y="25" text-anchor="middle" font-weight="700" fill="#B45309">Boosting (sequential)</text>
+        <rect x="430" y="100" width="90" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+        <text x="475" y="125" text-anchor="middle">tree 1</text>
+        <text x="540" y="125" font-size="18" fill="#475569">→</text>
+        <rect x="560" y="100" width="90" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+        <text x="605" y="125" text-anchor="middle">tree 2</text>
+        <text x="660" y="125" font-size="18" fill="#475569">→</text>
+        <rect x="680" y="100" width="60" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+        <text x="570" y="230" text-anchor="middle" fill="#B45309" font-size="11" font-style="italic">reduces bias</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>The boosting recipe</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ F_m(x) = F_{m-1}(x) + \eta \cdot f_m(x) \]
+  </div>
+  <ul style="font-size: 0.85em;">
+    <li>$F_0$ is a constant (mean or log-odds)</li>
+    <li>$f_m$ is the next tree, fit to the residuals/gradients of $F_{m-1}$</li>
+    <li>$\eta$ is the learning rate — bias-variance dial</li>
+    <li>Small $\eta$ with many trees $>$ large $\eta$ with few trees</li>
+  </ul>
+</section>
+
+<section>
+  <h2>XGBoost — second-order objective</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \mathcal{L}^{(t)} = \sum_i L(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)) + \Omega(f_t) \]
+  </div>
+  <p style="font-size: 0.85em;">where $\Omega(f_t) = \gamma T + \tfrac{1}{2}\lambda \sum_j w_j^2$.</p>
+  <p style="font-size: 0.85em;">Taylor-expand to second order around $\hat{y}_i^{(t-1)}$:</p>
+  <div style="padding: 14px; background: #EFF6FF; border-radius: 8px;">
+    \[ L(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)) \approx L_0 + g_i f_t + \tfrac{1}{2} h_i f_t^2 \]
+  </div>
+</section>
+
+<section>
+  <h2>Group by leaf, solve in closed form</h2>
+  <p style="font-size: 0.85em;">Let $G_j = \sum_{i \in I_j} g_i$, $H_j = \sum_{i \in I_j} h_i$. Then:</p>
+  <div style="padding: 14px; background: #F8FAFC; border-radius: 8px;">
+    \[ \tilde{\mathcal{L}}^{(t)} = \sum_{j=1}^T \bigl[G_j w_j + \tfrac{1}{2}(H_j + \lambda) w_j^2\bigr] + \gamma T \]
+  </div>
+  <p>Quadratic in $w_j$. Minimum:</p>
+  <div style="padding: 16px; background: #F0FDFA; border: 2px solid #0D9488; border-radius: 8px;">
+    \[ w_j^* = -\frac{G_j}{H_j + \lambda} \qquad \tilde{\mathcal{L}}^{(t)}_{\min} = -\tfrac{1}{2} \sum_j \frac{G_j^2}{H_j + \lambda} + \gamma T \]
+  </div>
+</section>
+
+<section>
+  <h2>The split gain — the whole point</h2>
+  <div style="padding: 16px; background: #FEF3C7; border: 2px solid #F59E0B; border-radius: 8px;">
+    \[ \mathrm{Gain} = \tfrac{1}{2}\Bigl[\frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda}\Bigr] - \gamma \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li>Evaluate for every candidate split, keep the one with largest gain</li>
+    <li>$\gamma$ is the pruning cost — no split if gain $&lt; \gamma$</li>
+    <li>$\lambda$ shrinks leaf weights (L2)</li>
+    <li>Loss-agnostic: any twice-differentiable loss plugs in via $g_i, h_i$</li>
+  </ul>
+</section>
+
+<section>
+  <h2>LightGBM — speed tricks</h2>
+  <ul style="font-size: 0.9em;">
+    <li><strong>Histogram splits:</strong> bin features into ~256 buckets, evaluate splits at bucket boundaries — $O(n + 256)$ instead of $O(n \log n)$</li>
+    <li><strong>GOSS:</strong> keep top $a\%$ of rows by $|g_i|$, randomly sample $b\%$ from the rest — ~30% of data per tree</li>
+    <li><strong>Leaf-wise growth:</strong> always split the leaf with largest gain, regardless of depth. Unbalanced trees, faster convergence, <code>num_leaves</code> is the main dial</li>
+  </ul>
+</section>
+
+<section>
+  <h2>GOSS intuition</h2>
+  <p style="font-size: 0.85em;">Small-gradient rows are already well-predicted. Large-gradient rows carry most of the signal. Subsample the small ones, keep all the large ones.</p>
+  <ol style="font-size: 0.82em;">
+    <li>Sort by $|g_i|$ descending</li>
+    <li>Keep top $a\%$ (default $a=20$)</li>
+    <li>Random sample $b\%$ from the rest (default $b=10$)</li>
+    <li>Train on those $a + b \approx 30\%$ of rows</li>
+    <li>Up-weight the sampled low-gradient rows by $(1 - a)/b$</li>
+  </ol>
+  <p style="font-size: 0.82em; color: #64748B;">~3× speedup, minimal accuracy loss.</p>
+</section>
+
+<section>
+  <h2>CatBoost — ordered boosting</h2>
+  <p style="font-size: 0.88em;">Problem: mean-target encoding leaks the target into the features.</p>
+  <p>Solution: impose an artificial row ordering and encode row $i$ using only rows $j &lt; i$:</p>
+  <div style="padding: 14px; background: #F8FAFC; border-radius: 8px; font-size: 0.9em;">
+    \[ \text{enc}(x_i^{\text{cat}}) = \frac{\sum_{j&lt;i,\, x_j^{\text{cat}} = x_i^{\text{cat}}} y_j + a\bar{y}}{\sum_{j&lt;i,\, x_j^{\text{cat}} = x_i^{\text{cat}}} 1 + a} \]
+  </div>
+  <p style="font-size: 0.82em;">Reshuffle the ordering every boosting iteration. No leakage, no hand-engineering.</p>
+</section>
+
+<section>
+  <h2>Train all three on credit scoring</h2>
+  <pre><code class="language-python" data-trim>
+models = {
+  "XGBoost":  xgb.XGBClassifier(n_estimators=400, learning_rate=0.05,
+              max_depth=6, reg_lambda=1, gamma=0.1, eval_metric="aucpr"),
+  "LightGBM": lgb.LGBMClassifier(n_estimators=400, learning_rate=0.05,
+              num_leaves=31, reg_lambda=1),
+  "CatBoost": cb.CatBoostClassifier(iterations=400, learning_rate=0.05,
+              depth=6, l2_leaf_reg=3, verbose=False),
+}
+
+for name, m in models.items():
+    m.fit(X_tr, y_tr)
+    p = m.predict_proba(X_te)[:, 1]
+    print(name, "AUC-PR =", average_precision_score(y_te, p))
+  </code></pre>
+</section>
+
+<section>
+  <h2>Early stopping — free tuning</h2>
+  <pre><code class="language-python" data-trim>
+xgb_model = xgb.XGBClassifier(
+    n_estimators=1000,
+    learning_rate=0.05,
+    early_stopping_rounds=25,
+    eval_metric="aucpr",
+)
+xgb_model.fit(X_tr, y_tr, eval_set=[(X_te, y_te)])
+print("Stopped at round", xgb_model.best_iteration)
+  </code></pre>
+  <p style="font-size: 0.85em;">Halt when the validation metric hasn't improved for 25 rounds. Standard way to pick <code>n_estimators</code> without grid search.</p>
+</section>
+
+<section>
+  <h2>Which booster?</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Booster</th><th>Pick when</th><th>Tune first</th></tr></thead>
+    <tbody>
+      <tr><td>XGBoost</td><td>clean numeric, small-medium, reproducibility</td><td>lr, max_depth, reg_lambda</td></tr>
+      <tr><td>LightGBM</td><td>millions of rows, many features, speed matters</td><td>num_leaves, lr, min_data_in_leaf</td></tr>
+      <tr><td>CatBoost</td><td>many high-cardinality categoricals</td><td>iterations, depth, l2_leaf_reg</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Three traps</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>1.</strong> ROC-AUC on imbalanced data — use AUC-PR (average precision) instead. More in 3.5.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>2.</strong> No early stopping — you under- or overfit. Always use <code>eval_set</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>3.</strong> Tuning lr and n_estimators independently — they interact. Fix small lr, let early stopping pick n_estimators.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Derive the XGBoost split gain from a 2nd-order Taylor expansion</li>
+    <li>✓ Explain GOSS and leaf-wise growth</li>
+    <li>✓ Explain why CatBoost's ordered encoding prevents target leakage</li>
+    <li>✓ Train and tune all three boosters on imbalanced credit data</li>
+    <li>✓ Use early stopping correctly</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 3.5 — the metrics, SMOTE, focal loss, and calibration story.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

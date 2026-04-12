@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.2 — EM and Gaussian Mixture Models | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.2</span>
+  EM Algorithm and Gaussian Mixture Models
+</h1>
+
+<p class="lead">
+  K-means gave every customer a single cluster label. That is a lie. Most
+  customers sit somewhere between "high-value" and "average" — they belong
+  70% to one segment and 30% to another. Today you will meet the
+  <strong>Expectation-Maximisation (EM) algorithm</strong>, the twenty-line
+  procedure that powers Gaussian mixture models, hidden Markov models, topic
+  models, and half of classical machine learning. You will implement it
+  yourself, then watch sklearn's <code>GaussianMixture</code> do exactly the
+  same thing on real data.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Hard clustering forces every point into exactly one group. For a point
+  sitting directly on the boundary between two clusters, this is
+  information loss: the algorithm knows the point is ambiguous but reports
+  confident labels anyway. Soft clustering fixes this by producing
+  <em>responsibilities</em> — for each point, a probability vector over
+  clusters. A point can be 70% in cluster A, 25% in cluster B, and 5% in
+  cluster C. That extra information unlocks downstream decisions that
+  hard labels cannot support.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="180" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">K-means — hard labels</text>
+  <rect x="30" y="40" width="300" height="200" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <g fill="#EF4444"><circle cx="100" cy="120" r="5"/><circle cx="130" cy="130" r="5"/><circle cx="90" cy="150" r="5"/><circle cx="120" cy="100" r="5"/></g>
+  <g fill="#3B82F6"><circle cx="230" cy="130" r="5"/><circle cx="250" cy="110" r="5"/><circle cx="260" cy="150" r="5"/><circle cx="210" cy="155" r="5"/></g>
+  <!-- Boundary point -->
+  <circle cx="175" cy="135" r="6" fill="#EF4444" stroke="black" stroke-width="2"/>
+  <text x="175" y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#475569">"You are red" — wrong</text>
+
+  <text x="540" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">GMM — soft responsibilities</text>
+  <rect x="390" y="40" width="300" height="200" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <ellipse cx="460" cy="130" rx="45" ry="30" fill="#FECACA" opacity="0.5"/>
+  <ellipse cx="600" cy="130" rx="45" ry="30" fill="#BFDBFE" opacity="0.5"/>
+  <g fill="#EF4444"><circle cx="460" cy="120" r="5"/><circle cx="490" cy="130" r="5"/><circle cx="450" cy="150" r="5"/><circle cx="480" cy="100" r="5"/></g>
+  <g fill="#3B82F6"><circle cx="590" cy="130" r="5"/><circle cx="610" cy="110" r="5"/><circle cx="620" cy="150" r="5"/><circle cx="570" cy="155" r="5"/></g>
+  <circle cx="535" cy="135" r="6" fill="url(#grad)" stroke="black" stroke-width="2"/>
+  <defs>
+    <linearGradient id="grad" x1="0%" x2="100%"><stop offset="0%" stop-color="#EF4444"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient>
+  </defs>
+  <text x="535" y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#475569">P(red)=0.55, P(blue)=0.45</text>
+</svg>
+<figcaption>Left: K-means forces the ambiguous boundary point into one cluster. Right: GMM reports its genuine uncertainty.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    Think of GMM as "K-means with error bars". The cluster centres exist;
+    the membership is probabilistic. When your boss asks "how confident
+    are we that this customer is in segment A?", K-means has no answer.
+    GMM gives you a number.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>The generative story</h3>
+
+<p>
+  A Gaussian mixture model is a <em>generative</em> model — it describes
+  how the data was created rather than how to classify it. The story is:
+</p>
+
+<ol>
+  <li>Pick a cluster index $k$ with probability $\pi_k$. The $\pi_k$ are the <em>mixing coefficients</em> and sum to 1.</li>
+  <li>Draw a point from the multivariate normal distribution $\mathcal{N}(\boldsymbol{\mu}_k,\,\boldsymbol{\Sigma}_k)$.</li>
+</ol>
+
+<p>
+  If we wrote this as math, the overall density of a single point $\mathbf{x}$ is the sum over all the "ways it could have been generated":
+</p>
+
+<div class="annotated-equation">
+  $$ p(\mathbf{x}) \;=\; \sum_{k=1}^{K}\ \pi_k\ \mathcal{N}\!\bigl(\mathbf{x}\,\big|\,\boldsymbol{\mu}_k,\,\boldsymbol{\Sigma}_k\bigr) $$
+</div>
+
+<p>
+  Our job is to find the $K$ triples $(\pi_k, \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)$ that make the observed data most likely — i.e., maximise the log-likelihood
+  $\log \prod_n p(\mathbf{x}_n)$. That is a hard optimisation because the log of a sum has no closed form. EM is the clever workaround.
+</p>
+
+<h3>The EM algorithm</h3>
+
+<p>
+  EM introduces a <em>latent</em> variable $z_{nk}$ — a binary indicator that
+  is 1 if point $n$ was generated by cluster $k$, 0 otherwise. We do not
+  observe $z$; if we did, the problem would reduce to fitting $K$ independent
+  Gaussians. The trick: alternate between (a) computing the <em>expected</em>
+  value of $z_{nk}$ given the current parameters (the E-step), and (b)
+  maximising the complete-data likelihood as if those expected values were
+  observed counts (the M-step).
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 300" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">EM algorithm — alternate E and M until log-likelihood stops improving</text>
+
+  <!-- Init -->
+  <rect x="20" y="50" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488"/>
+  <text x="90" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Initialise</text>
+  <text x="90" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">π, μ, Σ (random)</text>
+
+  <!-- E-step -->
+  <rect x="200" y="50" width="140" height="60" rx="8" fill="#FEE2E2" stroke="#EF4444"/>
+  <text x="270" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#EF4444">E-step</text>
+  <text x="270" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">compute r_{nk}</text>
+
+  <!-- M-step -->
+  <rect x="380" y="50" width="140" height="60" rx="8" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="450" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">M-step</text>
+  <text x="450" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">update π, μ, Σ</text>
+
+  <!-- Converge -->
+  <rect x="560" y="50" width="140" height="60" rx="8" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="630" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#22C55E">Check ΔL</text>
+  <text x="630" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">converged?</text>
+
+  <!-- arrows -->
+  <line x1="160" y1="80" x2="195" y2="80" stroke="#475569" stroke-width="2"/><polygon points="195,80 189,76 189,84" fill="#475569"/>
+  <line x1="340" y1="80" x2="375" y2="80" stroke="#475569" stroke-width="2"/><polygon points="375,80 369,76 369,84" fill="#475569"/>
+  <line x1="520" y1="80" x2="555" y2="80" stroke="#475569" stroke-width="2"/><polygon points="555,80 549,76 549,84" fill="#475569"/>
+
+  <!-- loop back -->
+  <path d="M 630 110 L 630 160 L 270 160 L 270 110" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="4 3"/>
+  <polygon points="270,110 266,116 274,116" fill="#475569"/>
+  <text x="450" y="180" text-anchor="middle" font-family="Inter" font-size="11" font-style="italic" fill="#64748B">if not converged, loop back</text>
+
+  <!-- Log-likelihood chart -->
+  <text x="360" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#475569">Log-likelihood monotonically increases</text>
+  <line x1="60" y1="280" x2="660" y2="280" stroke="#94A3B8"/>
+  <line x1="60" y1="220" x2="60" y2="280" stroke="#94A3B8"/>
+  <polyline fill="none" stroke="#0D9488" stroke-width="2.5" points="60,280 130,265 200,250 270,242 340,238 410,236 480,235 550,234 620,234"/>
+  <circle cx="130" cy="265" r="3" fill="#0D9488"/><circle cx="200" cy="250" r="3" fill="#0D9488"/>
+  <circle cx="270" cy="242" r="3" fill="#0D9488"/><circle cx="340" cy="238" r="3" fill="#0D9488"/>
+</svg>
+<figcaption>The EM loop. Each iteration is guaranteed to not decrease the log-likelihood — a remarkable property.</figcaption>
+</figure>
+
+<h3>E-step: compute responsibilities</h3>
+
+<p>
+  The E-step computes, for each point $n$ and each cluster $k$, the
+  probability that cluster $k$ generated point $n$ given the current
+  parameters:
+</p>
+
+<div class="annotated-equation">
+  $$ r_{nk} \;=\; \frac{\pi_k\ \mathcal{N}\!\bigl(\mathbf{x}_n\,\big|\,\boldsymbol{\mu}_k,\,\boldsymbol{\Sigma}_k\bigr)}{\sum_{j=1}^{K}\ \pi_j\ \mathcal{N}\!\bigl(\mathbf{x}_n\,\big|\,\boldsymbol{\mu}_j,\,\boldsymbol{\Sigma}_j\bigr)} $$
+</div>
+
+<p>
+  This is Bayes' rule: prior times likelihood, normalised. The denominator
+  is $p(\mathbf{x}_n)$ — the marginal density of point $n$ under the
+  current mixture. By construction $\sum_k r_{nk} = 1$ for every point.
+  The $r_{nk}$ are the <em>soft assignments</em>: the fractional membership
+  of point $n$ in cluster $k$.
+</p>
+
+<h3>M-step: update parameters as weighted means</h3>
+
+<p>
+  Given the responsibilities, the M-step updates each parameter as if
+  $r_{nk}$ were the number of times point $n$ was observed in cluster $k$:
+</p>
+
+<div class="annotated-equation">
+  $$ N_k \;=\; \sum_{n=1}^{N} r_{nk} $$
+  $$ \boldsymbol{\mu}_k^{\text{new}} \;=\; \frac{1}{N_k}\sum_{n=1}^{N}\ r_{nk}\ \mathbf{x}_n $$
+  $$ \boldsymbol{\Sigma}_k^{\text{new}} \;=\; \frac{1}{N_k}\sum_{n=1}^{N}\ r_{nk}\ (\mathbf{x}_n - \boldsymbol{\mu}_k^{\text{new}})(\mathbf{x}_n - \boldsymbol{\mu}_k^{\text{new}})^\top $$
+  $$ \pi_k^{\text{new}} \;=\; \frac{N_k}{N} $$
+</div>
+
+<p>
+  Each update is a <em>weighted</em> version of the maximum-likelihood
+  estimate for a single Gaussian. $N_k$ is the "effective number of points"
+  assigned to cluster $k$. The new mean is the weighted average of the
+  data; the new covariance is the weighted scatter around the new mean;
+  the new mixing coefficient is the fraction of effective mass.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    The guarantee that each EM iteration does not decrease the
+    log-likelihood comes from a Jensen's-inequality argument: EM is
+    performing coordinate ascent on a lower bound of the log-likelihood
+    (the ELBO), and each step tightens or improves the bound. This is
+    why EM converges even though the objective is non-convex. It may
+    converge to a local maximum — in practice, run EM a few times from
+    different random initialisations and keep the best.
+  </p>
+</div>
+
+<h3>Twenty lines of EM, from scratch</h3>
+
+<pre><code class="language-python">import numpy as np
+from scipy.stats import multivariate_normal as mvn
+
+def em_gmm(X, K, max_iter=100, tol=1e-4):
+    N, D = X.shape
+    # Random init: pick K data points as means, identity covariances, uniform mixing
+    rng = np.random.default_rng(42)
+    mu = X[rng.choice(N, size=K, replace=False)]
+    Sigma = np.array([np.eye(D) for _ in range(K)])
+    pi = np.full(K, 1.0 / K)
+
+    log_lik = -np.inf
+    for iteration in range(max_iter):
+        # E-step: responsibilities r_{nk}
+        weighted = np.stack([pi[k] * mvn.pdf(X, mean=mu[k], cov=Sigma[k]) for k in range(K)], axis=1)
+        total = weighted.sum(axis=1, keepdims=True) + 1e-12
+        r = weighted / total                       # shape (N, K)
+
+        # M-step: weighted mean, covariance, mixing
+        Nk = r.sum(axis=0)                         # effective count per cluster
+        pi = Nk / N
+        mu = (r.T @ X) / Nk[:, None]
+        for k in range(K):
+            diff = X - mu[k]
+            Sigma[k] = (r[:, k:k+1] * diff).T @ diff / Nk[k]
+
+        # Log-likelihood and convergence check
+        new_log_lik = np.log(total + 1e-12).sum()
+        if abs(new_log_lik - log_lik) &lt; tol:
+            break
+        log_lik = new_log_lik
+
+    return pi, mu, Sigma, r, log_lik</code></pre>
+
+<p>
+  Twenty substantive lines. Compare against <code>sklearn.mixture.GaussianMixture</code>
+  — for well-conditioned data the implementations agree to within numerical
+  tolerance, which is the right way to validate your own EM.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations</h2>
+
+<h3>The complete-data log-likelihood</h3>
+
+<p>
+  If we actually observed $z_{nk}$ (whether point $n$ came from cluster $k$), the log-likelihood would split into $K$ independent Gaussian fits:
+</p>
+
+<div class="annotated-equation">
+  $$ \log p(X, Z) \;=\; \sum_{n=1}^{N}\ \sum_{k=1}^{K}\ z_{nk}\bigl[\log \pi_k + \log \mathcal{N}(\mathbf{x}_n | \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)\bigr] $$
+</div>
+
+<p>
+  EM replaces the unknown $z_{nk}$ with their expected values $r_{nk}$ and maximises this expression — exactly the M-step formulas above. The procedure iterates because changing the parameters changes the responsibilities, which changes the optimal parameters, and so on.
+</p>
+
+<h3>Choosing the number of components</h3>
+
+<p>
+  GMM has a principled criterion for choosing $K$: the <strong>Bayesian Information Criterion (BIC)</strong>:
+</p>
+
+<div class="annotated-equation">
+  $$ \text{BIC} \;=\; -2\log \hat{\mathcal{L}} + p\log N $$
+</div>
+
+<p>
+  where $\hat{\mathcal{L}}$ is the maximised log-likelihood, $p$ is the
+  number of free parameters, and $N$ is the sample size. Lower BIC is
+  better. BIC penalises model complexity, so it naturally picks a $K$ that
+  balances fit against parsimony. In practice, fit GMMs for $K = 2, 3, \ldots, 10$
+  and take the $K$ with the smallest BIC.
+</p>
+
+<h3>Mixture of Experts</h3>
+
+<p>
+  A <strong>Mixture of Experts</strong> (MoE) generalises the mixture
+  model by replacing the fixed $\pi_k$ with a <em>gating network</em>
+  $g_k(\mathbf{x})$ that depends on the input — a different mixture for
+  every point. GPT-4 and other state-of-the-art large language models use
+  MoE layers to scale to trillions of parameters efficiently: for each
+  token, the gating network picks a few experts (typically 2 out of 8)
+  to run, saving compute while keeping capacity high.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    The classical GMM is a special case of MoE with constant gates. EM
+    still applies to certain MoE variants; most modern MoE is trained
+    end-to-end with backpropagation and load-balancing losses. We will
+    revisit this in M6 when we build Kaizen agents — the "routing" in
+    multi-agent systems is structurally the same idea.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: reusing AutoMLEngine</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    The same <code>AutoMLEngine</code> from Lesson 4.1 includes GMM in its
+    clustering sweep. Pass <code>search_space=["kmeans", "gmm", "hdbscan"]</code>
+    and the engine will fit each, compute silhouette and BIC, and return
+    the winner. GMM is preferred when the silhouette is close across
+    methods and you need soft assignments for downstream decisions.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Three Gaussians in 2D</h2>
+
+<pre><code class="language-python">import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.mixture import GaussianMixture
+
+# Generate 3 ground-truth Gaussians
+rng = np.random.default_rng(0)
+means = np.array([[0, 0], [5, 5], [-3, 4]])
+covs = [np.eye(2) * 0.8, np.eye(2) * 1.2, np.eye(2) * 0.6]
+sizes = [200, 150, 120]
+X = np.vstack([
+    rng.multivariate_normal(m, c, size=s) for m, c, s in zip(means, covs, sizes)
+])
+
+# Fit our EM
+pi, mu, Sigma, r, ll = em_gmm(X, K=3)
+print(f"Log-likelihood: {ll:.2f}")
+print(f"Mixing:     {pi.round(3)}")
+
+# Cross-check with sklearn
+gm = GaussianMixture(n_components=3, random_state=0).fit(X)
+print(f"sklearn LL: {gm.score(X) * len(X):.2f}")
+print(f"sklearn π: {gm.weights_.round(3)}")</code></pre>
+
+<p>
+  Both implementations should report log-likelihoods within 1% of each
+  other. The soft assignments <code>r</code> let you visualise
+  responsibility heat maps — points near cluster centres get high
+  responsibility for their cluster; points near boundaries get diffuse
+  responsibilities. Look at the points with
+  <code>r.max(axis=1) &lt; 0.6</code> — those are the "uncertain" customers,
+  and they are exactly the ones you should flag for manual review in a
+  real segmentation task.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li>
+    <strong>Initialising every covariance to zero.</strong> The Gaussian density is undefined when $\boldsymbol{\Sigma}$ is singular. Always initialise to the identity (or to the sample covariance) and add a small $\epsilon I$ regulariser each iteration.
+  </li>
+  <li>
+    <strong>Running for a fixed number of iterations without checking convergence.</strong> EM can converge in 10 iterations on clean data and 500 on ambiguous data. Always check $|\Delta \log \mathcal{L}| &lt; \text{tol}$ and stop early.
+  </li>
+  <li>
+    <strong>Comparing GMM and K-means by accuracy against labels.</strong> Both are unsupervised — they have no way to match their cluster indices to your labels. Use ARI or NMI if you must compare to a ground truth.
+  </li>
+  <li>
+    <strong>Using <code>covariance_type="full"</code> on high-dimensional data.</strong> Full covariance has $\mathcal{O}(D^2)$ parameters per cluster and overfits fast. Use <code>"diag"</code> or <code>"tied"</code> when $D &gt; 20$.
+  </li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 2.</strong> Implement <code>em_gmm</code> from the textbook
+  above and validate against sklearn on three datasets:</p>
+  <ol>
+    <li>Synthetic 2D: three well-separated Gaussians (should converge in &lt; 20 iterations).</li>
+    <li>Synthetic 2D: three overlapping Gaussians (should show non-trivial responsibilities at boundaries).</li>
+    <li>The Singapore e-commerce customer data from Exercise 1 — fit GMM, report BIC for $K=2..10$, compare chosen $K$ to Exercise 1's silhouette answer.</li>
+  </ol>
+  <p>Stretch: use the responsibilities to identify customers with ambiguous membership ($\max_k r_{nk} &lt; 0.6$) and propose a policy for handling them.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to Lesson 4.1:</strong> K-means is the special case of GMM where $\boldsymbol{\Sigma}_k = \sigma^2 I$ and you take the hard argmax of responsibilities. Every GMM is a generalisation of K-means.</li>
+  <li><strong>Back to M2 (Bayesian thinking):</strong> The E-step is Bayes' rule applied to latent cluster assignment. The M-step is maximum likelihood on the complete data.</li>
+  <li><strong>Forward to Lesson 4.7 (THE PIVOT):</strong> Matrix factorisation also uses an iterative E/M-like alternation (Alternating Least Squares). The structural similarity is not a coincidence — both are coordinate ascent on a joint likelihood.</li>
+  <li><strong>Forward to M6 (LLMs):</strong> Mixture of Experts layers in large language models generalise classical GMMs. The gating network replaces the fixed $\pi_k$ with an input-dependent router.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  EM is one of the handful of algorithms that genuinely earns the
+  description "beautiful". It takes a problem that looks hopeless — fit a
+  model with hidden variables — and reduces it to two steps, each of
+  which is trivial, with a mathematical guarantee that the loop converges.
+  Once you see the pattern you will start recognising it everywhere:
+  hidden Markov models, latent Dirichlet allocation, the Baum-Welch
+  algorithm, probabilistic matrix factorisation. They are all EM.
+</p>
+
+<p>
+  Before moving on, make sure you can explain what the $r_{nk}$ mean, why
+  the log-likelihood cannot decrease, and why GMM is preferred over
+  K-means when you need soft assignments. If yes, onto Lesson 4.3 — where
+  we stop asking "which group" and start asking "which axis".
+</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.3 — Functions and Aggregation | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.3</span>
+  Functions and Aggregation
+</h1>
+
+<p class="lead">
+  Yesterday you filtered Bishan, then Toa Payoh, then Queenstown — one
+  filter at a time. Today you learn two ideas that make that approach
+  obsolete. <strong>Functions</strong> let you package reusable logic once
+  and call it as many times as you like. <strong>Group-by aggregation</strong>
+  lets Polars compute a summary for <em>every</em> town, <em>every</em> flat
+  type, and <em>every</em> year in a single call. Together they turn what
+  would have been an afternoon of cut-and-paste into six lines of code.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Singapore has 26 HDB towns. Yesterday's pattern — filter, then summarise,
+  then write down the numbers — would mean 26 filters, 26 summaries, and
+  26 rows of notes. If you then want the same summary by flat type (seven
+  categories) you multiply: 182 filters. By year (twelve years)? 2,184
+  filters. No analyst does that by hand. They use <code>group_by</code>.
+</p>
+
+<p>
+  The mental shift is from <em>one-at-a-time</em> to <em>all-at-once</em>.
+  Instead of asking "what is the median price in Bishan?", you ask "what is
+  the median price in <em>every</em> town?" — and get a 26-row table back.
+  Instead of asking "how many transactions happened in 2023?", you ask "how
+  many transactions happened in <em>every</em> year?". The single-row
+  answers you used yesterday become rows in a bigger answer.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 800 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Before: list of filters -->
+  <text x="130" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Yesterday: one-at-a-time</text>
+  <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
+    <rect x="20" y="45" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="62">hdb.filter(town == "BISHAN")</text>
+    <rect x="20" y="73" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="90">hdb.filter(town == "TOA PAYOH")</text>
+    <rect x="20" y="101" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="118">hdb.filter(town == "QUEENSTOWN")</text>
+    <rect x="20" y="129" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="146">...</text>
+    <rect x="20" y="157" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="174">hdb.filter(town == "WOODLANDS")</text>
+    <rect x="20" y="185" width="220" height="24" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+    <text x="30" y="202">26 separate filter calls 😩</text>
+  </g>
+
+  <line x1="255" y1="130" x2="330" y2="130" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-g)"/>
+  <text x="290" y="120" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">refactor</text>
+
+  <!-- After: one group_by -->
+  <text x="580" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Today: all-at-once</text>
+  <rect x="340" y="50" width="460" height="160" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <g font-family="JetBrains Mono" font-size="12" fill="#1E293B">
+    <text x="360" y="80">district_stats = (</text>
+    <text x="380" y="100">hdb.group_by("town")</text>
+    <text x="380" y="118">   .agg(</text>
+    <text x="400" y="136">pl.len().alias("n"),</text>
+    <text x="400" y="154">pl.col("resale_price").median().alias("median"),</text>
+    <text x="380" y="172">   )</text>
+    <text x="380" y="190">   .sort("median", descending=True)</text>
+    <text x="360" y="208">)</text>
+  </g>
+  <text x="570" y="235" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call → 26-row summary table</text>
+</svg>
+<figcaption>The mental shift from "one filter at a time" to "group by and aggregate all at once" is the single largest productivity jump in the entire module.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Functions: reusable logic</h3>
+
+<p>
+  A <strong>function</strong> is a block of code you name so you can call it
+  again. The syntax has four ingredients: the keyword <code>def</code>, the
+  name, the parameter list in parentheses, and the indented body. A
+  <code>return</code> statement sends a value back to the caller.
+</p>
+
+<pre><code class="language-python">def format_sgd(amount: float) -> str:
+    """Format a number as Singapore dollars with thousands separator."""
+    return f"S${amount:,.0f}"
+
+print(format_sgd(485_000))   # → S$485,000
+print(format_sgd(1_234_567)) # → S$1,234,567
+</code></pre>
+
+<p>
+  The colon after the parameter name is a <em>type hint</em> — it documents
+  what type you expect. The arrow <code>-&gt;</code> after the parameter
+  list is the return type. Python does not enforce these hints at runtime;
+  they are for humans and static analysers. Use them anyway — they double as
+  documentation.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- def signature -->
+  <rect x="30" y="30" width="720" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="50" y="70" font-family="JetBrains Mono" font-size="16" fill="#1E293B">def format_sgd(amount: float) -&gt; str:</text>
+  <!-- labels -->
+  <g font-family="Inter" font-size="11" fill="#15803D">
+    <text x="60" y="25">keyword</text>
+    <line x1="65" y1="28" x2="45" y2="55" stroke="#15803D" stroke-width="1"/>
+    <text x="160" y="25">name</text>
+    <line x1="155" y1="28" x2="165" y2="55" stroke="#15803D" stroke-width="1"/>
+    <text x="290" y="25">parameter</text>
+    <line x1="290" y1="28" x2="260" y2="55" stroke="#15803D" stroke-width="1"/>
+    <text x="370" y="25">type hint</text>
+    <line x1="380" y1="28" x2="340" y2="55" stroke="#15803D" stroke-width="1"/>
+    <text x="500" y="25">return type</text>
+    <line x1="510" y1="28" x2="480" y2="55" stroke="#15803D" stroke-width="1"/>
+  </g>
+
+  <!-- body -->
+  <rect x="30" y="110" width="720" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="60" y="150" font-family="JetBrains Mono" font-size="15" fill="#1E293B">    return f"S${"{"}amount:,.0f{"}"}"</text>
+  <text x="60" y="195" font-family="Inter" font-size="11" fill="#3B82F6">↑ body indented · return sends value back to caller</text>
+
+  <!-- usage -->
+  <rect x="30" y="210" width="720" height="40" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="60" y="235" font-family="JetBrains Mono" font-size="14" fill="#1E293B">print(format_sgd(485_000))   # → S$485,000</text>
+</svg>
+<figcaption>The four parts of a function definition: keyword <code>def</code>, name, parameter list with type hints, and indented body. The <code>return</code> statement hands a value back.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    A function you write is a noun. You can pass it around, call it, even
+    store it in a variable. Think of it as a tiny reusable machine:
+    <em>feed in the arguments, get back a result</em>. The machine does not
+    care who calls it, as long as the arguments match what it expects.
+  </p>
+</div>
+
+<h3>Why functions matter</h3>
+
+<p>
+  Three reasons: <strong>reuse</strong>, <strong>readability</strong>, and
+  <strong>testability</strong>. If you find yourself copying the same four
+  lines of code, wrap them in a function. Now instead of four lines repeated
+  five times (20 lines, four places to fix a bug), you have a five-line
+  function plus five one-line calls (10 lines, one place to fix). Halved
+  work, halved risk.
+</p>
+
+<h3>Lists and dictionaries</h3>
+
+<p>
+  Two collections you will see constantly in Python. A <strong>list</strong>
+  is an ordered sequence; a <strong>dictionary</strong> is a mapping from
+  keys to values.
+</p>
+
+<pre><code class="language-python">central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
+print(central_towns[0])    # → BISHAN
+print(len(central_towns))  # → 4
+
+town_medians = {"BISHAN": 715_000, "TOA PAYOH": 680_000, "JURONG WEST": 455_000}
+print(town_medians["BISHAN"])  # → 715_000
+</code></pre>
+
+<h3>for loops</h3>
+
+<p>
+  A <code>for</code> loop walks through a sequence one item at a time.
+  Combined with functions, it lets you apply the same operation to every
+  element of a list.
+</p>
+
+<pre><code class="language-python">for town in central_towns:
+    subset = hdb.filter(pl.col("town") == town)
+    print(f"{town}: {subset.height} transactions")
+</code></pre>
+
+<p>
+  You could do all four towns in a <code>group_by</code> instead — and for
+  large data you should. But the for loop is still useful when you want to
+  <em>print</em> each result, or <em>save a file per town</em>, or do
+  anything Polars cannot vectorise.
+</p>
+
+<h3>group_by and agg</h3>
+
+<p>
+  The star of the lesson. <code>group_by</code> splits the DataFrame into
+  groups by one or more columns; <code>agg</code> computes one or more
+  statistics for each group. The result has one row per group and one
+  column per aggregation.
+</p>
+
+<pre><code class="language-python">district_stats = (
+    hdb.group_by("town")
+    .agg(
+        pl.len().alias("transaction_count"),
+        pl.col("resale_price").mean().alias("mean_price"),
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").std().alias("std_price"),
+    )
+    .sort("median_price", descending=True)
+)
+</code></pre>
+
+<p>
+  Read it: "group the HDB data by town; for each group compute four
+  aggregates; sort the result by median price descending." The output is a
+  26-row DataFrame — one row per town — with four numeric columns. You just
+  replaced 26 manual filters.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 800 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-gb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Input DataFrame -->
+  <rect x="20" y="30" width="260" height="260" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+  <text x="150" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Input (hdb)</text>
+  <g font-family="JetBrains Mono" font-size="11">
+    <text x="30" y="55" fill="#0F766E">town      price</text>
+    <text x="30" y="75" fill="#1E293B">BISHAN    720k</text>
+    <text x="30" y="92" fill="#1E293B">JURONG    420k</text>
+    <text x="30" y="109" fill="#1E293B">BISHAN    680k</text>
+    <text x="30" y="126" fill="#1E293B">TOA PAYOH 650k</text>
+    <text x="30" y="143" fill="#1E293B">JURONG    445k</text>
+    <text x="30" y="160" fill="#1E293B">BISHAN    740k</text>
+    <text x="30" y="177" fill="#1E293B">TOA PAYOH 620k</text>
+    <text x="30" y="194" fill="#1E293B">JURONG    430k</text>
+    <text x="30" y="211" fill="#1E293B">BISHAN    710k</text>
+    <text x="30" y="228" fill="#94A3B8">...  500k rows</text>
+  </g>
+
+  <line x1="285" y1="160" x2="360" y2="160" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb)"/>
+  <text x="322" y="148" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">group_by("town")</text>
+
+  <!-- Groups -->
+  <rect x="370" y="40" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+  <text x="450" y="58" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">BISHAN group</text>
+  <text x="450" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11">720k, 680k, 740k, 710k, ...</text>
+
+  <rect x="370" y="120" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+  <text x="450" y="138" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">TOA PAYOH group</text>
+  <text x="450" y="158" text-anchor="middle" font-family="JetBrains Mono" font-size="11">650k, 620k, ...</text>
+
+  <rect x="370" y="200" width="160" height="70" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+  <text x="450" y="218" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">JURONG group</text>
+  <text x="450" y="238" text-anchor="middle" font-family="JetBrains Mono" font-size="11">420k, 445k, 430k, ...</text>
+
+  <line x1="535" y1="160" x2="610" y2="160" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb)"/>
+  <text x="572" y="148" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">agg(median)</text>
+
+  <!-- Output -->
+  <rect x="620" y="80" width="160" height="160" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+  <text x="700" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Output</text>
+  <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
+    <text x="640" y="105" fill="#0F766E">town        median</text>
+    <text x="640" y="130">BISHAN      715k</text>
+    <text x="640" y="150">TOA PAYOH   635k</text>
+    <text x="640" y="170">JURONG      432k</text>
+    <text x="640" y="190">...         ...</text>
+    <text x="640" y="220" fill="#0D9488" font-style="italic">(26 rows)</text>
+  </g>
+</svg>
+<figcaption>Group-by splits the DataFrame into groups (one per unique value of the group key) and computes a statistic for each group. The output has one row per group — 26 towns become 26 rows.</figcaption>
+</figure>
+
+<h3>Multi-key grouping</h3>
+
+<p>
+  Pass multiple columns to <code>group_by</code> and Polars groups by every
+  unique combination. "Every (town, flat_type) pair" produces ~180 groups —
+  one for each combination that actually appears in the data.
+</p>
+
+<pre><code class="language-python">town_flat_stats = (
+    hdb.group_by("town", "flat_type")
+    .agg(
+        pl.len().alias("count"),
+        pl.col("resale_price").median().alias("median_price"),
+    )
+    .sort("town", "flat_type")
+)
+</code></pre>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Internally, Polars computes the hash of the group key for each row and
+    accumulates values in a hash table keyed on that hash. For a single
+    integer key the cost is essentially $O(n)$ — one pass through the data,
+    one hash per row, constant-time insertion. For $k$ keys the same cost
+    applies with a slightly larger hash. This is the same algorithm as
+    <code>SELECT ... GROUP BY ...</code> in SQL; Polars just runs it
+    locally, in parallel, over a columnar format.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: FeatureEngineer (preview)</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Module 2 introduces <code>FeatureEngineer</code>, which automates the
+    creation of group-level features — "median price in this flat's town",
+    "z-score of this flat's price within its district". Under the hood those
+    features are computed with <code>group_by + agg + join</code>, the exact
+    pattern you are learning today. When the engine arrives in Module 2, its
+    output will look familiar: a DataFrame with one row per input and new
+    columns carrying the group statistics back to each row.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: A District Price Report</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Produce a ranked report of every HDB town, with the transaction count,
+    median resale price, price spread (IQR), and median price per square
+    metre. Print the top 10 most expensive towns.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load the data and add the price-per-sqm column.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Write a helper function that formats a number as Singapore dollars —
+       we will call it dozens of times across the report.</p>
+    <pre><code class="language-python">def format_sgd(amount: float) -> str:
+    """Format a number as Singapore dollars with thousands separator."""
+    return f"S${amount:,.0f}"</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>The group-by aggregation. One call gives us six statistics per town.</p>
+    <pre><code class="language-python">district_stats = (
+    hdb.group_by("town")
+    .agg(
+        pl.len().alias("transaction_count"),
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").quantile(0.25).alias("q25"),
+        pl.col("resale_price").quantile(0.75).alias("q75"),
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+    )
+    .with_columns(
+        (pl.col("q75") - pl.col("q25")).alias("iqr_price"),
+    )
+    .sort("median_price", descending=True)
+)</code></pre>
+    <p>
+      Notice we chained <code>with_columns</code> <em>after</em> the
+      <code>agg</code> to derive the IQR. Once the aggregation is done, the
+      result is just another DataFrame — all the Lesson 1.2 tools still
+      work.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Iterate over the top 10 rows with a for loop and print a formatted
+       report line using our helper function.</p>
+    <pre><code class="language-python">def district_line(row: dict) -> str:
+    return (
+        f"  {row['town']:<20} "
+        f"{format_sgd(row['median_price']):>12}  "
+        f"{row['transaction_count']:>8,}  "
+        f"IQR={format_sgd(row['iqr_price']):>10}  "
+        f"{format_sgd(row['median_price_sqm']):>10}/sqm"
+    )
+
+print("=" * 70)
+print("  SINGAPORE HDB — TOP 10 MOST EXPENSIVE TOWNS")
+print("=" * 70)
+for row in district_stats.head(10).iter_rows(named=True):
+    print(district_line(row))
+print("=" * 70)</code></pre>
+    <p>
+      <code>.iter_rows(named=True)</code> yields each row as a dictionary so
+      you can access fields by name (<code>row["town"]</code>) rather than by
+      index. The format specifiers inside the f-string align the columns into
+      neat output.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>A cross-district summary on top of the aggregated table.</p>
+    <pre><code class="language-python">medians = district_stats["median_price"]
+print(f"Most expensive district:   {format_sgd(medians.max())}")
+print(f"Least expensive district:  {format_sgd(medians.min())}")
+print(f"Average district median:   {format_sgd(medians.mean())}")
+print(f"Price spread:              {format_sgd(medians.max() - medians.min())}")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Measures of Centre and Spread</h2>
+
+<p>
+  <code>agg</code> gives you access to a dozen summary statistics. Four of
+  them carry most of the conceptual weight.
+</p>
+
+<h3>Mean and median</h3>
+
+<p>
+  The <strong>mean</strong> is the arithmetic average (Lesson 1.1 already
+  introduced it):
+</p>
+
+$$ \bar{x} = \frac{1}{n} \sum_{i=1}^{n} x_i $$
+
+<p>
+  The <strong>median</strong> is the middle value when the data is sorted.
+  For an odd $n$ it is the single middle element; for an even $n$ it is the
+  average of the two middle elements.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Mean vs median</span>
+  <p>
+    Mean is pulled by outliers; median is not. One billion-dollar flat in a
+    district of 300 flats will shift the mean by several thousand dollars
+    but will not move the median at all. For skewed distributions like
+    property prices, <em>always report median for "typical" and mean for
+    "total market value"</em>.
+  </p>
+</div>
+
+<h3>Interquartile range (IQR)</h3>
+
+<p>
+  Quartiles split sorted data into four equal parts. $Q_1$ (the 25th
+  percentile) is the value below which 25% of the data lies; $Q_3$ (the
+  75th percentile) is the value below which 75% lies. The
+  <strong>interquartile range</strong> is
+</p>
+
+<div class="annotated-equation">
+  $$\text{IQR} = Q_3 - Q_1$$
+  <div class="annotations">
+    <span>$Q_3$ — 75th percentile</span>
+    <span>$Q_1$ — 25th percentile</span>
+    <span>spread of the middle 50%</span>
+  </div>
+</div>
+
+<p>
+  IQR is the standard measure of spread for skewed data, for the same
+  reason median is the standard measure of centre: it ignores outliers. A
+  district with a tight middle 50% has a small IQR even if one or two flats
+  were absurdly expensive.
+</p>
+
+<h3>Coefficient of variation</h3>
+
+<p>
+  Sometimes you want to compare spread <em>across</em> districts. But
+  standard deviation alone is misleading — a 50k std on a 200k mean is huge,
+  while the same 50k std on a 1M mean is tiny. The
+  <strong>coefficient of variation</strong> normalises:
+</p>
+
+$$ \text{CV} = \frac{s}{\bar{x}} \times 100\% $$
+
+<p>
+  CV is unitless and directly comparable across groups. A CV of 25% means
+  the standard deviation is a quarter the size of the mean — the data is
+  moderately spread. A CV of 45% means the data is widely spread relative
+  to its centre.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Hardcoding values inside a function</span>
+  <p>
+    A function that only works on one dataset is not a function — it is a
+    script in disguise. <code>def get_bishan_median(): return
+    hdb.filter(...)["resale_price"].median()</code> takes no parameters, so
+    you cannot reuse it for Toa Payoh. Parameterise:
+    <code>def get_median(df, town): ...</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Forgetting <code>.alias(...)</code></span>
+  <p>
+    Inside <code>agg</code>, Polars will auto-name columns if you do not
+    alias them, and the names are often unhelpful
+    (<code>"resale_price"</code>, <code>"resale_price_2"</code>, …). Always
+    give every aggregation an explicit <code>.alias(...)</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Using a Python loop instead of group_by</span>
+  <p>
+    A Python <code>for</code> loop that filters one town at a time and
+    appends to a list is ten to a hundred times slower than the equivalent
+    <code>group_by</code>. If you find yourself writing
+    <code>for town in towns: subset = df.filter(...)</code>, stop and
+    rewrite as group-by.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Your first function</h3>
+  <p>
+    Write a function <code>cents_to_sgd(cents: int) -&gt; str</code> that
+    converts a cent amount to a Singapore-dollar string. For example,
+    <code>cents_to_sgd(48523)</code> should return <code>"S$485.23"</code>.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Grouped statistics</h3>
+  <p>
+    Group the HDB data by <code>flat_type</code> and compute the mean
+    resale price, median, and count for each. Sort by mean price descending.
+    How does the mean compare to the median for 5-room flats — and what
+    does that tell you about the shape of the distribution?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Multi-key grouping</h3>
+  <p>
+    Group by <code>(town, flat_type)</code> and compute the median price
+    per square metre for each combination. Filter the result to only
+    Bishan, and print the table. You should see one row per flat type.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise D — A report function</h3>
+  <p>
+    Write a function <code>describe_town(df, town: str) -&gt; str</code>
+    that takes the HDB DataFrame and a town name and returns a three-line
+    summary string: the town name, the number of transactions, and the
+    median price. Use <code>format_sgd</code> for the price.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 1.2 taught you to filter to one subset at a time. Today's
+  <code>group_by</code> generalises that: instead of one filter per question,
+  you ask one question across every subset simultaneously. Lesson 1.4
+  introduces <code>join</code> to combine aggregated results with other
+  tables. Lesson 1.5 shows how to layer a window function on top of a
+  group-by for rolling statistics. Module 2 builds on the functions you
+  write today — every feature engineering step is a function, and every
+  feature-store entry is a named aggregation.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Two big ideas today: <strong>functions</strong> package logic for reuse,
+  and <strong>group_by/agg</strong> computes statistics for every group in
+  one call. The combination turns scripts into libraries. You wrote a
+  <code>format_sgd</code> helper and used it in a district report, and you
+  produced a 26-row summary table with a single Polars chain — no loops,
+  no hand-copied filters.
+</p>
+<p>
+  The statistical vocabulary — mean, median, IQR, CV — is the one you will
+  use for the next ten modules. Mean and median go together; IQR is the
+  spread that ignores outliers; CV normalises spread across groups. When
+  you see a table with a large IQR and a moderate std, you know instantly
+  that the middle of the data is spread out but the tails are not.
+</p>
+<p>
+  In Lesson 1.4 you meet <code>join</code> — the operation that combines
+  two DataFrames on a shared key. HDB prices on their own tell you nothing
+  about MRT access; joined with an MRT stations table, they do.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../02/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.2 Filtering and Transforming Data
+  </a>
+  <a href="../04/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.4 Joins and Multi-Table Data
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Lesson 6.8 — Capstone: Full Production Platform | MLFP Slides</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"><link rel="stylesheet" href="../../../assets/css/theme.css"><style>.reveal section{text-align:left}.reveal h1,.reveal h2,.reveal h3{text-transform:none}.reveal .lesson-meta{font-size:.5em;color:#64748B;text-transform:uppercase;letter-spacing:.1em}.reveal svg{max-width:100%;max-height:480px}.reveal pre{font-size:.5em}.callout-slide{padding:12px 16px;border-radius:4px;margin-top:.8em;font-size:.85em}.callout-slide.foundations{background:#F0FDF4;border-left:4px solid #22C55E}.callout-slide.kailash{background:#F0FDFA;border-left:4px solid #14B8A6}</style></head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section><p class="lesson-meta">Module 6 · Lesson 6.8</p><h1>Capstone — Full Production Platform</h1><p style="font-size:.7em;color:#64748B">Nexus · RBAC · Three channels · DriftMonitor · The complete stack</p><div style="margin-top:2em;padding:16px 20px;background:linear-gradient(90deg,#F0FDFA,#E0E7FF);border-left:4px solid #0D9488"><strong>⏱ 120 minutes</strong> · <strong>Outcome:</strong> deploy a governed AI system accessible via API, CLI, and MCP</div></section>
+
+<section><h2>The complete Kailash stack</h2>
+<figure style="text-align:center"><svg viewBox="0 0 680 120" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="30" width="90" height="60" rx="4" fill="#DBEAFE" stroke="#3B82F6"/><text x="55" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#3B82F6">Training</text><text x="55" y="70" text-anchor="middle" font-size="8">Pipeline</text>
+  <line x1="105" y1="60" x2="120" y2="60" stroke="#475569" stroke-width="1.5"/><polygon points="120,60 114,56 114,64" fill="#475569"/>
+  <rect x="125" y="30" width="90" height="60" rx="4" fill="#DCFCE7" stroke="#22C55E"/><text x="170" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#22C55E">DataFlow</text><text x="170" y="70" text-anchor="middle" font-size="8">Persist</text>
+  <line x1="220" y1="60" x2="235" y2="60" stroke="#475569" stroke-width="1.5"/><polygon points="235,60 229,56 229,64" fill="#475569"/>
+  <rect x="240" y="30" width="90" height="60" rx="4" fill="#FEF3C7" stroke="#F59E0B"/><text x="285" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#F59E0B">Kaizen</text><text x="285" y="70" text-anchor="middle" font-size="8">Agent</text>
+  <line x1="335" y1="60" x2="350" y2="60" stroke="#475569" stroke-width="1.5"/><polygon points="350,60 344,56 344,64" fill="#475569"/>
+  <rect x="355" y="30" width="80" height="60" rx="4" fill="#FEE2E2" stroke="#EF4444"/><text x="395" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#EF4444">PACT</text><text x="395" y="70" text-anchor="middle" font-size="8">Govern</text>
+  <line x1="440" y1="60" x2="455" y2="60" stroke="#475569" stroke-width="1.5"/><polygon points="455,60 449,56 449,64" fill="#475569"/>
+  <rect x="460" y="30" width="80" height="60" rx="4" fill="#E0E7FF" stroke="#4F46E5"/><text x="500" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#4F46E5">Nexus</text><text x="500" y="70" text-anchor="middle" font-size="8">Deploy</text>
+  <line x1="545" y1="60" x2="560" y2="60" stroke="#475569" stroke-width="1.5"/><polygon points="560,60 554,56 554,64" fill="#475569"/>
+  <rect x="565" y="30" width="100" height="60" rx="4" fill="#F5F3FF" stroke="#8B5CF6"/><text x="615" y="55" text-anchor="middle" font-weight="600" font-size="9" fill="#8B5CF6">DriftMonitor</text><text x="615" y="70" text-anchor="middle" font-size="8">Monitor</text>
+</svg></figure>
+<p style="font-size:.85em">Train → persist → wrap in agent → govern → deploy → monitor. One codebase.</p></section>
+
+<section><h2>Nexus: three channels, one codebase</h2><pre><code class="language-python" data-trim>from kailash_nexus import Nexus
+
+app = Nexus("ml-platform")
+app.add_auth(provider="jwt", roles=["admin", "analyst", "viewer"])
+app.add_middleware("rate_limit", requests_per_minute=60)
+app.register_service("predict", governed_agent.run)
+app.serve(port=8000)  # API + CLI + MCP simultaneously</code></pre></section>
+
+<section><h2>RBAC authentication</h2><table style="font-size:.7em"><thead><tr><th>Role</th><th>Can do</th></tr></thead><tbody><tr><td>admin</td><td>Deploy, configure, full access</td></tr><tr><td>analyst</td><td>Query, explore, limited training</td></tr><tr><td>viewer</td><td>Read-only predictions</td></tr></tbody></table><p style="font-size:.85em">Unauthenticated requests → 401. Unauthorised role → 403. Always.</p></section>
+
+<section><h2>DriftMonitor integration</h2><pre><code class="language-python" data-trim>from kailash_ml import DriftMonitor
+
+monitor = DriftMonitor(
+    reference_data=training_df,
+    features=feature_columns,
+    alert_threshold=0.05
+)
+
+# In production: check each batch
+drift_report = monitor.check(new_batch)
+if drift_report.has_drift:
+    alert_team(drift_report.details)</code></pre></section>
+
+<section><h2>End-to-end verification</h2><pre><code class="language-python" data-trim>
+# API channel
+resp = requests.post(url, headers=auth, json=query)
+assert resp.status_code == 200
+
+# Auth: unauthenticated → rejected
+bad = requests.post(url, json=query)
+assert bad.status_code == 401
+
+# Governance: restricted resource → denied
+restricted = requests.post(url + "/admin",
+    headers=analyst_auth, json=query)
+assert restricted.status_code == 403</code></pre></section>
+
+<section><h2>The six-module journey</h2><table style="font-size:.6em"><thead><tr><th>Module</th><th>You learned</th></tr></thead><tbody><tr><td>M1</td><td>Python, Polars, data pipelines, visualisation</td></tr><tr><td>M2</td><td>Statistics, regression, hypothesis testing, Bayesian thinking</td></tr><tr><td>M3</td><td>Supervised ML, ensembles, production pipeline, drift monitoring</td></tr><tr><td>M4</td><td>Unsupervised ML, NLP, recommenders, THE PIVOT, DL foundations</td></tr><tr><td>M5</td><td>Every DL architecture: AE, CNN, RNN, Transformer, GAN, GNN, RL</td></tr><tr><td>M6</td><td>LLMs, fine-tuning, RAG, agents, governance, production deployment</td></tr></tbody></table></section>
+
+<section><h2>What you can now do</h2><ul style="font-size:.85em"><li>✓ Deploy a complete AI system with Nexus (API + CLI + MCP).</li><li>✓ Implement authentication and authorisation.</li><li>✓ Integrate all Kailash packages into a production pipeline.</li><li>✓ Monitor deployed models for drift.</li><li>✓ Test end-to-end: auth, governance, predictions, channels.</li></ul></section>
+
+<section><h2>Congratulations</h2><p style="font-size:.9em">From <code>print("Hello")</code> in Lesson 1.1 to a governed, multi-channel production AI platform in Lesson 6.8.</p><p style="font-size:.9em">Six modules. 48 lessons. Zero to production.</p><div class="callout-slide foundations" style="font-size:1em"><strong>You are now an ML practitioner.</strong> The Kailash platform is your toolkit. Singapore is your testing ground. Go build something that matters.</div></section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script><script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+</body></html>

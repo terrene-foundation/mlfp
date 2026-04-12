@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.3 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 2.3</span>
+  Bootstrapping and Hypothesis Testing
+</h1>
+
+<p class="lead">~45 minutes · 14 slides · ~3 min per slide</p>
+
+<p>
+  This lesson introduces the decision framework of frequentist statistics.
+  The p-value warning (slide 6) is the most important single sentence you
+  will say today. Say it slowly. Repeat it. Learners will hear it wrong
+  many times before they hear it right.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Bootstrapping and Hypothesis Testing</h3>
+  <p>
+    Open: "Yesterday MLE gave you point estimates and the CLT gave you
+    a CI. Today we cover two things: a distribution-free alternative to
+    the CLT (the bootstrap), and a decision framework for answering 'is
+    this difference real?' (hypothesis testing)."
+  </p>
+  <div class="transition">→ "Start with the bootstrap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>The Bootstrap: sampling without extra samples</h3>
+  <p>
+    Sell the idea: "You have one sample. You want the sampling distribution
+    of the median — or a correlation, or a regression coefficient. There's
+    no clean formula. What do you do? You pretend your sample is the
+    population and draw from it with replacement. It works. It's called
+    the bootstrap."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Why it works (intuition):</strong> "Your sample is the best
+    guess you have about the population's shape. Resampling from it is the
+    best cheap imitation of drawing new samples from the real population.
+    It isn't magic — it just uses what you already have."
+  </div>
+  <div class="transition">→ "Here's the picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Resampling loop</span></div>
+  <h3>The resampling loop</h3>
+  <p>
+    Walk the diagram left to right. One sample, many resamples (each
+    with replacement, each of size $n$), compute statistic on each,
+    collect them into an empirical distribution.
+  </p>
+  <p>
+    Emphasise "with replacement". "If I draw without replacement I get
+    back my original sample. With replacement, some points appear twice,
+    others not at all — that's how each resample differs from the original."
+  </p>
+  <div class="transition">→ "And then you read percentiles off."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Percentile CI</span></div>
+  <h3>Percentile CI (the simple version)</h3>
+  <p>
+    Walk the code. 5,000 bootstrap replicates. Compute the statistic on
+    each. Take the 2.5th and 97.5th percentiles. Done.
+  </p>
+  <p>
+    "That's your 95% CI. No formula, no Greek letters, no assumptions
+    about shape. The only thing the bootstrap assumes is that your
+    original sample was drawn independently."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention the basic bootstrap CI
+    (pivotal form) and when each is preferred. BCa is the default in
+    most modern software.
+  </div>
+  <div class="transition">→ "Percentile is biased when things are skewed. Meet BCa."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>BCa</span></div>
+  <h3>BCa: when percentile is biased</h3>
+  <p>
+    Don't derive BCa fully. State the two corrections (bias and
+    acceleration) and show the scipy one-liner. "For most real data, the
+    difference between percentile and BCa is 5-10%. For highly skewed
+    statistics it matters. Default to BCa and move on."
+  </p>
+  <div class="transition">→ "Now hypothesis testing."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Hypothesis testing picture</span></div>
+  <h3>Hypothesis testing in one picture</h3>
+  <p>
+    Walk the figure. Blue curve is the null distribution — the distribution
+    of the test statistic <em>if the null hypothesis were true</em>. Red
+    line is what you actually observed. The red tail area is the p-value.
+  </p>
+  <p>
+    Then THE sentence, slowly: "The p-value is the probability of seeing
+    data at least as extreme as yours, <em>given that the null is true</em>.
+    It is NOT the probability that the null is true."
+  </p>
+  <p>
+    Give the flip example: "If I test 'this coin is fair' with 100 flips
+    and see 62 heads, I get a p-value around 0.02. That does NOT mean
+    there's a 2% chance the coin is fair. It means: IF the coin were fair,
+    I'd see results this extreme or more 2% of the time. Subtle but crucial."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners glaze:</strong> "You don't have to love the
+    wording. Just remember: small p-value = surprising if the null were
+    true = probably the null is wrong. That's enough to get started."
+  </div>
+  <div class="transition">→ "The most common test statistic."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>t-statistic</span></div>
+  <h3>The $t$-statistic and its distribution</h3>
+  <p>
+    Write the formula. Explain each piece: numerator is the deviation
+    from the null mean, denominator is the standard error. The ratio
+    follows $t$ with $n-1$ degrees of freedom.
+  </p>
+  <p>
+    Tease forward: "In 2.5 you will see this exact same $t$-statistic
+    applied to every regression coefficient — the hypothesis being
+    'this coefficient is zero'. Same math."
+  </p>
+  <div class="transition">→ "Two error types and power."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Type I/II matrix</span></div>
+  <h3>Type I / Type II / Power</h3>
+  <p>
+    Walk the 2x2. "Reject a true null — Type I, rate $\alpha$.
+    Fail to reject a false null — Type II, rate $\beta$. Power is
+    $1 - \beta$: the probability you catch a real effect."
+  </p>
+  <p>
+    "Rookie error: you run an experiment, don't see significance, and say
+    'the treatment doesn't work'. Maybe — or maybe you didn't have enough
+    power to see it. Absence of evidence is not evidence of absence."
+  </p>
+  <div class="transition">→ "And power has a formula."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Power and MDE</span></div>
+  <h3>Power and MDE</h3>
+  <p>
+    State the power formula. Walk each piece: bigger effect $\delta$ gives
+    more power, more variance $\sigma$ gives less, more data $n$ gives
+    more, stricter $\alpha$ gives less.
+  </p>
+  <p>
+    "MDE is the smallest effect you could detect with 80% power given your
+    sample size. This is the number you should know BEFORE running an
+    experiment. If you're running an A/B test with 500 users expecting a
+    1% lift — check your MDE. You probably can't see anything smaller
+    than 5%."
+  </p>
+  <div class="transition">→ "Multiple testing: the 20-test trap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Bonferroni</span></div>
+  <h3>Multiple testing: Bonferroni</h3>
+  <p>
+    Open with the warning. "Run 20 tests at $\alpha = 0.05$ on random
+    data. By chance alone, expect 1 of them to be 'significant'. This is
+    where science goes to die."
+  </p>
+  <p>
+    State the Bonferroni fix. "Divide $\alpha$ by the number of tests.
+    Guaranteed to control the family-wise error rate. Very conservative —
+    wastes power when you have lots of real effects."
+  </p>
+  <div class="transition">→ "More power: BH-FDR."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>BH-FDR</span></div>
+  <h3>Multiple testing: BH-FDR</h3>
+  <p>
+    Walk the algorithm: sort p-values, find the largest $k$ with $p_{(k)}
+    \le \frac{k}{m}\alpha$, reject everything at or below that rank.
+  </p>
+  <p>
+    "The guarantee is weaker — it controls the expected <em>proportion</em>
+    of false positives among the rejects, not the probability of any false
+    positive at all. In exchange you get much more power. For exploratory
+    work, BH-FDR is almost always the right choice."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that under independence of
+    p-values, BH controls FDR exactly; under positive regression
+    dependence, it still controls FDR; under arbitrary dependence, use
+    Benjamini–Yekutieli instead.
+  </div>
+  <div class="transition">→ "And permutation tests when parametric assumptions fail."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Permutation test</span></div>
+  <h3>Permutation test</h3>
+  <p>
+    Walk the four steps. Emphasise the core idea: "If the null is true,
+    the group labels don't matter. So if you shuffle them, you should see
+    test statistics just as extreme as what you observed. If the
+    observed is far out in the tail of the shuffled distribution, the
+    labels DO matter — there's a real effect."
+  </p>
+  <p>
+    "This is the purest test you can run. No distributional assumptions.
+    Just counting."
+  </p>
+  <div class="transition">→ "Now the three-metric A/B example."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Worked example</span></div>
+  <h3>Worked: three-metric A/B test</h3>
+  <p>
+    Walk the code. Compute three p-values. Apply both corrections. Show
+    what's different — typically BH rejects one or two that Bonferroni
+    misses.
+  </p>
+  <p>
+    "The point isn't which correction to always use — it's that you MUST
+    pick one. Running three tests at $\alpha = 0.05$ each and celebrating
+    the one that crosses the line is how you get results that don't
+    replicate."
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullets. Tease 2.4: "You have the parts. 2.4 assembles them
+    into an end-to-end A/B test: pre-registered hypothesis, power-based
+    sample size, SRM check, test, report. The data collection framework
+    comes in there too."
+  </p>
+  <div class="transition">→ End. 10-min break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/notes.html" class="prev">
+    <span class="label">← Prev</span>
+    2.2 Speaker Notes
+  </a>
+  <a href="../04/notes.html" class="next">
+    <span class="label">Next →</span>
+    2.4 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

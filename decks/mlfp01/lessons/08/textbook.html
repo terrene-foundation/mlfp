@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.8 — Data Pipelines and End-to-End Project | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.8</span>
+  Data Pipelines and End-to-End Project
+</h1>
+
+<p class="lead">
+  This is the capstone of Module 1. Every skill from the previous seven
+  lessons — variables, filtering, aggregation, joins, window functions,
+  visualisation, profiling — converges into a single end-to-end pipeline
+  that takes messy Singapore taxi trip data and produces a clean,
+  model-ready dataset with an HTML report. Along the way you will learn
+  null handling, ETL concepts, REST API extraction, and
+  <code>PreprocessingPipeline</code> — the second Kailash engine you use
+  as a consumer.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  In a real data role, nobody hands you a clean CSV. Data arrives from
+  APIs, databases, partner feeds, and spreadsheets — each with its own
+  schema, its own null convention, its own date format. Your job is to
+  build a <strong>pipeline</strong> that takes any version of the raw data
+  and produces the same clean output every time. That pipeline is not a
+  one-off script — it is a repeatable process you can run on tomorrow's
+  data with zero changes.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr18a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="10" y="60" width="130" height="70" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="75" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Extract</text>
+  <text x="75" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">API / CSV / DB</text>
+  <line x1="140" y1="95" x2="175" y2="95" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18a)"/>
+
+  <rect x="180" y="60" width="130" height="70" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="245" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Profile</text>
+  <text x="245" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">DataExplorer</text>
+  <line x1="310" y1="95" x2="345" y2="95" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18a)"/>
+
+  <rect x="350" y="60" width="130" height="70" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="415" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Transform</text>
+  <text x="415" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">Clean + encode</text>
+  <line x1="480" y1="95" x2="515" y2="95" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18a)"/>
+
+  <rect x="520" y="60" width="130" height="70" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="585" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Visualise</text>
+  <text x="585" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">ModelVisualizer</text>
+  <line x1="650" y1="95" x2="685" y2="95" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18a)"/>
+
+  <rect x="690" y="60" width="120" height="70" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="750" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Report</text>
+  <text x="750" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">HTML output</text>
+</svg>
+<figcaption>The five-stage ETL pipeline you will build today.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Null Handling</h2>
+
+<p>
+  Nulls are the most common data quality issue. Polars uses <code>null</code>
+  (not <code>NaN</code>) to represent missing values. The three operations
+  you need:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Method</th><th>What it does</th><th>When to use</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>is_null()</code></td><td>Boolean mask: True where null</td><td>Inspecting which rows are missing</td></tr>
+    <tr><td><code>fill_null(value)</code></td><td>Replace nulls with a value</td><td>Imputation: median, mean, forward-fill</td></tr>
+    <tr><td><code>drop_nulls()</code></td><td>Remove rows with any null</td><td>When missing rows are few and uninformative</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    <strong>Never drop nulls without checking how many there are.</strong>
+    If 30% of rows have nulls, dropping them loses a third of your data.
+    Impute first; drop only as a last resort.
+  </p>
+</div>
+
+<h3>Imputation strategies</h3>
+
+<pre><code class="language-python">import polars as pl
+
+# Forward-fill: carry the last known value forward (time-series)
+df = df.with_columns(pl.col("fare").forward_fill())
+
+# Median imputation: robust to outliers
+median_fare = df["fare"].median()
+df = df.with_columns(pl.col("fare").fill_null(median_fare))
+
+# Group-aware imputation: fill with group median
+df = df.with_columns(
+    pl.col("fare").fill_null(pl.col("fare").median().over("zone"))
+)</code></pre>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Imputation introduces bias. Forward-fill assumes temporal continuity.
+    Median imputation compresses the distribution toward the centre.
+    Group-aware imputation is less biased but requires a meaningful grouping
+    variable. In Module 2 you will learn when each strategy is statistically
+    defensible.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>ETL: Extract, Transform, Load</h2>
+
+<p>
+  ETL is the universal pattern for data pipelines:
+</p>
+
+<ul>
+  <li><strong>Extract</strong>: get the raw data from its source — files, APIs, databases.</li>
+  <li><strong>Transform</strong>: clean, encode, scale, engineer features.</li>
+  <li><strong>Load</strong>: write the result to a destination — parquet file, database, dashboard.</li>
+</ul>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr18b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Extract sources -->
+  <rect x="20" y="20" width="160" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="100" y="45" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E40AF">CSV files</text>
+  <rect x="20" y="70" width="160" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="100" y="95" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E40AF">REST APIs</text>
+  <rect x="20" y="120" width="160" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="100" y="145" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E40AF">Databases</text>
+  <rect x="20" y="170" width="160" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="100" y="195" text-anchor="middle" font-family="Inter" font-size="12" fill="#1E40AF">Spreadsheets</text>
+
+  <line x1="180" y1="115" x2="250" y2="115" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr18b)"/>
+  <text x="215" y="105" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">E</text>
+
+  <!-- Transform -->
+  <rect x="260" y="60" width="200" height="130" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="360" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Transform</text>
+  <g font-family="Inter" font-size="11" fill="#334155">
+    <text x="280" y="115">Parse dates</text>
+    <text x="280" y="133">Impute nulls</text>
+    <text x="280" y="151">Encode categoricals</text>
+    <text x="280" y="169">Scale numerics</text>
+  </g>
+
+  <line x1="460" y1="125" x2="530" y2="125" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr18b)"/>
+  <text x="495" y="115" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">T</text>
+
+  <!-- Load targets -->
+  <rect x="540" y="50" width="160" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="620" y="75" text-anchor="middle" font-family="Inter" font-size="12" fill="#166534">Parquet file</text>
+  <rect x="540" y="100" width="160" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="620" y="125" text-anchor="middle" font-family="Inter" font-size="12" fill="#166534">Database</text>
+  <rect x="540" y="150" width="160" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="620" y="175" text-anchor="middle" font-family="Inter" font-size="12" fill="#166534">HTML report</text>
+
+  <text x="100" y="230" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#3B82F6">Extract</text>
+  <text x="360" y="230" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Transform</text>
+  <text x="620" y="230" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#22C55E">Load</text>
+</svg>
+<figcaption>ETL: multiple sources in, clean data out. The transform step does most of the work.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>REST APIs: Extracting Data from the Web</h2>
+
+<p>
+  Many datasets are not files — they are live services you query over HTTP.
+  Singapore's OneMap API returns geolocation data for any address. The
+  pattern is always the same:
+</p>
+
+<pre><code class="language-python">import httpx
+
+# GET request with query parameters
+response = httpx.get(
+    "https://www.onemap.gov.sg/api/common/elastic/search",
+    params={"searchVal": "Tampines", "returnGeom": "Y", "getAddrDetails": "Y"}
+)
+
+data = response.json()
+print(f"Found {data['found']} results")
+print(f"First result: {data['results'][0]['SEARCHVAL']}")</code></pre>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    A REST API is a URL you send a request to and get structured data back
+    (usually JSON). <code>GET</code> means "give me data".
+    <code>POST</code> means "here is data, do something with it".
+    For this course, you will mostly use <code>GET</code>.
+  </p>
+</div>
+
+<h3>From JSON to DataFrame</h3>
+
+<pre><code class="language-python">results = data["results"]
+df_locations = pl.DataFrame(results).select([
+    pl.col("SEARCHVAL").alias("address"),
+    pl.col("LATITUDE").cast(pl.Float64).alias("lat"),
+    pl.col("LONGITUDE").cast(pl.Float64).alias("lon"),
+])</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>PreprocessingPipeline</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>PreprocessingPipeline</code> automates the transform step: it
+    detects column types, encodes categoricals, scales numerics, and
+    imputes missing values. Like <code>DataExplorer</code>, you use it as
+    a consumer — create, configure, run.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import PreprocessingPipeline
+
+pipeline = PreprocessingPipeline(
+    numeric_strategy="median",       # impute with median
+    categorical_strategy="onehot",   # one-hot encode
+    scale=True,                      # standard scaling
+)
+
+df_clean = pipeline.fit_transform(df_raw)
+print(f"Before: {df_raw.shape} → After: {df_clean.shape}")</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr18c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20" y="50" width="160" height="100" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="2"/>
+  <text x="100" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#F43F5E">Raw data</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
+    <text x="35" y="102">nulls, mixed types</text>
+    <text x="35" y="118">unscaled, strings</text>
+    <text x="35" y="134">(15 cols, 10K rows)</text>
+  </g>
+  <line x1="185" y1="100" x2="260" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr18c)"/>
+  <rect x="265" y="40" width="200" height="120" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="365" y="70" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">PreprocessingPipeline</text>
+  <g font-family="Inter" font-size="11" fill="#334155">
+    <text x="285" y="95">1. Detect types</text>
+    <text x="285" y="113">2. Impute nulls</text>
+    <text x="285" y="131">3. Encode categoricals</text>
+    <text x="285" y="149">4. Scale numerics</text>
+  </g>
+  <line x1="470" y1="100" x2="535" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr18c)"/>
+  <rect x="540" y="50" width="160" height="100" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="620" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Clean data</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
+    <text x="555" y="102">no nulls, numeric</text>
+    <text x="555" y="118">scaled, encoded</text>
+    <text x="555" y="134">(22 cols, 10K rows)</text>
+  </g>
+</svg>
+<figcaption>PreprocessingPipeline: raw in, clean out. Column count may increase due to one-hot encoding.</figcaption>
+</figure>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    <code>fit_transform()</code> fits the pipeline on the data (learns medians,
+    category sets, scaling parameters) and transforms it. When you later
+    process test data, use <code>transform()</code> only — the pipeline
+    applies the same parameters it learned from training data. This prevents
+    <strong>data leakage</strong>: the test set never influences the
+    preprocessing decisions.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Taxi Trip Pipeline</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Build a complete pipeline for Singapore taxi trip data: extract from
+    file, profile, clean, visualise peak demand patterns, and generate a
+    summary report.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Extract.</span>
+    <pre><code class="language-python">from shared import MLFPDataLoader
+from kailash_ml import DataExplorer, PreprocessingPipeline
+from shared import run_profile
+import polars as pl
+
+loader = MLFPDataLoader()
+df_raw = loader.load("mlfp01", "sg_taxi_trips.csv")
+print(f"Raw: {df_raw.shape}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Profile.</span>
+    <pre><code class="language-python">explorer = DataExplorer()
+profile = run_profile(explorer, df_raw)
+print(f"Alerts: {len(profile.alerts)}")
+for a in profile.alerts:
+    print(f"  {a.type}: {a.column} — {a.message}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Transform: nulls and types.</span>
+    <pre><code class="language-python">df = (
+    df_raw
+    .with_columns(
+        pl.col("pickup_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+        pl.col("fare_amount").cast(pl.Float64),
+    )
+    .filter(pl.col("fare_amount") > 0)
+    .filter(pl.col("trip_distance_km") > 0)
+    .with_columns(
+        pl.col("fare_amount").fill_null(pl.col("fare_amount").median()),
+        hour=pl.col("pickup_datetime").dt.hour(),
+        day_of_week=pl.col("pickup_datetime").dt.weekday(),
+    )
+    .drop_nulls(subset=["pickup_zone", "dropoff_zone"])
+)
+print(f"After cleaning: {df.shape}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Transform: PreprocessingPipeline.</span>
+    <pre><code class="language-python">pipeline = PreprocessingPipeline(
+    numeric_strategy="median",
+    categorical_strategy="onehot",
+    scale=True,
+)
+df_model_ready = pipeline.fit_transform(
+    df.select(["fare_amount", "trip_distance_km", "hour",
+               "day_of_week", "pickup_zone"])
+)
+print(f"Model-ready: {df_model_ready.shape}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Visualise and report.</span>
+    <pre><code class="language-python">hourly = (
+    df.group_by("hour").agg(pl.count().alias("trips"))
+    .sort("hour")
+)
+# Peak demand: morning rush and evening rush
+print(hourly)
+
+# Re-profile the cleaned data
+profile_clean = run_profile(explorer, df)
+comparison = run_profile(explorer, df_raw, df_compare=df)
+print(f"Alerts before: {len(profile.alerts)}")
+print(f"Alerts after:  {len(profile_clean.alerts)}")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Project Structure</h2>
+
+<p>
+  As pipelines grow, putting everything in one file becomes unmanageable.
+  Structure your project into modules:
+</p>
+
+<pre><code class="language-text">taxi_pipeline/
+├── extract.py          # Data loading functions
+├── transform.py        # Cleaning and feature engineering
+├── visualise.py        # Chart generation
+├── report.py           # HTML report generation
+└── main.py             # Orchestrates the pipeline</code></pre>
+
+<pre><code class="language-python"># main.py — the orchestrator
+from extract import load_taxi_data
+from transform import clean_taxi_data, preprocess
+from visualise import create_demand_charts
+from report import generate_html_report
+
+df_raw = load_taxi_data()
+df_clean = clean_taxi_data(df_raw)
+df_model = preprocess(df_clean)
+charts = create_demand_charts(df_clean)
+generate_html_report(df_model, charts, output="report.html")</code></pre>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    This is the simplest form of workflow orchestration — calling functions
+    in sequence. In Module 3 you will use <code>WorkflowBuilder</code> to
+    build the same pipeline as a node graph with automatic error handling,
+    retry logic, and parallel execution.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Dropping nulls without measuring the impact</span>
+  <p>
+    Always check <code>df.null_count()</code> before dropping. If 25% of
+    rows have nulls, you are throwing away a quarter of your data. Impute
+    first.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Fitting the pipeline on test data</span>
+  <p>
+    <code>fit_transform()</code> on training data, <code>transform()</code>
+    on test data. Never fit on both — the test set must remain unseen.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Hardcoding file paths</span>
+  <p>
+    Use <code>MLFPDataLoader</code> or environment variables. A pipeline
+    that only works on your laptop is not a pipeline.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: No re-profiling after cleaning</span>
+  <p>
+    Always re-profile. The cleaning step might introduce new issues
+    (e.g., imputation changing the distribution shape). Compare before
+    and after with <code>DataExplorer.compare()</code>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Null audit</h3>
+  <p>
+    Load the taxi trip data. For each column, compute the null percentage.
+    Choose an imputation strategy for each column and justify your choice.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — API extraction</h3>
+  <p>
+    Use the OneMap API to geocode 10 Singapore addresses. Parse the JSON
+    response into a Polars DataFrame with columns: address, latitude,
+    longitude.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Full pipeline</h3>
+  <p>
+    Build the complete taxi trip pipeline from scratch: load, profile,
+    clean (handle nulls, fix types, remove outliers), preprocess with
+    PreprocessingPipeline, visualise hourly demand, generate a summary
+    with at least 3 charts.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Null handling connects back to the null_count() calls from Lesson 1.1.
+  DataExplorer from 1.7 becomes the profiling step.
+  ModelVisualizer from 1.6 creates the charts.
+  Window functions from 1.5 compute the rolling averages in the demand
+  analysis. In Module 2, the cleaned dataset becomes the input to
+  statistical models. In Module 3, PreprocessingPipeline becomes a node
+  inside WorkflowBuilder, and DataExplorer's compare() becomes
+  DriftMonitor.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have built your first end-to-end data pipeline. Every step from
+  Module 1 appeared: variables and types (1.1), filtering (1.2), functions
+  (1.3), joins (1.4), window functions (1.5), visualisation (1.6), and
+  profiling (1.7). The pipeline pattern — extract, profile, transform,
+  visualise, report — is the scaffold on which every data project is built.
+</p>
+<p>
+  In Module 2 you will add statistics to this scaffold: probability,
+  hypothesis testing, regression. The pipeline stays the same; the
+  questions you can answer with it grow exponentially.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.7 Automated Data Profiling
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Next →</span>
+    Module 1 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

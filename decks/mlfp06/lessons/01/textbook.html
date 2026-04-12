@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.1 — LLM Fundamentals, Prompting, and Structured Output | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.1</span>
+  LLM Fundamentals, Prompting, and Structured Output
+</h1>
+
+<p class="lead">
+  You finished Module 5 with a working transformer. This lesson picks up
+  exactly where that left off: a transformer, scaled up a thousand times,
+  trained on a trillion tokens, and reached through an API. In the next 60
+  minutes you will learn how large language models are pre-trained, why
+  prompting works at all, how to squeeze quality out of a model without
+  touching its weights, and how to force its output into typed Python
+  objects you can put into a data pipeline.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Every deployed AI product you will build from this point forward will
+  contain at least one call to a large language model. Not because LLMs are
+  fashionable, but because they are the only general-purpose tool in the ML
+  toolbox: one API, one prompt, and you have a classifier, an extractor, a
+  summariser, a translator, an agent. The cost of trying an idea has
+  dropped to pennies. The skill that separates an engineer who ships from
+  one who burns budget is no longer "can you fine-tune a model" — it is
+  "can you write a prompt that works the first time".
+</p>
+
+<p>
+  This lesson is the foundation for every other lesson in Module 6. You
+  cannot build a RAG system (6.4) without prompting skill. You cannot
+  align a model with DPO (6.3) without understanding how the base model
+  was pre-trained. You cannot build an agent (6.5) without a <code>Delegate</code>
+  that reliably emits a typed object. So we start here.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>From Transformer to Large Language Model</h2>
+
+<p>
+  In Lesson 5.4 you built a small transformer block: multi-head attention,
+  a feed-forward layer, residual connections and layer normalisation. A
+  large language model is that same block, repeated 32–96 times, trained on
+  a trillion tokens of text for weeks on thousands of GPUs.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 360" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Input tokens -->
+  <rect x="20" y="30" width="120" height="300" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="80" y="55" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Tokens</text>
+  <text x="80" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">The</text>
+  <text x="80" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">Singapore</text>
+  <text x="80" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">monsoon</text>
+  <text x="80" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">arrived</text>
+  <text x="80" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">in</text>
+  <text x="80" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#1E293B">___</text>
+  <text x="80" y="230" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">context window</text>
+  <text x="80" y="245" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">~128k tokens</text>
+
+  <line x1="140" y1="180" x2="180" y2="180" stroke="#0D9488" stroke-width="2" marker-end="url(#arr1)"/>
+
+  <!-- Transformer stack -->
+  <rect x="190" y="30" width="280" height="300" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="330" y="55" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Transformer Stack</text>
+  <g font-family="Inter" font-size="11" fill="#0F766E">
+    <rect x="220" y="75" width="220" height="30" rx="4" fill="white" stroke="#0D9488"/>
+    <text x="330" y="94" text-anchor="middle">Layer 32 — attention + FFN</text>
+    <rect x="220" y="110" width="220" height="30" rx="4" fill="white" stroke="#0D9488"/>
+    <text x="330" y="129" text-anchor="middle">Layer 31 — attention + FFN</text>
+    <text x="330" y="155" text-anchor="middle" font-size="14">⋮</text>
+    <rect x="220" y="160" width="220" height="30" rx="4" fill="white" stroke="#0D9488"/>
+    <text x="330" y="179" text-anchor="middle">Layer 2 — attention + FFN</text>
+    <rect x="220" y="195" width="220" height="30" rx="4" fill="white" stroke="#0D9488"/>
+    <text x="330" y="214" text-anchor="middle">Layer 1 — attention + FFN</text>
+  </g>
+  <text x="330" y="250" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">each layer: Q,K,V projection</text>
+  <text x="330" y="265" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">→ softmax attention → MLP</text>
+  <text x="330" y="285" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">KV-cache reused across steps</text>
+
+  <line x1="470" y1="180" x2="510" y2="180" stroke="#0D9488" stroke-width="2" marker-end="url(#arr1)"/>
+
+  <!-- Output logits -->
+  <rect x="520" y="30" width="220" height="300" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="630" y="55" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">Next-token distribution</text>
+  <g font-family="JetBrains Mono" font-size="12" fill="#1E293B">
+    <rect x="545" y="75" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+    <text x="555" y="93">December</text>
+    <rect x="640" y="80" width="70" height="16" rx="2" fill="#F59E0B"/>
+    <text x="675" y="93" text-anchor="middle" fill="white" font-size="11">0.41</text>
+
+    <rect x="545" y="105" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+    <text x="555" y="123">November</text>
+    <rect x="640" y="110" width="55" height="16" rx="2" fill="#FBBF24"/>
+    <text x="668" y="123" text-anchor="middle" fill="white" font-size="11">0.28</text>
+
+    <rect x="545" y="135" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+    <text x="555" y="153">October</text>
+    <rect x="640" y="140" width="30" height="16" rx="2" fill="#FCD34D"/>
+    <text x="656" y="153" text-anchor="middle" fill="white" font-size="11">0.12</text>
+
+    <rect x="545" y="165" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+    <text x="555" y="183">the</text>
+    <rect x="640" y="170" width="18" height="16" rx="2" fill="#FDE68A"/>
+
+    <rect x="545" y="195" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+    <text x="555" y="213">Jakarta</text>
+    <rect x="640" y="200" width="14" height="16" rx="2" fill="#FDE68A"/>
+  </g>
+  <text x="630" y="250" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">softmax over vocabulary</text>
+  <text x="630" y="265" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">(~100k tokens)</text>
+  <text x="630" y="290" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">sample → append → repeat</text>
+</svg>
+<figcaption>A large language model is a transformer stack that maps a token sequence to a probability distribution over the next token. Generation is autoregressive: sample one token, append it, call the stack again.</figcaption>
+</figure>
+
+<h3>Pre-training: next-token prediction at scale</h3>
+
+<p>
+  GPT-style models are trained on exactly one objective: given the previous
+  $t$ tokens, predict token $t+1$. Formally, given a sequence
+  $x_1, x_2, \ldots, x_T$ the model learns parameters $\theta$ that
+  minimise the negative log-likelihood of the next token:
+</p>
+
+<div class="annotated-equation">
+  $$\mathcal{L}(\theta) \;=\; -\sum_{t=1}^{T} \log p_\theta\!\left(x_t \,\mid\, x_1, \ldots, x_{t-1}\right)$$
+  <div class="annotations">
+    <span>$p_\theta$ — model distribution</span>
+    <span>$T$ — sequence length</span>
+    <span>$x_t$ — token at position $t$</span>
+  </div>
+</div>
+
+<p>
+  That is it. No labels, no human annotation — just text that already
+  exists on the internet. The model reads "The Singapore monsoon arrived
+  in" and is rewarded for placing high probability on "December". Repeat
+  this across a trillion tokens of Wikipedia, GitHub, books, forums, news
+  and you eventually get something that has absorbed a staggering
+  fraction of human written knowledge as a side-effect of predicting one
+  token at a time.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — why next-token prediction yields intelligence</span>
+  <p>
+    Predicting the next token under wide distribution coverage forces the
+    model to implicitly learn grammar, world knowledge, arithmetic,
+    programming, translation, style, and reasoning — because every one of
+    those skills is useful for lowering the cross-entropy loss on <em>some</em>
+    subset of the training data. The task is simple; the <em>data</em> is
+    everything ever written. Scaling laws (Kaplan 2020, Hoffmann 2022)
+    show loss decays as a power law in parameters, data, and compute:
+    $$\mathcal{L}(N, D) \approx \mathcal{L}_\infty + \frac{A}{N^\alpha} + \frac{B}{D^\beta}$$
+    where $N$ is parameters and $D$ is dataset tokens. This is why the
+    frontier keeps moving — the law has not broken yet.
+  </p>
+</div>
+
+<h3>Tokenisation</h3>
+
+<p>
+  Before text reaches the transformer it is chopped into <strong>tokens</strong>.
+  Modern LLMs use byte-pair encoding (BPE) or similar subword schemes:
+  common words are a single token ("Singapore" → 1 token), rare words are
+  split ("HDB" might be 2 tokens), and every character is representable as
+  a fallback. A rule of thumb: 1 English token $\approx$ 0.75 words
+  $\approx$ 4 characters.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <rect x="20" y="60" width="260" height="60" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="150" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Raw text</text>
+  <text x="150" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">"Singapore is tropical."</text>
+
+  <line x1="280" y1="90" x2="340" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#arr1)"/>
+
+  <rect x="350" y="40" width="350" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="525" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Tokens (5)</text>
+  <text x="525" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">["Sing", "apore", " is", " tropical", "."]</text>
+
+  <rect x="350" y="100" width="350" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="525" y="120" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#1E40AF">Token IDs</text>
+  <text x="525" y="140" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1E293B">[39147, 7209, 374, 35148, 13]</text>
+</svg>
+<figcaption>Text → subword tokens → integer IDs. The integers are what the transformer actually consumes.</figcaption>
+</figure>
+
+<p>
+  This matters for two practical reasons. First, <strong>you pay per
+  token</strong>, not per word. Second, <strong>context windows are
+  measured in tokens</strong>. GPT-4 Turbo allows 128k tokens; a typical
+  Singapore regulatory document is 5–20k tokens. You have room.
+</p>
+
+<h3>Inference: the KV-cache and why generation is fast</h3>
+
+<p>
+  When you ask an LLM to produce 500 tokens, it does not run the full stack
+  500 times from scratch. At step $t$ it already computed the Key and Value
+  projections for tokens $1, \ldots, t-1$ — and attention at those
+  positions does not change. The <strong>KV-cache</strong> stores them and
+  reuses them. Generation becomes "compute Q for the new token, attend
+  against the cached K/V, sample, append". This is why the first token
+  takes longer (prompt prefill) than subsequent tokens (decode).
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — inference optimisations</span>
+  <p>
+    Production LLM serving stacks like vLLM and TensorRT-LLM add more:
+    <em>continuous batching</em> packs requests of different lengths into
+    one forward pass; <em>speculative decoding</em> uses a small draft
+    model to propose tokens that the big model verifies in parallel;
+    <em>flash attention</em> rewrites softmax to avoid materialising the
+    full attention matrix. You do not need to implement these — but you
+    should know they exist, because they determine your cost-per-token.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why Prompting Works</h2>
+
+<p>
+  Here is the paradox: a model trained to predict the next token on random
+  internet text is somehow able to classify company reports, translate
+  legal documents, and write code. How?
+</p>
+
+<p>
+  A prompt is not a command — it is a <strong>context</strong>. When you
+  type "Classify this report: &lt;text&gt;. Category:" you are asking the
+  model "what tokens are most likely to follow this exact string?". And
+  because the training corpus contained billions of classification-shaped
+  examples (stack overflow Q&amp;A, form labels, tutorials), the most
+  likely continuation is a category name. You are not teaching the model
+  anything — you are <em>priming</em> it with a context in which the
+  desired output is the natural continuation.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations — the prompting mindset</span>
+  <p>
+    A prompt is a way of <em>selecting a neighbourhood of the training
+    distribution</em>. "Answer like a senior compliance officer" places
+    the model in the neighbourhood of compliance documents. "Let's think
+    step by step" places it in the neighbourhood of math tutorials where
+    authors actually showed their work. You are not changing the model's
+    knowledge — you are moving a spotlight across it.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Four Prompting Techniques You Must Know</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 440" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Zero-shot -->
+  <rect x="20" y="20" width="350" height="190" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="195" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#15803D">1. Zero-shot</text>
+  <text x="195" y="64" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Task description only. No examples.</text>
+  <rect x="40" y="80" width="310" height="110" rx="4" fill="white" stroke="#22C55E"/>
+  <text x="50" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify this report as Financial,</text>
+  <text x="50" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Technology, Healthcare, Real Estate,</text>
+  <text x="50" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">or Manufacturing.</text>
+  <text x="50" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15% on net</text>
+  <text x="50" y="170" font-family="JetBrains Mono" font-size="10" fill="#1E293B">interest margin expansion..."</text>
+  <text x="50" y="185" font-family="JetBrains Mono" font-size="10" fill="#0D9488">Category:</text>
+
+  <!-- Few-shot -->
+  <rect x="390" y="20" width="350" height="190" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="565" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#1E40AF">2. Few-shot</text>
+  <text x="565" y="64" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E3A8A">Task + k labelled examples. Typical k = 3–8.</text>
+  <rect x="410" y="80" width="310" height="110" rx="4" fill="white" stroke="#3B82F6"/>
+  <text x="420" y="100" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 1: "Loan growth..." → Financial</text>
+  <text x="420" y="115" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 2: "SaaS platform..." → Technology</text>
+  <text x="420" y="130" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Example 3: "Oncology drug..." → Healthcare</text>
+  <text x="420" y="155" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15%..."</text>
+  <text x="420" y="180" font-family="JetBrains Mono" font-size="10" fill="#1E40AF">Category:</text>
+
+  <!-- CoT -->
+  <rect x="20" y="230" width="350" height="190" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="195" y="255" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">3. Chain-of-thought</text>
+  <text x="195" y="274" text-anchor="middle" font-family="Inter" font-size="11" fill="#78350F">"Let's think step by step" — reason first, then answer.</text>
+  <rect x="40" y="290" width="310" height="120" rx="4" fill="white" stroke="#F59E0B"/>
+  <text x="50" y="310" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Classify this report. Think step by</text>
+  <text x="50" y="325" font-family="JetBrains Mono" font-size="10" fill="#1E293B">step, then state the category.</text>
+  <text x="50" y="350" font-family="JetBrains Mono" font-size="10" fill="#1E293B">Report: "Revenue up 15%..."</text>
+  <text x="50" y="375" font-family="JetBrains Mono" font-size="10" fill="#92400E">1. Key terms: revenue, margin, loans</text>
+  <text x="50" y="390" font-family="JetBrains Mono" font-size="10" fill="#92400E">2. These are banking concepts</text>
+  <text x="50" y="405" font-family="JetBrains Mono" font-size="10" fill="#92400E">3. Category: Financial</text>
+
+  <!-- Self-consistency -->
+  <rect x="390" y="230" width="350" height="190" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="565" y="255" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#6D28D9">4. Self-consistency</text>
+  <text x="565" y="274" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">Sample N CoT chains. Majority vote on final answer.</text>
+  <g font-family="Inter" font-size="11" fill="#5B21B6">
+    <rect x="410" y="290" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
+    <text x="455" y="307" text-anchor="middle">CoT 1 → Financial</text>
+    <rect x="510" y="290" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
+    <text x="555" y="307" text-anchor="middle">CoT 2 → Financial</text>
+    <rect x="610" y="290" width="100" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
+    <text x="660" y="307" text-anchor="middle">CoT 3 → Technology</text>
+    <rect x="410" y="322" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
+    <text x="455" y="339" text-anchor="middle">CoT 4 → Financial</text>
+    <rect x="510" y="322" width="90" height="26" rx="3" fill="white" stroke="#8B5CF6"/>
+    <text x="555" y="339" text-anchor="middle">CoT 5 → Financial</text>
+  </g>
+  <rect x="410" y="365" width="310" height="40" rx="4" fill="#8B5CF6"/>
+  <text x="565" y="390" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">Majority → Financial (4 of 5)</text>
+</svg>
+<figcaption>The four baseline prompting strategies. Cost grows left-to-right, top-to-bottom. Quality on complex reasoning tasks usually grows in the same direction — but not always.</figcaption>
+</figure>
+
+<h3>1. Zero-shot</h3>
+<p>
+  No examples. Just describe the task and ask. Works whenever the task is
+  well-represented in pre-training — classification, simple extraction,
+  summarisation in English. Cheapest, fastest, most brittle.
+</p>
+
+<h3>2. Few-shot (in-context learning)</h3>
+<p>
+  Include $k$ labelled examples in the prompt. The model pattern-matches:
+  "I have seen four <em>input → output</em> pairs of this shape; the fifth
+  input is probably resolved the same way". Typical $k$ is 3–8. Diminishing
+  returns beyond 10. Use diverse, representative examples — the model
+  learns the pattern, not the specific content.
+</p>
+
+<h3>3. Chain-of-thought</h3>
+<p>
+  Add "Let's think step by step" (or provide reasoning in your few-shot
+  examples) and let the model write out its intermediate work before the
+  final answer. Discovered in <em>Wei et al. 2022</em>; shockingly
+  effective on arithmetic, logic, and multi-step decisions. The cost is
+  more output tokens.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — why chain-of-thought works</span>
+  <p>
+    An LLM emits tokens autoregressively. Each next token is conditioned
+    on everything generated so far. When you force the model to emit
+    reasoning first, those reasoning tokens become part of the context
+    for the final answer — effectively giving the model scratchpad space
+    to break a hard problem into easy sub-problems. It also commits the
+    model to a path; without CoT, the model has to "decide" the answer
+    in a single forward pass through its layers, which is harder.
+  </p>
+</div>
+
+<h3>4. Self-consistency</h3>
+<p>
+  Sample the same CoT prompt $N$ times at high temperature ($T \approx 0.7$).
+  You get $N$ different reasoning chains that may reach different
+  conclusions. Take the majority vote. <em>Wang et al. 2022</em> showed
+  this beats plain CoT across many benchmarks — it trades compute for
+  accuracy in a principled way. Cost scales linearly with $N$.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: <code>Delegate</code> and <code>Signature</code></h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash — Kaizen Delegate</span>
+  <p>
+    <code>Delegate</code> is Kailash's LLM call primitive. It wraps any
+    provider (OpenAI, Anthropic, Ollama, local models) behind one
+    interface. Every call emits a stream of events — text, tool-call
+    start, tool-call result, completion — and every call enforces a
+    <em>cost budget</em>. Use it for anything more serious than a quick
+    experiment; the budget is the difference between a bug and a bill.
+  </p>
+</div>
+
+<pre><code class="language-python">from kaizen_agents import Delegate
+
+delegate = Delegate(model="gpt-4o-mini", max_llm_cost_usd=0.50)
+
+response = ""
+async for event in delegate.run("Classify this report: ..."):
+    if hasattr(event, "text"):
+        response += event.text
+
+print(response)</code></pre>
+
+<p>
+  The async iterator is important. LLM responses come in chunks; Delegate
+  streams each chunk as soon as it arrives, which lets you display partial
+  text in a UI and <em>abort early</em> if the response is going somewhere
+  bad. The <code>max_llm_cost_usd</code> guard trips hard — once your
+  accumulated spend exceeds it, the call raises and nothing more is
+  charged.
+</p>
+
+<h3>Structured output with <code>Signature</code></h3>
+
+<p>
+  Free-form text is fragile. If you write
+  <code>response.strip().split(":")[-1]</code> to extract a category, one
+  stray colon in the LLM's prose and your pipeline breaks. The production
+  answer is to <em>force</em> the LLM to return a typed object, not prose.
+  In Kaizen, a <strong>Signature</strong> is a Python class that declares
+  typed input and output fields. You hand it to an agent and the agent
+  produces an instance of that class — guaranteed schema, automatic
+  validation, no string parsing.
+</p>
+
+<pre><code class="language-python">from kaizen import Signature, InputField, OutputField
+from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+
+class ReportExtraction(Signature):
+    """Extract structured info from a Singapore company report."""
+
+    report_text: str = InputField(description="Report excerpt (max ~800 tokens)")
+
+    category: str = OutputField(
+        description="One of: Financial, Technology, Healthcare, Real Estate, Manufacturing"
+    )
+    key_entities: list[str] = OutputField(
+        description="Named entities (companies, products, locations)"
+    )
+    financial_metrics: list[str] = OutputField(
+        description="Financial figures or percentages mentioned"
+    )
+    sentiment: str = OutputField(description="positive | negative | neutral")
+    confidence: float = OutputField(description="Confidence in [0, 1]")
+
+
+agent = SimpleQAAgent(
+    signature=ReportExtraction,
+    model="gpt-4o-mini",
+    max_llm_cost_usd=1.0,
+)
+
+result = await agent.run(report_text=doc_text)
+print(result.category, result.confidence, result.key_entities[:3])</code></pre>
+
+<p>
+  Notice what this buys you. <code>result.confidence</code> is a
+  <code>float</code> — not the string <code>"high"</code>. You can write
+  <code>if result.confidence &lt; 0.6: escalate_to_human(result)</code>
+  with a straight face. <code>result.key_entities</code> is already a
+  <code>list[str]</code> — you can index, iterate, and persist to a
+  DataFrame column without any parsing.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Classifying Singapore Company Reports</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Classify a small corpus of Singapore company reports into five
+    categories, comparing zero-shot, few-shot, and chain-of-thought
+    prompting on the same inputs. Then upgrade to a Signature for
+    production-grade structured output.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Set up the environment and load the dataset.</p>
+    <pre><code class="language-python">import asyncio, os
+import polars as pl
+from kaizen_agents import Delegate
+from kaizen import Signature, InputField, OutputField
+from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+from shared import MLFPDataLoader
+from shared.kailash_helpers import setup_environment
+
+setup_environment()
+model = os.environ["DEFAULT_LLM_MODEL"]
+
+loader = MLFPDataLoader()
+reports = loader.load("mlfp06", "sg_company_reports.parquet")
+sample = reports.head(10)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Define the five categories and a zero-shot classifier.</p>
+    <pre><code class="language-python">CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufacturing"]
+
+async def zero_shot_classify(text: str) -> str:
+    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    prompt = f"""Classify this Singapore company report into one category.
+Categories: {', '.join(CATEGORIES)}
+
+Report excerpt:
+{text[:800]}
+
+Respond with ONLY the category name."""
+    response = ""
+    async for event in delegate.run(prompt):
+        if hasattr(event, "text"):
+            response += event.text
+    return response.strip()</code></pre>
+    <p>
+      Read the prompt carefully. The category list is inline so the
+      model sees exactly which labels are allowed. The text is truncated
+      to ~800 characters — this bounds cost and avoids hitting the
+      context limit on longer reports. The closing instruction "ONLY the
+      category name" is the <em>format constraint</em>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Add few-shot examples. A good few-shot example set is diverse
+    (covers all categories), clean (unambiguous), and short
+    (token-efficient).</p>
+    <pre><code class="language-python">FEW_SHOT = [
+    ("Revenue increased 15% driven by loan growth and net interest margin expansion.", "Financial"),
+    ("The company launched its cloud-native SaaS platform serving enterprise clients.", "Technology"),
+    ("Clinical trials for the oncology drug showed 40% improvement in patient outcomes.", "Healthcare"),
+    ("The integrated township development in Jurong added 2,500 residential units.", "Real Estate"),
+    ("Factory automation reduced production cycle time by 30% at the Tuas fab.", "Manufacturing"),
+]
+
+async def few_shot_classify(text: str) -> str:
+    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    examples = "\n".join(f'Text: "{t}"\nCategory: {c}\n' for t, c in FEW_SHOT)
+    prompt = f"""Classify Singapore company reports. Examples:
+
+{examples}
+Text: "{text[:800]}"
+Category:"""
+    response = ""
+    async for event in delegate.run(prompt):
+        if hasattr(event, "text"):
+            response += event.text
+    return response.strip()</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Add chain-of-thought. The prompt asks for reasoning first, then a
+    final line with the category.</p>
+    <pre><code class="language-python">async def cot_classify(text: str) -> tuple[str, str]:
+    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    prompt = f"""Classify this report into one of: {', '.join(CATEGORIES)}.
+Think step by step:
+1. Identify key terms and topics in the text
+2. Match those terms to the most relevant category
+3. State your final classification on the last line
+
+Report excerpt:
+{text[:800]}
+
+Step-by-step reasoning:"""
+    response = ""
+    async for event in delegate.run(prompt):
+        if hasattr(event, "text"):
+            response += event.text
+    lines = response.strip().split("\n")
+    final = lines[-1].strip()
+    return response, final</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Upgrade to Signature-based extraction for production use.</p>
+    <pre><code class="language-python">class ReportExtraction(Signature):
+    report_text: str = InputField(description="Report excerpt")
+    category: str = OutputField(description=f"One of: {', '.join(CATEGORIES)}")
+    key_entities: list[str] = OutputField(description="Named entities")
+    financial_metrics: list[str] = OutputField(description="Financial figures")
+    sentiment: str = OutputField(description="positive | negative | neutral")
+    confidence: float = OutputField(description="Confidence in [0, 1]")
+
+agent = SimpleQAAgent(
+    signature=ReportExtraction,
+    model=model,
+    max_llm_cost_usd=1.0,
+)
+
+result = await agent.run(report_text=sample["text"][0][:800])
+print(f"Category: {result.category}")
+print(f"Confidence: {result.confidence:.2f}")
+print(f"Entities: {result.key_entities}")</code></pre>
+    <p>
+      The agent writes a prompt for you, calls the model, parses the
+      response into the <code>ReportExtraction</code> schema, and hands
+      you a typed Python object. If the model's output does not match the
+      schema, the agent retries. You never see string parsing.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6.</span>
+    <p>
+      Compare accuracy. On the 10-document sample, agreement between
+      strategies is the proxy for confidence: rows where all three agree
+      are almost certainly correct; rows where strategies disagree are
+      exactly where you would escalate to a human in production.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Cost, Temperature, and Tokens</h2>
+
+<h3>The cost model</h3>
+
+<p>
+  LLM providers charge per token, with different rates for <em>input</em>
+  (prompt) and <em>output</em> (completion). The bill for one call is:
+</p>
+
+<div class="annotated-equation">
+  $$\text{cost} \;=\; N_\text{in}\cdot r_\text{in} + N_\text{out}\cdot r_\text{out}$$
+  <div class="annotations">
+    <span>$N_\text{in}$ — prompt tokens</span>
+    <span>$N_\text{out}$ — completion tokens</span>
+    <span>$r$ — rate per token</span>
+  </div>
+</div>
+
+<p>
+  For <code>gpt-4o-mini</code> at the time of writing, $r_\text{in}
+  \approx \$0.15$ per million tokens and $r_\text{out} \approx \$0.60$
+  per million tokens — output is 4× more expensive than input. That is
+  why chain-of-thought is more expensive than zero-shot: you are asking
+  the model to produce more output tokens (the reasoning) before the
+  final answer.
+</p>
+
+<h3>Temperature and sampling</h3>
+
+<p>
+  At inference, the model outputs logits $\ell_1, \ldots, \ell_V$ over
+  the vocabulary. The probability of token $i$ under temperature $T$ is:
+</p>
+
+$$p_i \;=\; \frac{\exp(\ell_i / T)}{\sum_{j=1}^{V} \exp(\ell_j / T)}$$
+
+<p>
+  When $T \to 0$, the softmax concentrates on the arg-max — the model
+  always picks the highest-logit token (greedy decoding, fully
+  deterministic). When $T \to \infty$, the distribution becomes uniform
+  (pure randomness). In practice: $T = 0$ for classification and
+  extraction; $T \approx 0.7$ for creative generation and
+  self-consistency sampling. Use $T = 0$ whenever you want the same
+  input to produce the same output.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Rules of thumb for $T$</span>
+  <p>
+    Classification: $T = 0$. Structured extraction: $T = 0$.
+    Summarisation: $T = 0.2$. Creative writing: $T = 0.7$–$1.0$.
+    Self-consistency sampling: $T = 0.7$ so the chains diverge.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Parsing free-form text in production</span>
+  <p>
+    "It worked on my three test cases" is not production-ready. The
+    moment a user types a report that triggers a colon, a newline, or
+    an em-dash inside the model's output, your
+    <code>.split(":")[-1]</code> breaks. Use <code>Signature</code>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Asking for N answers at once</span>
+  <p>
+    "Here are 20 reports, classify all of them in one prompt" sounds
+    efficient. It usually is not. The model's error rate compounds — if
+    each row is 95% correct, 20 rows in one prompt is $0.95^{20}
+    \approx 36\%$ fully correct. Parallelise with
+    <code>asyncio.gather</code> instead.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: No cost budget</span>
+  <p>
+    A bug in a loop that accidentally calls the model 10,000 times with
+    a 2000-token prompt is a real event. It has happened to people you
+    know. Always pass <code>max_llm_cost_usd</code> to
+    <code>Delegate</code> — it is one line that saves you from a
+    surprise invoice.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: "Temperature = 0 means deterministic"</span>
+  <p>
+    With most providers, $T = 0$ is <em>nearly</em> deterministic, not
+    fully. GPU kernel non-determinism, batching effects, and minor
+    provider-side jitter can still produce different outputs across
+    calls. If you need byte-identical reproducibility for audit, log
+    every prompt and response.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Measure the zero-shot baseline</h3>
+  <p>
+    Run zero-shot classification on the first 10 reports in
+    <code>sg_company_reports.parquet</code>. Count how many categories
+    the model produced that are <em>not</em> in the allowed list. That
+    count is your zero-shot format-compliance error rate.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Make CoT pay</h3>
+  <p>
+    Find one report where zero-shot and few-shot disagree. Run CoT on
+    that report and read the reasoning. Write one sentence explaining
+    which strategy you trust more on that specific document, and why.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Extend the Signature</h3>
+  <p>
+    Add a new output field <code>risk_flags: list[str]</code> to
+    <code>ReportExtraction</code> that captures any mentions of credit
+    risk, compliance risk, or operational risk. Run the extractor and
+    verify the lists contain plausible strings.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The transformer architecture you recalled at the start of this lesson
+  comes from <strong>Lesson 5.4</strong>. The embedding concept behind
+  tokenisation is <strong>Lesson 4.6</strong>. The idea of a
+  Python-typed contract (a <code>Signature</code>) is a continuation of
+  the <code>dataclass</code> patterns you first saw in
+  <strong>Lesson 1.3</strong>. Lesson 6.2 will take the pre-trained
+  model you used here as an API and teach you to fine-tune it directly
+  with LoRA. Lesson 6.4 builds a RAG system on top of the
+  <code>Delegate</code> you just learned. Lesson 6.5 wraps
+  <code>Delegate</code> and <code>Signature</code> into autonomous
+  agents.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In one lesson you have gone from "I know what a transformer is" to "I
+  can classify a Singapore company report with four different prompting
+  strategies and pull a typed Python object out of an LLM". That is
+  enough to build 80% of the LLM products currently on the market — no
+  fine-tuning, no custom training, just prompting and Signatures.
+</p>
+<p>
+  The 20% where prompting is not enough — where you need the model to
+  actually internalise new knowledge, or to prefer one style of answer
+  over another — is where Lessons 6.2 and 6.3 come in. Fine-tuning
+  changes the model; alignment changes its values. Both are earned
+  through the same scaffold you built today: <code>Delegate</code> for
+  the call, <code>Signature</code> for the contract, a cost budget for
+  safety.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 6 Index
+  </a>
+  <a href="../02/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.2 LoRA, Adapters, and the Fine-Tuning Landscape
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

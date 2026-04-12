@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.1 — Clustering | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.1</span>
+  Clustering — Finding Structure Without Labels
+</h1>
+
+<p class="lead">
+  In Module 3 every exercise handed you a column called <code>y</code>. You had
+  prices, churn flags, risk categories — a ground truth to fit against. In
+  Module 4 there is no <code>y</code>. Today you will organise ten thousand
+  Singapore e-commerce customers into segments <em>before</em> anyone tells you
+  what a segment is. By the end you will know five clustering algorithms, three
+  evaluation metrics, and — most importantly — how to argue that the clusters
+  you found are real rather than statistical fog.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A marketing manager hands you a table of ten thousand online shoppers. She
+  wants "three or four segments we can target differently". No one has labelled
+  them. No one knows how many segments exist. You have spending, frequency,
+  recency, and a dozen behavioural counters. Where do you start?
+</p>
+
+<p>
+  This is the typical unsupervised problem: the data is rich but there is no
+  answer key. Clustering algorithms partition the rows into groups such that
+  rows in the same group are more similar to each other than to rows in other
+  groups. The choice of <em>similar</em> — and of <em>how many groups</em> —
+  turns out to matter more than the choice of algorithm.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- Unlabelled data -->
+  <rect x="20" y="40" width="200" height="200" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/>
+  <text x="120" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Unlabelled data</text>
+  <g fill="#64748B">
+    <circle cx="60" cy="80" r="4"/><circle cx="90" cy="95" r="4"/><circle cx="75" cy="120" r="4"/>
+    <circle cx="110" cy="90" r="4"/><circle cx="140" cy="110" r="4"/><circle cx="165" cy="85" r="4"/>
+    <circle cx="50" cy="170" r="4"/><circle cx="70" cy="190" r="4"/><circle cx="95" cy="205" r="4"/>
+    <circle cx="130" cy="185" r="4"/><circle cx="160" cy="210" r="4"/><circle cx="185" cy="175" r="4"/>
+    <circle cx="115" cy="155" r="4"/><circle cx="150" cy="155" r="4"/><circle cx="190" cy="140" r="4"/>
+  </g>
+  <!-- Arrow -->
+  <line x1="230" y1="140" x2="295" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr1)"/>
+  <text x="262" y="130" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">cluster</text>
+  <!-- Clustered data -->
+  <rect x="305" y="40" width="200" height="200" rx="10" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/>
+  <text x="405" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Discovered clusters</text>
+  <g fill="#EF4444">
+    <circle cx="345" cy="80" r="4"/><circle cx="375" cy="95" r="4"/><circle cx="360" cy="120" r="4"/>
+    <circle cx="395" cy="90" r="4"/><circle cx="425" cy="110" r="4"/><circle cx="450" cy="85" r="4"/>
+  </g>
+  <g fill="#3B82F6">
+    <circle cx="335" cy="170" r="4"/><circle cx="355" cy="190" r="4"/><circle cx="380" cy="205" r="4"/>
+    <circle cx="415" cy="185" r="4"/><circle cx="445" cy="210" r="4"/><circle cx="470" cy="175" r="4"/>
+  </g>
+  <g fill="#22C55E">
+    <circle cx="400" cy="155" r="4"/><circle cx="435" cy="155" r="4"/><circle cx="475" cy="140" r="4"/>
+  </g>
+  <text x="382" y="75" font-family="Inter" font-size="10" fill="#EF4444">High-value</text>
+  <text x="330" y="230" font-family="Inter" font-size="10" fill="#3B82F6">Browsers</text>
+  <text x="430" y="135" font-family="Inter" font-size="10" fill="#22C55E">Bargain</text>
+
+  <!-- Arrow -->
+  <line x1="515" y1="140" x2="580" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr1)"/>
+  <text x="547" y="130" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">interpret</text>
+  <!-- Business meaning -->
+  <rect x="590" y="40" width="155" height="200" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="667" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Business meaning</text>
+  <text x="603" y="80" font-family="Inter" font-size="11" fill="#1E293B">• Target offers</text>
+  <text x="603" y="105" font-family="Inter" font-size="11" fill="#1E293B">• Re-engage</text>
+  <text x="603" y="130" font-family="Inter" font-size="11" fill="#1E293B">• Price tiers</text>
+  <text x="603" y="155" font-family="Inter" font-size="11" fill="#1E293B">• Loyalty paths</text>
+  <text x="603" y="190" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">Algorithm finds</text>
+  <text x="603" y="203" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">the grouping.</text>
+  <text x="603" y="216" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">Human finds</text>
+  <text x="603" y="229" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">the meaning.</text>
+</svg>
+<figcaption>Unsupervised partitioning into groups, followed by human interpretation — the end-to-end clustering workflow.</figcaption>
+</figure>
+
+<p>
+  Clustering is the entry point of the Feature Engineering Spectrum you will
+  walk across in M4. The cluster labels themselves become features — they can
+  be fed back into a supervised model in M5 as a categorical column that
+  encodes "which behavioural group does this customer belong to?". That is how
+  unsupervised learning earns its keep: not as an end in itself, but as a
+  <em>feature factory</em>.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    If you are new to clustering, the single most important thing to remember
+    is that there is no correct answer. Two analysts with the same data will
+    produce different clusterings depending on the algorithm, the distance
+    metric, and the number of clusters. The goal is not to find the <em>true</em>
+    clustering — it is to find one that is <em>useful</em> for the decision
+    you need to make.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>K-means: the workhorse</h3>
+
+<p>
+  K-means is the oldest, fastest, and most-used clustering algorithm. It works
+  by alternating two trivial steps until nothing changes:
+</p>
+
+<ol>
+  <li><strong>Assign:</strong> each point goes to the nearest centroid.</li>
+  <li><strong>Update:</strong> each centroid moves to the mean of its assigned points.</li>
+</ol>
+
+<p>
+  Both steps monotonically decrease the total squared distance between points
+  and their centroids, so the algorithm must converge (though not necessarily
+  to the global optimum). The quantity it is minimising is the <strong>inertia</strong>:
+</p>
+
+<div class="annotated-equation">
+  $$ J \;=\; \sum_{k=1}^{K}\ \sum_{\mathbf{x}\in C_k}\ \lVert \mathbf{x} - \boldsymbol{\mu}_k \rVert^2 $$
+</div>
+
+<p>
+  Here $K$ is the number of clusters you chose, $C_k$ is the set of points
+  assigned to cluster $k$, and $\boldsymbol{\mu}_k$ is the centroid of that
+  cluster. The squared Euclidean distance is the reason K-means assumes
+  <em>spherical</em> clusters — every direction away from the centroid is
+  penalised equally.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Three iterations -->
+  <g>
+    <text x="80" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">Iteration 0 — random init</text>
+    <rect x="20" y="30" width="220" height="210" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <g fill="#94A3B8">
+      <circle cx="60" cy="80" r="3"/><circle cx="75" cy="100" r="3"/><circle cx="90" cy="85" r="3"/>
+      <circle cx="100" cy="120" r="3"/><circle cx="150" cy="90" r="3"/><circle cx="180" cy="100" r="3"/>
+      <circle cx="170" cy="130" r="3"/><circle cx="70" cy="180" r="3"/><circle cx="90" cy="200" r="3"/>
+      <circle cx="130" cy="190" r="3"/><circle cx="160" cy="210" r="3"/><circle cx="200" cy="195" r="3"/>
+    </g>
+    <g stroke="#EF4444" stroke-width="2" fill="#FEE2E2"><rect x="40" y="60" width="10" height="10"/></g>
+    <g stroke="#3B82F6" stroke-width="2" fill="#DBEAFE"><rect x="210" y="140" width="10" height="10"/></g>
+    <g stroke="#22C55E" stroke-width="2" fill="#DCFCE7"><rect x="190" y="60" width="10" height="10"/></g>
+  </g>
+
+  <g>
+    <text x="320" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">Iteration 3 — migrating</text>
+    <rect x="260" y="30" width="220" height="210" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <g fill="#EF4444">
+      <circle cx="300" cy="80" r="3"/><circle cx="315" cy="100" r="3"/><circle cx="330" cy="85" r="3"/>
+    </g>
+    <g fill="#22C55E">
+      <circle cx="340" cy="120" r="3"/><circle cx="390" cy="90" r="3"/><circle cx="420" cy="100" r="3"/>
+      <circle cx="410" cy="130" r="3"/>
+    </g>
+    <g fill="#3B82F6">
+      <circle cx="310" cy="180" r="3"/><circle cx="330" cy="200" r="3"/><circle cx="370" cy="190" r="3"/>
+      <circle cx="400" cy="210" r="3"/><circle cx="440" cy="195" r="3"/>
+    </g>
+    <g stroke="#EF4444" stroke-width="2" fill="#FEE2E2"><rect x="310" y="85" width="10" height="10"/></g>
+    <g stroke="#3B82F6" stroke-width="2" fill="#DBEAFE"><rect x="370" y="190" width="10" height="10"/></g>
+    <g stroke="#22C55E" stroke-width="2" fill="#DCFCE7"><rect x="390" y="105" width="10" height="10"/></g>
+  </g>
+
+  <g>
+    <text x="600" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">Iteration 8 — converged</text>
+    <rect x="500" y="30" width="220" height="210" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <g fill="#EF4444">
+      <circle cx="540" cy="80" r="3"/><circle cx="555" cy="100" r="3"/><circle cx="570" cy="85" r="3"/>
+    </g>
+    <g fill="#22C55E">
+      <circle cx="580" cy="120" r="3"/><circle cx="630" cy="90" r="3"/><circle cx="660" cy="100" r="3"/>
+      <circle cx="650" cy="130" r="3"/>
+    </g>
+    <g fill="#3B82F6">
+      <circle cx="550" cy="180" r="3"/><circle cx="570" cy="200" r="3"/><circle cx="610" cy="190" r="3"/>
+      <circle cx="640" cy="210" r="3"/><circle cx="680" cy="195" r="3"/>
+    </g>
+    <g stroke="#EF4444" stroke-width="2" fill="#FEE2E2"><rect x="550" y="85" width="10" height="10"/></g>
+    <g stroke="#3B82F6" stroke-width="2" fill="#DBEAFE"><rect x="605" y="190" width="10" height="10"/></g>
+    <g stroke="#22C55E" stroke-width="2" fill="#DCFCE7"><rect x="625" y="105" width="10" height="10"/></g>
+  </g>
+</svg>
+<figcaption>K-means convergence. Squares are centroids; colour is current assignment. Each iteration strictly decreases inertia $J$.</figcaption>
+</figure>
+
+<p>
+  Two things can go wrong. First, a random initialisation can land two
+  centroids in the same cluster, leaving another cluster starved — the
+  algorithm gets stuck in a local minimum. <strong>k-means++</strong> fixes
+  this by spreading the initial centroids out: the first is chosen uniformly,
+  and each subsequent centroid is sampled with probability proportional to the
+  squared distance to the nearest existing centroid. This is now the default
+  in every serious library.
+</p>
+
+<p>
+  Second, you have to pick $K$. The two common heuristics are the
+  <strong>elbow method</strong> (plot inertia against $K$ and look for the
+  bend) and the <strong>silhouette score</strong> (pick the $K$ with the
+  highest average silhouette). The elbow method is visual and subjective; the
+  silhouette score gives you a number you can defend in a meeting.
+</p>
+
+<h3>Hierarchical clustering and dendrograms</h3>
+
+<p>
+  Agglomerative hierarchical clustering takes the opposite approach. Start
+  with every point in its own cluster. At each step, merge the two
+  <em>closest</em> clusters. Continue until only one cluster remains. The
+  result is a tree — a <strong>dendrogram</strong> — that you can cut at any
+  height to produce any number of clusters.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="340" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Dendrogram — merge height encodes cluster distance</text>
+  <!-- Leaves -->
+  <g font-family="JetBrains Mono" font-size="11" fill="#475569" text-anchor="middle">
+    <text x="80" y="255">A</text><text x="140" y="255">B</text><text x="200" y="255">C</text>
+    <text x="300" y="255">D</text><text x="360" y="255">E</text>
+    <text x="460" y="255">F</text><text x="520" y="255">G</text><text x="580" y="255">H</text>
+  </g>
+  <!-- Tree lines -->
+  <g stroke="#0D9488" stroke-width="2" fill="none">
+    <!-- A-B at h=60 -->
+    <line x1="80" y1="240" x2="80" y2="200"/><line x1="140" y1="240" x2="140" y2="200"/>
+    <line x1="80" y1="200" x2="140" y2="200"/>
+    <!-- (AB)-C at h=80 -->
+    <line x1="110" y1="200" x2="110" y2="180"/><line x1="200" y1="240" x2="200" y2="180"/>
+    <line x1="110" y1="180" x2="200" y2="180"/>
+    <!-- D-E at h=65 -->
+    <line x1="300" y1="240" x2="300" y2="195"/><line x1="360" y1="240" x2="360" y2="195"/>
+    <line x1="300" y1="195" x2="360" y2="195"/>
+    <!-- (ABC)-(DE) at h=130 -->
+    <line x1="155" y1="180" x2="155" y2="130"/><line x1="330" y1="195" x2="330" y2="130"/>
+    <line x1="155" y1="130" x2="330" y2="130"/>
+    <!-- F-G at h=60 -->
+    <line x1="460" y1="240" x2="460" y2="200"/><line x1="520" y1="240" x2="520" y2="200"/>
+    <line x1="460" y1="200" x2="520" y2="200"/>
+    <!-- (FG)-H at h=85 -->
+    <line x1="490" y1="200" x2="490" y2="175"/><line x1="580" y1="240" x2="580" y2="175"/>
+    <line x1="490" y1="175" x2="580" y2="175"/>
+    <!-- top merge at h=170 -->
+    <line x1="242" y1="130" x2="242" y2="80"/><line x1="535" y1="175" x2="535" y2="80"/>
+    <line x1="242" y1="80" x2="535" y2="80"/>
+  </g>
+  <!-- Cut line -->
+  <line x1="40" y1="110" x2="640" y2="110" stroke="#EF4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="650" y="113" font-family="Inter" font-size="11" fill="#EF4444">cut → 3 clusters</text>
+  <!-- y axis -->
+  <g font-family="Inter" font-size="10" fill="#64748B">
+    <text x="30" y="245" text-anchor="end">0</text>
+    <text x="30" y="130" text-anchor="end">merge distance</text>
+    <line x1="40" y1="240" x2="40" y2="60" stroke="#94A3B8"/>
+  </g>
+</svg>
+<figcaption>A dendrogram of eight points. Cutting at the red line yields three clusters: {A,B,C}, {D,E}, and {F,G,H}. Lower cuts give more, smaller clusters.</figcaption>
+</figure>
+
+<p>
+  The key choice is <strong>linkage</strong> — how you define the distance
+  between two clusters.
+</p>
+
+<table>
+  <thead><tr><th>Linkage</th><th>Distance between clusters</th><th>Tends to produce</th></tr></thead>
+  <tbody>
+    <tr><td><code>single</code></td><td>min distance between any pair</td><td>Long, "chainy" clusters (friend-of-a-friend)</td></tr>
+    <tr><td><code>complete</code></td><td>max distance between any pair</td><td>Tight, compact clusters of similar diameter</td></tr>
+    <tr><td><code>average</code></td><td>mean of all pairwise distances</td><td>Balanced, robust to outliers</td></tr>
+    <tr><td><code>ward</code></td><td>increase in within-cluster variance</td><td>Roughly equal-sized, minimum-variance clusters</td></tr>
+  </tbody>
+</table>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Ward's linkage is mathematically equivalent to greedy K-means: at each
+    step it picks the merge that minimises the sum of squared deviations
+    around the new centroid. This is why Ward + Euclidean distance is the
+    default in most applications — it is the hierarchical analogue of the
+    algorithm you already understand.
+  </p>
+</div>
+
+<h3>DBSCAN and HDBSCAN: density, not distance to centroid</h3>
+
+<p>
+  K-means and Ward assume clusters are blobs around centroids. Real data is
+  often stringy, ring-shaped, or has outliers that must not be absorbed into
+  any cluster. <strong>DBSCAN</strong> (density-based spatial clustering of
+  applications with noise) solves both problems.
+</p>
+
+<p>
+  DBSCAN defines a point as a <em>core point</em> if it has at least
+  <code>min_samples</code> neighbours within radius $\varepsilon$. Core points
+  whose $\varepsilon$-neighbourhoods overlap form a cluster. Points that are
+  reachable from a core point but are not themselves core are <em>border
+  points</em>. Points that are neither are <em>noise</em>, labelled $-1$.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">DBSCAN: core, border, and noise points</text>
+  <!-- Cluster 1 -->
+  <g>
+    <circle cx="180" cy="140" r="55" fill="#DCFCE7" stroke="#22C55E" stroke-width="1" stroke-dasharray="4 3" opacity="0.6"/>
+    <circle cx="180" cy="140" r="8" fill="#22C55E"/>
+    <circle cx="180" cy="140" r="18" fill="none" stroke="#22C55E" stroke-dasharray="2 2"/>
+    <text x="180" y="144" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="white">ε</text>
+    <circle cx="150" cy="115" r="5" fill="#22C55E"/>
+    <circle cx="210" cy="115" r="5" fill="#22C55E"/>
+    <circle cx="155" cy="170" r="5" fill="#22C55E"/>
+    <circle cx="205" cy="170" r="5" fill="#22C55E"/>
+    <!-- Border -->
+    <circle cx="225" cy="140" r="5" fill="#86EFAC" stroke="#22C55E"/>
+    <circle cx="140" cy="185" r="5" fill="#86EFAC" stroke="#22C55E"/>
+  </g>
+  <!-- Cluster 2 -->
+  <g>
+    <circle cx="440" cy="140" r="55" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4 3" opacity="0.6"/>
+    <circle cx="440" cy="140" r="8" fill="#3B82F6"/>
+    <circle cx="420" cy="115" r="5" fill="#3B82F6"/>
+    <circle cx="460" cy="115" r="5" fill="#3B82F6"/>
+    <circle cx="420" cy="165" r="5" fill="#3B82F6"/>
+    <circle cx="465" cy="170" r="5" fill="#3B82F6"/>
+    <circle cx="485" cy="140" r="5" fill="#93C5FD" stroke="#3B82F6"/>
+  </g>
+  <!-- Noise points -->
+  <circle cx="330" cy="60" r="5" fill="#EF4444"/>
+  <circle cx="580" cy="70" r="5" fill="#EF4444"/>
+  <circle cx="620" cy="200" r="5" fill="#EF4444"/>
+  <circle cx="300" cy="220" r="5" fill="#EF4444"/>
+
+  <!-- Legend -->
+  <g font-family="Inter" font-size="11" fill="#475569">
+    <circle cx="60" cy="245" r="5" fill="#22C55E"/><text x="72" y="249">Core</text>
+    <circle cx="140" cy="245" r="5" fill="#86EFAC" stroke="#22C55E"/><text x="152" y="249">Border</text>
+    <circle cx="230" cy="245" r="5" fill="#EF4444"/><text x="242" y="249">Noise (−1)</text>
+    <text x="350" y="249" font-style="italic" fill="#94A3B8">ε controls neighbourhood radius, min_samples controls core threshold</text>
+  </g>
+</svg>
+<figcaption>DBSCAN classifies each point as core (dense neighbourhood), border (reachable from a core), or noise (neither).</figcaption>
+</figure>
+
+<p>
+  DBSCAN has two beautiful properties: you do not need to specify the number
+  of clusters (the algorithm figures it out), and outliers are explicitly
+  flagged rather than swept into the nearest blob. The price is that you
+  must choose $\varepsilon$ and <code>min_samples</code>, and a single
+  $\varepsilon$ does not work well if your clusters have different densities.
+</p>
+
+<p>
+  <strong>HDBSCAN</strong> fixes the last problem. Rather than a single
+  $\varepsilon$, it builds a hierarchy of DBSCAN clusterings across all
+  possible $\varepsilon$ and extracts the clustering that is most stable.
+  In practice you only need to set <code>min_cluster_size</code> — HDBSCAN
+  chooses the rest. It is our default when we do not know the right number
+  of clusters and the data has varying densities.
+</p>
+
+<h3>Spectral clustering</h3>
+
+<p>
+  K-means fails on non-convex clusters — think two interleaved crescents.
+  <strong>Spectral clustering</strong> solves this by first embedding the
+  points into a new space where the clusters <em>are</em> convex. The
+  embedding comes from the eigenvectors of the graph Laplacian of a
+  similarity graph built from the data. Once in the new space, you run
+  plain K-means.
+</p>
+
+<p>
+  You rarely need spectral clustering in business data — most segments are
+  roughly elliptical — but it is the right choice when you know the clusters
+  have topology: trajectories, manifolds, or ring structure.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations</h2>
+
+<h3>Silhouette: is point $i$ in the right cluster?</h3>
+
+<p>
+  For each point $i$ define:
+</p>
+
+<div class="annotated-equation">
+  $$ a(i) \;=\; \text{mean distance from } i \text{ to other points in its own cluster} $$
+  $$ b(i) \;=\; \min_{k' \neq k(i)}\ \text{mean distance from } i \text{ to points in cluster } k' $$
+  $$ s(i) \;=\; \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}} \in [-1,\,1] $$
+</div>
+
+<p>
+  Interpretation: $s(i) \approx 1$ means $i$ is much closer to its own cluster
+  than to the next nearest. $s(i) \approx 0$ means $i$ sits on the boundary.
+  $s(i) < 0$ means $i$ is actually closer to a different cluster — a
+  misclassification. The average silhouette across all points is the
+  <strong>silhouette score</strong>. Good clusterings score above 0.5; below
+  0.25 is typically statistical fog.
+</p>
+
+<h3>Davies-Bouldin and Calinski-Harabasz</h3>
+
+<p>
+  The <strong>Davies-Bouldin index</strong> averages the worst-case ratio of
+  within-cluster scatter to between-cluster separation:
+</p>
+
+<div class="annotated-equation">
+  $$ DB \;=\; \frac{1}{K}\sum_{i=1}^{K}\ \max_{j \neq i}\ \frac{s_i + s_j}{d(c_i, c_j)} $$
+</div>
+
+<p>
+  where $s_i$ is the mean distance from points in cluster $i$ to centroid
+  $c_i$, and $d(c_i, c_j)$ is the distance between centroids. Lower is better
+  — a value of 0 would mean zero-diameter clusters infinitely far apart.
+</p>
+
+<p>
+  The <strong>Calinski-Harabasz index</strong> (also called the variance-ratio
+  criterion) is the ratio of between-cluster variance to within-cluster
+  variance, scaled by the degrees of freedom. Higher is better. Unlike
+  silhouette and DB, it scales with sample size, so compare only within the
+  same dataset.
+</p>
+
+<h3>The gap statistic</h3>
+
+<p>
+  All three metrics above degenerate if the data has no clusters at all:
+  they will happily rank a "best" $K$ for pure noise. The <strong>gap
+  statistic</strong> compares the within-cluster dispersion $W_K$ of your
+  data to the expected dispersion $\mathbb{E}[W_K^\star]$ under a null
+  reference distribution (uniform in the bounding box):
+</p>
+
+<div class="annotated-equation">
+  $$ \text{Gap}(K) \;=\; \mathbb{E}\bigl[\log W_K^\star\bigr] - \log W_K $$
+</div>
+
+<p>
+  Pick the smallest $K$ such that $\text{Gap}(K) \geq \text{Gap}(K+1) - s_{K+1}$,
+  where $s_{K+1}$ is the standard error under the null. If the best gap is
+  achieved at $K = 1$, your data has no cluster structure — an honest
+  answer every other metric refuses to give you.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    In production, we recommend computing all four metrics (silhouette, DB,
+    CH, gap) and only trusting a clustering when at least three agree. Any
+    single metric can be gamed by choosing a $K$ that flatters it.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: AutoMLEngine for clustering</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash's <code>AutoMLEngine</code> can sweep multiple clustering
+    algorithms and hyperparameters, score each one, and return the best
+    configuration — the clustering equivalent of the supervised AutoML you
+    met in M3. Crucially, the LLM-guided search is <em>double opt-in</em>:
+    you must both set <code>agent=True</code> and install the
+    <code>kailash-ml[agents]</code> extra. This is governance by design:
+    LLM calls cost money and introduce non-determinism, so the engine makes
+    them impossible to enable by accident.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
+
+config = AutoMLConfig(
+    task_type="clustering",
+    metric_to_optimize="silhouette",
+    direction="maximize",
+    search_strategy="random",
+    search_n_trials=20,
+    agent=False,                # Default — no LLM calls
+    max_llm_cost_usd=1.0,       # Hard cap if agent=True
+)</code></pre>
+
+<p>
+  Even with <code>agent=False</code>, the engine still performs a random
+  search over K-means, GMM, HDBSCAN, and spectral clustering across a
+  sensible hyperparameter grid, reporting silhouette, DB, and CH for each
+  trial. In 90% of projects this is all you need.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Segmenting Singapore E-commerce Customers</h2>
+
+<p>
+  Load the customer feature table from Module 3 and engineer three new
+  behavioural features (frequency, recency, monetary value — the RFM triple).
+  Then cluster.
+</p>
+
+<pre><code class="language-python">import numpy as np
+import polars as pl
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.preprocessing import StandardScaler
+import hdbscan
+
+from shared import MLFPDataLoader
+from kailash_ml.interop import to_sklearn_input
+
+loader = MLFPDataLoader()
+customers = loader.load("mlfp03", "ecommerce_customers.parquet")
+
+feature_cols = [
+    c for c, d in zip(customers.columns, customers.dtypes)
+    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c != "customer_id"
+]
+X, _, _ = to_sklearn_input(
+    customers.drop_nulls(subset=feature_cols),
+    feature_columns=feature_cols,
+)
+
+# STANDARDISE — mandatory for distance-based clustering
+X_scaled = StandardScaler().fit_transform(X)
+
+# Sweep K from 2 to 10 with silhouette
+sils = []
+for k in range(2, 11):
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    labels = km.fit_predict(X_scaled)
+    sils.append(silhouette_score(X_scaled, labels))
+
+best_k = 2 + int(np.argmax(sils))
+print(f"Best K by silhouette: {best_k} (score={max(sils):.3f})")</code></pre>
+
+<p>
+  The result will look something like <code>Best K by silhouette: 4 (score=0.41)</code>.
+  A silhouette of 0.41 says the clusters are real but not razor-sharp — which
+  is honest for customer data. Now compare K-means, GMM, and HDBSCAN on the
+  same data:
+</p>
+
+<pre><code class="language-python">km_labels = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit_predict(X_scaled)
+
+gmm = GaussianMixture(n_components=best_k, random_state=42, covariance_type="full")
+gmm_labels = gmm.fit_predict(X_scaled)
+
+hdb = hdbscan.HDBSCAN(min_cluster_size=50, min_samples=10)
+hdb_labels = hdb.fit_predict(X_scaled)
+
+for name, lbl in [("K-means", km_labels), ("GMM", gmm_labels), ("HDBSCAN", hdb_labels)]:
+    valid = lbl != -1
+    if valid.sum() &lt; 2 or len(set(lbl[valid])) &lt; 2:
+        continue
+    sil = silhouette_score(X_scaled[valid], lbl[valid])
+    db = davies_bouldin_score(X_scaled[valid], lbl[valid])
+    print(f"{name:&lt;10} k={len(set(lbl[valid])):&lt;3} sil={sil:.3f} DB={db:.3f}")</code></pre>
+
+<p>
+  Once you have chosen the best method, profile each cluster by computing
+  per-cluster means and comparing them to the global mean. A cluster where
+  frequency is +50% and monetary value is −30% is a "frequent bargain hunter".
+  A cluster where recency is +80 days and frequency is −60% is a "dormant
+  user". These human labels are what your marketing manager will use; the
+  algorithm cannot produce them.
+</p>
+
+<div class="worked-example">
+  <h4>End-to-end checkpoint</h4>
+  <p>
+    After running this, you should have:
+  </p>
+  <ul>
+    <li>A numeric <code>best_k</code> chosen by silhouette.</li>
+    <li>Three sets of labels from K-means, GMM, and HDBSCAN.</li>
+    <li>A comparison table showing silhouette and Davies-Bouldin for each.</li>
+    <li>A per-cluster profile table where each row is a cluster and each column is a feature's mean relative to the global mean.</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li>
+    <strong>Not standardising the features.</strong> If one column is
+    "income in dollars" and another is "number of visits", the first
+    dominates every distance calculation. Always pass your data through
+    <code>StandardScaler</code> (or equivalent) before clustering.
+  </li>
+  <li>
+    <strong>Interpreting $K$ as the number of real segments.</strong> The
+    silhouette-optimal $K$ is a property of the data <em>and</em> the
+    algorithm, not a law of nature. Three analysts will get three different
+    $K$ values on the same data. Use the metrics to rule out bad $K$ values,
+    not to find the one true answer.
+  </li>
+  <li>
+    <strong>Forgetting that HDBSCAN returns $-1$ for noise.</strong> If you
+    naively pass HDBSCAN labels to a metric, the noise points will pollute
+    the score. Always filter on <code>labels != -1</code> first.
+  </li>
+  <li>
+    <strong>Treating clustering as the end state.</strong> The cluster
+    label is a feature, not a conclusion. Feed it back into a supervised
+    model or use it to define a decision policy. A clustering that sits in
+    a notebook is clustering that wasted your time.
+  </li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 1 (in the MLFP04 solutions folder).</strong> Run the full
+  clustering workflow on the Singapore e-commerce customer data:</p>
+  <ol>
+    <li>Load <code>ecommerce_customers.parquet</code> and select numeric features.</li>
+    <li>Standardise with <code>StandardScaler</code>.</li>
+    <li>Sweep K-means with $K \in \{2, \ldots, 10\}$; pick best by silhouette.</li>
+    <li>Fit spectral clustering, HDBSCAN, and a Gaussian mixture with the same $K$.</li>
+    <li>Compute silhouette, Davies-Bouldin, and Calinski-Harabasz for each method.</li>
+    <li>Profile each cluster of the best method and assign a business-meaningful name.</li>
+  </ol>
+  <p>Stretch goal: use the gap statistic and check whether the best method's chosen $K$ survives the null-reference test.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to M3:</strong> The customer features you cluster today were engineered by hand in M3 — lag features, aggregates, ratios. Clustering takes those manual features and discovers groups in them.</li>
+  <li><strong>Forward to Lesson 4.2:</strong> K-means assigns each point to exactly one cluster (hard labels). GMM extends this to soft probabilistic assignments via the EM algorithm. If you understand K-means, EM is the next step up.</li>
+  <li><strong>Forward to Lesson 4.7:</strong> The cluster label is a discrete feature. In 4.7 you will see how matrix factorisation learns continuous features (embeddings) by optimisation — a richer form of the same "discover features without labels" idea.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Reflection</h2>
+
+<p>
+  The deepest insight in clustering is that the algorithm does not
+  determine the segmentation — the <em>feature set</em> does. If you
+  cluster on {revenue, frequency, recency} you will get RFM segments. If
+  you cluster on {click-through rate, time-on-page, bounce rate} you will
+  get engagement segments. The same customers will appear in different
+  groupings depending on which lens you look through. Choosing the feature
+  set is the decision; choosing the algorithm is a rounding error in
+  comparison.
+</p>
+
+<p>
+  Take a moment before moving on. Could you, right now, write out the
+  K-means objective function, explain why standardisation is required, and
+  name two clustering methods that handle non-convex cluster shapes? If
+  yes, go to Lesson 4.2 — we are about to meet a principled way to fit
+  <em>soft</em> clusters and derive the general-purpose EM algorithm that
+  powers half of classical machine learning.
+</p>
+
+</main>
+</body>
+</html>

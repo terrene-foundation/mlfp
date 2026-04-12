@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.1 — Autoencoders | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- 1: Title -->
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.1</p>
+  <h1>Autoencoders</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Vanilla · Denoising · Variational · Convolutional
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 60 minutes</strong> &nbsp;·&nbsp;
+    <strong>Prerequisite:</strong> M4.8 (neural networks) &nbsp;·&nbsp;
+    <strong>Outcome:</strong> four trained AEs, one generates
+  </div>
+  <div class="slide-footer">MLFP — Module 5: Deep Learning</div>
+</section>
+
+<!-- 2: Motivation -->
+<section>
+  <h2>One idea that powers four tools</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Dimensionality reduction</strong> — compress 784 pixels into 16 numbers</li>
+    <li><strong>Denoising</strong> — cleaner HDB listing photos without sliders</li>
+    <li><strong>Anomaly detection</strong> — fraud scores itself as reconstruction error</li>
+    <li><strong>Generation</strong> — synthetic patient records (VAE)</li>
+  </ul>
+  <p>All from "compress then reconstruct". Unsupervised — no labels needed.</p>
+</section>
+
+<!-- 3: The architecture -->
+<section>
+  <h2>Encoder → bottleneck → decoder</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="50" width="110" height="100" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="75" y="105" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">Input x</text>
+      <polygon points="140,50 240,90 240,110 140,150" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="190" y="105" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">encoder</text>
+      <rect x="250" y="80" width="100" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="300" y="105" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#B45309">latent z</text>
+      <polygon points="360,90 360,110 460,150 460,50" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="410" y="105" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">decoder</text>
+      <rect x="470" y="50" width="120" height="100" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="530" y="105" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">Reconstruction x̂</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Loss = \(\|x - \hat{x}\|^2\). Bottleneck forces lossy compression → learning.</p>
+</section>
+
+<!-- 4: Vanilla AE code -->
+<section>
+  <h2>Vanilla AE in 15 lines of PyTorch</h2>
+  <pre><code class="language-python" data-trim>
+class VanillaAE(nn.Module):
+    def __init__(self, d_in=256, d_latent=8):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(d_in, 64), nn.ReLU(),
+            nn.Linear(64, d_latent),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(d_latent, 64), nn.ReLU(),
+            nn.Linear(64, d_in), nn.Sigmoid(),
+        )
+    def forward(self, x):
+        z = self.encoder(x)
+        return self.decoder(z), z
+  </code></pre>
+</section>
+
+<!-- 5: Training loop -->
+<section>
+  <h2>Training loop — the usual suspects</h2>
+  <pre><code class="language-python" data-trim>
+ae = VanillaAE().to(device)
+opt = torch.optim.Adam(ae.parameters(), lr=1e-3)
+
+for epoch in range(20):
+    for (batch,) in loader:
+        recon, _ = ae(batch)
+        loss = F.mse_loss(recon, batch)
+        opt.zero_grad(); loss.backward(); opt.step()
+  </code></pre>
+  <p>Same training loop you saw in M4.8 — MSE loss, Adam, single <code>.backward()</code>.</p>
+</section>
+
+<!-- 6: Denoising -->
+<section>
+  <h2>Denoising AE — corrupt input, clean target</h2>
+  <pre><code class="language-python" data-trim>
+class DenoisingAE(VanillaAE):
+    def add_noise(self, x, sigma=0.3):
+        return torch.clamp(x + sigma * torch.randn_like(x), 0, 1)
+
+# loss = F.mse_loss(ae(ae.add_noise(batch))[0], batch)
+  </code></pre>
+  <p>Forcing reconstruction of the clean original makes the encoder throw away noise and keep signal.</p>
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px;">
+    🟢 A powerful regulariser for free — costs one line of code.
+  </div>
+</section>
+
+<!-- 7: Vanilla AE cannot generate -->
+<section>
+  <h2>But vanilla AE cannot generate new data</h2>
+  <p>If you sample a random <em>z</em> and pass it to the decoder, you get nonsense.</p>
+  <p>Why? Because the latent space is not a probability distribution — it is just a set of isolated points, one per training example. Between the points is undefined territory.</p>
+  <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px;">
+    We need the latent space to be <strong>continuous</strong> and <strong>smooth</strong>.
+  </div>
+</section>
+
+<!-- 8: VAE intuition -->
+<section>
+  <h2>Variational AE: make the latent a distribution</h2>
+  <p>Encoder emits a mean \(\mu(x)\) <em>and</em> a log‑variance \(\log\sigma^2(x)\).</p>
+  <p>We sample \(z \sim \mathcal{N}(\mu, \sigma^2)\) and decode.</p>
+  <p>A KL term in the loss pulls the distribution toward a standard normal prior, so between‑training‑example points are still "on the map".</p>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
+    🔵 This is the whole idea behind VAEs. Two changes: (1) output distribution, (2) KL regulariser.
+  </div>
+</section>
+
+<!-- 9: VAE ELBO -->
+<section>
+  <h2>The ELBO — two terms</h2>
+  <div style="text-align: center; margin: 1.5em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \mathcal{L}_{\text{ELBO}} = \underbrace{\mathbb{E}_{q_\phi(z|x)}[\log p_\theta(x|z)]}_{\text{reconstruction}} \;-\; \underbrace{\mathrm{KL}(q_\phi(z|x) \| p(z))}_{\text{regulariser}} \]
+  </div>
+  <p>For Gaussian prior \(p(z) = \mathcal{N}(0, I)\) the KL has a closed form:</p>
+  <div style="text-align: center; font-size: 0.9em;">
+    \[ \mathrm{KL} = -\tfrac{1}{2} \sum_j (1 + \log \sigma_j^2 - \mu_j^2 - \sigma_j^2) \]
+  </div>
+</section>
+
+<!-- 10: Reparameterisation -->
+<section>
+  <h2>The reparameterisation trick</h2>
+  <div style="text-align: center; margin: 1.5em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ z = \mu + \sigma \odot \varepsilon, \quad \varepsilon \sim \mathcal{N}(0, I) \]
+  </div>
+  <p>Noise enters from the side — gradients still flow through \(\mu\) and \(\sigma\).</p>
+  <pre><code class="language-python" data-trim>
+def reparameterise(mu, logvar):
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn_like(std)
+    return mu + eps * std
+  </code></pre>
+</section>
+
+<!-- 11: Reparam diagram -->
+<section>
+  <h2>Why the trick is necessary</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="80" width="100" height="80" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="70" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">Input x</text>
+      <rect x="140" y="40" width="140" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="210" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">encoder → μ</text>
+      <rect x="140" y="140" width="140" height="60" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="210" y="175" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">encoder → σ</text>
+      <rect x="310" y="210" width="100" height="30" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="360" y="230" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#B45309">ε ∼ N(0, I)</text>
+      <rect x="320" y="90" width="130" height="60" rx="6" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
+      <text x="385" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#854D0E">z = μ + σ·ε</text>
+      <rect x="480" y="70" width="140" height="100" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="550" y="125" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">decoder → x̂</text>
+    </svg>
+  </figure>
+  <p>Gradients flow through the solid path (differentiable); ε is an external input.</p>
+</section>
+
+<!-- 12: VAE loss code -->
+<section>
+  <h2>VAE loss in code</h2>
+  <pre><code class="language-python" data-trim>
+def vae_loss(recon, x, mu, logvar):
+    rec = F.mse_loss(recon, x, reduction="sum")
+    kl  = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return rec + kl, rec, kl
+  </code></pre>
+  <p>Exactly the ELBO — one line for reconstruction, one line for KL.</p>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Watch for posterior collapse: if KL dominates, the encoder learns μ=0, σ=1 for every x.
+    Fix with β-VAE or KL warm-up.
+  </p>
+</section>
+
+<!-- 13: Sampling new data -->
+<section>
+  <h2>Generating new images</h2>
+  <pre><code class="language-python" data-trim>
+vae.eval()
+with torch.no_grad():
+    z = torch.randn(16, 8, device=device)
+    generated = vae.decoder(z).cpu()
+  </code></pre>
+  <p>Sample <em>z</em> from the prior — it lands somewhere sensible because the KL term made it so.</p>
+  <p>Pass through the decoder — you get a new image that resembles the training distribution but is not a copy.</p>
+</section>
+
+<!-- 14: Convolutional AE -->
+<section>
+  <h2>Convolutional AE — for images</h2>
+  <pre><code class="language-python" data-trim>
+nn.Sequential(
+    nn.Conv2d(1, 16, 3, stride=2, padding=1), nn.ReLU(),
+    nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
+    nn.Flatten(),
+    nn.Linear(32 * 4 * 4, 8),
+)
+# decoder uses ConvTranspose2d to upsample
+  </code></pre>
+  <p>Conv2d for encoder (downsample). ConvTranspose2d for decoder (upsample).</p>
+  <p>Same loss, same training loop.</p>
+</section>
+
+<!-- 15: Comparison table -->
+<section>
+  <h2>Four variants at a glance</h2>
+  <table style="font-size: 0.65em;">
+    <thead>
+      <tr><th>Variant</th><th>Input</th><th>Loss</th><th>Generates?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Vanilla</td><td>x</td><td>MSE</td><td>No</td></tr>
+      <tr><td>Denoising</td><td>x + noise</td><td>MSE (target = x)</td><td>No</td></tr>
+      <tr><td>VAE</td><td>x → (μ, σ)</td><td>MSE + KL</td><td><strong>Yes</strong></td></tr>
+      <tr><td>Convolutional</td><td>x (image)</td><td>MSE</td><td>No</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 16: Kailash integration -->
+<section>
+  <h2>ModelVisualizer for training curves</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import ModelVisualizer
+viz = ModelVisualizer()
+viz.plot_training_curve(losses=history, title="VAE training loss")
+viz.plot_latent_scatter(z_vectors=mu.cpu(), labels=y,
+                        title="VAE latent space")
+  </code></pre>
+  <p>No matplotlib, no layout fiddling — Kailash engines handle the plumbing.</p>
+</section>
+
+<!-- 17: Common mistakes -->
+<section>
+  <h2>Four traps for autoencoder builders</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>1. log σ² is not σ.</strong> <code>std = torch.exp(0.5 * logvar)</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>2. Loss must match output activation.</strong> Sigmoid → BCE/MSE, not BCEWithLogits.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>3. Posterior collapse.</strong> KL term dominating → β‑VAE or KL warm‑up.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0;">
+    <strong>4. Linear AE ≈ PCA.</strong> Non‑linearity is what buys you representation power.
+  </div>
+</section>
+
+<!-- 18: Reflection -->
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.85em;">
+    <li>✓ Build vanilla / denoising / VAE / convolutional autoencoders in PyTorch</li>
+    <li>✓ Derive the ELBO and explain the reparameterisation trick</li>
+    <li>✓ Sample new data from a trained VAE</li>
+    <li>✓ Diagnose posterior collapse and apply β‑VAE / warm‑up</li>
+    <li>✓ Visualise training curves and latent spaces with ModelVisualizer</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 5.2 — CNNs and computer vision. LeNet to ResNet and the training recipes that make them work.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+</body>
+</html>

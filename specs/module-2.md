@@ -178,7 +178,7 @@
 - Coefficients: direction (sign) and magnitude (size)
 - Introducing non-linearity: squared terms (x^2), interaction terms (x1 * x2), loglinear (ln(y))
 - **T-statistic**: coefficient / standard error. Tests H0: coefficient = 0.
-  - Cutoffs: 90% (t > 1.6), 95% (t > 1.8), 99% (t > 1.97)
+  - Cutoffs: 90% (t > 1.645), 95% (t > 1.960), 99% (t > 2.576)
 - **R-squared**: proportion of variance explained. Adjusted R-squared for multiple predictors.
 - **F-statistic**: model vs intercept-only. p < 0.01 = model is better than random.
 - Multivariate regression: ceteris paribus interpretation, "stripping out" effect

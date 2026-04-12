@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.2</span>
+  Bias-Variance, Regularisation, and Cross-Validation
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes · 14 slides · ~5 min per slide average
+</p>
+
+<p>
+  This is the most mathematically dense lesson in Module 3. The derivation
+  is short (three lines) but the consequences run through every subsequent
+  lesson. Use the dart-board metaphor early and often — it is the bridge
+  between the equation and the intuition.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>The single most important equation in applied ML</h3>
+  <p>
+    Open boldly: "Today we derive the one equation that governs every ML
+    algorithm you will ever use. Bias-variance is not a slide in a textbook;
+    it is the reason every model has hyperparameters, every training loop has
+    regularisation, and every reported number has a confidence interval."
+  </p>
+  <div class="transition">→ "Let's start with the canonical picture."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Canonical curve</span></div>
+  <h3>The U-shaped test error</h3>
+  <p>
+    Walk the diagram. "Training error — blue — only ever goes down as you
+    add capacity. Test error — red — is U-shaped. The gap between them is
+    variance. The floor at the bottom is irreducible noise."
+  </p>
+  <p>
+    Anchor it: "Underfitting is the left side — too simple to capture the
+    signal. Overfitting is the right side — too flexible, memorising noise.
+    The sweet spot is the minimum of the red curve, and everything we do
+    today is about finding it."
+  </p>
+  <div class="transition">→ "Now the math."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>The setup</span></div>
+  <h3>Setting up the expectation</h3>
+  <p>
+    Walk the equations. "The world has a true function $f$ we don't know.
+    Every observation has irreducible noise. We fit $\hat{f}$ on a random
+    training set. Because the training set is random, $\hat{f}$ is random.
+    We care about expected squared error at a new test point $x$."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Two sources of randomness. The noise in
+    $y$ — we can't predict it. The training sample — if we had drawn
+    different data, we would have fitted a different model. The expectation
+    averages over both."
+  </div>
+  <div class="transition">→ "The trick: add and subtract the expected prediction."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>The decomposition</span></div>
+  <h3>The three-term identity</h3>
+  <p>
+    Walk the boxed equation slowly. Name each term: bias squared, variance,
+    irreducible. "Each term is non-negative. Total error is a sum. To reduce
+    total error, we must reduce at least one of the first two — the third is
+    fixed by nature."
+  </p>
+  <p>
+    Sketch the vanishing cross-terms on the board if you have time. It takes
+    90 seconds and cements the "it's exactly three terms, nothing more,
+    nothing less" point.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts who ask about regression to the mean:</strong> "Yes,
+    Stein's paradox says the sample mean is inadmissible as an estimator of
+    a multivariate Gaussian mean. Shrinkage estimators dominate it. That is
+    the deep reason ridge regression works even when you have infinite data
+    — biasing toward zero reduces total risk."
+  </div>
+  <div class="transition">→ "And the dart-board picture to make it stick."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Dart board</span></div>
+  <h3>Four quadrants of bias and variance</h3>
+  <p>
+    Walk the four boards. "Top-left: tight cluster on the bullseye — our
+    dream. Top-right: tight cluster off-centre — the model is consistently
+    wrong, systematic bias. Bottom-left: scattered around the centre —
+    unbiased on average but noisy on any single run. Bottom-right: scattered
+    and off — the disaster case."
+  </p>
+  <p>
+    Map each to a real model. "Linear regression on a non-linear dataset is
+    high bias, low variance. A very deep decision tree on a small dataset
+    is low bias, high variance. Random forests reduce variance by averaging
+    many low-bias trees."
+  </p>
+  <div class="transition">→ "So how do we engineer the tradeoff?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Regularisation intro</span></div>
+  <h3>Regularisation — trade variance for bias</h3>
+  <p>
+    "Here is the move: take a zero-bias model and <em>deliberately</em> add
+    bias to kill the variance. If we pick the right penalty strength, total
+    error drops. That's regularisation in one sentence."
+  </p>
+  <p>
+    Introduce the two penalties. "L2 penalises squared coefficients. L1
+    penalises absolute values. Both shrink. Only L1 drives coefficients to
+    exactly zero. Why is a geometric question."
+  </p>
+  <div class="transition">→ "Enter the diamond and the circle."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>L1 vs L2 geometry</span></div>
+  <h3>Diamond vs circle</h3>
+  <p>
+    Walk the diagram. "The OLS solution is the centre of those ellipses —
+    the unconstrained optimum. The regularised optimum is the point where
+    the smallest ellipse touches the constraint region."
+  </p>
+  <p>
+    The circle has no corners — the hit point is almost always in the
+    interior of any axis and both coefficients are nonzero. The diamond has
+    corners <em>on the axes</em> — when the ellipse touches a corner, one
+    coefficient is exactly zero. That is the entire sparsity story.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If geometry is unfamiliar:</strong> "Picture dropping a ball onto
+    a diamond-shaped table — it rolls to a corner. Drop it on a circular
+    table — it stops wherever it first touches. The corners are the axis
+    crossings, and that's where coefficients become zero."
+  </div>
+  <div class="transition">→ "A second, equivalent way to see it — Bayesian."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Bayesian reading</span></div>
+  <h3>Ridge = Gaussian prior, Lasso = Laplace prior</h3>
+  <p>
+    This is where Module 2's Bayesian thinking pays off. Walk the log-posterior
+    equation. "The first term is the Gaussian log-likelihood — it becomes
+    the residual sum of squares. The second term is the log-prior. A Gaussian
+    prior becomes a squared coefficient penalty. So ridge regression is
+    literally maximum-a-posteriori Bayesian regression with a Gaussian
+    prior."
+  </p>
+  <p>
+    Then swap to Laplace. "The Laplace distribution has a sharp peak at
+    zero and exponential tails. Its log is $-|\beta|/b$. MAP under that
+    prior is Lasso. The peak at zero is the Bayesian twin of the L1
+    diamond corner — probability mass concentrates on 'coefficient
+    exactly zero'."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "Why MAP and not the full posterior? Full
+    posterior is Bayesian linear regression — gives you a distribution over
+    $\boldsymbol\beta$. MAP collapses that to the mode for computational
+    convenience. If you keep the full posterior you get predictive
+    intervals, which we pick up in Lesson 3.8 with conformal prediction."
+  </div>
+  <div class="transition">→ "Elastic net for when you can't choose."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Elastic Net</span></div>
+  <h3>Elastic Net — mix and match</h3>
+  <p>
+    "In practice, you reach for Elastic Net when you have groups of
+    correlated features. Lasso will arbitrarily pick one feature from each
+    correlated group; Ridge will spread the coefficient across the group.
+    Elastic Net does both — it shrinks groups together (L2 behaviour) while
+    still zeroing truly irrelevant features (L1 behaviour)."
+  </p>
+  <p>
+    "The mixing parameter $\alpha$ is itself a hyperparameter. $\alpha = 1$
+    recovers Lasso; $\alpha = 0$ recovers Ridge. In practice you tune it on
+    a grid or just use <code>ElasticNetCV</code>."
+  </p>
+  <div class="transition">→ "Now the other half of the lesson — how we estimate error."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>CV strategies</span></div>
+  <h3>Five cross-validation strategies</h3>
+  <p>
+    Walk the table. "KFold for i.i.d. data. Stratified when classes are
+    imbalanced — otherwise a fold with zero positive samples breaks the
+    metric. GroupKFold when the same entity appears in multiple rows —
+    patients, companies, users. TimeSeriesSplit for anything with a clock.
+    Nested CV when you are both tuning and evaluating."
+  </p>
+  <p>
+    Give a Singapore example for each. "Credit applications: i.i.d., KFold
+    with stratification on default. ICU admissions: 1–5 per patient, use
+    GroupKFold by patient_id. Monthly HDB prices: temporal, use
+    TimeSeriesSplit respecting the calendar."
+  </p>
+  <div class="transition">→ "Here is what KFold looks like."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>5-fold diagram</span></div>
+  <h3>5-fold CV — the diagram</h3>
+  <p>
+    Walk the five rows. "Each row is one fold. The red square is the
+    validation set. Five models get trained in total. You average the five
+    validation scores and that's your CV estimate."
+  </p>
+  <p>
+    Mention $k=5$ as the default. "$k=2$ wastes half the data on every fit.
+    $k=n$ — leave-one-out — has very high variance because the training sets
+    are nearly identical across folds. $k = 5$ or $10$ is the bias-variance
+    sweet spot for the CV estimate itself."
+  </p>
+  <div class="transition">→ "Now the harder question: how do we tune <em>and</em> evaluate honestly?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~5 min</span><span>Nested CV</span></div>
+  <h3>Nested CV — honest model selection</h3>
+  <p>
+    The core pitch: "If you use GridSearchCV and report
+    <code>best_score_</code> as your performance estimate, you are lying to
+    yourself. That score is the score of the hyperparameter you chose
+    because it happened to win the lottery on those folds. It is
+    optimistically biased."
+  </p>
+  <p>
+    Walk the code. "Outer loop: five folds. Inside each outer fold, we run
+    a complete GridSearchCV on the outer training set to pick the best
+    hyperparameter. Then we evaluate that hyperparameter on the outer test
+    set — which the inner loop never saw. Average the five outer scores.
+    That number is unbiased."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts who ask if this is wasteful:</strong> "Yes, it's 5×
+    more compute. But it's the only way to get an honest estimate when
+    tuning. In practice, in Lesson 3.7 you will use Kailash's
+    <code>HyperparameterSearch</code> which runs this pattern automatically
+    with Bayesian inner loops for speed."
+  </div>
+  <div class="transition">→ "Let's see it live on HDB."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~5 min</span><span>HDB worked example</span></div>
+  <h3>Watching the U-shape form on real data</h3>
+  <p>
+    Walk the code. "We fit polynomials of degree 1, 2, 3, 5, 9 on HDB
+    prices. Cross-validation gives us the test error curve." Run it live if
+    you can.
+  </p>
+  <p>
+    The expected output: "degree 1 high error (underfitting — a plane can't
+    capture the real pricing surface), degree 3 minimum (just enough
+    curvature), degree 9 catastrophic (fitting noise). That's the U-shape
+    from slide 2, live."
+  </p>
+  <div class="transition">→ "Three mistakes to not make."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~4 min</span><span>Mistakes + reflection</span></div>
+  <h3>Three mistakes + what you can do</h3>
+  <p>
+    Walk the three traps. Emphasise that #1 (reporting best_score_) is the
+    one almost every practitioner has made at least once, and it causes
+    production embarrassment every time.
+  </p>
+  <p>
+    Close with the bullet list. "You can derive the decomposition. You can
+    explain sparsity two ways. You can pick the right CV strategy for any
+    data structure. That's the theoretical backbone of Module 3."
+  </p>
+  <p>
+    Bridge: "In Lesson 3.3 we meet the model zoo — SVM, KNN, Naive Bayes,
+    decision trees, random forests. Every one of them has hyperparameters
+    that trade bias for variance. You will spot the pattern every time."
+  </p>
+  <div class="transition">→ End of Lesson 3.2. Break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../01/notes.html" class="prev"><span class="label">← Previous</span>3.1 Speaker Notes</a>
+  <a href="../03/notes.html" class="next"><span class="label">Next →</span>3.3 Speaker Notes</a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 7 — AI-Resilient Assessment Questions
+"""MLFP 5 — AI-Resilient Assessment Questions
 
 Deep Learning: Architecture-Driven Feature Engineering
 Covers: neural networks, hidden layers, activations, loss functions,

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 4 — Unsupervised ML and Advanced Techniques | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card.pivot { border-left-color: #8B5CF6; background: linear-gradient(90deg, #F5F3FF 0%, #F8FAFC 30%); }
+    .lesson-card.pivot:hover { border-left-color: #7C3AED; }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card.pivot .num { color: #8B5CF6; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .lesson-card.pivot .formats .pill { background: #8B5CF6; }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+    .spine-box {
+      margin: 2em 0; padding: 24px 28px;
+      background: linear-gradient(135deg, #F5F3FF 0%, #F0FDFA 100%);
+      border: 1px solid #C4B5FD; border-radius: 10px;
+    }
+    .spine-box h3 { margin-top: 0; color: #6D28D9; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 4</span>
+    Unsupervised Machine Learning and Advanced Techniques for Insights
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~30 hours total study</span>
+    <span>Scaffolding: 40% (light+)</span>
+    <span>Audience: completed M1 – M3</span>
+  </div>
+  <p class="lead">
+    The conceptual pivot of the entire MLFP curriculum. Pattern discovery without
+    labels, then the bridge to neural feature learning. You will watch feature
+    engineering slide from <em>human craft</em> (M3) to <em>statistical discovery</em>
+    (4.1 – 4.6) to <em>optimisation-driven embeddings</em> (4.7) to <em>neural
+    representation learning</em> (4.8) — and walk out able to explain why hidden
+    layers are automated feature engineering with error feedback.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module, you will be able to:</p>
+<ul>
+  <li>Apply clustering algorithms and evaluate cluster quality with three complementary metrics</li>
+  <li>Implement the EM algorithm from scratch and fit Gaussian mixture models</li>
+  <li>Reduce dimensionality with PCA, kernel PCA, t-SNE, and UMAP — and choose between them</li>
+  <li>Detect anomalies with statistical and ML methods, then blend scores using the EnsembleEngine</li>
+  <li>Discover co-occurrence patterns with Apriori and FP-Growth</li>
+  <li>Extract topics from text using TF-IDF, LDA, and BERTopic with coherence evaluation</li>
+  <li>Build recommender systems including matrix factorisation with ALS</li>
+  <li>Explain how hidden layers are automated feature engineering with error feedback</li>
+  <li>Train a neural network from scratch with the complete training toolkit</li>
+</ul>
+
+<div class="spine-box">
+  <h3>The Feature Engineering Spectrum — This Module's Spine</h3>
+  <p>
+    Every lesson in M4 sits on a single axis running from <em>manual</em> to <em>automatic</em>
+    feature construction:
+  </p>
+  <ol>
+    <li><strong>M3</strong> — You designed features by hand (lag features, bucketing, ratios) using domain knowledge.</li>
+    <li><strong>M4.1 – 4.6</strong> — Unsupervised ML discovers features <em>without</em> labels. Clusters become categorical features. Principal components become continuous features. Topics become text features. No error signal is used — the algorithm finds whatever structure exists in the data.</li>
+    <li><strong>M4.7 — THE PIVOT</strong> — Matrix factorisation learns user and item <em>embeddings</em> by minimising reconstruction error. For the first time, optimisation drives feature discovery. This is where unsupervised and supervised meet.</li>
+    <li><strong>M4.8</strong> — Neural networks generalise the pivot. Hidden layer activations <em>are</em> embeddings, learned by minimising a loss function through backpropagation. Add non-linear activation functions and 2+ hidden layers can represent any function.</li>
+    <li><strong>M5+</strong> — Specialised architectures (transformers, GNNs) learn domain-specific features using the same principle.</li>
+  </ol>
+  <p>Watch for the recurring spectrum diagram in Lessons 4.7 and 4.8 — it is the single most important diagram in MLFP.</p>
+</div>
+
+<h2>Datasets You Will Use</h2>
+<table>
+  <thead><tr><th>Dataset</th><th>Size</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td>E-commerce customer features (from MLFP03)</td><td>~10K rows</td><td>4.1, 4.2, 4.3</td></tr>
+    <tr><td>Synthetic 2D Gaussian mixture</td><td>1K points</td><td>4.2</td></tr>
+    <tr><td>Financial transactions</td><td>~50K rows</td><td>4.4</td></tr>
+    <tr><td>Singapore retail transactions (market basket)</td><td>~20K baskets</td><td>4.5</td></tr>
+    <tr><td>Singapore news articles</td><td>~5K documents</td><td>4.6</td></tr>
+    <tr><td>Synthetic user-item ratings</td><td>100 × 50</td><td>4.7</td></tr>
+    <tr><td>Synthetic medical image dataset</td><td>5K × 64×64</td><td>4.8</td></tr>
+  </tbody>
+</table>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">4.1</div>
+    <div>
+      <p class="title">Clustering</p>
+      <p class="summary">K-means, hierarchical with four linkage methods, DBSCAN, HDBSCAN, spectral. Silhouette, Davies-Bouldin, gap statistic. Customer segmentation.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">4.2</div>
+    <div>
+      <p class="title">EM Algorithm and Gaussian Mixture Models</p>
+      <p class="summary">Soft versus hard clustering. EM from scratch in 20 lines: E-step responsibilities, M-step parameter updates. Mixture of Experts preview.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">4.3</div>
+    <div>
+      <p class="title">Dimensionality Reduction</p>
+      <p class="summary">PCA via SVD derivation. Scree plots and loadings. Kernel PCA, t-SNE, UMAP. When to use each.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">4.4</div>
+    <div>
+      <p class="title">Anomaly Detection and Ensembles</p>
+      <p class="summary">Z-score, IQR, Isolation Forest, LOF. Score blending via the EnsembleEngine. Financial fraud detection.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">4.5</div>
+    <div>
+      <p class="title">Association Rules and Market Basket Analysis</p>
+      <p class="summary">Apriori, FP-Growth. Support, confidence, lift. Retail basket analysis on Singapore transactions.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">4.6</div>
+    <div>
+      <p class="title">NLP — Text to Topics</p>
+      <p class="summary">TF-IDF derivation, BM25, Word2Vec, LDA, BERTopic. NPMI coherence. Singapore news topic modelling.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card pivot" href="lessons/07/textbook.html">
+    <div class="num">4.7</div>
+    <div>
+      <p class="title">Recommender Systems and Collaborative Filtering &nbsp;·&nbsp; THE PIVOT</p>
+      <p class="summary">Content-based, user/item CF, and matrix factorisation with ALS. The moment optimisation drives feature discovery.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card pivot" href="lessons/08/textbook.html">
+    <div class="num">4.8</div>
+    <div>
+      <p class="title">DL Foundations — Neural Networks and the Training Toolkit</p>
+      <p class="summary">Forward pass, backprop, activations, dropout, batch norm, optimisers. Hidden layers as automated feature engineering.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+</div>
+
+<h2>Master Documents</h2>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> (all 8 lessons in one Reveal.js deck)</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a></li>
+</ul>
+
+<h2>Cross-References</h2>
+<ul>
+  <li><strong>Back to M3:</strong> M3 assumed you had labels. M4 explores what to do when you do not — and what happens when both meet in M4.8.</li>
+  <li><strong>Forward to M5:</strong> M5 specialises the representation learning idea from M4.8 into architectures for sequences (RNNs, transformers) and structured data (GNNs).</li>
+</ul>
+
+</main>
+</body>
+</html>

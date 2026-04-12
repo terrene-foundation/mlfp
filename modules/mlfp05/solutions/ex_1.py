@@ -2,181 +2,303 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 1: Linear Regression as a Neural Network
+# MLFP05 — Exercise 1: Autoencoders (Vanilla, Denoising, VAE, Convolutional)
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build linear regression as a single-neuron network — forward
-#   pass, MSE loss, gradient descent — to show that DL starts from
-#   familiar ground.
 #
-# TASKS:
-#   1. Load Singapore HDB resale data
-#   2. Implement forward pass (y = wx + b)
-#   3. Compute MSE loss
-#   4. Implement gradient descent manually
-#   5. Compare with polars-native OLS solution
+# WHAT YOU'LL LEARN:
+#   - Build four autoencoder variants with torch.nn.Module: Vanilla, Denoising,
+#     Variational (VAE), and Convolutional
+#   - Train each with torch.optim.Adam on small synthetic image data
+#   - Explain the VAE reparameterisation trick and why it enables backprop
+#   - Sample new images from the VAE's latent Gaussian prior
+#   - Visualise training curves with kailash-ml's ModelVisualizer
+#
+# PREREQUISITES: M4 (neural network basics, loss functions, optimisers).
+# ESTIMATED TIME: ~60 min
+# DATASET: Synthetic 16x16 "digit-like" images generated with numpy.
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import math
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 
-import polars as pl
+from kailash_ml import ModelVisualizer
 
-from kailash_ml import DataExplorer, ModelVisualizer
-
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
+torch.manual_seed(42)
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load Singapore HDB resale data
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# Synthetic image data — 16x16 grayscale blobs
+# ════════════════════════════════════════════════════════════════════════
+# Real autoencoders typically train on Fashion-MNIST or MNIST. To keep this
+# exercise fast, we generate 2000 tiny images where each image is a 2-D
+# Gaussian blob at a random location with random width. This gives the
+# encoder something meaningful to compress.
+def make_image_dataset(n_samples: int = 2000, size: int = 16) -> np.ndarray:
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    centers = np.random.uniform(4, size - 4, size=(n_samples, 2)).astype(np.float32)
+    widths = np.random.uniform(1.5, 3.0, size=n_samples).astype(np.float32)
+    cx = centers[:, 0][:, None, None]
+    cy = centers[:, 1][:, None, None]
+    w = widths[:, None, None]
+    imgs = np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * w ** 2))
+    imgs += 0.02 * np.random.randn(*imgs.shape).astype(np.float32)
+    return imgs.astype(np.float32)  # (n, 16, 16)
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp05", "hdb_resale_sample.parquet")
 
-explorer = DataExplorer()
-summary = explorer.analyze(df)
+X_np = make_image_dataset(n_samples=2000, size=16)
+X_flat = torch.from_numpy(X_np.reshape(len(X_np), -1)).to(device)        # (n, 256)
+X_img = torch.from_numpy(X_np[:, None, :, :]).to(device)                  # (n, 1, 16, 16)
 
-print("=== HDB Resale Data ===")
-print(f"Shape: {df.shape}")
-print(f"Columns: {df.columns}")
-print(f"\nSample:")
-print(df.head(5))
+flat_loader = DataLoader(TensorDataset(X_flat), batch_size=64, shuffle=True)
+img_loader = DataLoader(TensorDataset(X_img), batch_size=64, shuffle=True)
 
-# Use floor_area_sqm as feature (x), resale_price as target (y)
-x_raw = df["floor_area_sqm"].to_list()
-y_raw = df["resale_price"].to_list()
+INPUT_DIM = 16 * 16
+LATENT_DIM = 8
 
-# Normalize for stable gradient descent
-x_mean, x_std = (
-    sum(x_raw) / len(x_raw),
-    (sum((xi - sum(x_raw) / len(x_raw)) ** 2 for xi in x_raw) / len(x_raw)) ** 0.5,
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 1 — Vanilla Autoencoder
+# ════════════════════════════════════════════════════════════════════════
+# encoder: 256 -> 64 -> 8  |  decoder: 8 -> 64 -> 256
+# Loss: MSE between reconstruction and original.
+class VanillaAE(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, latent_dim),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, input_dim),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        z = self.encoder(x)
+        return self.decoder(z), z
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 2 — Denoising Autoencoder (DAE)
+# ════════════════════════════════════════════════════════════════════════
+# Identical architecture, but during training we corrupt the INPUT with
+# noise and ask the decoder to reconstruct the CLEAN original. This forces
+# the encoder to learn robust features rather than memorise pixel patterns.
+class DenoisingAE(VanillaAE):
+    def add_noise(self, x: torch.Tensor, sigma: float = 0.3) -> torch.Tensor:
+        return torch.clamp(x + sigma * torch.randn_like(x), 0.0, 1.0)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 3 — Variational Autoencoder (VAE)
+# ════════════════════════════════════════════════════════════════════════
+# The encoder outputs two vectors: mu and log_var. Instead of a single
+# latent point, each input maps to a Gaussian N(mu, sigma^2). We sample
+# z = mu + sigma * epsilon (the "reparameterisation trick") so that the
+# randomness lives in epsilon and gradients can still flow through mu/sigma.
+#
+# Loss = reconstruction_loss + KL(q(z|x) || N(0, I))
+#      = ||x - x_hat||^2 - 0.5 * sum(1 + log_var - mu^2 - exp(log_var))
+#
+# After training, sampling z ~ N(0, I) and decoding produces NEW images.
+class VAE(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super().__init__()
+        self.encoder = nn.Sequential(nn.Linear(input_dim, 64), nn.ReLU())
+        self.fc_mu = nn.Linear(64, latent_dim)
+        self.fc_logvar = nn.Linear(64, latent_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, input_dim),
+            nn.Sigmoid(),
+        )
+
+    def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    def reparameterise(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def forward(self, x: torch.Tensor):
+        mu, logvar = self.encode(x)
+        z = self.reparameterise(mu, logvar)
+        return self.decoder(z), mu, logvar
+
+    def sample(self, n: int) -> torch.Tensor:
+        z = torch.randn(n, self.fc_mu.out_features, device=next(self.parameters()).device)
+        return self.decoder(z)
+
+
+def vae_loss(x: torch.Tensor, x_hat: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+    recon = F.mse_loss(x_hat, x, reduction="sum") / x.size(0)
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.size(0)
+    return recon + 0.1 * kl  # small KL weight for clearer reconstruction
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 4 — Convolutional Autoencoder
+# ════════════════════════════════════════════════════════════════════════
+# For image data, conv layers preserve spatial locality better than flat
+# MLPs. Encoder: Conv2d -> Conv2d -> Flatten -> Linear.
+# Decoder: Linear -> Unflatten -> ConvTranspose2d -> ConvTranspose2d.
+class ConvAE(nn.Module):
+    def __init__(self, latent_dim: int = 8):
+        super().__init__()
+        # 1x16x16 -> 16x8x8 -> 32x4x4 -> latent
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 4 * 4, latent_dim),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 32 * 4 * 4),
+            nn.ReLU(),
+            nn.Unflatten(1, (32, 4, 4)),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        z = self.encoder(x)
+        return self.decoder(z), z
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Training loops
+# ════════════════════════════════════════════════════════════════════════
+def train_ae(model: nn.Module, name: str, loader, epochs: int = 6, lr: float = 1e-3) -> list[float]:
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
+    for epoch in range(epochs):
+        batch_losses = []
+        for (xb,) in loader:
+            opt.zero_grad()
+            x_hat, _ = model(xb)
+            loss = F.mse_loss(x_hat, xb)
+            loss.backward()
+            opt.step()
+            batch_losses.append(loss.item())
+        losses.append(float(np.mean(batch_losses)))
+        print(f"  [{name}] epoch {epoch+1}  loss={losses[-1]:.4f}")
+    return losses
+
+
+def train_dae(model: DenoisingAE, loader, epochs: int = 6, lr: float = 1e-3) -> list[float]:
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
+    for epoch in range(epochs):
+        batch_losses = []
+        for (xb,) in loader:
+            noisy = model.add_noise(xb, sigma=0.3)
+            opt.zero_grad()
+            x_hat, _ = model(noisy)
+            loss = F.mse_loss(x_hat, xb)   # reconstruct CLEAN target
+            loss.backward()
+            opt.step()
+            batch_losses.append(loss.item())
+        losses.append(float(np.mean(batch_losses)))
+        print(f"  [DAE] epoch {epoch+1}  loss={losses[-1]:.4f}")
+    return losses
+
+
+def train_vae(model: VAE, loader, epochs: int = 6, lr: float = 1e-3) -> list[float]:
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
+    for epoch in range(epochs):
+        batch_losses = []
+        for (xb,) in loader:
+            opt.zero_grad()
+            x_hat, mu, logvar = model(xb)
+            loss = vae_loss(xb, x_hat, mu, logvar)
+            loss.backward()
+            opt.step()
+            batch_losses.append(loss.item())
+        losses.append(float(np.mean(batch_losses)))
+        print(f"  [VAE] epoch {epoch+1}  loss={losses[-1]:.4f}")
+    return losses
+
+
+# ── Train all four ──────────────────────────────────────────────────────
+print("\n── Vanilla AE ──")
+vae_model_plain = VanillaAE(INPUT_DIM, LATENT_DIM)
+vanilla_losses = train_ae(vae_model_plain, "Vanilla", flat_loader, epochs=6)
+
+print("\n── Denoising AE ──")
+dae_model = DenoisingAE(INPUT_DIM, LATENT_DIM)
+dae_losses = train_dae(dae_model, flat_loader, epochs=6)
+
+print("\n── Variational AE ──")
+vae_model = VAE(INPUT_DIM, LATENT_DIM)
+vae_losses = train_vae(vae_model, flat_loader, epochs=6)
+
+print("\n── Convolutional AE ──")
+conv_model = ConvAE(LATENT_DIM)
+conv_losses = train_ae(conv_model, "ConvAE", img_loader, epochs=6)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 5 — Sample new images from the VAE latent prior
+# ════════════════════════════════════════════════════════════════════════
+vae_model.eval()
+with torch.no_grad():
+    samples = vae_model.sample(n=16).cpu().numpy().reshape(-1, 16, 16)
+print(
+    f"\nSampled {len(samples)} new images from VAE prior N(0, I). "
+    f"mean pixel intensity: {samples.mean():.3f}, range: [{samples.min():.3f}, {samples.max():.3f}]"
 )
-y_mean, y_std = (
-    sum(y_raw) / len(y_raw),
-    (sum((yi - sum(y_raw) / len(y_raw)) ** 2 for yi in y_raw) / len(y_raw)) ** 0.5,
-)
-
-x_norm = [(xi - x_mean) / x_std for xi in x_raw]
-y_norm = [(yi - y_mean) / y_std for yi in y_raw]
-n = len(x_norm)
-
-print(f"\nFeature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f})")
-print(f"Target:  resale_price   (mean={y_mean:.0f}, std={y_std:.0f})")
-print(f"Samples: {n}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Implement forward pass (y = wx + b)
-# ══════════════════════════════════════════════════════════════════════
-
-# Single neuron: y_hat = w * x + b
-w = 0.0  # weight (initially zero)
-b = 0.0  # bias (initially zero)
-
-
-def forward(x_i: float, w: float, b: float) -> float:
-    """Single neuron forward pass: y = wx + b."""
-    return w * x_i + b
-
-
-# Test forward pass
-y_hat_test = forward(x_norm[0], w, b)
-print(f"\n=== Forward Pass Test ===")
-print(f"Input x={x_norm[0]:.4f}, w={w}, b={b}")
-print(f"Prediction: {y_hat_test:.4f} (expected ~0 with zero weights)")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Compute MSE loss
-# ══════════════════════════════════════════════════════════════════════
-
-
-def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
-    """Mean Squared Error: L = (1/n) * sum((y - y_hat)^2)."""
-    return sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred)) / len(y_true)
-
-
-# Compute initial loss (should be high with zero weights)
-predictions = [forward(xi, w, b) for xi in x_norm]
-initial_loss = mse_loss(y_norm, predictions)
-print(f"\n=== MSE Loss ===")
-print(f"Initial loss (w=0, b=0): {initial_loss:.4f}")
-print(f"This equals variance of y since predictions are all 0")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Implement gradient descent manually
-# ══════════════════════════════════════════════════════════════════════
-
-# Gradients of MSE w.r.t. w and b:
-#   dL/dw = (2/n) * sum((y_hat - y) * x)
-#   dL/db = (2/n) * sum(y_hat - y)
-
-learning_rate = 0.1
-epochs = 50
-history = {"epoch": [], "loss": [], "w": [], "b": []}
-
-for epoch in range(epochs):
-    # Forward pass for all samples
-    y_pred = [forward(xi, w, b) for xi in x_norm]
-
-    # Compute loss
-    loss = mse_loss(y_norm, y_pred)
-
-    # Compute gradients
-    dw = (2.0 / n) * sum((yp - yt) * xi for yp, yt, xi in zip(y_pred, y_norm, x_norm))
-    db = (2.0 / n) * sum(yp - yt for yp, yt in zip(y_pred, y_norm))
-
-    # Update parameters
-    w = w - learning_rate * dw
-    b = b - learning_rate * db
-
-    # Record history
-    history["epoch"].append(epoch)
-    history["loss"].append(loss)
-    history["w"].append(w)
-    history["b"].append(b)
-
-    if epoch % 10 == 0:
-        print(f"Epoch {epoch:3d}: loss={loss:.6f}, w={w:.4f}, b={b:.4f}")
-
-print(f"\nFinal: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
-
-# Visualize training curve
+# ════════════════════════════════════════════════════════════════════════
+# PART 6 — Visualise training histories
+# ════════════════════════════════════════════════════════════════════════
 viz = ModelVisualizer()
-history_df = pl.DataFrame(history)
-fig = viz.plot_training_curves(history_df)
-print("Training curve plotted.")
+fig = viz.training_history(
+    metrics={
+        "Vanilla AE": vanilla_losses,
+        "Denoising AE": dae_losses,
+        "Variational AE": vae_losses,
+        "Convolutional AE": conv_losses,
+    },
+    x_label="Epoch",
+    y_label="Loss",
+)
+fig.write_html("ex_1_training.html")
+print("Training history saved to ex_1_training.html")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Compare with polars-native OLS solution
-# ══════════════════════════════════════════════════════════════════════
-
-# OLS closed-form: w = cov(x,y) / var(x), b = mean(y) - w * mean(x)
-norm_df = pl.DataFrame({"x": x_norm, "y": y_norm})
-
-cov_xy = norm_df.select(
-    ((pl.col("x") - pl.col("x").mean()) * (pl.col("y") - pl.col("y").mean())).mean()
-).item()
-var_x = norm_df.select(pl.col("x").var()).item()
-
-w_ols = cov_xy / var_x
-b_ols = sum(y_norm) / n - w_ols * (sum(x_norm) / n)
-
-y_pred_ols = [w_ols * xi + b_ols for xi in x_norm]
-ols_loss = mse_loss(y_norm, y_pred_ols)
-
-print(f"\n=== Comparison: Gradient Descent vs OLS ===")
-print(f"GD:  w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
-print(f"OLS: w={w_ols:.4f}, b={b_ols:.4f}, loss={ols_loss:.6f}")
-print(f"Difference in w: {abs(w - w_ols):.6f}")
-print(f"Difference in b: {abs(b - b_ols):.6f}")
-print(f"\nKey insight: gradient descent converges to the OLS solution!")
-print(f"But GD scales to millions of parameters — OLS does not.")
-
-print("\n✓ Exercise 1 complete — linear regression as a single-neuron network")
+# ── Reflection ─────────────────────────────────────────────────────────
+print("\n" + "═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(
+    """
+  [x] Built four autoencoder variants with nn.Module (Vanilla, DAE, VAE, ConvAE)
+  [x] Trained each end-to-end with Adam and PyTorch autograd
+  [x] Applied the VAE reparameterisation trick (z = mu + sigma * epsilon)
+  [x] Sampled brand-new images from the VAE's latent Gaussian prior
+  [x] Compared training curves across all four variants
+"""
+)

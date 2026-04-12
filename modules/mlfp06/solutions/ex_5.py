@@ -4,8 +4,21 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP06 — Exercise 5: Building Agents with Kaizen
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build a ReActAgent with custom tools for autonomous data
-#   analysis — tool definition, reasoning loops, structured output.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Define custom tools with clear docstrings for agent consumption
+#   - Build a ReActAgent and explain the Thought -> Action -> Observation loop
+#   - Run an agent on a multi-step analysis task and inspect its reasoning
+#   - Define a typed BaseAgent with Signature for structured, predictable output
+#   - Choose between ReActAgent and BaseAgent+Signature for different use cases
+#
+# PREREQUISITES:
+#   Exercises 1-4 (Delegate, Signature, prompt engineering, LLM fundamentals).
+#   Understanding that agents are LLMs with the ability to call functions —
+#   not new AI, just LLMs that can observe and act, not just respond.
+#
+# ESTIMATED TIME: 45-75 minutes
 #
 # TASKS:
 #   1. Define custom tools (data_summary, run_query, plot_chart)
@@ -13,6 +26,11 @@
 #   3. Run agent on multi-step analysis task
 #   4. Inspect reasoning trace
 #   5. Build custom BaseAgent with Signature for structured analysis
+#
+# DATASET: Singapore company reports
+#   Columns: text (report content) + metadata
+#   The agent explores this dataset autonomously using the provided tools.
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -296,4 +314,94 @@ print(f"BaseAgent+Signature: structured output, typed contract, predictable")
 print(f"Use ReAct when: task needs tools and exploration")
 print(f"Use BaseAgent when: output structure matters for downstream pipeline")
 
-print("\n✓ Exercise 5 complete — ReActAgent with tools + BaseAgent with Signature")
+print("=" * 60)
+print("  MLFP06 Exercise 5: Building Agents with Kaizen")
+print("=" * 60)
+print(f"\n  ReActAgent and BaseAgent+Signature demonstrated.\n")
+
+# ── Checkpoint 1: Tool definitions ────────────────────────────────────
+assert len(tools) == 3, "Should have 3 tools defined"
+assert all(callable(t) for t in tools), "All tools should be callable"
+assert all(t.__doc__ for t in tools), "All tools should have docstrings"
+print(f"✓ Checkpoint 1 passed — {len(tools)} tools defined with docstrings\n")
+
+# INTERPRETATION: Tool docstrings are critical for agent performance.
+# The agent reads the docstring to understand what the tool does, when to
+# use it, and what arguments to provide. Vague docstrings lead to wrong tool
+# selection. Precise docstrings with examples lead to accurate tool calls.
+# Best practice: docstring = Args section with types, Returns section,
+# and a concrete example in the first line.
+
+# ── Checkpoint 2: ReActAgent creation ────────────────────────────────
+assert agent is not None, "Agent should be created"
+print(f"✓ Checkpoint 2 passed — ReActAgent created with {len(tools)} tools\n")
+
+# INTERPRETATION: ReAct (Reasoning + Acting) follows the loop:
+# Thought: "I need to understand the dataset first"
+# Action: call data_summary(dataset_name="reports")
+# Observation: [tool returns summary]
+# Thought: "I see there's a numeric column 'revenue'. Let me find top 5."
+# Action: call run_query("top 5 by revenue")
+# ...and so on until the agent decides it has enough information.
+# Unlike if-else logic, the agent decides WHICH tool and WHAT args via LLM.
+
+# ── Checkpoint 3: Multi-step analysis ────────────────────────────────
+assert analysis_result is not None, "Analysis should produce a result"
+print(f"✓ Checkpoint 3 passed — multi-step analysis completed\n")
+
+# INTERPRETATION: The agent's quality depends on the task description.
+# Clear, step-by-step task descriptions help the agent structure its approach.
+# Open-ended tasks ("analyse this dataset") give the agent flexibility.
+# Budget (max_llm_cost_usd=2.0) prevents runaway spending on complex tasks.
+# If the agent exceeds the budget, it stops and returns what it has so far.
+
+# ── Checkpoint 4: Reasoning trace ────────────────────────────────────
+print(f"✓ Checkpoint 4 passed — ReAct reasoning trace explained\n")
+
+# INTERPRETATION: The reasoning trace is what makes agents interpretable.
+# Each Thought -> Action -> Observation cycle is logged, letting you verify:
+# - Did the agent understand the task?
+# - Did it call the right tools?
+# - Did it interpret the observations correctly?
+# For production systems, store traces for debugging and compliance audit.
+
+# ── Checkpoint 5: Structured agent ───────────────────────────────────
+assert structured_result is not None, "Structured analysis should produce a result"
+assert hasattr(structured_result, "key_findings"), "Should have key_findings"
+assert hasattr(structured_result, "recommended_model"), "Should have recommended_model"
+assert len(structured_result.key_findings) > 0, "Should have at least one finding"
+print(f"✓ Checkpoint 5 passed — structured analysis: "
+      f"{len(structured_result.key_findings)} findings, "
+      f"model={structured_result.recommended_model}\n")
+
+# INTERPRETATION: BaseAgent+Signature gives you typed, validated output.
+# The Signature contract means downstream code can reliably access:
+# result.key_findings[0] — not "parse the first sentence of the response"
+# This is the difference between demo quality and production quality agents.
+# Use BaseAgent when: output feeds into a pipeline or needs to be logged.
+# Use ReActAgent when: the task requires tool exploration and iteration.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 60)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 60)
+print("""
+  ✓ Tool design: docstrings are the agent's API — precision matters
+  ✓ ReActAgent: Thought -> Action -> Observation loop, autonomous multi-step
+  ✓ Cost budget: max_llm_cost_usd prevents runaway LLM spending
+  ✓ Reasoning traces: interpretable, auditable agent behaviour
+  ✓ BaseAgent + Signature: structured, typed, pipeline-safe output
+
+  When to use which agent type:
+    ReActAgent:        open-ended exploration, unknown number of steps
+    BaseAgent+Sig:     known output schema, feeds into code, audit required
+    ReAct + Signature: hybrid — explore first, then structured output
+
+  NEXT: Exercise 6 (Multi-Agent) composes multiple specialist agents.
+  A supervisor agent delegates to financial, legal, and technical specialists,
+  then synthesises their analyses into a unified decision. This is
+  fan-out (parallel) -> fan-in (synthesis) orchestration.
+""")

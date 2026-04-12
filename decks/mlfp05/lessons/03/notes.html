@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.3 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.3</span>
+  RNNs and Sequence Models
+</h1>
+
+<p class="lead">
+  Total time: ~60 minutes · 17 slides · ~3.5 min per slide average
+</p>
+
+<p>
+  The load-bearing content of this lesson is the six LSTM gate equations
+  and the intuition that the cell state is a gradient highway. Everything
+  else — vanilla RNN, GRU, attention preview — is supporting material.
+  If you run short on time, the GRU slide (10) can be collapsed into a
+  sentence; the temporal-attention slide (13) can be pushed to a
+  homework. Do not cut the gate equations (7–9) or gradient clipping
+  (12). The audience after this lesson must be able to explain
+  <em>why</em> LSTMs work, not just how to instantiate one.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>RNNs and Sequence Models</h3>
+  <p>
+    Open by framing the module arc. "Yesterday we did CNNs — grids.
+    Today we do RNNs — sequences. Different structure, different
+    architecture, same training toolkit. By the end you will have
+    trained a vanilla RNN, an LSTM, and a GRU on a synthetic SGX price
+    series and seen why the vanilla version can't keep up."
+  </p>
+  <div class="transition">→ "What makes sequences different?"</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>Sequences need their own architecture</h3>
+  <p>
+    Walk the two bullets. Variable length first — "a sentence has 5
+    words or 50, an ECG recording has 300 samples or 30,000. CNNs
+    handle fixed-size inputs. RNNs naturally handle whatever length
+    arrives."
+  </p>
+  <p>
+    Then temporal dependency. Use the "bank" example. "The word 'bank'
+    means different things in 'river bank' versus 'central bank'. The
+    RNN's hidden state is how context from earlier in the sequence
+    influences the interpretation of later words."
+  </p>
+  <div class="transition">→ "The recurrent idea in one equation."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Vanilla RNN equation</span></div>
+  <h3>The vanilla RNN update</h3>
+  <p>
+    Walk the equation. "Two matrices — W_xh maps the current input into
+    the hidden space, W_hh maps the previous hidden state forward. Add
+    them, apply tanh, done. Same two matrices at every step, which is
+    what gives the model its constant parameter count regardless of
+    sequence length."
+  </p>
+  <p>
+    Analogy: "this is a conv kernel but across time instead of space.
+    The kernel's weights are reused at every position; the RNN's
+    weights are reused at every time step. Same idea, different axis."
+  </p>
+  <div class="transition">→ "Picture: the RNN unrolled through time."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~2 min</span><span>Unrolled diagram</span></div>
+  <h3>The RNN unrolled</h3>
+  <p>
+    Walk left to right. "Four time steps, four cells — but all four
+    cells have the <em>same</em> weights. The orange arrows carry the
+    hidden state forward. The blue arrows bring inputs in. At the end
+    we take the final hidden state and project it to an output."
+  </p>
+  <p>
+    Clarify: "the four boxes in the diagram are the same cell drawn
+    four times, not four different cells. Call this 'unrolling' the
+    recurrence."
+  </p>
+  <div class="transition">→ "It looks elegant. It has a cruel flaw."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Vanishing gradients</span></div>
+  <h3>The cruel flaw: vanishing gradients</h3>
+  <p>
+    Explain the problem carefully. "When we backpropagate the loss back
+    to the hidden state at time step 1, the gradient is a product of
+    Jacobians — one per time step in between. It's literally a matrix
+    product of T matrices. If each matrix has singular values less than
+    1, the product shrinks geometrically. After 20 or 30 steps it's
+    effectively zero."
+  </p>
+  <p>
+    Consequence: "early time steps never get updated. The RNN forgets.
+    It can handle short sequences — up to maybe 20 time steps — then
+    falls apart."
+  </p>
+  <p>
+    Set up the fix: "for nearly 20 years this was the limit of
+    recurrent models. Then Hochreiter and Schmidhuber solved it in
+    1997 with a clever trick: the LSTM cell."
+  </p>
+  <div class="transition">→ "The LSTM idea in one sentence."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>LSTM idea</span></div>
+  <h3>LSTM: cell state highway</h3>
+  <p>
+    The single idea: "add a second state — the cell state — that flows
+    forward with only additive updates. Three gates decide what to
+    forget, what to add, and what to reveal. The additive path means
+    the gradient doesn't get multiplied at every step. It flows back
+    through the cell state nearly unchanged."
+  </p>
+  <p>
+    Draw the parallel to ResNet: "you saw yesterday that ResNet's skip
+    connection did the same thing for CNNs — give the gradient an
+    additive path back. The LSTM had the same insight 18 years earlier
+    for sequences. History rhymes."
+  </p>
+  <div class="transition">→ "All six equations. Don't panic."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Gate equations</span></div>
+  <h3>LSTM gate equations — all six</h3>
+  <p>
+    Put the six equations on screen. Tell the class: "don't try to
+    memorise them right now. I will walk them in the next slide. Just
+    notice there are six lines, three of them are sigmoid gates, one is
+    a tanh candidate, one is the cell update with forget and input
+    mixing, and one is the hidden state output."
+  </p>
+  <div class="transition">→ "Now read them row by row."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>Walk the equations</span></div>
+  <h3>Walk the equations</h3>
+  <p>
+    Walk each bullet with physical intuition.
+  </p>
+  <ul>
+    <li><strong>Forget:</strong> "sigmoid output in [0, 1]. Multiply
+        elementwise into the old cell state. Value of 1 means 'keep',
+        0 means 'erase'. The network learns per-dimension what to
+        remember from the past."</li>
+    <li><strong>Input:</strong> "another sigmoid gate. How much of the
+        new candidate content to let in."</li>
+    <li><strong>Candidate:</strong> "tanh, so the content is in [-1,
+        1]. This is the 'what to write' part."</li>
+    <li><strong>Cell update:</strong> "<em>this is the key line.</em>
+        Forget gate times old cell, plus input gate times candidate.
+        Purely additive. That's the gradient highway."</li>
+    <li><strong>Output:</strong> "how much of the cell state to expose
+        as the visible hidden state."</li>
+    <li><strong>Hidden:</strong> "output gate times tanh of cell.
+        That's what downstream layers actually see."</li>
+  </ul>
+  <div class="transition">→ "Why does this solve vanishing gradients?"</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Gradient highway</span></div>
+  <h3>Why it works: gradient highway</h3>
+  <p>
+    "In a vanilla RNN, the Jacobian
+    <code>∂h_t/∂h_{t-1}</code> is a product of W_hh and a tanh
+    derivative. Exponentially decaying over time steps.
+  </p>
+  <p>
+    In an LSTM, look at the cell update:
+    <code>C_t = f_t ⊙ C_{t-1} + (new stuff)</code>. The Jacobian
+    <code>∂C_t/∂C_{t-1}</code> is approximately <em>just</em>
+    <code>f_t</code>. If the network learns <code>f_t ≈ 1</code>, the
+    gradient passes through unchanged. Over hundreds of time steps."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the bias on the forget gate is often
+    initialised to +1 or +2 to make it start close to "remember
+    everything". This tiny initialisation hack speeds up training
+    dramatically on long sequences.
+  </div>
+  <div class="transition">→ "The GRU — a simpler cousin."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>GRU</span></div>
+  <h3>GRU — a simpler cousin (2014)</h3>
+  <p>
+    "Cho et al 2014 noticed that LSTM's forget and input gates are
+    redundant — one can be derived from the other. The GRU merges them
+    into a single update gate, drops the separate cell state, and adds
+    a reset gate. Fewer parameters, faster training, usually
+    competitive."
+  </p>
+  <p>
+    Rule of thumb: "try GRU first. If it underfits, upgrade to LSTM. If
+    you need really long contexts (1000+ tokens), neither works — use a
+    Transformer, which is tomorrow's lesson."
+  </p>
+  <div class="transition">→ "Code."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>LSTM code</span></div>
+  <h3>LSTM regressor in PyTorch</h3>
+  <p>
+    Walk the code. "Ten lines. <code>nn.LSTM</code> implements all six
+    gate equations for you — you do not write them by hand.
+    <code>batch_first=True</code> makes the input shape (B, L, F), which
+    is the modern convention. The forward pass takes out the final
+    time step and runs a linear head on it."
+  </p>
+  <p>
+    "Note that <code>nn.LSTM</code> returns both the output sequence
+    <code>out</code> (B, L, H) and a tuple (h_n, c_n) of final states.
+    We only need <code>out</code>, so we discard the tuple."
+  </p>
+  <div class="transition">→ "Training with clipping."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Training + clipping</span></div>
+  <h3>Training — clip those gradients</h3>
+  <p>
+    Emphasise the starred line. "<code>clip_grad_norm_</code>. This is
+    non-negotiable for RNNs. Without it, about 1% of batches trigger an
+    exploding gradient — the entire gradient vector shoots up to
+    thousands in norm, the optimizer takes a huge step, parameters go
+    to NaN, training over."
+  </p>
+  <p>
+    "Gradient clipping rescales the gradient vector so its L2 norm
+    never exceeds max_norm. We use 1.0 by convention. Always on. Same
+    for Transformers in 5.4."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "this line looks obscure but it's
+    the difference between working and NaN. Copy it into every
+    sequence-model training loop you ever write and forget about it."
+  </div>
+  <div class="transition">→ "Temporal attention — preview of 5.4."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Temporal attention</span></div>
+  <h3>Temporal attention</h3>
+  <p>
+    Motivate: "the last time step isn't always the most informative.
+    For stock price prediction, the past few days matter most; for
+    sentiment analysis, a single word somewhere in the sentence might
+    flip the verdict. Attention lets the model learn which time steps
+    to weight."
+  </p>
+  <p>
+    Walk the four lines. "Take the full output sequence (B, L, H).
+    Project each step to a scalar score via a linear layer. Softmax
+    over time to get weights. Multiply and sum — weighted combination
+    of all time steps, not just the last one."
+  </p>
+  <p>
+    Tease 5.4: "this is an attention mechanism bolted onto an LSTM.
+    Tomorrow's lesson asks a radical question: what if you kept the
+    attention and <em>dropped the LSTM entirely</em>? That's the
+    Transformer."
+  </p>
+  <div class="transition">→ "Singapore scenario."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~2 min</span><span>SGX scenario</span></div>
+  <h3>Singapore scenario: forecasting SGX</h3>
+  <p>
+    Set up the worked example. "We'll predict the next day's price
+    given the past 50 days. Real SGX data has trend, seasonality, and
+    noise — our synthetic generator mimics that. Optional features:
+    technical indicators like RSI, MACD, Bollinger Bands."
+  </p>
+  <p>
+    Expected result: "Vanilla RNN plateaus at a high MSE — it can't
+    carry enough history. GRU and LSTM both get meaningfully lower. On
+    50-step sequences the gap is visible; on 200-step sequences the
+    vanilla RNN is unusable."
+  </p>
+  <div class="transition">→ "Metrics."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~2 min</span><span>Metrics</span></div>
+  <h3>Metrics for sequence models</h3>
+  <p>
+    Walk the table. "MSE / MAE for regression — same as tabular. BLEU
+    for machine translation — compares generated n-grams to reference.
+    Perplexity for language modelling — lower is better, represents
+    'on average how many words was the model guessing between'.
+    Sequence accuracy is the fraction of entire sequences classified
+    correctly (not per-token)."
+  </p>
+  <div class="transition">→ "Four traps."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Four traps</h3>
+  <p>
+    Walk each. Gradient clipping first — the one you will definitely
+    hit if you skip it. <code>batch_first</code> — the silent-failure
+    one. Stateful leakage — the one that produces subtly wrong results
+    you won't notice. BPTT memory — the one you hit when scaling up.
+  </p>
+  <div class="transition">→ "Wrap up."</div>
+</div>
+
+<!-- Slide 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Reflection</span></div>
+  <h3>Reflection</h3>
+  <p>
+    Walk the bullets. Ask: "who can recite the six LSTM equations from
+    memory?" Take volunteers. If nobody: "it's a lot to absorb in one
+    hour — but the <em>story</em> of each equation should stick: forget
+    what, let in what, new content, combine, reveal what, output."
+  </p>
+  <p>
+    Bridge to 5.4: "We saw how LSTMs carry memory forward step by
+    step. Tomorrow we'll see how Transformers replace that with parallel
+    attention — no recurrence at all. It's faster to train and handles
+    longer contexts. The price is quadratic memory in sequence length."
+  </p>
+  <p>
+    Break: 10 minutes. Come back for self-attention.
+  </p>
+  <div class="transition">→ End of 5.3.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    5.2 Speaker Notes
+  </a>
+  <a href="../04/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.4 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

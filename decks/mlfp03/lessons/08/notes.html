@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.8</span>
+  Production Pipeline — DataFlow, Drift, and Deployment
+</h1>
+
+<p class="lead">Total time: ~60 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4.5 min per slide average</p>
+
+<p>
+  This is the final lesson of the Foundation Certificate. It carries
+  emotional weight — learners have been building toward this for 24
+  lessons. Make the production pipeline feel like the culmination it is.
+  Every engine from M1-M3 appears in the pipeline. End with a celebration
+  of how far they have come.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Production Pipeline</h3>
+  <p>"This is the last lesson of the Foundation Certificate. By the end of today you will have deployed a model to a database, set up drift monitoring, added prediction intervals, and generated a Model Card. This is what production ML looks like."</p>
+  <div class="transition">→ "What production means."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Pipeline overview</span></div>
+  <h3>What production means</h3>
+  <p>Walk the pipeline diagram. "Train (3.7), persist (DataFlow), calibrate (conformal), register (ModelRegistry), monitor (DriftMonitor), document (Model Card). Each step uses an engine you have seen before."</p>
+  <div class="transition">→ "DataFlow."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 3-4</span><span>~6 min</span><span>DataFlow</span></div>
+  <h3>DataFlow: zero-config persistence</h3>
+  <p><strong>Slide 3:</strong> Walk the model definition and create operation. "Decorate a class with @db.model and DataFlow generates the database table and CRUD operations. No SQL, no ORM configuration."</p>
+  <p><strong>Slide 4:</strong> Walk the read, update, delete operations. "This is how you persist predictions in production. Every prediction is timestamped and versioned so you can audit later."</p>
+  <div class="audience-cue beginner">
+    <strong>Note on async:</strong> "The <code>await</code> keyword means the operation runs asynchronously — the program can do other work while waiting for the database. For now, just use it; we will explain async fully in the Advanced Certificate."
+  </div>
+  <div class="transition">→ "Drift monitoring."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 5-7</span><span>~10 min</span><span>DriftMonitor</span></div>
+  <h3>DriftMonitor: PSI and KS</h3>
+  <p><strong>Slide 5:</strong> Walk the PSI formula. "PSI bins the feature values and compares the proportions between reference and current. A PSI above 0.25 means the distributions have shifted significantly."</p>
+  <p><strong>Slide 6:</strong> Walk the KS test diagram. "The KS test finds the maximum vertical distance between two CDFs. The further apart they are, the more the distribution has shifted."</p>
+  <p><strong>Slide 7:</strong> Walk the code. "You define a DriftSpec with features and thresholds, create a DriftMonitor, and call check(). The report tells you which features have drifted and by how much."</p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "PSI is symmetric and always non-negative. KS gives a p-value but can be overpowered on large datasets. In practice, use both: PSI for the magnitude of shift, KS for statistical significance."
+  </div>
+  <div class="transition">→ "Prediction uncertainty."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Conformal prediction</span></div>
+  <h3>Conformal prediction</h3>
+  <p>"Most models give a point prediction: 'the price is $450,000'. Conformal prediction adds an interval: '$420,000 to $480,000 with 90% coverage'. The interval is distribution-free — no Normal assumption, no parametric model."</p>
+  <p>Walk the code. "Compute residuals on a calibration set. Take the 90th percentile. That is your interval width. Three lines of code."</p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are confused by 'distribution-free':</strong> "It means the interval works regardless of whether your errors are Normal, skewed, or any other shape. That is rare and powerful."
+  </div>
+  <div class="transition">→ "Model Cards."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Model Card</span></div>
+  <h3>Model Card template</h3>
+  <p>Walk the table. "Every section serves a different audience. Model details for engineers. Intended use for product managers. Fairness for compliance. Limitations for everyone."</p>
+  <div class="transition">→ "Mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Three mistakes</h3>
+  <p>Walk each. Mistake 1 is the most important: "Silent degradation is the number one way production ML fails. Without drift monitoring, your model could be wrong for weeks before anyone notices."</p>
+  <div class="transition">→ "Module 3 complete."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Reflection + celebration</span></div>
+  <h3>Module 3 complete</h3>
+  <p>
+    Walk the lesson list. Pause at each title. Let the weight of 24
+    lessons land.
+  </p>
+  <p>
+    "You started this course in Lesson 1.1 typing <code>city = 'Singapore'</code>.
+    Today you deployed a credit scoring model to a database with drift
+    monitoring, conformal prediction intervals, and a Model Card. That is
+    the entire supervised ML pipeline from zero to production."
+  </p>
+  <p>
+    "The Foundation Certificate is complete. If you stop here, you have
+    a working ML engineering skillset. The Advanced Certificate (Modules
+    4-6) adds unsupervised learning, deep learning, NLP, LLMs, RL, and
+    AI governance."
+  </p>
+  <p>
+    Take time for questions and celebration. This is a milestone.
+  </p>
+  <div class="transition">→ End of Module 3 and the Foundation Certificate.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev"><span class="label">← Previous</span>3.7 Speaker Notes</a>
+  <a href="../../index.html" class="next"><span class="label">Next →</span>Module 3 Index</a>
+</nav>
+
+</main>
+</body>
+</html>

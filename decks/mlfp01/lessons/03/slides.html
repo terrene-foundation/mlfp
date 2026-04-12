@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.3 — Functions and Aggregation | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.3</p>
+  <h1>Functions and Aggregation</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    def · for · group_by · agg
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> Lesson 1.2 &nbsp; · &nbsp;
+    <strong>Dataset:</strong> HDB resale (26 towns)
+  </div>
+  <div class="slide-footer">MLFP — Module 1</div>
+</section>
+
+<section>
+  <h2>The productivity jump</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-g1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <text x="130" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Yesterday</text>
+      <g font-family="JetBrains Mono" font-size="11">
+        <rect x="20" y="45" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+        <text x="30" y="61">hdb.filter(town == "BISHAN")</text>
+        <rect x="20" y="72" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+        <text x="30" y="88">hdb.filter(town == "TOA PAYOH")</text>
+        <rect x="20" y="99" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+        <text x="30" y="115">hdb.filter(town == "JURONG")</text>
+        <rect x="20" y="126" width="220" height="22" rx="4" fill="#FFF1F2" stroke="#F43F5E"/>
+        <text x="30" y="142">...</text>
+        <text x="130" y="175" text-anchor="middle" fill="#F43F5E">26 filter calls 😩</text>
+      </g>
+      <line x1="255" y1="130" x2="330" y2="130" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-g1)"/>
+      <text x="580" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Today</text>
+      <rect x="340" y="50" width="460" height="150" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
+        <text x="360" y="85">hdb.group_by("town").agg(</text>
+        <text x="380" y="110">pl.len().alias("n"),</text>
+        <text x="380" y="132">pl.col("price").median().alias("median"),</text>
+        <text x="360" y="155">)</text>
+      </g>
+      <text x="570" y="230" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488" font-style="italic">One call — 26 rows out</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Functions: reusable logic</h2>
+  <pre><code class="language-python" data-trim>
+def format_sgd(amount: float) -&gt; str:
+    """Format a number as Singapore dollars."""
+    return f"S${amount:,.0f}"
+
+print(format_sgd(485_000))     # → S$485,000
+print(format_sgd(1_234_567))   # → S$1,234,567
+  </code></pre>
+  <p>Four ingredients: <code>def</code>, name, parameters (with type hints), indented body, <code>return</code>.</p>
+</section>
+
+<section>
+  <h2>Anatomy of <code>def</code></h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 780 240" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="60" width="720" height="50" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="50" y="92" font-family="JetBrains Mono" font-size="18" fill="#1E293B">def format_sgd(amount: float) -&gt; str:</text>
+      <g font-family="Inter" font-size="13" fill="#15803D">
+        <text x="70" y="40">keyword</text>
+        <line x1="75" y1="45" x2="55" y2="75" stroke="#15803D" stroke-width="1"/>
+        <text x="200" y="40">name</text>
+        <line x1="200" y1="45" x2="190" y2="75" stroke="#15803D" stroke-width="1"/>
+        <text x="340" y="40">parameter</text>
+        <line x1="340" y1="45" x2="305" y2="75" stroke="#15803D" stroke-width="1"/>
+        <text x="440" y="40">type hint</text>
+        <line x1="450" y1="45" x2="395" y2="75" stroke="#15803D" stroke-width="1"/>
+        <text x="570" y="40">return type</text>
+        <line x1="580" y1="45" x2="550" y2="75" stroke="#15803D" stroke-width="1"/>
+      </g>
+      <rect x="30" y="130" width="720" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="70" y="162" font-family="JetBrains Mono" font-size="16" fill="#1E293B">    return f"S${"{"}amount:,.0f{"}"}"</text>
+      <text x="70" y="205" font-family="Inter" font-size="12" fill="#3B82F6">body indented · return sends value back</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Lists, dicts, for loops</h2>
+  <pre><code class="language-python" data-trim>
+central = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
+print(len(central))           # → 4
+print(central[0])             # → BISHAN
+
+medians = {"BISHAN": 715_000, "JURONG WEST": 455_000}
+print(medians["BISHAN"])      # → 715_000
+
+for town in central:
+    print(f"Looking at {town}")
+  </code></pre>
+  <p>Lists are ordered. Dicts are key→value. <code>for</code> walks a sequence.</p>
+</section>
+
+<section>
+  <h2><code>group_by</code> + <code>agg</code>: the pattern</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-gb2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <rect x="20" y="30" width="220" height="220" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
+      <text x="130" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14">Input (hdb)</text>
+      <g font-family="JetBrains Mono" font-size="11">
+        <text x="35" y="80" fill="#0F766E">town      price</text>
+        <text x="35" y="100">BISHAN    720k</text>
+        <text x="35" y="117">JURONG    420k</text>
+        <text x="35" y="134">BISHAN    680k</text>
+        <text x="35" y="151">TOA PAYOH 650k</text>
+        <text x="35" y="168">JURONG    445k</text>
+        <text x="35" y="185">BISHAN    740k</text>
+        <text x="35" y="220" fill="#94A3B8">500k rows</text>
+      </g>
+      <line x1="245" y1="140" x2="320" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb2)"/>
+      <text x="283" y="130" text-anchor="middle" font-size="12" fill="#0D9488">group_by("town")</text>
+      <rect x="330" y="50" width="150" height="55" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+      <text x="405" y="80" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">BISHAN</text>
+      <rect x="330" y="115" width="150" height="55" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+      <text x="405" y="145" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">TOA PAYOH</text>
+      <rect x="330" y="180" width="150" height="55" rx="6" fill="#E0F2F1" stroke="#0D9488"/>
+      <text x="405" y="210" text-anchor="middle" font-size="13" fill="#0D9488" font-weight="600">JURONG</text>
+      <line x1="485" y1="140" x2="560" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-gb2)"/>
+      <text x="523" y="130" text-anchor="middle" font-size="12" fill="#0D9488">agg(median)</text>
+      <rect x="570" y="70" width="210" height="160" rx="8" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+      <text x="675" y="95" text-anchor="middle" font-weight="600" font-size="14" fill="#0D9488">Output</text>
+      <g font-family="JetBrains Mono" font-size="12">
+        <text x="585" y="130" fill="#0F766E">town       median</text>
+        <text x="585" y="155">BISHAN     715k</text>
+        <text x="585" y="175">TOA PAYOH  635k</text>
+        <text x="585" y="195">JURONG     432k</text>
+        <text x="585" y="215" fill="#0D9488">(26 rows)</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>group_by in code</h2>
+  <pre><code class="language-python" data-trim>
+district_stats = (
+    hdb.group_by("town")
+    .agg(
+        pl.len().alias("transaction_count"),
+        pl.col("resale_price").mean().alias("mean_price"),
+        pl.col("resale_price").median().alias("median_price"),
+        pl.col("resale_price").std().alias("std_price"),
+    )
+    .sort("median_price", descending=True)
+)
+print(district_stats.head(5))
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    One call → one row per town. Each <code>.alias(...)</code> names the
+    new column.
+  </p>
+</section>
+
+<section>
+  <h2>Multi-key grouping</h2>
+  <pre><code class="language-python" data-trim>
+town_flat_stats = (
+    hdb.group_by("town", "flat_type")
+    .agg(
+        pl.len().alias("count"),
+        pl.col("resale_price").median().alias("median_price"),
+    )
+    .sort("town", "flat_type")
+)
+# → one row per unique (town, flat_type) combination
+  </code></pre>
+  <p>Every unique combination of the group keys becomes one row.</p>
+</section>
+
+<section>
+  <h2>Measures of centre: mean vs median</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i \qquad \text{median} = \text{middle of sorted data} \]
+  </div>
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; font-size: 0.9em;">
+    <strong>🟢 Rule:</strong> Mean is pulled by outliers; median is not.
+    For skewed data like property prices, report median for "typical" and
+    mean for "total market value".
+  </div>
+</section>
+
+<section>
+  <h2>Measure of spread: IQR</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{IQR} = Q_3 - Q_1 \]
+  </div>
+  <ul style="font-size: 0.9em;">
+    <li>$Q_1$ = 25th percentile (value below which 25% of data lies)</li>
+    <li>$Q_3$ = 75th percentile (value below which 75% of data lies)</li>
+    <li>IQR captures the spread of the middle 50% — ignores outliers</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+pl.col("resale_price").quantile(0.25).alias("q25"),
+pl.col("resale_price").quantile(0.75).alias("q75"),
+# then: (q75 - q25).alias("iqr")
+  </code></pre>
+</section>
+
+<section>
+  <h2>🔵 Theory: Coefficient of variation</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{CV} = \frac{s}{\bar{x}} \times 100\% \]
+  </div>
+  <p>Unitless — lets you compare spread across groups with different means.</p>
+  <ul style="font-size: 0.9em;">
+    <li>CV ≈ 25%: moderate spread</li>
+    <li>CV ≈ 45%: wide spread relative to centre</li>
+    <li>High CV districts have mixed housing stock (budget next to premium)</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Derived aggregates with <code>with_columns</code></h2>
+  <pre><code class="language-python" data-trim>
+district_stats = district_stats.with_columns(
+    (pl.col("q75") - pl.col("q25")).alias("iqr_price"),
+    (pl.col("std_price") / pl.col("mean_price") * 100)
+        .alias("cv_price_pct"),
+)
+  </code></pre>
+  <p>
+    After <code>agg</code>, the result is just a DataFrame. Every Lesson 1.2
+    tool — <code>with_columns</code>, <code>filter</code>, <code>sort</code>
+    — still works.
+  </p>
+</section>
+
+<section>
+  <h2>Iterating with <code>for</code> + functions</h2>
+  <pre><code class="language-python" data-trim>
+def district_line(row: dict) -&gt; str:
+    return (
+        f"  {row['town']:&lt;20} "
+        f"{format_sgd(row['median_price']):&gt;12}  "
+        f"{row['transaction_count']:&gt;8,}"
+    )
+
+print("=" * 50)
+print("  TOP 10 HDB TOWNS BY MEDIAN PRICE")
+print("=" * 50)
+for row in district_stats.head(10).iter_rows(named=True):
+    print(district_line(row))
+  </code></pre>
+</section>
+
+<section>
+  <h2>Three mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>1. Hardcoding inside functions.</strong> No parameters = no
+    reuse. Always parameterise.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>2. Forgetting <code>.alias(...)</code>.</strong> Aggregations
+    get auto-named garbage without it. Always alias.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>3. Python loop instead of group_by.</strong> 10–100× slower.
+    If you're looping to filter, rewrite as group_by.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Write functions with parameters, type hints, and return values</li>
+    <li>✓ Use lists, dicts, and for loops</li>
+    <li>✓ Aggregate with <code>group_by</code> + <code>agg</code> — one row per group</li>
+    <li>✓ Multi-key grouping for (town, flat_type) combinations</li>
+    <li>✓ Understand mean vs median, IQR, coefficient of variation</li>
+    <li>✓ Iterate over a result with <code>iter_rows(named=True)</code></li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 1.4 — joining HDB transactions with MRT
+    station data and school data. You'll meet <code>if/elif/else</code> at
+    the Python level and left vs inner vs outer joins.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    width: 1280,
+    height: 720,
+    margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

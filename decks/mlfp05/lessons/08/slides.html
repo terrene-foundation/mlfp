@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.8 — Reinforcement Learning | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>.reveal section{text-align:left}.reveal h1,.reveal h2,.reveal h3{text-transform:none}.reveal .lesson-meta{font-size:.5em;color:#64748B;text-transform:uppercase;letter-spacing:.1em}.reveal svg{max-width:100%;max-height:480px}.reveal pre{font-size:.5em}.callout-slide{padding:12px 16px;border-radius:4px;margin-top:.8em;font-size:.85em}.callout-slide.foundations{background:#F0FDF4;border-left:4px solid #22C55E}.callout-slide.theory{background:#EFF6FF;border-left:4px solid #3B82F6}.callout-slide.warning{background:#FFFBEB;border-left:4px solid #F59E0B}</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.8</p>
+  <h1>Reinforcement Learning</h1>
+  <p style="font-size:.7em;color:#64748B">Bellman · DQN · PPO · Gymnasium · RLHF bridge</p>
+  <div style="margin-top:2em;padding:16px 20px;background:#F0FDFA;border-left:4px solid #0D9488"><strong>⏱ 90 minutes</strong> · <strong>Outcome:</strong> implement DQN and PPO, connect to RLHF for M6</div>
+</section>
+
+<section>
+  <h2>The RL loop</h2>
+  <figure style="text-align:center">
+    <svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="40" width="160" height="100" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="110" y="80" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Agent</text>
+      <text x="110" y="100" text-anchor="middle" font-size="10">Policy π(a|s)</text>
+      <rect x="380" y="40" width="160" height="100" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="460" y="80" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">Environment</text>
+      <text x="460" y="100" text-anchor="middle" font-size="10">State, Reward</text>
+      <line x1="195" y1="70" x2="375" y2="70" stroke="#3B82F6" stroke-width="2"/><polygon points="375,70 369,66 369,74" fill="#3B82F6"/>
+      <text x="285" y="62" text-anchor="middle" font-size="10" fill="#3B82F6">action</text>
+      <line x1="375" y1="110" x2="195" y2="110" stroke="#22C55E" stroke-width="2"/><polygon points="195,110 201,106 201,114" fill="#22C55E"/>
+      <text x="285" y="128" text-anchor="middle" font-size="10" fill="#22C55E">state, reward</text>
+    </svg>
+  </figure>
+  <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> all DL so far: static data. RL: learning from interaction. Agent acts, observes, learns.</div>
+</section>
+
+<section>
+  <h2>Bellman equations</h2>
+  \[ V(s) = \mathbb{E}[R_{t+1} + \gamma\,V(S_{t+1}) \mid S_t=s] \]
+  \[ Q^*(s,a) = \mathbb{E}[R_{t+1} + \gamma\,\max_{a'} Q^*(S_{t+1},a') \mid S_t=s, A_t=a] \]
+  <p style="font-size:.85em">$\gamma$ = discount factor. Future rewards worth less. DQN approximates $Q^*$ with a neural network.</p>
+</section>
+
+<section>
+  <h2>DQN — Deep Q-Network</h2>
+  <pre><code class="language-python" data-trim>
+class DQN(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 128), nn.ReLU(),
+            nn.Linear(128, 128), nn.ReLU(),
+            nn.Linear(128, action_dim))
+    def forward(self, x): return self.net(x)
+
+# Loss: (r + gamma * max Q_target(s',a') - Q(s,a))^2
+  </code></pre>
+  <ul style="font-size:.85em">
+    <li>Experience replay: store transitions, sample randomly.</li>
+    <li>Target network: stabilise training with delayed copy.</li>
+    <li>Discrete actions only.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>PPO — Proximal Policy Optimization</h2>
+  \[ L^{\text{CLIP}} = \mathbb{E}\bigl[\min(r_t A_t,\;\text{clip}(r_t,1{-}\epsilon,1{+}\epsilon)A_t)\bigr] \]
+  <ul style="font-size:.85em">
+    <li>$r_t = \pi_\theta / \pi_{\theta_\text{old}}$ — how much policy changed.</li>
+    <li>Clip prevents destructively large updates.</li>
+    <li>Works for continuous and discrete actions.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Five algorithms, five applications</h2>
+  <table style="font-size:.65em">
+    <thead><tr><th>Algorithm</th><th>Action space</th><th>Business application</th></tr></thead>
+    <tbody>
+      <tr><td>DQN</td><td>Discrete</td><td>Customer churn prevention</td></tr>
+      <tr><td>DDPG</td><td>Continuous</td><td>Manufacturing control</td></tr>
+      <tr><td>SAC</td><td>Continuous</td><td>Dynamic pricing</td></tr>
+      <tr><td>A2C</td><td>Both</td><td>Resource allocation</td></tr>
+      <tr><td>PPO</td><td>Both</td><td>Supply chain optimisation</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Custom Gymnasium environment</h2>
+  <pre><code class="language-python" data-trim>
+import gymnasium as gym
+
+class ChurnEnv(gym.Env):
+    def __init__(self):
+        self.action_space = gym.spaces.Discrete(3)
+        self.observation_space = gym.spaces.Box(...)
+
+    def step(self, action):
+        # Apply retention action, compute reward
+        reward = retained_revenue - action_cost
+        return obs, reward, done, truncated, info
+
+    def reset(self, seed=None):
+        return initial_state, {}
+  </code></pre>
+</section>
+
+<section>
+  <h2>Bridge to M6: PPO → RLHF</h2>
+  <figure style="text-align:center">
+    <svg viewBox="0 0 600 150" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="160" height="90" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="100" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">PPO (5.8)</text>
+      <text x="100" y="80" text-anchor="middle" font-size="10">Policy gradient</text>
+      <text x="100" y="95" text-anchor="middle" font-size="10">Clipped objective</text>
+      <line x1="185" y1="75" x2="225" y2="75" stroke="#0D9488" stroke-width="2"/><polygon points="225,75 219,71 219,79" fill="#0D9488"/>
+      <rect x="230" y="30" width="160" height="90" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="310" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#F59E0B">RLHF (M6)</text>
+      <text x="310" y="80" text-anchor="middle" font-size="10">Reward = human prefs</text>
+      <text x="310" y="95" text-anchor="middle" font-size="10">PPO aligns LLM</text>
+      <line x1="395" y1="75" x2="435" y2="75" stroke="#0D9488" stroke-width="2"/><polygon points="435,75 429,71 429,79" fill="#0D9488"/>
+      <rect x="440" y="30" width="140" height="90" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="510" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">DPO (M6.3)</text>
+      <text x="510" y="80" text-anchor="middle" font-size="10">No reward model</text>
+      <text x="510" y="95" text-anchor="middle" font-size="10">Direct preference</text>
+    </svg>
+  </figure>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> RLHF uses PPO to maximise a reward model trained on human preferences. DPO skips the reward model entirely.</div>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size:.85em">
+    <li><strong>Complex reward shaping</strong> — start simple, add complexity only if agent fails.</li>
+    <li><strong>No advantage normalisation</strong> — PPO needs normalised advantages.</li>
+    <li><strong>Tiny replay buffer</strong> — DQN needs diverse experience.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Explain Bellman equations and what they represent.</li>
+    <li>✓ Implement DQN for discrete action problems.</li>
+    <li>✓ Implement PPO for continuous action problems.</li>
+    <li>✓ Build custom Gymnasium environments.</li>
+    <li>✓ Connect PPO → RLHF → DPO (bridge to M6).</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>Next:</strong> Module 6 — LLMs, fine-tuning, RAG, agents, governance, and production deployment. The frontier.</div>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+</body>
+</html>

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.6 — Multi-Agent Orchestration and MCP | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.6</span>
+  Multi-Agent Orchestration and MCP
+</h1>
+
+<p class="lead">
+  A single agent is a specialist. A team of agents is an organisation. In
+  Lesson 6.5 you built a ReAct agent that autonomously analyses data. Today you
+  compose multiple agents into coordinated systems using four orchestration
+  patterns — supervisor-worker, sequential, parallel, and handoff. You configure
+  agent memory (short-term, long-term, entity) so agents retain context across
+  turns and sessions. And you build an MCP server that exposes Kailash ML tools
+  to any MCP-compatible client — turning your ML pipeline into a service that
+  any agent, anywhere, can consume.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A Singapore bank's credit risk team does not consist of one generalist who does
+  everything. It has a data engineer who prepares features, a modeller who trains
+  and validates, a compliance officer who checks regulatory requirements, and a
+  report writer who produces the monthly risk summary. Each specialist has
+  different skills, different tools, and different access levels.
+</p>
+
+<p>
+  Multi-agent systems mirror this organisational structure. Instead of one agent
+  with 20 tools (which, as we learned in 6.5, performs poorly), you build
+  specialised agents with 3-5 tools each, coordinated by a supervisor that
+  delegates and aggregates. The result is more reliable, more auditable, and
+  more maintainable than a monolithic agent.
+</p>
+
+<p>
+  MCP (Model Context Protocol) takes this further. Instead of hardcoding tools
+  into each agent, you expose tools as an MCP server — a standardised API that
+  any MCP-compatible client can discover and call. This decouples tool
+  implementation from agent implementation, the same way REST APIs decoupled
+  frontend from backend.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Four Multi-Agent Patterns</h3>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 380" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+
+  <!-- Pattern 1: Supervisor-Worker -->
+  <text x="170" y="18" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">1. Supervisor-Worker</text>
+  <rect x="115" y="30" width="110" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="170" y="55" text-anchor="middle" font-weight="600" font-size="10" fill="#92400E">Supervisor</text>
+  <rect x="30" y="95" width="90" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="75" y="117" text-anchor="middle" font-size="9" fill="#1E40AF">Data Eng</text>
+  <rect x="135" y="95" width="90" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="180" y="117" text-anchor="middle" font-size="9" fill="#1E40AF">Modeller</text>
+  <rect x="240" y="95" width="90" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="285" y="117" text-anchor="middle" font-size="9" fill="#1E40AF">Reporter</text>
+  <line x1="140" y1="70" x2="75" y2="95" stroke="#475569" stroke-width="1.2"/>
+  <line x1="170" y1="70" x2="180" y2="95" stroke="#475569" stroke-width="1.2"/>
+  <line x1="200" y1="70" x2="285" y2="95" stroke="#475569" stroke-width="1.2"/>
+  <text x="170" y="150" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Supervisor decides who works on what</text>
+
+  <!-- Pattern 2: Sequential -->
+  <text x="540" y="18" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">2. Sequential</text>
+  <rect x="400" y="40" width="80" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="440" y="62" text-anchor="middle" font-size="9" fill="#166534">Agent 1</text>
+  <line x1="485" y1="57" x2="510" y2="57" stroke="#0D9488" stroke-width="1.5" marker-end="url(#arr-t)"/>
+  <rect x="515" y="40" width="80" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="555" y="62" text-anchor="middle" font-size="9" fill="#166534">Agent 2</text>
+  <line x1="600" y1="57" x2="625" y2="57" stroke="#0D9488" stroke-width="1.5" marker-end="url(#arr-t)"/>
+  <rect x="630" y="40" width="80" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="670" y="62" text-anchor="middle" font-size="9" fill="#166534">Agent 3</text>
+  <text x="540" y="100" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Output of one feeds into next</text>
+
+  <!-- Pattern 3: Parallel -->
+  <text x="540" y="130" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">3. Parallel</text>
+  <rect x="410" y="150" width="80" height="35" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="450" y="172" text-anchor="middle" font-size="9" fill="#312E81">Agent A</text>
+  <rect x="510" y="150" width="80" height="35" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="550" y="172" text-anchor="middle" font-size="9" fill="#312E81">Agent B</text>
+  <rect x="610" y="150" width="80" height="35" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="650" y="172" text-anchor="middle" font-size="9" fill="#312E81">Agent C</text>
+  <rect x="490" y="210" width="120" height="35" rx="6" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="550" y="232" text-anchor="middle" font-weight="600" font-size="9" fill="#8B5CF6">Aggregator</text>
+  <line x1="450" y1="185" x2="520" y2="210" stroke="#475569" stroke-width="1"/>
+  <line x1="550" y1="185" x2="550" y2="210" stroke="#475569" stroke-width="1"/>
+  <line x1="650" y1="185" x2="580" y2="210" stroke="#475569" stroke-width="1"/>
+  <text x="540" y="265" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">All run simultaneously, results merged</text>
+
+  <!-- Pattern 4: Handoff -->
+  <text x="170" y="190" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">4. Handoff</text>
+  <rect x="30" y="210" width="90" height="40" rx="6" fill="#FCE7F3" stroke="#EC4899" stroke-width="2"/>
+  <text x="75" y="225" text-anchor="middle" font-weight="600" font-size="9" fill="#BE185D">General</text>
+  <text x="75" y="240" text-anchor="middle" font-size="8" fill="#BE185D">Agent</text>
+  <line x1="125" y1="230" x2="155" y2="230" stroke="#EC4899" stroke-width="2" marker-end="url(#arr-t)" stroke-dasharray="4 3"/>
+  <rect x="160" y="210" width="90" height="40" rx="6" fill="#FCE7F3" stroke="#EC4899"/>
+  <text x="205" y="225" text-anchor="middle" font-size="9" fill="#BE185D">Billing</text>
+  <text x="205" y="240" text-anchor="middle" font-size="8" fill="#BE185D">Specialist</text>
+  <line x1="255" y1="230" x2="275" y2="230" stroke="#EC4899" stroke-width="2" marker-end="url(#arr-t)" stroke-dasharray="4 3"/>
+  <rect x="280" y="210" width="90" height="40" rx="6" fill="#FCE7F3" stroke="#EC4899"/>
+  <text x="325" y="225" text-anchor="middle" font-size="9" fill="#BE185D">Technical</text>
+  <text x="325" y="240" text-anchor="middle" font-size="8" fill="#BE185D">Specialist</text>
+  <text x="170" y="275" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Context transfers when topic changes</text>
+
+  <!-- Comparison table at bottom -->
+  <line x1="30" y1="300" x2="690" y2="300" stroke="#E2E8F0" stroke-width="1"/>
+  <text x="100" y="320" text-anchor="middle" font-weight="600" font-size="10" fill="#475569">Pattern</text>
+  <text x="280" y="320" text-anchor="middle" font-weight="600" font-size="10" fill="#475569">Best when</text>
+  <text x="520" y="320" text-anchor="middle" font-weight="600" font-size="10" fill="#475569">Example</text>
+  <text x="100" y="340" text-anchor="middle" font-size="9" fill="#1E293B">Supervisor-Worker</text>
+  <text x="280" y="340" text-anchor="middle" font-size="9" fill="#1E293B">Tasks require different skills</text>
+  <text x="520" y="340" text-anchor="middle" font-size="9" fill="#1E293B">ML pipeline: data + model + report</text>
+  <text x="100" y="356" text-anchor="middle" font-size="9" fill="#1E293B">Sequential</text>
+  <text x="280" y="356" text-anchor="middle" font-size="9" fill="#1E293B">Output of one feeds into next</text>
+  <text x="520" y="356" text-anchor="middle" font-size="9" fill="#1E293B">ETL: extract → transform → load</text>
+  <text x="100" y="372" text-anchor="middle" font-size="9" fill="#1E293B">Parallel</text>
+  <text x="280" y="372" text-anchor="middle" font-size="9" fill="#1E293B">Independent subtasks</text>
+  <text x="520" y="372" text-anchor="middle" font-size="9" fill="#1E293B">Analyse 3 datasets simultaneously</text>
+</svg>
+<figcaption>Four multi-agent patterns. Supervisor-worker is the most common for ML workflows. Handoff is common in customer-facing chatbots.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Think of multi-agent patterns like management structures. Supervisor-worker
+    is a manager with direct reports. Sequential is an assembly line. Parallel
+    is a team working on independent parts of a project. Handoff is a call centre
+    that transfers you to the right department. Each structure is optimal for a
+    different kind of work.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Math Foundations</h2>
+
+<h3>Speedup from parallelism</h3>
+
+<p>
+  If a task has $n$ independent subtasks, each taking time $t$, the sequential
+  time is $T_{\text{seq}} = n \cdot t$. With $p$ parallel agents:
+</p>
+
+<div class="annotated-equation">
+  $$ T_{\text{par}} = \frac{n}{p} \cdot t + t_{\text{overhead}} $$
+  <div class="annotations">
+    <span>$n$ — number of subtasks</span>
+    <span>$p$ — number of parallel agents</span>
+    <span>$t_{\text{overhead}}$ — aggregation cost</span>
+  </div>
+</div>
+
+<p>
+  The speedup $S = T_{\text{seq}} / T_{\text{par}}$ approaches $p$ for large
+  $n$, but is bounded by <strong>Amdahl's law</strong>: if a fraction $f$ of
+  the task must be sequential (e.g., the supervisor's delegation step), the
+  maximum speedup is $1 / (f + (1-f)/p)$. In practice, the supervisor's
+  planning and aggregation steps are the sequential bottleneck.
+</p>
+
+<h3>Cost model for multi-agent systems</h3>
+
+<p>
+  Each agent has its own context window and cost trajectory. For a
+  supervisor with $W$ workers:
+</p>
+
+<div class="annotated-equation">
+  $$ C_{\text{total}} = C_{\text{supervisor}} + \sum_{w=1}^{W} C_{\text{worker}_w} $$
+  <div class="annotations">
+    <span>$C_{\text{supervisor}}$ — cost of planning + aggregation</span>
+    <span>$C_{\text{worker}_w}$ — cost of worker $w$'s full ReAct loop</span>
+  </div>
+</div>
+
+<p>
+  The supervisor's cost is typically low (2-3 LLM calls for delegation and
+  aggregation). Workers bear the bulk of the cost. Budget cascading (from
+  Lesson 6.7) allocates a fraction of the total budget to each worker.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    Multi-agent cost is not simply $W$ times single-agent cost. Each worker
+    operates in a smaller context (only its subtask, not the full problem), so
+    individual worker costs are lower. A 4-worker system typically costs 1.5-2x
+    a single agent doing the full task, not 4x. The cost savings come from
+    shorter context windows and fewer reasoning steps per agent.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Implementing Multi-Agent Patterns</h2>
+
+<h3>Supervisor-Worker</h3>
+
+<pre><code class="language-python">from kaizen import BaseAgent, ReActAgent, Signature, InputField, OutputField
+from kaizen.tools import tool
+
+# Worker 1: Data profiler
+class ProfileTask(Signature):
+    """Profile a dataset and report quality issues."""
+    dataset: str = InputField(desc="Dataset filename")
+    profile_report: str = OutputField(desc="Data quality report")
+
+profiler_agent = ReActAgent(
+    signature=ProfileTask,
+    tools=[explore_data, check_nulls, check_distributions],
+    model="claude-sonnet-4-20250514"
+)
+
+# Worker 2: Model trainer
+class TrainTask(Signature):
+    """Train candidate models and return comparison."""
+    dataset: str = InputField(desc="Dataset filename")
+    target: str = InputField(desc="Target column name")
+    comparison: str = OutputField(desc="Model comparison table")
+
+trainer_agent = ReActAgent(
+    signature=TrainTask,
+    tools=[train_model, evaluate_model, cross_validate],
+    model="claude-sonnet-4-20250514"
+)
+
+# Worker 3: Report writer
+class ReportTask(Signature):
+    """Write a summary report from profiling and training results."""
+    profile_report: str = InputField(desc="From profiler agent")
+    model_comparison: str = InputField(desc="From trainer agent")
+    final_report: str = OutputField(desc="Executive summary")
+
+report_agent = ReActAgent(
+    signature=ReportTask,
+    tools=[format_table, generate_chart],
+    model="claude-sonnet-4-20250514"
+)
+
+# Supervisor orchestrates
+class SupervisorTask(Signature):
+    """Coordinate data analysis pipeline."""
+    dataset: str = InputField(desc="Dataset to analyse")
+    executive_report: str = OutputField(desc="Final analysis")
+
+class MLSupervisor(BaseAgent):
+    def run(self, dataset: str) -> str:
+        # Step 1: Profile
+        profile = profiler_agent.run(dataset=dataset)
+
+        # Step 2: Train (uses profiling insights)
+        training = trainer_agent.run(
+            dataset=dataset,
+            target=profile.identified_target
+        )
+
+        # Step 3: Report (combines both)
+        report = report_agent.run(
+            profile_report=profile.profile_report,
+            model_comparison=training.comparison
+        )
+        return report.final_report</code></pre>
+
+<h3>Sequential pattern</h3>
+
+<pre><code class="language-python"># Sequential: output of each agent feeds into the next
+def sequential_pipeline(dataset: str) -> str:
+    """Chain agents: profile → train → report."""
+    step1 = profiler_agent.run(dataset=dataset)
+    step2 = trainer_agent.run(
+        dataset=dataset,
+        target=step1.identified_target
+    )
+    step3 = report_agent.run(
+        profile_report=step1.profile_report,
+        model_comparison=step2.comparison
+    )
+    return step3.final_report</code></pre>
+
+<h3>Parallel pattern</h3>
+
+<pre><code class="language-python">import asyncio
+from kaizen import LLMCostTracker
+
+async def parallel_analysis(datasets: list[str]) -> list[str]:
+    """Analyse multiple datasets simultaneously."""
+    tracker = LLMCostTracker(budget_usd=5.00)
+
+    tasks = [
+        profiler_agent.arun(dataset=ds, cost_tracker=tracker)
+        for ds in datasets
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Aggregate results
+    combined = "\n\n".join(
+        f"## {ds}\n{r.profile_report}"
+        for ds, r in zip(datasets, results)
+    )
+    return combined
+
+# Analyse 3 Singapore datasets in parallel
+datasets = ["hdb_resale.csv", "mrt_ridership.csv", "telco_churn.csv"]
+report = asyncio.run(parallel_analysis(datasets))</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>A2A — Agent-to-Agent Protocol</h2>
+
+<p>
+  When agents communicate, they need a structured protocol — not free-form
+  text that the receiving agent must parse. The Agent-to-Agent (A2A) protocol
+  defines a standard message format:
+</p>
+
+<pre><code class="language-python">from kaizen.protocol import A2AMessage
+
+# Profiler sends structured output to trainer
+message = A2AMessage(
+    sender="profiler",
+    receiver="trainer",
+    task_id="analysis-001",
+    payload={
+        "dataset": "sg_telco_churn.csv",
+        "identified_target": "churned",
+        "quality_issues": ["2% nulls in tenure", "class imbalance 73/27"],
+        "recommended_preprocessing": ["impute_nulls", "oversample_minority"]
+    },
+    metadata={"cost_so_far": 0.12, "step": 1}
+)</code></pre>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    A2A messages carry metadata (cost, step number, timestamp) alongside the
+    payload. This enables the supervisor to track progress without parsing
+    agent output text. The protocol also supports priority levels and error
+    states — if a worker fails, it sends an error message that the supervisor
+    can handle (retry, skip, or abort).
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">A2A message flow in supervisor-worker pattern</text>
+
+  <!-- Supervisor -->
+  <rect x="270" y="40" width="180" height="45" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="360" y="68" text-anchor="middle" font-weight="700" font-size="12" fill="#92400E">Supervisor</text>
+
+  <!-- Workers -->
+  <rect x="40" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="105" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Profiler</text>
+  <rect x="210" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="275" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Trainer</text>
+  <rect x="380" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="445" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Reporter</text>
+  <rect x="550" y="130" width="130" height="45" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="615" y="157" text-anchor="middle" font-size="10" fill="#1E40AF">Validator</text>
+
+  <!-- Task messages down -->
+  <line x1="300" y1="85" x2="105" y2="130" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="170" y="104" font-size="8" fill="#22C55E" font-weight="600">task</text>
+  <line x1="330" y1="85" x2="275" y2="130" stroke="#22C55E" stroke-width="1.5"/>
+  <line x1="390" y1="85" x2="445" y2="130" stroke="#22C55E" stroke-width="1.5"/>
+  <line x1="420" y1="85" x2="615" y2="130" stroke="#22C55E" stroke-width="1.5"/>
+
+  <!-- Result messages up -->
+  <line x1="105" y1="130" x2="320" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="240" y="120" font-size="8" fill="#3B82F6" font-weight="600">result</text>
+  <line x1="275" y1="130" x2="345" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="445" y1="130" x2="375" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="615" y1="130" x2="400" y2="85" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4 3"/>
+</svg>
+<figcaption>Supervisor sends structured task messages (green) to workers and receives structured result messages (blue, dashed). Each message carries a payload and metadata.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Agent Memory</h2>
+
+<p>
+  Without memory, every agent invocation starts from scratch. The agent does
+  not remember what it profiled five minutes ago, what the user prefers, or
+  what entities it has encountered. Three types of memory address this:
+</p>
+
+<table>
+  <thead><tr><th>Memory type</th><th>Scope</th><th>Persistence</th><th>Use case</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Short-term</strong></td><td>Current conversation</td><td>Session only</td><td>Track the current task's state — what tools have been called, what results observed</td></tr>
+    <tr><td><strong>Long-term</strong></td><td>Across sessions</td><td>Database-backed</td><td>Remember user preferences ("always use F1 for imbalanced data"), past analyses, project context</td></tr>
+    <tr><td><strong>Entity</strong></td><td>Structured knowledge</td><td>Database-backed</td><td>Knowledge about specific entities — "HDB resale prices: median $550K, mean $620K, last updated Q3 2025"</td></tr>
+  </tbody>
+</table>
+
+<pre><code class="language-python">from kaizen.memory import ShortTermMemory, LongTermMemory, EntityMemory
+
+# Short-term: conversation buffer
+short_mem = ShortTermMemory(max_turns=20)
+
+# Long-term: persistent across sessions
+long_mem = LongTermMemory(
+    backend="sqlite",
+    db_path="agent_memory.db"
+)
+
+# Entity: structured knowledge store
+entity_mem = EntityMemory(
+    backend="sqlite",
+    db_path="entity_memory.db"
+)
+
+# Attach to agent
+agent = ReActAgent(
+    signature=DataAnalysis,
+    tools=[explore_data, train_model],
+    memory=[short_mem, long_mem, entity_mem]
+)
+
+# After running, entity memory stores structured facts
+entity_mem.get("hdb_resale_dataset")
+# → {"rows": 50000, "columns": 11, "last_profiled": "2025-11-15",
+#    "target": "resale_price", "best_model": "gradient_boosting"}</code></pre>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    Short-term memory is the agent's "working memory" — analogous to a human
+    holding information in mind while solving a problem. Long-term memory is
+    "experience" — lessons learned that persist across sessions. Entity memory
+    is "knowledge" — structured facts about the world. Together, they give
+    the agent a form of continuity that pure ReAct (which forgets everything
+    after each run) lacks.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Three memory types feed the agent's context</text>
+
+  <!-- Agent -->
+  <rect x="270" y="80" width="180" height="60" rx="10" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="360" y="110" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">ReAct Agent</text>
+  <text x="360" y="128" text-anchor="middle" font-size="10" fill="#92400E">context window</text>
+
+  <!-- Short-term -->
+  <rect x="30" y="50" width="180" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="120" y="75" text-anchor="middle" font-size="10" fill="#1E40AF">Short-term: last 20 turns</text>
+  <line x1="215" y1="70" x2="265" y2="100" stroke="#3B82F6" stroke-width="1.5"/>
+
+  <!-- Long-term -->
+  <rect x="30" y="120" width="180" height="40" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="120" y="145" text-anchor="middle" font-size="10" fill="#166534">Long-term: user prefs, history</text>
+  <line x1="215" y1="140" x2="265" y2="120" stroke="#22C55E" stroke-width="1.5"/>
+
+  <!-- Entity -->
+  <rect x="510" y="50" width="180" height="40" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
+  <text x="600" y="75" text-anchor="middle" font-size="10" fill="#6D28D9">Entity: structured facts</text>
+  <line x1="505" y1="70" x2="455" y2="100" stroke="#8B5CF6" stroke-width="1.5"/>
+
+  <!-- Tools -->
+  <rect x="510" y="120" width="180" height="40" rx="6" fill="#FEE2E2" stroke="#EF4444"/>
+  <text x="600" y="145" text-anchor="middle" font-size="10" fill="#991B1B">Tool results (current run)</text>
+  <line x1="505" y1="140" x2="455" y2="120" stroke="#EF4444" stroke-width="1.5"/>
+</svg>
+<figcaption>The agent's context window is populated from four sources: short-term memory, long-term memory, entity memory, and tool results from the current run.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: MCP Server</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    MCP (Model Context Protocol) is an open standard for exposing tools to AI
+    agents. <code>kailash-mcp</code> provides <code>MCPServer</code> — you
+    decorate functions with <code>@server.tool()</code> and they become
+    discoverable by any MCP client. Transport options: <strong>stdio</strong>
+    (local, for CLI agents) and <strong>HTTP/SSE</strong> (remote, for web
+    agents). This turns your ML pipeline into a service.
+  </p>
+</div>
+
+<h3>Building an MCP server</h3>
+
+<pre><code class="language-python">from kailash_mcp import MCPServer, tool
+
+server = MCPServer("ml-tools", version="1.0.0")
+
+@server.tool("explore")
+def explore_data(dataset: str) -> dict:
+    """Load and profile a dataset. Returns shape, columns, null counts."""
+    from shared import MLFPDataLoader
+    from kailash_ml import DataExplorer
+
+    loader = MLFPDataLoader()
+    df = loader.load("mlfp06", dataset)
+    explorer = DataExplorer()
+    profile = explorer.profile(df)
+    return {
+        "shape": list(df.shape),
+        "columns": df.columns,
+        "null_pct": profile.null_percentages,
+        "dtypes": {c: str(t) for c, t in df.schema.items()}
+    }
+
+@server.tool("train")
+def train_model(dataset: str, target: str, algorithm: str = "gradient_boosting") -> dict:
+    """Train a classification model. Returns accuracy, F1, and training time."""
+    from shared import MLFPDataLoader
+    from kailash_ml import TrainingPipeline
+
+    loader = MLFPDataLoader()
+    df = loader.load("mlfp06", dataset)
+    pipeline = TrainingPipeline(algorithm=algorithm)
+    result = pipeline.fit(df, target=target)
+    return {
+        "accuracy": round(result.metrics["accuracy"], 4),
+        "f1_score": round(result.metrics["f1_score"], 4),
+        "training_time_s": round(result.training_time, 2)
+    }
+
+@server.tool("feature_importance")
+def get_feature_importance(dataset: str, target: str, top_n: int = 10) -> list:
+    """Return top-N most important features for the target variable."""
+    from kailash_ml import ModelVisualizer
+    viz = ModelVisualizer()
+    importance = viz.compute_importance(dataset, target)
+    return importance[:top_n]
+
+# Run the server
+if __name__ == "__main__":
+    server.run(transport="stdio")  # or transport="sse" for HTTP</code></pre>
+
+<h3>MCP transport options</h3>
+
+<table>
+  <thead><tr><th>Transport</th><th>Protocol</th><th>Use case</th></tr></thead>
+  <tbody>
+    <tr><td><code>stdio</code></td><td>Standard input/output</td><td>Local CLI agents, development, testing</td></tr>
+    <tr><td><code>sse</code></td><td>HTTP + Server-Sent Events</td><td>Remote agents, web applications, production</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The MCP server exposes a <code>/tools</code> endpoint that returns the
+  schema of all registered tools. An MCP client (any agent framework that
+  speaks MCP) calls this endpoint to discover available tools, then calls
+  individual tools by name with JSON parameters. The agent never needs to know
+  how the tools are implemented — it only sees the schema.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 180" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">MCP decouples tool implementation from agent implementation</text>
+
+  <!-- MCP Client (Agent) -->
+  <rect x="40" y="50" width="200" height="80" rx="10" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="140" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">MCP Client</text>
+  <text x="140" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Any agent framework</text>
+  <text x="140" y="110" text-anchor="middle" font-size="10" fill="#1E293B">(Kaizen, LangChain, ...)</text>
+
+  <!-- Protocol -->
+  <rect x="280" y="65" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#0D9488" stroke-width="2"/>
+  <text x="360" y="85" text-anchor="middle" font-weight="600" font-size="11" fill="#0D9488">MCP Protocol</text>
+  <text x="360" y="102" text-anchor="middle" font-size="9" fill="#0D9488">stdio / HTTP+SSE</text>
+  <line x1="245" y1="90" x2="275" y2="90" stroke="#0D9488" stroke-width="2"/>
+  <line x1="445" y1="90" x2="475" y2="90" stroke="#0D9488" stroke-width="2"/>
+
+  <!-- MCP Server -->
+  <rect x="480" y="50" width="200" height="80" rx="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="580" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">MCP Server</text>
+  <text x="580" y="95" text-anchor="middle" font-size="10" fill="#1E293B">kailash-mcp</text>
+  <text x="580" y="110" text-anchor="middle" font-size="10" fill="#1E293B">ML tools, data tools</text>
+
+  <!-- Labels -->
+  <text x="140" y="150" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Discovers tools, calls them</text>
+  <text x="580" y="150" text-anchor="middle" font-size="9" fill="#64748B" font-style="italic">Registers tools, executes them</text>
+</svg>
+<figcaption>MCP decouples tool providers from tool consumers. Any MCP-compatible agent can discover and call tools from any MCP server, regardless of framework.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Multi-Agent ML Pipeline</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build a supervisor-worker pipeline for Singapore HDB resale price analysis.
+    The DataScientist supervisor delegates to three workers: FeatureEngineer
+    (profiles data, engineers features), ModelSelector (trains and compares
+    models), and ReportWriter (produces the executive summary). All agents
+    communicate via A2A messages and share an entity memory store.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. Define the three worker agents.</span>
+    <p>Each worker has a typed signature, 3-4 tools, and access to shared
+    entity memory for cross-agent knowledge:</p>
+    <pre><code class="language-python">from kaizen import ReActAgent, Signature, InputField, OutputField
+from kaizen.memory import EntityMemory
+
+shared_entities = EntityMemory(backend="sqlite", db_path="hdb_entities.db")
+
+# Worker 1: Feature Engineer
+class FeatureTask(Signature):
+    """Profile HDB data and engineer features."""
+    dataset: str = InputField()
+    feature_report: str = OutputField()
+    engineered_columns: list = OutputField()
+
+feature_agent = ReActAgent(
+    signature=FeatureTask,
+    tools=[explore_data, compute_correlations, create_features],
+    memory=[shared_entities],
+    model="claude-sonnet-4-20250514"
+)
+
+# Worker 2: Model Selector
+class ModelTask(Signature):
+    """Train 3 models and recommend the best."""
+    dataset: str = InputField()
+    features: list = InputField()
+    model_comparison: str = OutputField()
+    best_model: str = OutputField()
+
+model_agent = ReActAgent(
+    signature=ModelTask,
+    tools=[train_model, cross_validate, evaluate_model],
+    memory=[shared_entities],
+    model="claude-sonnet-4-20250514"
+)
+
+# Worker 3: Report Writer
+class ReportWriteTask(Signature):
+    """Synthesise findings into executive report."""
+    feature_report: str = InputField()
+    model_comparison: str = InputField()
+    executive_summary: str = OutputField()
+
+report_writer = ReActAgent(
+    signature=ReportWriteTask,
+    tools=[format_table, generate_chart],
+    memory=[shared_entities],
+    model="claude-sonnet-4-20250514"
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Build the supervisor.</span>
+    <pre><code class="language-python">from kaizen import BaseAgent, LLMCostTracker
+
+class HDBAnalysisSupervisor(BaseAgent):
+    def run(self, dataset: str) -> str:
+        tracker = LLMCostTracker(budget_usd=3.00)
+
+        # Phase 1: Feature engineering
+        features = feature_agent.run(
+            dataset=dataset, cost_tracker=tracker
+        )
+
+        # Phase 2: Model selection (uses engineered features)
+        models = model_agent.run(
+            dataset=dataset,
+            features=features.engineered_columns,
+            cost_tracker=tracker
+        )
+
+        # Phase 3: Report (combines both results)
+        report = report_writer.run(
+            feature_report=features.feature_report,
+            model_comparison=models.model_comparison,
+            cost_tracker=tracker
+        )
+
+        print(f"Total cost: ${tracker.total_cost:.4f}")
+        return report.executive_summary
+
+supervisor = HDBAnalysisSupervisor()
+result = supervisor.run(dataset="hdb_resale.csv")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Observe the multi-agent trace.</span>
+    <pre><code class="language-text">[Supervisor] Delegating to FeatureEngineer...
+  [FeatureEng] Profiling hdb_resale.csv — 50,000 rows, 11 columns
+  [FeatureEng] Created 3 features: price_per_sqm, floor_bucket, lease_remaining_years
+  [FeatureEng] Stored entity "hdb_resale" in shared memory
+  [FeatureEng] Cost: $0.42
+
+[Supervisor] Delegating to ModelSelector...
+  [ModelSel] Training on 14 features (11 original + 3 engineered)
+  [ModelSel] LR: R²=0.82 | RF: R²=0.91 | GB: R²=0.93
+  [ModelSel] Gradient boosting wins. Top predictor: floor_area_sqm
+  [ModelSel] Cost: $0.67
+
+[Supervisor] Delegating to ReportWriter...
+  [Reporter] Reading shared entities for context
+  [Reporter] Generating executive summary with charts
+  [Reporter] Cost: $0.31
+
+[Supervisor] Total: $1.40 / $3.00 budget. Pipeline complete.</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Security Considerations</h2>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    Multi-agent systems introduce security concerns that single agents do not
+    have. A worker agent with access to customer PII should not leak that data
+    to a report-writing agent that produces external-facing documents. Design
+    principles: (1) each worker accesses only the data it needs, (2) A2A
+    messages carry sanitised summaries, not raw data, (3) the supervisor
+    enforces access boundaries. Lesson 6.7 formalises this with PACT operating
+    envelopes.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Too many agents</span>
+  <p>
+    Start with 2-3 agents, add only when you have a clear reason. Each agent
+    adds communication overhead (A2A messages, context management, budget
+    splitting). A 2-agent system is easier to debug than a 6-agent system. The
+    test: if you cannot explain what each agent uniquely contributes, merge it
+    with another.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: Free-form text between agents</span>
+  <p>
+    Agents communicating through unstructured text create a game of telephone —
+    each agent paraphrases the previous one's output, losing precision. Use
+    typed A2A messages with structured payloads. The receiving agent gets
+    <code>{"accuracy": 0.93}</code>, not "the accuracy was about 93 percent".
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: No shared memory</span>
+  <p>
+    Without shared entity memory, workers repeat work. The profiler discovers
+    the target column is "churned"; the trainer asks the LLM to figure out the
+    target column again. Entity memory stores facts once and makes them
+    available to all agents, eliminating redundant tool calls.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Ignoring inter-agent security</span>
+  <p>
+    In production, agents may have different access levels. A data-access agent
+    can see customer PII; a reporting agent should see only aggregated statistics.
+    Without access controls, the reporting agent might inadvertently include
+    individual customer records in a public report.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Build the MCP server</h3>
+  <p>
+    Create an MCP server that exposes three tools: <code>explore</code>,
+    <code>train</code>, and <code>feature_importance</code>. Run it with
+    <code>transport="stdio"</code> and test each tool manually by sending
+    JSON-RPC messages. Verify that the tool schemas are discoverable via
+    the <code>/tools</code> endpoint.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — Parallel vs sequential</h3>
+  <p>
+    Take the three Singapore datasets (HDB resale, MRT ridership, telco churn)
+    and analyse all three using: (a) a sequential pipeline (one after another),
+    and (b) a parallel pipeline (all three simultaneously). Compare total wall-clock
+    time and total LLM cost. Is the parallel version faster? Is it cheaper?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Handoff pattern</h3>
+  <p>
+    Build a customer service chatbot with handoff. The general agent handles
+    greetings and FAQs. When the user asks about billing, it hands off to a
+    billing specialist agent. When the user asks about technical issues, it
+    hands off to a technical specialist. Each specialist has its own tools and
+    memory. Implement the handoff detection and context transfer.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Entity memory persistence</h3>
+  <p>
+    Run the HDB analysis supervisor twice on the same dataset. On the second
+    run, observe whether the agents use entity memory to skip redundant
+    profiling steps. Measure the cost difference between the first run
+    (cold start) and the second run (warm memory).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>6.5 AI Agents:</strong> the single-agent ReAct pattern that each
+  worker implements.
+  <br>
+  <strong>6.7 Governance:</strong> PactGovernedAgent adds operating envelopes
+  and budget cascading to the multi-agent patterns built here.
+  <br>
+  <strong>6.8 Capstone:</strong> the multi-agent pipeline from today gets
+  deployed via Nexus (API + CLI + MCP simultaneously) with full governance.
+  <br>
+  <strong>6.4 RAG:</strong> a RAG agent can serve as one worker in a
+  multi-agent pipeline — the knowledge retrieval specialist.
+  <br>
+  <strong>5.8 RL:</strong> the parallel pattern's speedup analysis uses the
+  same cost-benefit reasoning as RL's discount factor — trading immediate cost
+  for long-term efficiency.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have built multi-agent systems using all four orchestration patterns,
+  configured agent memory for continuity across turns and sessions, and created
+  an MCP server that exposes ML tools as a discoverable service. The key insight:
+  <strong>multi-agent systems are organisational design, not just code</strong>.
+  The same principles that make human teams effective — clear roles, structured
+  communication, shared knowledge, appropriate access controls — make agent
+  teams effective.
+</p>
+<p>
+  MCP is particularly significant. By exposing your tools as an MCP server, you
+  decouple tool implementation from agent implementation. Any MCP client — Kaizen,
+  Claude Code, or a third-party framework — can discover and use your ML tools
+  without knowing how they are built. This is the service-oriented architecture
+  pattern applied to AI agents.
+</p>
+<p>
+  In Lesson 6.7, we add the missing piece: governance. The multi-agent pipeline
+  you built today has no access controls, no operating envelopes, and no audit
+  trail. PACT adds all three — making the pipeline not just functional but
+  compliant and auditable.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../05/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    6.5 AI Agents
+  </a>
+  <a href="../07/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.7 AI Governance Engineering
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

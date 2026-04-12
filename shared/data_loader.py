@@ -65,12 +65,20 @@ def _download_from_drive(module: str, filename: str, dest: Path) -> Path:
     logger.info("Downloading %s/%s from Google Drive...", module, filename)
 
     # Download the specific file from the shared folder
-    gdown.download_folder(
-        url=url,
-        output=str(dest),
-        quiet=True,
-        remaining_ok=True,
-    )
+    try:
+        gdown.download_folder(
+            url=url,
+            output=str(dest),
+            quiet=True,
+            remaining_ok=True,
+        )
+    except TypeError:
+        # Older gdown versions don't support remaining_ok
+        gdown.download_folder(
+            url=url,
+            output=str(dest),
+            quiet=True,
+        )
 
     if not dest_file.exists():
         # Try direct download if folder download didn't isolate the file

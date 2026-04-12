@@ -4,9 +4,19 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP02 — Exercise 2: Estimation and Inference
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Derive maximum likelihood estimates for economic parameters,
-#   compare MLE vs MAP estimation, and diagnose when MLE fails.
-#   Optimize log-likelihoods with scipy and visualize with ModelVisualizer.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Write and optimise a log-likelihood function using scipy.optimize
+#   - Distinguish MLE (no prior) from MAP estimation (MLE + prior)
+#   - Compute standard errors and Wald confidence intervals from the Hessian
+#   - Diagnose three failure modes of MLE: small n, multimodal data, misspecification
+#   - Use AIC to compare distributions (Normal vs Student-t)
+#
+# PREREQUISITES: Complete Exercise 1 — you should understand MLE, posterior
+#   distributions, and the Normal-Normal conjugate prior.
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
 #   1. Load Singapore economic indicators and profile the data
@@ -14,6 +24,11 @@
 #   3. Add a prior (MAP estimation) and compare to MLE
 #   4. Diagnose MLE failure cases: small n, multimodal, misspecification
 #   5. Visualise likelihood surfaces and posterior contours
+#
+# DATASET: Singapore economic indicators (GDP, inflation, unemployment)
+#   Source: Singapore Department of Statistics (DOS)
+#   Key column: gdp_growth_pct (quarterly % change, annualised)
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -30,17 +45,19 @@ from shared import MLFPDataLoader
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-econ = loader.load("mlfp02", "economic_indicators.csv")
+econ = loader.load("mlfp01", "economic_indicators.csv")
 
-print("=== Singapore Economic Indicators ===")
-print(f"Shape: {econ.shape}")
-print(f"Columns: {econ.columns}")
+print("=" * 60)
+print("  MLFP02 Exercise 2: Estimation and Inference")
+print("=" * 60)
+print(f"\n  Data loaded: economic_indicators.csv ({econ.shape[0]} rows, {econ.shape[1]} cols)")
+print(f"  Columns: {econ.columns}")
 print(econ.head(8))
 
 # Extract GDP growth as our primary variable of interest
 gdp_growth = econ["gdp_growth_pct"].drop_nulls().to_numpy().astype(np.float64)
-inflation = econ["inflation_cpi_pct"].drop_nulls().to_numpy().astype(np.float64)
-unemployment = econ["unemployment_rate_pct"].drop_nulls().to_numpy().astype(np.float64)
+inflation = econ["inflation_rate"].drop_nulls().to_numpy().astype(np.float64)
+unemployment = econ["unemployment_rate"].drop_nulls().to_numpy().astype(np.float64)
 
 n_gdp = len(gdp_growth)
 print(f"\nGDP growth observations: {n_gdp}")
@@ -71,6 +88,14 @@ skew = stats.skew(gdp_growth)
 kurt = stats.kurtosis(gdp_growth)
 print(f"Skewness: {skew:.3f} (|skew|>1 suggests non-Normal)")
 print(f"Excess kurtosis: {kurt:.3f} (>0 → heavier tails than Normal)")
+# INTERPRETATION: Singapore's GDP growth is approximately symmetric (low skewness)
+# but may have kurtosis > 0 due to occasional large shocks (GFC 2009, COVID 2020).
+# We proceed with Normal as the primary model, then test t-distribution.
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert 0 <= shapiro_p <= 1, "Shapiro-Wilk p-value must be between 0 and 1"
+assert n_gdp > 10, f"Expected substantial GDP history, got {n_gdp} observations"
+print("\n✓ Checkpoint 1 passed — data profiled and normality assessed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -114,6 +139,9 @@ print(f"Analytical MLE:  μ = {mle_mu_analytic:.4f}%, σ = {mle_sigma_analytic:.
 print(f"Numerical MLE:   μ = {mle_mu_numeric:.4f}%, σ = {mle_sigma_numeric:.4f}%")
 print(f"Optimizer converged: {result_mle.success} (message: {result_mle.message})")
 print(f"Log-likelihood at MLE: {-result_mle.fun:.4f}")
+# INTERPRETATION: Analytical and numerical MLE should agree closely. The numerical
+# approach scales to distributions with no closed-form solution (e.g., Beta, Gamma
+# with non-integer shape). L-BFGS-B is ideal here: bounded, quasi-Newton method.
 
 # Standard errors via observed Fisher information (Hessian)
 # Var(θ̂) ≈ [I(θ̂)]⁻¹ where I(θ) = -E[∂²ℓ/∂θ²]
@@ -145,6 +173,13 @@ lr_values = np.array([loglik_at_mle - profile_loglik(mu) for mu in mu_grid])
 lr_ci_mask = lr_values <= lr_threshold
 lr_ci = (mu_grid[lr_ci_mask][0], mu_grid[lr_ci_mask][-1])
 print(f"Profile LR 95% CI for μ: [{lr_ci[0]:.3f}%, {lr_ci[1]:.3f}%]")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert result_mle.success, "MLE optimizer should converge"
+assert abs(mle_mu_numeric - mle_mu_analytic) < 0.01, "Numerical and analytical MLE should agree"
+assert mle_mu_ci[0] < mle_mu_numeric < mle_mu_ci[1], "MLE mean must be inside its own CI"
+assert mle_mu_se > 0, "Standard error must be positive"
+print("\n✓ Checkpoint 2 passed — MLE computed and validated\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -200,6 +235,9 @@ print(
 print(
     f"  → With n={n_gdp}, data {'dominates' if n_gdp > 20 else 'is balanced with'} the prior"
 )
+# INTERPRETATION: MAP shrinks the estimate toward the prior mean. The shrinkage
+# is proportional to the prior precision relative to the data precision. With
+# many observations, MAP and MLE converge — consistent with Exercise 1's result.
 
 # Demonstrate stronger effect with small n
 rng = np.random.default_rng(seed=42)
@@ -224,6 +262,12 @@ for n_small in [5, 10, 20]:
         f"n={n_small:>3}: MLE={mle_s:>6.3f}%, MAP={map_s:>6.3f}%, prior={mu_prior_mean:.1f}% | shrinkage={map_s-mle_s:+.3f}%"
     )
 
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert result_map.success, "MAP optimizer should converge"
+assert abs(map_mu - mle_mu_numeric) <= abs(mu_prior_mean - mle_mu_numeric), \
+    "MAP should lie between MLE and prior (cannot overshoot prior)"
+print("\n✓ Checkpoint 3 passed — MAP correctly shrinks toward prior\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: MLE failure cases — diagnostics and remedies
@@ -243,6 +287,9 @@ print(f"MLE σ (ddof=0): {mle_sigma_3:.4f}% (biased)")
 print(f"Unbiased σ (ddof=1): {unbiased_sigma_3:.4f}%")
 print(f"Bias = {mle_sigma_3 - gdp_growth.std():.4f}%")
 print(f"Remedy: Use MAP (Bayesian shrinkage) or unbiased estimator for small n")
+# INTERPRETATION: MLE σ with n=3 systematically underestimates the true σ.
+# Bessel's correction (ddof=1) fixes the bias but MAP also addresses
+# the high variance of the estimate — the prior acts as regularisation.
 
 print(f"\n=== MLE Failure Case 2: Multimodal Data ===")
 # Create a synthetic bimodal dataset (pre/post-COVID economic regimes)
@@ -312,6 +359,9 @@ print(f"t-dist MLE 99th pct: {t_99:.2f}% (better tail estimate)")
 print(f"Empirical 99th pct:  {actual_99:.2f}%")
 print(f"t-distribution df = {t_df:.1f} (lower → heavier tails)")
 print(f"Remedy: Likelihood ratio test to select between Normal and t")
+# INTERPRETATION: The Normal model systematically underestimates the 99th
+# percentile (extreme growth/recession events). Tail risk matters for risk
+# management — using the wrong model leads to underpreparation for crises.
 
 # AIC comparison: Normal vs t (t has one extra parameter)
 ll_normal = np.sum(stats.norm.logpdf(shock_data, normal_mle_mu, normal_mle_sigma))
@@ -323,6 +373,13 @@ print(f"AIC (t-dist): {aic_t:.2f}")
 print(
     f"Better fit: {'t-distribution' if aic_t < aic_normal else 'Normal'} (lower AIC wins)"
 )
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert bimodality_coeff > 0, "Bimodality coefficient must be positive"
+assert normal_99 < actual_99 or abs(normal_99 - actual_99) < 5, \
+    "Normal model should underestimate or match the 99th percentile for heavy-tailed data"
+assert aic_normal != aic_t, "AIC values should differ between models"
+print("\n✓ Checkpoint 4 passed — MLE failure cases diagnosed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -423,6 +480,34 @@ fig_dist = viz.metric_comparison(distribution_fits)
 fig_dist.update_layout(title="Distribution Fit Comparison (AIC and Log-Likelihood)")
 fig_dist.write_html("ex2_distribution_comparison.html")
 print("Saved: ex2_distribution_comparison.html")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert len(mle_estimates) == len(sample_sizes), "Should have one estimate per sample size"
+assert len(map_estimates) == len(sample_sizes), "Should have one MAP estimate per sample size"
+print("\n✓ Checkpoint 5 passed — visualisations saved\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 60)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 60)
+print("""
+  ✓ Log-likelihood optimisation with scipy.optimize.minimize
+  ✓ L-BFGS-B reparameterisation (log σ enforces σ > 0)
+  ✓ Wald SE from Fisher information: SE(μ̂) = σ / √n
+  ✓ Profile likelihood CI — more accurate than Wald for small n
+  ✓ MAP = MLE + log-prior; shrinks toward prior, converges to MLE as n → ∞
+  ✓ MLE failure mode 1: small n → biased σ̂, remedied by Bessel/MAP
+  ✓ MLE failure mode 2: multimodal → mean between modes, remedied by GMM
+  ✓ MLE failure mode 3: misspecification → wrong tails, remedied by AIC
+
+  NEXT: In Exercise 3, you'll move from estimation to decision-making.
+  You'll formulate null and alternative hypotheses, run power analysis,
+  apply multiple testing corrections (Bonferroni and BH-FDR), and
+  implement a permutation test — all on A/B test data.
+""")
 
 print(f"\n✓ Exercise 2 complete — MLE and MAP estimation for economic parameters")
 print(

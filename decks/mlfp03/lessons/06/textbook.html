@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.6 — Interpretability and Fairness | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.6</span>
+  Interpretability and Fairness
+</h1>
+
+<p class="lead">
+  A model that scores 0.95 AUC means nothing if you cannot explain <em>why</em>
+  it makes its predictions, and even less if it discriminates against
+  protected groups. This lesson introduces SHAP (global and local
+  explanations from Shapley values), LIME (model-agnostic local
+  explanations), ALE (accumulated local effects that handle correlated
+  features), and the fairness metrics every deployed model must report.
+  We close with the impossibility theorem: you cannot simultaneously
+  satisfy demographic parity, equalised odds, and calibration.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>SHAP: Shapley Additive Explanations</h2>
+
+<h3>Shapley axioms</h3>
+
+<p>
+  Shapley values come from cooperative game theory. A "game" has players
+  (features) and a payoff (prediction). The Shapley value of feature $i$
+  is the average marginal contribution of $i$ across all possible
+  coalitions of features:
+</p>
+
+<div class="annotated-equation">
+  $$\phi_i = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|!\,(|F| - |S| - 1)!}{|F|!} \left[ f(S \cup \{i\}) - f(S) \right]$$
+  <div class="annotations">
+    <span>$S$ = subset of features without $i$</span>
+    <span>$f(S)$ = model prediction using only features in $S$</span>
+  </div>
+</div>
+
+<p>Shapley values satisfy four axioms that make them the unique fair attribution method:</p>
+
+<table>
+  <thead><tr><th>Axiom</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Efficiency</strong></td><td>Contributions sum to the total prediction: $\sum_i \phi_i = f(x) - \mathbb{E}[f(x)]$</td></tr>
+    <tr><td><strong>Symmetry</strong></td><td>Features with identical contributions get identical values</td></tr>
+    <tr><td><strong>Dummy</strong></td><td>A feature that never changes the prediction gets $\phi_i = 0$</td></tr>
+    <tr><td><strong>Linearity</strong></td><td>For a sum of two models, Shapley values add</td></tr>
+  </tbody>
+</table>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Waterfall plot concept -->
+  <text x="360" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">SHAP waterfall for one prediction</text>
+  <line x1="80" y1="40" x2="80" y2="260" stroke="#94A3B8" stroke-width="1"/>
+  <!-- Base value -->
+  <rect x="85" y="45" width="200" height="30" rx="4" fill="#94A3B8" opacity="0.3"/>
+  <text x="90" y="65" font-family="Inter" font-size="11" fill="#64748B">Base value (average prediction)</text>
+  <!-- Positive contributions -->
+  <rect x="285" y="85" width="120" height="30" rx="4" fill="#22C55E" opacity="0.7"/>
+  <text x="360" y="105" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+alcohol (+0.4)</text>
+  <rect x="405" y="125" width="80" height="30" rx="4" fill="#22C55E" opacity="0.5"/>
+  <text x="445" y="145" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">+sulphates (+0.2)</text>
+  <!-- Negative contributions -->
+  <rect x="185" y="165" width="100" height="30" rx="4" fill="#F43F5E" opacity="0.7"/>
+  <text x="235" y="185" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-acidity (-0.3)</text>
+  <rect x="235" y="205" width="50" height="30" rx="4" fill="#F43F5E" opacity="0.5"/>
+  <text x="260" y="225" text-anchor="middle" font-family="Inter" font-size="11" fill="#9F1239">-pH (-0.1)</text>
+  <!-- Final prediction -->
+  <rect x="85" y="245" width="200" height="30" rx="4" fill="#0D9488" opacity="0.3"/>
+  <text x="90" y="265" font-family="Inter" font-size="11" fill="#0D9488">Final prediction = base + sum(SHAP)</text>
+</svg>
+<figcaption>A SHAP waterfall shows how each feature pushes the prediction up or down from the base value. Green features increase the prediction; red features decrease it.</figcaption>
+</figure>
+
+<h3>TreeSHAP and KernelSHAP</h3>
+
+<p>
+  Computing exact Shapley values requires evaluating $2^{|F|}$ coalitions.
+  Two approximations make this practical:
+</p>
+
+<ul>
+  <li><strong>TreeSHAP</strong>: exact Shapley values for tree-based models (XGBoost, LightGBM, random forests) in polynomial time. Use this whenever you have a tree model.</li>
+  <li><strong>KernelSHAP</strong>: model-agnostic approximation using weighted linear regression on coalitions. Slower but works for any model.</li>
+</ul>
+
+<pre><code class="language-python">import shap
+
+# TreeSHAP for a gradient boosting model
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+
+# Summary plot: global feature importance
+shap.summary_plot(shap_values, X_test)
+
+# Waterfall for one prediction
+shap.plots.waterfall(shap_values[0])</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>LIME: Local Interpretable Model-agnostic Explanations</h2>
+
+<p>
+  LIME explains individual predictions by fitting a simple, interpretable
+  model (usually linear) in the local neighbourhood of the instance.
+  It perturbs the input, gets predictions from the black-box model, and
+  fits a weighted linear model where closer perturbations get higher
+  weight.
+</p>
+
+<pre><code class="language-python">from lime.lime_tabular import LimeTabularExplainer
+
+explainer = LimeTabularExplainer(
+    X_train.to_numpy(),
+    feature_names=X_train.columns,
+    class_names=["low", "high"],
+)
+
+explanation = explainer.explain_instance(
+    X_test[0].to_numpy(),
+    model.predict_proba,
+    num_features=5,
+)
+explanation.show_in_notebook()</code></pre>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    SHAP gives exact attributions that sum to the prediction (efficiency
+    axiom). LIME gives approximate local explanations that may not sum
+    exactly. Use SHAP when you need consistency and additivity; use LIME
+    when you need a quick, model-agnostic explanation.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>ALE: Accumulated Local Effects</h2>
+
+<p>
+  Partial Dependence Plots (PDP) show the average effect of a feature,
+  but they assume features are independent. When features are correlated,
+  PDPs produce unrealistic data points. ALE fixes this by accumulating
+  local effects within small intervals:
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    ALE partitions the feature range into intervals, computes the average
+    change in prediction within each interval, and accumulates these
+    changes. Unlike PDP, ALE never evaluates the model on unrealistic
+    feature combinations (e.g., a flat that is both 20 sqm and has 5
+    bedrooms).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Fairness</h2>
+
+<h3>Disparate impact</h3>
+
+<p>
+  The four-fifths rule: the selection rate for the minority group should be
+  at least 80% of the selection rate for the majority group:
+</p>
+
+<div class="annotated-equation">
+  $$\text{Disparate Impact} = \frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})} \;\geq\; 0.8$$
+  <div class="annotations">
+    <span>Below 0.8 = potential discrimination</span>
+    <span>Common in hiring and lending</span>
+  </div>
+</div>
+
+<h3>Equalised odds</h3>
+
+<p>
+  A model satisfies equalised odds if the true positive rate and false
+  positive rate are equal across groups:
+</p>
+
+$$P(\hat{Y}=1 \mid Y=1, G=a) = P(\hat{Y}=1 \mid Y=1, G=b)$$
+$$P(\hat{Y}=1 \mid Y=0, G=a) = P(\hat{Y}=1 \mid Y=0, G=b)$$
+
+<h3>The impossibility theorem</h3>
+
+<div class="callout warning">
+  <span class="label">⚠ The impossibility theorem</span>
+  <p>
+    Chouldechova (2017) and Kleinberg et al. (2016) proved that when base
+    rates differ between groups, you <strong>cannot simultaneously
+    satisfy</strong> demographic parity, equalised odds, and calibration.
+    Any model that satisfies two of the three necessarily violates the
+    third.
+  </p>
+  <p>
+    This is not a limitation of any particular model — it is a mathematical
+    fact. Fairness is an engineering tradeoff: decide which criterion
+    matters most for your deployment context, measure it, report it, and
+    mitigate where possible.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Impossibility triangle -->
+  <polygon points="360,40 140,220 580,220" fill="none" stroke="#F43F5E" stroke-width="2.5"/>
+  <text x="360" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Demographic Parity</text>
+  <text x="110" y="245" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Equalised Odds</text>
+  <text x="610" y="245" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#F43F5E">Calibration</text>
+  <text x="360" y="155" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Pick at most two</text>
+  <text x="360" y="175" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">(when base rates differ)</text>
+</svg>
+<figcaption>The fairness impossibility theorem: with unequal base rates, satisfying two fairness criteria requires violating the third.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Credit Scoring Fairness Audit</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>Audit the credit scoring model from Lesson 3.5 for fairness across demographic groups.</p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Compute SHAP values.</span>
+    <pre><code class="language-python">explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+shap.summary_plot(shap_values, X_test)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Measure disparate impact.</span>
+    <pre><code class="language-python">pred = model.predict(X_test)
+rate_minority = pred[group == "minority"].mean()
+rate_majority = pred[group == "majority"].mean()
+di = rate_minority / rate_majority
+print(f"Disparate impact: {di:.3f} {'PASS' if di >= 0.8 else 'FAIL'}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Measure equalised odds.</span>
+    <pre><code class="language-python">for g in ["minority", "majority"]:
+    mask = group == g
+    tpr = recall_score(y_test[mask], pred[mask])
+    fpr = (pred[mask] & ~y_test[mask]).sum() / (~y_test[mask]).sum()
+    print(f"  {g}: TPR={tpr:.3f}, FPR={fpr:.3f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Report findings.</span>
+    <p>
+      Document: which fairness criteria were measured, which passed, which
+      failed, and what the tradeoffs are. The impossibility theorem means
+      you cannot fix everything — be transparent about the choice.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Using SHAP for causal claims</span>
+  <p>
+    SHAP tells you which features the model uses. It does not tell you
+    which features cause the outcome. "Income has high SHAP importance"
+    does not mean income causes creditworthiness.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Removing a protected feature and assuming fairness</span>
+  <p>
+    Other features (postcode, school, employment history) are often proxies
+    for the protected attribute. Removing gender from the model does not
+    prevent gender discrimination.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Optimising for one fairness metric blindly</span>
+  <p>
+    The impossibility theorem means optimising for demographic parity
+    may hurt calibration. Always measure and report multiple metrics.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — SHAP analysis</h3>
+  <p>Compute SHAP values for your credit scoring model. Generate summary, dependence, and waterfall plots. Identify the top 3 features globally and for the single highest-risk prediction.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Fairness audit</h3>
+  <p>Compute disparate impact and equalised odds across demographic groups. Report which criteria pass and which fail. Explain the impossibility theorem with your model's specific numbers.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — LIME vs SHAP</h3>
+  <p>For the same prediction, generate both a LIME explanation and a SHAP waterfall. Compare the top features identified by each method. When do they agree? When do they disagree?</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  SHAP's efficiency axiom connects to the additive structure of linear
+  regression from 2.5. The fairness metrics use the confusion matrix
+  vocabulary from 3.5. The impossibility theorem has the same flavour as
+  the bias-variance tradeoff from 3.2 — a fundamental mathematical
+  constraint, not a fixable limitation. In Lesson 3.7, interpretability
+  findings inform which models get promoted through the model registry.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You can now explain any model (SHAP, LIME, ALE) and audit it for
+  fairness (disparate impact, equalised odds, calibration). The
+  impossibility theorem ensures you approach fairness as an engineering
+  tradeoff, not a checkbox. Every model you deploy from here on should
+  carry a fairness report alongside its accuracy metrics.
+</p>
+<p>
+  Lesson 3.7 moves from "is this model good?" to "how do I automate the
+  pipeline?" — WorkflowBuilder, ModelRegistry, and Bayesian
+  hyperparameter search.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/textbook.html" class="prev"><span class="label">← Previous</span>3.5 Model Evaluation</a>
+  <a href="../07/textbook.html" class="next"><span class="label">Next →</span>3.7 Workflow Orchestration</a>
+</nav>
+
+</main>
+</body>
+</html>

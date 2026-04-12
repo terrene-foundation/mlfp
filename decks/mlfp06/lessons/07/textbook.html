@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.7 — AI Governance Engineering | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.7</span>
+  AI Governance Engineering
+</h1>
+
+<p class="lead">
+  Governance is not a committee discussion or an ethics position paper. It is
+  <strong>code</strong> — access controls that deny unauthorised access, operating
+  envelopes that restrict agent behaviour, budget cascading that prevents runaway
+  costs, and audit trails that prove compliance. Today you implement all four with
+  PACT: D/T/R addressing, GovernanceEngine, PactGovernedAgent, and CostTracker.
+  The result: a multi-agent system where every tool call is checked, every budget
+  is enforced, and every decision is logged.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Singapore's Monetary Authority (MAS) requires financial institutions to explain
+  every AI-driven decision that affects customers. A recommendation engine that
+  denies a loan must log <em>why</em>. An agent that executes a trade must record
+  <em>who</em> authorised it, <em>what</em> envelope it operated under, and
+  <em>how much</em> it was allowed to spend. "The AI decided" is not an
+  acceptable audit response.
+</p>
+
+<p>
+  Without governance engineering, you get one of two failure modes. Either the
+  system is wide open — any agent can access any data and spend any amount —
+  which is a security and compliance disaster. Or governance is bolted on as an
+  afterthought — a brittle layer of if-statements that breaks every time the
+  system changes. PACT makes governance a first-class component: declared,
+  compiled, enforced, and tested.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 230" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Governance as code: declared, compiled, enforced, tested</text>
+
+  <!-- Phase 1: Declare -->
+  <rect x="20" y="55" width="150" height="70" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="95" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">1. Declare</text>
+  <text x="95" y="96" text-anchor="middle" font-size="10" fill="#1E293B">Define D/T/R structure</text>
+  <text x="95" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Define envelopes</text>
+
+  <!-- Phase 2: Compile -->
+  <rect x="200" y="55" width="150" height="70" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="275" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">2. Compile</text>
+  <text x="275" y="96" text-anchor="middle" font-size="10" fill="#1E293B">compile_org()</text>
+  <text x="275" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Resolve inheritance</text>
+
+  <!-- Phase 3: Enforce -->
+  <rect x="380" y="55" width="150" height="70" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="455" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">3. Enforce</text>
+  <text x="455" y="96" text-anchor="middle" font-size="10" fill="#1E293B">can_access() on every call</text>
+  <text x="455" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Block or warn</text>
+
+  <!-- Phase 4: Test -->
+  <rect x="560" y="55" width="140" height="70" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="630" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#EF4444">4. Test</text>
+  <text x="630" y="96" text-anchor="middle" font-size="10" fill="#1E293B">Verify denied stays</text>
+  <text x="630" y="112" text-anchor="middle" font-size="10" fill="#1E293B">denied</text>
+
+  <!-- Arrows -->
+  <line x1="175" y1="90" x2="195" y2="90" stroke="#475569" stroke-width="2"/>
+  <line x1="355" y1="90" x2="375" y2="90" stroke="#475569" stroke-width="2"/>
+  <line x1="535" y1="90" x2="555" y2="90" stroke="#475569" stroke-width="2"/>
+
+  <!-- Audit trail running beneath -->
+  <rect x="20" y="155" width="680" height="40" rx="6" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="1.5"/>
+  <text x="360" y="175" text-anchor="middle" font-weight="600" font-size="11" fill="#8B5CF6">Audit Trail — every access check logged with timestamp, address, resource, decision, reason</text>
+  <line x1="95" y1="130" x2="95" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+  <line x1="275" y1="130" x2="275" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+  <line x1="455" y1="130" x2="455" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+  <line x1="630" y1="130" x2="630" y2="150" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <text x="360" y="215" text-anchor="middle" font-size="10" fill="#64748B">Governance is not a gate you pass once — it is continuous enforcement on every operation</text>
+</svg>
+<figcaption>The four-phase governance lifecycle. Every phase produces audit entries. The audit trail is the proof of compliance.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>D/T/R Addressing</h3>
+
+<p>
+  PACT's addressing grammar breaks identity into three dimensions:
+</p>
+
+<table>
+  <thead><tr><th>Dimension</th><th>Meaning</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Domain (D)</strong></td><td>Business unit or functional area</td><td><code>finance</code>, <code>operations</code>, <code>hr</code></td></tr>
+    <tr><td><strong>Team (T)</strong></td><td>Functional group within a domain</td><td><code>risk</code>, <code>compliance</code>, <code>trading</code></td></tr>
+    <tr><td><strong>Role (R)</strong></td><td>Individual capability level</td><td><code>analyst</code>, <code>manager</code>, <code>director</code></td></tr>
+  </tbody>
+</table>
+
+<p>
+  A D/T/R address like <code>finance/risk/analyst</code> uniquely identifies what
+  access a requester should have. The GovernanceEngine compiles an organisational
+  structure from domain, team, and role definitions, then resolves access by
+  walking the hierarchy: a <code>manager</code> inherits all <code>analyst</code>
+  permissions plus any additional manager-specific grants.
+</p>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Think of D/T/R as a postal address for permissions. The domain is the country,
+    the team is the city, the role is the street address. When a letter (access
+    request) arrives, the system checks: does this address have a mailbox
+    (permission) for this type of mail (resource)? The address system is
+    hierarchical — a domain-level permission applies to all teams within it.
+  </p>
+</div>
+
+<h3>Operating Envelopes</h3>
+
+<p>
+  An operating envelope defines the boundaries within which an agent can operate.
+  If D/T/R addressing answers "who can access what", envelopes answer "what can
+  this agent do, even with access". Two types:
+</p>
+
+<div class="compare-grid">
+  <div class="col">
+    <h4>Task Envelopes</h4>
+    <p>
+      Restrict the agent to specific task types. A data analysis agent may read
+      data and compute statistics, but it cannot write to the database or send
+      emails. The task envelope is the list of permitted actions.
+    </p>
+    <pre><code class="language-python">task_envelope = {
+    "allowed_tools": [
+        "explore_data",
+        "compute_statistics",
+        "generate_report"
+    ],
+    "blocked_tools": [
+        "write_database",
+        "send_email",
+        "deploy_model"
+    ]
+}</code></pre>
+  </div>
+  <div class="col">
+    <h4>Role Envelopes</h4>
+    <p>
+      Restrict based on the agent's organisational role. An analyst agent gets a
+      smaller budget, fewer tool options, and read-only data access. A manager
+      agent gets a larger budget and write access.
+    </p>
+    <pre><code class="language-python">role_envelopes = {
+    "analyst": {
+        "max_cost": 5.00,
+        "data_access": "read",
+        "model_access": "predict"
+    },
+    "manager": {
+        "max_cost": 50.00,
+        "data_access": "read_write",
+        "model_access": "predict_deploy"
+    }
+}</code></pre>
+  </div>
+</div>
+
+<h3>Monotonic Tightening</h3>
+
+<p>
+  The critical safety property of envelopes: <strong>they can only get stricter,
+  never looser</strong>. A supervisor agent that allocates a $10 budget to a child
+  agent cannot later increase it to $20. A task envelope that excludes
+  <code>deploy_model</code> cannot later add it. This is monotonic tightening —
+  trust flows downward and narrows at each level.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    Monotonic tightening is a lattice property. If we define a partial order on
+    envelopes where $E_1 \leq E_2$ means "$E_1$ is at least as restrictive as
+    $E_2$", then the set of all envelopes forms a lattice with the most
+    restrictive envelope (deny everything) at the bottom and the most permissive
+    (allow everything) at the top. Child envelopes must always be below or equal
+    to their parent in this lattice — they can only move downward.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Monotonic tightening: envelopes only shrink</text>
+
+  <!-- Root envelope -->
+  <ellipse cx="360" cy="65" rx="280" ry="35" fill="rgba(59, 130, 246, 0.08)" stroke="#3B82F6" stroke-width="2"/>
+  <text x="360" y="50" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">Root Envelope: $50 budget, all tools, read/write</text>
+
+  <!-- Manager envelope -->
+  <ellipse cx="240" cy="110" rx="170" ry="30" fill="rgba(245, 158, 11, 0.1)" stroke="#F59E0B" stroke-width="2"/>
+  <text x="240" y="105" text-anchor="middle" font-weight="600" font-size="10" fill="#F59E0B">Manager: $20 budget, no deploy</text>
+
+  <!-- Analyst envelope -->
+  <ellipse cx="200" cy="155" rx="100" ry="25" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-width="2"/>
+  <text x="200" y="152" text-anchor="middle" font-weight="600" font-size="10" fill="#EF4444">Analyst: $5 budget, read-only</text>
+
+  <!-- Arrows showing tightening -->
+  <text x="560" y="90" font-size="10" fill="#22C55E" font-weight="600">Can tighten (allowed)</text>
+  <text x="560" y="120" font-size="10" fill="#EF4444" font-weight="600">Cannot loosen (blocked)</text>
+
+  <line x1="520" y1="85" x2="540" y2="85" stroke="#22C55E" stroke-width="2"/>
+  <polygon points="520,85 526,81 526,89" fill="#22C55E"/>
+
+  <line x1="520" y1="115" x2="540" y2="115" stroke="#EF4444" stroke-width="2"/>
+  <text x="530" y="112" font-size="14" fill="#EF4444" font-weight="700">X</text>
+
+  <text x="360" y="210" text-anchor="middle" font-size="10" fill="#64748B">Each nested envelope is a strict subset of its parent. Violations are rejected at compile time.</text>
+</svg>
+<figcaption>Envelopes are nested. Each child envelope is strictly contained within its parent. Attempting to loosen raises a GovernanceViolation.</figcaption>
+</figure>
+
+<h3>Enforcement Modes</h3>
+
+<p>
+  PACT supports three enforcement modes for governance checks:
+</p>
+
+<table>
+  <thead><tr><th>Mode</th><th>Behaviour</th><th>Use case</th></tr></thead>
+  <tbody>
+    <tr><td><code>block</code></td><td>Deny access immediately. Fail-closed.</td><td>Production systems. This is the default.</td></tr>
+    <tr><td><code>warn</code></td><td>Log violation, allow access.</td><td>Development and testing. See what would be blocked.</td></tr>
+    <tr><td><code>audit</code></td><td>Allow access, log for review.</td><td>Shadow mode before enabling block. Compliance review.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    The standard deployment progression is: <code>audit</code> for one week
+    (collect baseline), review audit logs for false positives, adjust rules,
+    switch to <code>warn</code> for another week (verify no critical workflows
+    break), then <code>block</code> for production. This gradual rollout prevents
+    governance rules from accidentally blocking legitimate operations.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Budget Cascading</h2>
+
+<p>
+  Budget cascading is a constraint propagation problem. A parent agent with budget
+  $B$ allocates portions to $n$ child agents:
+</p>
+
+<div class="annotated-equation">
+  $$ \sum_{i=1}^{n} b_i \leq B \quad \text{where each } b_i \geq 0 $$
+  <div class="annotations">
+    <span>$B$ — parent budget</span>
+    <span>$b_i$ — allocation to child $i$</span>
+    <span>$n$ — number of children</span>
+  </div>
+</div>
+
+<p>
+  The sum of all child budgets cannot exceed the parent's total. Each child can
+  further subdivide its allocation, but the total at every level is bounded. When
+  a child exhausts its budget, it stops gracefully and returns partial results.
+  The parent can then decide whether to reallocate remaining budget from other
+  children.
+</p>
+
+<p>
+  For a three-level hierarchy (supervisor, team leads, workers) with supervisor
+  budget $B = \$50$:
+</p>
+
+<div class="annotated-equation">
+  $$ B_{\text{supervisor}} = \$50 \geq \underbrace{b_{\text{lead}_1} + b_{\text{lead}_2}}_{= \$20 + \$20} + b_{\text{reserve}} $$
+  $$ b_{\text{lead}_1} = \$20 \geq \underbrace{b_{\text{worker}_1} + b_{\text{worker}_2} + b_{\text{worker}_3}}_{= \$6 + \$6 + \$6} + b_{\text{lead reserve}} $$
+</div>
+
+<p>
+  Each allocation is a hard ceiling. Workers cannot request additional budget
+  from the supervisor — they can only use what their team lead allocated. This
+  prevents any single branch from consuming the entire budget.
+</p>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Budget cascading works like a company's departmental budgets. The CEO
+    allocates to VPs; VPs allocate to directors; directors allocate to teams.
+    Each level can only spend what it was given. No one can reach up to grab
+    more money. If your team runs out, you stop and report back.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: PACT</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    <code>kailash-pact</code> provides: <code>GovernanceEngine</code> for
+    compiling organisational structures and checking access,
+    <code>Address(domain, team, role)</code> for D/T/R addressing,
+    <code>PactGovernedAgent</code> for wrapping any Kaizen agent with
+    governance enforcement, <code>CostTracker</code> for budget allocation
+    and cascading, and <code>ClearanceManager</code> for graduated access
+    based on trust levels. Together they transform governance from policy
+    documents into executable, testable code.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">PACT component architecture</text>
+
+  <rect x="20" y="50" width="150" height="60" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="95" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#3B82F6">GovernanceEngine</text>
+  <text x="95" y="90" text-anchor="middle" font-size="9" fill="#64748B">compile_org, can_access</text>
+
+  <rect x="200" y="50" width="130" height="60" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="265" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">Address</text>
+  <text x="265" y="90" text-anchor="middle" font-size="9" fill="#64748B">D/T/R identity</text>
+
+  <rect x="360" y="50" width="150" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="435" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">PactGovernedAgent</text>
+  <text x="435" y="90" text-anchor="middle" font-size="9" fill="#64748B">Agent wrapper</text>
+
+  <rect x="540" y="50" width="150" height="60" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="615" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#EF4444">CostTracker</text>
+  <text x="615" y="90" text-anchor="middle" font-size="9" fill="#64748B">Budget cascade</text>
+
+  <!-- Clearance -->
+  <rect x="250" y="135" width="220" height="50" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="360" y="157" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">ClearanceManager</text>
+  <text x="360" y="173" text-anchor="middle" font-size="9" fill="#64748B">Graduated trust levels</text>
+
+  <!-- Connection lines -->
+  <line x1="170" y1="80" x2="200" y2="80" stroke="#475569" stroke-width="1"/>
+  <line x1="330" y1="80" x2="360" y2="80" stroke="#475569" stroke-width="1"/>
+  <line x1="510" y1="80" x2="540" y2="80" stroke="#475569" stroke-width="1"/>
+  <line x1="360" y1="115" x2="360" y2="130" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
+</svg>
+<figcaption>PACT's five components work together. GovernanceEngine compiles rules, Address identifies requesters, PactGovernedAgent enforces at runtime, CostTracker manages budgets, ClearanceManager handles graduated access.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Governed Multi-Agent System</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build a governed multi-agent system for HDB price analysis in Singapore.
+    A supervisor agent delegates to three specialists: DataScientist,
+    ModelSelector, and ReportWriter. Each agent has a defined role, budget,
+    and task envelope. Unauthorised access is blocked. Budget overruns are
+    prevented. Every decision is logged.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Define the organisational structure.</span>
+    <pre><code class="language-python">from kailash_pact import GovernanceEngine, Address, CostTracker
+
+engine = GovernanceEngine()
+
+# Define the D/T/R hierarchy
+org = engine.compile_org({
+    "domains": ["mortgage-risk"],
+    "teams": {
+        "mortgage-risk": ["assessment", "audit"]
+    },
+    "roles": {
+        "assessment": ["analyst", "senior-analyst", "manager"],
+        "audit": ["reviewer", "compliance-officer"]
+    },
+    "permissions": {
+        "analyst": ["read_data", "run_predictions"],
+        "senior-analyst": ["read_data", "run_predictions", "train_model"],
+        "manager": ["read_data", "run_predictions", "train_model",
+                     "deploy_model", "manage_budget"],
+        "reviewer": ["read_data", "read_audit_log"],
+        "compliance-officer": ["read_data", "read_audit_log",
+                                "export_audit_report"]
+    }
+})</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Define operating envelopes for each agent.</span>
+    <pre><code class="language-python"># Supervisor envelope: full control within domain
+supervisor_envelope = {
+    "allowed_tools": ["delegate", "allocate_budget", "aggregate_results"],
+    "max_cost": 10.00,
+    "enforcement": "block"
+}
+
+# DataScientist envelope: data exploration only
+data_scientist_envelope = {
+    "allowed_tools": ["explore_data", "compute_statistics",
+                       "feature_engineering"],
+    "blocked_tools": ["train_model", "deploy_model"],
+    "max_cost": 3.00,
+    "data_access": "read"
+}
+
+# ModelSelector envelope: model training, no deployment
+model_selector_envelope = {
+    "allowed_tools": ["train_model", "evaluate_model",
+                       "hyperparameter_search"],
+    "blocked_tools": ["deploy_model"],
+    "max_cost": 4.00
+}
+
+# ReportWriter envelope: read-only, reporting tools only
+report_writer_envelope = {
+    "allowed_tools": ["generate_report", "format_output"],
+    "max_cost": 3.00,
+    "data_access": "read"
+}</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Set up budget cascading.</span>
+    <pre><code class="language-python">tracker = CostTracker(total_budget=10.00)
+
+# Allocate to children — sum must not exceed total
+tracker.allocate("data_scientist", 3.00)
+tracker.allocate("model_selector", 4.00)
+tracker.allocate("report_writer", 3.00)
+
+# Verify constraint
+assert tracker.remaining() >= 0  # no overallocation
+print(f"Total allocated: ${tracker.total_allocated():.2f}")
+print(f"Remaining reserve: ${tracker.remaining():.2f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Wrap agents with governance.</span>
+    <pre><code class="language-python">from kailash_pact import PactGovernedAgent
+
+# Each agent gets its envelope and budget
+governed_data_scientist = PactGovernedAgent(
+    agent=data_scientist_agent,
+    governance=engine,
+    address=Address("mortgage-risk", "assessment", "analyst"),
+    envelope=data_scientist_envelope,
+    cost_tracker=tracker.child("data_scientist")
+)
+
+governed_model_selector = PactGovernedAgent(
+    agent=model_selector_agent,
+    governance=engine,
+    address=Address("mortgage-risk", "assessment", "senior-analyst"),
+    envelope=model_selector_envelope,
+    cost_tracker=tracker.child("model_selector")
+)
+
+governed_report_writer = PactGovernedAgent(
+    agent=report_writer_agent,
+    governance=engine,
+    address=Address("mortgage-risk", "assessment", "analyst"),
+    envelope=report_writer_envelope,
+    cost_tracker=tracker.child("report_writer")
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Test access controls.</span>
+    <pre><code class="language-python"># Verify access: analyst can read data
+addr = Address("mortgage-risk", "assessment", "analyst")
+assert engine.can_access(addr, "read_data")
+print(engine.explain_access(addr, "read_data"))
+# → "Granted: role 'analyst' has permission 'read_data'"
+
+# Verify denial: analyst cannot deploy models
+assert not engine.can_access(addr, "deploy_model")
+print(engine.explain_access(addr, "deploy_model"))
+# → "Denied: role 'analyst' lacks permission 'deploy_model'.
+#    Required role: 'manager'"
+
+# Verify envelope enforcement
+try:
+    governed_data_scientist.call_tool("deploy_model", {})
+except GovernanceViolation as e:
+    print(f"Blocked: {e}")
+# → "Blocked: tool 'deploy_model' not in allowed_tools for envelope"</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Generate audit trail.</span>
+    <pre><code class="language-python"># Retrieve audit log
+audit_log = engine.get_audit_trail()
+for entry in audit_log:
+    print(f"[{entry.timestamp}] {entry.address} → {entry.resource}: "
+          f"{entry.decision} ({entry.reason})")
+
+# Output:
+# [2026-04-13T10:01:02] mortgage-risk/assessment/analyst → read_data:
+#     GRANTED (role 'analyst' has permission 'read_data')
+# [2026-04-13T10:01:03] mortgage-risk/assessment/analyst → deploy_model:
+#     DENIED (role 'analyst' lacks permission 'deploy_model')</code></pre>
+  </div>
+
+  <p>
+    Every governance decision — granted and denied — is logged with a timestamp,
+    the D/T/R address, the resource, the decision, and the reason. This audit
+    trail is what MAS (or any regulator) will review.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Clearance Levels</h2>
+
+<p>
+  PACT's <code>ClearanceManager</code> adds graduated access based on trust
+  levels. Rather than binary allow/deny, clearance levels enable progressive
+  trust: a new agent starts at level 1 (read-only, low budget) and earns
+  higher clearance through demonstrated reliability.
+</p>
+
+<table>
+  <thead><tr><th>Level</th><th>Name</th><th>Access</th><th>Typical budget</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Observer</td><td>Read-only data access</td><td>$1</td></tr>
+    <tr><td>2</td><td>Contributor</td><td>Read + compute (statistics, predictions)</td><td>$5</td></tr>
+    <tr><td>3</td><td>Practitioner</td><td>Read + compute + train models</td><td>$20</td></tr>
+    <tr><td>4</td><td>Authority</td><td>Full access including deploy</td><td>$50</td></tr>
+  </tbody>
+</table>
+
+<pre><code class="language-python">from kailash_pact import ClearanceManager
+
+clearance = ClearanceManager()
+
+# New agent starts at level 1
+clearance.set_level("new_agent", level=1)
+
+# After 100 successful operations with no violations
+clearance.promote("new_agent", to_level=2,
+    reason="100 successful ops, 0 violations")
+
+# Cannot skip levels
+clearance.promote("new_agent", to_level=4)  # raises: max +1 per promotion</code></pre>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    Clearance promotion can be automated with a verification gradient. Define
+    a scoring function that measures agent reliability (successful operations /
+    total operations), governance compliance (violations / total checks), and
+    cost efficiency (actual spend / allocated budget). When the score exceeds
+    a threshold over a defined period, the agent is eligible for promotion.
+    Demotion is immediate on any critical violation — trust is earned slowly
+    and lost quickly.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Governance Testing Patterns</h2>
+
+<p>
+  Governance testing is not optional — it is the most important testing you do.
+  Functional tests verify that the system works. Governance tests verify that the
+  system <em>fails safely</em>. Here are the four patterns:
+</p>
+
+<pre><code class="language-python">import pytest
+from kailash_pact import GovernanceViolation
+
+# Pattern 1: Verify access denial
+def test_analyst_cannot_deploy():
+    addr = Address("mortgage-risk", "assessment", "analyst")
+    assert not engine.can_access(addr, "deploy_model")
+
+# Pattern 2: Verify envelope enforcement
+def test_tool_blocked_by_envelope():
+    with pytest.raises(GovernanceViolation):
+        governed_data_scientist.call_tool("deploy_model", {})
+
+# Pattern 3: Verify monotonic tightening
+def test_cannot_loosen_envelope():
+    agent = PactGovernedAgent(agent=base_agent, envelope={"max_cost": 5.00})
+    agent.tighten_envelope(max_cost=3.00)  # OK
+    with pytest.raises(GovernanceViolation):
+        agent.loosen_envelope(max_cost=10.00)  # BLOCKED
+
+# Pattern 4: Verify budget exhaustion
+def test_budget_stops_agent():
+    tracker = CostTracker(total_budget=0.01)  # tiny budget
+    agent = PactGovernedAgent(agent=base_agent, cost_tracker=tracker)
+    result = agent.run("Complex analysis")
+    assert result.stopped_reason == "budget_exhausted"
+    assert tracker.total_spent() <= 0.01
+
+# Pattern 5: Verify audit trail completeness
+def test_all_checks_logged():
+    engine.clear_audit_trail()
+    addr = Address("mortgage-risk", "assessment", "analyst")
+    engine.can_access(addr, "read_data")
+    engine.can_access(addr, "deploy_model")
+    trail = engine.get_audit_trail()
+    assert len(trail) == 2
+    assert trail[0].decision == "GRANTED"
+    assert trail[1].decision == "DENIED"</code></pre>
+
+<div class="callout warning">
+  <span class="label">Critical principle</span>
+  <p>
+    Governance tests are <em>negative tests</em>. They test what does NOT happen.
+    Every <code>assert not</code> and every <code>pytest.raises(GovernanceViolation)</code>
+    is a guardrail that prevents the system from doing something dangerous.
+    If these tests fail, it means your governance has a hole. Treat governance
+    test failures as critical — they are security vulnerabilities.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Fail-open governance</span>
+  <p>
+    If the governance check fails (network error, config issue, missing rules),
+    deny access. <em>Never</em> default to allow. A system that allows everything
+    when governance breaks is worse than a system with no governance at all,
+    because it creates a false sense of security. PACT's default is
+    <code>enforcement="block"</code> with fail-closed semantics.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: Testing only the happy path</span>
+  <p>
+    "The analyst can read data" is a happy path test. The governance tests that
+    matter are: "The analyst cannot deploy models", "The analyst cannot exceed
+    budget", "The analyst cannot loosen their envelope". Test what is <em>denied</em>,
+    not just what is <em>granted</em>.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: No audit trail</span>
+  <p>
+    Compliance requires proving every access decision was checked. Log every
+    <code>can_access()</code> call — both grants and denials. The audit trail
+    is not for debugging; it is for the regulator. MAS, PDPA, and GDPR all
+    require demonstrable access control.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Governance as philosophy instead of code</span>
+  <p>
+    "We have an AI ethics framework" is not governance. Governance is
+    <code>engine.can_access(addr, resource)</code> returning <code>False</code>
+    and the tool call being blocked. If it is not in code, it is not enforced.
+    If it is not tested, it does not work. This lesson is engineering, not philosophy.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Build a D/T/R structure</h3>
+  <p>
+    Define a governance structure for a Singapore e-commerce company with two
+    domains (<code>marketplace</code> and <code>logistics</code>), three teams
+    (<code>search</code>, <code>recommendations</code>, <code>delivery</code>),
+    and three roles (<code>analyst</code>, <code>engineer</code>,
+    <code>director</code>). Define permissions for each role. Test that an
+    analyst in the search team cannot access delivery data.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — Implement operating envelopes</h3>
+  <p>
+    Create three governed agents with different envelopes: a data explorer
+    (read-only, $2 budget), a model trainer (read + train, $5 budget), and a
+    deployer (full access, $10 budget). Verify that the data explorer cannot
+    train models and the model trainer cannot deploy. Test monotonic tightening.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Budget cascading</h3>
+  <p>
+    Create a supervisor agent with $15 budget that delegates to three workers.
+    Allocate $5 each. Run a task that causes one worker to exhaust its budget.
+    Verify that (1) the worker stops gracefully, (2) the other workers continue,
+    and (3) the supervisor's total spend never exceeds $15.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Write governance tests</h3>
+  <p>
+    Write a complete test suite for the system in Exercise B. Include: access
+    denial tests (5 cases), envelope enforcement tests (3 cases), budget
+    exhaustion test (1 case), monotonic tightening test (1 case), and audit
+    trail completeness test (1 case). Every test should be a negative test
+    that verifies what does NOT happen.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>M6.5</strong> introduced Kaizen agents with tool use and cost budgets.
+  Those cost budgets are the foundation of the CostTracker you used today.
+  <strong>M6.6</strong> built multi-agent systems — the supervisor-worker pattern
+  maps directly to PACT's D/T/R hierarchy and budget cascading.
+  <strong>M6.8 (Capstone)</strong> integrates PACT governance with Nexus deployment
+  — every API/CLI/MCP request passes through the governance layer before reaching
+  the agent. The operating envelopes you defined today become deployment-level
+  access controls in the capstone.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Governance is the hardest lesson in the programme to appreciate — until you
+  deploy without it and face the consequences. An ungoverned agent with access to
+  a production database can delete records, leak personal data, or spend thousands
+  of dollars in minutes. An ungoverned multi-agent system can cascade errors
+  across agents with no way to trace what happened.
+</p>
+<p>
+  What you built today — D/T/R addressing, operating envelopes, budget cascading,
+  audit trails, governance tests — is the difference between a prototype and a
+  production system. Prototypes work when everything goes right. Production
+  systems work when everything goes wrong. PACT ensures that "wrong" is
+  bounded, logged, and recoverable.
+</p>
+<p>
+  In Lesson 6.8, you deploy this governed system via Nexus — three channels,
+  authenticated, rate-limited, monitored. That is the capstone. That is the
+  finish line.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../06/textbook.html" class="prev">
+    <span class="label">Previous</span>
+    6.6 Multi-Agent Orchestration
+  </a>
+  <a href="../08/textbook.html" class="next">
+    <span class="label">Next</span>
+    6.8 Capstone
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

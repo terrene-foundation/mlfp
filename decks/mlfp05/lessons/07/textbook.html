@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.7 — Transfer Learning | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5: Deep Learning</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 5.7</span>
+  Transfer Learning
+</h1>
+
+<p class="lead">
+  Training deep networks from scratch requires millions of images or billions of
+  tokens — data and compute that most teams do not have. Transfer learning
+  sidesteps this: take a model pre-trained on a massive general dataset, freeze
+  the early layers that capture universal features, and fine-tune the later layers
+  on your specific task. Today you fine-tune ResNet-18 for Singapore image
+  classification and BERT for text classification, export both to ONNX with
+  Kailash's <code>OnnxBridge</code>, and serve predictions with
+  <code>InferenceServer</code> — the complete pipeline from research to production.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  A Singapore hospital wants to classify chest X-rays (normal vs pneumonia). They
+  have 5,000 labelled images — enough to fine-tune, not enough to train from
+  scratch. A Singapore fintech wants to classify customer complaints by
+  department. They have 2,000 labelled examples — enough to fine-tune BERT, not
+  enough to train a language model. In both cases, transfer learning takes a
+  model that learned general patterns from millions of examples and adapts it to
+  the specific task with a fraction of the data.
+</p>
+
+<p>
+  This is the most practically impactful technique in modern deep learning.
+  The vast majority of production ML systems do not train from scratch — they
+  fine-tune pre-trained models. Understanding when, why, and how to transfer
+  is the difference between a model that takes a week to train and one that
+  takes an hour.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="tl-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Why transfer learning works: features are hierarchical</text>
+
+  <!-- Layer 1: Universal -->
+  <rect x="30" y="50" width="150" height="110" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="105" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Early layers</text>
+  <text x="105" y="100" text-anchor="middle" font-size="11" fill="#1E293B">Edges, textures</text>
+  <text x="105" y="118" text-anchor="middle" font-size="11" fill="#1E293B">Colour gradients</text>
+  <text x="105" y="136" text-anchor="middle" font-size="11" fill="#64748B">Universal to all images</text>
+  <rect x="55" y="145" width="100" height="8" rx="4" fill="#3B82F6"/>
+  <text x="105" y="165" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">FROZEN</text>
+
+  <!-- Arrow -->
+  <line x1="185" y1="105" x2="220" y2="105" stroke="#0D9488" stroke-width="2.5" marker-end="url(#tl-arr)"/>
+
+  <!-- Layer 2: Domain -->
+  <rect x="225" y="50" width="150" height="110" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="300" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">Middle layers</text>
+  <text x="300" y="100" text-anchor="middle" font-size="11" fill="#1E293B">Shapes, patterns</text>
+  <text x="300" y="118" text-anchor="middle" font-size="11" fill="#1E293B">Object parts</text>
+  <text x="300" y="136" text-anchor="middle" font-size="11" fill="#64748B">Partially transferable</text>
+  <rect x="250" y="145" width="100" height="8" rx="4" fill="#F59E0B"/>
+  <text x="300" y="165" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">FINE-TUNED</text>
+
+  <!-- Arrow -->
+  <line x1="380" y1="105" x2="415" y2="105" stroke="#0D9488" stroke-width="2.5" marker-end="url(#tl-arr)"/>
+
+  <!-- Layer 3: Task-specific -->
+  <rect x="420" y="50" width="150" height="110" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="495" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">Final layers</text>
+  <text x="495" y="100" text-anchor="middle" font-size="11" fill="#1E293B">Task-specific</text>
+  <text x="495" y="118" text-anchor="middle" font-size="11" fill="#1E293B">classification head</text>
+  <text x="495" y="136" text-anchor="middle" font-size="11" fill="#64748B">Not transferable</text>
+  <rect x="445" y="145" width="100" height="8" rx="4" fill="#22C55E"/>
+  <text x="495" y="165" text-anchor="middle" font-size="10" fill="#22C55E" font-weight="600">NEW (trained from scratch)</text>
+
+  <!-- ONNX + Deploy -->
+  <line x1="575" y1="105" x2="610" y2="105" stroke="#0D9488" stroke-width="2.5" marker-end="url(#tl-arr)"/>
+  <rect x="615" y="60" width="90" height="90" rx="8" fill="#F0FDF4" stroke="#0D9488" stroke-width="2"/>
+  <text x="660" y="85" text-anchor="middle" font-weight="700" font-size="12" fill="#0D9488">Deploy</text>
+  <text x="660" y="105" text-anchor="middle" font-size="10" fill="#1E293B">OnnxBridge</text>
+  <text x="660" y="120" text-anchor="middle" font-size="10" fill="#1E293B">+ Inference</text>
+  <text x="660" y="135" text-anchor="middle" font-size="10" fill="#1E293B">Server</text>
+
+  <!-- Bottom labels -->
+  <text x="105" y="200" text-anchor="middle" font-size="10" fill="#3B82F6">Pre-trained on</text>
+  <text x="105" y="215" text-anchor="middle" font-size="10" fill="#3B82F6">ImageNet (14M images)</text>
+  <text x="300" y="200" text-anchor="middle" font-size="10" fill="#F59E0B">Adapted to your</text>
+  <text x="300" y="215" text-anchor="middle" font-size="10" fill="#F59E0B">domain (5K images)</text>
+  <text x="495" y="200" text-anchor="middle" font-size="10" fill="#22C55E">Your specific</text>
+  <text x="495" y="215" text-anchor="middle" font-size="10" fill="#22C55E">classification task</text>
+  <text x="660" y="200" text-anchor="middle" font-size="10" fill="#0D9488">Production</text>
+  <text x="660" y="215" text-anchor="middle" font-size="10" fill="#0D9488">deployment</text>
+</svg>
+<figcaption>Transfer learning strategy: freeze universal early layers (pre-trained), fine-tune domain-specific middle layers, train a new classification head from scratch, then export to ONNX and deploy with InferenceServer.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Feature hierarchy in deep networks</h3>
+
+<p>
+  The fundamental insight behind transfer learning: features in deep networks
+  form a hierarchy from universal to specific. In a CNN trained on ImageNet:
+</p>
+
+<ul>
+  <li><strong>Layer 1:</strong> Gabor filters — edges at various orientations (universal to all images)</li>
+  <li><strong>Layer 2:</strong> Texture detectors — combinations of edges (universal)</li>
+  <li><strong>Layer 3-4:</strong> Part detectors — shapes like wheels, eyes, petals (domain-specific)</li>
+  <li><strong>Layer 5+:</strong> Object detectors — complete objects like cars, cats, flowers (task-specific)</li>
+</ul>
+
+<p>
+  The same hierarchy exists in language models. In BERT:
+</p>
+
+<ul>
+  <li><strong>Layers 1-3:</strong> Syntax — part-of-speech, dependency relations (universal to all English)</li>
+  <li><strong>Layers 4-8:</strong> Semantics — word meaning, coreference (partially transferable)</li>
+  <li><strong>Layers 9-12:</strong> Task-specific — sentiment, topic, NER (not transferable)</li>
+</ul>
+
+<h3>Three transfer learning strategies</h3>
+
+<table>
+  <thead><tr><th>Strategy</th><th>Approach</th><th>Data needed</th><th>When to use</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Feature extraction</strong></td><td>Freeze entire backbone, train new head only</td><td>Hundreds</td><td>Very small dataset, similar domain</td></tr>
+    <tr><td><strong>Fine-tuning (top)</strong></td><td>Freeze early layers, fine-tune top layers + head</td><td>Thousands</td><td>Moderate dataset, different domain</td></tr>
+    <tr><td><strong>Full fine-tuning</strong></td><td>Unfreeze all layers, low learning rate</td><td>Tens of thousands</td><td>Large dataset, very different domain</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Start with feature extraction (freeze everything, train only the new head).
+    If accuracy is insufficient, unfreeze the top few layers and fine-tune. Only
+    unfreeze all layers if you have enough data to prevent overfitting. This
+    progressive unfreezing strategy is safe — you cannot make things worse by
+    starting frozen and gradually unfreezing.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Math Foundations</h2>
+
+<h3>Why freezing helps: the learning rate perspective</h3>
+
+<p>
+  When you fine-tune, the pre-trained weights are already in a good region
+  of the loss landscape. Large updates would push them out of this region,
+  destroying the learned features. The solution:
+</p>
+
+<div class="annotated-equation">
+  $$ \theta_l^{(t+1)} = \theta_l^{(t)} - \eta_l \cdot \nabla_{\theta_l} \mathcal{L} $$
+  <div class="annotations">
+    <span>$\eta_l$ — learning rate for layer $l$</span>
+    <span>$\theta_l$ — parameters of layer $l$</span>
+    <span>$\nabla_{\theta_l} \mathcal{L}$ — gradient of loss w.r.t. layer $l$</span>
+  </div>
+</div>
+
+<p>
+  Frozen layers have $\eta_l = 0$ (no updates). Fine-tuned layers use a
+  small $\eta_l$ (typically $10^{-5}$ to $10^{-4}$). The new head uses a
+  normal $\eta_l$ (typically $10^{-3}$). This <strong>discriminative learning
+  rate</strong> strategy prevents catastrophic forgetting of pre-trained features.
+</p>
+
+<h3>LLRD — Layer-wise Learning Rate Decay</h3>
+
+<p>
+  A more sophisticated approach: decay the learning rate exponentially from
+  top layers to bottom layers:
+</p>
+
+<div class="annotated-equation">
+  $$ \eta_l = \eta_{\text{top}} \cdot \xi^{L - l} $$
+  <div class="annotations">
+    <span>$\eta_{\text{top}}$ — learning rate for the top layer</span>
+    <span>$\xi \in (0, 1)$ — decay factor (typically 0.9)</span>
+    <span>$L$ — total number of layers</span>
+    <span>$l$ — current layer index</span>
+  </div>
+</div>
+
+<p>
+  With $\xi = 0.9$ and $L = 12$ (BERT), the bottom layer's learning rate is
+  $0.9^{12} \approx 0.28$ times the top layer's rate. This preserves the
+  low-level features that are most universal while allowing the high-level
+  features to adapt to the new task.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    LLRD is connected to the Fisher Information Matrix from statistics.
+    Parameters with high Fisher information (those critical to the pre-trained
+    task) should change slowly. Empirically, lower layers have higher Fisher
+    information for the pre-training objective, which is why LLRD applies
+    lower learning rates to them. This connection is formalised in Elastic
+    Weight Consolidation (EWC), covered in the fine-tuning survey in
+    Lesson 6.2.
+  </p>
+</div>
+
+<h3>Transfer learning as regularisation</h3>
+
+<p>
+  Initialising from pre-trained weights is equivalent to an implicit prior:
+  the model starts close to a good solution and the fine-tuning objective
+  acts as a regulariser that keeps it close. Formally:
+</p>
+
+$$ \mathcal{L}_{\text{fine-tune}} = \mathcal{L}_{\text{task}} + \lambda \|\theta - \theta_{\text{pretrained}}\|^2 $$
+
+<p>
+  This $L_2$ penalty toward the pre-trained weights is implicit when you use
+  a small learning rate (the model does not move far from the initialisation).
+  Explicit regularisation toward the pre-trained weights is used in more
+  advanced methods like EWC.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>CV Transfer Learning: ResNet-18 Fine-Tuning</h2>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 180" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">ResNet-18 architecture: 4 residual blocks + new head</text>
+
+  <!-- Conv1 -->
+  <rect x="20" y="50" width="70" height="60" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="55" y="75" text-anchor="middle" font-size="9" fill="#1E40AF">Conv1</text>
+  <text x="55" y="90" text-anchor="middle" font-size="8" fill="#1E40AF">7x7, 64</text>
+  <text x="55" y="125" text-anchor="middle" font-size="8" fill="#3B82F6">FROZEN</text>
+
+  <!-- ResBlock 1 -->
+  <rect x="100" y="50" width="80" height="60" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="140" y="75" text-anchor="middle" font-size="9" fill="#1E40AF">Block 1</text>
+  <text x="140" y="90" text-anchor="middle" font-size="8" fill="#1E40AF">3x3, 64</text>
+  <text x="140" y="125" text-anchor="middle" font-size="8" fill="#3B82F6">FROZEN</text>
+
+  <!-- ResBlock 2 -->
+  <rect x="190" y="50" width="80" height="60" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="230" y="75" text-anchor="middle" font-size="9" fill="#1E40AF">Block 2</text>
+  <text x="230" y="90" text-anchor="middle" font-size="8" fill="#1E40AF">3x3, 128</text>
+  <text x="230" y="125" text-anchor="middle" font-size="8" fill="#3B82F6">FROZEN</text>
+
+  <!-- ResBlock 3 -->
+  <rect x="280" y="50" width="80" height="60" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="320" y="75" text-anchor="middle" font-size="9" fill="#92400E">Block 3</text>
+  <text x="320" y="90" text-anchor="middle" font-size="8" fill="#92400E">3x3, 256</text>
+  <text x="320" y="125" text-anchor="middle" font-size="8" fill="#F59E0B">FINE-TUNE</text>
+
+  <!-- ResBlock 4 -->
+  <rect x="370" y="50" width="80" height="60" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="410" y="75" text-anchor="middle" font-size="9" fill="#92400E">Block 4</text>
+  <text x="410" y="90" text-anchor="middle" font-size="8" fill="#92400E">3x3, 512</text>
+  <text x="410" y="125" text-anchor="middle" font-size="8" fill="#F59E0B">FINE-TUNE</text>
+
+  <!-- Avg Pool -->
+  <rect x="460" y="55" width="55" height="50" rx="6" fill="#E2E8F0" stroke="#94A3B8"/>
+  <text x="488" y="75" text-anchor="middle" font-size="8" fill="#475569">AvgPool</text>
+  <text x="488" y="90" text-anchor="middle" font-size="8" fill="#475569">7x7</text>
+
+  <!-- Original head (crossed out) -->
+  <rect x="525" y="55" width="80" height="50" rx="6" fill="#FEE2E2" stroke="#EF4444" stroke-dasharray="4 3"/>
+  <text x="565" y="75" text-anchor="middle" font-size="8" fill="#991B1B">FC: 512→1000</text>
+  <text x="565" y="90" text-anchor="middle" font-size="8" fill="#991B1B">(ImageNet)</text>
+  <line x1="530" y1="55" x2="600" y2="105" stroke="#EF4444" stroke-width="2"/>
+
+  <!-- New head -->
+  <rect x="620" y="50" width="80" height="60" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="660" y="75" text-anchor="middle" font-size="9" fill="#166534">FC: 512→N</text>
+  <text x="660" y="90" text-anchor="middle" font-size="8" fill="#166534">(your classes)</text>
+  <text x="660" y="125" text-anchor="middle" font-size="8" fill="#22C55E">NEW</text>
+</svg>
+<figcaption>ResNet-18 transfer learning: freeze Conv1 + Blocks 1-2 (universal features), fine-tune Blocks 3-4 (domain features), replace the ImageNet head (1000 classes) with your task head (N classes).</figcaption>
+</figure>
+
+<pre><code class="language-python">import torch
+import torch.nn as nn
+from torchvision import models, transforms
+from torch.utils.data import DataLoader
+
+# Load pre-trained ResNet-18 (ImageNet weights)
+model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+
+# Strategy 1: Feature extraction — freeze everything
+for param in model.parameters():
+    param.requires_grad = False
+
+# Replace final FC layer with new head
+num_classes = 2  # e.g., mask / no mask
+model.fc = nn.Linear(model.fc.in_features, num_classes)
+# Only model.fc parameters are trainable
+
+# Data augmentation for small datasets (critical)
+transform_train = transforms.Compose([
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+# Training with low learning rate
+optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
+criterion = nn.CrossEntropyLoss()
+
+# Train for 10 epochs (fast — only 512 * 2 = 1024 params updating)
+for epoch in range(10):
+    model.train()
+    for images, labels in train_loader:
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()</code></pre>
+
+<h3>Progressive unfreezing</h3>
+
+<pre><code class="language-python"># If feature extraction accuracy is insufficient, unfreeze top layers
+# Unfreeze Block 4
+for param in model.layer4.parameters():
+    param.requires_grad = True
+
+# Use discriminative learning rates
+optimizer = torch.optim.Adam([
+    {"params": model.layer4.parameters(), "lr": 1e-5},  # Slow
+    {"params": model.fc.parameters(), "lr": 1e-3}        # Normal
+])
+
+# Train for 10 more epochs with unfrozen top block
+# Typically improves accuracy by 2-5 percentage points</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>NLP Transfer Learning: BERT Fine-Tuning</h2>
+
+<pre><code class="language-python">from transformers import (
+    BertForSequenceClassification,
+    BertTokenizer,
+    Trainer,
+    TrainingArguments
+)
+
+# Load pre-trained BERT
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+model = BertForSequenceClassification.from_pretrained(
+    "bert-base-uncased",
+    num_labels=6  # e.g., 6 complaint categories
+)
+
+# Tokenise dataset
+def tokenize(examples):
+    return tokenizer(
+        examples["text"],
+        padding="max_length",
+        truncation=True,
+        max_length=128
+    )
+
+train_ds = train_dataset.map(tokenize, batched=True)
+eval_ds = eval_dataset.map(tokenize, batched=True)
+
+# Training arguments — note the low learning rate
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=3,
+    per_device_train_batch_size=16,
+    learning_rate=2e-5,        # 10-100x lower than training from scratch
+    weight_decay=0.01,          # Regularisation
+    warmup_steps=100,           # Gradual LR ramp-up
+    evaluation_strategy="epoch"
+)
+
+# HuggingFace Trainer handles training loop, evaluation, checkpointing
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_ds,
+    eval_dataset=eval_ds
+)
+trainer.train()
+
+# Typical result on 2000 examples:
+# Fine-tuned BERT: 87% accuracy
+# LSTM from scratch: 72% accuracy
+# The 15-point gap is the transfer learning advantage</code></pre>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    BERT's pre-training on 3.3 billion words of English text gives it a deep
+    understanding of syntax, semantics, and world knowledge. When you fine-tune
+    on 2,000 complaint examples, it does not need to learn "what English is" —
+    it already knows. It only needs to learn "what makes a billing complaint
+    different from a technical complaint". This is why 2,000 examples is enough
+    for fine-tuning but not for training from scratch.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="18" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Learning curves: transfer learning vs from scratch</text>
+
+  <!-- Axes -->
+  <line x1="80" y1="200" x2="660" y2="200" stroke="#475569" stroke-width="1.5"/>
+  <line x1="80" y1="200" x2="80" y2="40" stroke="#475569" stroke-width="1.5"/>
+  <text x="370" y="230" text-anchor="middle" font-size="12" fill="#475569">Training epochs</text>
+  <text x="42" y="120" text-anchor="middle" font-size="12" fill="#475569" transform="rotate(-90 42 120)">Accuracy</text>
+
+  <!-- Y-axis labels -->
+  <text x="70" y="204" text-anchor="end" font-size="10" fill="#64748B">0%</text>
+  <text x="70" y="160" text-anchor="end" font-size="10" fill="#64748B">25%</text>
+  <text x="70" y="120" text-anchor="end" font-size="10" fill="#64748B">50%</text>
+  <text x="70" y="80" text-anchor="end" font-size="10" fill="#64748B">75%</text>
+  <text x="70" y="50" text-anchor="end" font-size="10" fill="#64748B">100%</text>
+
+  <!-- X-axis labels -->
+  <text x="80" y="215" text-anchor="middle" font-size="10" fill="#64748B">0</text>
+  <text x="225" y="215" text-anchor="middle" font-size="10" fill="#64748B">10</text>
+  <text x="370" y="215" text-anchor="middle" font-size="10" fill="#64748B">20</text>
+  <text x="515" y="215" text-anchor="middle" font-size="10" fill="#64748B">30</text>
+  <text x="660" y="215" text-anchor="middle" font-size="10" fill="#64748B">50</text>
+
+  <!-- Grid lines -->
+  <line x1="80" y1="160" x2="660" y2="160" stroke="#E2E8F0" stroke-width="0.5"/>
+  <line x1="80" y1="120" x2="660" y2="120" stroke="#E2E8F0" stroke-width="0.5"/>
+  <line x1="80" y1="80" x2="660" y2="80" stroke="#E2E8F0" stroke-width="0.5"/>
+
+  <!-- From scratch curve (red, slow, plateaus at 71%) -->
+  <polyline points="80,200 120,185 160,172 200,160 250,148 300,138 370,125 440,118 515,112 590,108 660,106" stroke="#EF4444" stroke-width="2.5" fill="none"/>
+  <text x="665" y="100" font-size="10" fill="#EF4444" font-weight="600">71%</text>
+  <text x="600" y="88" font-size="9" fill="#EF4444">From scratch</text>
+
+  <!-- Transfer learning curve (green, fast, reaches 94%) -->
+  <polyline points="80,96 120,76 160,68 200,63 250,60 300,58 370,57" stroke="#22C55E" stroke-width="2.5" fill="none"/>
+  <text x="375" y="50" font-size="10" fill="#22C55E" font-weight="600">94%</text>
+  <text x="250" y="46" font-size="9" fill="#22C55E">Transfer learning</text>
+
+  <!-- Annotation: starting point -->
+  <circle cx="80" cy="96" r="4" fill="#22C55E"/>
+  <line x1="85" y1="96" x2="130" y2="80" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
+  <text x="135" y="78" font-size="8" fill="#94A3B8">Pre-trained start: ~60%</text>
+
+  <circle cx="80" cy="200" r="4" fill="#EF4444"/>
+  <line x1="85" y1="195" x2="130" y2="185" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
+  <text x="135" y="183" font-size="8" fill="#94A3B8">Random start: ~0%</text>
+</svg>
+<figcaption>Transfer learning starts with pre-trained features (~60% accuracy on day one) and converges to 94% in 10 epochs. Training from scratch starts at 0% and reaches only 71% after 50 epochs. The gap is the transfer learning dividend.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: OnnxBridge and InferenceServer</h2>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    <code>OnnxBridge</code> exports any PyTorch model to ONNX (Open Neural Network
+    Exchange) format — a portable representation that runs on any ONNX runtime
+    (CPU, GPU, edge devices). <code>InferenceServer</code> wraps the ONNX model
+    with <code>predict()</code>, <code>predict_batch()</code>, and
+    <code>warm_cache()</code> methods. Together, they take a fine-tuned model
+    from notebook to production in three lines of code.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import OnnxBridge, InferenceServer
+
+# Export fine-tuned ResNet to ONNX
+bridge = OnnxBridge()
+bridge.export(
+    model=model,
+    dummy_input=torch.randn(1, 3, 224, 224),
+    output_path="resnet_finetuned.onnx",
+    input_names=["image"],
+    output_names=["prediction"],
+    dynamic_axes={"image": {0: "batch_size"}}
+)
+
+# Serve with InferenceServer
+server = InferenceServer(model_path="resnet_finetuned.onnx")
+server.warm_cache()  # Pre-load model into memory
+
+# Single prediction
+result = server.predict(image_tensor)
+print(f"Class: {result.label}, Confidence: {result.confidence:.3f}")
+
+# Batch prediction (faster for multiple images)
+results = server.predict_batch(image_batch)
+for r in results:
+    print(f"  {r.label}: {r.confidence:.3f}")</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 160" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="onnx-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">From notebook to production: 3 steps</text>
+
+  <!-- Step 1: Fine-tune -->
+  <rect x="30" y="50" width="170" height="70" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="115" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">1. Fine-tune</text>
+  <text x="115" y="95" text-anchor="middle" font-size="10" fill="#1E293B">PyTorch model</text>
+  <text x="115" y="110" text-anchor="middle" font-size="10" fill="#64748B">(notebook)</text>
+
+  <!-- Arrow -->
+  <line x1="205" y1="85" x2="250" y2="85" stroke="#0D9488" stroke-width="2.5" marker-end="url(#onnx-arr)"/>
+
+  <!-- Step 2: Export -->
+  <rect x="255" y="50" width="170" height="70" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="340" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">2. Export</text>
+  <text x="340" y="95" text-anchor="middle" font-size="10" fill="#1E293B">OnnxBridge.export()</text>
+  <text x="340" y="110" text-anchor="middle" font-size="10" fill="#64748B">portable .onnx file</text>
+
+  <!-- Arrow -->
+  <line x1="430" y1="85" x2="475" y2="85" stroke="#0D9488" stroke-width="2.5" marker-end="url(#onnx-arr)"/>
+
+  <!-- Step 3: Serve -->
+  <rect x="480" y="50" width="210" height="70" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="585" y="75" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">3. Serve</text>
+  <text x="585" y="95" text-anchor="middle" font-size="10" fill="#1E293B">InferenceServer.predict()</text>
+  <text x="585" y="110" text-anchor="middle" font-size="10" fill="#64748B">API / batch / edge</text>
+</svg>
+<figcaption>OnnxBridge and InferenceServer form the deployment pipeline: fine-tune in PyTorch, export to portable ONNX, serve predictions anywhere.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Architecture Selection Guide</h2>
+
+<p>
+  After five lessons of architectures (5.1-5.5), one lesson on graphs (5.6),
+  and today's transfer learning, here is the decision guide:
+</p>
+
+<table>
+  <thead><tr><th>Data type</th><th>Best architecture</th><th>When to transfer</th><th>Pre-trained source</th></tr></thead>
+  <tbody>
+    <tr><td>Images</td><td>CNN / ViT</td><td>Always</td><td>ImageNet (14M images)</td></tr>
+    <tr><td>Text</td><td>Transformer</td><td>Always</td><td>BERT/GPT (billions of tokens)</td></tr>
+    <tr><td>Time series</td><td>LSTM / Transformer</td><td>Sometimes</td><td>Domain-specific corpora</td></tr>
+    <tr><td>Graphs</td><td>GNN</td><td>Rarely</td><td>Task-specific (graph structures vary)</td></tr>
+    <tr><td>Tabular</td><td>Gradient boosting</td><td>Never</td><td>Train from scratch (M3)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout advanced">
+  <span class="label">Advanced</span>
+  <p>
+    The "tabular = never transfer" rule has an exception: foundation models
+    for tabular data (TabPFN, TabR) are emerging. These models are pre-trained
+    on thousands of synthetic tabular datasets and can zero-shot predict on
+    new tables. As of 2025, they are competitive with gradient boosting on
+    small datasets (&lt;10K rows) but not yet dominant. Watch this space — M6.2
+    discusses adapter-based fine-tuning that may make tabular transfer viable.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: End-to-End Transfer and Deployment</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Fine-tune ResNet-18 on a Singapore mask detection dataset (1,000 images,
+    2 classes: mask / no mask), export to ONNX, and serve predictions with
+    InferenceServer.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. Prepare data with augmentation.</span>
+    <pre><code class="language-python">from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+
+transform = transforms.Compose([
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+train_ds = datasets.ImageFolder("data/mask_detection/train", transform)
+test_ds = datasets.ImageFolder("data/mask_detection/test", transform)
+train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_ds, batch_size=32)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Fine-tune ResNet-18.</span>
+    <pre><code class="language-python">model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+for param in model.parameters():
+    param.requires_grad = False
+model.fc = nn.Linear(512, 2)
+
+optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
+
+for epoch in range(10):
+    model.train()
+    for images, labels in train_loader:
+        optimizer.zero_grad()
+        loss = nn.CrossEntropyLoss()(model(images), labels)
+        loss.backward()
+        optimizer.step()
+
+    # Evaluate
+    model.eval()
+    correct = sum(
+        (model(imgs).argmax(1) == lbls).sum().item()
+        for imgs, lbls in test_loader
+    )
+    print(f"Epoch {epoch+1}: {correct/len(test_ds):.3f}")
+# Typical: 94% accuracy after 10 epochs on 1000 images</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Export to ONNX and serve.</span>
+    <pre><code class="language-python">from kailash_ml import OnnxBridge, InferenceServer
+
+bridge = OnnxBridge()
+bridge.export(model, torch.randn(1, 3, 224, 224), "mask_detector.onnx")
+
+server = InferenceServer(model_path="mask_detector.onnx")
+server.warm_cache()
+
+# Predict on a new image
+result = server.predict(test_image)
+print(f"Prediction: {result.label} ({result.confidence:.1%})")
+# → Prediction: mask (97.3%)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4. Compare with training from scratch.</span>
+    <pre><code class="language-python"># Train same ResNet-18 from scratch (random initialisation)
+scratch_model = models.resnet18(weights=None)
+scratch_model.fc = nn.Linear(512, 2)
+# ... same training loop, 50 epochs ...
+
+# Results comparison:
+# Transfer learning (10 epochs):  94% accuracy, 2 minutes
+# From scratch (50 epochs):       71% accuracy, 10 minutes
+# Transfer advantage:              +23 points, 5x faster</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Training all layers from the start</span>
+  <p>
+    Unfreezing everything immediately with a normal learning rate destroys
+    pre-trained features. The model "forgets" what it learned on ImageNet and
+    overfits to your small dataset. Always start frozen, evaluate, then
+    selectively unfreeze if needed.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: Too-high learning rate for fine-tuning</span>
+  <p>
+    Pre-trained weights are in a good region of the loss landscape. A learning
+    rate of $10^{-3}$ (normal for training from scratch) is too aggressive for
+    fine-tuning — it pushes the weights out of the good region. Use $10^{-5}$
+    to $10^{-4}$ for fine-tuned layers. For the new head, $10^{-3}$ is fine
+    because it has no pre-trained features to preserve.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: Skipping data augmentation</span>
+  <p>
+    Small datasets benefit enormously from augmentation — random flips,
+    rotations, colour jitter, cropping. Without augmentation, the model
+    memorises the training images and generalises poorly. With augmentation
+    on 1,000 images, the model effectively sees 10,000+ varied views.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Forgetting ONNX export</span>
+  <p>
+    A model that only runs in your Jupyter notebook is not deployed. It depends
+    on PyTorch, your Python version, and your exact CUDA version. ONNX export
+    produces a portable file that runs on any ONNX runtime — CPU server, GPU
+    cluster, or edge device — without any Python dependency.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 5: Wrong normalisation</span>
+  <p>
+    Pre-trained models expect inputs normalised with the same statistics used
+    during pre-training. ResNet expects ImageNet normalisation:
+    <code>mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]</code>.
+    BERT expects its own tokeniser. Using wrong normalisation is a silent error
+    — the model runs but produces degraded predictions.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — Progressive unfreezing</h3>
+  <p>
+    Train the mask detection model three ways: (1) frozen backbone (only new head),
+    (2) unfreeze Block 4 with LR=$10^{-5}$, (3) unfreeze all blocks with
+    LLRD ($\xi=0.9$). Compare test accuracy and training time. Plot a table
+    comparing the three approaches.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — BERT fine-tuning</h3>
+  <p>
+    Fine-tune BERT on the TREC-6 question classification dataset (6 categories:
+    abbreviation, entity, description, human, location, numeric). Compare
+    with an LSTM baseline trained from scratch on the same data. Measure
+    accuracy, F1, and training time. How large is the transfer advantage?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — ONNX deployment</h3>
+  <p>
+    Export both the fine-tuned ResNet and the fine-tuned BERT to ONNX. Serve
+    both with InferenceServer. Measure inference latency (milliseconds per
+    prediction) for single predictions and batches of 32. How does batch
+    inference compare to single inference?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — Singapore domain transfer</h3>
+  <p>
+    Fine-tune BERT on Singapore Straits Times news articles classified by
+    section (Business, Singapore, World, Sport, Tech). Use only 500 training
+    examples. Compare zero-shot, few-shot prompting (from 6.1), and fine-tuning.
+    Which approach wins with only 500 labelled examples?
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>5.2 CNNs:</strong> the ResNet architecture you fine-tune today —
+  residual connections enable training very deep networks.
+  <br>
+  <strong>5.4 Transformers:</strong> the BERT architecture you fine-tune today
+  — self-attention and positional encoding for NLP.
+  <br>
+  <strong>5.6 GNNs:</strong> graph tasks rarely benefit from transfer learning
+  because graph structures vary dramatically across domains.
+  <br>
+  <strong>M6.2 LoRA:</strong> adapter-based fine-tuning for LLMs — a
+  parameter-efficient alternative to full fine-tuning that freezes the entire
+  model and adds small trainable matrices.
+  <br>
+  <strong>M3 Feature Engineering:</strong> the architecture selection guide
+  complements M3's model selection guide for tabular data.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Transfer learning is the single most impactful technique in modern deep
+  learning. Most production systems do not train from scratch — they fine-tune
+  pre-trained models. Today you learned the why (hierarchical features), the
+  how (freeze, fine-tune, new head), and the deployment path (OnnxBridge to
+  InferenceServer).
+</p>
+<p>
+  The key numbers to remember: fine-tuning a ResNet on 1,000 images reaches
+  94% accuracy; training from scratch on the same data reaches 71%. Fine-tuning
+  BERT on 2,000 examples reaches 87%; an LSTM from scratch reaches 72%. These
+  gaps are the transfer learning dividend — pre-trained features are worth
+  millions of training examples.
+</p>
+<p>
+  In Lesson 5.8, we complete Module 5 with reinforcement learning — the only
+  paradigm where the model learns from interaction rather than static data.
+  The PPO algorithm you learn there connects directly to RLHF in M6.3 — the
+  technique that aligns LLMs with human preferences.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../06/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    5.6 Graph Neural Networks
+  </a>
+  <a href="../08/textbook.html" class="next">
+    <span class="label">Next →</span>
+    5.8 Reinforcement Learning
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

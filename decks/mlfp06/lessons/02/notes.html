@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 6.2</span>
+  LoRA, Adapters, and the Fine-Tuning Landscape
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes · 19 slides · ~4 min per slide average
+</p>
+
+<p>
+  This lesson is the mathematical spine of Module 6. By the end of it
+  students should be able to draw LoRA on a whiteboard from memory and
+  name the three most common reasons it fails. The central move is to
+  connect <strong>Lesson 4.3 (SVD and low rank)</strong> to LoRA —
+  students will feel they already understand the core idea, which
+  lowers anxiety about fine-tuning. Keep the rank-8 arithmetic visible;
+  the 250× reduction number is what makes this lesson memorable.
+</p>
+
+<!-- 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>LoRA, Adapters, and the Fine-Tuning Landscape</h3>
+  <p>
+    Open with a reframe. "Last lesson you squeezed every drop of behaviour
+    out of a frozen model with prompting. Today we crack it open and
+    change the weights. But we do it surgically — LoRA updates less than
+    1% of the parameters, and I will show you exactly why and how much
+    less."
+  </p>
+  <p>
+    Name the two deliverables: (1) a <code>LoRALayer</code> written
+    from scratch, (2) a completed <code>AlignmentPipeline</code> run on
+    <code>sg_domain_qa.parquet</code> with a versioned adapter in the
+    registry.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are anxious about "fine-tuning":</strong>
+    reassure them. "We are not going to train a 7B model from scratch.
+    We are going to update a handful of small matrices on a 1.1B base —
+    the same API used in production, just a smaller base for teaching
+    clarity."
+  </div>
+  <div class="transition">→ "Why bother at all?"</div>
+</div>
+
+<!-- 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>When prompting is not enough</h3>
+  <p>
+    Walk the four bullets. Each one is a real scenario you have almost
+    certainly seen. The regulatory tone one is particularly concrete in
+    Singapore — "try asking gpt-4o to write in MAS guideline style and
+    see how close it gets".
+  </p>
+  <p>
+    Then set up the constraint. "Full fine-tuning updates all 7 billion
+    weights. On a 7B model in fp16 that is 14 GB just for the weights,
+    plus 56 GB for Adam optimiser state. Nobody runs that on a laptop.
+    So we need a compromise."
+  </p>
+  <div class="transition">→ "The key observation is that the compromise is not just engineering — it is mathematical."</div>
+</div>
+
+<!-- 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>LoRA equation</span></div>
+  <h3>The LoRA insight</h3>
+  <p>
+    Read the equation aloud. "W equals W-zero plus delta W, and delta W
+    is factored as B times A where rank r is much smaller than d or k."
+  </p>
+  <p>
+    Then connect it to <strong>Lesson 4.3 (SVD)</strong>: "This is
+    exactly low-rank matrix approximation. SVD says any matrix of rank
+    r can be written as the product of a d-by-r and an r-by-k. LoRA
+    asks the opposite question — what if we <em>assume</em> the update
+    is low rank and <em>train</em> it in that parametrisation? The
+    paper's empirical discovery is that fine-tuning updates really do
+    have low intrinsic rank, so this assumption costs you almost
+    nothing."
+  </p>
+  <p>
+    Work through the numbers on the board: d = 4096, k = 4096, r = 8,
+    so full is 16.8M params, LoRA is 65k params, a 250× reduction.
+    Pause and let them write it down.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that LoRA updates the
+    "intrinsic dimension" of fine-tuning (Aghajanyan 2020) — the number
+    of directions where loss actually decreases. Empirically ~1% of the
+    parameter budget is all you need.
+  </div>
+  <div class="transition">→ "Picture this explicitly."</div>
+</div>
+
+<!-- 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>LoRA diagram</span></div>
+  <h3>Picture of LoRA</h3>
+  <p>
+    Walk the diagram. Point at W_0 (frozen, dashed border, grey — "we
+    never touch this"). Point at B (tall skinny matrix, d rows by r
+    columns). Point at A (short wide matrix, r rows by k columns). Show
+    that their product BA has the same shape as W_0 and can be added to
+    it.
+  </p>
+  <p>
+    Emphasise that <em>after training</em> you can multiply B and A and
+    add the result to W_0 once, producing a single fused matrix with no
+    inference overhead. That "no inference overhead" property is why
+    LoRA beats adapters for most production use cases.
+  </p>
+  <div class="transition">→ "The forward pass and the init trick."</div>
+</div>
+
+<!-- 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Forward pass + init</span></div>
+  <h3>Forward pass + init</h3>
+  <p>
+    Read the formula. Explain the alpha-over-r scaling: "alpha decouples
+    how much effect LoRA has from how much capacity LoRA has. You can
+    bump the rank from 8 to 16 without having to retune the learning
+    rate, because the scaling absorbs the change."
+  </p>
+  <p>
+    Then the init trick. "B is initialised to zero, A to Kaiming
+    uniform. That means at step 0, BA equals zero, and the LoRA branch
+    contributes nothing. The forward pass is <em>numerically identical</em>
+    to the frozen base. That is why we don't need to worry that the
+    very first training step might make the model worse — it literally
+    cannot, because the perturbation is zero."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of it as bolting on an extra
+    little module that starts out silent. Training is how we let that
+    module learn to contribute something useful, one small step at a
+    time."
+  </div>
+  <div class="transition">→ "Show them the code."</div>
+</div>
+
+<!-- 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>LoRALayer code</span></div>
+  <h3>LoRA from scratch</h3>
+  <p>
+    Walk the class line by line. Freeze the base layer's parameters
+    (the <code>for p in ...</code> loop). Create <code>lora_A</code>
+    and <code>lora_B</code>. Initialise A with Kaiming, B with zeros.
+    Forward pass computes base + scaled delta.
+  </p>
+  <p>
+    Point out the subtle matrix multiply order in the forward pass:
+    <code>(x @ lora_A.T) @ lora_B.T</code>. This is because in PyTorch,
+    linear layers store weights as (out, in), so the forward is
+    <code>x @ W.T</code>. The LoRA branch follows the same convention.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> in real libraries, the LoRA forward
+    is actually <code>x @ lora_A.T @ lora_B.T</code> via two linear
+    layers without bias, which PyTorch fuses efficiently. Our
+    implementation is pedagogical.
+  </div>
+  <div class="transition">→ "There's another PEFT — adapters."</div>
+</div>
+
+<!-- 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Adapter diagram</span></div>
+  <h3>The other PEFT — adapter bottlenecks</h3>
+  <p>
+    Walk the diagram. "Activations come in. Project down to a small
+    bottleneck dimension m. Non-linearity. Project back up. Add a
+    residual connection. That's an adapter."
+  </p>
+  <p>
+    Highlight the "near-identity init" trick — zero the up-projection
+    weights. Same idea as LoRA's zero-init on B: the module starts as a
+    no-op and gradually learns to contribute.
+  </p>
+  <div class="transition">→ "Which should you use?"</div>
+</div>
+
+<!-- 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>LoRA vs adapters</span></div>
+  <h3>LoRA vs adapters</h3>
+  <p>
+    Walk the table row by row. The decisive row is "inference cost" —
+    LoRA is zero because it merges, adapters are +5–10% because they
+    stay as extra modules. For most production use cases, merged LoRA
+    wins.
+  </p>
+  <p>
+    Then the exception: "Adapters are better when you want <em>multiple</em>
+    adapters active at once in the same forward pass. For example, one
+    adapter for Singapore domain and another for safety, both on at
+    once. LoRA forces you to merge — you cannot have two merged LoRAs
+    stacked without mathematical interference."
+  </p>
+  <div class="transition">→ "The full landscape."</div>
+</div>
+
+<!-- 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>10-technique landscape</span></div>
+  <h3>The 10-technique landscape</h3>
+  <p>
+    Walk the spectrum left to right. Point at each node as you name it.
+    The colour coding matters: green = soft prompts, teal = PEFT, blue
+    = training strategies on top of SFT, purple = heavy guns.
+  </p>
+  <p>
+    Deliver the main message: "LoRA is the default. Prefix/prompt
+    tuning is for extreme parameter budgets. Distillation and full SFT
+    are for when you have serious compute. DPSGD is for when your data
+    is sensitive. Know that each one exists so you can reach for the
+    right tool — do not memorise the details."
+  </p>
+  <div class="transition">→ "Quick reference table."</div>
+</div>
+
+<!-- 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~2 min</span><span>Technique table</span></div>
+  <h3>When to reach for which</h3>
+  <p>
+    Do not read this table aloud — it is a reference. Instead, ask them:
+    "Put up a hand if you think your team's next LLM project will need
+    privacy-preserving fine-tuning." (Usually zero hands.) "Put up a
+    hand if you think it will need domain-specific knowledge absorption."
+    (Usually most hands.) "Right — that's LoRA. The rest of the table is
+    there for the 5% of cases that are not LoRA."
+  </p>
+  <div class="transition">→ "But sometimes you want to combine fine-tunes."</div>
+</div>
+
+<!-- 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Model merging</span></div>
+  <h3>Model merging</h3>
+  <p>
+    Name the motivating scenario: "You trained one LoRA for legal Q&amp;A
+    and another for retail support. Both work. But now you want one
+    model that does both. Retraining from scratch is wasteful. Merging
+    lets you linearly combine them."
+  </p>
+  <p>
+    Walk TIES conceptually: trim, elect sign, merge. Walk DARE: drop
+    most updates, rescale. Walk SLERP: spherical interpolation between
+    two checkpoints. Task arithmetic: add or subtract delta vectors.
+    Keep it qualitative.
+  </p>
+  <div class="transition">→ "SLERP is simple enough to show the formula."</div>
+</div>
+
+<!-- 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>SLERP</span></div>
+  <h3>SLERP in one formula</h3>
+  <p>
+    Walk the formula. The key intuition is that parameter vectors live
+    on a high-dimensional sphere (their norms are roughly constant),
+    and linear interpolation in Euclidean space takes you through a
+    region where the norm drops. SLERP follows the great circle on the
+    sphere, keeping the norm roughly constant through the interpolation.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Imagine two points on the Earth's
+    surface. Linear interpolation would tunnel through the crust.
+    SLERP walks along the surface. The surface is the right metaphor
+    because neural network weight magnitudes are roughly constrained
+    to live in a narrow band."
+  </div>
+  <div class="transition">→ "Quantisation — how you actually fit this on your hardware."</div>
+</div>
+
+<!-- 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Quantisation / QLoRA</span></div>
+  <h3>Quantisation &amp; QLoRA</h3>
+  <p>
+    Walk the four formats briefly. GPTQ and AWQ are the production
+    inference formats. GGUF is for llama.cpp. bitsandbytes is what you
+    use during training.
+  </p>
+  <p>
+    Then the QLoRA story: "4-bit base + fp16 LoRA = fine-tune a 65B
+    model on a single 48 GB GPU. This is the recipe that made
+    large-model customisation accessible outside of big tech."
+  </p>
+  <div class="transition">→ "Let's actually run something."</div>
+</div>
+
+<!-- 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>AlignmentConfig</span></div>
+  <h3>Configure AlignmentPipeline</h3>
+  <p>
+    Walk the config. Each line is a decision:
+  </p>
+  <ul>
+    <li><code>method="sft"</code> — supervised fine-tuning</li>
+    <li><code>base_model</code> — the starting point; use a small model for teaching</li>
+    <li><code>train_data</code> / <code>eval_data</code> — preferably already split</li>
+    <li><code>lora_r=8, lora_alpha=16</code> — the canonical starting point</li>
+    <li><code>target_modules=["q_proj", "v_proj"]</code> — the safe default</li>
+    <li>Training hyperparameters: 3 epochs, batch size 4, LR 2e-4</li>
+  </ul>
+  <div class="transition">→ "Train and register."</div>
+</div>
+
+<!-- 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Train + register</span></div>
+  <h3>Train and register the adapter</h3>
+  <p>
+    Walk the code. <code>pipeline.train()</code> is async because it
+    streams progress events. <code>result.adapter_path</code> is the
+    directory containing A and B. <code>registry.register(...)</code>
+    writes a manifest entry so future lessons can load the adapter by
+    name and version.
+  </p>
+  <p>
+    Stress the registry pattern: "In Lesson 6.8 we will load
+    <code>sg_domain_sft:v1</code> from exactly this registry, wrap it
+    in PACT governance, and deploy via Nexus. The fact that we save it
+    cleanly today is what makes that possible."
+  </p>
+  <div class="transition">→ "How do you know it's working?"</div>
+</div>
+
+<!-- 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Reading loss curves</span></div>
+  <h3>Reading the loss curves</h3>
+  <p>
+    Walk the four patterns. Healthy, overfitting, underfitting,
+    leakage. For each, name the symptom and the fix.
+  </p>
+  <p>
+    Tell them the order of operations when diagnosing: (1) check the
+    split first — leakage is embarrassing. (2) If underfitting, raise
+    the rank before the LR. (3) If overfitting, add dropout before
+    shortening epochs. (4) If nothing works, the base model may be
+    wrong for the task.
+  </p>
+  <div class="transition">→ "Parameter reduction arithmetic."</div>
+</div>
+
+<!-- 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Reduction formula</span></div>
+  <h3>Parameter reduction</h3>
+  <p>
+    Walk the formula. Plug in r=4, 8, 16, 32 and read the reduction
+    percentages. "Notice that doubling the rank doubles the
+    parameters. There is no free lunch — higher rank means more
+    capacity <em>and</em> more compute."
+  </p>
+  <p>
+    Give them the mental model: "Rank is like a dial. Start at 8. If
+    the model is underfitting, turn it up to 16 or 32. If it's already
+    fitting fine, leave it alone — more rank wastes parameters."
+  </p>
+  <div class="transition">→ "Four traps."</div>
+</div>
+
+<!-- 18 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Four common mistakes</h3>
+  <p>
+    Walk each one. Mistake 1 (target modules) is the one experts get
+    wrong. Mistake 2 (rank too small) is the symptom of a plateau.
+    Mistake 3 (forgetting to load) is the silent failure that makes
+    you think LoRA didn't work when actually you were benchmarking the
+    base model. Mistake 4 (catastrophic forgetting) is the reason
+    dropout and progressive freezing exist.
+  </p>
+  <div class="transition">→ "Reflect and move on."</div>
+</div>
+
+<!-- 19 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Reflection / bridge</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Read the bullets slowly. Stress the <em>from scratch</em> angle —
+    "you just wrote LoRA yourself. Every library you use for the rest
+    of your career is just a fancier version of what you already
+    understand."
+  </p>
+  <p>
+    Tease Lesson 6.3: "We have made the model fit our data. But
+    fitting data is not the same as being <em>good</em>. A model
+    trained on random internet text will happily help someone do
+    harmful things. Lesson 6.3 introduces preference alignment — we
+    will derive DPO from the RLHF objective, see how to encode human
+    preferences as training signal, and watch a base model become a
+    safer one. The pipeline is the same; the loss function changes."
+  </p>
+  <p>
+    Take 5 minutes for questions. The most common after 6.2 are: "How
+    do I know what rank to start with?" (8), "Can I train LoRA on
+    CPU?" (technically yes, practically no), "Do I need an H100?" (no
+    — the worked example runs on a T4), and "What's the difference
+    between LoRA and adapter in practice?" (for a single task, almost
+    none — pick LoRA for the zero-inference-cost win).
+  </p>
+  <div class="transition">→ End of Lesson 6.2. Take a 10-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../01/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    6.1 Speaker Notes
+  </a>
+  <a href="../03/notes.html" class="next">
+    <span class="label">Next →</span>
+    6.3 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

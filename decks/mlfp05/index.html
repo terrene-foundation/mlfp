@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 5 — Deep Learning and ML Mastery | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 5</span>
+    Deep Learning and ML Mastery in Vision, Sequence, and Transfer
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~36 hours total study</span>
+    <span>Scaffolding: 30% (light)</span>
+    <span>Prerequisite: M4 (neural networks)</span>
+  </div>
+  <p class="lead">
+    Every major deep learning architecture — one paradigm per lesson, all
+    implemented end-to-end in PyTorch with the Kailash engines
+    (<code>ModelVisualizer</code>, <code>OnnxBridge</code>,
+    <code>InferenceServer</code>, <code>RLTrainer</code>) doing the heavy
+    lifting around each model.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module, you will be able to:</p>
+<ul>
+  <li>Build and train autoencoders (vanilla, denoising, VAE, convolutional) with <code>torch.nn</code></li>
+  <li>Implement modern CNNs with residual and squeeze‑excitation blocks, and export them with <code>OnnxBridge</code></li>
+  <li>Build RNN, LSTM, and GRU networks for sequence regression and classification</li>
+  <li>Derive self‑attention from scratch and assemble a working Transformer encoder</li>
+  <li>Train GANs (DCGAN‑style and WGAN‑GP) and reason about mode collapse and diffusion alternatives</li>
+  <li>Apply graph neural networks (GCN, GAT) to node and graph tasks</li>
+  <li>Fine‑tune pre‑trained vision and NLP backbones and deploy them via <code>InferenceServer</code></li>
+  <li>Implement a policy‑gradient RL agent on a Gymnasium environment and relate it to PPO and DQN</li>
+</ul>
+
+<h2>The Four Paradigms of Deep Learning</h2>
+<p>
+  Every architecture in this module lives somewhere on a two‑axis map: what
+  kind of structure the data has (grid, sequence, graph, set), and what the
+  model is supposed to do with it (compress, classify, generate, act). The
+  eight lessons trace a path through that map:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="idx-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20"  y="30"  width="150" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="95"  y="60"  text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">5.1 Autoencoders</text>
+  <text x="95"  y="80"  text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">compress / generate</text>
+  <text x="95"  y="96"  text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">VAE reparameterise</text>
+
+  <rect x="185" y="30"  width="150" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="260" y="60"  text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">5.2 CNNs</text>
+  <text x="260" y="80"  text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">spatial / grid</text>
+  <text x="260" y="96"  text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">ResNet + SE</text>
+
+  <rect x="350" y="30"  width="150" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="425" y="60"  text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">5.3 RNN / LSTM</text>
+  <text x="425" y="80"  text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">temporal</text>
+  <text x="425" y="96"  text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">gate equations</text>
+
+  <rect x="515" y="30"  width="185" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="607" y="60"  text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">5.4 Transformers</text>
+  <text x="607" y="80"  text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">attention is all you need</text>
+  <text x="607" y="96"  text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Q · K<tspan baseline-shift="super">T</tspan> / √d</text>
+
+  <rect x="20"  y="130" width="150" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="95"  y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">5.5 GANs / Diffusion</text>
+  <text x="95"  y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">generate</text>
+  <text x="95"  y="196" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">min‑max, Wasserstein</text>
+
+  <rect x="185" y="130" width="150" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="260" y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">5.6 Graph NNs</text>
+  <text x="260" y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">graph / relational</text>
+  <text x="260" y="196" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">GCN, GAT</text>
+
+  <rect x="350" y="130" width="150" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="425" y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#3B82F6">5.7 Transfer</text>
+  <text x="425" y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">reuse &amp; deploy</text>
+  <text x="425" y="196" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">ResNet → ONNX</text>
+
+  <rect x="515" y="130" width="185" height="80" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="607" y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#8B5CF6">5.8 RL</text>
+  <text x="607" y="180" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">learn from interaction</text>
+  <text x="607" y="196" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Bellman, REINFORCE</text>
+
+  <text x="360" y="250" text-anchor="middle" font-family="Inter" font-style="italic" font-size="12" fill="#64748B">
+    Lessons 5.1–5.4 cover the four core paradigms. 5.5–5.7 combine them. 5.8 changes the game: the model learns by acting, not by imitating.
+  </text>
+  <text x="360" y="285" text-anchor="middle" font-family="Inter" font-size="11" fill="#94A3B8">
+    Every lesson implemented in PyTorch with kailash‑ml engines (ModelVisualizer, OnnxBridge, InferenceServer, RLTrainer).
+  </text>
+</svg>
+<figcaption>Map of Module 5 — the four paradigms of deep learning and their combinations.</figcaption>
+</figure>
+
+<h2>Tooling</h2>
+<table>
+  <thead><tr><th>Tool</th><th>Purpose</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td><code>torch</code>, <code>torch.nn</code></td><td>Tensors, autograd, layers, optimisers</td><td>All 8 lessons</td></tr>
+    <tr><td><code>torch.nn.LSTM</code>, <code>GRU</code></td><td>Recurrent sequence models</td><td>5.3</td></tr>
+    <tr><td><code>torch.nn.MultiheadAttention</code>, <code>TransformerEncoder</code></td><td>Attention and Transformer blocks</td><td>5.4</td></tr>
+    <tr><td><code>torchvision.models.resnet18</code></td><td>Pre‑trained ImageNet backbone</td><td>5.7</td></tr>
+    <tr><td><code>gymnasium</code></td><td>Standard RL environment interface (CartPole etc.)</td><td>5.8</td></tr>
+    <tr><td><code>kailash_ml.ModelVisualizer</code></td><td>Training curves, latent spaces, confusion matrices</td><td>All 8 lessons</td></tr>
+    <tr><td><code>kailash_ml.OnnxBridge</code></td><td>Export trained models to ONNX for portable serving</td><td>5.2, 5.7</td></tr>
+    <tr><td><code>kailash_ml.InferenceServer</code></td><td>Serve predictions with batching and warm cache</td><td>5.7</td></tr>
+    <tr><td><code>kailash_ml.RLTrainer</code></td><td>Wrap policy‑gradient / DQN training loops</td><td>5.8</td></tr>
+  </tbody>
+</table>
+
+<h2>Prerequisites</h2>
+<p>
+  This module assumes M4 (classical ML + the neural‑network bridge in 4.8):
+  tensors, forward pass, backprop, gradient descent, dropout, batch norm, and
+  optimisers. If any of those feel unfamiliar, re‑read Lesson 4.8 before
+  starting 5.1 — every lesson in this module builds on that foundation.
+</p>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">5.1</div>
+    <div>
+      <p class="title">Autoencoders</p>
+      <p class="summary">Vanilla, Denoising, Variational (ELBO + reparameterisation), Convolutional. Latent space sampling and new‑image generation.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">5.2</div>
+    <div>
+      <p class="title">CNNs and Computer Vision</p>
+      <p class="summary">LeNet → AlexNet → VGG → ResNet → SE blocks → ViT. Conv arithmetic, skip connections, mixed precision, ONNX export.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">5.3</div>
+    <div>
+      <p class="title">RNNs and Sequence Models</p>
+      <p class="summary">Vanilla RNN, LSTM (six gate equations), GRU, temporal attention, gradient clipping. Financial time‑series regression.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">5.4</div>
+    <div>
+      <p class="title">Transformers and Self‑Attention</p>
+      <p class="summary">Scaled dot‑product attention from scratch, multi‑head, sinusoidal positional encoding, BERT / GPT / T5, Vision Transformer.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">5.5</div>
+    <div>
+      <p class="title">Generative Models — GANs and Diffusion</p>
+      <p class="summary">Min‑max game, DCGAN, WGAN‑GP (Wasserstein + gradient penalty), mode collapse, FID, DDPM in one page.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">5.6</div>
+    <div>
+      <p class="title">Graph Neural Networks</p>
+      <p class="summary">Message passing, GCN propagation, GAT attention weights, node and graph classification on an SBM benchmark.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/07/textbook.html">
+    <div class="num">5.7</div>
+    <div>
+      <p class="title">Transfer Learning and Deployment</p>
+      <p class="summary">Freeze/fine‑tune ResNet‑18, BERT fine‑tune, ONNX export, <code>InferenceServer</code>. Architecture selection guide.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/08/textbook.html">
+    <div class="num">5.8</div>
+    <div>
+      <p class="title">Reinforcement Learning</p>
+      <p class="summary">Agent‑environment loop, Bellman equations, REINFORCE on CartPole, DQN and PPO as the next rungs on the ladder.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span><span class="pill">Slides</span><span class="pill">Notes</span>
+    </div>
+  </a>
+</div>
+
+<h2>Master Documents</h2>
+<p>The consolidated full‑module deck and speaker notes are also available:</p>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> — all 8 lessons in one Reveal.js deck</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a> — markdown, all 8 lessons</li>
+</ul>
+
+</main>
+</body>
+</html>

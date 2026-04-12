@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.2</span>
+  Filtering and Transforming Data
+</h1>
+
+<p class="lead">
+  Total time: ~50 minutes &nbsp;·&nbsp; 15 slides &nbsp;·&nbsp; ~3 min per slide
+</p>
+
+<p>
+  This is the first lesson where learners meet a real dataset. The jump from
+  12 rows to 500,000 is psychologically important — they need to feel that
+  Polars has actually scaled. Run everything live, show the timings, let
+  them see that filtering half a million rows takes less than a second.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Filtering and Transforming Data</h3>
+  <p>
+    Open with the scale statement: "Yesterday we looked at 12 rows of weather.
+    Today we jump to half a million rows of real HDB transactions. The three
+    verbs you learn today — filter, with_columns, select — are the tools
+    every professional reaches for first when they open a new dataset."
+  </p>
+  <p>
+    Ask how many learners have used Excel filter dropdowns. Most hands go up.
+    Tell them: "Today we are going to do exactly that work, but in code that
+    can be read, reviewed, and re-run. The Excel filter is a one-shot verbal
+    instruction; the Polars filter is a recipe you can hand to anyone."
+  </p>
+  <div class="transition">→ "Here's the big picture."</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Narrowing pipeline diagram</span></div>
+  <h3>From 500,000 rows to the question</h3>
+  <p>
+    Walk the diagram left to right. "Start with everything. Filter to the
+    rows that matter — BISHAN, 4-room. Then select only the columns you
+    need. Then add any derived columns. At the end you have a tiny table
+    that answers exactly the question you asked."
+  </p>
+  <p>
+    Emphasise that the diagram is universal. Every analysis they will do for
+    the rest of their career follows this shape.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> compare to making a sandwich. "You don't
+    use the whole fridge — you pull out the bread, the cheese, and the ham.
+    That's filter. You don't serve everything on the plate — you arrange
+    just the sandwich. That's select. Same idea with data."
+  </div>
+  <div class="transition">→ "The building block is the boolean."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Boolean operators</span></div>
+  <h3>Booleans: True or False</h3>
+  <p>
+    Walk the six operators. For each, give a concrete example from HDB data.
+    "Greater than 500,000 — is this a premium flat? Less than 50 square
+    metres — is it a studio?"
+  </p>
+  <p>
+    Hammer the <code>=</code> vs <code>==</code> point. Tell them that
+    Python will actually refuse to run <code>if price = 500_000</code>. This
+    is the language being kind; a careless programmer would silently
+    overwrite <code>price</code>.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners worry about memorising:</strong> "You already know
+    these from maths class. The only new ones are <code>==</code> (which is
+    maths's equal sign) and <code>!=</code> (which is 'not equal'). Every
+    other operator is what you'd write on paper."
+  </div>
+  <div class="transition">→ "Now the Polars version."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Expression diagram</span></div>
+  <h3>Polars expressions: recipes, not actions</h3>
+  <p>
+    This is the conceptual crux of the lesson. An expression is a recipe
+    — a description of work — not the work itself. On its own it does nothing.
+    It becomes real only when you hand it to a method that knows what to do
+    with it.
+  </p>
+  <p>
+    Walk the diagram: expression box on the left, arrow to method, arrow
+    down to the new DataFrame. Say: "pl.col gives you a handle on the
+    column. The comparison gives you a boolean recipe. filter turns the
+    recipe into a new DataFrame. Three steps, three roles."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> this is the declarative / imperative split
+    that makes lazy frames possible. Foreshadow 1.5 without diving in: "We
+    will see in Lesson 1.5 that Polars can actually optimise the whole chain
+    before running a single line — because every step is a description, not
+    an action."
+  </div>
+  <div class="transition">→ "Your first filter."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Single-town filter</span></div>
+  <h3>Your first filter</h3>
+  <p>
+    Run it live. Load the HDB parquet. Filter to Ang Mo Kio. Print the
+    count. Make a point of saying "we just scanned 500,000 rows and it took
+    less than a second". This is the moment to make them feel Polars is
+    fast.
+  </p>
+  <p>
+    Read the filter aloud in plain English: "Filter hdb to rows where the
+    town column equals Ang Mo Kio." The aim is that by the end of today they
+    can translate any Polars filter into an English sentence on sight.
+  </p>
+  <div class="transition">→ "Real filters have more than one condition."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>Compound filters</span></div>
+  <h3>Combining conditions with <code>&amp;</code> and <code>|</code></h3>
+  <p>
+    Walk both examples. Point out that the parentheses are not optional.
+    Tell them the specific reason: Python's <code>&amp;</code> binds tighter
+    than <code>==</code>, so an unparenthesised version gets parsed as
+    gibberish.
+  </p>
+  <p>
+    Show a bad version on the board: <code>pl.col("a") == 1 &amp; pl.col("b") == 2</code>.
+    Ask them what it means. Then show the Python operator precedence and
+    reveal that it becomes <code>pl.col("a") == (1 &amp; pl.col("b")) == 2</code>.
+    The look of horror on their faces is the teaching moment.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "When in doubt, parenthesise. Too many
+    parentheses never break a Polars filter; too few almost always do."
+  </div>
+  <div class="transition">→ "For sets, there's a cleaner way."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~2 min</span><span>is_in</span></div>
+  <h3><code>is_in</code>: cleaner than chained ORs</h3>
+  <p>
+    Show the ugly version first — four ORs chained together. Then the clean
+    <code>is_in</code> version. Ask which one they'd rather read in a code
+    review. The answer is obvious.
+  </p>
+  <p>
+    Rule of thumb: "Three or more OR values, reach for <code>is_in</code>."
+    It's shorter, readable, and less error-prone.
+  </p>
+  <div class="transition">→ "Filtering picks rows — with_columns adds columns."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>with_columns</span></div>
+  <h3><code>with_columns</code>: derive new features</h3>
+  <p>
+    Walk the two examples. Start with price_per_sqm — the most useful
+    derived feature in HDB analysis. "A 3-room flat in Bishan may cost less
+    than a 5-room in Jurong, but price per sqm tells you which neighbourhood
+    is actually more expensive per unit area. That is a feature — a new
+    quantity that helps answer the question."
+  </p>
+  <p>
+    Then the multi-column example. Point out that Polars plans all three
+    together — more efficient than chaining three <code>with_columns</code>.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "This is your first taste of feature
+    engineering. Module 2 is entirely about deciding which features to
+    derive. Today you just learn the mechanics."
+  </div>
+  <div class="transition">→ "What if the new column depends on a condition?"</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>when / then / otherwise</span></div>
+  <h3>Conditional columns: <code>when / then</code></h3>
+  <p>
+    Walk the price-tier example line by line. "When price is below 350k,
+    call it budget. When price is below 500k, call it mid-range. When price
+    is below 700k, call it premium. Otherwise call it luxury." Emphasise that
+    order matters — Polars checks each <code>when</code> in order, so the
+    budget check catches everything under 350k before the mid_range check
+    can even look at it.
+  </p>
+  <p>
+    The <code>pl.lit</code> gotcha is worth five seconds of explicit
+    attention: "If you write <code>.then(&quot;budget&quot;)</code> Polars
+    will search for a column called budget and throw an error. Wrap constants
+    with <code>pl.lit</code>."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> compare to Excel's nested IF formulas.
+    "Same logic, cleaner syntax. Here the indentation makes the chain
+    readable; in Excel you'd be staring at <code>IF(IF(IF(...)))</code>."
+  </div>
+  <div class="transition">→ "Now let's put it all together."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~3 min</span><span>Chain diagram</span></div>
+  <h3>Method chaining: the pipeline</h3>
+  <p>
+    Walk the diagram top to bottom. Point at each intermediate row count.
+    "We start with 500,000. After filtering to 2020+ we have 180,000. After
+    filtering to premium/luxury we have 32,000. After select we still have
+    32,000 but only four columns. After sort we have the same rows but in
+    order by price."
+  </p>
+  <p>
+    Make the point that each box is a <em>real</em> DataFrame — but Polars
+    doesn't materialise them unless you ask. In lazy mode (coming in 1.5)
+    the entire chain runs in a single pass. For now, treat each step as
+    independent.
+  </p>
+  <div class="transition">→ "Same chain in code."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Chain code</span></div>
+  <h3>The chain in code</h3>
+  <p>
+    Read the code aloud top to bottom. "Take hdb. Filter to recent years.
+    Filter to premium tiers. Select five columns. Sort by price descending.
+    Assign to recent_premium." Pause after each line.
+  </p>
+  <p>
+    Tell them the outer parentheses around the whole chain are what lets
+    you put each step on its own line. Without them, Python would see a
+    statement that ends after <code>hdb</code>.
+  </p>
+  <p>
+    Show them how to debug a chain: comment out a line, run, see what you
+    get. Bisection works because each intermediate is itself a valid
+    DataFrame.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners learning fluent API:</strong> "You will see this
+    shape hundreds of times. The first three chains feel awkward. By the
+    fifth or sixth, you will start writing them naturally."
+  </div>
+  <div class="transition">→ "A brief look at what's happening underneath."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Boolean algebra</span></div>
+  <h3>Boolean algebra under the hood</h3>
+  <p>
+    Walk the two definitions and the truth table. Don't dwell. The point is
+    not to become a logician — it's to know that Polars is evaluating these
+    tables across hundreds of thousands of rows simultaneously, and that
+    the rules are entirely standard.
+  </p>
+  <p>
+    Make the throughput point: "A single vectorised AND across 500,000 rows
+    is about 500,000 truth-table lookups. Polars does that in milliseconds
+    using SIMD instructions on your CPU."
+  </p>
+  <div class="transition">→ "One useful identity — De Morgan's laws."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>De Morgan</span></div>
+  <h3>🔵 Theory: De Morgan's laws</h3>
+  <p>
+    Introduce as "the useful trick for flipping filters". Walk the two
+    identities. Then show the Polars version: <code>~pl.col("town").is_in([...])</code>
+    is how you say "rows where the town is not in this set". The tilde is
+    boolean negation.
+  </p>
+  <p>
+    Tell them: "This matters because sometimes it's easier to describe the
+    rows you <em>don't</em> want. De Morgan lets you flip between the two
+    descriptions without rewriting half the filter."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "These identities are also what the Polars
+    query optimiser uses when it rewrites filters for pushdown. Not
+    something you need today, but good to know exists."
+  </div>
+  <div class="transition">→ "Traps to avoid."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Common mistakes</span></div>
+  <h3>Three traps to avoid</h3>
+  <p>
+    Walk each one. The parentheses trap will burn every learner at least
+    once — make sure they have seen it now so they recognise the error
+    message when it happens for real.
+  </p>
+  <p>
+    The <code>and</code>/<code>or</code> trap is specific to pandas refugees.
+    Tell them: "If you have used pandas before, you may be in the habit of
+    using <code>&amp;</code> anyway. Polars enforces it. If you slip up
+    Polars will raise a very loud error."
+  </p>
+  <p>
+    The assign trap catches everyone once. Show it live: run
+    <code>hdb.filter(pl.col("town") == "BISHAN")</code>, print
+    <code>hdb.height</code>, watch them see that hdb still has 500,000 rows.
+    The lightbulb moment is worth ten minutes of lecture.
+  </p>
+  <div class="transition">→ "Reflect, then break."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Run through the five bullets. Pause after each and ask them to silently
+    confirm. If a bullet feels shaky, suggest they revisit that section of
+    the textbook before the exercise.
+  </p>
+  <p>
+    Tease 1.3: "Today we filtered one town at a time. Tomorrow we will use
+    <code>group_by</code> to summarise <em>every</em> town in a single call.
+    If you understood filter, group_by is half a step away."
+  </p>
+  <p>
+    Take 5 minutes for questions. Then assign the exercise (ex_2.py) and
+    circulate.
+  </p>
+  <div class="transition">→ End of Lesson 1.2.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../01/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.1 Speaker Notes
+  </a>
+  <a href="../03/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.3 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

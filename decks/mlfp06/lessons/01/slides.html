@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.1 — LLM Fundamentals &amp; Prompting | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- Slide 1 -->
+<section>
+  <p class="lesson-meta">Module 6 · Lesson 6.1</p>
+  <h1>LLM Fundamentals, Prompting, and Structured Output</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Scaling laws · tokenisation · zero/few/CoT · self-consistency · Kaizen <code>Delegate</code> &amp; <code>Signature</code>
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 60 minutes</strong> ·
+    <strong>Prereq:</strong> M5 (transformers) ·
+    <strong>Outcome:</strong> typed LLM extraction with a cost budget
+  </div>
+  <div class="slide-footer">MLFP — ML Foundations for Professionals</div>
+</section>
+
+<!-- Slide 2 -->
+<section>
+  <h2>Where Module 6 starts — and ends</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>M5 gave you a transformer.</strong> 6 layers, ~1M parameters.</li>
+    <li><strong>An LLM is the same thing, scaled.</strong> 32–96 layers, ~8B–400B parameters, ~10T training tokens.</li>
+    <li><strong>Every lesson in M6 starts with a call to one.</strong> Prompting (today), fine-tuning (6.2), alignment (6.3), RAG (6.4), agents (6.5–6.6), governance (6.7), full deploy (6.8).</li>
+  </ul>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <strong>🟢 Foundations:</strong> before we fine-tune anything, we must make the <em>default</em> model earn its keep. Prompting alone is ~80% of production LLM work.
+  </div>
+</section>
+
+<!-- Slide 3 -->
+<section>
+  <h2>The transformer, one more time</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="20" width="120" height="300" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="80" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Input tokens</text>
+      <text x="80" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="12">The</text>
+      <text x="80" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="12">Singapore</text>
+      <text x="80" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="12">monsoon</text>
+      <text x="80" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="12">arrived</text>
+      <text x="80" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="12">in</text>
+      <text x="80" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="12">___</text>
+
+      <rect x="190" y="20" width="280" height="300" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="330" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">32–96 transformer layers</text>
+      <rect x="220" y="75" width="220" height="26" rx="4" fill="white" stroke="#0D9488"/>
+      <text x="330" y="92" text-anchor="middle" font-family="Inter" font-size="11">Layer 32 — attention + FFN</text>
+      <rect x="220" y="110" width="220" height="26" rx="4" fill="white" stroke="#0D9488"/>
+      <text x="330" y="127" text-anchor="middle" font-family="Inter" font-size="11">Layer 31 — attention + FFN</text>
+      <text x="330" y="155" text-anchor="middle" font-size="14">⋮</text>
+      <rect x="220" y="170" width="220" height="26" rx="4" fill="white" stroke="#0D9488"/>
+      <text x="330" y="187" text-anchor="middle" font-family="Inter" font-size="11">Layer 1 — attention + FFN</text>
+      <text x="330" y="235" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">KV-cache reused per decode step</text>
+
+      <rect x="520" y="20" width="220" height="300" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="630" y="45" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">Next-token distribution</text>
+      <rect x="545" y="70" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+      <text x="555" y="88" font-family="JetBrains Mono" font-size="11">December</text>
+      <rect x="640" y="74" width="70" height="18" rx="2" fill="#F59E0B"/>
+      <text x="675" y="88" text-anchor="middle" fill="white" font-size="11">0.41</text>
+      <rect x="545" y="100" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+      <text x="555" y="118" font-family="JetBrains Mono" font-size="11">November</text>
+      <rect x="640" y="104" width="55" height="18" rx="2" fill="#FBBF24"/>
+      <rect x="545" y="130" width="170" height="26" rx="3" fill="white" stroke="#F59E0B"/>
+      <text x="555" y="148" font-family="JetBrains Mono" font-size="11">October</text>
+      <rect x="640" y="134" width="30" height="18" rx="2" fill="#FCD34D"/>
+      <text x="630" y="280" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">sample → append → repeat</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- Slide 4 -->
+<section>
+  <h2>Pre-training: one equation</h2>
+  <div style="text-align:center; padding: 24px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
+    \[ \mathcal{L}(\theta) = -\sum_{t=1}^{T} \log p_\theta(x_t \mid x_1, \ldots, x_{t-1}) \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li>Predict the next token. That is the entire objective.</li>
+    <li>No labels — every token of internet text is both input and target.</li>
+    <li>Scaling laws: loss decays as a power law in params, data, compute.</li>
+  </ul>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
+    <strong>🔵 Theory:</strong> grammar, world knowledge, reasoning, code, translation — all emerge as side effects of lowering one cross-entropy.
+  </div>
+</section>
+
+<!-- Slide 5 -->
+<section>
+  <h2>Tokenisation — you pay per token</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="50" width="260" height="60" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="150" y="74" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Raw text</text>
+      <text x="150" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="13">"Singapore is tropical."</text>
+      <line x1="280" y1="80" x2="340" y2="80" stroke="#0D9488" stroke-width="3"/>
+      <polygon points="340,80 334,76 334,84" fill="#0D9488"/>
+
+      <rect x="350" y="30" width="350" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="525" y="48" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#92400E">5 tokens</text>
+      <text x="525" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="12">["Sing","apore"," is"," tropical","."]</text>
+
+      <rect x="350" y="90" width="350" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="525" y="108" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E40AF">Token IDs</text>
+      <text x="525" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="12">[39147, 7209, 374, 35148, 13]</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em; color: #64748B;">Rule of thumb: 1 token ≈ 0.75 English words ≈ 4 characters. Context window = 128k tokens on modern frontier models.</p>
+</section>
+
+<!-- Slide 6 -->
+<section>
+  <h2>Why prompting works</h2>
+  <blockquote style="font-size: 0.95em; border-left: 4px solid #0D9488; padding: 8px 18px; background:#F0FDFA;">
+    A prompt is not a command — it is a <em>context</em>. You are asking the model: "what tokens most naturally follow this exact string?"
+  </blockquote>
+  <p>
+    Your prompt selects a <strong>neighbourhood</strong> of the training distribution. "Answer like a senior compliance officer" moves the spotlight across the model's knowledge — it does not teach the model anything new.
+  </p>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px;">
+    <strong>🟢 Mindset shift:</strong> stop thinking "instruct the model". Start thinking "make the desired output the natural continuation."
+  </div>
+</section>
+
+<!-- Slide 7 -->
+<section>
+  <h2>Four baseline prompting strategies</h2>
+  <table style="font-size: 0.72em;">
+    <thead><tr><th>Strategy</th><th>Add to prompt</th><th>Cost</th><th>Shines on</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Zero-shot</strong></td><td>Task description only</td><td>$</td><td>Simple classification, extraction</td></tr>
+      <tr><td><strong>Few-shot</strong></td><td>$k = 3$–$8$ labelled examples</td><td>$$</td><td>Format consistency, rare labels</td></tr>
+      <tr><td><strong>Chain-of-thought</strong></td><td>"Let's think step by step"</td><td>$$$</td><td>Arithmetic, multi-step logic</td></tr>
+      <tr><td><strong>Self-consistency</strong></td><td>Sample $N$ CoT, majority vote</td><td>$N \times$$$</td><td>Hard problems where $N$ samples agree</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Slide 8 -->
+<section>
+  <h2>Zero-shot</h2>
+  <pre><code class="language-python" data-trim>
+prompt = f"""Classify this Singapore company report into one category.
+Categories: Financial, Technology, Healthcare, Real Estate, Manufacturing.
+
+Report excerpt:
+{text[:800]}
+
+Respond with ONLY the category name."""
+  </code></pre>
+  <ul>
+    <li>Cheapest, fastest.</li>
+    <li>Most brittle — one stray word from the model and your parsing breaks.</li>
+    <li>Fix: inline the allowed labels, specify the output format.</li>
+  </ul>
+</section>
+
+<!-- Slide 9 -->
+<section>
+  <h2>Few-shot (in-context learning)</h2>
+  <pre><code class="language-python" data-trim>
+FEW_SHOT = [
+    ("Revenue increased 15% driven by loan growth...", "Financial"),
+    ("Cloud-native SaaS platform for enterprises...", "Technology"),
+    ("Clinical trials for oncology drug...",         "Healthcare"),
+    ("Integrated township in Jurong...",             "Real Estate"),
+    ("Factory automation at Tuas fab...",            "Manufacturing"),
+]
+  </code></pre>
+  <p style="font-size: 0.85em;">Diverse, clean, short. $k = 3$–$8$. Diminishing returns past 10 examples.</p>
+</section>
+
+<!-- Slide 10 -->
+<section>
+  <h2>Chain-of-thought — "think step by step"</h2>
+  <pre><code class="language-text" data-trim>
+Classify this report. Think step by step:
+1. Identify key terms and topics
+2. Match those terms to the most relevant category
+3. State your final classification on the last line
+
+Report: "Revenue up 15% on loan growth..."
+
+→ 1. Key terms: revenue, margin, loans
+→ 2. These are banking concepts
+→ 3. Category: Financial
+  </code></pre>
+  <div style="background: #EFF6FF; padding: 12px 18px; border-left: 4px solid #3B82F6; border-radius: 4px;">
+    <strong>🔵 Why it works:</strong> reasoning tokens become context for the answer. The model gets scratchpad space before committing.
+  </div>
+</section>
+
+<!-- Slide 11 -->
+<section>
+  <h2>Self-consistency: vote across samples</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="60" width="160" height="100" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="100" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#6D28D9">One CoT prompt</text>
+      <text x="100" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">T = 0.7</text>
+      <text x="100" y="135" text-anchor="middle" font-family="Inter" font-size="11" fill="#5B21B6">N samples</text>
+
+      <line x1="180" y1="110" x2="260" y2="60" stroke="#8B5CF6" stroke-width="2"/>
+      <line x1="180" y1="110" x2="260" y2="110" stroke="#8B5CF6" stroke-width="2"/>
+      <line x1="180" y1="110" x2="260" y2="160" stroke="#8B5CF6" stroke-width="2"/>
+
+      <rect x="260" y="40" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
+      <text x="370" y="60" text-anchor="middle" font-family="Inter" font-size="11">Chain 1 → Financial</text>
+      <rect x="260" y="90" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
+      <text x="370" y="110" text-anchor="middle" font-family="Inter" font-size="11">Chain 2 → Financial</text>
+      <rect x="260" y="140" width="220" height="30" rx="4" fill="white" stroke="#8B5CF6"/>
+      <text x="370" y="160" text-anchor="middle" font-family="Inter" font-size="11">Chain 3 → Technology</text>
+
+      <line x1="480" y1="110" x2="540" y2="110" stroke="#8B5CF6" stroke-width="3" marker-end="url(#arr)"/>
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker></defs>
+
+      <rect x="550" y="75" width="160" height="70" rx="8" fill="#8B5CF6"/>
+      <text x="630" y="110" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="white">Majority</text>
+      <text x="630" y="128" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="white">Financial</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- Slide 12 -->
+<section>
+  <h2>Kaizen <code>Delegate</code> — the LLM primitive</h2>
+  <pre><code class="language-python" data-trim>
+from kaizen_agents import Delegate
+
+delegate = Delegate(
+    model="gpt-4o-mini",
+    max_llm_cost_usd=0.50,  # ← hard cap
+)
+
+response = ""
+async for event in delegate.run(prompt):
+    if hasattr(event, "text"):
+        response += event.text
+  </code></pre>
+  <ul style="font-size: 0.85em;">
+    <li>One interface across OpenAI / Anthropic / Ollama / local.</li>
+    <li>Streaming — abort early if the response is going bad.</li>
+    <li><strong>Budget is not optional.</strong> A bug in a loop is the most common LLM bill disaster.</li>
+  </ul>
+</section>
+
+<!-- Slide 13 -->
+<section>
+  <h2>Stop parsing strings — use <code>Signature</code></h2>
+  <pre><code class="language-python" data-trim>
+from kaizen import Signature, InputField, OutputField
+
+class ReportExtraction(Signature):
+    report_text: str = InputField(description="Report excerpt")
+
+    category: str = OutputField(
+        description="Financial | Technology | Healthcare | Real Estate | Manufacturing"
+    )
+    key_entities: list[str] = OutputField(description="Named entities")
+    sentiment: str = OutputField(description="positive | negative | neutral")
+    confidence: float = OutputField(description="Confidence in [0, 1]")
+  </code></pre>
+  <p style="font-size: 0.85em;">The agent writes the prompt, calls the model, parses to this schema, retries on mismatch. You get a typed object — not a string.</p>
+</section>
+
+<!-- Slide 14 -->
+<section>
+  <h2>Using the signature</h2>
+  <pre><code class="language-python" data-trim>
+from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+
+agent = SimpleQAAgent(
+    signature=ReportExtraction,
+    model="gpt-4o-mini",
+    max_llm_cost_usd=1.0,
+)
+
+result = await agent.run(report_text=doc)
+
+if result.confidence < 0.6:
+    escalate_to_human(result)         # ← float, not "high"
+
+for entity in result.key_entities:    # ← list[str], not a CSV string
+    index_entity(entity)
+  </code></pre>
+</section>
+
+<!-- Slide 15 -->
+<section>
+  <h2>Cost model</h2>
+  <div style="text-align:center; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ \text{cost} = N_\text{in}\cdot r_\text{in} + N_\text{out}\cdot r_\text{out} \]
+  </div>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th>Model (Apr 2026 ballpark)</th><th>Input / 1M</th><th>Output / 1M</th></tr></thead>
+    <tbody>
+      <tr><td>gpt-4o-mini</td><td>$0.15</td><td>$0.60</td></tr>
+      <tr><td>gpt-4o</td><td>$2.50</td><td>$10.00</td></tr>
+      <tr><td>claude-3.5-sonnet</td><td>$3.00</td><td>$15.00</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.8em;">Output tokens cost 4× input. CoT is expensive <em>because</em> it is all output.</p>
+</section>
+
+<!-- Slide 16 -->
+<section>
+  <h2>Temperature controls randomness</h2>
+  <div style="text-align:center; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ p_i = \frac{\exp(\ell_i / T)}{\sum_j \exp(\ell_j / T)} \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li>$T = 0$ — greedy. Same input → same output. Use for classification, extraction.</li>
+    <li>$T = 0.2$ — slight variety. Use for summarisation.</li>
+    <li>$T = 0.7$ — creative. Use for brainstorming and self-consistency sampling.</li>
+    <li>$T = 1.0$+ — loose. Use rarely.</li>
+  </ul>
+</section>
+
+<!-- Slide 17 -->
+<section>
+  <h2>Worked example — 10 Singapore reports</h2>
+  <pre><code class="language-python" data-trim>
+loader = MLFPDataLoader()
+reports = loader.load("mlfp06", "sg_company_reports.parquet")
+sample = reports.head(10)
+
+results = []
+for row in sample.iter_rows(named=True):
+    z = await zero_shot_classify(row["text"])
+    f = await few_shot_classify(row["text"])
+    _, c = await cot_classify(row["text"])
+    results.append({"doc": row["text"][:40], "zero": z, "few": f, "cot": c})
+
+comparison = pl.DataFrame(results)
+print(comparison)
+  </code></pre>
+  <p style="font-size: 0.85em;">Rows where all three agree are high-confidence. Disagreements are exactly where you escalate to a human.</p>
+</section>
+
+<!-- Slide 18 -->
+<section>
+  <h2>Four common mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>1. Parsing free-form text in production.</strong> Use <code>Signature</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>2. Batching 20 answers into one prompt.</strong> Error rate compounds. Use <code>asyncio.gather</code>.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>3. No cost budget.</strong> A buggy loop can cost $1,000 overnight.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
+    <strong>4. "T=0 is deterministic".</strong> <em>Nearly</em>, not fully — log every call for audit.
+  </div>
+</section>
+
+<!-- Slide 19 -->
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Explain next-token prediction as the one training objective</li>
+    <li>✓ Count tokens and reason about context window + cost</li>
+    <li>✓ Write zero-shot, few-shot, CoT, and self-consistency prompts</li>
+    <li>✓ Use <code>Delegate</code> with a streaming loop and a cost budget</li>
+    <li>✓ Use <code>Signature</code> + <code>SimpleQAAgent</code> for typed output</li>
+    <li>✓ Pick a temperature that matches the task</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1.5em;">
+    <strong>Next — Lesson 6.2:</strong> stop prompting and start <em>fine-tuning</em>. LoRA from scratch, adapter bottlenecks, and the 10-technique landscape.
+  </div>
+</section>
+
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

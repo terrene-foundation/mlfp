@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6.2 — LoRA, Adapters, and the Fine-Tuning Landscape | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 6: LLMs and Agentic Workflows</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 6.2</span>
+  LoRA, Adapters, and the Fine-Tuning Landscape
+</h1>
+
+<p class="lead">
+  You have squeezed every drop of behaviour out of a frozen model with
+  prompting. Now you hit the wall. The model uses the wrong tone, invents
+  Singapore regulations that do not exist, refuses to extract certain
+  fields, or simply does not know your domain well enough. It is time to
+  change the weights. But a 7B model has roughly 14 GB of parameters, and
+  full fine-tuning requires 4× that in optimiser state — you do not want
+  to retrain the whole thing. This lesson teaches you the two techniques
+  that dominate modern fine-tuning (LoRA and adapters), implemented from
+  scratch so you know what is happening, then maps the full landscape of
+  ten fine-tuning techniques so you know when to reach for which.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Prompting is cheap but limited. Full fine-tuning is powerful but
+  expensive and destructive — it updates every weight, forgets general
+  skills, and costs a small server farm for a serious run.
+  <strong>Parameter-efficient fine-tuning (PEFT)</strong> is the compromise
+  that made LLM customisation a democratic skill: you update less than 1%
+  of the weights and the base model's knowledge stays intact. Every LLM
+  customisation you see in the wild — from domain chatbots to code
+  assistants to style-specific generators — is almost certainly built on
+  LoRA or its cousins.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The LoRA Insight: Updates Live in a Tiny Subspace</h2>
+
+<p>
+  A linear layer in a transformer is just a matrix multiply:
+  $\mathbf{y} = W_0 \mathbf{x}$, where $W_0$ has shape $d \times k$ (say
+  $d = 4096$ rows, $k = 4096$ columns, 16.8M parameters). Fine-tuning
+  would normally add an update $\Delta W$ of the same shape and learn
+  every one of those 16.8M values.
+</p>
+
+<p>
+  The LoRA paper (<em>Hu et al. 2021</em>) asked: "do we really need
+  $\Delta W$ to be full rank?" Empirically, no. The update matrix that
+  actually emerges from fine-tuning has very low
+  <strong>intrinsic rank</strong> — the meaningful changes live in a
+  tiny subspace. So you can factor the update as a product of two skinny
+  matrices:
+</p>
+
+<div class="annotated-equation">
+  $$W \;=\; W_0 + \Delta W \;=\; W_0 + B A$$
+  <div class="annotations">
+    <span>$W_0 \in \mathbb{R}^{d \times k}$ — frozen base weights</span>
+    <span>$B \in \mathbb{R}^{d \times r}$ — learned</span>
+    <span>$A \in \mathbb{R}^{r \times k}$ — learned</span>
+    <span>$r \ll \min(d, k)$</span>
+  </div>
+</div>
+
+<p>
+  With $d = k = 4096$ and rank $r = 8$, the original $\Delta W$ has
+  $4096 \cdot 4096 \approx 16.8\text{M}$ parameters. The factored
+  version $BA$ has $4096 \cdot 8 + 8 \cdot 4096 \approx 65\text{k}$
+  parameters — a 250× reduction. And because you keep $W_0$ frozen,
+  you can train on a single GPU what previously required a cluster.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 360" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- W0 frozen -->
+  <rect x="40" y="80" width="200" height="200" rx="4" fill="#E2E8F0" stroke="#64748B" stroke-width="2" stroke-dasharray="4 4"/>
+  <text x="140" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#334155">W₀ (frozen, d × k)</text>
+  <text x="140" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="28" fill="#64748B">d × k</text>
+  <text x="140" y="220" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">~16.8M params</text>
+  <text x="140" y="300" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">no gradients</text>
+
+  <text x="280" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#0D9488">+</text>
+
+  <!-- B -->
+  <rect x="320" y="80" width="40" height="200" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="340" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">B (d × r)</text>
+  <text x="340" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#0D9488" transform="rotate(-90 340 190)">d × r</text>
+  <text x="340" y="300" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">init 0</text>
+
+  <text x="380" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="18" fill="#0D9488">×</text>
+
+  <!-- A -->
+  <rect x="400" y="170" width="200" height="40" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="500" y="160" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">A (r × k)</text>
+  <text x="500" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#0D9488">r × k</text>
+  <text x="500" y="240" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">init Kaiming</text>
+
+  <text x="620" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#1E293B">=</text>
+
+  <!-- Full W -->
+  <rect x="640" y="80" width="100" height="200" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="690" y="60" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#92400E">W effective</text>
+  <text x="690" y="185" text-anchor="middle" font-family="JetBrains Mono" font-size="14" fill="#92400E">W₀ + BA</text>
+  <text x="690" y="240" text-anchor="middle" font-family="Inter" font-size="10" fill="#92400E">merged at</text>
+  <text x="690" y="255" text-anchor="middle" font-family="Inter" font-size="10" fill="#92400E">inference</text>
+
+  <!-- parameter count annotations -->
+  <text x="340" y="335" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488" font-style="italic">~32k params trained</text>
+  <text x="500" y="335" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488" font-style="italic">~32k params trained</text>
+  <text x="420" y="350" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Total: &lt;1% of full fine-tuning</text>
+</svg>
+<figcaption>LoRA factors the weight update into a low-rank product $BA$ while the base $W_0$ stays frozen. With $r \ll d$ you train a tiny fraction of the parameters.</figcaption>
+</figure>
+
+<h3>The forward pass</h3>
+
+<p>
+  The modified linear layer computes:
+</p>
+
+$$\mathbf{y} \;=\; W_0 \mathbf{x} + \frac{\alpha}{r}\, B A \mathbf{x}$$
+
+<p>
+  The scaling factor $\alpha / r$ decouples the effective learning rate
+  from the choice of rank: a larger $\alpha$ means the LoRA branch has
+  more influence regardless of $r$. Typical values are $r \in \{4, 8, 16,
+  32\}$ and $\alpha$ equal to $r$ or $2r$.
+</p>
+
+<h3>Initialisation matters</h3>
+
+<p>
+  $A$ is initialised with standard Kaiming uniform; $B$ is initialised
+  to <em>zero</em>. That means at step 0 the LoRA branch contributes
+  <em>nothing</em> ($BA\mathbf{x} = \mathbf{0}$) and the model behaves
+  exactly like the base. Fine-tuning is then a strictly additive
+  perturbation — you cannot accidentally make the model worse on the
+  very first step.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>LoRA From Scratch</h2>
+
+<p>
+  Here is a minimal LoRA layer you can drop into any PyTorch linear
+  layer. The Kailash <code>AlignmentPipeline</code> does this for you at
+  scale, but implementing it once by hand is the only way to really
+  understand it.
+</p>
+
+<pre><code class="language-python">import math
+import torch
+import torch.nn as nn
+
+class LoRALayer(nn.Module):
+    """Low-rank adapter wrapping a frozen linear layer."""
+
+    def __init__(self, base_layer: nn.Linear, rank: int = 8, alpha: int = 16):
+        super().__init__()
+        self.base_layer = base_layer
+        for p in self.base_layer.parameters():
+            p.requires_grad = False        # freeze W_0
+
+        in_features = base_layer.in_features
+        out_features = base_layer.out_features
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank
+
+        # B ∈ R^{d × r}, A ∈ R^{r × k}
+        self.lora_A = nn.Parameter(torch.empty(rank, in_features))
+        self.lora_B = nn.Parameter(torch.zeros(out_features, rank))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # Kaiming init for A, zero for B
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # W_0 x  +  (alpha/r) B A x
+        base = self.base_layer(x)
+        delta = (x @ self.lora_A.T) @ self.lora_B.T
+        return base + delta * self.scaling
+
+    def parameter_count(self) -> int:
+        """Return number of *trainable* parameters (excludes frozen base)."""
+        return self.lora_A.numel() + self.lora_B.numel()</code></pre>
+
+<p>
+  Count the trainable parameters. <code>lora_A</code> is
+  $r \cdot k$, <code>lora_B</code> is $d \cdot r$, for a total of
+  $r(d + k)$. Compared to full fine-tuning of $d \cdot k$ parameters,
+  the reduction is $r(d+k)/(dk)$. With $d = k = 4096$, $r = 8$, that is
+  $8 \cdot 8192 / (4096 \cdot 4096) \approx 0.4\%$.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — why zero init on $B$?</span>
+  <p>
+    With $B$ initialised to zero, $BA\mathbf{x} = \mathbf{0}$ at step 0.
+    The LoRA branch contributes nothing and the forward pass is
+    numerically identical to the frozen base. This guarantees that the
+    first gradient step is the <em>only</em> step that has to deal with
+    the full complexity of the loss landscape at the base's solution
+    point — previous work tried symmetric Gaussian init and found
+    instability. Kaiming-init on $A$ with zero-init on $B$ is the
+    cheapest way to get a clean starting point.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Adapter Layers: The Other PEFT Approach</h2>
+
+<p>
+  Before LoRA, the most popular PEFT technique was <strong>adapter
+  layers</strong> (<em>Houlsby et al. 2019</em>). Adapters insert small
+  bottleneck modules <em>between</em> transformer layers rather than
+  modifying the linear layers themselves. Each adapter projects the
+  activation down to a lower dimension, applies a non-linearity, projects
+  it back up, and adds a residual connection.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 760 340" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+
+  <!-- Input -->
+  <rect x="40" y="150" width="120" height="40" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="100" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">activations (d)</text>
+
+  <line x1="160" y1="170" x2="200" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <!-- Down projection -->
+  <rect x="210" y="140" width="140" height="60" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="280" y="170" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">Down projection</text>
+  <text x="280" y="188" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#92400E">d → m (m &lt;&lt; d)</text>
+
+  <line x1="350" y1="170" x2="390" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <!-- Nonlinearity -->
+  <rect x="400" y="150" width="80" height="40" rx="20" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="440" y="175" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">GELU</text>
+
+  <line x1="480" y1="170" x2="520" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <!-- Up projection -->
+  <rect x="530" y="140" width="140" height="60" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="600" y="170" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">Up projection</text>
+  <text x="600" y="188" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#92400E">m → d</text>
+
+  <line x1="670" y1="170" x2="710" y2="170" stroke="#0D9488" stroke-width="2"/>
+  <circle cx="720" cy="170" r="12" fill="white" stroke="#0D9488" stroke-width="2"/>
+  <text x="720" y="175" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">+</text>
+
+  <!-- Residual skip -->
+  <path d="M 100 150 Q 100 50, 400 50 Q 720 50, 720 158" fill="none" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+  <text x="400" y="42" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488" font-style="italic">residual skip</text>
+
+  <!-- Output -->
+  <text x="720" y="215" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">to next layer</text>
+
+  <!-- Parameter count -->
+  <text x="400" y="280" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Trainable params per adapter: 2dm + biases  ≈  $2 \cdot 4096 \cdot 16 \approx 131\text{k}$</text>
+  <text x="400" y="300" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" font-style="italic">inserted after attention and FFN of each transformer block</text>
+</svg>
+<figcaption>An adapter module: down-project to a bottleneck dimension $m$, apply a non-linearity, up-project back to $d$, add a residual. The bottleneck is what makes it parameter-efficient.</figcaption>
+</figure>
+
+<pre><code class="language-python">class AdapterLayer(nn.Module):
+    """Bottleneck adapter inserted between transformer sublayers."""
+
+    def __init__(self, d_model: int, bottleneck: int = 16):
+        super().__init__()
+        self.down = nn.Linear(d_model, bottleneck)
+        self.act = nn.GELU()
+        self.up = nn.Linear(bottleneck, d_model)
+        # Near-identity init: zero the up projection
+        nn.init.zeros_(self.up.weight)
+        nn.init.zeros_(self.up.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.up(self.act(self.down(x)))  # residual
+
+    def parameter_count(self) -> int:
+        return (
+            self.down.weight.numel() + self.down.bias.numel()
+            + self.up.weight.numel() + self.up.bias.numel()
+        )</code></pre>
+
+<h3>LoRA vs adapters — four dimensions</h3>
+
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>LoRA</th><th>Adapters</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Update mechanism</td>
+      <td>Additive update to existing linear layer ($W_0 + BA$)</td>
+      <td>New module inserted in the residual path</td>
+    </tr>
+    <tr>
+      <td>Parameter efficiency</td>
+      <td>$r(d+k)$ per layer — ~0.4% for $r=8$</td>
+      <td>$2dm$ per module — comparable for similar $r, m$</td>
+    </tr>
+    <tr>
+      <td>Inference cost</td>
+      <td><strong>Zero</strong> — $BA$ merges into $W_0$ after training</td>
+      <td>Extra forward pass per adapter — ~5–10% latency</td>
+    </tr>
+    <tr>
+      <td>Modularity</td>
+      <td>Swap adapters by swapping $BA$ matrices</td>
+      <td>Swap adapters by loading different modules</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">🟢 Rule of thumb</span>
+  <p>
+    Default to LoRA. It has better parameter efficiency, zero inference
+    overhead after merging, and is the de-facto standard backed by every
+    major fine-tuning library. Use adapters only when you need multiple
+    <em>active</em> adapters simultaneously in the same forward pass —
+    because merged LoRA weights are, well, merged.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Fine-Tuning Landscape: Ten Techniques</h2>
+
+<p>
+  LoRA and adapters are the default but they are not the only options.
+  Here is the full landscape, ordered from most parameter-efficient
+  (left) to most expressive (right). Your job is not to memorise them —
+  it is to know that they exist so you can reach for the right one when
+  the default is not working.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 420" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Spectrum line -->
+  <line x1="40" y1="60" x2="740" y2="60" stroke="#0D9488" stroke-width="3"/>
+  <polygon points="740,60 730,54 730,66" fill="#0D9488"/>
+  <text x="40" y="50" font-family="Inter" font-size="11" fill="#0D9488">Fewer params</text>
+  <text x="740" y="50" text-anchor="end" font-family="Inter" font-size="11" fill="#0D9488">More expressive</text>
+
+  <!-- Techniques as nodes along axis -->
+  <g font-family="Inter" font-size="11">
+    <circle cx="70" cy="60" r="6" fill="#22C55E"/>
+    <text x="70" y="85" text-anchor="middle" fill="#15803D">Prompt Tuning</text>
+    <text x="70" y="100" text-anchor="middle" fill="#64748B" font-size="9">&lt; 0.01%</text>
+
+    <circle cx="150" cy="60" r="6" fill="#22C55E"/>
+    <text x="150" y="85" text-anchor="middle" fill="#15803D">Prefix Tuning</text>
+    <text x="150" y="100" text-anchor="middle" fill="#64748B" font-size="9">~0.1%</text>
+
+    <circle cx="240" cy="60" r="6" fill="#0D9488"/>
+    <text x="240" y="85" text-anchor="middle" fill="#0D9488">LoRA</text>
+    <text x="240" y="100" text-anchor="middle" fill="#64748B" font-size="9">~0.4%</text>
+
+    <circle cx="320" cy="60" r="6" fill="#0D9488"/>
+    <text x="320" y="85" text-anchor="middle" fill="#0D9488">Adapters</text>
+    <text x="320" y="100" text-anchor="middle" fill="#64748B" font-size="9">~0.5%</text>
+
+    <circle cx="410" cy="60" r="6" fill="#3B82F6"/>
+    <text x="410" y="85" text-anchor="middle" fill="#1E40AF">LLRD</text>
+    <text x="410" y="100" text-anchor="middle" fill="#64748B" font-size="9">full</text>
+
+    <circle cx="490" cy="60" r="6" fill="#3B82F6"/>
+    <text x="490" y="85" text-anchor="middle" fill="#1E40AF">Progressive Freeze</text>
+    <text x="490" y="100" text-anchor="middle" fill="#64748B" font-size="9">partial</text>
+
+    <circle cx="580" cy="60" r="6" fill="#8B5CF6"/>
+    <text x="580" y="85" text-anchor="middle" fill="#6D28D9">Distillation</text>
+    <text x="580" y="100" text-anchor="middle" fill="#64748B" font-size="9">student full</text>
+
+    <circle cx="660" cy="60" r="6" fill="#8B5CF6"/>
+    <text x="660" y="85" text-anchor="middle" fill="#6D28D9">Full SFT</text>
+    <text x="660" y="100" text-anchor="middle" fill="#64748B" font-size="9">100%</text>
+
+    <circle cx="730" cy="60" r="6" fill="#8B5CF6"/>
+    <text x="730" y="85" text-anchor="middle" fill="#6D28D9">DPSGD</text>
+    <text x="730" y="100" text-anchor="middle" fill="#64748B" font-size="9">full + noise</text>
+  </g>
+
+  <!-- Legend boxes (roles) -->
+  <g font-family="Inter" font-size="11">
+    <rect x="40" y="140" width="720" height="70" rx="8" fill="#F0FDF4" stroke="#22C55E"/>
+    <text x="50" y="160" font-weight="700" fill="#15803D">Soft prompts</text>
+    <text x="50" y="180" fill="#166534">Prepend learned vectors to attention K/V (Prefix) or to input (Prompt). Task-specific,</text>
+    <text x="50" y="195" fill="#166534">very cheap, single-task — cannot blend with other task adapters easily.</text>
+
+    <rect x="40" y="220" width="720" height="70" rx="8" fill="#F0FDFA" stroke="#0D9488"/>
+    <text x="50" y="240" font-weight="700" fill="#0D9488">PEFT modules (default)</text>
+    <text x="50" y="260" fill="#0F766E">LoRA: factored additive update. Adapters: bottleneck modules in residual path. Both</text>
+    <text x="50" y="275" fill="#0F766E">train &lt; 1% of parameters while preserving base knowledge. Today's workhorse.</text>
+
+    <rect x="40" y="300" width="720" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6"/>
+    <text x="50" y="320" font-weight="700" fill="#1E40AF">Training strategies (apply on top of above)</text>
+    <text x="50" y="340" fill="#1E3A8A">LLRD: lower LR for earlier layers. Progressive Freezing: unfreeze top-down. EWC: Fisher penalty.</text>
+
+    <rect x="40" y="360" width="720" height="50" rx="8" fill="#F3E8FF" stroke="#8B5CF6"/>
+    <text x="50" y="380" font-weight="700" fill="#6D28D9">Heavy guns</text>
+    <text x="50" y="400" fill="#5B21B6">Knowledge distillation, full SFT, DPSGD for differential privacy. Use when you need more than LoRA can give.</text>
+  </g>
+</svg>
+<figcaption>Ten fine-tuning techniques arranged by trainable-parameter count (x-axis) and grouped by role (colour). Default to LoRA; reach for the specialised techniques only when it fails.</figcaption>
+</figure>
+
+<table>
+  <thead>
+    <tr><th>Technique</th><th>What it does</th><th>When to use</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>LoRA</strong></td>
+      <td>Factored additive update $BA$ with $r \ll d$</td>
+      <td>Default for any domain adaptation or task tuning</td>
+    </tr>
+    <tr>
+      <td><strong>Adapter layers</strong></td>
+      <td>Bottleneck modules inserted in the residual path</td>
+      <td>When you need multiple active adapters in one forward pass</td>
+    </tr>
+    <tr>
+      <td><strong>Prefix tuning</strong></td>
+      <td>Learned vectors prepended to attention K/V at every layer</td>
+      <td>Task-switching at inference via prefix swap</td>
+    </tr>
+    <tr>
+      <td><strong>Prompt tuning</strong></td>
+      <td>Learned soft-prompt embeddings prepended to the input</td>
+      <td>Ultra-low-parameter regime on huge models</td>
+    </tr>
+    <tr>
+      <td><strong>Full SFT</strong></td>
+      <td>Backprop through every parameter with schedulers, clipping, mixed precision</td>
+      <td>You have lots of compute and data, and LoRA plateaus</td>
+    </tr>
+    <tr>
+      <td><strong>LLRD</strong></td>
+      <td>Layer-wise learning rate decay (lower LR for earlier layers)</td>
+      <td>Full fine-tuning where earlier layers hold general features</td>
+    </tr>
+    <tr>
+      <td><strong>Progressive freezing</strong></td>
+      <td>Unfreeze layers top-down as training progresses</td>
+      <td>Small datasets prone to catastrophic forgetting</td>
+    </tr>
+    <tr>
+      <td><strong>Knowledge distillation</strong></td>
+      <td>Student model matches teacher's soft-label distribution</td>
+      <td>Compress a large model to a deployable size</td>
+    </tr>
+    <tr>
+      <td><strong>Differential privacy (DPSGD)</strong></td>
+      <td>Per-example gradient clipping + noise injection</td>
+      <td>Training data contains PII and must not leak</td>
+    </tr>
+    <tr>
+      <td><strong>Elastic Weight Consolidation</strong></td>
+      <td>Fisher Information penalty on critical parameters</td>
+      <td>Sequential multi-task learning; prevent forgetting</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Model Merging: Combining Multiple Fine-Tuned Models</h2>
+
+<p>
+  You trained one LoRA for legal Q&amp;A and another for retail support.
+  Can you combine them without retraining? Yes — this is
+  <strong>model merging</strong>. The mathematics is surprisingly clean
+  because LoRA updates are additive; you can linearly combine them.
+</p>
+
+<h3>TIES — Trim, Elect-sign, Merge</h3>
+
+<p>
+  TIES (<em>Yadav et al. 2023</em>) addresses sign conflict when merging
+  $n$ models. Different fine-tunings sometimes push a parameter in
+  opposite directions — averaging cancels the signal. TIES fixes this
+  in three steps:
+</p>
+
+<ol>
+  <li><strong>Trim:</strong> zero out the smallest magnitude updates in each model (keep the top $k\%$).</li>
+  <li><strong>Elect sign:</strong> for each parameter, the final sign is the one with the greater total magnitude across models.</li>
+  <li><strong>Merge:</strong> average only the updates whose sign agrees with the elected sign.</li>
+</ol>
+
+<h3>DARE — Drop And REscale</h3>
+
+<p>
+  DARE (<em>Yu et al. 2023</em>) observes that most fine-tuning updates
+  are redundant. Randomly drop a fraction $p$ of the delta parameters
+  (set them to zero) and rescale the survivors by $1/(1-p)$. Surprisingly,
+  you can often drop 90% of the updates and preserve quality. DARE
+  composes with TIES: TIES-DARE is the de-facto merging recipe.
+</p>
+
+<h3>SLERP — Spherical Linear Interpolation</h3>
+
+<p>
+  For two models, SLERP interpolates along the great circle on the
+  parameter hypersphere rather than in Euclidean space. The formula
+  for parameter vectors $\theta_1, \theta_2$ at interpolation factor
+  $t \in [0, 1]$ is:
+</p>
+
+$$\theta_{\text{slerp}} \;=\; \frac{\sin((1-t)\phi)}{\sin \phi}\,\theta_1 + \frac{\sin(t\phi)}{\sin \phi}\,\theta_2$$
+
+<p>
+  where $\phi$ is the angle between $\theta_1$ and $\theta_2$. SLERP is
+  the default for merging exactly two checkpoints where you want smooth
+  interpolation rather than linear averaging. At $t = 0.5$ you get the
+  geodesic midpoint.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — task arithmetic</span>
+  <p>
+    A fun consequence of additivity: task vectors $\Delta \theta_i
+    = \theta_i - \theta_\text{base}$ behave like vectors in parameter
+    space. You can <em>subtract</em> one ($\theta_\text{base} +
+    \Delta\theta_\text{helpful} - \Delta\theta_\text{toxic}$) to
+    remove a behaviour, or add several together to combine skills.
+    <em>Ilharco et al. 2022</em> call this "task arithmetic". It is
+    hacky, sometimes works, sometimes does not, and is worth knowing
+    about but not relying on.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Quantisation and QLoRA</h2>
+
+<p>
+  A 7B parameter model in fp16 is ~14 GB — too much for a consumer GPU.
+  <strong>Quantisation</strong> compresses the weights to lower
+  precision (int8, int4, even 3-bit) so the model fits. Common formats:
+</p>
+
+<ul>
+  <li><strong>GPTQ</strong> — post-training, per-layer calibration with a small dataset, typically 4-bit.</li>
+  <li><strong>AWQ</strong> — activation-aware weight quantisation; protects salient channels.</li>
+  <li><strong>GGUF</strong> — llama.cpp's container format; runs on CPU and Apple Silicon.</li>
+  <li><strong>bitsandbytes</strong> — on-the-fly quantisation during PyTorch training.</li>
+</ul>
+
+<p>
+  <strong>QLoRA</strong> (<em>Dettmers et al. 2023</em>) combines
+  4-bit quantisation of the base model with LoRA fine-tuning on top.
+  Only the LoRA matrices are in fp16; the frozen base is in 4-bit.
+  Result: you can fine-tune a 65B model on a single 48 GB GPU. QLoRA is
+  the standard recipe for serious LoRA fine-tuning on limited hardware.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Using <code>AlignmentPipeline</code> in Practice</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash — AlignmentPipeline + AdapterRegistry</span>
+  <p>
+    The <code>kailash-align</code> package wraps all of this. You
+    configure an <code>AlignmentConfig</code> — base model, dataset
+    path, method (sft/dpo/grpo), LoRA hyperparameters — hand it to
+    <code>AlignmentPipeline</code>, and call <code>.train()</code>. The
+    trained adapter is automatically versioned in an
+    <code>AdapterRegistry</code> so you can load, swap, and merge
+    adapters without filesystem plumbing.
+  </p>
+</div>
+
+<pre><code class="language-python">import asyncio
+from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+from shared.kailash_helpers import setup_environment
+
+setup_environment()
+
+cfg = AlignmentConfig(
+    method="sft",
+    base_model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    train_data="data/mlfp06/sg_domain_qa_train.parquet",
+    eval_data="data/mlfp06/sg_domain_qa_eval.parquet",
+    # LoRA hyperparameters
+    lora_r=8,
+    lora_alpha=16,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj"],
+    # Training
+    epochs=3,
+    batch_size=4,
+    learning_rate=2e-4,
+    max_seq_length=512,
+    output_dir="artifacts/mlfp06/sft_adapter",
+)
+
+async def run_sft():
+    pipeline = AlignmentPipeline(cfg)
+    result = await pipeline.train()
+
+    registry = AdapterRegistry("artifacts/mlfp06/registry")
+    registry.register(
+        name="sg_domain_sft",
+        version="v1",
+        path=result.adapter_path,
+        metadata={"base_model": cfg.base_model, "method": "sft", "r": cfg.lora_r},
+    )
+
+    print(f"Final train loss: {result.train_loss:.4f}")
+    print(f"Final eval loss:  {result.eval_loss:.4f}")
+    return result
+
+asyncio.run(run_sft())</code></pre>
+
+<h3>Reading the loss curves</h3>
+
+<p>
+  During training you will see two numbers: <em>train loss</em> (how
+  well the model fits the training data) and <em>eval loss</em> (how
+  well it generalises to held-out data). Healthy LoRA runs show both
+  curves decreasing smoothly. Warning signs:
+</p>
+
+<ul>
+  <li><strong>Eval loss rising while train loss falls</strong> — overfitting. Reduce epochs or increase dropout.</li>
+  <li><strong>Both losses flat</strong> — learning rate too low, or rank too small for the task.</li>
+  <li><strong>Eval loss starts below 0.5 and never moves</strong> — task is too easy or there is train/eval leakage.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Parameter Count and Compute</h2>
+
+<h3>Parameter reduction formula</h3>
+
+<p>
+  For a single linear layer of shape $d \times k$, the reduction from
+  full fine-tuning to LoRA rank $r$ is:
+</p>
+
+$$\text{reduction} \;=\; \frac{r(d+k)}{dk}$$
+
+<p>
+  Plug in realistic numbers. For $d = k = 4096$ and $r = 8$: reduction
+  $= 8 \cdot 8192 / (4096 \cdot 4096) \approx 0.004 = 0.4\%$. For
+  $r = 32$: reduction $\approx 1.6\%$. Bumping the rank by a factor of
+  4 quadruples the parameter count — there is no magic.
+</p>
+
+<h3>Compute cost</h3>
+
+<p>
+  LoRA's compute advantage is more modest than its parameter advantage.
+  The forward pass still runs through all of $W_0$; the LoRA branch
+  adds two small matrix multiplies. Gradient computation now only
+  needs to flow through $A$ and $B$, which is where the big savings
+  come from — the optimiser state for Adam (which stores $m$ and $v$
+  per parameter, doubling memory) is now negligible. In practice LoRA
+  training uses ~30% of the GPU memory of full fine-tuning.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Targeting the wrong modules</span>
+  <p>
+    The <code>target_modules</code> argument controls which linear
+    layers get LoRA. Hitting <em>only</em> <code>q_proj</code> and
+    <code>v_proj</code> (the query and value projections in
+    attention) is the safest starting point. Applying LoRA to every
+    linear layer in the model wastes parameters; applying it to only
+    the output projection often underfits.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Rank too small for the task</span>
+  <p>
+    A rank of 4 is enough for style adjustment. Domain knowledge
+    absorption often needs rank 16 or 32. When eval loss plateaus
+    early, the first thing to try is doubling the rank.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Forgetting to set the adapter on inference</span>
+  <p>
+    After training, the base model is still loaded without the LoRA
+    weights unless you explicitly load the adapter. Always check that
+    your inference path calls
+    <code>registry.load("adapter_name", "version")</code>
+    before running predictions.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Catastrophic forgetting on small datasets</span>
+  <p>
+    Training on 50 examples for 20 epochs at a high learning rate can
+    destroy the base model's general skills. Use fewer epochs, lower
+    learning rate, or switch to Progressive Freezing if you see
+    quality drop on tasks you did not explicitly train for.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Count the parameters yourself</h3>
+  <p>
+    Instantiate <code>LoRALayer</code> wrapping a
+    <code>nn.Linear(4096, 4096)</code> base at rank 8. Print the
+    trainable parameter count and confirm it is approximately 0.4% of
+    the full linear layer's 16.8M parameters.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Run AlignmentPipeline</h3>
+  <p>
+    Run <code>ex_2.py</code> on the Singapore domain Q&amp;A dataset.
+    Plot the train and eval loss curves from the result. Identify
+    whether the model is still improving at the end and whether
+    overfitting is starting.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Merge with SLERP</h3>
+  <p>
+    Train two LoRA adapters on different slices of
+    <code>sg_domain_qa.parquet</code> (e.g., finance-only vs
+    technology-only). Merge them at $t = 0.5$ with SLERP. Evaluate on
+    the held-out set and compare to each individual adapter.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The idea that $\Delta W$ has low intrinsic rank ties directly to
+  <strong>Lesson 4.3</strong> on SVD and low-rank approximation — LoRA
+  <em>is</em> SVD reframed as a trainable parametrisation. The
+  transformer linear layers you are perturbing come from
+  <strong>Lesson 5.4</strong>. The optimiser behaviour and learning-rate
+  scheduling assumptions come from <strong>Lessons 5.2 and 5.3</strong>.
+  Lesson 6.3 takes the SFT adapter you train here and aligns it to
+  human preferences with DPO — same pipeline, different loss. Lesson
+  6.8 loads this adapter back via <code>AdapterRegistry</code> and
+  deploys it through Nexus.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You now have two things that unlock the rest of the module: an
+  intuition for <em>why</em> low-rank updates work (the updates from
+  fine-tuning genuinely live in a tiny subspace) and a
+  <code>LoRALayer</code> you wrote yourself that proves you understand
+  how. Everything else in M6 — DPO, GRPO, RAG-augmented fine-tunes,
+  aligned agents — builds on exactly this pipeline.
+</p>
+<p>
+  More importantly, you have a map. The ten-technique landscape means
+  that when LoRA fails you know exactly which lever to pull next:
+  bigger rank, different target modules, progressive freezing, full
+  SFT, or even DPSGD if privacy matters. You are no longer guessing
+  among techniques — you are choosing among them.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../01/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    6.1 LLM Fundamentals and Prompting
+  </a>
+  <a href="../03/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.3 Preference Alignment — DPO and GRPO
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

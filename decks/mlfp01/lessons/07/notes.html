@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.7 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.7</span>
+  Automated Data Profiling
+</h1>
+
+<p class="lead">
+  Total time: ~50 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
+
+<p>
+  This lesson marks a shift from hand-built exploration to engine-powered
+  automation. Learners who have been writing <code>describe()</code> and
+  <code>null_count()</code> for six lessons should feel the relief of
+  having one engine do it all. Experts should appreciate the configurable
+  thresholds and the compare() feature. Use the messy economic dataset
+  throughout — its three date formats and mixed null representations are
+  common in real Singapore government data releases.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 1</span><span>~2 min</span><span>Title slide</span>
+  </div>
+  <h3>Automated Data Profiling</h3>
+  <p>
+    Open with: "For six lessons you have been the profiler — inspecting
+    shape, columns, nulls, distributions. Today you meet the engine that
+    does all of it in one call. DataExplorer checks every column for eight
+    kinds of data quality problems and gives you a structured report."
+  </p>
+  <p>
+    Set expectations: "By the end of this lesson you will be able to profile
+    any dataset, tune the alert thresholds, and compare two versions of a
+    dataset — before and after cleaning."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners look overwhelmed by 'engine':</strong> "Think of it
+    as a pre-built function that does in one line what took you 20 lines
+    before. You don't need to understand how it works internally — just what
+    it gives you and how to configure it."
+  </div>
+  <div class="transition">→ "Why do we need automation?"</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 2</span><span>~3 min</span><span>Manual vs automated</span>
+  </div>
+  <h3>Manual profiling does not scale</h3>
+  <p>
+    Walk the diagram. Left side: what they have been doing. Right side: what
+    DataExplorer does. Emphasise the gap: "Manual profiling catches the
+    obvious — nulls, shape, basic stats. But it misses the subtle: a date
+    column with three different formats, a column that is 98% zero, two
+    columns that are 99% correlated. Those are the issues that cost you hours
+    downstream when your model behaves strangely."
+  </p>
+  <p>
+    Real example: "I once spent three hours debugging a regression model
+    before discovering that the date column had been silently parsed as a
+    string in half the rows. DataExplorer catches that in the first second."
+  </p>
+  <div class="transition">→ "Here's how the engine is structured."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 3</span><span>~3 min</span><span>Architecture diagram</span>
+  </div>
+  <h3>DataExplorer in one picture</h3>
+  <p>
+    Walk the flow: "DataFrame in, three things out — alerts, statistics, and
+    optionally a comparison. The alerts are the headline news. The statistics
+    are the detail behind each alert. The comparison is for when you have two
+    versions of the data."
+  </p>
+  <p>
+    Point out AlertConfig sitting inside the engine: "This is how you tune
+    what counts as an alert. Default thresholds are sensible starting points
+    but every domain has different expectations."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that DataExplorer is async internally
+    (it profiles columns in parallel) but the sync wrapper hides that. The
+    async API is available for advanced users who want to integrate profiling
+    into async pipelines.
+  </div>
+  <div class="transition">→ "What exactly does it check for?"</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 4</span><span>~4 min</span><span>Eight alert types</span>
+  </div>
+  <h3>Eight alert types</h3>
+  <p>
+    Walk the table row by row. For each alert type, give the intuition:
+  </p>
+  <ol>
+    <li>"high_nulls: more than 5% of values missing. Decide whether to impute, drop, or investigate."</li>
+    <li>"outliers: values beyond 3 IQR fences. Could be errors or genuine extremes."</li>
+    <li>"duplicates: identical rows. Could be double-counting."</li>
+    <li>"high_skewness: distribution is lopsided. May need log transform."</li>
+    <li>"high_correlation: two columns carry almost the same information. Multicollinearity risk."</li>
+    <li>"low_cardinality: fewer than 3 unique values. Possibly should be treated as categorical."</li>
+    <li>"constant: zero variance. Useless as a predictor — drop it."</li>
+    <li>"type_inference: stored as string but looks like a number, or mixed formats."</li>
+  </ol>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Don't memorise the thresholds. Memorise
+    the eight kinds of problem. If you can name the problem, you can
+    configure the threshold later."
+  </div>
+  <div class="transition">→ "Let's run it."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 5</span><span>~3 min</span><span>First profile — code</span>
+  </div>
+  <h3>Running your first profile</h3>
+  <p>
+    Run this live. The dataset is the messy Singapore economic indicators
+    file with three date formats and mixed null representations. Walk each
+    line: "Create the engine, load the data, profile it, print the alerts."
+  </p>
+  <p>
+    When the alerts print, read them aloud. Compare to what they would
+    have found by hand: "Would you have caught that the date column has
+    three formats? Probably not until something broke."
+  </p>
+  <div class="transition">→ "Let's look at the full profile output."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 6</span><span>~3 min</span><span>Profile output diagram</span>
+  </div>
+  <h3>What the profile returns</h3>
+  <p>
+    Walk the two boxes. Left: the alerts list — these are the headlines.
+    Right: the column_stats dictionary — this is the detail. "For every
+    column, you get mean, std, null percentage, skewness, unique count, and
+    more. The alerts are just the statistics that crossed a threshold."
+  </p>
+  <p>
+    Point out that you can access the raw stats programmatically:
+    <code>profile.column_stats["cpi"].mean</code>. This is useful when you
+    want to build automated cleaning rules based on the profile.
+  </p>
+  <div class="transition">→ "Now let's tune the thresholds."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 7</span><span>~3 min</span><span>AlertConfig</span>
+  </div>
+  <h3>Configuring thresholds</h3>
+  <p>
+    "Default thresholds are the engine's opinion. Your domain might disagree.
+    Economic data with 10% nulls might be fine — government agencies revise
+    figures quarterly. Medical trial data with 2% nulls might be a crisis."
+  </p>
+  <p>
+    Walk the code: "We create an AlertConfig with custom thresholds and pass
+    it to run_profile. Now only alerts that cross our custom thresholds fire."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "The correlation threshold is the most
+    important to tune. In economic data, CPI and employment rate are
+    genuinely correlated at 0.94 — that is a domain fact, not a data
+    quality issue. Set the threshold to 0.97 if you only want near-duplicates."
+  </div>
+  <div class="transition">→ "Real messy data from Singapore."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 8</span><span>~3 min</span><span>Messy data example</span>
+  </div>
+  <h3>The messy economic dataset</h3>
+  <p>
+    Show the diagram and let it sink in. "This is real. Government data
+    releases in Singapore — and everywhere else — come with inconsistencies.
+    Three date formats: ISO (2020-01), US-style (01/2020), and concatenated
+    (202004). Nulls represented as NaN, 'N/A', and an em-dash."
+  </p>
+  <p>
+    "DataExplorer catches all of these in the type_inference and high_nulls
+    alerts. By hand, you would need to inspect every column individually."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Reassurance:</strong> "You are not expected to know how to fix
+    all of these yet. Lesson 1.8 will show you how to build a cleaning
+    pipeline. Today the goal is to <em>find</em> the problems."
+  </div>
+  <div class="transition">→ "Let's read the actual profile output."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 9</span><span>~3 min</span><span>Profile walkthrough</span>
+  </div>
+  <h3>Reading the profile</h3>
+  <p>
+    Walk each alert. For each one, ask: "What should we do about this?"
+  </p>
+  <ul>
+    <li>high_nulls on CPI: impute with interpolation or forward-fill</li>
+    <li>high_nulls on fx_rate: same strategy</li>
+    <li>type_inference on date: standardise to ISO format</li>
+    <li>constant on country: drop — adds no information</li>
+    <li>high_skewness on CPI: consider log transform</li>
+    <li>high_correlation: keep both but note the collinearity risk</li>
+  </ul>
+  <p>
+    "The profile gives you the diagnosis. You still make the treatment
+    decision. That is the human-in-the-loop part."
+  </p>
+  <div class="transition">→ "Now let's verify the cleaning worked."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 10</span><span>~3 min</span><span>compare()</span>
+  </div>
+  <h3>compare(): before vs after</h3>
+  <p>
+    "After you clean data, how do you know the cleaning helped? Re-profile
+    and compare. DataExplorer's compare() does this in one call."
+  </p>
+  <p>
+    Walk the code: clean the date column, drop nulls, drop the constant
+    column. Then compare. The comparison shows what changed — alert count
+    dropped from 6 to 1, null percentages went to zero, format issues
+    resolved.
+  </p>
+  <div class="transition">→ "The comparison as a picture."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 11</span><span>~3 min</span><span>Comparison diagram</span>
+  </div>
+  <h3>Comparison result</h3>
+  <p>
+    Walk the before/after diagram. "Before: 6 alerts, 14% nulls in CPI,
+    3 date formats, 120 rows. After: 1 alert, 0% nulls, 1 date format,
+    103 rows. We lost 17 rows to null removal — that is the cost of
+    cleaning."
+  </p>
+  <p>
+    "The remaining alert — high correlation — is a domain fact, not a data
+    quality issue. CPI and employment genuinely move together. The profile
+    correctly flags it; we correctly decide to keep both columns."
+  </p>
+  <div class="transition">→ "A new mental model: using engines, not building them."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 12</span><span>~3 min</span><span>Classes as users</span>
+  </div>
+  <h3>Classes: using, not building</h3>
+  <p>
+    "DataExplorer is a class. You create an instance with <code>()</code>,
+    then call methods on it. This is the same pattern for every Kailash
+    engine: create, configure, call. You do not need to understand the
+    internals — just the interface."
+  </p>
+  <p>
+    "In Module 3 you will build your own classes. Today we establish the
+    consumer pattern: instantiate, configure, call, interpret."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners ask 'what is a class?':</strong> "Think of it as a
+    toolkit in a box. DataExplorer is the box. <code>profile()</code> and
+    <code>compare()</code> are the tools inside. You open the box, pick a
+    tool, and use it."
+  </div>
+  <div class="transition">→ "What happens when things go wrong?"</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 13</span><span>~3 min</span><span>try/except</span>
+  </div>
+  <h3>Handling errors: try/except</h3>
+  <p>
+    "Real pipelines encounter errors: missing files, bad schemas, network
+    timeouts. <code>try/except</code> lets you catch the error and handle
+    it instead of crashing."
+  </p>
+  <p>
+    Walk the code: "The try block is the happy path. The except blocks
+    catch specific error types. Always name the exception — never write
+    bare <code>except:</code>."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners ask 'when do I use this?':</strong> "Whenever you
+    load external data — files, APIs, databases. If the data source might
+    not be there, wrap it in try/except."
+  </div>
+  <div class="transition">→ "Beyond cleaning: comparing train vs test."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 14</span><span>~3 min</span><span>Train/test comparison</span>
+  </div>
+  <h3>compare() for train vs test</h3>
+  <p>
+    "Here is a preview of Module 3. When you split data into train and test,
+    the distributions should be similar. If they differ significantly, your
+    model may fail on the test set. compare() catches this."
+  </p>
+  <p>
+    Walk the code. Point out the severity check: "We only flag high-severity
+    differences. Small statistical fluctuations are normal."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "This is the same concept as drift
+    monitoring in production. In Module 3 you will use DriftMonitor to
+    run this comparison continuously on deployed models."
+  </div>
+  <div class="transition">→ "Traps to avoid."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 15</span><span>~2 min</span><span>Common mistakes</span>
+  </div>
+  <h3>Three mistakes to avoid</h3>
+  <p>
+    Walk each one. Mistake 1 is the most common: "Beginners see 40 alerts
+    and disable the engine. The correct response is to retune the thresholds
+    so each alert means something."
+  </p>
+  <p>
+    Mistake 2: "Profile after cleaning the basics, not before. Fix obvious
+    type issues first so the profile shows real problems, not noise."
+  </p>
+  <p>
+    Mistake 3: "The correlation alert says 'these two columns carry similar
+    information'. It does not say 'drop one'. That decision requires domain
+    knowledge."
+  </p>
+  <div class="transition">→ "Reflection and bridge to 1.8."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge</span>
+  </div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the bullet list. Let each point land.
+  </p>
+  <p>
+    Bridge to 1.8: "Tomorrow is the capstone. You will combine everything
+    from Module 1: load data from an API, profile it with DataExplorer,
+    clean it with PreprocessingPipeline, visualise the key patterns, and
+    generate an HTML report. It is your first end-to-end pipeline — and the
+    exact workflow you will use in every module from here on."
+  </p>
+  <p>
+    Common questions: "Do I need to memorise all eight alert types?" (No —
+    the engine remembers them for you. Know the categories.) "Can I add
+    custom alert types?" (Not in this version, but AlertConfig covers the
+    common cases.)
+  </p>
+  <div class="transition">→ End of Lesson 1.7. Break before 1.8.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.6 Speaker Notes
+  </a>
+  <a href="../08/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.8 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

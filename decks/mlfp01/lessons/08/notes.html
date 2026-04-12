@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.8 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.8</span>
+  Data Pipelines and End-to-End Project
+</h1>
+
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 19 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
+
+<p>
+  This is the capstone. Every skill from Lessons 1.1 through 1.7 appears
+  in one pipeline. The pace is faster because the tools are familiar. The
+  new content — null handling, ETL, REST APIs, PreprocessingPipeline —
+  connects to what they already know. Run the full pipeline live if
+  possible; seeing all the pieces click together is the emotional payoff
+  of Module 1.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Data Pipelines and End-to-End Project</h3>
+  <p>
+    "This is the finale of Module 1. Everything you have learned converges
+    into one pipeline. By the end of this lesson you will have built a
+    complete data pipeline that takes messy taxi trip data and produces a
+    clean, model-ready dataset with an HTML report."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners look nervous:</strong> "You already know every
+    individual step. Today we just connect them."
+  </div>
+  <div class="transition">→ "The five stages."</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Pipeline diagram</span></div>
+  <h3>Five stages, one pipeline</h3>
+  <p>
+    Walk the diagram left to right. Point out the lesson connection for each
+    stage: "Extract — that is Lesson 1.1's data loading. Profile — 1.7's
+    DataExplorer. Transform — 1.2's filtering plus new tools today.
+    Visualise — 1.6's charts. Report — new today, but just HTML output."
+  </p>
+  <div class="transition">→ "What is ETL?"</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~2 min</span><span>ETL definition</span></div>
+  <h3>ETL: the universal data pattern</h3>
+  <p>
+    "ETL stands for Extract, Transform, Load. It is the standard name for
+    what we are building today. Every company that works with data has ETL
+    pipelines — from startups to banks to the Singapore government."
+  </p>
+  <div class="transition">→ "The first new tool: null handling."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Null handling</span></div>
+  <h3>Null handling: three tools</h3>
+  <p>
+    Walk the table. Then show the code. "is_null() tells you where the
+    holes are. fill_null() fills them. drop_nulls() removes rows with
+    holes. The order matters: inspect first, then decide whether to fill
+    or drop."
+  </p>
+  <p>
+    Emphasise the rule: "Never drop nulls without checking how many there
+    are. If 30% of rows have nulls, you are throwing away a third of your
+    data."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of nulls as blank cells in a
+    spreadsheet. You can fill them with a reasonable guess, or you can
+    delete the whole row. Filling is usually better."
+  </div>
+  <div class="transition">→ "Which filling strategy?"</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>Imputation strategies</span></div>
+  <h3>Which imputation strategy?</h3>
+  <p>
+    Walk the three boxes. Forward-fill for time-series data (taxi fares
+    over time). Median for cross-sectional data (robust to outliers).
+    Group-aware for the best accuracy (median fare per zone).
+  </p>
+  <p>
+    The bottom box: dropping is the last resort.
+  </p>
+  <div class="transition">→ "Where does data come from? Not always a CSV."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>REST APIs</span></div>
+  <h3>Extracting data from APIs</h3>
+  <p>
+    "Many datasets are live services. Singapore's OneMap API gives you
+    geolocation for any address. The pattern: send a GET request with
+    query parameters, get JSON back."
+  </p>
+  <p>
+    Run the code live if you have network access. Show the JSON response.
+    Point out: "The API returns a dictionary with a 'results' key containing
+    a list of dictionaries. Each dictionary is one search result."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are confused by APIs:</strong> "Think of it as
+    typing a URL in your browser and getting data back instead of a webpage.
+    The URL is the API endpoint. The parameters are the search terms."
+  </div>
+  <div class="transition">→ "How to turn JSON into a DataFrame."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~2 min</span><span>JSON to DataFrame</span></div>
+  <h3>JSON to DataFrame</h3>
+  <p>
+    Walk the code. "Take the list of dictionaries from the JSON response,
+    create a DataFrame, select and rename the columns you need, fix the
+    types."
+  </p>
+  <div class="transition">→ "Now the second Kailash engine."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>PreprocessingPipeline</span></div>
+  <h3>PreprocessingPipeline: automated cleaning</h3>
+  <p>
+    "Just like DataExplorer automates profiling, PreprocessingPipeline
+    automates cleaning. Create it, configure it, call fit_transform(). One
+    method does everything: detects types, imputes nulls, encodes
+    categoricals, scales numerics."
+  </p>
+  <p>
+    Point out the shape change: "5 columns in, 22 columns out. That is
+    because one-hot encoding expands the pickup_zone column into multiple
+    binary columns."
+  </p>
+  <div class="transition">→ "A critical distinction."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>fit vs transform</span></div>
+  <h3>fit_transform vs transform</h3>
+  <p>
+    This is one of the most important concepts in the entire course. Walk
+    the diagram slowly. "fit_transform on training data: the pipeline
+    learns the medians, the category sets, the scaling parameters. Then on
+    test data, you call transform only — applying the same parameters.
+    Never fit on test data."
+  </p>
+  <p>
+    "Why? Because if the pipeline learns from test data, the test results
+    are no longer a fair evaluation. This is called data leakage and we
+    will come back to it in Module 3."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "This is the same reason you never
+    standardise before splitting. The test set must be truly unseen."
+  </div>
+  <div class="transition">→ "Time to build the pipeline."</div>
+</div>
+
+<!-- Slides 10-16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 10-16</span><span>~18 min total</span><span>Pipeline walkthrough</span></div>
+  <h3>Building the taxi trip pipeline (7 slides)</h3>
+  <p>
+    Run these live, step by step. For each slide:
+  </p>
+  <ul>
+    <li><strong>Slide 10 (Dataset):</strong> Show the shape and columns. Ask learners to predict what alerts will fire.</li>
+    <li><strong>Slide 11 (Extract):</strong> Load the data. "Same as always."</li>
+    <li><strong>Slide 12 (Profile):</strong> Run DataExplorer. Compare predictions to actual alerts.</li>
+    <li><strong>Slide 13 (Transform):</strong> Parse dates, filter outliers, fill nulls, engineer hour/day features. Walk each line.</li>
+    <li><strong>Slide 14 (Preprocess):</strong> Run PreprocessingPipeline. Show shape change.</li>
+    <li><strong>Slide 15 (Visualise):</strong> Show the hourly demand chart. Point out AM and PM rush peaks. "This is the kind of insight logistics companies pay for."</li>
+    <li><strong>Slide 16 (Re-profile):</strong> Compare before and after. "Always verify your cleaning worked."</li>
+  </ul>
+  <div class="audience-cue beginner">
+    <strong>If learners fall behind on the live demo:</strong> "Don't worry
+    about typing along. Watch the flow. The exercise will give you time to
+    build it yourself."
+  </div>
+  <div class="transition">→ "How to structure a real project."</div>
+</div>
+
+<!-- Slide 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Project structure</span></div>
+  <h3>Structuring the project</h3>
+  <p>
+    "When a pipeline grows beyond 50 lines, split it into modules. Each
+    file has one job: extract.py loads data, transform.py cleans it,
+    visualise.py makes charts, main.py orchestrates."
+  </p>
+  <p>
+    "This is the simplest form of software engineering. In Module 3 you
+    will use WorkflowBuilder to do this with automatic error handling and
+    parallel execution."
+  </p>
+  <div class="transition">→ "Traps."</div>
+</div>
+
+<!-- Slide 18 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 18</span><span>~2 min</span><span>Mistakes</span></div>
+  <h3>Four mistakes to avoid</h3>
+  <p>
+    Walk each one quickly. Mistake 2 (fitting on test data) is the most
+    important — it will come back in every module.
+  </p>
+  <div class="transition">→ "Module 1 complete."</div>
+</div>
+
+<!-- Slide 19 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 19</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <h3>Module 1 complete</h3>
+  <p>
+    Walk the lesson list. Let each lesson title trigger a memory. Pause
+    after each: "Lesson 1.1 — that was your first program. 1.2 — filtering
+    50,000 HDB rows. 1.3 — your first function. 1.4 — joining three
+    datasets. 1.5 — rolling averages. 1.6 — six chart types. 1.7 —
+    DataExplorer. And today — the whole pipeline."
+  </p>
+  <p>
+    Bridge to Module 2: "You can now load, clean, and visualise any dataset.
+    But you cannot yet answer: is this pattern real or random? How confident
+    should we be? Module 2 gives you the language of uncertainty —
+    probability, hypothesis testing, regression. Same pipeline; much bigger
+    questions."
+  </p>
+  <p>
+    End with encouragement: "If you completed the exercises in all eight
+    lessons, you have written more Python in two weeks than most people
+    write in a month. Module 2 builds on everything you know."
+  </p>
+  <div class="transition">→ End of Module 1. Celebrate.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    1.7 Speaker Notes
+  </a>
+  <a href="../../index.html" class="next">
+    <span class="label">Next →</span>
+    Module 1 Index
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

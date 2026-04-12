@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT Module 9 — AI-Resilient Assessment Questions
+"""MLFP 6 — AI-Resilient Assessment Questions
 
 LLMs, AI Agents & RAG Systems
 Covers: decoder-only transformers, tokenization, KV cache, prompting,

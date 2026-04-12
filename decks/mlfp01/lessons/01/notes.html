@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.1 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 1.1</span>
+  Your First Data Exploration
+</h1>
+
+<p class="lead">
+  Total time: ~45 minutes &nbsp;·&nbsp; 16 slides &nbsp;·&nbsp; ~2.5 min per slide average
+</p>
+
+<p>
+  This is the first lesson of the entire course. Most learners are nervous —
+  some have never written a line of code, others are senior data scientists who
+  signed up for the certification. Both audiences must feel valued in this
+  first session, or you will lose them. Use the three-layer markers
+  (Foundations / Theory / Advanced) explicitly so each learner knows which
+  parts are for them.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 1</span><span>~2 min</span><span>Title slide</span>
+  </div>
+  <h3>Your First Data Exploration</h3>
+  <p>
+    Open with energy. "Welcome to MLFP. Over the next 12 weeks we will turn
+    you into a working ML practitioner. By the end of <em>this</em> lesson —
+    45 minutes from now — you will have written your first Python program
+    against real Singapore weather data. If you have never coded before, that
+    is exactly the right starting point. If you have been coding for ten
+    years, the next 45 minutes are a warm-up — but pay attention to the
+    Theory and Advanced callouts because the rest of the course assumes you
+    can read Polars idiomatically."
+  </p>
+  <p>
+    Take 30 seconds to introduce yourself: your name, what you do, what you
+    expect to learn. Make it personal — the rest of the course is the syllabus.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners look terrified:</strong> "There is nothing to memorise
+    today. We will write 12 lines of code together and you can copy every one.
+    By the end you will understand each line."
+  </div>
+  <div class="audience-cue expert">
+    <strong>If experts look bored:</strong> "I promise the pace picks up.
+    Today's deliverable is the muscle memory we will rely on later — and the
+    Theory callouts in the slides have content you may not have seen, like
+    why <code>describe()</code> uses <em>n - 1</em> for variance."
+  </div>
+  <div class="transition">→ "Three steps, every dataset, every project."</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 2</span><span>~2 min</span><span>Three-step diagram</span>
+  </div>
+  <h3>Three steps you will use forever</h3>
+  <p>
+    Walk the diagram left to right. "Load: get the file off disk into memory
+    as a structured object. Inspect: figure out what is in there. Summarise:
+    compute statistics that tell you the shape of the data. These are the same
+    three steps whether the data is 12 rows of weather or 50 million rows of
+    HDB transactions."
+  </p>
+  <p>
+    Emphasise that this is universal — pandas, R, Excel, SQL all start the
+    same way. The vocabulary differs but the steps are identical.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> compare to opening a new spreadsheet.
+    "When you open a CSV in Excel, you load it. Then you scroll through to see
+    what is there — that is inspecting. Then you might compute averages — that
+    is summarising. Same three steps, different tools."
+  </div>
+  <div class="transition">→ "But why bother? Three real Singapore questions show why."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 3</span><span>~2 min</span><span>Real motivation</span>
+  </div>
+  <h3>Three real Singapore questions</h3>
+  <p>
+    Bring it home with concrete use cases. The retail one is the most
+    intuitive — every learner has bought an umbrella when it rained. The
+    property one connects to HDB which everyone in Singapore cares about. The
+    logistics one mentions the December monsoon which is shared experience.
+  </p>
+  <p>
+    Tell them: "These are not toy questions. These are exactly the kind of
+    decisions Singapore companies make every week. Today we learn the steps;
+    in Module 3 we will train models to actually answer them."
+  </p>
+  <div class="transition">→ "Step zero — before any DataFrame, we need variables."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 4</span><span>~3 min</span><span>Variables diagram</span>
+  </div>
+  <h3>Variables: names bound to values</h3>
+  <p>
+    Walk the diagram explicitly. Point at <code>city</code> — say "this is
+    just a label, a sticky note we made up". Point at <code>"Singapore"</code>
+    — say "this is the actual data sitting in memory". Point at the type tag
+    — say "Python automatically figured out this is a string because it
+    starts with a quote".
+  </p>
+  <p>
+    Repeat for the float and the bool. Make the metaphor stick: variables
+    are <em>names for values</em>. The same value can have multiple names; the
+    same name can be moved to a different value. The label is just a string
+    of characters Python uses to look things up.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are confused about types:</strong> "You don't need to
+    declare the type yourself — Python figures it out. <code>28.5</code> has
+    a decimal point so it's a float. <code>True</code> with a capital T is a
+    boolean. <code>"Singapore"</code> in quotes is a string. Don't memorise
+    the rules; you'll absorb them in the first hour."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts (skip if running long):</strong> mention that Python
+    bindings live in dict scopes — locals, globals, builtins. Look-up is O(1)
+    hash lookup. Reference semantics for mutable objects matter; immutables
+    (str, int, float, bool) are safe.
+  </div>
+  <div class="transition">→ "Now the four types you'll see every day."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 5</span><span>~2 min</span><span>Four primitive types</span>
+  </div>
+  <h3>Four types you will use constantly</h3>
+  <p>
+    Walk the table. For each row, give the example, then tell the use case.
+    "Strings are for text — names of people, places, products. Integers are
+    counts that have no fractional meaning — you cannot have 3.7 people, you
+    have 3 or 4. Floats are measurements — temperature, price, distance.
+    Booleans are flags — was it raining, did the test pass, is the customer
+    Singaporean."
+  </p>
+  <p>
+    Then look at the code block. Point out that <code># str</code> is a
+    comment — Python ignores it; it is for humans. Run the four assignments
+    in your head and announce: "After this code runs, Python has four
+    variables in memory each holding a different type."
+  </p>
+  <div class="transition">→ "Once we have variables, we want to print them — and f-strings are how."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 6</span><span>~3 min</span><span>f-strings</span>
+  </div>
+  <h3>f-strings: variables inside text</h3>
+  <p>
+    F-strings are the single most useful Python feature for data work. Before
+    f-strings (introduced in Python 3.6) you had to use the awkward
+    <code>.format()</code> method or even older <code>%</code> formatting.
+    F-strings make string interpolation natural.
+  </p>
+  <p>
+    Read the example aloud: "f-quote — the f means formatted — open paren —
+    sorry, open brace — city — close brace — that gets replaced by the value
+    of city."
+  </p>
+  <p>
+    Then explain the format spec. <code>:.1f</code> means "as a float, with
+    one digit after the decimal". The colon separates the variable from the
+    format spec. Walk through the table of common specs without belabouring it
+    — they will memorise these by lesson 1.4.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners struggle with the spec syntax:</strong> "You don't
+    need to memorise this. I'll show you again in every lesson. The key thing
+    today is to recognise that <code>{variable:format}</code> means 'put the
+    variable here, formatted this way'."
+  </div>
+  <div class="transition">→ "Now we're ready for the main event — the DataFrame."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 7</span><span>~3 min</span><span>DataFrame intro</span>
+  </div>
+  <h3>The DataFrame: a typed table</h3>
+  <p>
+    Show the diagram. Walk it horizontally first: "Four columns: month,
+    temperature, rainfall, humidity. Each one has a name — that's the header
+    row in teal. And each one has a single type — string, float, float, int —
+    that's the second row."
+  </p>
+  <p>
+    Then walk it vertically: "Each row is one observation — one month. Row 0
+    is January with 26.0 degrees and 194.7 mm of rain. Row 1 is February. And
+    so on, twelve rows for twelve months."
+  </p>
+  <p>
+    Make the analogy explicit: "If you have used a spreadsheet, you already
+    understand this picture. The difference is the rules."
+  </p>
+  <div class="transition">→ "And here are the three rules every DataFrame obeys."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 8</span><span>~2 min</span><span>The three rules</span>
+  </div>
+  <h3>Three rules every DataFrame obeys</h3>
+  <p>
+    Walk the three rules with examples of violations.
+  </p>
+  <ol>
+    <li>"Every column has one type — so you cannot have a temperature column
+        with values <code>26.0</code>, <code>27.5</code>, and
+        <code>"unknown"</code>. Polars would refuse to load that column as a
+        float; it would either coerce everything to string or raise an error."</li>
+    <li>"Every row has the same shape — so you cannot have row 5 with an
+        extra column for typhoon name. Missing values are explicit nulls, not
+        absent columns."</li>
+    <li>"Rows are ordered — row 0 is the first, row 11 is the last. When you
+        sort, the order changes; when you slice, the order is preserved."</li>
+  </ol>
+  <p>
+    Tell them: "These rules sound restrictive after Excel's freedom. But they
+    are exactly why DataFrame operations are fast and predictable. Lesson 1.4
+    you will see how powerful those rules become when joining tables."
+  </p>
+  <div class="transition">→ "Enough theory — time to load real data."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 9</span><span>~3 min</span><span>Load — code</span>
+  </div>
+  <h3>Step 1: Load the data</h3>
+  <p>
+    This is their first encounter with imports. "<code>import polars as pl</code>
+    means: load the polars library and let me call it <code>pl</code> for
+    short. We will use <code>pl</code> hundreds of times this course; the
+    <code>as pl</code> shortcut saves typing."
+  </p>
+  <p>
+    The <code>MLFPDataLoader</code> hides path complications. "On your laptop
+    the file is in <code>data/mlfp01/sg_weather.csv</code>. On Colab it is on
+    Google Drive. On a teammate's machine it might be somewhere else.
+    <code>MLFPDataLoader</code> handles that for you so we can write the
+    same code regardless of where you are running it."
+  </p>
+  <p>
+    Then run it. <code>(12, 3)</code> appears. "Twelve rows, three columns.
+    That matches what we expected from the schema diagram."
+  </p>
+  <div class="transition">→ "Loading is easy. Now the most important habit: looking at the data."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 10</span><span>~3 min</span><span>Inspect — the 30-second ritual</span>
+  </div>
+  <h3>Step 2: Inspect — the 30-second ritual</h3>
+  <p>
+    This is the most important habit you will teach in this entire course.
+    Stop and emphasise it. "Before you do anything else with a new dataset —
+    before you build a model, before you write a query, before you make a
+    chart — spend thirty seconds running these four lines. They will catch
+    almost every mistake before it costs you an hour."
+  </p>
+  <p>
+    Run each line, read the output aloud, interpret it. Make a point of
+    saying things like: "I see the temperature is a float with values around
+    26 — that matches Singapore. I see no nulls. The first row is January.
+    OK, this looks like what I expected." This narration is what
+    distinguishes a careful analyst from a sloppy one.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners worry they will forget the four methods:</strong>
+    "Don't memorise. I will repeat this ritual in every demo for the next
+    eight lessons. By Lesson 1.8 it will be automatic."
+  </div>
+  <div class="transition">→ "Now we summarise."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 11</span><span>~3 min</span><span>describe()</span>
+  </div>
+  <h3>Step 3: Summarise with describe()</h3>
+  <p>
+    Walk the table row by row. "Count: 12 — confirms we have all twelve months.
+    Mean: 26.68 — Singapore's annual average temperature. Std: 0.43 — that is
+    the standard deviation, a measure of spread, and a value of 0.43 is tiny
+    — every month is within half a degree of average. Min: 26.0 in April.
+    Max: 27.2 in May."
+  </p>
+  <p>
+    Make the contrast pop: "Now look at rainfall. Mean is 152, std is 56.
+    That is a coefficient of variation of about 37 percent — meaning rainfall
+    varies <em>much</em> more month to month than temperature. Singapore has
+    'one season' for temperature and 'two seasons' for rain — that single
+    table tells you that, in two seconds."
+  </p>
+  <div class="transition">→ "But what does mean actually compute? Let's go a level deeper."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 12</span><span>~3 min</span><span>Mean — math</span>
+  </div>
+  <h3>What does mean really compute?</h3>
+  <p>
+    Walk the formula. "Sum of all the values, divided by the count." Plug in
+    the numbers verbally: "26 plus 26.5 plus 27 plus … all twelve values …
+    divided by 12 equals 26.68. <code>describe()</code> just did that for us."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners flinch at the formula:</strong> "Read it left to
+    right. The big sigma is just 'add things up'. The little i = 1 means start
+    at the first value, the n on top means stop at the last value. Below the
+    line, n is the count we divide by. That is all there is — pure addition
+    and division."
+  </div>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> point out the optimisation property. "The
+    mean is the unique value c that minimises the sum of squared deviations
+    from c. We will use this in Module 2 to derive ordinary least squares —
+    OLS regression is just 'fit a line that minimises squared deviations',
+    and the intercept of that line is the mean of y when there are no
+    predictors."
+  </div>
+  <div class="transition">→ "And the standard deviation?"</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 13</span><span>~3 min</span><span>Variance and std</span>
+  </div>
+  <h3>Variance: how spread out is the data?</h3>
+  <p>
+    "Variance measures the typical squared distance from the mean. Take each
+    value, subtract the mean, square the difference, average them up. The
+    squaring is so positive and negative deviations don't cancel. The downside
+    is the units are also squared — squared degrees Celsius is meaningless."
+  </p>
+  <p>
+    "So we take the square root and call it the standard deviation. Standard
+    deviation is in the original units, which is why it's the number we
+    actually quote: 0.43 degrees, not 0.18 squared degrees."
+  </p>
+  <p>
+    On the n-1 vs n: do not get into the full derivation. Just signal: "Why
+    n-1 instead of n? It's called Bessel's correction. The intuition is that
+    we have already used one degree of freedom to compute the mean, so only
+    n-1 of the deviations are 'free'. The full proof is in Lesson 2.2."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>The dart-board metaphor:</strong> "Picture twelve darts on a
+    target. The mean is the centre of mass of the dart holes. Standard
+    deviation is the typical distance from that centre. Tight cluster, low
+    std. Wild scatter, high std. That's it."
+  </div>
+  <div class="transition">→ "Theory done — now back to questions."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 14</span><span>~3 min</span><span>Filter — find hottest month</span>
+  </div>
+  <h3>Answering questions: the hottest month</h3>
+  <p>
+    Three lines of code with different jobs. Walk them slowly.
+  </p>
+  <ol>
+    <li>"Line 1 computes the maximum temperature — a single number, 27.2."</li>
+    <li>"Line 3 says: give me the rows where the temperature column equals
+        that maximum. <code>pl.col(...)</code> builds an <em>expression</em>
+        that says 'the temperature column'. The double-equals turns it into
+        a boolean test. <code>filter</code> keeps the rows where the test is
+        True."</li>
+    <li>"Line 5 prints the answer using f-string formatting. We index into
+        the filtered DataFrame to pull out the month name."</li>
+  </ol>
+  <p>
+    Run the code. Output: "Hottest: May at 27.2°C". Validate it against the
+    earlier <code>describe()</code> output where max was Sep 27.2 — different
+    tie-breaking; both are correct.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are puzzled by <code>pl.col(...)</code>:</strong>
+    "Don't worry about why it has its own syntax. Polars expressions are how
+    we describe what we want to do without doing it yet. We'll see this
+    pattern dozens of times."
+  </div>
+  <div class="transition">→ "Three traps to watch for."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 15</span><span>~3 min</span><span>Common mistakes</span>
+  </div>
+  <h3>Three rookie mistakes to avoid</h3>
+  <p>
+    Walk each one. Mistake 1 (assignment vs equality) is universal — every
+    new programmer makes it. Tell them Python will refuse to run
+    <code>if city = "Singapore"</code>, which is the language being kind.
+  </p>
+  <p>
+    Mistake 2 (Polars immutability) is the trap that catches pandas refugees.
+    "If you have used pandas before, you may have seen <code>df.drop(...)</code>
+    modify <code>df</code> in place. Polars never does that. Every operation
+    returns a new DataFrame. Always assign the result."
+  </p>
+  <p>
+    Mistake 3 (column name vs column value) is a slip beginners make in their
+    first hour. Show them: <code>"mean_temperature_c"</code> is just a string
+    you typed; it has no special connection to the DataFrame until you write
+    <code>df["mean_temperature_c"]</code>.
+  </p>
+  <div class="transition">→ "Reflect, then we move on."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta">
+    <span class="badge">Slide 16</span><span>~3 min</span><span>Reflection + bridge to 1.2</span>
+  </div>
+  <h3>What you can now do</h3>
+  <p>
+    Run through the bullet list. Pause after each one and let them silently
+    confirm to themselves "yes, I can do that". This builds confidence.
+  </p>
+  <p>
+    Then tease 1.2: "Today we worked with 12 rows. In Lesson 1.2 we will
+    work with 50,000 rows of HDB resale transactions — every public housing
+    sale in Singapore for the past several years. The same three steps
+    (load → inspect → summarise) but now with a real-world dataset where
+    you'll need to filter to specific towns, specific date ranges, and
+    create new columns like price-per-square-metre."
+  </p>
+  <p>
+    Take 5 minutes for questions before moving on. The most common questions
+    after Lesson 1.1 are: "Do I need to install anything?" (no — Colab has
+    everything), "What if I get an error?" (debugging is its own skill — we'll
+    cover it in 1.2), "Can I use pandas instead?" (no — Polars is faster and
+    we use it consistently throughout the course).
+  </p>
+  <div class="transition">→ End of Lesson 1.1. Take a 5-minute break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 1 Index
+  </a>
+  <a href="../02/notes.html" class="next">
+    <span class="label">Next →</span>
+    1.2 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

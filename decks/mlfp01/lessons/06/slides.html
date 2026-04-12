@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.6 — Data Visualisation | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.6</p>
+  <h1>Data Visualisation</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Gestalt · chart selection · ModelVisualizer · truthful design</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 55 minutes</strong> &nbsp; · &nbsp; <strong>6 chart types</strong>
+  </div>
+  <div class="slide-footer">MLFP — Module 1</div>
+</section>
+
+<section>
+  <h2>One chart, one question</h2>
+  <div style="background: #F0FDF4; padding: 20px 24px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <p style="font-size: 1.1em;">Before you build a chart, ask yourself:</p>
+    <p style="font-size: 1.3em; font-weight: 600; color: #15803D; margin: 0.5em 0;">
+      "What decision should the reader make after seeing this?"
+    </p>
+    <p style="font-size: 0.95em;">If you cannot state the question in one sentence, the chart is not ready.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Gestalt principles: how eyes group shapes</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(20, 10)">
+        <text x="100" y="15" text-anchor="middle" font-weight="600" font-size="13">Proximity</text>
+        <g fill="#0D9488">
+          <circle cx="40" cy="60" r="6"/><circle cx="55" cy="60" r="6"/><circle cx="70" cy="60" r="6"/>
+          <circle cx="130" cy="60" r="6"/><circle cx="145" cy="60" r="6"/><circle cx="160" cy="60" r="6"/>
+          <circle cx="40" cy="110" r="6"/><circle cx="55" cy="110" r="6"/><circle cx="70" cy="110" r="6"/>
+          <circle cx="130" cy="110" r="6"/><circle cx="145" cy="110" r="6"/><circle cx="160" cy="110" r="6"/>
+        </g>
+        <text x="100" y="155" text-anchor="middle" font-size="11" fill="#64748B">close = grouped</text>
+      </g>
+      <g transform="translate(220, 10)">
+        <text x="100" y="15" text-anchor="middle" font-weight="600" font-size="13">Similarity</text>
+        <g>
+          <circle cx="40" cy="60" r="6" fill="#0D9488"/><circle cx="70" cy="60" r="6" fill="#F43F5E"/>
+          <circle cx="100" cy="60" r="6" fill="#0D9488"/><circle cx="130" cy="60" r="6" fill="#F43F5E"/>
+          <circle cx="160" cy="60" r="6" fill="#0D9488"/>
+          <circle cx="40" cy="90" r="6" fill="#F43F5E"/><circle cx="70" cy="90" r="6" fill="#0D9488"/>
+          <circle cx="100" cy="90" r="6" fill="#F43F5E"/><circle cx="130" cy="90" r="6" fill="#0D9488"/>
+          <circle cx="160" cy="90" r="6" fill="#F43F5E"/>
+        </g>
+        <text x="100" y="155" text-anchor="middle" font-size="11" fill="#64748B">same colour = grouped</text>
+      </g>
+      <g transform="translate(420, 10)">
+        <text x="100" y="15" text-anchor="middle" font-weight="600" font-size="13">Enclosure</text>
+        <rect x="25" y="45" width="80" height="80" rx="6" fill="none" stroke="#0D9488" stroke-width="2" stroke-dasharray="4 4"/>
+        <g fill="#0D9488">
+          <circle cx="45" cy="65" r="5"/><circle cx="65" cy="65" r="5"/><circle cx="85" cy="65" r="5"/>
+          <circle cx="45" cy="90" r="5"/><circle cx="65" cy="90" r="5"/><circle cx="85" cy="90" r="5"/>
+          <circle cx="45" cy="115" r="5"/><circle cx="65" cy="115" r="5"/><circle cx="85" cy="115" r="5"/>
+        </g>
+        <text x="100" y="155" text-anchor="middle" font-size="11" fill="#64748B">box = grouped</text>
+      </g>
+      <g transform="translate(620, 10)">
+        <text x="100" y="15" text-anchor="middle" font-weight="600" font-size="13">Continuity</text>
+        <polyline fill="none" stroke="#0D9488" stroke-width="2.5" points="30,120 60,100 90,80 120,70 150,60 180,55"/>
+        <g fill="#0D9488">
+          <circle cx="30" cy="120" r="4"/><circle cx="60" cy="100" r="4"/><circle cx="90" cy="80" r="4"/>
+          <circle cx="120" cy="70" r="4"/><circle cx="150" cy="60" r="4"/><circle cx="180" cy="55" r="4"/>
+        </g>
+        <text x="100" y="155" text-anchor="middle" font-size="11" fill="#64748B">line = trend</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Six chart types cover 95% of questions</h2>
+  <table style="font-size: 0.72em;">
+    <thead><tr><th>Question</th><th>Chart</th></tr></thead>
+    <tbody>
+      <tr><td>How is one number distributed?</td><td>Histogram</td></tr>
+      <tr><td>How does one number change over time?</td><td>Line chart</td></tr>
+      <tr><td>Which category ranks highest?</td><td>Horizontal bar</td></tr>
+      <tr><td>Do two numbers relate?</td><td>Scatter plot</td></tr>
+      <tr><td>How do many numbers correlate?</td><td>Heatmap</td></tr>
+      <tr><td>How is a whole composed?</td><td>Stacked bar</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>🔵 Cleveland–McGill perceptual ranking</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 780 320" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="13" fill="#1E293B">
+        <rect x="30" y="20" width="600" height="28" rx="4" fill="#CCFBF1" stroke="#0D9488"/>
+        <text x="50" y="38">1. Position on a common scale</text>
+        <text x="640" y="38" fill="#0D9488" font-weight="600">most accurate</text>
+        <rect x="30" y="58" width="560" height="28" rx="4" fill="#D1FAE5" stroke="#10B981"/>
+        <text x="50" y="76">2. Position on non-aligned scales</text>
+        <rect x="30" y="96" width="500" height="28" rx="4" fill="#ECFCCB" stroke="#84CC16"/>
+        <text x="50" y="114">3. Length</text>
+        <rect x="30" y="134" width="440" height="28" rx="4" fill="#FEF9C3" stroke="#EAB308"/>
+        <text x="50" y="152">4. Angle / slope</text>
+        <rect x="30" y="172" width="380" height="28" rx="4" fill="#FED7AA" stroke="#F97316"/>
+        <text x="50" y="190">5. Area</text>
+        <rect x="30" y="210" width="300" height="28" rx="4" fill="#FECACA" stroke="#EF4444"/>
+        <text x="50" y="228">6. Volume</text>
+        <rect x="30" y="248" width="220" height="28" rx="4" fill="#FFE4E6" stroke="#F43F5E"/>
+        <text x="50" y="266">7. Colour hue</text>
+        <text x="260" y="266" fill="#F43F5E" font-weight="600">least accurate</text>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Bars use #1. Pies use #4. 3D uses #5/#6. Always encode the key comparison using the most accurate task.</p>
+</section>
+
+<section>
+  <h2>ModelVisualizer API</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import ModelVisualizer
+
+viz = ModelVisualizer()
+
+fig = viz.histogram(
+    data=hdb,
+    column="resale_price",
+    bins=40,
+    title="HDB Resale Price Distribution",
+)
+fig.write_html("price_histogram.html")
+  </code></pre>
+  <p style="font-size: 0.88em;">
+    Same shape for every method: data, columns, title, get back a Plotly
+    Figure. <code>fig.show()</code> in Jupyter, <code>fig.write_html()</code>
+    to save.
+  </p>
+</section>
+
+<section>
+  <h2>Histogram — distribution</h2>
+  <pre><code class="language-python" data-trim>
+fig = viz.histogram(
+    data=hdb,
+    column="resale_price",
+    bins=40,
+    title="HDB Resale Price Distribution",
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    HDB prices are right-skewed: most in 350k–600k, long tail into
+    million-dollar territory. Mean &gt; median as a result.
+  </p>
+</section>
+
+<section>
+  <h2>Scatter — relationship between two numbers</h2>
+  <pre><code class="language-python" data-trim>
+# SAMPLE before plotting — 500k points is a grey blob
+hdb_sample = hdb.sample(n=5_000, seed=42)
+
+fig = viz.scatter(
+    data=hdb_sample,
+    x="floor_area_sqm",
+    y="resale_price",
+    title="HDB Resale Price vs Floor Area",
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    Clear positive slope, wide vertical spread — area explains maybe
+    40–50% of price variance. The rest is town, floor, lease, amenities.
+  </p>
+</section>
+
+<section>
+  <h2>Bar — ranking categories</h2>
+  <pre><code class="language-python" data-trim>
+district_prices = (
+    hdb.group_by("town")
+    .agg(pl.col("resale_price").median().alias("median_price"))
+    .sort("median_price", descending=True)
+)
+# feature_importance = horizontal bar
+fig = viz.metric_comparison({
+    town: {"Median Price (S$)": price}
+    for town, price in zip(
+        district_prices["town"].to_list(),
+        district_prices["median_price"].to_list(),
+    )
+})
+  </code></pre>
+  <p style="font-size: 0.85em;">Horizontal bars — long town names readable, lengths on a common axis.</p>
+</section>
+
+<section>
+  <h2>Line — change over time</h2>
+  <pre><code class="language-python" data-trim>
+monthly = (
+    hdb.group_by("transaction_date")
+    .agg(pl.col("price_per_sqm").median().alias("median_psm"))
+    .sort("transaction_date")
+)
+
+fig = viz.training_history({
+    "median_price_sqm": monthly["median_psm"].to_list()
+})
+  </code></pre>
+  <p style="font-size: 0.85em;">Line = continuity Gestalt. The eye reads a line as a trend automatically.</p>
+</section>
+
+<section>
+  <h2>Heatmap — correlations at a glance</h2>
+  <pre><code class="language-python" data-trim>
+numeric = hdb.select("resale_price", "floor_area_sqm", "price_per_sqm")
+corr = numeric.corr()
+fig = viz.confusion_matrix(
+    matrix=corr.to_numpy(),
+    labels=numeric.columns,
+    title="HDB Feature Correlations",
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    Colour encodes magnitude; diverging palette around zero. Use for many
+    pairwise comparisons in a single small panel.
+  </p>
+</section>
+
+<section>
+  <h2>Stacked bar — composition</h2>
+  <pre><code class="language-python" data-trim>
+import plotly.express as px
+
+composition = (
+    hdb.group_by("town", "flat_type")
+    .agg(pl.len().alias("count"))
+)
+fig = px.bar(
+    composition.to_pandas(),
+    x="town", y="count", color="flat_type",
+    title="Flat Type Composition by Town",
+)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    Stacked bar = parts-of-whole comparison across categories.
+  </p>
+</section>
+
+<section>
+  <h2>Four charts to avoid</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>❌ 3D bars / pies.</strong> Perspective distorts quantities.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>❌ Pies with &gt; 5 slices.</strong> Angle comparison is hard; labels get crowded.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>❌ Truncated y-axis on bars.</strong> Starts at 400, not 0 → misleading.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>❌ Scatter with 500k points.</strong> Grey blob. Sample or hexbin.
+  </div>
+</section>
+
+<section>
+  <h2>Title = takeaway, not topic</h2>
+  <div style="background: #FFF1F2; padding: 16px 20px; border-left: 4px solid #F43F5E; border-radius: 4px; margin-bottom: 1em;">
+    ❌ <strong>Topic:</strong> "HDB Resale Prices by District"
+  </div>
+  <div style="background: #F0FDF4; padding: 16px 20px; border-left: 4px solid #22C55E; border-radius: 4px;">
+    ✅ <strong>Takeaway:</strong> "Central districts command a 60% premium over peripheral towns"
+  </div>
+  <p style="font-size: 0.9em; margin-top: 1em;">
+    Your chart title is the first (often only) thing the reader reads.
+    Put the conclusion there, not the topic.
+  </p>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Pick a chart type from the question (histogram, line, bar, scatter, heatmap, stacked)</li>
+    <li>✓ Apply Gestalt principles (proximity, similarity, enclosure, continuity)</li>
+    <li>✓ Use the Cleveland–McGill ranking to pick accurate perceptual tasks</li>
+    <li>✓ Build six chart types with <code>ModelVisualizer</code></li>
+    <li>✓ Save interactive Plotly figures as HTML</li>
+    <li>✓ Avoid 3D, misleading truncation, pie charts with many slices</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 1.7 — stop hand-profiling and meet
+    <code>DataExplorer</code>. Automated quality alerts on any dataset,
+    with eight alert types.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

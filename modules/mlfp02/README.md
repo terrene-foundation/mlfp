@@ -1,18 +1,31 @@
-# Module 2: Feature Engineering & Experiment Design
+# Module 2: Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success
 
-**Kailash**: kailash-ml (FeatureStore, FeatureEngineer, ExperimentTracker) | **Scaffolding**: 60%
+**Kailash**: kailash-ml (ExperimentTracker, FeatureEngineer, FeatureStore, TrainingPipeline, ModelVisualizer) | **Scaffolding**: 60%
 
-## Lecture (3h)
-- **2A** Feature Engineering Theory: mutual information, Boruta, collinearity (VIF), temporal features, target encoding (James-Stein), domain-specific engineering
-- **2B** Experiment Design & Causal Inference: A/B testing (power, bandits, sequential), CUPED, causal inference (Rubin/Pearl), diff-in-diff, propensity matching, Double ML
-- **2C** Feature Management: FeatureSchema contracts, FeatureStore versioning, ExperimentTracker
+## Description
 
-## Lab (3h) — 5 Exercises
-1. Healthcare feature engineering on messy ICU data (irregular vitals, point-in-time correctness)
-2. FeatureStore lifecycle: define → compute → version → retrieve with leakage prevention
-3. A/B test analysis: power analysis, SRM check, CUPED variance reduction
-4. Causal inference: diff-in-diff on Singapore housing (cooling measures effect)
-5. FeatureEngineer + ExperimentTracker: automated generation with experiment comparison
+Statistical foundations including regression models. Regression and logistic regression taught as inference tools BEFORE the ML pipeline (M3).
 
-## Datasets
-Healthcare ICU (MIMIC-style, 60K stays), E-commerce Experiment (500K users), Singapore Housing + Policy
+## Lessons (8)
+
+1. **Probability and Bayesian Thinking** — Bayes' theorem, conjugate priors, distributions, expected value
+2. **Parameter Estimation and Inference** — Population vs sample, CLT, MLE, MAP, confidence intervals
+3. **Bootstrapping and Hypothesis Testing** — BCa intervals, permutation tests, p-values, power analysis, Bonferroni
+4. **A/B Testing and Experiment Design** — Experiment design, data collection framework, SRM detection
+5. **Linear Regression** — OLS, t-statistic, R-squared, F-statistic, categorical encoding, cross-validation
+6. **Logistic Regression and Classification Foundations** — Sigmoid, log-odds, odds ratios, MLE, ANOVA, Tukey HSD
+7. **CUPED and Causal Inference** — Variance reduction, SRM detection, difference-in-differences
+8. **Capstone — Statistical Analysis Project** — Feature engineering, FeatureStore, end-to-end analysis
+
+## Exercises (8)
+
+| # | Title | Dataset |
+|---|-------|---------|
+| 1 | Probability and Bayesian Thinking | HDB resale |
+| 2 | Estimation and Inference | Economic indicators |
+| 3 | Hypothesis Testing | HDB / A/B test |
+| 4 | A/B Testing and Experiment Design | HDB (simulated) |
+| 5 | Linear Regression | HDB resale |
+| 6 | Logistic Regression and ANOVA | HDB resale |
+| 7 | CUPED and Variance Reduction | A/B experiment |
+| 8 | Feature Store and Capstone | Mixed datasets |

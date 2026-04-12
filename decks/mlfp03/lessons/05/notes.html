@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.5 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.5</span>
+  Model Evaluation, Imbalance, and Calibration
+</h1>
+
+<p class="lead">Total time: ~75 minutes · 14 slides · ~5 min per slide average</p>
+
+<p>
+  This is the "stop losing money to bad metrics" lesson. Open it by
+  framing evaluation as a business decision tool, not a report card. The
+  running cost matrix (100:1) gives every concept a concrete dollar
+  number to bite on.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Opening</h3>
+  <p>
+    Frame the stakes: "So far in Module 3 we have been trying to make
+    classifiers better. Today we ask a harder question: how do we know
+    whether we actually did? With imbalanced data and uneven costs, the
+    usual metrics lie to you. This lesson is where evaluation becomes an
+    engineering discipline."
+  </p>
+  <div class="transition">→ "Start at the foundation."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Confusion matrix</span></div>
+  <h3>The confusion matrix</h3>
+  <p>
+    Walk the four cells. Name each one twice: "True positive — correctly
+    caught a defaulter. True negative — correctly passed a good loan.
+    False positive — false alarm, we rejected a good loan. False negative
+    — we approved a loan that then defaulted." Put the cost sticker on
+    FP and FN: $100 and $10 000.
+  </p>
+  <div class="transition">→ "Every metric is a ratio of these four cells."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Formulas</span></div>
+  <h3>Precision, Recall, F1</h3>
+  <p>
+    Walk the equations. "Precision: of everyone we flagged, how many
+    were right? Recall: of everyone who actually defaulted, how many did
+    we catch? F1 is the harmonic mean — it punishes extreme lopsidedness
+    between the two."
+  </p>
+  <p>
+    Then the bomb: "Predict 'no default' for everyone. Accuracy = 88%.
+    F1 = 0. You cannot tell from accuracy alone that the model is
+    useless. That's why accuracy is banned in this lesson."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Harmonic mean means F1 is dragged
+    down by whichever of precision and recall is smaller. So to get high
+    F1 both must be decent. You can't game it with one extreme value."
+  </div>
+  <div class="transition">→ "And now the two curves every analyst needs."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>ROC vs PR curves</span></div>
+  <h3>ROC vs PR</h3>
+  <p>
+    Walk both diagrams. "ROC plots true positive rate against false
+    positive rate as the threshold moves. PR plots precision against
+    recall. They show the same model but emphasise different cells."
+  </p>
+  <p>
+    The critical point: "Point at ROC — 0.87 AUC, looks gorgeous. Point
+    at PR — 0.48 average precision, honest number. On a 12%-positive
+    dataset, ROC-AUC of 0.87 can mean the model only catches 10% of
+    defaults at 50% precision. That is not 'great performance'. It's
+    '10% of defaulters caught, half of flags are false alarms'. That is
+    a very different story."
+  </p>
+  <div class="transition">→ "Why ROC lies on imbalanced data."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Why ROC fails</span></div>
+  <h3>The math behind the lie</h3>
+  <p>
+    "FPR is false positives divided by false positives plus true
+    negatives. When the negative class dominates, TN is enormous, so
+    even 1000 false positives barely moves FPR. The ROC curve still
+    hugs the corner. Meanwhile precision, which is TP over TP plus FP,
+    is catastrophic."
+  </p>
+  <p>
+    "PR-AUC has no such blind spot. It completely ignores TN. Every
+    false positive hurts your precision proportionally. Use PR-AUC when
+    your positive class is under 20 percent."
+  </p>
+  <div class="transition">→ "Four techniques for handling imbalance."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~5 min</span><span>Four techniques</span></div>
+  <h3>The toolbox</h3>
+  <p>
+    Walk all four. SMOTE first, with the honest caveat that it is not a
+    free lunch. Cost-sensitive learning next, emphasising "no fake data,
+    no distribution distortion". Focal loss third, with the promise of
+    detail on the next slide. Threshold tuning last, with the promise of
+    a closed-form answer on slide 8.
+  </p>
+  <p>
+    Tell them: "In 2026 practice, modern practitioners usually skip
+    SMOTE and go straight to cost-sensitive learning plus threshold
+    tuning. That is the cleanest combination. SMOTE is a legacy tool
+    that still has niche uses but no longer leads the toolbox."
+  </p>
+  <div class="transition">→ "Focal loss in detail."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>Focal loss</span></div>
+  <h3>Focal loss — the down-weighting trick</h3>
+  <p>
+    Walk the formula. "Ordinary cross-entropy on an easy example — say
+    $p_t = 0.9$ — still contributes about 0.1 to the loss. Multiply by
+    a million easy examples and that dominates the gradient. Focal loss
+    multiplies by $(1 - p_t)^\gamma$. At $\gamma = 2$ and $p_t = 0.9$,
+    that factor is 0.01. The easy example's contribution drops 100x.
+    The hard examples — $p_t$ around 0.3 — barely change. Now the
+    gradient is dominated by the hard cases and the model keeps
+    learning."
+  </p>
+  <p>
+    "Focal loss was invented for dense object detection where the
+    imbalance is extreme — thousands of background boxes per foreground
+    box. For credit scoring at 12% positive it helps but is not
+    life-changing. Cost-sensitive learning is usually enough."
+  </p>
+  <div class="transition">→ "Threshold tuning — the cheapest improvement in ML."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~5 min</span><span>Cost threshold</span></div>
+  <h3>The cost-optimal threshold</h3>
+  <p>
+    Walk the derivation. "Expected cost of predicting positive is
+    $c_{FP}(1-p)$. Expected cost of predicting negative is $c_{FN} p$.
+    Predict whichever is smaller. Setting them equal gives $p^* = c_{FP} /
+    (c_{FP} + c_{FN})$."
+  </p>
+  <p>
+    Plug in the credit numbers. "FP cost $100, FN cost $10 000. Optimal
+    threshold is 100 / 10100, about 0.0099. Not 0.5. Not 0.3. One
+    percent. Any time the model gives more than 1% probability of
+    default, flag the loan. Because the cost of missing a defaulter is
+    100 times the cost of a false alarm, you should be very eager to
+    flag."
+  </p>
+  <p>
+    Practical impact: "Changing the threshold from 0.5 to 0.01 on an
+    already-trained model, with no retraining, can cut your business
+    cost in half. It is the single cheapest improvement in applied ML
+    and almost nobody does it in the first draft."
+  </p>
+  <div class="transition">→ "Now the last piece — calibration."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>Reliability diagram</span></div>
+  <h3>Reliability diagram</h3>
+  <p>
+    Walk the diagram. "This is how you see whether your model's
+    probabilities are trustworthy. X-axis is what the model says. Y-axis
+    is what the data shows. Perfect calibration is the identity line.
+    The red curve is a typical raw gradient boosting model —
+    over-confident, pushing predictions toward 0 and 1 more than the
+    data justifies. The blue dashed line is after calibration, which
+    brings the curve close to the identity."
+  </p>
+  <p>
+    "Why do you care? Because if you feed 'probability of default' into
+    a downstream cost calculation and the probability is lying, your
+    cost calculation is garbage. Calibration is what makes the model's
+    numbers usable as real probabilities."
+  </p>
+  <div class="transition">→ "Two ways to calibrate."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Platt + isotonic</span></div>
+  <h3>Platt scaling and isotonic regression</h3>
+  <p>
+    "Platt scaling fits a sigmoid $\sigma(Ax + B)$ on top of the model
+    scores. One parameter plus a bias. Cheap. Works when miscalibration
+    is sigmoidal — which it often is for SVM and gradient boosting."
+  </p>
+  <p>
+    "Isotonic regression is non-parametric — it fits a non-decreasing
+    piecewise-constant function. More flexible but needs more data. Use
+    it when Platt under-performs."
+  </p>
+  <p>
+    Practical: "Scikit-learn's CalibratedClassifierCV wraps any base
+    model, does the cross-validated fit for you, and returns a
+    calibrated classifier. Three lines of code."
+  </p>
+  <div class="transition">→ "How do we know calibration actually helped? Brier score."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~4 min</span><span>Brier score</span></div>
+  <h3>Brier score — the honest metric</h3>
+  <p>
+    Walk the formula. "Mean squared error between predicted probability
+    and actual label. Zero is perfect. Higher is worse."
+  </p>
+  <p>
+    Key property: "Brier is a <em>proper</em> scoring rule. The unique
+    minimiser is reporting the true probability. A model that cheats by
+    pushing everything to 0 or 1 gets punished. A model that reports
+    honest uncertainty gets rewarded. That is what you want."
+  </p>
+  <p>
+    Report Brier before and after calibration. "On credit data, Brier
+    often drops from 0.11 to 0.08 after isotonic calibration. That is
+    the improvement you couldn't see from AUC-PR alone."
+  </p>
+  <div class="transition">→ "Full pipeline, live."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~5 min</span><span>Full pipeline</span></div>
+  <h3>End-to-end demo</h3>
+  <p>
+    Walk the four-step code. "Step 1: baseline. Step 2: add
+    cost-sensitive weights. Step 3: derive the cost-optimal threshold.
+    Step 4: post-hoc calibrate."
+  </p>
+  <p>
+    If you can run it live, do. Compare the baseline business cost
+    (large) to the post-calibration business cost (much smaller). That
+    dollar number is what the stakeholder cares about.
+  </p>
+  <div class="transition">→ "Three traps."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Three traps</h3>
+  <p>
+    Walk them. Trap 2 — SMOTE-ing the test set — is the subtle one you
+    will catch at least one learner making during the exercise. Warn
+    them pre-emptively.
+  </p>
+  <div class="transition">→ "Reflection and bridge."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Reflection + bridge</span></div>
+  <h3>Reflection + Lesson 3.6</h3>
+  <p>
+    Walk the bullets. The psychological anchor is "evaluation is an
+    engineering problem" — that is the meta-lesson they should leave
+    with.
+  </p>
+  <p>
+    Bridge: "So far we have asked 'is the model accurate?' and 'is the
+    model calibrated?'. Tomorrow we ask a different question: 'should
+    this model be deployed?'. We will compute SHAP values to explain
+    individual predictions, apply LIME as a model-agnostic alternative,
+    and measure fairness across demographic groups. And we will meet the
+    fairness impossibility theorem — why you cannot simultaneously
+    satisfy demographic parity, equalised odds, and calibration."
+  </p>
+  <div class="transition">→ End of Lesson 3.5. Break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../04/notes.html" class="prev"><span class="label">← Previous</span>3.4 Speaker Notes</a>
+  <a href="../06/notes.html" class="next"><span class="label">Next →</span>3.6 Speaker Notes</a>
+</nav>
+
+</main>
+</body>
+</html>

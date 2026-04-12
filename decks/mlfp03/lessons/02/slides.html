@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.2 — Bias-Variance, Regularisation, and Cross-Validation | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.48em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.2</p>
+  <h1>Bias-Variance, Regularisation, and Cross-Validation</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    The most important equation in applied ML · L1 vs L2 geometry · Nested CV
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 75 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> 3.1 &nbsp; · &nbsp;
+    <strong>Outcome:</strong> derive the decomposition and tune a regularised model
+  </div>
+  <div class="slide-footer">MLFP — Module 3: Supervised ML</div>
+</section>
+
+<section>
+  <h2>The canonical curve</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <line x1="60" y1="240" x2="720" y2="240" stroke="#334155" stroke-width="2"/>
+        <line x1="60" y1="30"  x2="60"  y2="240" stroke="#334155" stroke-width="2"/>
+        <text x="390" y="270" text-anchor="middle">Model complexity →</text>
+        <text x="25"  y="135" text-anchor="middle" transform="rotate(-90 25 135)">Error</text>
+        <path d="M 70 80 Q 200 110, 340 150 T 710 230" fill="none" stroke="#3B82F6" stroke-width="3"/>
+        <text x="560" y="215" fill="#1D4ED8" font-weight="600">Training</text>
+        <path d="M 70 90 Q 220 200, 330 150 T 710 70" fill="none" stroke="#EF4444" stroke-width="3"/>
+        <text x="600" y="90" fill="#B91C1C" font-weight="600">Test</text>
+        <line x1="60" y1="190" x2="720" y2="190" stroke="#94A3B8" stroke-dasharray="4 4"/>
+        <text x="640" y="185" fill="#64748B" font-size="11">σ² (noise)</text>
+        <line x1="330" y1="30" x2="330" y2="240" stroke="#10B981" stroke-dasharray="2 4"/>
+        <text x="330" y="22" text-anchor="middle" fill="#047857">sweet spot</text>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em; text-align:center; color: #64748B;">Training error falls forever; test error is U-shaped. The gap is variance.</p>
+</section>
+
+<section>
+  <h2>The setup</h2>
+  <div style="text-align:center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+    \[ y = f(x) + \varepsilon,\quad \mathbb{E}[\varepsilon]=0,\quad \mathrm{Var}(\varepsilon) = \sigma^2 \]
+  </div>
+  <p>$f$ is the unknown true function. $\hat{f}$ is our fit on a random training sample. Error at a test point:</p>
+  <div style="text-align:center; padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \mathrm{Err}(x) = \mathbb{E}_{\mathcal{T}, \varepsilon}\bigl[(y - \hat{f}(x))^2\bigr] \]
+  </div>
+</section>
+
+<section>
+  <h2>The decomposition</h2>
+  <div style="text-align:center; margin: 1em 0; padding: 20px; background: #F0FDFA; border: 2px solid #0D9488; border-radius: 8px;">
+    \[ \mathrm{Err}(x) = \underbrace{(f - \mathbb{E}\hat{f})^2}_{\text{Bias}^2} + \underbrace{\mathbb{E}[(\hat{f} - \mathbb{E}\hat{f})^2]}_{\text{Variance}} + \underbrace{\sigma^2}_{\text{Irreducible}} \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li><strong>Bias²:</strong> how wrong the <em>average</em> prediction is (too simple)</li>
+    <li><strong>Variance:</strong> how much the prediction wobbles with new training sets (too flexible)</li>
+    <li><strong>σ²:</strong> the part of $y$ that $x$ cannot explain; sets a hard floor on achievable error</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The dart-board picture</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <circle cx="100" cy="100" r="70" fill="white" stroke="#334155" stroke-width="2"/>
+        <circle cx="100" cy="100" r="45" fill="none" stroke="#334155"/>
+        <circle cx="100" cy="100" r="20" fill="#FEF3C7" stroke="#334155"/>
+        <circle cx="100" cy="102" r="3" fill="#DC2626"/><circle cx="105" cy="98" r="3" fill="#DC2626"/>
+        <circle cx="97" cy="95" r="3" fill="#DC2626"/><circle cx="103" cy="105" r="3" fill="#DC2626"/>
+        <text x="100" y="195" text-anchor="middle" font-weight="700">Low bias, low var</text>
+        <circle cx="260" cy="100" r="70" fill="white" stroke="#334155" stroke-width="2"/>
+        <circle cx="260" cy="100" r="45" fill="none" stroke="#334155"/>
+        <circle cx="260" cy="100" r="20" fill="#FEF3C7" stroke="#334155"/>
+        <circle cx="295" cy="80" r="3" fill="#DC2626"/><circle cx="300" cy="85" r="3" fill="#DC2626"/>
+        <circle cx="290" cy="75" r="3" fill="#DC2626"/><circle cx="297" cy="82" r="3" fill="#DC2626"/>
+        <text x="260" y="195" text-anchor="middle" font-weight="700">High bias, low var</text>
+        <circle cx="420" cy="100" r="70" fill="white" stroke="#334155" stroke-width="2"/>
+        <circle cx="420" cy="100" r="45" fill="none" stroke="#334155"/>
+        <circle cx="420" cy="100" r="20" fill="#FEF3C7" stroke="#334155"/>
+        <circle cx="400" cy="80" r="3" fill="#DC2626"/><circle cx="445" cy="110" r="3" fill="#DC2626"/>
+        <circle cx="415" cy="135" r="3" fill="#DC2626"/><circle cx="380" cy="100" r="3" fill="#DC2626"/>
+        <circle cx="440" cy="75" r="3" fill="#DC2626"/>
+        <text x="420" y="195" text-anchor="middle" font-weight="700">Low bias, high var</text>
+        <circle cx="580" cy="100" r="70" fill="white" stroke="#334155" stroke-width="2"/>
+        <circle cx="580" cy="100" r="45" fill="none" stroke="#334155"/>
+        <circle cx="580" cy="100" r="20" fill="#FEF3C7" stroke="#334155"/>
+        <circle cx="620" cy="60" r="3" fill="#DC2626"/><circle cx="635" cy="80" r="3" fill="#DC2626"/>
+        <circle cx="625" cy="100" r="3" fill="#DC2626"/><circle cx="600" cy="65" r="3" fill="#DC2626"/>
+        <circle cx="645" cy="95" r="3" fill="#DC2626"/>
+        <text x="580" y="195" text-anchor="middle" font-weight="700">High bias, high var</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Regularisation — trade variance for bias</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
+    \[ \text{Ridge: } \mathcal{L}(\boldsymbol\beta) + \lambda \sum_j \beta_j^2 \qquad \text{Lasso: } \mathcal{L}(\boldsymbol\beta) + \lambda \sum_j |\beta_j| \]
+  </div>
+  <p style="font-size: 0.85em;">Both shrink coefficients. Only L1 drives them to exactly zero. Why? Geometry.</p>
+</section>
+
+<section>
+  <h2>L2 (circle) vs L1 (diamond)</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <text x="180" y="25" text-anchor="middle" font-weight="700" fill="#0D9488">L2 — Ridge</text>
+        <line x1="60" y1="160" x2="300" y2="160" stroke="#334155"/>
+        <line x1="180" y1="60" x2="180" y2="260" stroke="#334155"/>
+        <ellipse cx="220" cy="120" rx="80" ry="35" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+        <ellipse cx="220" cy="120" rx="60" ry="25" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+        <ellipse cx="220" cy="120" rx="35" ry="14" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+        <circle cx="220" cy="120" r="2" fill="#334155"/>
+        <circle cx="180" cy="160" r="55" fill="rgba(13,148,136,0.15)" stroke="#0D9488" stroke-width="2.5"/>
+        <circle cx="208" cy="135" r="4" fill="#DC2626"/>
+        <text x="215" y="140" font-size="11" fill="#B91C1C">β₁, β₂ both nonzero</text>
+        <g transform="translate(380,0)">
+          <text x="180" y="25" text-anchor="middle" font-weight="700" fill="#B45309">L1 — Lasso</text>
+          <line x1="60" y1="160" x2="300" y2="160" stroke="#334155"/>
+          <line x1="180" y1="60" x2="180" y2="260" stroke="#334155"/>
+          <ellipse cx="220" cy="120" rx="80" ry="35" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+          <ellipse cx="220" cy="120" rx="60" ry="25" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+          <ellipse cx="220" cy="120" rx="35" ry="14" fill="none" stroke="#94A3B8" transform="rotate(-20 220 120)"/>
+          <circle cx="220" cy="120" r="2" fill="#334155"/>
+          <polygon points="180,105 235,160 180,215 125,160" fill="rgba(245,158,11,0.18)" stroke="#F59E0B" stroke-width="2.5"/>
+          <circle cx="180" cy="105" r="4" fill="#DC2626"/>
+          <text x="190" y="100" font-size="11" fill="#B91C1C">corner → β₁ = 0</text>
+        </g>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.82em; text-align:center; color: #64748B;">The diamond has corners on the axes; the ellipses preferentially hit those corners, producing sparsity.</p>
+</section>
+
+<section>
+  <h2>Bayesian reading</h2>
+  <ul style="font-size: 0.88em;">
+    <li><strong>Ridge</strong> ≡ MAP estimate under a <em>Gaussian</em> prior on $\boldsymbol\beta$</li>
+    <li><strong>Lasso</strong> ≡ MAP estimate under a <em>Laplace</em> prior on $\boldsymbol\beta$</li>
+  </ul>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
+    \[ \log p(\boldsymbol\beta \mid \text{data}) \propto -\frac{1}{2\tau^2}\sum_i(y_i - \boldsymbol\beta^\top x_i)^2 - \frac{\lambda}{2\tau^2}\sum_j \beta_j^2 \]
+  </div>
+  <p style="font-size: 0.82em;">Maximising the log-posterior is algebraically identical to minimising ridge loss. The Laplace prior has a sharp spike at zero — the Bayesian image of the L1 diamond corner.</p>
+</section>
+
+<section>
+  <h2>Elastic Net</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px; margin: 1em 0;">
+    \[ \mathcal{L}(\boldsymbol\beta) + \lambda\bigl(\alpha \|\boldsymbol\beta\|_1 + (1-\alpha)\|\boldsymbol\beta\|_2^2\bigr) \]
+  </div>
+  <p style="font-size: 0.85em;">Mixed Laplace-Gaussian prior. Use when:</p>
+  <ul style="font-size: 0.85em;">
+    <li>Lasso oversimplifies correlated features (arbitrary pick)</li>
+    <li>Ridge refuses to zero anything you know is irrelevant</li>
+    <li>You want a little of both</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Cross-validation — five strategies</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Strategy</th><th>When</th><th>Protects against</th></tr></thead>
+    <tbody>
+      <tr><td>KFold</td><td>i.i.d. data</td><td>simple holdout variance</td></tr>
+      <tr><td>StratifiedKFold</td><td>class imbalance</td><td>folds with zero minority</td></tr>
+      <tr><td>GroupKFold</td><td>repeated subjects</td><td>hidden group leakage</td></tr>
+      <tr><td>TimeSeriesSplit</td><td>temporal data</td><td>future-to-predict-past</td></tr>
+      <tr><td>Nested CV</td><td>tuning + eval</td><td>optimistic best-score bias</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>5-fold CV</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="11">
+        <g>
+          <text x="40" y="48" fill="#475569">F1</text>
+          <rect x="80" y="30" width="120" height="28" fill="#FECACA" stroke="#DC2626"/><text x="140" y="48" text-anchor="middle">VAL</text>
+          <rect x="200" y="30" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="320" y="30" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="440" y="30" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="560" y="30" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+        </g>
+        <g>
+          <text x="40" y="80" fill="#475569">F2</text>
+          <rect x="80" y="62" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="200" y="62" width="120" height="28" fill="#FECACA" stroke="#DC2626"/><text x="260" y="80" text-anchor="middle">VAL</text>
+          <rect x="320" y="62" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="440" y="62" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="560" y="62" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+        </g>
+        <g>
+          <text x="40" y="112" fill="#475569">F3</text>
+          <rect x="80" y="94" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="200" y="94" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="320" y="94" width="120" height="28" fill="#FECACA" stroke="#DC2626"/><text x="380" y="112" text-anchor="middle">VAL</text>
+          <rect x="440" y="94" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="560" y="94" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+        </g>
+        <g>
+          <text x="40" y="144" fill="#475569">F4</text>
+          <rect x="80" y="126" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="200" y="126" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="320" y="126" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="440" y="126" width="120" height="28" fill="#FECACA" stroke="#DC2626"/><text x="500" y="144" text-anchor="middle">VAL</text>
+          <rect x="560" y="126" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+        </g>
+        <g>
+          <text x="40" y="176" fill="#475569">F5</text>
+          <rect x="80" y="158" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="200" y="158" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="320" y="158" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="440" y="158" width="120" height="28" fill="#DBEAFE" stroke="#3B82F6"/>
+          <rect x="560" y="158" width="120" height="28" fill="#FECACA" stroke="#DC2626"/><text x="620" y="176" text-anchor="middle">VAL</text>
+        </g>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Nested CV — honest model selection</h2>
+  <pre><code class="language-python" data-trim>
+for train_idx, test_idx in outer_cv.split(X):
+    X_tr, X_te = X[train_idx], X[test_idx]
+    y_tr, y_te = y[train_idx], y[test_idx]
+
+    search = GridSearchCV(Ridge(),
+        param_grid={"alpha": np.logspace(-2, 3, 20)},
+        cv=inner_cv, scoring="neg_mean_squared_error")
+    search.fit(X_tr, y_tr)
+    outer_scores.append(search.score(X_te, y_te))
+
+print(f"Honest MSE: {-np.mean(outer_scores):,.0f}")
+  </code></pre>
+  <p style="font-size: 0.82em;">Inner loop chooses $\alpha$. Outer loop evaluates. Data used for tuning is never used for scoring.</p>
+</section>
+
+<section>
+  <h2>Worked example — HDB overfitting</h2>
+  <pre><code class="language-python" data-trim>
+for degree in [1, 2, 3, 5, 9]:
+    model = Pipeline([
+        ("poly", PolynomialFeatures(degree)),
+        ("lin",  LinearRegression()),
+    ])
+    mse = -cross_val_score(model, X, y, cv=5,
+        scoring="neg_mean_squared_error").mean()
+    print(f"d={degree}: CV MSE = {mse:,.0f}")
+  </code></pre>
+  <p style="font-size: 0.82em;">You will see the U-shape live: degree 1 underfits, degree 3 is optimal, degree 9 explodes.</p>
+</section>
+
+<section>
+  <h2>Three expensive mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>1.</strong> Reporting <code>GridSearchCV.best_score_</code> as the test score — optimistically biased.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>2.</strong> Plain k-fold on grouped data (same patient in train and test).
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>3.</strong> Shuffling time-series — lets the model see the future.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Derive the bias-variance decomposition from first principles</li>
+    <li>✓ Explain L1 sparsity geometrically and Bayesianly</li>
+    <li>✓ Pick KFold / StratifiedKFold / GroupKFold / TimeSeriesSplit appropriately</li>
+    <li>✓ Build a nested CV loop for honest hyperparameter selection</li>
+    <li>✓ Spot the three classic CV mistakes</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 3.3 — the complete supervised model zoo. SVM, KNN, Naive Bayes, trees, forests.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

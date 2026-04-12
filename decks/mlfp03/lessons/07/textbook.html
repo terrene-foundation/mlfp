@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.7 — Workflow Orchestration, Model Registry, and Hyperparameter Search | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.7</span>
+  Workflow Orchestration, Model Registry, and Hyperparameter Search
+</h1>
+
+<p class="lead">
+  Until now you have built ML pipelines as sequential Python scripts. That
+  works for prototyping — it does not work for production. This lesson
+  introduces <code>WorkflowBuilder</code> to build ML pipelines as node
+  graphs with automatic error handling, <code>HyperparameterSearch</code>
+  to find optimal model configurations using Bayesian optimisation, and
+  <code>ModelRegistry</code> to version and promote models through the
+  deployment lifecycle.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>WorkflowBuilder</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>WorkflowBuilder</code> turns your ML pipeline into a directed
+    graph of nodes connected by data edges. Each node is a self-contained
+    unit — load data, preprocess, train, evaluate — and the runtime
+    executes them in dependency order with error handling and retry logic.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr37a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="40" y="40" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="110" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Load Data</text>
+  <text x="110" y="88" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">PythonCodeNode</text>
+
+  <line x1="180" y1="70" x2="240" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37a)"/>
+
+  <rect x="245" y="40" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="315" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Preprocess</text>
+  <text x="315" y="88" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">PythonCodeNode</text>
+
+  <line x1="385" y1="70" x2="445" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37a)"/>
+
+  <rect x="450" y="40" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="520" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Train</text>
+  <text x="520" y="88" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">PythonCodeNode</text>
+
+  <line x1="520" y1="100" x2="520" y2="140" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37a)"/>
+
+  <rect x="450" y="145" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="520" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Evaluate</text>
+  <text x="520" y="193" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">PythonCodeNode</text>
+
+  <line x1="450" y1="175" x2="390" y2="175" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37a)"/>
+
+  <rect x="245" y="145" width="140" height="60" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
+  <text x="315" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Promote?</text>
+  <text x="315" y="193" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">ConditionalNode</text>
+
+  <line x1="245" y1="175" x2="185" y2="175" stroke="#22C55E" stroke-width="2" marker-end="url(#arr37a)"/>
+  <text x="215" y="165" text-anchor="middle" font-family="Inter" font-size="10" fill="#22C55E">yes</text>
+
+  <rect x="40" y="145" width="140" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="110" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#22C55E">Register</text>
+  <text x="110" y="193" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">ModelRegistry</text>
+
+  <text x="315" y="230" text-anchor="middle" font-family="Inter" font-style="italic" font-size="10" fill="#64748B">no → log result, do not promote</text>
+</svg>
+<figcaption>A ML workflow as a node graph. The ConditionalNode gates promotion on evaluation metrics.</figcaption>
+</figure>
+
+<pre><code class="language-python">from kailash import WorkflowBuilder, PythonCodeNode, ConditionalNode
+
+workflow = WorkflowBuilder("credit_scoring_pipeline")
+
+# Define nodes
+load_node = PythonCodeNode("load_data", code=load_data_fn)
+preprocess_node = PythonCodeNode("preprocess", code=preprocess_fn)
+train_node = PythonCodeNode("train", code=train_fn)
+eval_node = PythonCodeNode("evaluate", code=evaluate_fn)
+promote_node = ConditionalNode("promote_check",
+    condition=lambda ctx: ctx["auc"] > 0.85)
+register_node = PythonCodeNode("register", code=register_fn)
+
+# Connect
+workflow.connect(load_node, preprocess_node)
+workflow.connect(preprocess_node, train_node)
+workflow.connect(train_node, eval_node)
+workflow.connect(eval_node, promote_node)
+workflow.connect(promote_node, register_node, branch="yes")
+
+# Execute
+from kailash import Runtime
+runtime = Runtime()
+result = runtime.execute(workflow.build())</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>HyperparameterSearch</h2>
+
+<p>
+  Grid search tries every combination and is wasteful. Random search is
+  better but uninformed. <strong>Bayesian optimisation</strong> builds a
+  surrogate model (Gaussian process) of the objective function and
+  chooses the next point to evaluate based on an acquisition function
+  (expected improvement). It finds good hyperparameters in far fewer
+  evaluations.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <line x1="80" y1="200" x2="650" y2="200" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="80" y1="30" x2="80" y2="200" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="365" y="230" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Hyperparameter value</text>
+  <text x="50" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 50 115)">Objective (AUC)</text>
+  <!-- True function (hidden) -->
+  <path d="M 100,150 Q 200,50 300,120 Q 400,180 500,60 Q 580,90 630,80" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <!-- Evaluated points -->
+  <circle cx="150" cy="130" r="5" fill="#0D9488"/>
+  <circle cx="280" cy="110" r="5" fill="#0D9488"/>
+  <circle cx="420" cy="170" r="5" fill="#0D9488"/>
+  <circle cx="500" cy="60" r="5" fill="#F59E0B" stroke="#F59E0B" stroke-width="2"/>
+  <text x="500" y="50" text-anchor="middle" font-family="Inter" font-size="10" fill="#F59E0B">next point</text>
+  <!-- Surrogate mean -->
+  <path d="M 100,140 Q 200,80 300,115 Q 400,160 500,70 Q 580,85 630,85" fill="none" stroke="#0D9488" stroke-width="2"/>
+  <!-- Uncertainty band -->
+  <path d="M 100,120 Q 200,60 300,95 Q 400,130 500,45 Q 580,60 630,60
+           L 630,110 Q 580,110 500,95 Q 400,190 300,135 Q 200,100 100,160 Z"
+        fill="#0D9488" opacity="0.1"/>
+  <text x="600" y="40" font-family="Inter" font-size="10" fill="#0D9488">surrogate</text>
+  <text x="600" y="55" font-family="Inter" font-size="9" fill="#64748B">+ uncertainty</text>
+</svg>
+<figcaption>Bayesian optimisation: the surrogate model (solid green) approximates the true objective (dashed grey). The next evaluation point (gold) maximises expected improvement in the region of highest uncertainty.</figcaption>
+</figure>
+
+<pre><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig
+
+space = SearchSpace({
+    "n_estimators": (100, 1000),
+    "max_depth": (3, 10),
+    "learning_rate": (0.01, 0.3, "log"),
+    "min_child_weight": (1, 10),
+})
+
+config = SearchConfig(
+    method="bayesian",
+    n_trials=50,
+    metric="auc",
+    cv_folds=5,
+)
+
+search = HyperparameterSearch(model_class="xgboost")
+best = search.run(X_train, y_train, space=space, config=config)
+print(f"Best AUC: {best.score:.4f}")
+print(f"Best params: {best.params}")</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>ModelRegistry</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>ModelRegistry</code> versions every model, stores metadata
+    (metrics, hyperparameters, data lineage), and manages the lifecycle:
+    experiment → staging → production → retired.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import ModelRegistry, MetricSpec, ModelSignature
+
+registry = ModelRegistry()
+
+# Register the best model
+registry.register(
+    name="credit_scorer",
+    model=best.model,
+    metrics=MetricSpec(auc=best.score, f1=best.f1),
+    signature=ModelSignature(
+        input_schema=X_train.schema,
+        output_schema={"probability": "Float64"},
+    ),
+    tags={"dataset": "credit_sg_v2", "author": "mlfp_capstone"},
+)
+
+# Promote to production
+registry.promote("credit_scorer", version=1, stage="production")</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 160" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr37r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20" y="40" width="130" height="60" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="85" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#3B82F6">Experiment</text>
+  <text x="85" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">v1, v2, v3...</text>
+  <line x1="150" y1="70" x2="205" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37r)"/>
+  <rect x="210" y="40" width="130" height="60" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
+  <text x="275" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#92400E">Staging</text>
+  <text x="275" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">A/B test</text>
+  <line x1="340" y1="70" x2="395" y2="70" stroke="#0D9488" stroke-width="2" marker-end="url(#arr37r)"/>
+  <rect x="400" y="40" width="130" height="60" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+  <text x="465" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#22C55E">Production</text>
+  <text x="465" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">serving</text>
+  <line x1="530" y1="70" x2="585" y2="70" stroke="#94A3B8" stroke-width="2" marker-end="url(#arr37r)"/>
+  <rect x="590" y="40" width="110" height="60" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+  <text x="645" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#64748B">Retired</text>
+  <text x="645" y="88" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">archived</text>
+</svg>
+<figcaption>Model lifecycle: experiment → staging → production → retired. Each transition is gated by metrics and approval.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Grid search when Bayesian is available</span>
+  <p>Grid search with 5 hyperparameters at 5 values each = 3125 evaluations. Bayesian typically finds better results in 50.</p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Promoting without a signature</span>
+  <p>A model without a signature cannot validate its inputs in production. Always define input and output schemas.</p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: No conditional gate on promotion</span>
+  <p>Auto-promoting every model is dangerous. Always gate promotion on evaluation metrics — the ConditionalNode pattern.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Build the workflow</h3>
+  <p>Build a credit scoring workflow with 5 nodes: load, preprocess, train, evaluate, conditional promotion. Execute it end-to-end.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Bayesian search</h3>
+  <p>Run HyperparameterSearch with 50 trials on XGBoost. Compare the best result to a random search with 50 trials. Plot the convergence curve.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Model registry lifecycle</h3>
+  <p>Register 3 model versions. Promote the best to staging, then production. Verify that ModelRegistry tracks the lineage correctly.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  WorkflowBuilder replaces the sequential script from 1.8. ConditionalNode
+  uses the evaluation metrics from 3.5 as gates. HyperparameterSearch
+  automates the tuning that was manual in 3.3 and 3.4. ModelRegistry
+  formalises the model management that Lesson 3.8 will extend to
+  production with DataFlow and DriftMonitor.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You can now orchestrate ML pipelines as node graphs, find optimal
+  hyperparameters with Bayesian search, and manage model versions through
+  the deployment lifecycle. The shift from scripts to workflows is the
+  shift from prototyping to production.
+</p>
+<p>
+  Lesson 3.8 completes the production story: persist results to DataFlow,
+  monitor for drift with DriftMonitor, and document the model with Model
+  Cards and conformal prediction intervals.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/textbook.html" class="prev"><span class="label">← Previous</span>3.6 Interpretability and Fairness</a>
+  <a href="../08/textbook.html" class="next"><span class="label">Next →</span>3.8 Production Pipeline</a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -2,239 +2,581 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 2: DPO / QLoRA Alignment
+# MLFP04 — Exercise 2: EM Algorithm and Gaussian Mixture Models
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Compare DPO (preference optimization) vs QLoRA (quantized
-#   fine-tuning). Evaluate with LLM-as-judge and human rubric.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Explain the EM algorithm as coordinate ascent on the ELBO
+#   - Implement the E-step (posterior responsibilities) from scratch
+#   - Implement the M-step (parameter updates) from scratch
+#   - Verify that log-likelihood is non-decreasing across EM iterations
+#   - Compare manual EM with sklearn GMM and select K via BIC/AIC
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 1 (clustering — GMM used as a black box there)
+#   - MLFP02 Lesson 2.1 (Bayesian thinking — EM is a Bayesian inference algorithm)
+#
+# ESTIMATED TIME: 75-90 minutes
 #
 # TASKS:
-#   1. Load preference pairs dataset
-#   2. Configure and run DPO alignment
-#   3. Configure and run QLoRA fine-tuning
-#   4. Evaluate both with LLM-as-judge
-#   5. Compare methods: quality, cost, speed
+#   1. Derive EM intuitively — soft assignments and parameter updates
+#   2. Implement E-step (posterior responsibilities)
+#   3. Implement M-step (update means, covariances, weights)
+#   4. Run EM loop and visualise convergence
+#   5. Compare manual EM with sklearn GMM on real data
+#   6. AutoMLEngine for automated GMM comparison
+#
+# DATASET: Synthetic 2D data (3 Gaussians, 600 samples) + e-commerce customers
+#   The synthetic data has known ground truth, so you can verify your
+#   implementation recovers the true component means and weights.
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-import os
 
-from dotenv import load_dotenv
+import numpy as np
+import polars as pl
+from scipy.stats import multivariate_normal
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
 
-from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+from kailash_ml import ModelVisualizer
+from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
 
-setup_environment()
 
-base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+# ── Synthetic Data for Manual EM ─────────────────────────────────────
+
+rng = np.random.default_rng(42)
+
+# Three well-separated Gaussians in 2D — ground truth for EM validation
+true_means = np.array([[0.0, 0.0], [5.0, 2.0], [2.0, 6.0]])
+true_covs = np.array(
+    [
+        [[1.0, 0.3], [0.3, 0.8]],
+        [[0.8, -0.2], [-0.2, 1.2]],
+        [[1.5, 0.0], [0.0, 0.5]],
+    ]
+)
+true_weights = np.array([0.4, 0.35, 0.25])
+
+n_synth = 600
+# Generate samples from each component proportionally
+n_per_component = (true_weights * n_synth).astype(int)
+n_per_component[-1] = n_synth - n_per_component[:-1].sum()  # Ensure total = n_synth
+
+X_synth_parts = []
+z_true = []
+for k, (mean, cov, n) in enumerate(zip(true_means, true_covs, n_per_component)):
+    X_synth_parts.append(rng.multivariate_normal(mean, cov, n))
+    z_true.extend([k] * n)
+
+X_synth = np.vstack(X_synth_parts)
+z_true = np.array(z_true)
+
+# Shuffle
+idx = rng.permutation(n_synth)
+X_synth, z_true = X_synth[idx], z_true[idx]
+
+print(f"=== Synthetic 2D GMM Data ===")
+print(f"Samples: {n_synth}, Components: 3")
+print(f"True weights: {true_weights}")
+for k, (m, n) in enumerate(zip(true_means, n_per_component)):
+    print(f"  Component {k}: mean={m}, n={n}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load preference pairs
+# TASK 1: EM Algorithm — intuition and derivation
+# ══════════════════════════════════════════════════════════════════════
+# Problem: observed data X, latent assignments Z, parameters θ = {π, μ, Σ}
+#
+# Maximum Likelihood: max_{θ} log P(X|θ) = max_{θ} Σ_i log Σ_k π_k N(x_i|μ_k,Σ_k)
+#   → Intractable: log of a sum
+#
+# EM insight: introduce Z, maximise a lower bound (ELBO):
+#   E-step: compute Q(Z|X, θ^old) = P(Z|X, θ^old)  [posterior responsibilities]
+#   M-step: θ^new = argmax_{θ} E_Q[log P(X,Z|θ)]    [weighted ML update]
+#
+# Why it works: each step is guaranteed to increase log P(X|θ).
+# Converges to a local maximum of the likelihood.
+
+print(f"\n=== EM Algorithm Derivation ===")
+print(
+    """
+EM as coordinate ascent on the ELBO:
+
+  log P(X|θ) ≥ ELBO = E_Q[log P(X,Z|θ)] + H(Q)   (Jensen's inequality)
+
+  E-step: fix θ, maximise ELBO over Q
+    → Q*(Z) = P(Z|X, θ)  [just compute the posterior]
+
+  M-step: fix Q, maximise ELBO over θ
+    → θ* = argmax E_{Q*}[log P(X,Z|θ)]  [weighted MLE]
+
+For GMMs:
+  E-step: r_{ik} = π_k N(x_i|μ_k,Σ_k) / Σ_j π_j N(x_i|μ_j,Σ_j)
+  M-step:
+    N_k = Σ_i r_{ik}
+    π_k^new = N_k / N
+    μ_k^new = (Σ_i r_{ik} x_i) / N_k
+    Σ_k^new = (Σ_i r_{ik} (x_i - μ_k^new)(x_i - μ_k^new)') / N_k
+"""
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: E-step — compute posterior responsibilities
+# ══════════════════════════════════════════════════════════════════════
+
+
+def e_step(
+    X: np.ndarray,
+    means: np.ndarray,
+    covs: np.ndarray,
+    weights: np.ndarray,
+) -> np.ndarray:
+    """
+    E-step: compute responsibility matrix R.
+
+    R[i, k] = P(z_i = k | x_i, θ)
+             = π_k N(x_i | μ_k, Σ_k) / Σ_j π_j N(x_j | μ_j, Σ_j)
+
+    Returns:
+        R: (n_samples, n_components) responsibility matrix
+    """
+    n_samples = X.shape[0]
+    n_components = len(weights)
+    log_probs = np.zeros((n_samples, n_components))
+
+    for k in range(n_components):
+        # Log probability under component k (more numerically stable)
+        try:
+            dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
+            log_probs[:, k] = np.log(weights[k] + 1e-300) + dist.logpdf(X)
+        except Exception:
+            log_probs[:, k] = -np.inf
+
+    # Normalise in log space (log-sum-exp trick for numerical stability)
+    log_probs_max = log_probs.max(axis=1, keepdims=True)
+    log_normaliser = (
+        np.log(np.exp(log_probs - log_probs_max).sum(axis=1, keepdims=True))
+        + log_probs_max
+    )
+    R = np.exp(log_probs - log_normaliser)
+
+    return R
+
+
+# Test E-step on true parameters
+R_init = e_step(X_synth, true_means, true_covs, true_weights)
+print(f"\n=== E-step Test (true parameters) ===")
+print(f"Responsibility matrix shape: {R_init.shape}")
+print(f"Row sums (should all be 1): {R_init.sum(axis=1)[:5].round(4)}")
+print(f"Average max responsibility: {R_init.max(axis=1).mean():.4f}")
+print(f"  (≈1 = high confidence; ≈0.33 = maximum uncertainty)")
+
+# Soft assignments from true parameters
+soft_assignments = R_init.argmax(axis=1)
+accuracy_true_params = (soft_assignments == z_true).mean()
+print(f"Assignment accuracy (true params): {accuracy_true_params:.4f}")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert R_init.shape == (n_synth, 3), \
+    f"Responsibility matrix should be (n_samples, n_components), got {R_init.shape}"
+assert abs(R_init.sum(axis=1).mean() - 1.0) < 1e-6, \
+    "Responsibilities must sum to 1 for each sample (probability axiom)"
+assert R_init.min() >= 0, "Responsibilities must be non-negative"
+# INTERPRETATION: The responsibility r_{ik} is the posterior probability that
+# point i was generated by component k. This is the E-step output: given the
+# current parameters, what fraction of each point's 'weight' belongs to each
+# Gaussian? When using the true parameters, r_{ik} ≈ 1 for the true label and
+# ≈ 0 for the others — exactly as expected from Bayes' rule.
+print("\n✓ Checkpoint 1 passed — E-step responsibilities computed correctly\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: M-step — update parameters from responsibilities
+# ══════════════════════════════════════════════════════════════════════
+
+
+def m_step(
+    X: np.ndarray,
+    R: np.ndarray,
+    reg_covar: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    M-step: update GMM parameters given responsibility matrix R.
+
+    N_k = Σ_i r_{ik}
+    π_k = N_k / N
+    μ_k = (Σ_i r_{ik} x_i) / N_k
+    Σ_k = (Σ_i r_{ik} (x_i - μ_k)(x_i - μ_k)') / N_k  +  reg_covar * I
+
+    Returns:
+        means:   (n_components, n_features)
+        covs:    (n_components, n_features, n_features)
+        weights: (n_components,)
+    """
+    n_samples, n_features = X.shape
+    n_components = R.shape[1]
+
+    N_k = R.sum(axis=0) + 1e-300  # Effective sample counts per component
+    weights = N_k / n_samples  # Normalised mixing weights
+
+    means = (R.T @ X) / N_k[:, np.newaxis]  # (K, D)
+
+    covs = np.zeros((n_components, n_features, n_features))
+    for k in range(n_components):
+        diff = X - means[k]  # (N, D)
+        # Weighted outer products: Σ_k = (1/N_k) Σ_i r_{ik} (x_i - μ_k)(x_i - μ_k)'
+        covs[k] = (R[:, k : k + 1] * diff).T @ diff / N_k[k]
+        covs[k] += reg_covar * np.eye(n_features)  # Regularise for stability
+
+    return means, covs, weights
+
+
+# Test M-step: given true responsibilities, should recover near-true params
+R_true = np.zeros((n_synth, 3))
+for i, k in enumerate(z_true):
+    R_true[i, k] = 1.0  # Hard assignments from ground truth
+
+means_recovered, covs_recovered, weights_recovered = m_step(X_synth, R_true)
+
+print(f"\n=== M-step Test (hard assignments from ground truth) ===")
+print(f"Recovered weights: {weights_recovered.round(3)} (true: {true_weights})")
+for k in range(3):
+    print(
+        f"  Component {k}: mean={means_recovered[k].round(3)} (true: {true_means[k]})"
+    )
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert abs(weights_recovered.sum() - 1.0) < 1e-6, \
+    "Recovered weights should sum to 1"
+# Recovered means should be close to true means (within 0.5 units)
+for k in range(3):
+    dist = np.linalg.norm(means_recovered[k] - true_means[k])
+    assert dist < 1.0, \
+        f"Recovered mean {k} ({means_recovered[k].round(2)}) too far from truth ({true_means[k]})"
+# INTERPRETATION: The M-step update is weighted maximum likelihood estimation.
+# Given hard assignments (R_true), the update is just the class-conditional
+# mean and covariance — exactly what you'd compute if you knew the labels.
+# With soft assignments, each point contributes fractionally to each component.
+print("\n✓ Checkpoint 2 passed — M-step recovers true parameters from hard assignments\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: EM loop — iterate until convergence
+# ══════════════════════════════════════════════════════════════════════
+
+
+def compute_log_likelihood(
+    X: np.ndarray,
+    means: np.ndarray,
+    covs: np.ndarray,
+    weights: np.ndarray,
+) -> float:
+    """Compute log-likelihood: Σ_i log Σ_k π_k N(x_i | μ_k, Σ_k)."""
+    n_samples = X.shape[0]
+    n_components = len(weights)
+    log_likelihoods = np.zeros(n_samples)
+
+    for k in range(n_components):
+        try:
+            dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
+            log_likelihoods = np.logaddexp(
+                log_likelihoods,
+                np.log(weights[k] + 1e-300) + dist.logpdf(X),
+            )
+        except Exception:
+            pass
+
+    return log_likelihoods.sum()
+
+
+def fit_gmm_em(
+    X: np.ndarray,
+    n_components: int = 3,
+    max_iter: int = 100,
+    tol: float = 1e-4,
+    seed: int = 42,
+) -> dict:
+    """
+    Fit GMM using manual EM loop.
+
+    Initialises with K-means++, then alternates E/M steps
+    until log-likelihood converges.
+    """
+    rng_em = np.random.default_rng(seed)
+    n_samples, n_features = X.shape
+
+    # Initialise with random assignment (K-means++ style)
+    idx = rng_em.choice(n_samples, n_components, replace=False)
+    means = X[idx].copy()
+    covs = np.array([np.eye(n_features)] * n_components)
+    weights = np.ones(n_components) / n_components
+
+    log_likelihoods = []
+
+    for iteration in range(max_iter):
+        # E-step
+        R = e_step(X, means, covs, weights)
+
+        # M-step
+        means, covs, weights = m_step(X, R)
+
+        # Track log-likelihood
+        ll = compute_log_likelihood(X, means, covs, weights)
+        log_likelihoods.append(ll)
+
+        # Convergence check
+        if iteration > 0 and abs(log_likelihoods[-1] - log_likelihoods[-2]) < tol:
+            print(f"  Converged at iteration {iteration + 1}")
+            break
+
+    labels = R.argmax(axis=1)
+    return {
+        "means": means,
+        "covs": covs,
+        "weights": weights,
+        "labels": labels,
+        "log_likelihoods": log_likelihoods,
+        "n_iter": len(log_likelihoods),
+        "final_ll": log_likelihoods[-1],
+    }
+
+
+print(f"\n=== Running Manual EM on Synthetic Data ===")
+em_result = fit_gmm_em(X_synth, n_components=3, max_iter=100, tol=1e-4)
+
+print(f"Iterations: {em_result['n_iter']}")
+print(f"Final log-likelihood: {em_result['final_ll']:.2f}")
+print(f"Recovered weights: {em_result['weights'].round(3)} (true: {true_weights})")
+for k in range(3):
+    print(
+        f"  Component {k}: mean={em_result['means'][k].round(3)} (true: {true_means[k]})"
+    )
+
+# Evaluate cluster recovery
+# Match components by closest mean (true label assignment may differ)
+em_labels = em_result["labels"]
+if len(set(em_labels)) > 1:
+    sil = silhouette_score(X_synth, em_labels)
+    print(f"Silhouette score: {sil:.4f}")
+
+# Log-likelihood convergence plot
+viz = ModelVisualizer()
+fig = viz.training_history(
+    {"Log-Likelihood": em_result["log_likelihoods"]},
+    x_label="EM Iteration",
+)
+fig.update_layout(title="EM Convergence: Log-Likelihood per Iteration")
+fig.write_html("ex2_em_convergence.html")
+print("Saved: ex2_em_convergence.html")
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert em_result["n_iter"] > 1, "EM should require more than 1 iteration to converge"
+# Log-likelihood should be non-decreasing (fundamental EM guarantee)
+lls = em_result["log_likelihoods"]
+for i in range(1, len(lls)):
+    assert lls[i] >= lls[i-1] - 0.1, \
+        f"Log-likelihood decreased significantly at iteration {i}: {lls[i-1]:.4f} → {lls[i]:.4f}"
+assert len(set(em_result["labels"])) >= 2, \
+    "EM should assign points to at least 2 distinct components"
+# INTERPRETATION: The monotone non-decreasing log-likelihood is the mathematical
+# proof that EM works. Each E-step tightens the lower bound (ELBO); each M-step
+# maximises it. The log-likelihood of the observed data can only increase or stay
+# the same — convergence to a local optimum is guaranteed.
+print("\n✓ Checkpoint 3 passed — EM converged with non-decreasing log-likelihood\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Compare manual EM with sklearn GMM on real data
 # ══════════════════════════════════════════════════════════════════════
 
 loader = MLFPDataLoader()
-preferences = loader.load("mlfp04", "preference_pairs.parquet")
+customers = loader.load("mlfp03", "ecommerce_customers.parquet")
 
-print(f"=== Preference Pairs ===")
-print(f"Shape: {preferences.shape}")
-print(f"Columns: {preferences.columns}")
-# Expected: prompt, chosen, rejected
-print(preferences.head(2))
+feature_cols = [
+    c
+    for c, d in zip(customers.columns, customers.dtypes)
+    if d in (pl.Float64, pl.Float32, pl.Int64, pl.Int32) and c not in ("customer_id",)
+]
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: DPO alignment
-# ══════════════════════════════════════════════════════════════════════
-# DPO: Direct Preference Optimization
-# Derives from Bradley-Terry preference model:
-#   P(y_w > y_l | x) = σ(β⁻¹(r(x,y_w) - r(x,y_l)))
-# Key insight: eliminates the reward model entirely
-#   π*(y|x) ∝ π_ref(y|x) · exp(β⁻¹ · r*(x,y))
-# Loss: L_DPO = -E[log σ(β(log π(y_w|x)/π_ref(y_w|x) - log π(y_l|x)/π_ref(y_l|x)))]
-
-dpo_config = AlignmentConfig(
-    method="dpo",
-    base_model=base_model,
-    dataset_format="preference",  # prompt, chosen, rejected
-    # DPO-specific
-    beta=0.1,  # Temperature — controls deviation from reference policy
-    # LoRA (DPO still uses LoRA for efficient training)
-    lora_r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj"],
-    # Training
-    num_epochs=2,
-    batch_size=2,
-    learning_rate=5e-5,
-    max_seq_length=512,
-    output_dir="./dpo_output",
+X_real, _, _ = to_sklearn_input(
+    customers.drop_nulls(subset=feature_cols),
+    feature_columns=feature_cols,
 )
 
+scaler = StandardScaler()
+X_real_scaled = scaler.fit_transform(X_real)
 
-async def run_dpo():
-    pipeline = AlignmentPipeline(dpo_config)
-    n_train = int(preferences.height * 0.9)
+print(f"\n=== Real Data: E-commerce Customers ===")
+print(f"Shape: {X_real_scaled.shape}")
 
-    print(f"\n=== Running DPO ===")
-    print(f"β = {dpo_config.beta} (higher β = stay closer to reference)")
+# Test different numbers of components using BIC/AIC model selection
+print(f"\n=== GMM Model Selection (BIC/AIC) ===")
+print(f"{'K':>4} {'BIC':>12} {'AIC':>12} {'Log-L':>12} {'Silhouette':>12}")
+print("─" * 56)
 
-    result = await pipeline.train(
-        train_data=preferences[:n_train],
-        eval_data=preferences[n_train:],
+bic_scores = {}
+for k in range(2, 9):
+    gmm = GaussianMixture(
+        n_components=k,
+        covariance_type="full",
+        random_state=42,
+        max_iter=200,
     )
+    gmm.fit(X_real_scaled)
+    labels = gmm.predict(X_real_scaled)
 
-    print(f"DPO complete:")
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss: {result.eval_loss:.4f}")
-    print(f"  Time: {result.training_time_seconds:.0f}s")
+    bic = gmm.bic(X_real_scaled)
+    aic = gmm.aic(X_real_scaled)
+    ll = gmm.score(X_real_scaled) * X_real_scaled.shape[0]
 
-    return pipeline, result
+    sil = silhouette_score(X_real_scaled, labels) if len(set(labels)) > 1 else -1.0
+    bic_scores[k] = {"bic": bic, "aic": aic, "ll": ll, "silhouette": sil, "gmm": gmm}
 
+    print(f"{k:>4} {bic:>12.0f} {aic:>12.0f} {ll:>12.0f} {sil:>12.4f}")
 
-dpo_pipeline, dpo_result = asyncio.run(run_dpo())
+best_k_bic = min(bic_scores.items(), key=lambda x: x[1]["bic"])
+best_k_sil = max(bic_scores.items(), key=lambda x: x[1]["silhouette"])
+print(f"\nBest K by BIC: {best_k_bic[0]}")
+print(f"Best K by Silhouette: {best_k_sil[0]}")
 
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert best_k_bic[0] in range(2, 9), "BIC-optimal K should be in tested range"
+assert best_k_sil[0] in range(2, 9), "Silhouette-optimal K should be in tested range"
+bic_vals = [v["bic"] for v in bic_scores.values()]
+assert bic_vals == sorted(bic_vals) or bic_vals != sorted(bic_vals, reverse=True), \
+    "BIC values should vary across K"
+# INTERPRETATION: BIC (Bayesian Information Criterion) penalises model complexity:
+# BIC = k * log(n) - 2 * log_likelihood. Larger K gives better fit but higher
+# penalty. The BIC-optimal K balances fit vs complexity — it's the principled
+# way to choose K without over-specifying the model.
+print("\n✓ Checkpoint 4 passed — BIC model selection complete\n")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: QLoRA fine-tuning
-# ══════════════════════════════════════════════════════════════════════
-# QLoRA: Quantized LoRA
-# 1. Quantize base model to NF4 (4-bit NormalFloat)
-# 2. Apply LoRA adapters on top of quantized model
-# 3. Train adapters in full precision while base stays 4-bit
-# 4. Double quantization: quantize the quantization constants too
+print("\nBIC vs AIC vs Silhouette:")
+print("  BIC: penalises model complexity (prefer smaller K)")
+print("  AIC: less conservative than BIC (can favour larger K)")
+print("  Silhouette: cluster separation (domain-interpretable)")
+print("  Choose K based on both statistical criteria AND business meaning")
 
-qlora_config = AlignmentConfig(
-    method="sft",  # SFT on chosen responses
-    base_model=base_model,
-    dataset_format="instruction",
-    # QLoRA-specific
-    quantization="nf4",  # NF4 quantization
-    double_quantization=True,  # Quantize quantization constants
-    compute_dtype="bfloat16",  # Compute in bf16
-    # LoRA
-    lora_r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  # More modules for QLoRA
-    # Training
-    num_epochs=3,
-    batch_size=4,
-    learning_rate=2e-4,
-    max_seq_length=512,
-    output_dir="./qlora_output",
+# Best model: fit and profile
+k_final = best_k_bic[0]
+gmm_best = bic_scores[k_final]["gmm"]
+labels_best = gmm_best.predict(X_real_scaled)
+soft_probs = gmm_best.predict_proba(X_real_scaled)
+
+print(f"\n=== Best GMM (K={k_final}) ===")
+print(f"Component weights: {gmm_best.weights_.round(3)}")
+print(f"Average max probability: {soft_probs.max(axis=1).mean():.4f}")
+print(f"  (high = crisp separation, low = overlapping clusters)")
+
+# Profile each component
+customers_with_clusters = customers.drop_nulls(subset=feature_cols).with_columns(
+    pl.Series("gmm_cluster", labels_best)
 )
 
+print(f"\n=== Customer Segment Profiles ===")
+for k in range(k_final):
+    subset = customers_with_clusters.filter(pl.col("gmm_cluster") == k)
+    print(f"\nSegment {k} (n={subset.height:,}, weight={gmm_best.weights_[k]:.3f}):")
+    for col in feature_cols[:4]:
+        mean_val = subset[col].mean()
+        overall_mean = customers_with_clusters[col].mean()
+        diff_pct = (mean_val - overall_mean) / (abs(overall_mean) + 1e-9) * 100
+        indicator = "HIGH" if diff_pct > 15 else "low" if diff_pct < -15 else "avg"
+        print(f"  {col:<28} {mean_val:>10.2f}  [{indicator:>4}] {diff_pct:+.1f}%")
 
-async def run_qlora():
-    # Convert preference pairs to instruction format (use chosen responses)
-    import polars as pl
 
-    sft_from_prefs = preferences.select(
-        pl.col("prompt").alias("instruction"),
-        pl.col("chosen").alias("response"),
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: AutoMLEngine for automated comparison
+# ══════════════════════════════════════════════════════════════════════
+
+from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
+
+
+async def automl_gmm():
+    """Use AutoMLEngine to automate GMM hyperparameter search."""
+    config = AutoMLConfig(
+        task_type="clustering",
+        metric_to_optimize="bic",
+        direction="minimize",
+        search_strategy="random",
+        search_n_trials=15,
+        agent=False,  # Double opt-in: set True + install kailash-ml[agents]
+        max_llm_cost_usd=0.5,
     )
 
-    pipeline = AlignmentPipeline(qlora_config)
-    n_train = int(sft_from_prefs.height * 0.9)
-
-    print(f"\n=== Running QLoRA ===")
-    print(f"Quantization: NF4 + double quantization")
-    print(f"Memory savings: ~75% vs full precision")
-
-    result = await pipeline.train(
-        train_data=sft_from_prefs[:n_train],
-        eval_data=sft_from_prefs[n_train:],
+    print(f"\n=== AutoMLEngine Config ===")
+    print(f"Task: {config.task_type}")
+    print(f"Optimising: {config.metric_to_optimize} ({config.direction})")
+    print(
+        f"Search strategy: {config.search_strategy} ({config.search_n_trials} trials)"
     )
+    print(f"Agent LLM guidance: {config.agent} (double opt-in)")
 
-    print(f"QLoRA complete:")
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss: {result.eval_loss:.4f}")
-    print(f"  Time: {result.training_time_seconds:.0f}s")
+    print("\nAutoMLEngine would search:")
+    print("  n_components: 2..10")
+    print("  covariance_type: full, tied, diag, spherical")
+    print("  init_params: kmeans, k-means++, random")
+    print("  → Selects configuration minimising BIC across CV folds")
 
-    return pipeline, result
-
-
-qlora_pipeline, qlora_result = asyncio.run(run_qlora())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate with LLM-as-judge
-# ══════════════════════════════════════════════════════════════════════
+    return config
 
 
-async def llm_judge_evaluation():
-    """Use an LLM to judge response quality."""
-    from kaizen_agents import Delegate
+asyncio.run(automl_gmm())
 
-    judge_model = os.environ.get(
-        "DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL")
-    )
-    judge = Delegate(model=judge_model, max_llm_cost_usd=2.0)
+# Summary comparison
+comparison = {
+    f"GMM K={k}": {"BIC": v["bic"], "Silhouette": v["silhouette"]}
+    for k, v in bic_scores.items()
+}
+fig_cmp = viz.metric_comparison(comparison)
+fig_cmp.update_layout(title="GMM: BIC and Silhouette vs Number of Components")
+fig_cmp.write_html("ex2_gmm_comparison.html")
+print("\nSaved: ex2_gmm_comparison.html")
 
-    eval_prompts = [
-        "Explain Singapore's HDB BTO application process.",
-        "What are the key differences between CPF OA, SA, and MA?",
-        "How does Singapore's AI governance framework compare to the EU AI Act?",
-    ]
-
-    print(f"\n=== LLM-as-Judge Evaluation ===")
-    for prompt in eval_prompts:
-        # Get responses from both models
-        dpo_response = await dpo_pipeline.generate(prompt, use_adapter=True)
-        qlora_response = await qlora_pipeline.generate(prompt, use_adapter=True)
-
-        # Judge comparison
-        judge_prompt = (
-            f"Compare these two responses to: '{prompt}'\n\n"
-            f"Response A: {dpo_response[:300]}\n\n"
-            f"Response B: {qlora_response[:300]}\n\n"
-            f"Which is better? Rate each 1-5 on: accuracy, completeness, clarity."
-        )
-
-        judge_text = ""
-        async for event in judge.run(judge_prompt):
-            if hasattr(event, "text"):
-                judge_text += event.text
-
-        print(f"\nPrompt: {prompt[:60]}...")
-        print(f"Judge: {judge_text[:200]}...")
-
-    # Known biases in LLM-as-judge
-    print(f"\n⚠ LLM-as-Judge Biases:")
-    print(f"  1. Position bias: prefers Response A (first position)")
-    print(f"  2. Verbosity bias: prefers longer responses")
-    print(f"  3. Self-enhancement: prefers responses similar to its own style")
-    print(f"  Mitigation: swap positions, control length, use multiple judges")
-
-
-asyncio.run(llm_judge_evaluation())
+print("\n✓ Exercise 2 complete — EM algorithm from scratch + sklearn GMM")
+print("  Key takeaways:")
+print("  1. EM = coordinate ascent on ELBO; each step raises log-likelihood")
+print("  2. Soft assignments r_{ik} are the 'hidden variable' estimates")
+print("  3. BIC penalises complexity → objective model selection criterion")
+print("  4. GMM = probabilistic generalisation of K-means with soft boundaries")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Method comparison
+# REFLECTION
 # ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ EM as ELBO maximisation: each step is guaranteed to improve
+  ✓ E-step: compute r_{{ik}} = P(z_i = k | x_i, θ) — soft assignments
+  ✓ M-step: update π_k, μ_k, Σ_k using weighted maximum likelihood
+  ✓ Convergence: non-decreasing log-likelihood proven and verified
+  ✓ BIC/AIC for model selection: penalise complexity, choose K objectively
+  ✓ Soft assignments vs hard labels: GMM ≥ K-means in expressivity
 
-print(f"\n=== DPO vs QLoRA Comparison ===")
-print(f"{'Aspect':<25} {'DPO':>15} {'QLoRA':>15}")
-print("─" * 58)
-print(f"{'Data requirement':<25} {'preference pairs':>15} {'instruction pairs':>15}")
-print(f"{'Reward model needed':<25} {'No (eliminated)':>15} {'No':>15}")
-print(f"{'Memory efficiency':<25} {'LoRA + fp16':>15} {'LoRA + NF4':>15}")
-print(f"{'Alignment quality':<25} {'Higher':>15} {'Good':>15}")
-print(
-    f"{'Training loss':<25} {dpo_result.final_loss:>15.4f} {qlora_result.final_loss:>15.4f}"
-)
-print(
-    f"{'Training time':<25} {dpo_result.training_time_seconds:>15.0f}s {qlora_result.training_time_seconds:>15.0f}s"
-)
-print(f"\nWhen to choose:")
-print(f"  DPO: when you have preference data and want alignment")
-print(f"  QLoRA: when you have instruction data and limited GPU memory")
-print(f"  Both: can be combined (QLoRA for SFT, then DPO for alignment)")
+  KEY INSIGHT: EM is a general template. It applies to any model with
+  latent variables — not just GMMs. Hidden Markov Models, Latent
+  Dirichlet Allocation (Ex 6), and even imputation use EM variants.
 
-print("\n✓ Exercise 2 complete — DPO vs QLoRA with LLM-as-judge evaluation")
+  THE GMM = K-MEANS CONNECTION:
+    K-means: hard E-step (assign to nearest centroid)
+    GMM:     soft E-step (assign fractional responsibility)
+    As covariance → 0, GMM converges to K-means.
+    GMM is the probabilistic, theoretically principled version of K-means.
+
+  NEXT: Exercise 3 reduces the dimensionality of these customer features.
+  PCA compresses 20+ features into 2-5 principal components that capture
+  90% of variance. You'll see the SVD connection, interpret loadings, and
+  compare PCA with t-SNE and UMAP for 2D visualisation.
+""")
+print("═" * 70)

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.5 — Window Functions and Trends | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1: Data Pipelines &amp; Visualisation</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 1.5</span>
+  Window Functions and Trends
+</h1>
+
+<p class="lead">
+  Group-by collapses many rows into one. A <strong>window function</strong>
+  computes a value for each row using a sliding window of nearby rows — no
+  collapse. Today you learn rolling averages, year-over-year changes, and
+  per-group windows with <code>over()</code>. You will also meet lazy frames,
+  Polars' performance-optimisation mode, and see the single pattern that
+  powers every time-series analysis in Module 2.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  HDB prices bounce around month to month. One Bishan transaction at 720k
+  followed by another at 690k does not mean the market dropped — it means
+  the second flat happened to be smaller, or lower-floor, or had less
+  remaining lease. To see the <em>trend</em>, you smooth the noise with a
+  rolling average. To see the <em>annual rhythm</em>, you compare each month
+  to the same month a year earlier. To see which districts are rising fastest,
+  you rank them by their recent growth rate.
+</p>
+
+<p>
+  Every one of those operations needs a <strong>window</strong> — a set of
+  nearby rows to compute against. Group-by is not enough because group-by
+  collapses: you lose the per-month detail. Windows are the answer: keep the
+  rows but enrich each one with context from its neighbours.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Raw series -->
+  <text x="50" y="30" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Raw monthly prices (Bishan)</text>
+  <!-- points -->
+  <g stroke="#F43F5E" stroke-width="2" fill="white">
+    <circle cx="70" cy="100" r="4"/>
+    <circle cx="130" cy="80" r="4"/>
+    <circle cx="190" cy="110" r="4"/>
+    <circle cx="250" cy="75" r="4"/>
+    <circle cx="310" cy="105" r="4"/>
+    <circle cx="370" cy="70" r="4"/>
+    <circle cx="430" cy="95" r="4"/>
+    <circle cx="490" cy="85" r="4"/>
+    <circle cx="550" cy="110" r="4"/>
+    <circle cx="610" cy="75" r="4"/>
+    <circle cx="670" cy="85" r="4"/>
+    <circle cx="730" cy="68" r="4"/>
+  </g>
+  <polyline fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="3 3"
+            points="70,100 130,80 190,110 250,75 310,105 370,70 430,95 490,85 550,110 610,75 670,85 730,68"/>
+  <text x="750" y="94" font-family="Inter" font-size="11" fill="#F43F5E">noisy</text>
+
+  <!-- Rolling 3m -->
+  <text x="50" y="170" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">3-month rolling mean</text>
+  <polyline fill="none" stroke="#3B82F6" stroke-width="2.5"
+            points="190,100 250,98 310,95 370,82 430,90 490,83 550,97 610,90 670,90 730,76"/>
+  <text x="750" y="84" font-family="Inter" font-size="11" fill="#3B82F6">reactive</text>
+
+  <!-- Rolling 12m -->
+  <text x="50" y="245" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">12-month rolling mean</text>
+  <polyline fill="none" stroke="#0D9488" stroke-width="3"
+            points="430,92 490,90 550,88 610,86 670,84 730,82"/>
+  <text x="750" y="86" font-family="Inter" font-size="11" fill="#0D9488">smooth trend</text>
+
+  <!-- Axis -->
+  <line x1="50" y1="300" x2="780" y2="300" stroke="#94A3B8" stroke-width="1"/>
+  <text x="50" y="318" font-family="Inter" font-size="10" fill="#64748B">Jan</text>
+  <text x="400" y="318" font-family="Inter" font-size="10" fill="#64748B">Jul</text>
+  <text x="730" y="318" font-family="Inter" font-size="10" fill="#64748B">Dec</text>
+</svg>
+<figcaption>Raw data bounces month-to-month (red). A 3-month rolling mean (blue) reacts quickly but still wobbles. A 12-month rolling mean (teal) reveals the underlying trend. Windows are how you choose the balance between responsiveness and smoothness.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Windows without collapsing</h3>
+
+<p>
+  The key difference between <code>group_by / agg</code> and a window
+  function is the output shape. Group-by produces one row per group; a
+  window produces <em>one row per input row</em>, enriched with the
+  aggregation.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- group_by -->
+  <g transform="translate(20, 20)">
+    <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">group_by / agg</text>
+    <rect x="30" y="30" width="320" height="240" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1"/>
+    <g font-family="JetBrains Mono" font-size="11">
+      <text x="50" y="55" fill="#0F766E">town     month  price</text>
+      <text x="50" y="73">BISHAN   Jan    720</text>
+      <text x="50" y="90">BISHAN   Feb    690</text>
+      <text x="50" y="107">BISHAN   Mar    710</text>
+      <text x="50" y="124">JURONG   Jan    430</text>
+      <text x="50" y="141">JURONG   Feb    445</text>
+      <text x="50" y="158" fill="#94A3B8">↓ collapse to 2 rows</text>
+      <text x="50" y="185" fill="#0F766E">town     mean</text>
+      <text x="50" y="203">BISHAN   706.67</text>
+      <text x="50" y="220">JURONG   437.5</text>
+      <text x="50" y="255" fill="#F43F5E">(lost month detail)</text>
+    </g>
+  </g>
+
+  <!-- window -->
+  <g transform="translate(430, 20)">
+    <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">window (over)</text>
+    <rect x="30" y="30" width="330" height="240" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+    <g font-family="JetBrains Mono" font-size="11">
+      <text x="50" y="55" fill="#0F766E">town     month  price  mean_town</text>
+      <text x="50" y="73">BISHAN   Jan    720    706.67</text>
+      <text x="50" y="90">BISHAN   Feb    690    706.67</text>
+      <text x="50" y="107">BISHAN   Mar    710    706.67</text>
+      <text x="50" y="124">JURONG   Jan    430    437.5</text>
+      <text x="50" y="141">JURONG   Feb    445    437.5</text>
+      <text x="50" y="175" fill="#0D9488">↓ same row count</text>
+      <text x="50" y="205" fill="#0D9488">each row now carries</text>
+      <text x="50" y="222" fill="#0D9488">its town's mean</text>
+      <text x="50" y="255" fill="#22C55E">(month detail preserved ✓)</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Group-by collapses Bishan's three rows into one; a window broadcasts the aggregation back to every row, preserving the original shape.</figcaption>
+</figure>
+
+<h3>The <code>.over(...)</code> modifier</h3>
+
+<p>
+  Polars expresses a window with <code>.over("partition_column")</code>.
+  The expression runs independently inside each partition, and the result
+  is broadcast back to every row in that partition.
+</p>
+
+<pre><code class="language-python">monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm")
+    .rolling_mean(window_size=12)
+    .over("town")
+    .alias("rolling_12m_price_sqm"),
+)
+</code></pre>
+
+<p>
+  Read it: "Take the median_price_sqm column. Compute a 12-row rolling mean.
+  Do it independently for each town (so the window never crosses town
+  boundaries). Name the result rolling_12m_price_sqm." The output has the
+  same row count as the input; every row now carries its town's 12-month
+  trend at that point in time.
+</p>
+
+<h3>Rolling aggregations</h3>
+
+<p>
+  <code>rolling_mean</code> is the workhorse. Given a window of size $w$
+  and a row at position $i$, it computes the mean of rows
+  $i-w+1, \ldots, i$ — the last $w$ rows inclusive.
+</p>
+
+<div class="annotated-equation">
+  $$\text{rolling\_mean}_i = \frac{1}{w} \sum_{j=i-w+1}^{i} x_j$$
+  <div class="annotations">
+    <span>$w$ — window size</span>
+    <span>$x_j$ — value at row $j$</span>
+    <span>last $w$ rows, inclusive</span>
+  </div>
+</div>
+
+<p>
+  The first $w - 1$ rows do not have enough history, so Polars fills them
+  with <code>null</code>. That is correct behaviour — there was no prior
+  data to average. Do not try to fix it with zeros; the nulls are telling
+  you "insufficient history here".
+</p>
+
+<p>
+  Polars has several rolling variants — <code>rolling_sum</code>,
+  <code>rolling_min</code>, <code>rolling_max</code>, <code>rolling_std</code>
+  — all of which follow the same shape.
+</p>
+
+<h3><code>shift</code> and year-over-year</h3>
+
+<p>
+  <code>shift(n)</code> moves every value $n$ positions forward, filling the
+  first $n$ rows with null. Combined with <code>over("town")</code>, each
+  town shifts independently.
+</p>
+
+<pre><code class="language-python">monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm").shift(12).over("town").alias("price_12m_ago"),
+)
+
+monthly_prices = monthly_prices.with_columns(
+    (
+        (pl.col("median_price_sqm") - pl.col("price_12m_ago"))
+        / pl.col("price_12m_ago") * 100
+    ).alias("yoy_change_pct"),
+)
+</code></pre>
+
+<p>
+  The YoY formula is the standard percent change:
+</p>
+
+<div class="annotated-equation">
+  $$\text{YoY}\% = \frac{x_t - x_{t-12}}{x_{t-12}} \times 100\%$$
+  <div class="annotations">
+    <span>$x_t$ — price now</span>
+    <span>$x_{t-12}$ — price 12 months ago</span>
+    <span>positive = appreciation</span>
+  </div>
+</div>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: Why YoY and not MoM?</span>
+  <p>
+    Month-over-month change is dominated by seasonality. Singapore HDB
+    transactions peak in certain months (post-Chinese New Year, pre-year-end).
+    A MoM change mixes genuine appreciation with calendar effects. A
+    year-over-year change compares the same calendar month, so seasonal
+    effects cancel and you see the underlying market movement.
+  </p>
+</div>
+
+<h3>Lazy frames (performance preview)</h3>
+
+<p>
+  Every chain you have written so far runs <em>eagerly</em>: each
+  <code>filter</code>, <code>with_columns</code>, or <code>group_by</code>
+  executes immediately and hands the result to the next step. For large
+  data, this can waste work — Polars can often skip or reorder steps if it
+  is allowed to plan the whole chain before running anything. A
+  <strong>lazy frame</strong> gives Polars that permission.
+</p>
+
+<pre><code class="language-python">result = (
+    pl.scan_parquet("hdb_resale.parquet")        # lazy: no data loaded yet
+    .filter(pl.col("year") >= 2020)
+    .group_by("town")
+    .agg(pl.col("resale_price").median().alias("median"))
+    .sort("median", descending=True)
+    .collect()                                    # NOW execute the whole plan
+)
+</code></pre>
+
+<p>
+  <code>scan_parquet</code> returns a lazy frame — a <em>plan</em>, not
+  data. The chain records your intentions without doing any work. When you
+  call <code>collect()</code>, Polars looks at the whole plan, optimises it
+  (pushes the filter into the scan, fuses operations, parallelises where
+  possible), and executes it in one shot. For big data, the speedup is
+  dramatic — often 5× or more.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 When to use lazy frames</span>
+  <p>
+    Use lazy frames when (a) the data is too big to fit in memory, (b) the
+    pipeline is long enough that optimisation matters, or (c) you are
+    producing the same pipeline in production and want maximum throughput.
+    For interactive exploration on small data, eager frames are fine —
+    you do not need the optimisation and the shorter feedback loop is
+    nicer.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 800 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Eager -->
+  <g transform="translate(20, 20)">
+    <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Eager (default)</text>
+    <rect x="20" y="30" width="330" height="30" rx="4" fill="#FFF1F2"/>
+    <text x="40" y="50" font-family="JetBrains Mono" font-size="11">load → 500,000 rows in memory</text>
+    <rect x="20" y="70" width="330" height="30" rx="4" fill="#FFF1F2"/>
+    <text x="40" y="90" font-family="JetBrains Mono" font-size="11">filter(year≥2020) → 180k rows</text>
+    <rect x="20" y="110" width="330" height="30" rx="4" fill="#FFF1F2"/>
+    <text x="40" y="130" font-family="JetBrains Mono" font-size="11">group_by(town).agg(median)</text>
+    <rect x="20" y="150" width="330" height="30" rx="4" fill="#FFF1F2"/>
+    <text x="40" y="170" font-family="JetBrains Mono" font-size="11">sort → 26 rows</text>
+    <text x="20" y="210" font-family="Inter" font-size="12" fill="#F43F5E">Each step executes immediately</text>
+    <text x="20" y="228" font-family="Inter" font-size="12" fill="#F43F5E">even if the filter could have</text>
+    <text x="20" y="246" font-family="Inter" font-size="12" fill="#F43F5E">been pushed into the scan</text>
+  </g>
+
+  <!-- Lazy -->
+  <g transform="translate(420, 20)">
+    <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Lazy (plan then execute)</text>
+    <rect x="20" y="30" width="330" height="30" rx="4" fill="#F0FDFA"/>
+    <text x="40" y="50" font-family="JetBrains Mono" font-size="11">scan_parquet → plan node</text>
+    <rect x="20" y="70" width="330" height="30" rx="4" fill="#F0FDFA"/>
+    <text x="40" y="90" font-family="JetBrains Mono" font-size="11">filter → plan node</text>
+    <rect x="20" y="110" width="330" height="30" rx="4" fill="#F0FDFA"/>
+    <text x="40" y="130" font-family="JetBrains Mono" font-size="11">group_by → plan node</text>
+    <rect x="20" y="150" width="330" height="30" rx="4" fill="#E0F2F1" stroke="#0D9488"/>
+    <text x="40" y="170" font-family="JetBrains Mono" font-size="11" fill="#0D9488">collect() → optimise + run once</text>
+    <text x="20" y="210" font-family="Inter" font-size="12" fill="#0D9488">Polars pushes the filter into</text>
+    <text x="20" y="228" font-family="Inter" font-size="12" fill="#0D9488">the scan: never loads the 320k</text>
+    <text x="20" y="246" font-family="Inter" font-size="12" fill="#0D9488">rows outside the date range</text>
+  </g>
+</svg>
+<figcaption>Eager mode runs each step immediately. Lazy mode builds a plan, optimises it globally, and executes once. For a long pipeline on large data, lazy is much faster.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: FeatureEngineer Time-Series (preview)</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Module 2's <code>FeatureEngineer</code> has a time-series mode that
+    automates rolling means, lag features, and rate-of-change features
+    across many columns at once. Under the hood it uses the same
+    <code>over()</code> + <code>rolling_*</code> + <code>shift()</code>
+    primitives you are learning today. When the engine arrives you will
+    recognise its output — just with a nicer API and more built-in
+    defaults.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Ranking Singapore's Hottest Districts</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Compute monthly median price per square metre for every HDB town, add
+    a 12-month rolling mean and year-over-year change, and rank the top 5
+    fastest-growing districts over the last 12 months.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load, parse dates, and build the monthly series.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+)
+
+monthly_prices = (
+    hdb.group_by("town", "transaction_date")
+    .agg(
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+        pl.len().alias("transaction_count"),
+    )
+    .sort("town", "transaction_date")
+)</code></pre>
+    <p>
+      Note the sort — rolling windows depend on row order. A window on
+      unsorted data is nonsense.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Add a 12-month rolling mean using <code>over("town")</code>. Each
+       town gets its own independent window.</p>
+    <pre><code class="language-python">monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm")
+    .rolling_mean(window_size=12)
+    .over("town")
+    .alias("rolling_12m"),
+)
+
+print(monthly_prices.filter(pl.col("town") == "BISHAN").tail(15))</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Compute year-over-year change with <code>shift(12).over("town")</code>.</p>
+    <pre><code class="language-python">monthly_prices = monthly_prices.with_columns(
+    pl.col("median_price_sqm").shift(12).over("town").alias("price_12m_ago"),
+).with_columns(
+    (
+        (pl.col("median_price_sqm") - pl.col("price_12m_ago"))
+        / pl.col("price_12m_ago") * 100
+    ).alias("yoy_change_pct"),
+)</code></pre>
+    <p>
+      The first 12 rows of every town will have null YoY — no 12-month
+      history. That is expected.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Rank towns by their most recent YoY change.</p>
+    <pre><code class="language-python">latest_date = monthly_prices["transaction_date"].max()
+
+latest_rankings = (
+    monthly_prices
+    .filter(pl.col("transaction_date") == latest_date)
+    .filter(pl.col("yoy_change_pct").is_not_null())
+    .select("town", "median_price_sqm", "rolling_12m", "yoy_change_pct")
+    .sort("yoy_change_pct", descending=True)
+)
+
+print("=== TOP 5 FASTEST GROWING ===")
+print(latest_rankings.head(5))
+print("\n=== BOTTOM 5 ===")
+print(latest_rankings.tail(5))</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Rewrite as a lazy pipeline for production speed.</p>
+    <pre><code class="language-python">rankings = (
+    pl.scan_parquet(loader.path("mlfp01", "hdb_resale.parquet"))
+    .with_columns(
+        pl.col("month").str.to_date("%Y-%m").alias("date"),
+        (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("psm"),
+    )
+    .group_by("town", "date")
+    .agg(pl.col("psm").median().alias("median_psm"))
+    .sort("town", "date")
+    .with_columns(
+        pl.col("median_psm").shift(12).over("town").alias("psm_12m_ago"),
+    )
+    .with_columns(
+        ((pl.col("median_psm") - pl.col("psm_12m_ago"))
+         / pl.col("psm_12m_ago") * 100).alias("yoy_pct"),
+    )
+    .collect()
+)</code></pre>
+    <p>
+      The whole chain runs in one pass once <code>collect()</code> is
+      called. Polars optimises the plan before executing — filter pushdown,
+      predicate fusion, and parallel scan all happen behind the scenes.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Mathematical Foundations: Moving Averages</h2>
+
+<p>
+  A <strong>simple moving average (SMA)</strong> of window size $w$ is the
+  unweighted mean of the last $w$ observations. Each observation inside
+  the window contributes $\frac{1}{w}$ to the average; observations outside
+  contribute 0. SMA is a <em>low-pass filter</em> — it suppresses
+  high-frequency noise while preserving low-frequency trend.
+</p>
+
+<h3>Larger windows, smoother curves</h3>
+
+<p>
+  If the noise is independent across months with variance $\sigma^2$, the
+  variance of the rolling-mean estimator is $\sigma^2 / w$. Doubling the
+  window halves the variance of the smoothed curve, at the cost of lag:
+  the rolling mean always trails a real trend by roughly $w/2$ months.
+</p>
+
+<h3>The responsiveness–smoothness trade-off</h3>
+
+<table>
+  <thead>
+    <tr><th>Window</th><th>Noise reduction</th><th>Lag</th><th>Use case</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>3 months</td><td>Low</td><td>~1.5 mo</td><td>Detect turning points quickly</td></tr>
+    <tr><td>6 months</td><td>Moderate</td><td>~3 mo</td><td>Balance of speed and smoothness</td></tr>
+    <tr><td>12 months</td><td>Strong</td><td>~6 mo</td><td>Reveal underlying annual trend</td></tr>
+    <tr><td>24 months</td><td>Very strong</td><td>~12 mo</td><td>Long-term structural comparison</td></tr>
+  </tbody>
+</table>
+
+<p>
+  A classic pattern in technical analysis: plot both the short-window and
+  long-window rolling means on the same chart. When the short one crosses
+  above the long one ("golden cross"), it signals accelerating growth;
+  when it crosses below ("death cross"), deceleration. The same idea
+  applies to HDB prices, GDP, unemployment — any time-series trend.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Forgetting to sort before rolling</span>
+  <p>
+    A rolling window operates on rows in their current order. If the data
+    is not sorted by date (and by partition if you are using
+    <code>over</code>), the "rolling mean" becomes a random scramble of
+    unrelated values. Always <code>sort(partition, date)</code> first.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Rolling across groups without <code>over</code></span>
+  <p>
+    <code>pl.col("price").rolling_mean(12)</code> without <code>.over("town")</code>
+    computes a window that spans <em>every</em> row — including rows from
+    other towns. The first row of Jurong would be averaged with the last
+    eleven rows of Bishan. Nonsense. Always use <code>.over</code> when
+    you have partitions.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Treating early nulls as errors</span>
+  <p>
+    The first $w-1$ rows of a rolling mean are null because there is not
+    enough history. That is correct, not broken. Do not fill with zeros —
+    you would be injecting fake averages into the model. Filter them out
+    before modelling if they bother you.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 4: Calling <code>collect()</code> too early</span>
+  <p>
+    A lazy pipeline's advantage comes from planning the whole chain before
+    executing. If you call <code>collect()</code> in the middle and then
+    keep building, you have cut the plan in half — the optimiser cannot see
+    the full shape and misses optimisations. Defer <code>collect()</code>
+    to the end.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — 3-month rolling mean</h3>
+  <p>
+    Compute a 3-month rolling mean of price per square metre for each
+    town. Print the last 6 months for Toa Payoh.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Year-over-year change</h3>
+  <p>
+    Compute the YoY price change for each town using <code>shift(12)</code>
+    over <code>town</code>. What was the YoY for Woodlands in the latest
+    month?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Fastest and slowest</h3>
+  <p>
+    Rank all towns by their latest YoY change. Print the top 3 and bottom 3.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise D — Lazy rewrite</h3>
+  <p>
+    Rewrite your pipeline from Exercise C using <code>pl.scan_parquet</code>
+    and <code>.collect()</code>. Time both versions with Python's
+    <code>time.time()</code> and report which is faster.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 1.3's <code>group_by</code> collapses; today's
+  <code>over()</code> does not. Lesson 1.4's joined table becomes the input
+  for today's windows. Lesson 1.6 turns the trend lines you compute here
+  into line charts with <code>ModelVisualizer</code>. Module 2's time-series
+  features inherit every pattern you met today; Module 3's forecasting
+  models depend on lag and rolling features as their basic inputs.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Windows are the bridge from "collapse to one number per group" (group-by)
+  to "enrich each row with context from its neighbours" (rolling means,
+  lag features, YoY changes). Every time-series analysis in the rest of
+  this course builds on the <code>over()</code> + <code>rolling_*</code> +
+  <code>shift()</code> primitives you saw today.
+</p>
+<p>
+  The responsiveness–smoothness trade-off is not just about charts. Every
+  feature you engineer for a forecasting model makes the same trade. Short
+  windows catch turning points but add noise; long windows smooth noise but
+  lag the real trend. The right answer depends on what you are forecasting
+  — and that is a Module 3 question.
+</p>
+<p>
+  In Lesson 1.6 we stop computing and start communicating. The trend lines
+  you calculated today become interactive Plotly charts via the
+  <code>ModelVisualizer</code> engine. You will learn which chart type to
+  use for which kind of question — and how Gestalt principles decide what
+  readers see first.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../04/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    1.4 Joins and Multi-Table Data
+  </a>
+  <a href="../06/textbook.html" class="next">
+    <span class="label">Next →</span>
+    1.6 Data Visualisation
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

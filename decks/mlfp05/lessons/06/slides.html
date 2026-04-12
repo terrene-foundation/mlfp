@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.6 — Graph Neural Networks | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; } .reveal h1, .reveal h2, .reveal h3 { text-transform: none; } .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; } .reveal svg { max-width: 100%; max-height: 480px; } .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 5 · Lesson 5.6</p>
+  <h1>Graph Neural Networks</h1>
+  <p style="font-size: 0.7em; color: #64748B;">GCN · GraphSAGE · GAT · Message passing · torch_geometric</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;"><strong>⏱ 75 minutes</strong> &nbsp;·&nbsp; <strong>Outcome:</strong> build GCN and GAT for node and graph classification</div>
+</section>
+
+<section>
+  <h2>Why graphs?</h2>
+  <ul>
+    <li>Social networks, molecular structures, supply chains, MRT map.</li>
+    <li>Relationships between entities carry information tables lose.</li>
+    <li>Graph data: nodes (entities), edges (relationships), features on both.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> if your data has explicit relationships between entities, a graph captures structure that a table cannot.</div>
+</section>
+
+<section>
+  <h2>Message passing</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="150" cy="100" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/><text x="150" y="105" text-anchor="middle" font-size="11" fill="#1E40AF">A</text>
+      <circle cx="300" cy="50" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/><text x="300" y="55" text-anchor="middle" font-size="11" fill="#1E40AF">B</text>
+      <circle cx="300" cy="150" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/><text x="300" y="155" text-anchor="middle" font-size="11" fill="#1E40AF">C</text>
+      <circle cx="450" cy="100" r="22" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/><text x="450" y="105" text-anchor="middle" font-size="11" fill="#92400E">D</text>
+      <line x1="170" y1="88" x2="280" y2="62" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="170" y1="112" x2="280" y2="138" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="320" y1="62" x2="430" y2="88" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="320" y1="138" x2="430" y2="112" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="300" y1="72" x2="300" y2="128" stroke="#94A3B8" stroke-width="1.5"/>
+      <text x="450" y="150" text-anchor="middle" font-size="10" fill="#F59E0B">h_D = agg(h_B, h_C)</text>
+    </svg>
+  </figure>
+  <p>Each node updates by aggregating neighbour features. 1 GNN layer = 1 round of message passing.</p>
+</section>
+
+<section>
+  <h2>GCN update rule</h2>
+  \[ H^{(l+1)} = \sigma\bigl(\tilde{D}^{-1/2}\,\tilde{A}\,\tilde{D}^{-1/2}\,H^{(l)}\,W^{(l)}\bigr) \]
+  <ul style="font-size: 0.85em;">
+    <li>$\tilde{A} = A + I$ (add self-loops).</li>
+    <li>Degree normalisation ensures equal weight regardless of node degree.</li>
+    <li>$W^{(l)}$ = learnable weight matrix shared across all nodes.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>GraphSAGE — inductive</h2>
+  <ul>
+    <li>Samples fixed-size neighbourhood (not all neighbours).</li>
+    <li>Aggregation: mean, LSTM, or max pooling.</li>
+    <li>Generalises to unseen nodes — essential for dynamic graphs.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>🟢 Foundations:</strong> GCN requires all nodes at training. GraphSAGE can embed new nodes without retraining.</div>
+</section>
+
+<section>
+  <h2>GAT — attention on neighbours</h2>
+  \[ e_{ij} = \text{LeakyReLU}\bigl(\mathbf{a}^T [W\mathbf{h}_i \| W\mathbf{h}_j]\bigr) \]
+  <ul style="font-size: 0.85em;">
+    <li>Learns different weights per neighbour pair.</li>
+    <li>Normalised with softmax → attention coefficients $\alpha_{ij}$.</li>
+    <li>Multi-head attention (same as Transformers, Lesson 5.4).</li>
+  </ul>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> GCN = fixed weights. GraphSAGE = fixed aggregation. GAT = learned per-pair weights. Increasing flexibility.</div>
+</section>
+
+<section>
+  <h2>Three task types</h2>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Task</th><th>Goal</th><th>Pooling</th></tr></thead>
+    <tbody>
+      <tr><td>Node classification</td><td>Label each node</td><td>None — use node embeddings directly</td></tr>
+      <tr><td>Graph classification</td><td>Label entire graph</td><td>global_mean_pool or global_max_pool</td></tr>
+      <tr><td>Link prediction</td><td>Predict missing edges</td><td>Dot product of node pairs</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>GCN in PyG</h2>
+  <pre><code class="language-python" data-trim>
+from torch_geometric.nn import GCNConv, global_mean_pool
+
+class GCN(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = GCNConv(num_features, 64)
+        self.conv2 = GCNConv(64, 64)
+        self.fc = torch.nn.Linear(64, num_classes)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = torch.relu(self.conv1(x, edge_index))
+        x = torch.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)  # graph-level
+        return self.fc(x)
+  </code></pre>
+</section>
+
+<section>
+  <h2>Visualising node embeddings</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 500 260" xmlns="http://www.w3.org/2000/svg">
+      <text x="250" y="20" text-anchor="middle" font-weight="700" font-size="12" fill="#475569">t-SNE of learned GCN node embeddings</text>
+      <rect x="30" y="30" width="440" height="200" fill="#F8FAFC" stroke="#E2E8F0" rx="4"/>
+      <g fill="#3B82F6" opacity="0.6"><circle cx="100" cy="80" r="5"/><circle cx="120" cy="90" r="4"/><circle cx="110" cy="100" r="5"/><circle cx="130" cy="75" r="4"/></g>
+      <text x="115" y="125" text-anchor="middle" font-size="9" fill="#3B82F6" font-weight="600">Class 0</text>
+      <g fill="#F59E0B" opacity="0.6"><circle cx="350" cy="160" r="5"/><circle cx="370" cy="150" r="4"/><circle cx="360" cy="170" r="5"/><circle cx="380" cy="155" r="4"/></g>
+      <text x="365" y="195" text-anchor="middle" font-size="9" fill="#F59E0B" font-weight="600">Class 1</text>
+      <g fill="#22C55E" opacity="0.6"><circle cx="250" cy="100" r="5"/><circle cx="240" cy="115" r="4"/><circle cx="260" cy="108" r="5"/><circle cx="230" cy="95" r="4"/></g>
+      <text x="245" y="140" text-anchor="middle" font-size="9" fill="#22C55E" font-weight="600">Class 2</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Common mistakes</h2>
+  <ol style="font-size: 0.85em;">
+    <li><strong>Ignoring graph structure</strong> — flattening to table loses edges.</li>
+    <li><strong>Too many layers</strong> — over-smoothing. 2–3 layers is typical.</li>
+    <li><strong>Wrong pooling</strong> — node tasks need no pooling; graph tasks need global pooling.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Architecture selection (consolidation)</h2>
+  <table style="font-size: 0.65em;">
+    <thead><tr><th>Data type</th><th>Architecture</th><th>Lesson</th></tr></thead>
+    <tbody>
+      <tr><td>Images</td><td>CNN / ViT</td><td>5.2</td></tr>
+      <tr><td>Sequences</td><td>RNN / Transformer</td><td>5.3 / 5.4</td></tr>
+      <tr><td>Generation</td><td>VAE / GAN / Diffusion</td><td>5.1 / 5.5</td></tr>
+      <tr><td>Graphs</td><td>GCN / GraphSAGE / GAT</td><td>5.6 (today)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Build GCN and GAT for node and graph classification.</li>
+    <li>✓ Explain message passing and neighbourhood aggregation.</li>
+    <li>✓ Compare GCN, GraphSAGE, GAT flexibility.</li>
+    <li>✓ Use torch_geometric DataLoader for graph batches.</li>
+  </ul>
+  <div class="callout-slide foundations"><strong>Next:</strong> 5.7 — Transfer Learning. Leverage pre-trained models for CV and NLP tasks.</div>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 1 — Data Pipelines and Visualisation Mastery | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 1</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 1</span>
+    Data Pipelines and Visualisation Mastery with Python
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~24 hours total study</span>
+    <span>Scaffolding: 70% (heavy)</span>
+    <span>Audience: zero Python required</span>
+  </div>
+  <p class="lead">
+    Zero to productive in eight lessons. Every Python concept grounded in a
+    real Singapore data task — no abstract exercises, no toy examples.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module, you will be able to:</p>
+<ul>
+  <li>Write Python programs with variables, functions, loops, conditionals, and collections</li>
+  <li>Load, filter, join, aggregate, and transform datasets using Polars (Arrow-backed, vectorised)</li>
+  <li>Create interactive visualisations using Plotly via the Kailash <code>ModelVisualizer</code> engine</li>
+  <li>Profile datasets automatically and detect data quality issues with <code>DataExplorer</code></li>
+  <li>Build end-to-end data pipelines: load → profile → clean → visualise → report</li>
+</ul>
+
+<h2>Datasets You Will Use</h2>
+<table>
+  <thead><tr><th>Dataset</th><th>Size</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td>Singapore weather (sg_weather.csv)</td><td>12 rows</td><td>1.1</td></tr>
+    <tr><td>HDB resale transactions (hdb_resale.parquet)</td><td>50K rows</td><td>1.2 – 1.6</td></tr>
+    <tr><td>MRT stations (mrt_stations.parquet)</td><td>~150 rows</td><td>1.4</td></tr>
+    <tr><td>Primary schools (schools.parquet)</td><td>~350 rows</td><td>1.4</td></tr>
+    <tr><td>Economic indicators (economic_indicators.csv)</td><td>~400 rows, 3 messy date formats</td><td>1.7</td></tr>
+    <tr><td>Singapore taxi trips (sg_taxi_trips.parquet)</td><td>50K trips</td><td>1.8</td></tr>
+  </tbody>
+</table>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">1.1</div>
+    <div>
+      <p class="title">Your First Data Exploration</p>
+      <p class="summary">Variables, types, f-strings, DataFrames, summary statistics. Real Singapore weather data.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">1.2</div>
+    <div>
+      <p class="title">Filtering and Transforming Data</p>
+      <p class="summary">Booleans, Polars expressions, method chaining, computed columns. 50K HDB transactions.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">1.3</div>
+    <div>
+      <p class="title">Functions and Aggregation</p>
+      <p class="summary">def/return, for loops, lists, dicts, group_by, agg. District-level statistics.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">1.4</div>
+    <div>
+      <p class="title">Joins and Multi-Table Data</p>
+      <p class="summary">if/else, imports, left/inner/outer joins, distance-to-amenity features. HDB + MRT + schools.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">1.5</div>
+    <div>
+      <p class="title">Window Functions and Trends</p>
+      <p class="summary">Rolling means, year-over-year, lazy evaluation. Temporal trend analysis.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">1.6</div>
+    <div>
+      <p class="title">Data Visualisation</p>
+      <p class="summary">Gestalt principles, chart selection, six chart types via ModelVisualizer.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/07/textbook.html">
+    <div class="num">1.7</div>
+    <div>
+      <p class="title">Automated Data Profiling</p>
+      <p class="summary">DataExplorer, 8 alert types, before/after comparison. Messy economic data.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+
+  <a class="lesson-card" href="lessons/08/textbook.html">
+    <div class="num">1.8</div>
+    <div>
+      <p class="title">Data Pipelines and End-to-End Project</p>
+      <p class="summary">Null handling, ETL, REST APIs, PreprocessingPipeline. Full taxi trip pipeline.</p>
+    </div>
+    <div class="formats">
+      <span class="pill">Textbook</span>
+    </div>
+  </a>
+</div>
+
+<h2>Master Documents</h2>
+<p>If you prefer the consolidated single-file experience, the full module is also available as:</p>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> (78 slides, all 8 lessons in one Reveal.js deck)</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a> (markdown, all 8 lessons)</li>
+</ul>
+
+</main>
+</body>
+</html>

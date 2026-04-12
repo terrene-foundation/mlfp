@@ -2,388 +2,294 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 5: Backpropagation from Scratch
+# MLFP05 — Exercise 5: Generative Models (GAN and WGAN-GP)
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Implement the backpropagation algorithm step by step —
-#   chain rule, gradient computation, gradient checking — then diagnose
-#   vanishing gradients.
 #
-# TASKS:
-#   1. Implement forward pass for 3-layer network
-#   2. Derive and implement backward pass (chain rule)
-#   3. Verify with numerical gradient checking
-#   4. Demonstrate vanishing gradients with sigmoid
-#   5. Fix with ReLU + proper initialization
+# WHAT YOU'LL LEARN:
+#   - Build Generator and Discriminator MLPs in torch.nn
+#   - Train a vanilla GAN with binary cross-entropy (min-max game)
+#   - Train a WGAN-GP using Wasserstein loss and a gradient penalty
+#   - Compute a gradient penalty with torch.autograd.grad and explain why
+#     it replaces weight clipping from the original WGAN paper
+#   - Compare samples visually: both generators should learn the target
+#     2-D distribution
+#
+# PREREQUISITES: M5/ex_1 (autoencoders/VAE), M5/ex_2 (CNN training loops).
+# ESTIMATED TIME: ~60 min
+# DATASET: Synthetic "eight Gaussians on a ring" 2-D distribution.
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import math
-import random
 
-import polars as pl
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-from kailash_ml import DataExplorer, ModelVisualizer
+from kailash_ml import ModelVisualizer
 
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
-
-random.seed(42)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Implement forward pass for 3-layer network
-# ══════════════════════════════════════════════════════════════════════
-
-loader = MLFPDataLoader()
-df = loader.load("mlfp05", "mnist_sample.parquet")
-
-feature_cols = [c for c in df.columns if c != "label"]
-X = [
-    [pixel / 255.0 for pixel in row]
-    for row in df.select(feature_cols).to_numpy().tolist()
-]
-y_labels = df["label"].to_list()
-n_classes = 10
-Y = [[1.0 if j == label else 0.0 for j in range(n_classes)] for label in y_labels]
-
-n_features = len(X[0])
-print(f"=== MNIST Data Loaded ===")
-print(f"Features: {n_features}, Samples: {len(X)}, Classes: {n_classes}")
-
-# Architecture: input(784) -> hidden1(64) -> hidden2(32) -> output(10)
-dims = [n_features, 64, 32, n_classes]
+torch.manual_seed(42)
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-def sigmoid(z: float) -> float:
-    z = max(-500, min(500, z))
-    return 1.0 / (1.0 + math.exp(-z))
-
-
-def softmax(z: list[float]) -> list[float]:
-    max_z = max(z)
-    exp_z = [math.exp(zi - max_z) for zi in z]
-    total = sum(exp_z)
-    return [e / total for e in exp_z]
-
-
-# Initialize weights with Xavier
-def init_params(dims: list[int]) -> tuple[list, list]:
-    weights = []
-    biases = []
-    for i in range(len(dims) - 1):
-        std = math.sqrt(2.0 / (dims[i] + dims[i + 1]))
-        W = [[random.gauss(0, std) for _ in range(dims[i + 1])] for _ in range(dims[i])]
-        b = [0.0] * dims[i + 1]
-        weights.append(W)
-        biases.append(b)
-    return weights, biases
-
-
-weights, biases = init_params(dims)
-
-print(f"\n=== Network Architecture ===")
-for i, (d_in, d_out) in enumerate(zip(dims[:-1], dims[1:])):
-    act = "softmax" if i == len(dims) - 2 else "sigmoid"
-    print(f"  Layer {i+1}: {d_in} -> {d_out} ({act})")
-total_params = sum(dims[i] * dims[i + 1] + dims[i + 1] for i in range(len(dims) - 1))
-print(f"  Total parameters: {total_params}")
-
-
-def forward(x: list[float], weights: list, biases: list) -> dict:
-    """Full forward pass, caching all intermediates for backprop."""
-    cache = {"activations": [x], "pre_activations": []}
-    current = x
-
-    for layer_idx in range(len(weights)):
-        W = weights[layer_idx]
-        b = biases[layer_idx]
-        d_in = len(current)
-        d_out = len(b)
-
-        # Linear: z = Wx + b
-        z = [
-            sum(current[j] * W[j][k] for j in range(d_in)) + b[k] for k in range(d_out)
-        ]
-        cache["pre_activations"].append(z)
-
-        # Activation
-        if layer_idx < len(weights) - 1:
-            current = [sigmoid(zi) for zi in z]
-        else:
-            current = softmax(z)
-
-        cache["activations"].append(current)
-
-    return cache
-
-
-# Test forward pass
-cache = forward(X[0], weights, biases)
-output = cache["activations"][-1]
-predicted_class = output.index(max(output))
-print(f"\nForward pass test:")
-print(f"  Output shape: {len(output)}")
-print(f"  Predicted class: {predicted_class}")
-print(f"  Max probability: {max(output):.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Derive and implement backward pass (chain rule)
-# ══════════════════════════════════════════════════════════════════════
-
-
-def backward(cache: dict, y_true: list[float], weights: list) -> tuple[list, list]:
-    """Backpropagation via chain rule.
-
-    For each layer l (from output to input):
-      dL/dW_l = a_{l-1}^T @ delta_l
-      dL/db_l = delta_l
-      delta_{l-1} = (W_l^T @ delta_l) * sigma'(z_{l-1})
-    """
-    activations = cache["activations"]
-    pre_activations = cache["pre_activations"]
-    n_layers = len(weights)
-
-    dW_list = []
-    db_list = []
-
-    # Output layer: delta = y_pred - y_true (for softmax + CE)
-    delta = [activations[-1][k] - y_true[k] for k in range(len(y_true))]
-
-    for layer_idx in range(n_layers - 1, -1, -1):
-        a_prev = activations[layer_idx]  # activation from previous layer
-        d_in = len(a_prev)
-        d_out = len(delta)
-
-        # Gradient for weights: dW = a_prev^T @ delta
-        dW = [[a_prev[j] * delta[k] for k in range(d_out)] for j in range(d_in)]
-        db = list(delta)
-
-        dW_list.insert(0, dW)
-        db_list.insert(0, db)
-
-        # Propagate delta to previous layer (if not the first layer)
-        if layer_idx > 0:
-            W = weights[layer_idx]
-            # delta_prev = W^T @ delta * sigmoid'(z)
-            z_prev = pre_activations[layer_idx - 1]
-            delta_new = []
-            for j in range(d_in):
-                grad_sum = sum(W[j][k] * delta[k] for k in range(d_out))
-                sig = sigmoid(z_prev[j])
-                sig_deriv = sig * (1.0 - sig)
-                delta_new.append(grad_sum * sig_deriv)
-            delta = delta_new
-
-    return dW_list, db_list
-
-
-# Test backward pass
-cache = forward(X[0], weights, biases)
-dW_list, db_list = backward(cache, Y[0], weights)
-
-print(f"\n=== Backward Pass ===")
-for i, (dW, db) in enumerate(zip(dW_list, db_list)):
-    flat_dW = [abs(g) for row in dW for g in row]
-    mean_grad = sum(flat_dW) / len(flat_dW)
-    print(
-        f"  Layer {i+1}: |dW| mean={mean_grad:.8f}, |db| mean={sum(abs(g) for g in db)/len(db):.8f}"
+# ════════════════════════════════════════════════════════════════════════
+# Target distribution — 8 Gaussians on a ring (classic GAN toy problem)
+# ════════════════════════════════════════════════════════════════════════
+# Learning this distribution is a classic GAN benchmark because vanilla
+# GANs suffer "mode collapse" on it — they lock onto a single Gaussian and
+# ignore the others. WGAN-GP is designed to avoid this.
+def sample_target(n: int) -> torch.Tensor:
+    modes = np.array(
+        [(math.cos(2 * math.pi * k / 8), math.sin(2 * math.pi * k / 8)) for k in range(8)],
+        dtype=np.float32,
     )
+    idx = np.random.randint(0, 8, size=n)
+    centers = modes[idx]
+    samples = centers + 0.05 * np.random.randn(n, 2).astype(np.float32)
+    return torch.from_numpy(samples)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Verify with numerical gradient checking
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# PART 1 — Generator and Discriminator
+# ════════════════════════════════════════════════════════════════════════
+LATENT_DIM = 8
 
 
-def compute_loss(x: list[float], y: list[float], weights: list, biases: list) -> float:
-    """Compute cross-entropy loss for a single sample."""
-    cache = forward(x, weights, biases)
-    output = cache["activations"][-1]
-    eps = 1e-8
-    return -sum(y[k] * math.log(output[k] + eps) for k in range(len(y)))
+class Generator(nn.Module):
+    def __init__(self, latent_dim: int = LATENT_DIM, hidden: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, 2),
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return self.net(z)
 
 
-def numerical_gradient_check(
-    x: list[float], y: list[float], weights: list, biases: list, epsilon: float = 1e-5
-) -> float:
-    """Compare analytical vs numerical gradients. Returns max relative error."""
-    cache = forward(x, weights, biases)
-    dW_analytical, db_analytical = backward(cache, y, weights)
+class Discriminator(nn.Module):
+    """For a vanilla GAN this is a probability; for WGAN-GP it is a critic
+    (unbounded scalar). We keep a single class and use the output directly
+    where needed."""
 
-    max_rel_error = 0.0
-    checks = 0
+    def __init__(self, hidden: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(2, hidden),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden, hidden),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden, 1),
+        )
 
-    # Check a few weights from each layer
-    for layer_idx in range(len(weights)):
-        for i in range(min(3, len(weights[layer_idx]))):
-            for j in range(min(3, len(weights[layer_idx][0]))):
-                # Numerical gradient: (L(w+eps) - L(w-eps)) / (2*eps)
-                original = weights[layer_idx][i][j]
-
-                weights[layer_idx][i][j] = original + epsilon
-                loss_plus = compute_loss(x, y, weights, biases)
-
-                weights[layer_idx][i][j] = original - epsilon
-                loss_minus = compute_loss(x, y, weights, biases)
-
-                weights[layer_idx][i][j] = original  # restore
-
-                numerical = (loss_plus - loss_minus) / (2.0 * epsilon)
-                analytical = dW_analytical[layer_idx][i][j]
-
-                denom = max(abs(numerical) + abs(analytical), 1e-8)
-                rel_error = abs(numerical - analytical) / denom
-                max_rel_error = max(max_rel_error, rel_error)
-                checks += 1
-
-    return max_rel_error
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
 
-rel_error = numerical_gradient_check(X[0], Y[0], weights, biases)
-print(f"\n=== Gradient Check ===")
-print(f"Max relative error: {rel_error:.2e}")
-print(f"Status: {'PASS' if rel_error < 1e-5 else 'WARN (>1e-5)'}")
-print(f"  (< 1e-5 means backprop is correctly implemented)")
+# ════════════════════════════════════════════════════════════════════════
+# PART 2 — Train a vanilla GAN with binary cross-entropy
+# ════════════════════════════════════════════════════════════════════════
+# Vanilla GAN loss (Goodfellow 2014):
+#   L_D = -E[log D(x)] - E[log(1 - D(G(z)))]
+#   L_G = -E[log D(G(z))]
+# We use BCEWithLogitsLoss so the discriminator output is a logit, not a
+# probability — numerically safer than a sigmoid + BCE combination.
+def train_vanilla_gan(
+    steps: int = 1500,
+    batch: int = 128,
+    lr: float = 2e-4,
+) -> tuple[Generator, list[float], list[float]]:
+    G = Generator().to(device)
+    D = Discriminator().to(device)
+    opt_g = torch.optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
+    opt_d = torch.optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
+    bce = nn.BCEWithLogitsLoss()
+
+    g_losses: list[float] = []
+    d_losses: list[float] = []
+
+    for step in range(steps):
+        # ── Discriminator step ────────────────────────────────────────
+        real = sample_target(batch).to(device)
+        z = torch.randn(batch, LATENT_DIM, device=device)
+        fake = G(z).detach()
+        d_real = D(real)
+        d_fake = D(fake)
+        loss_d = bce(d_real, torch.ones_like(d_real)) + bce(d_fake, torch.zeros_like(d_fake))
+        opt_d.zero_grad()
+        loss_d.backward()
+        opt_d.step()
+
+        # ── Generator step ────────────────────────────────────────────
+        z = torch.randn(batch, LATENT_DIM, device=device)
+        fake = G(z)
+        d_fake_for_g = D(fake)
+        loss_g = bce(d_fake_for_g, torch.ones_like(d_fake_for_g))  # fool D
+        opt_g.zero_grad()
+        loss_g.backward()
+        opt_g.step()
+
+        d_losses.append(loss_d.item())
+        g_losses.append(loss_g.item())
+
+        if (step + 1) % 300 == 0:
+            print(f"  [GAN] step {step+1:4d}  loss_D={loss_d.item():.3f}  loss_G={loss_g.item():.3f}")
+
+    return G, g_losses, d_losses
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Demonstrate vanishing gradients with sigmoid
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Vanishing Gradients with Sigmoid ===")
-
-# Build progressively deeper networks
-for depth in [3, 5, 8, 12]:
-    deep_dims = [n_features] + [64] * depth + [n_classes]
-    deep_w, deep_b = init_params(deep_dims)
-    deep_cache = forward(X[0], deep_w, deep_b)
-    deep_dW, deep_db = backward(deep_cache, Y[0], deep_w)
-
-    grad_mags = []
-    for i, dW in enumerate(deep_dW):
-        flat = [abs(g) for row in dW for g in row]
-        grad_mags.append(sum(flat) / len(flat))
-
-    print(f"\n  Depth={depth}: gradient magnitudes per layer")
-    for i, mag in enumerate(grad_mags):
-        bar = "#" * max(1, int(mag * 1e6))
-        print(f"    Layer {i+1:2d}: {mag:.2e} {bar[:40]}")
-
-    ratio = grad_mags[0] / max(grad_mags[-1], 1e-15)
-    print(f"    Ratio first/last: {ratio:.0e}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Fix with ReLU + proper initialization
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# PART 3 — Train a WGAN with Gradient Penalty
+# ════════════════════════════════════════════════════════════════════════
+# Wasserstein loss:
+#   L_critic    = E[D(fake)] - E[D(real)] + lambda * GP
+#   L_generator = -E[D(fake)]
+#
+# Gradient penalty (Gulrajani 2017): sample a random point on the line
+# between a real and a fake sample, compute the gradient of D at that
+# point, and penalise its L2 norm for deviating from 1. This enforces the
+# 1-Lipschitz constraint WGAN requires, and replaces the original weight
+# clipping trick which caused training pathologies.
+def gradient_penalty(D: nn.Module, real: torch.Tensor, fake: torch.Tensor) -> torch.Tensor:
+    batch = real.size(0)
+    alpha = torch.rand(batch, 1, device=real.device)
+    interp = (alpha * real + (1 - alpha) * fake).requires_grad_(True)
+    d_interp = D(interp)
+    grad = torch.autograd.grad(
+        outputs=d_interp,
+        inputs=interp,
+        grad_outputs=torch.ones_like(d_interp),
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True,
+    )[0]
+    return ((grad.norm(2, dim=1) - 1) ** 2).mean()
 
 
-def relu(z: float) -> float:
-    return max(0.0, z)
+def train_wgan_gp(
+    steps: int = 1500,
+    batch: int = 128,
+    lr: float = 1e-4,
+    n_critic: int = 3,
+    lam: float = 10.0,
+) -> tuple[Generator, list[float], list[float]]:
+    G = Generator().to(device)
+    D = Discriminator().to(device)
+    opt_g = torch.optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.9))
+    opt_d = torch.optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.9))
+
+    g_losses: list[float] = []
+    d_losses: list[float] = []
+
+    for step in range(steps):
+        # ── Critic updates (n_critic per generator update) ────────────
+        for _ in range(n_critic):
+            real = sample_target(batch).to(device)
+            z = torch.randn(batch, LATENT_DIM, device=device)
+            fake = G(z).detach()
+            d_real = D(real).mean()
+            d_fake = D(fake).mean()
+            gp = gradient_penalty(D, real, fake)
+            loss_d = d_fake - d_real + lam * gp
+            opt_d.zero_grad()
+            loss_d.backward()
+            opt_d.step()
+
+        # ── Generator update ──────────────────────────────────────────
+        z = torch.randn(batch, LATENT_DIM, device=device)
+        fake = G(z)
+        loss_g = -D(fake).mean()
+        opt_g.zero_grad()
+        loss_g.backward()
+        opt_g.step()
+
+        d_losses.append(loss_d.item())
+        g_losses.append(loss_g.item())
+
+        if (step + 1) % 300 == 0:
+            print(f"  [WGAN-GP] step {step+1:4d}  loss_D={loss_d.item():.3f}  loss_G={loss_g.item():.3f}")
+
+    return G, g_losses, d_losses
 
 
-def forward_relu(x: list[float], weights: list, biases: list) -> dict:
-    """Forward pass with ReLU activations (except output)."""
-    cache = {"activations": [x], "pre_activations": []}
-    current = x
+# ── Train both ─────────────────────────────────────────────────────────
+print("\n── Training Vanilla GAN ──")
+G_gan, gan_g_losses, gan_d_losses = train_vanilla_gan(steps=1500)
 
-    for layer_idx in range(len(weights)):
-        W = weights[layer_idx]
-        b = biases[layer_idx]
-        d_in = len(current)
-        d_out = len(b)
-
-        z = [
-            sum(current[j] * W[j][k] for j in range(d_in)) + b[k] for k in range(d_out)
-        ]
-        cache["pre_activations"].append(z)
-
-        if layer_idx < len(weights) - 1:
-            current = [relu(zi) for zi in z]
-        else:
-            current = softmax(z)
-
-        cache["activations"].append(current)
-
-    return cache
+print("\n── Training WGAN-GP ──")
+G_wgan, wgan_g_losses, wgan_d_losses = train_wgan_gp(steps=1500)
 
 
-def backward_relu(cache: dict, y_true: list[float], weights: list) -> tuple[list, list]:
-    """Backprop with ReLU."""
-    activations = cache["activations"]
-    pre_activations = cache["pre_activations"]
-    n_layers = len(weights)
-
-    dW_list = []
-    db_list = []
-    delta = [activations[-1][k] - y_true[k] for k in range(len(y_true))]
-
-    for layer_idx in range(n_layers - 1, -1, -1):
-        a_prev = activations[layer_idx]
-        d_in = len(a_prev)
-        d_out = len(delta)
-
-        dW = [[a_prev[j] * delta[k] for k in range(d_out)] for j in range(d_in)]
-        db = list(delta)
-        dW_list.insert(0, dW)
-        db_list.insert(0, db)
-
-        if layer_idx > 0:
-            W = weights[layer_idx]
-            z_prev = pre_activations[layer_idx - 1]
-            delta_new = []
-            for j in range(d_in):
-                grad_sum = sum(W[j][k] * delta[k] for k in range(d_out))
-                relu_deriv = 1.0 if z_prev[j] > 0 else 0.0
-                delta_new.append(grad_sum * relu_deriv)
-            delta = delta_new
-
-    return dW_list, db_list
+# ════════════════════════════════════════════════════════════════════════
+# PART 4 — Evaluate mode coverage
+# ════════════════════════════════════════════════════════════════════════
+# For the 8-Gaussians target, count how many of the 8 modes each generator
+# produces samples near. A mode-collapsed model hits 1-2; a healthy one
+# hits all 8.
+def mode_coverage(G: Generator, n: int = 2000, tol: float = 0.3) -> int:
+    G.eval()
+    with torch.no_grad():
+        z = torch.randn(n, LATENT_DIM, device=device)
+        samples = G(z).cpu().numpy()
+    modes = np.array(
+        [(math.cos(2 * math.pi * k / 8), math.sin(2 * math.pi * k / 8)) for k in range(8)],
+        dtype=np.float32,
+    )
+    hit = np.zeros(8, dtype=bool)
+    dists = np.linalg.norm(samples[:, None, :] - modes[None, :, :], axis=-1)
+    closest = dists.argmin(axis=1)
+    min_dists = dists.min(axis=1)
+    for idx, d in zip(closest, min_dists):
+        if d < tol:
+            hit[idx] = True
+    return int(hit.sum())
 
 
-def he_init_params(dims: list[int]) -> tuple[list, list]:
-    """He initialization for ReLU networks."""
-    weights = []
-    biases = []
-    for i in range(len(dims) - 1):
-        std = math.sqrt(2.0 / dims[i])
-        W = [[random.gauss(0, std) for _ in range(dims[i + 1])] for _ in range(dims[i])]
-        b = [0.0] * dims[i + 1]
-        weights.append(W)
-        biases.append(b)
-    return weights, biases
+print(f"\nVanilla GAN covered {mode_coverage(G_gan)} / 8 modes")
+print(f"WGAN-GP    covered {mode_coverage(G_wgan)} / 8 modes")
 
 
-print(f"\n=== ReLU + He Init: Gradient Flow ===")
-
-for depth in [3, 5, 8, 12]:
-    deep_dims = [n_features] + [64] * depth + [n_classes]
-    deep_w, deep_b = he_init_params(deep_dims)
-    deep_cache = forward_relu(X[0], deep_w, deep_b)
-    deep_dW, deep_db = backward_relu(deep_cache, Y[0], deep_w)
-
-    grad_mags = []
-    for i, dW in enumerate(deep_dW):
-        flat = [abs(g) for row in dW for g in row]
-        grad_mags.append(sum(flat) / len(flat))
-
-    print(f"\n  Depth={depth}: gradient magnitudes per layer")
-    for i, mag in enumerate(grad_mags):
-        bar = "#" * max(1, int(mag * 1e4))
-        print(f"    Layer {i+1:2d}: {mag:.2e} {bar[:40]}")
-
-    ratio = grad_mags[0] / max(grad_mags[-1], 1e-15)
-    print(f"    Ratio first/last: {ratio:.1f}x (much better!)")
-
+# ════════════════════════════════════════════════════════════════════════
+# PART 5 — Visualise both loss curves
+# ════════════════════════════════════════════════════════════════════════
 viz = ModelVisualizer()
-print(f"\nKey takeaway: ReLU + He init keeps gradients flowing through deep networks.")
-print(f"  Sigmoid max gradient = 0.25 -> 0.25^12 = {0.25**12:.2e} (vanished)")
-print(f"  ReLU gradient = 1.0 for active neurons -> gradients preserved")
+fig = viz.training_history(
+    metrics={
+        "GAN G loss": gan_g_losses,
+        "GAN D loss": gan_d_losses,
+        "WGAN G loss": wgan_g_losses,
+        "WGAN D loss": wgan_d_losses,
+    },
+    x_label="Step",
+    y_label="Loss",
+)
+fig.write_html("ex_5_training.html")
+print("Training history saved to ex_5_training.html")
 
+
+# ── Reflection ─────────────────────────────────────────────────────────
+print("\n" + "═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
 print(
-    "\n✓ Exercise 5 complete — backpropagation implemented and gradient flow analyzed"
+    """
+  [x] Built Generator and Discriminator with nn.Module
+  [x] Trained a vanilla GAN with BCEWithLogitsLoss (min-max game)
+  [x] Implemented a WGAN-GP with torch.autograd.grad for the gradient penalty
+  [x] Measured mode coverage on the 8-Gaussians benchmark
+  [x] Compared training dynamics between vanilla GAN and WGAN-GP
+"""
+)
+print(
+    "\nNote: outcomes vary by seed and step budget. In the full 8-Gaussians\n"
+    "paper benchmark (Gulrajani 2017) WGAN-GP eventually covers all 8 modes\n"
+    "and recovers faster after any collapse, but this short 1500-step run\n"
+    "is mainly intended to show the API and the gradient-penalty math.\n"
 )

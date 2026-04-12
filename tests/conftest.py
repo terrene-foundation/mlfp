@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""ASCENT test configuration — auto-loads .env for all tests."""
+"""MLFP test configuration — auto-loads .env for all tests."""
 
 from pathlib import Path
 

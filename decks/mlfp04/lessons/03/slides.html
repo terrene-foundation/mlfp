@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.3 — Dimensionality Reduction | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .callout-slide.kailash { background: #F0FDFA; border-left: 4px solid #14B8A6; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.3</p>
+  <h1>Dimensionality Reduction</h1>
+  <p style="font-size: 0.7em; color: #64748B;">PCA · SVD · Kernel PCA · t-SNE · UMAP · Intrinsic dimension</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong style="color: #0D9488;">⏱ 90 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> compress 50 features into 6
+  </div>
+</section>
+
+<section>
+  <h2>From "which group" to "which axis"</h2>
+  <ul>
+    <li>Clustering partitioned the points. Dimensionality reduction <em>rotates</em> the features.</li>
+    <li>Goal: fewer features, most variance kept.</li>
+    <li>Uses: visualisation, compression, feature extraction.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> if two features carry the same information, you have one feature's worth of signal. Reduction finds the non-redundant directions.
+  </div>
+</section>
+
+<section>
+  <h2>PCA rotates the axes to the data</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="30" width="300" height="220" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <line x1="170" y1="40" x2="170" y2="240" stroke="#94A3B8"/>
+      <line x1="40" y1="140" x2="300" y2="140" stroke="#94A3B8"/>
+      <g fill="#3B82F6" opacity="0.7">
+        <circle cx="90" cy="210" r="3"/><circle cx="130" cy="180" r="3"/><circle cx="170" cy="145" r="3"/>
+        <circle cx="210" cy="110" r="3"/><circle cx="250" cy="80" r="3"/><circle cx="110" cy="195" r="3"/>
+        <circle cx="150" cy="165" r="3"/><circle cx="190" cy="125" r="3"/><circle cx="230" cy="95" r="3"/>
+      </g>
+      <text x="305" y="145" font-size="11">x₁</text><text x="165" y="50" font-size="11">x₂</text>
+
+      <line x1="340" y1="140" x2="385" y2="140" stroke="#0D9488" stroke-width="3"/>
+      <polygon points="385,140 379,136 379,144" fill="#0D9488"/>
+      <text x="362" y="132" text-anchor="middle" font-size="11" fill="#0D9488">PCA</text>
+
+      <rect x="400" y="30" width="300" height="220" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <line x1="420" y1="230" x2="680" y2="50" stroke="#EF4444" stroke-width="2.5"/>
+      <text x="685" y="55" font-size="10" fill="#EF4444">PC1</text>
+      <line x1="440" y1="70" x2="660" y2="210" stroke="#22C55E" stroke-width="2.5"/>
+      <text x="665" y="215" font-size="10" fill="#22C55E">PC2</text>
+      <g fill="#3B82F6" opacity="0.7">
+        <circle cx="470" cy="210" r="3"/><circle cx="510" cy="180" r="3"/><circle cx="550" cy="145" r="3"/>
+        <circle cx="590" cy="110" r="3"/><circle cx="630" cy="80" r="3"/>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Deriving PCA — one Lagrangian</h2>
+  <p>Maximise projected variance subject to unit norm:</p>
+  \[ \max_{\mathbf{w}}\ \mathbf{w}^\top C\,\mathbf{w}\quad \text{s.t. } \lVert \mathbf{w}\rVert = 1 \]
+  <p>Taking derivatives of the Lagrangian:</p>
+  \[ C\mathbf{w} \;=\; \lambda\,\mathbf{w} \]
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> The solution is the top eigenvector of the covariance matrix. The variance captured = the corresponding eigenvalue.
+  </div>
+</section>
+
+<section>
+  <h2>SVD = PCA's computational engine</h2>
+  \[ X \;=\; U\,\Sigma\,V^\top \]
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="30" width="110" height="120" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="95" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="26" fill="#0D9488">X</text>
+      <text x="170" y="100" font-size="20">=</text>
+      <rect x="190" y="30" width="80" height="120" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+      <text x="230" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="26" fill="#EF4444">U</text>
+      <rect x="290" y="50" width="80" height="80" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="330" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="26" fill="#F59E0B">Σ</text>
+      <rect x="390" y="50" width="130" height="60" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="455" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="22" fill="#3B82F6">Vᵀ</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;"><strong>V</strong> = principal directions. <strong>Σ²/(N−1)</strong> = variances. Every serious PCA uses SVD.</p>
+</section>
+
+<section>
+  <h2>Scree plot: how many components?</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 600 260" xmlns="http://www.w3.org/2000/svg">
+      <line x1="60" y1="220" x2="560" y2="220" stroke="#94A3B8"/>
+      <line x1="60" y1="40" x2="60" y2="220" stroke="#94A3B8"/>
+      <text x="310" y="250" text-anchor="middle" font-size="12" fill="#64748B">component index</text>
+      <text x="30" y="130" text-anchor="middle" font-size="12" fill="#64748B" transform="rotate(-90 30 130)">variance explained</text>
+      <g fill="#0D9488">
+        <rect x="80" y="60" width="40" height="160"/><rect x="130" y="100" width="40" height="120"/>
+        <rect x="180" y="140" width="40" height="80"/><rect x="230" y="165" width="40" height="55"/>
+        <rect x="280" y="185" width="40" height="35"/><rect x="330" y="195" width="40" height="25"/>
+        <rect x="380" y="205" width="40" height="15"/><rect x="430" y="212" width="40" height="8"/>
+        <rect x="480" y="216" width="40" height="4"/>
+      </g>
+      <line x1="270" y1="40" x2="270" y2="220" stroke="#EF4444" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="280" y="55" font-size="11" fill="#EF4444">elbow → k ≈ 4</text>
+    </svg>
+  </figure>
+  <p>Rule of thumb: take the smallest $k$ where cumulative variance ≥ 90%.</p>
+</section>
+
+<section>
+  <h2>Loadings make PCA interpretable</h2>
+  <pre><code class="language-python" data-trim>
+for i in range(3):
+    top = np.argsort(-np.abs(pca.components_[i]))[:3]
+    print(f"PC{i+1} (var={pca.explained_variance_ratio_[i]:.3f}):")
+    for j in top:
+        print(f"  {feature_names[j]}: {pca.components_[i][j]:+.3f}")
+  </code></pre>
+  <p style="font-size: 0.85em;">Example: PC1 = +0.4 spend + 0.4 visits + 0.3 items → <em>"overall activity"</em>.</p>
+</section>
+
+<section>
+  <h2>Kernel PCA — for curved structure</h2>
+  <ul>
+    <li>Standard PCA can only rotate.</li>
+    <li>Kernel PCA applies PCA in an implicit feature space via $k(\mathbf{x}, \mathbf{y}) = \phi(\mathbf{x})^\top \phi(\mathbf{y})$.</li>
+    <li>Common kernels: RBF, polynomial.</li>
+    <li>Cost: $O(N^2)$ memory — only for ~few thousand points.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>t-SNE: good for plots, bad for features</h2>
+  \[ \text{KL}(P \,\|\, Q) \;=\; \sum_{i \neq j}\ p_{ij}\ \log \frac{p_{ij}}{q_{ij}} \]
+  <ul>
+    <li>Minimises KL between pair-distributions in high-dim and low-dim.</li>
+    <li>Preserves local structure, distorts global.</li>
+    <li>Non-deterministic, no inverse transform.</li>
+    <li>Hyperparameter: <code>perplexity</code> (~5–50).</li>
+  </ul>
+  <div class="callout-slide warning">
+    <strong>⚠ Never use t-SNE for feature extraction.</strong> Use it only to <em>see</em>.
+  </div>
+</section>
+
+<section>
+  <h2>UMAP: newer, faster, better defaults</h2>
+  <ul>
+    <li>Preserves more global structure than t-SNE.</li>
+    <li>~10× faster. Scales to millions of points.</li>
+    <li>Has an (approximate) inverse transform — can embed new points.</li>
+    <li>Deterministic (given a seed).</li>
+  </ul>
+  <p style="font-size: 0.85em; color: #64748B;">Default choice for any visualisation task. Fall back to t-SNE only when specifically needed.</p>
+</section>
+
+<section>
+  <h2>t-SNE vs UMAP at a glance</h2>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th></th><th>t-SNE</th><th>UMAP</th></tr></thead>
+    <tbody>
+      <tr><td>Speed</td><td>slow</td><td>fast</td></tr>
+      <tr><td>Global structure</td><td>poor</td><td>good</td></tr>
+      <tr><td>New-point embedding</td><td>no</td><td>yes</td></tr>
+      <tr><td>Deterministic</td><td>no</td><td>yes (with seed)</td></tr>
+      <tr><td>Key knob</td><td>perplexity</td><td>n_neighbors</td></tr>
+      <tr><td>Best for</td><td>dense small data</td><td>everything else</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Eckart-Young: PCA is optimal</h2>
+  <p>Best rank-$k$ approximation in Frobenius norm:</p>
+  \[ \min_{\text{rank}(\hat X) \leq k}\ \lVert X - \hat X \rVert_F^2 \;=\; \sum_{i=k+1}^{r}\sigma_i^2 \]
+  <p>achieved by $\hat X = U_k \Sigma_k V_k^\top$ — the truncated SVD.</p>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> PCA is provably the best linear low-rank approximation. No linear method beats it.
+  </div>
+</section>
+
+<section>
+  <h2>Intrinsic dimension</h2>
+  <p>How many components do you truly need?</p>
+  <ul>
+    <li><strong>Scree elbow</strong> — visual estimate.</li>
+    <li><strong>Variance threshold</strong> — smallest $k$ with $\sum \sigma_i^2 / \sum \sigma^2 &gt; 0.9$.</li>
+    <li><strong>Participation ratio</strong>: $(\sum \lambda_i)^2 / \sum \lambda_i^2$.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Worked example: compress customer features</h2>
+  <pre><code class="language-python" data-trim>
+pca = PCA().fit(StandardScaler().fit_transform(X))
+cum = np.cumsum(pca.explained_variance_ratio_)
+k90 = int(np.searchsorted(cum, 0.90)) + 1
+# 15 features → 6 components for 90% variance
+  </code></pre>
+  <p>After PCA, downstream models train faster, overfit less, often score slightly better.</p>
+</section>
+
+<section>
+  <h2>Kailash ModelVisualizer</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import ModelVisualizer
+viz = ModelVisualizer()
+fig = viz.scree_plot(pca)
+fig.write_html("scree.html")
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> ModelVisualizer annotates the top-3 contributors to each component automatically — the interpretable part.
+  </div>
+</section>
+
+<section>
+  <h2>Four rookie mistakes</h2>
+  <ol>
+    <li>Forgetting to centre/standardise the data.</li>
+    <li>Using t-SNE as a feature extractor.</li>
+    <li>Picking $k$ that is too small (over-aggressive compression).</li>
+    <li>Reporting components without loadings — black-box PCA.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>When to use which</h2>
+  <table style="font-size: 0.8em;">
+    <thead><tr><th>Goal</th><th>Pick</th></tr></thead>
+    <tbody>
+      <tr><td>Linear compression, interpretable</td><td>PCA</td></tr>
+      <tr><td>Feed to downstream linear model</td><td>PCA</td></tr>
+      <tr><td>Non-linear compression</td><td>Kernel PCA (small N)</td></tr>
+      <tr><td>Visualise high-dim structure</td><td>UMAP</td></tr>
+      <tr><td>Show local neighbourhoods (teaching)</td><td>t-SNE</td></tr>
+      <tr><td>Extract features for new points</td><td>PCA or UMAP</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Derive PCA as variance maximisation.</li>
+    <li>✓ Connect PCA to SVD.</li>
+    <li>✓ Read a scree plot and interpret loadings.</li>
+    <li>✓ Choose between PCA, kernel PCA, t-SNE, UMAP.</li>
+    <li>✓ Explain why t-SNE must not be used for feature extraction.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> Lesson 4.4 — anomaly detection. What about the points that don't belong to <em>any</em> cluster?
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

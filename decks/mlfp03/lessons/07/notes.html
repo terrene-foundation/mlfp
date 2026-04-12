@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.7 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 3.7</span>
+  Workflow Orchestration, Model Registry, and Hyperparameter Search
+</h1>
+
+<p class="lead">Total time: ~55 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~4 min per slide average</p>
+
+<p>
+  This is the ML engineering lesson. The shift from "data scientist who
+  writes scripts" to "ML engineer who builds systems" happens here.
+  WorkflowBuilder may feel like over-engineering to learners who have been
+  writing scripts for 20 lessons — show them the error handling and
+  conditional branching to demonstrate the value.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 1-2</span><span>~4 min</span><span>Motivation</span></div>
+  <h3>From scripts to workflows</h3>
+  <p>"Your script from Lesson 1.8 works. But what happens when train() fails? evaluate() never runs. You get a traceback and nothing else. WorkflowBuilder handles errors, retries, logs, and conditional branching."</p>
+  <div class="transition">→ "The node graph."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 3-4</span><span>~8 min</span><span>WorkflowBuilder</span></div>
+  <h3>WorkflowBuilder</h3>
+  <p><strong>Slide 3:</strong> Walk the diagram. "Five nodes, three types: PythonCodeNode for computation, ConditionalNode for branching, and the connections between them. The runtime executes in dependency order."</p>
+  <p><strong>Slide 4:</strong> Walk the code. "Create the builder, create nodes, connect them, execute. The conditional gate checks if AUC exceeds 0.85 before promoting."</p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of it as Lego blocks. Each block does one thing. You snap them together in the order you want. If one block fails, the system tells you which one and why."
+  </div>
+  <div class="transition">→ "How to find the best hyperparameters."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 5-8</span><span>~12 min</span><span>HyperparameterSearch</span></div>
+  <h3>Bayesian hyperparameter search</h3>
+  <p><strong>Slide 5:</strong> Walk the Bayesian optimisation diagram. "The surrogate model (green line) approximates the true objective (dashed). The uncertainty band shows where the model is least confident. The next point is chosen where expected improvement is highest."</p>
+  <p><strong>Slide 6:</strong> Walk the code. Point out the log scale for learning_rate: "Learning rate varies over orders of magnitude, so we search in log space."</p>
+  <p><strong>Slide 7:</strong> Walk the comparison table. "Grid search: exponential in the number of hyperparameters. Random: uninformed but covers the space. Bayesian: informed, uses 50 evaluations instead of 3000."</p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> "The acquisition function (expected improvement, UCB, or probability of improvement) controls the explore-exploit tradeoff. Expected improvement is the default and works well in practice."
+  </div>
+  <div class="transition">→ "What to do with the best model."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 9-10</span><span>~8 min</span><span>ModelRegistry</span></div>
+  <h3>ModelRegistry and lifecycle</h3>
+  <p><strong>Slide 9:</strong> Walk the code. "Register with metrics, signature, and tags. The signature validates inputs in production — a model without a signature is a model that will break silently."</p>
+  <p><strong>Slide 10:</strong> Walk the lifecycle diagram. "Experiment → staging → production → retired. Each transition is gated. Never auto-promote."</p>
+  <div class="transition">→ "Mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slides 11-12</span><span>~5 min</span><span>Mistakes + reflection</span></div>
+  <h3>Wrap-up</h3>
+  <p>Walk the three mistakes. Bridge to 3.8: "You can build the pipeline, tune the model, and register it. Tomorrow we deploy it: DataFlow for persistence, DriftMonitor for ongoing surveillance, Model Cards for documentation, and conformal prediction for uncertainty."</p>
+  <div class="transition">→ End. Break.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/notes.html" class="prev"><span class="label">← Previous</span>3.6 Speaker Notes</a>
+  <a href="../08/notes.html" class="next"><span class="label">Next →</span>3.8 Speaker Notes</a>
+</nav>
+
+</main>
+</body>
+</html>

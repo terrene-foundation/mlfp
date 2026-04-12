@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.8 — Data Pipelines and End-to-End Project | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══ Slide 1: Title ═══════════════════════════════════════ -->
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.8</p>
+  <h1>Data Pipelines and End-to-End Project</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    ETL · null handling · REST APIs · PreprocessingPipeline · taxi trip pipeline
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 60 minutes</strong> &nbsp; · &nbsp;
+    <strong>Capstone:</strong> everything in M1 comes together
+  </div>
+  <div class="slide-footer">MLFP — Module 1</div>
+</section>
+
+<!-- ═══ Slide 2: The pipeline ════════════════════════════════ -->
+<section>
+  <h2>Five stages, one pipeline</h2>
+  <figure style="text-align: center; margin-top: 1em;">
+    <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr18s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <rect x="10" y="50" width="110" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="65" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Extract</text>
+      <text x="65" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">API / CSV</text>
+      <line x1="120" y1="80" x2="145" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18s)"/>
+
+      <rect x="150" y="50" width="110" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="205" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Profile</text>
+      <text x="205" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">DataExplorer</text>
+      <line x1="260" y1="80" x2="285" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18s)"/>
+
+      <rect x="290" y="50" width="110" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="345" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Transform</text>
+      <text x="345" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Pipeline</text>
+      <line x1="400" y1="80" x2="425" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18s)"/>
+
+      <rect x="430" y="50" width="110" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="485" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Visualise</text>
+      <text x="485" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Plotly</text>
+      <line x1="540" y1="80" x2="565" y2="80" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18s)"/>
+
+      <rect x="570" y="50" width="140" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="640" y="80" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Report</text>
+      <text x="640" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">HTML output</text>
+
+      <text x="360" y="145" text-anchor="middle" font-family="Inter" font-style="italic" font-size="11" fill="#64748B">
+        Every step uses a skill from a previous lesson
+      </text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 3: ETL definition ══════════════════════════════ -->
+<section>
+  <h2>ETL: the universal data pattern</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Extract</strong>: get data from its source (file, API, database)</li>
+    <li><strong>Transform</strong>: clean, encode, scale, engineer features</li>
+    <li><strong>Load</strong>: write the result to a destination</li>
+  </ul>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #22C55E;">🟢 Foundations:</strong>
+    Every data project you will ever build follows this pattern.
+    The tools change; the structure does not.
+  </div>
+</section>
+
+<!-- ═══ Slide 4: Null handling ═══════════════════════════════ -->
+<section>
+  <h2>Null handling: three tools</h2>
+  <table style="font-size: 0.7em;">
+    <thead>
+      <tr><th>Method</th><th>What it does</th><th>When to use</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>is_null()</code></td><td>Boolean mask</td><td>Inspection</td></tr>
+      <tr><td><code>fill_null(val)</code></td><td>Replace nulls</td><td>Imputation</td></tr>
+      <tr><td><code>drop_nulls()</code></td><td>Remove rows</td><td>Few uninformative nulls</td></tr>
+    </tbody>
+  </table>
+  <pre><code class="language-python" data-trim>
+# Forward-fill for time-series
+df = df.with_columns(pl.col("fare").forward_fill())
+
+# Median imputation
+df = df.with_columns(
+    pl.col("fare").fill_null(pl.col("fare").median())
+)
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 5: Imputation strategies ═══════════════════════ -->
+<section>
+  <h2>Which imputation strategy?</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="20" width="210" height="100" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="125" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#22C55E">Forward-fill</text>
+      <text x="125" y="75" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Time-series data</text>
+      <text x="125" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Assumes continuity</text>
+
+      <rect x="255" y="20" width="210" height="100" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="360" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#3B82F6">Median</text>
+      <text x="360" y="75" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Robust to outliers</text>
+      <text x="360" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Cross-sectional data</text>
+
+      <rect x="490" y="20" width="210" height="100" rx="8" fill="#EDE9FE" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="595" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#8B5CF6">Group-aware</text>
+      <text x="595" y="75" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Median per group</text>
+      <text x="595" y="95" text-anchor="middle" font-family="Inter" font-size="11" fill="#334155">Least biased</text>
+
+      <rect x="20" y="150" width="680" height="80" rx="8" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+      <text x="360" y="180" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#92400E">Drop nulls</text>
+      <text x="360" y="205" text-anchor="middle" font-family="Inter" font-size="12" fill="#334155">Only when null rows are few (&lt; 5%) and uninformative. Check null_count() first.</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 6: REST APIs ═══════════════════════════════════ -->
+<section>
+  <h2>Extracting data from APIs</h2>
+  <pre><code class="language-python" data-trim>
+import httpx
+
+response = httpx.get(
+    "https://www.onemap.gov.sg/api/common/elastic/search",
+    params={"searchVal": "Tampines", "returnGeom": "Y",
+            "getAddrDetails": "Y"}
+)
+data = response.json()
+print(f"Found {data['found']} results")
+  </code></pre>
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #22C55E;">🟢 Foundations:</strong>
+    <code>GET</code> = "give me data". <code>POST</code> = "here is data".
+    Response is usually JSON — parse it into a DataFrame.
+  </div>
+</section>
+
+<!-- ═══ Slide 7: JSON to DataFrame ═══════════════════════════ -->
+<section>
+  <h2>JSON → DataFrame</h2>
+  <pre><code class="language-python" data-trim>
+results = data["results"]
+df_locations = pl.DataFrame(results).select([
+    pl.col("SEARCHVAL").alias("address"),
+    pl.col("LATITUDE").cast(pl.Float64).alias("lat"),
+    pl.col("LONGITUDE").cast(pl.Float64).alias("lon"),
+])
+print(df_locations.head(3))
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    <code>pl.DataFrame(list_of_dicts)</code> creates a DataFrame from JSON.
+    <code>.alias()</code> renames. <code>.cast()</code> fixes types.
+  </p>
+</section>
+
+<!-- ═══ Slide 8: PreprocessingPipeline ═══════════════════════ -->
+<section>
+  <h2>PreprocessingPipeline: automated cleaning</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import PreprocessingPipeline
+
+pipeline = PreprocessingPipeline(
+    numeric_strategy="median",
+    categorical_strategy="onehot",
+    scale=True,
+)
+
+df_clean = pipeline.fit_transform(df_raw)
+print(f"Before: {df_raw.shape} → After: {df_clean.shape}")
+  </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">
+    One call: detects types, imputes nulls, encodes categoricals, scales numerics.
+  </p>
+</section>
+
+<!-- ═══ Slide 9: fit_transform vs transform ══════════════════ -->
+<section>
+  <h2>fit_transform vs transform</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr18t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <!-- Training path -->
+      <rect x="20" y="30" width="160" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="100" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Training data</text>
+      <line x1="180" y1="55" x2="250" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18t)"/>
+      <rect x="255" y="30" width="200" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="355" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0D9488">fit_transform()</text>
+      <line x1="455" y1="55" x2="525" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18t)"/>
+      <rect x="530" y="30" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="610" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Clean train</text>
+      <!-- Test path -->
+      <rect x="20" y="130" width="160" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="100" y="160" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">Test data</text>
+      <line x1="180" y1="155" x2="250" y2="155" stroke="#3B82F6" stroke-width="2" marker-end="url(#arr18t)"/>
+      <rect x="255" y="130" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="355" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#3B82F6">transform()</text>
+      <line x1="455" y1="155" x2="525" y2="155" stroke="#3B82F6" stroke-width="2" marker-end="url(#arr18t)"/>
+      <rect x="530" y="130" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="610" y="160" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Clean test</text>
+      <!-- Warning -->
+      <text x="360" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F43F5E">
+        Never fit on test data — that is data leakage
+      </text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 10: Taxi trip data ═════════════════════════════ -->
+<section>
+  <h2>The dataset: Singapore taxi trips</h2>
+  <pre><code class="language-text" data-trim>
+Shape: (10000, 8)
+Columns: pickup_datetime, dropoff_datetime, pickup_zone,
+         dropoff_zone, trip_distance_km, fare_amount,
+         passenger_count, payment_type
+Nulls:   fare_amount (3%), pickup_zone (1.2%)
+  </code></pre>
+  <p style="font-size: 0.85em;">
+    <strong>Question:</strong> when does taxi demand peak?<br>
+    <strong>Pipeline:</strong> load → profile → clean → engineer hour/day → visualise → report
+  </p>
+</section>
+
+<!-- ═══ Slide 11: Extract step ═══════════════════════════════ -->
+<section>
+  <h2>Step 1: Extract</h2>
+  <pre><code class="language-python" data-trim>
+from shared import MLFPDataLoader
+import polars as pl
+
+loader = MLFPDataLoader()
+df_raw = loader.load("mlfp01", "sg_taxi_trips.csv")
+print(f"Raw: {df_raw.shape}")
+# → Raw: (10000, 8)
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Same loader, same pattern. One line.
+  </p>
+</section>
+
+<!-- ═══ Slide 12: Profile step ═══════════════════════════════ -->
+<section>
+  <h2>Step 2: Profile</h2>
+  <pre><code class="language-python" data-trim>
+from kailash_ml import DataExplorer
+from shared import run_profile
+
+explorer = DataExplorer()
+profile = run_profile(explorer, df_raw)
+
+for alert in profile.alerts:
+    print(f"  {alert.type}: {alert.column}")
+  </code></pre>
+  <pre><code class="language-text" data-trim>
+  high_nulls: fare_amount
+  high_nulls: pickup_zone
+  outliers: trip_distance_km
+  high_skewness: fare_amount
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 13: Transform step ═════════════════════════════ -->
+<section>
+  <h2>Step 3: Transform</h2>
+  <pre><code class="language-python" data-trim>
+df = (
+    df_raw
+    .with_columns(
+        pl.col("pickup_datetime")
+          .str.to_datetime("%Y-%m-%d %H:%M:%S"),
+    )
+    .filter(pl.col("fare_amount") > 0)
+    .with_columns(
+        pl.col("fare_amount")
+          .fill_null(pl.col("fare_amount").median()),
+        hour=pl.col("pickup_datetime").dt.hour(),
+        day_of_week=pl.col("pickup_datetime").dt.weekday(),
+    )
+    .drop_nulls(subset=["pickup_zone"])
+)
+print(f"Clean: {df.shape}")
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 14: Preprocess step ════════════════════════════ -->
+<section>
+  <h2>Step 4: PreprocessingPipeline</h2>
+  <pre><code class="language-python" data-trim>
+pipeline = PreprocessingPipeline(
+    numeric_strategy="median",
+    categorical_strategy="onehot",
+    scale=True,
+)
+df_model = pipeline.fit_transform(
+    df.select(["fare_amount", "trip_distance_km",
+               "hour", "day_of_week", "pickup_zone"])
+)
+print(f"Model-ready: {df_model.shape}")
+# → Model-ready: (9800, 22)
+  </code></pre>
+  <p style="font-size: 0.8em; color: #64748B;">
+    5 columns → 22 columns (one-hot encoding expanded pickup_zone)
+  </p>
+</section>
+
+<!-- ═══ Slide 15: Visualise step ═════════════════════════════ -->
+<section>
+  <h2>Step 5: Visualise peak demand</h2>
+  <pre><code class="language-python" data-trim>
+hourly = (
+    df.group_by("hour")
+    .agg(pl.count().alias("trips"))
+    .sort("hour")
+)
+  </code></pre>
+  <figure style="text-align: center; margin-top: 1em;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- Simplified bar chart for hourly demand -->
+      <line x1="60" y1="170" x2="700" y2="170" stroke="#94A3B8" stroke-width="1"/>
+      <line x1="60" y1="30" x2="60" y2="170" stroke="#94A3B8" stroke-width="1"/>
+      <text x="380" y="195" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Hour of day</text>
+      <text x="30" y="100" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 30 100)">Trips</text>
+      <!-- Bars showing morning and evening peaks -->
+      <g fill="#0D9488" opacity="0.7">
+        <rect x="80" y="145" width="22" height="25" rx="2"/>
+        <rect x="107" y="150" width="22" height="20" rx="2"/>
+        <rect x="134" y="155" width="22" height="15" rx="2"/>
+        <rect x="161" y="158" width="22" height="12" rx="2"/>
+        <rect x="188" y="160" width="22" height="10" rx="2"/>
+        <rect x="215" y="155" width="22" height="15" rx="2"/>
+        <rect x="242" y="130" width="22" height="40" rx="2"/>
+        <rect x="269" y="90" width="22" height="80" rx="2" fill="#0D9488"/>
+        <rect x="296" y="60" width="22" height="110" rx="2" fill="#0D9488"/>
+        <rect x="323" y="100" width="22" height="70" rx="2"/>
+        <rect x="350" y="120" width="22" height="50" rx="2"/>
+        <rect x="377" y="115" width="22" height="55" rx="2"/>
+        <rect x="404" y="110" width="22" height="60" rx="2"/>
+        <rect x="431" y="115" width="22" height="55" rx="2"/>
+        <rect x="458" y="120" width="22" height="50" rx="2"/>
+        <rect x="485" y="110" width="22" height="60" rx="2"/>
+        <rect x="512" y="90" width="22" height="80" rx="2"/>
+        <rect x="539" y="50" width="22" height="120" rx="2" fill="#0D9488"/>
+        <rect x="566" y="40" width="22" height="130" rx="2" fill="#0D9488"/>
+        <rect x="593" y="70" width="22" height="100" rx="2"/>
+        <rect x="620" y="100" width="22" height="70" rx="2"/>
+        <rect x="647" y="120" width="22" height="50" rx="2"/>
+        <rect x="674" y="140" width="22" height="30" rx="2"/>
+      </g>
+      <text x="296" y="52" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488">AM rush</text>
+      <text x="553" y="32" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488">PM rush</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 16: Re-profile ═════════════════════════════════ -->
+<section>
+  <h2>Step 6: Re-profile and compare</h2>
+  <pre><code class="language-python" data-trim>
+profile_clean = run_profile(explorer, df)
+comparison = run_profile(explorer, df_raw, df_compare=df)
+
+print(f"Alerts before: {len(profile.alerts)}")
+print(f"Alerts after:  {len(profile_clean.alerts)}")
+  </code></pre>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    Always re-profile after cleaning. Verify the pipeline helped.
+  </div>
+</section>
+
+<!-- ═══ Slide 17: Project structure ══════════════════════════ -->
+<section>
+  <h2>Structuring the project</h2>
+  <pre><code class="language-text" data-trim>
+taxi_pipeline/
+├── extract.py       # Data loading
+├── transform.py     # Cleaning + features
+├── visualise.py     # Chart generation
+├── report.py        # HTML report
+└── main.py          # Orchestrator
+  </code></pre>
+  <pre><code class="language-python" data-trim>
+# main.py
+from extract import load_taxi_data
+from transform import clean_taxi_data, preprocess
+from visualise import create_demand_charts
+from report import generate_html_report
+
+df_raw = load_taxi_data()
+df_clean = clean_taxi_data(df_raw)
+charts = create_demand_charts(df_clean)
+generate_html_report(df_clean, charts)
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 18: Common mistakes ════════════════════════════ -->
+<section>
+  <h2>Four mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>1. Dropping nulls without checking count</strong><br>
+    <span style="font-size: 0.8em;">Check <code>null_count()</code> first. 25% nulls = 25% data loss.</span>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>2. Fitting pipeline on test data</strong><br>
+    <span style="font-size: 0.8em;"><code>fit_transform(train)</code>, <code>transform(test)</code>. Never fit on both.</span>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>3. Hardcoding file paths</strong><br>
+    <span style="font-size: 0.8em;">Use the data loader. A pipeline that only works on your laptop is not a pipeline.</span>
+  </div>
+  <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
+    <strong>4. No re-profiling after cleaning</strong><br>
+    <span style="font-size: 0.8em;">Always compare before/after. Cleaning can introduce new issues.</span>
+  </div>
+</section>
+
+<!-- ═══ Slide 19: Reflection ═════════════════════════════════ -->
+<section>
+  <h2>Module 1 complete</h2>
+  <ul style="font-size: 0.85em;">
+    <li>Variables, types, DataFrames (1.1)</li>
+    <li>Filtering, expressions (1.2)</li>
+    <li>Functions, aggregation (1.3)</li>
+    <li>Joins, multi-table (1.4)</li>
+    <li>Window functions, trends (1.5)</li>
+    <li>Visualisation (1.6)</li>
+    <li>Automated profiling (1.7)</li>
+    <li><strong>End-to-end pipeline (1.8) — today</strong></li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Module 2 — Statistical Mastery. Probability, hypothesis testing,
+    regression. Same data pipeline; much bigger questions.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    width: 1280,
+    height: 720,
+    margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.7 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.7</span>
+  Recommender Systems — THE PIVOT
+</h1>
+
+<p class="lead">Total time: ~90 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~5 min per slide</p>
+
+<p>
+  This is the most important lesson in Module 4. The recommender system
+  content is the vehicle; the actual learning objective is the pivot
+  insight: <em>optimisation drives feature discovery</em>. Every minute
+  spent on content-based and collaborative filtering is setup for the
+  matrix factorisation reveal on Slide 6. Do not rush the pivot slides
+  (Slides 6 and 13). If you are running long, cut Slide 11 (hybrid)
+  to a single sentence and expand the pivot discussion.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~3 min</span><span>Title</span></div>
+  <h3>Recommender Systems — THE PIVOT</h3>
+  <p>
+    Set the stakes immediately: "This is the most important lesson
+    in Module 4. Not because recommender systems are hard — they
+    are actually simpler than clustering — but because they contain
+    an insight that changes how you think about feature engineering.
+    By the end of this lesson you will understand that optimisation
+    can create features. That insight is the bridge to deep learning."
+  </p>
+  <div class="transition">→ "Let me show you where this fits."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Spectrum diagram</span></div>
+  <h3>The Feature Engineering Spectrum</h3>
+  <p>
+    Walk the diagram left to right. "In M3, humans designed features.
+    In M4.1 through 4.6, algorithms discovered features without any
+    error signal — clustering, PCA, NMF, topic models. Today, in
+    4.7, we cross the line: the algorithm discovers features by
+    minimising a loss function. The features are called embeddings.
+    In 4.8, neural networks generalise this by adding non-linearity."
+  </p>
+  <p>
+    Make them see the yellow box. "This is the PIVOT. Everything
+    before it is classical unsupervised. Everything after it is deep
+    learning in disguise."
+  </p>
+  <div class="transition">→ "Let's start with the simplest approach."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~4 min</span><span>Content-based</span></div>
+  <h3>Content-based filtering</h3>
+  <p>
+    Quick and intuitive. "You liked Item A. Item B has similar
+    features. I recommend Item B. That is content-based filtering.
+    It works for new items (they have features from day one) but
+    it only recommends more of the same — no serendipity."
+  </p>
+  <p>
+    Singapore context: "FairPrice Online's 'similar products'
+    section is content-based — it matches on product category,
+    brand, and description."
+  </p>
+  <div class="transition">→ "What if we ignore item features entirely?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~5 min</span><span>CF types</span></div>
+  <h3>Collaborative filtering</h3>
+  <p>
+    Walk both boxes. User-based: "Find people who rate things
+    similarly to you and recommend what they liked that you have
+    not seen." Item-based: "Find items that get rated similarly to
+    things you liked." Tell them Amazon's original recommendation
+    engine was item-based CF — published in 2003.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> "Think of user-based CF as asking
+    your friends for recommendations. Item-based CF is asking the
+    store: 'what else do customers buy with this item?'"
+  </div>
+  <div class="transition">→ "Both need the interaction matrix."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>Interaction matrix</span></div>
+  <h3>The user-item matrix</h3>
+  <p>
+    Walk the diagram. "Rows are users, columns are items, cells
+    are ratings. Most cells are empty — that is the sparsity problem.
+    The goal is to fill in the question marks — predict unobserved
+    ratings — so we can recommend high-predicted-rating items."
+  </p>
+  <p>
+    Tease the factorisation: "One way to fill the gaps: factorise
+    this matrix into two smaller matrices whose product approximates
+    the original. The rows of those smaller matrices are embeddings."
+  </p>
+  <div class="transition">→ "The factorisation objective."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~6 min</span><span>THE PIVOT — objective</span></div>
+  <h3>Matrix factorisation objective</h3>
+  <p>
+    This is the pivot slide. Slow down. Walk the formula: "We want
+    to find $U$ and $V$ such that $U V^T$ reconstructs the observed
+    ratings. The first term is reconstruction error. The second term
+    is regularisation — prevents overfitting on sparse data."
+  </p>
+  <p>
+    Then deliver the insight: "The embeddings $\mathbf{u}_u$ and
+    $\mathbf{v}_i$ did not exist before we started optimising.
+    They are features that the optimisation process created. This
+    is the first time in this course that a loss function has
+    created features. Write that down."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention the connection to NMF
+    (4.6). "NMF factorised the document-word matrix. Here we
+    factorise the user-item matrix. Same math. The constraint
+    is different: NMF requires non-negativity; CF MF uses L2
+    regularisation."
+  </div>
+  <div class="transition">→ "How do we solve this?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~4 min</span><span>ALS algorithm</span></div>
+  <h3>ALS — Alternating Least Squares</h3>
+  <p>
+    Walk the diagram. "The trick: if you know $V$, finding $U$ is
+    just a bunch of independent least-squares problems — one per
+    user. If you know $U$, finding $V$ is the same. So alternate:
+    fix one, solve the other. Each step has a closed-form solution.
+    Repeat 10–20 times and you converge."
+  </p>
+  <div class="transition">→ "How does this connect to PCA?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~4 min</span><span>PCA connection</span></div>
+  <h3>Connection to PCA</h3>
+  <p>
+    Walk the table row by row. "Same decomposition. Different data.
+    Same output: embeddings. The only difference is PCA reconstructs
+    the full matrix while CF only reconstructs observed entries.
+    This is why the regularisation term is needed — without it, you
+    could make unobserved predictions arbitrarily large."
+  </p>
+  <div class="transition">→ "Let's see the code."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~5 min</span><span>ALS code</span></div>
+  <h3>ALS from scratch</h3>
+  <p>
+    Walk the code. Point out: "The outer loop alternates between
+    solving for U and solving for V. Each inner loop is a for-loop
+    over users (or items). The solve call is np.linalg.solve —
+    that is the closed-form least-squares solution."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are lost in the code:</strong> "Focus on
+    the structure: two nested loops, alternating. The math inside
+    is a standard least-squares regression — the same thing you
+    learned in Module 2."
+  </div>
+  <div class="transition">→ "What kind of feedback drives this?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Implicit vs explicit</span></div>
+  <h3>Implicit vs explicit feedback</h3>
+  <p>
+    Walk the table. Emphasise the abundance gap: "For every user
+    who leaves a star rating, a hundred users click, view, and
+    scroll without rating. Implicit data is where the signal is."
+  </p>
+  <div class="transition">→ "Combining both worlds."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Hybrid</span></div>
+  <h3>Hybrid recommenders</h3>
+  <p>
+    Quick slide. "Combine content features (metadata, descriptions)
+    with collaborative signals (interaction data). Most production
+    systems at Shopee, Grab, and Netflix are hybrids."
+  </p>
+  <div class="transition">→ "What do the learned embeddings look like?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~4 min</span><span>Embedding vis</span></div>
+  <h3>Visualising learned embeddings</h3>
+  <p>
+    Point at the diagram. "These clusters emerged without any
+    labels. The factorisation discovered that electronics items
+    are rated similarly by certain users, groceries by others,
+    fashion by others. The clusters ARE the evidence that the
+    embeddings capture meaningful structure."
+  </p>
+  <div class="transition">→ "Now the big statement."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~6 min</span><span>THE PIVOT</span></div>
+  <h3>THE PIVOT</h3>
+  <p>
+    This is the climax. Slow down and be deliberate. "Matrix
+    factorisation learns embeddings by minimising reconstruction
+    error. This is the first time in this course that optimisation
+    has driven feature discovery. Before today, features were
+    hand-crafted or discovered without error feedback. Today,
+    a loss function created features that did not exist before."
+  </p>
+  <p>
+    Bridge to 4.8: "In the next lesson, neural networks generalise
+    this. Hidden layer activations ARE embeddings. Learned by
+    minimising a loss function. The difference: neural networks
+    add non-linearity through activation functions, so they can
+    learn non-linear combinations. Matrix factorisation produces
+    linear embeddings; neural networks produce non-linear ones.
+    But the core insight is identical."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If the pivot concept is not landing:</strong> "Think of
+    it this way. In M3, a human decided 'price per square metre is
+    a useful feature'. Today, the algorithm decided 'this 20-dimensional
+    vector is a useful representation of a user'. Nobody designed
+    that vector. Optimisation created it."
+  </div>
+  <div class="transition">→ "The factorisation family."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Factorisation family</span></div>
+  <h3>The factorisation family</h3>
+  <p>
+    Walk the table. "PCA, NMF, CF, neural networks — all factorise
+    a matrix into lower-rank components. The progression: PCA is
+    linear and full-matrix; NMF adds non-negativity; CF optimises
+    on observed entries only; neural networks add non-linearity.
+    Each step is more powerful and more general."
+  </p>
+  <div class="transition">→ "Mistakes to avoid."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four common mistakes</h3>
+  <p>
+    Walk all four. #4 is the meta-mistake: "If you write in
+    your exercise report 'I built a recommender system' and say
+    nothing about embeddings and optimisation-driven features,
+    you have missed the point of this lesson."
+  </p>
+  <div class="transition">→ "Cross-references."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Connections</span></div>
+  <h3>Connections</h3>
+  <p>
+    Walk the four links. Strongest: 4.8 — "In the next lesson,
+    hidden layers ARE the generalisation of what we saw today."
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~3 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Run through the checklist. Preview 4.8: "Next lesson is the
+    densest in the curriculum. We will build a neural network from
+    scratch, implement backpropagation, and see how hidden layers
+    are automated feature engineering with error feedback. The
+    training toolkit — activations, dropout, batch norm, optimisers
+    — is your equipment for all of M5."
+  </p>
+  <div class="transition">→ End of lesson. Take a break — 4.8 is heavy.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    4.6 Speaker Notes
+  </a>
+  <a href="../08/notes.html" class="next">
+    <span class="label">Next →</span>
+    4.8 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

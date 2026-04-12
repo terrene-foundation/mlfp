@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 4.4 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 4.4</span>
+  Anomaly Detection and Ensembles
+</h1>
+
+<p class="lead">
+  Total time: ~75 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~4 min per slide
+</p>
+
+<p>
+  This lesson is lighter on math than 4.2 and 4.3 but heavy on
+  pragmatism. The most important idea to convey is that no single
+  method is sufficient — blending beats individual methods. The second
+  most important idea is that you cannot evaluate detectors without
+  domain expertise.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Anomaly Detection and Ensembles</h3>
+  <p>
+    Frame: "Same unsupervised problem, flipped. Instead of finding
+    groups, find the points that don't belong to any group. Fraud,
+    defective sensors, intrusions — the rare things that matter most."
+  </p>
+  <div class="transition">→ "The opposite question."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~3 min</span><span>Motivation</span></div>
+  <h3>The opposite question</h3>
+  <p>
+    Give a concrete scenario: "0.1% of financial transactions are fraud.
+    You have a few labelled fraud cases from last year, but the patterns
+    change every quarter. You cannot train a supervised classifier on
+    0.1% minorities. Anomaly detection lets you flag suspicious
+    transactions using only the shape of the data itself."
+  </p>
+  <div class="transition">→ "First: what does an outlier even look like?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Three types</span></div>
+  <h3>Three types of outliers</h3>
+  <p>
+    Walk the three red points. (A) far from everything — obvious
+    anomaly. (B) in a direction the data rarely goes — anomaly even
+    though close in Euclidean distance. (C) in a low-density gap between
+    clusters — anomaly even though "central". Different detectors catch
+    different types.
+  </p>
+  <div class="transition">→ "Simplest detector: Z-score."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Z-score</span></div>
+  <h3>Z-score: univariate, assumes normality</h3>
+  <p>
+    Walk the formula. "If data is normal, about 0.27% fall outside
+    $\pm 3\sigma$ — those are your outliers. Works great for
+    normally-distributed features. Fails badly on skewed data."
+  </p>
+  <div class="audience-cue beginner">
+    "Z-score is the 'how many standard deviations from the mean' measurement. 3 sigma is the classical threshold — anything beyond is considered rare."
+  </div>
+  <div class="transition">→ "Skewed data needs IQR."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>IQR</span></div>
+  <h3>IQR: robust to skew</h3>
+  <p>
+    Walk the rule. "Quartiles are unaffected by the extreme values —
+    IQR is a robust statistic. This is exactly what box plot whiskers
+    do. For revenue, session duration, transaction amount — use IQR
+    instead of Z-score."
+  </p>
+  <div class="transition">→ "But both are univariate. Real fraud is multivariate."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~3 min</span><span>Univariate fails</span></div>
+  <h3>Univariate methods miss combinations</h3>
+  <p>
+    Give the fraud example concretely: "Small transaction — normal.
+    Midnight transaction — normal. Small + midnight + new device + unusual
+    location — suspicious. No single feature is anomalous. The combination
+    is. Univariate methods cannot catch this."
+  </p>
+  <div class="transition">→ "Enter Isolation Forest."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~5 min</span><span>Isolation Forest diagram</span></div>
+  <h3>Isolation Forest — few splits isolate anomalies</h3>
+  <p>
+    Walk the diagram. "The outlier on the upper right gets isolated by
+    the first random split. The points in the dense cluster need many
+    splits to be isolated from each other. So: few splits = outlier."
+  </p>
+  <p>
+    This is a beautifully simple idea. You do not need to compute
+    densities or distances — just grow random trees and count path
+    lengths. Scales linearly in the data size.
+  </p>
+  <div class="audience-cue expert">
+    "Contrast with one-class SVM, which requires kernel matrix computation. Isolation Forest is $O(n \log n)$ per tree and embarrassingly parallel. It is the default for production anomaly detection."
+  </div>
+  <div class="transition">→ "The formal score."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>Score formula</span></div>
+  <h3>Isolation Forest score</h3>
+  <p>
+    Walk the formula. Explain $c(n)$ briefly — it normalises path
+    length so scores are comparable across sample sizes. Emphasise the
+    interpretation: 0.5 = normal, near 1 = strong anomaly.
+  </p>
+  <div class="transition">→ "LOF for local density anomalies."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>LOF</span></div>
+  <h3>LOF — local density matters</h3>
+  <p>
+    Walk the formula. "LOF compares the density around your point to
+    the density around its neighbours. If your neighbours are in a
+    dense pack and you're in a sparse area relative to them, you're
+    anomalous."
+  </p>
+  <p>
+    "LOF is the right choice when your clusters have different
+    densities — a point that is 'close' to one cluster in absolute
+    distance can still be an outlier relative to that cluster's
+    tight packing."
+  </p>
+  <div class="transition">→ "Which method catches which?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>Method matrix</span></div>
+  <h3>Method × outlier type matrix</h3>
+  <p>
+    Walk the matrix. Key insight: no single method catches all types.
+    This is the motivation for blending.
+  </p>
+  <div class="transition">→ "Blend them."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~5 min</span><span>Blending</span></div>
+  <h3>Score blending — more robust than any single method</h3>
+  <p>
+    Walk the code. The three-step pattern: normalise to $[0, 1]$,
+    average, threshold. Emphasise that you must normalise first —
+    different methods use different ranges.
+  </p>
+  <p>
+    Business interpretation: "A point caught by all three is almost
+    certainly anomalous. A point caught by one method is a candidate
+    for human review. The number of methods that flagged a point is a
+    confidence gradient — you act differently at each level."
+  </p>
+  <div class="transition">→ "Kailash wraps this."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>EnsembleEngine</span></div>
+  <h3>EnsembleEngine does this with one API</h3>
+  <p>
+    Quick. "Four blending modes: blend (weighted sum), stack (meta-learner),
+    bag (bootstrapped), boost (sequential). For anomaly detection you
+    almost always want blend with agg='mean' or agg='max'."
+  </p>
+  <div class="transition">→ "Now the real example."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~4 min</span><span>Fraud example</span></div>
+  <h3>Worked example: financial fraud</h3>
+  <p>
+    Walk the code. Four features: amount, hour, recipient count, location.
+    Standardise. Run all three methods. Blend. Flag top percentile.
+    Point at <code>modules/mlfp04/solutions/ex_4.py</code> for the full
+    script including Venn-diagram analysis of the overlap.
+  </p>
+  <div class="transition">→ "The one tuning knob you must get right."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Contamination</span></div>
+  <h3>Contamination matters</h3>
+  <p>
+    This is where most students mess up. "Contamination is your prior
+    belief about how many points are anomalous. Set it to 10% when the
+    real rate is 0.1% and your top-10 flagged points are all normal."
+  </p>
+  <p>
+    Practical advice: start with the known base rate, inspect the top
+    $k$, adjust. There is no cross-validation here — you must have a
+    domain expert look at the flagged points.
+  </p>
+  <div class="transition">→ "Common mistakes."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>Mistakes</span></div>
+  <h3>Four rookie mistakes</h3>
+  <p>
+    Walk all four. #1 (contamination) is the most common by far.
+  </p>
+  <div class="transition">→ "And how this becomes production monitoring."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>DriftMonitor</span></div>
+  <h3>Production: DriftMonitor uses this</h3>
+  <p>
+    Preview. "Train Isolation Forest on last week's data. This week,
+    check how anomalous the new data looks compared to the reference.
+    If too many points look strange, your model's input distribution
+    has shifted and you need to retrain. This is how you close the
+    loop between analysis and production monitoring. Full coverage in
+    M5."
+  </p>
+  <div class="transition">→ "Recap."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Recap</span></div>
+  <h3>What you can now do</h3>
+  <p>
+    Walk the checklist. Preview 4.5: "Next we shift gears entirely —
+    association rules. Not 'which group' or 'which outlier' but 'which
+    items co-occur'. Baskets, clicks, symptoms. A classic unsupervised
+    technique that still powers retail recommendations today."
+  </p>
+  <div class="transition">→ End of lesson.</div>
+</div>
+
+</main>
+</body>
+</html>

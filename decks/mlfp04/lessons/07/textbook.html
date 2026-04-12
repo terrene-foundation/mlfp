@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.7 — Recommender Systems: THE PIVOT | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 4: Unsupervised ML and Advanced Techniques</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 4.7</span>
+  Recommender Systems — THE PIVOT
+</h1>
+
+<p class="lead">
+  This is the single most important lesson in Module 4. We started the
+  module with clustering and dimensionality reduction — unsupervised
+  methods that discover features <em>without</em> any error signal. In
+  4.6 we saw NMF factorise a document-word matrix. Today we factorise a
+  user-item matrix and watch the learned factors become <strong>embeddings</strong>
+  — features discovered by optimisation. This is the <em>Feature
+  Engineering Spectrum pivot</em>: the first time you see optimisation
+  drive feature discovery. In Lesson 4.8, neural networks generalise
+  this insight — hidden layer activations ARE embeddings, learned by
+  minimising a loss function.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Recommender systems generate a third of Amazon's revenue and 80% of
+  Netflix's viewing hours. Singapore's retail landscape — from Shopee
+  to FairPrice Online — runs on them. But the business value is not
+  the only reason they matter for this curriculum. Recommender systems
+  sit at the exact transition between classical unsupervised ML and
+  deep learning:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">The Feature Engineering Spectrum</text>
+  <defs>
+    <marker id="arr47" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <!-- M3 box -->
+  <rect x="20" y="50" width="140" height="110" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="90" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#475569">M3</text>
+  <text x="90" y="95" text-anchor="middle" font-size="11" fill="#64748B">Manual feature</text>
+  <text x="90" y="112" text-anchor="middle" font-size="11" fill="#64748B">engineering</text>
+  <text x="90" y="145" text-anchor="middle" font-size="10" fill="#94A3B8">Human designs</text>
+
+  <line x1="165" y1="105" x2="195" y2="105" stroke="#0D9488" stroke-width="2" marker-end="url(#arr47)"/>
+
+  <!-- M4.1-6 box -->
+  <rect x="200" y="50" width="140" height="110" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="270" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#0D9488">M4.1-6</text>
+  <text x="270" y="95" text-anchor="middle" font-size="11" fill="#0D9488">USML discovers</text>
+  <text x="270" y="112" text-anchor="middle" font-size="11" fill="#0D9488">features</text>
+  <text x="270" y="145" text-anchor="middle" font-size="10" fill="#94A3B8">No error signal</text>
+
+  <line x1="345" y1="105" x2="375" y2="105" stroke="#F59E0B" stroke-width="3" marker-end="url(#arr47)"/>
+
+  <!-- PIVOT box -->
+  <rect x="380" y="40" width="140" height="130" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2.5"/>
+  <text x="450" y="68" text-anchor="middle" font-weight="700" font-size="14" fill="#F59E0B">4.7 PIVOT</text>
+  <text x="450" y="90" text-anchor="middle" font-size="11" fill="#92400E">Optimisation</text>
+  <text x="450" y="107" text-anchor="middle" font-size="11" fill="#92400E">drives feature</text>
+  <text x="450" y="124" text-anchor="middle" font-size="11" fill="#92400E">discovery</text>
+  <text x="450" y="155" text-anchor="middle" font-size="10" fill="#B45309">Embeddings!</text>
+
+  <line x1="525" y1="105" x2="555" y2="105" stroke="#0D9488" stroke-width="2" marker-end="url(#arr47)"/>
+
+  <!-- M4.8+ box -->
+  <rect x="560" y="50" width="140" height="110" rx="8" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+  <text x="630" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#4F46E5">M4.8 → M5</text>
+  <text x="630" y="95" text-anchor="middle" font-size="11" fill="#4F46E5">DL generalises</text>
+  <text x="630" y="112" text-anchor="middle" font-size="11" fill="#4F46E5">with error feedback</text>
+  <text x="630" y="145" text-anchor="middle" font-size="10" fill="#94A3B8">Hidden layers = USML</text>
+</svg>
+<figcaption>The curriculum spine: from manual features (M3) through unsupervised discovery (M4.1-6) to the PIVOT where optimisation creates features (4.7), then deep learning generalises the idea (4.8+).</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Content-based filtering</h3>
+
+<p>
+  The simplest recommender: represent each item as a feature vector
+  (genre, price, description TF-IDF), represent each user as the
+  average of the items they liked, and recommend items whose feature
+  vectors are closest to the user vector.
+</p>
+
+<pre><code class="language-python">import polars as pl
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Item features: TF-IDF of product descriptions
+item_features = tfidf_matrix  # shape (n_items, n_features)
+
+# User profile: average of items they purchased
+user_profile = item_features[purchased_indices].mean(axis=0)
+
+# Recommend: top-k most similar items
+sims = cosine_similarity(user_profile.reshape(1, -1), item_features)[0]
+top_k = np.argsort(sims)[-10:][::-1]</code></pre>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations</span>
+  <p>
+    Content-based filtering does not need other users' data. It works
+    even for brand-new users (no cold-start problem on the item side)
+    as long as you have item features. The downside: it cannot discover
+    surprising preferences — it only recommends more of what you
+    already like.
+  </p>
+</div>
+
+<h3>Collaborative filtering</h3>
+
+<p>
+  Collaborative filtering ignores item features entirely. It works
+  with the user-item interaction matrix $R$ (ratings, purchases,
+  clicks):
+</p>
+
+<ul>
+  <li><strong>User-based CF:</strong> find users similar to you, recommend what they liked.</li>
+  <li><strong>Item-based CF:</strong> find items similar to what you liked, recommend those.</li>
+</ul>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 280" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">User-item interaction matrix R</text>
+  <!-- Header row -->
+  <rect x="120" y="40" width="560" height="30" fill="#0D9488"/>
+  <text x="200" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="white">Item A</text>
+  <text x="310" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="white">Item B</text>
+  <text x="420" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="white">Item C</text>
+  <text x="530" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="white">Item D</text>
+  <text x="620" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="white">...</text>
+  <!-- User rows -->
+  <g font-family="JetBrains Mono" font-size="12" fill="#1E293B">
+    <rect x="40" y="70" width="80" height="30" fill="#F0FDFA" stroke="#E2E8F0"/>
+    <text x="80" y="90" text-anchor="middle" font-size="11" fill="#0D9488">User 1</text>
+    <rect x="120" y="70" width="560" height="30" fill="white" stroke="#E2E8F0"/>
+    <text x="200" y="90" text-anchor="middle">5</text>
+    <text x="310" y="90" text-anchor="middle" fill="#CBD5E1">?</text>
+    <text x="420" y="90" text-anchor="middle">3</text>
+    <text x="530" y="90" text-anchor="middle" fill="#CBD5E1">?</text>
+
+    <rect x="40" y="100" width="80" height="30" fill="#F0FDFA" stroke="#E2E8F0"/>
+    <text x="80" y="120" text-anchor="middle" font-size="11" fill="#0D9488">User 2</text>
+    <rect x="120" y="100" width="560" height="30" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="200" y="120" text-anchor="middle" fill="#CBD5E1">?</text>
+    <text x="310" y="120" text-anchor="middle">4</text>
+    <text x="420" y="120" text-anchor="middle" fill="#CBD5E1">?</text>
+    <text x="530" y="120" text-anchor="middle">5</text>
+
+    <rect x="40" y="130" width="80" height="30" fill="#F0FDFA" stroke="#E2E8F0"/>
+    <text x="80" y="150" text-anchor="middle" font-size="11" fill="#0D9488">User 3</text>
+    <rect x="120" y="130" width="560" height="30" fill="white" stroke="#E2E8F0"/>
+    <text x="200" y="150" text-anchor="middle">4</text>
+    <text x="310" y="150" text-anchor="middle">5</text>
+    <text x="420" y="150" text-anchor="middle" fill="#CBD5E1">?</text>
+    <text x="530" y="150" text-anchor="middle" fill="#CBD5E1">?</text>
+  </g>
+  <text x="360" y="195" text-anchor="middle" font-size="12" fill="#64748B">Goal: fill in the "?" entries — predict unobserved ratings</text>
+
+  <!-- Annotation -->
+  <rect x="40" y="215" width="640" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="360" y="238" text-anchor="middle" font-weight="600" font-size="12" fill="#92400E">Matrix factorisation: R ≈ U · V^T</text>
+  <text x="360" y="255" text-anchor="middle" font-size="11" fill="#92400E">U = user embeddings, V = item embeddings, learned by minimising reconstruction error</text>
+</svg>
+<figcaption>The user-item matrix is mostly empty (sparse). Matrix factorisation learns low-dimensional user and item embeddings that reconstruct the observed entries.</figcaption>
+</figure>
+
+<h3>Matrix factorisation — THE PIVOT</h3>
+
+<p>
+  Factorise $R \approx U V^T$ where $U \in \mathbb{R}^{m \times k}$
+  (user embeddings) and $V \in \mathbb{R}^{n \times k}$ (item
+  embeddings). The objective:
+</p>
+
+<div class="annotated-equation">
+  $$ \min_{U, V} \sum_{(u,i) \in \text{observed}} \bigl(r_{ui} - \mathbf{u}_u^T \mathbf{v}_i\bigr)^2 + \lambda\bigl(\|\mathbf{u}_u\|^2 + \|\mathbf{v}_i\|^2\bigr) $$
+  <div class="annotations">
+    <span>$r_{ui}$ — observed rating</span>
+    <span>$\mathbf{u}_u^T \mathbf{v}_i$ — predicted rating</span>
+    <span>$\lambda$ — regularisation</span>
+  </div>
+</div>
+
+<p>
+  <strong>ALS (Alternating Least Squares)</strong> solves this by
+  alternating: fix $U$, solve for $V$ in closed form; fix $V$, solve
+  for $U$ in closed form. Each step is a standard least-squares
+  regression. Repeat until convergence.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — the connection</span>
+  <p>
+    Compare to PCA (Lesson 4.3): PCA decomposes $X = U \Sigma V^T$.
+    Matrix factorisation decomposes $R \approx U V^T$. Both find
+    low-rank structure. The difference: PCA minimises reconstruction
+    error on the full matrix; matrix factorisation minimises it only
+    on <em>observed</em> entries. Both produce embeddings — PCA's are
+    principal components; matrix factorisation's are user/item latent
+    factors.
+  </p>
+</div>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced</span>
+  <p>
+    SVD++ extends basic matrix factorisation with implicit feedback
+    (views, clicks, time-on-page). The user embedding becomes
+    $\mathbf{u}_u + |N(u)|^{-1/2} \sum_{j \in N(u)} \mathbf{y}_j$,
+    where $N(u)$ is the set of items the user interacted with and
+    $\mathbf{y}_j$ are implicit-factor vectors. This consistently
+    outperforms explicit-only models because most user behaviour is
+    implicit.
+  </p>
+</div>
+
+<h3>Implicit vs explicit feedback</h3>
+
+<p>
+  <strong>Explicit</strong> feedback (star ratings) is what users
+  deliberately tell you. <strong>Implicit</strong> feedback (clicks,
+  views, purchases, dwell time) is what they show you through
+  behaviour. Implicit data is 100x more abundant, always available,
+  and often more predictive. Modern production recommenders use
+  implicit feedback almost exclusively.
+</p>
+
+<h3>Hybrid systems</h3>
+
+<p>
+  Combine content-based features (item descriptions, metadata) with
+  collaborative signals (user-item interactions). Hybrids mitigate
+  the cold-start problem (new items have features but no interactions)
+  and improve coverage.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Pivot Insight</h2>
+
+<p>
+  Pause and absorb this. Matrix factorisation <em>learns</em> user
+  and item embeddings by <em>minimising reconstruction error</em>.
+  The embeddings are not hand-crafted features — they are features
+  <em>discovered by optimisation</em>. This is the first time in the
+  curriculum that a loss function drives feature creation.
+</p>
+
+<p>
+  In Lesson 4.8, we will see that a neural network does the exact
+  same thing: hidden layer activations are embeddings, learned by
+  minimising a loss function. The difference: neural networks can
+  learn non-linear combinations through activation functions. Matrix
+  factorisation produces linear embeddings; neural networks produce
+  non-linear ones. But the core insight is identical: <strong>optimisation
+  drives feature discovery</strong>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Kailash Integration</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Kailash's <code>AutoMLEngine</code> handles recommendation tasks
+    when configured with a collaborative filtering backend. The
+    <code>ModelVisualizer</code> can project learned user and item
+    embeddings into 2D for inspection — if the embeddings capture
+    meaningful structure, you will see user clusters (frequent buyers,
+    occasional browsers) and item clusters (electronics, groceries)
+    emerge without any labels.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Singapore Retail</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build three recommenders on Singapore retail data: content-based,
+    user-based CF, and matrix factorisation. Compare recommendation
+    quality and visualise learned embeddings.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load and prepare the interaction matrix.</p>
+    <pre><code class="language-python">import polars as pl
+import numpy as np
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+purchases = loader.load("mlfp04", "sg_retail_purchases.csv")
+
+# Pivot to user-item matrix
+R = purchases.pivot(
+    on="product_id", index="user_id", values="rating"
+).fill_null(0).drop("user_id").to_numpy()</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Implement ALS matrix factorisation from scratch.</p>
+    <pre><code class="language-python">def als(R, k=20, lam=0.1, n_iter=20):
+    m, n = R.shape
+    U = np.random.randn(m, k) * 0.01
+    V = np.random.randn(n, k) * 0.01
+    mask = (R > 0).astype(float)
+
+    for iteration in range(n_iter):
+        # Fix V, solve for U
+        for u in range(m):
+            idx = mask[u] > 0
+            V_u = V[idx]
+            r_u = R[u, idx]
+            U[u] = np.linalg.solve(
+                V_u.T @ V_u + lam * np.eye(k), V_u.T @ r_u
+            )
+        # Fix U, solve for V
+        for i in range(n):
+            idx = mask[:, i] > 0
+            U_i = U[idx]
+            r_i = R[idx, i]
+            V[i] = np.linalg.solve(
+                U_i.T @ U_i + lam * np.eye(k), U_i.T @ r_i
+            )
+        # Track loss
+        pred = U @ V.T
+        err = np.sum(mask * (R - pred) ** 2)
+        print(f"Iter {iteration+1}: MSE = {err / mask.sum():.4f}")
+
+    return U, V
+
+U, V = als(R, k=20)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Visualise the learned embeddings.</p>
+    <pre><code class="language-python">from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+
+# Project item embeddings to 2D
+V_2d = TSNE(n_components=2, random_state=42).fit_transform(V)
+
+plt.figure(figsize=(10, 8))
+plt.scatter(V_2d[:, 0], V_2d[:, 1], alpha=0.5, s=10)
+plt.title("Learned Item Embeddings (2D t-SNE)")
+plt.xlabel("Component 1")
+plt.ylabel("Component 2")
+plt.show()</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<ol>
+  <li><strong>Training on the full matrix.</strong> You must hold out test interactions. Evaluate on unseen user-item pairs, not the ones used for training.</li>
+  <li><strong>Ignoring implicit data.</strong> Star ratings are rare; clicks are abundant. Weighting implicit feedback correctly is usually the biggest accuracy lever.</li>
+  <li><strong>Too many latent factors.</strong> $k = 20$ to $50$ is typical. Higher $k$ overfits sparse matrices and slows ALS convergence.</li>
+  <li><strong>Missing the pivot insight.</strong> The point is not just "build a recommender" — it is "optimisation discovers features". If you leave this lesson thinking it was about recommendations, go back and re-read the pivot section.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <p><strong>Exercise 7.</strong></p>
+  <ol>
+    <li>Build a content-based recommender using product descriptions (TF-IDF cosine similarity).</li>
+    <li>Build a user-based CF recommender using cosine similarity on the interaction matrix.</li>
+    <li>Implement ALS matrix factorisation with $k = 20$.</li>
+    <li>Compare recommendation quality (precision@10, NDCG@10).</li>
+    <li>Visualise user and item embeddings with t-SNE. Do meaningful clusters emerge?</li>
+    <li>Write one paragraph articulating the pivot: how does matrix factorisation relate to the Feature Engineering Spectrum?</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<ul>
+  <li><strong>Back to 4.3 PCA:</strong> PCA decomposes $X = U \Sigma V^T$. Matrix factorisation decomposes $R \approx U V^T$. Same low-rank insight.</li>
+  <li><strong>Back to 4.5 Rules:</strong> association rules discover discrete co-occurrence patterns. Matrix factorisation discovers continuous latent structure in the same co-occurrence data.</li>
+  <li><strong>Back to 4.6 NMF:</strong> NMF factorises document-word. CF factorises user-item. Same factorisation, different data.</li>
+  <li><strong>Forward to 4.8 (DL bridge):</strong> neural network hidden layers are embeddings learned by optimisation — the same idea generalised with non-linear activation functions.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+  <h2>Reflection</h2>
+  <p>
+    This lesson is the hinge of the curriculum. Before today,
+    features were either hand-crafted (M3) or discovered without
+    any error signal (M4.1-6). Today, for the first time, a loss
+    function created features: user and item embeddings that did not
+    exist before training and emerge purely from the structure of
+    observed ratings. In Lesson 4.8 you will see that a neural
+    network is just a more powerful version of the same idea — and
+    from there, every deep learning architecture in M5 is a
+    specialised variant of "learn embeddings by optimising a loss".
+  </p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../06/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    4.6 NLP: Text to Topics
+  </a>
+  <a href="../08/textbook.html" class="next">
+    <span class="label">Next →</span>
+    4.8 DL Foundations
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.4 — A/B Testing and Experiment Design | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.4</p>
+  <h1>A/B Testing and Experiment Design</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Randomisation · Power analysis · SRM · Data collection framework
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 45 minutes</strong> · <strong>Prereq:</strong> 2.3 (hypothesis testing)
+  </div>
+</section>
+
+<section>
+  <h2>Why randomisation</h2>
+  <p>
+    We can never see the counterfactual — what would have happened to the
+    treatment group <em>without</em> treatment. Random assignment is the
+    only reliable way to make the groups comparable.
+  </p>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="80" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="130" y="115" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Population</text>
+      <text x="130" y="135" text-anchor="middle" font-family="Inter" font-size="11">1,000 users</text>
+      <line x1="220" y1="110" x2="320" y2="80" stroke="#0D9488"/>
+      <line x1="220" y1="150" x2="320" y2="180" stroke="#0D9488"/>
+      <rect x="330" y="50" width="170" height="60" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="415" y="85" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Control (A)</text>
+      <rect x="330" y="150" width="170" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="415" y="185" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">Treatment (B)</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Pre-register before you touch the data</h2>
+  <ol style="font-size: 0.9em;">
+    <li>Unit of randomisation (user, session, device)</li>
+    <li>Primary metric (one) + secondary (up to 3) + guardrails</li>
+    <li>Direction of alternative (increase / decrease / two-sided)</li>
+    <li>Decision rule: $\alpha$, power target, MDE</li>
+    <li>Stopping criterion</li>
+  </ol>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin-top: 1em;">
+    <strong>⚠ Peeking inflates the false-positive rate.</strong>
+    Decide everything upfront; commit in writing (or in
+    ExperimentTracker).
+  </div>
+</section>
+
+<section>
+  <h2>Power analysis — sizing</h2>
+  <p>Rearrange the power formula for $n$ per arm:</p>
+  \[ n = \left(\frac{z_{1-\alpha/2} + z_{1-\beta}}{\delta/\sigma}\right)^2 \cdot 2 \]
+  <p>For a proportion test with baseline $p_0$ and lift $\Delta$:</p>
+  \[ n = \frac{2(z_{1-\alpha/2} + z_{1-\beta})^2 \cdot p_0(1 - p_0)}{\Delta^2} \]
+  <p style="font-size: 0.85em;">Detect 1pp lift from 8% baseline, 80% power, $\alpha = 0.05$ → $n \approx 5{,}800$ per arm.</p>
+</section>
+
+<section>
+  <h2>Power curves</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <line x1="60" y1="220" x2="680" y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="60" y1="40"  x2="60"  y2="220" stroke="#94A3B8" stroke-width="1.5"/>
+      <text x="680" y="245" text-anchor="middle" font-family="Inter" font-size="11">sample size n</text>
+      <line x1="60" y1="80" x2="680" y2="80" stroke="#22C55E" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text x="685" y="85" font-family="Inter" font-size="11" fill="#22C55E">0.8</text>
+      <path d="M 60,215 Q 200,200 400,150 T 680,90" fill="none" stroke="#EF4444" stroke-width="2.5"/>
+      <text x="420" y="155" font-family="Inter" font-size="11" fill="#EF4444">small effect (δ=1%)</text>
+      <path d="M 60,210 Q 150,150 250,100 T 680,55" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+      <text x="250" y="90" font-family="Inter" font-size="11" fill="#0D9488">big effect (δ=5%)</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Power scales with $\delta^2$: halve the effect → quadruple the sample size.</p>
+</section>
+
+<section>
+  <h2>SRM — the first check you run</h2>
+  <p>Before looking at outcomes, check the allocation.</p>
+  \[ \chi^2 = \sum_k \frac{(O_k - E_k)^2}{E_k} \]
+  <pre><code class="language-python" data-trim>
+n_c, n_t = 5_212, 4_788   # 50/50 intended
+expected = [(n_c + n_t)/2]*2
+chi2, p = stats.chisquare([n_c, n_t], f_exp=expected)
+  </code></pre>
+  <div style="background: #FEF3C7; padding: 10px 16px; border-left: 4px solid #F59E0B; margin-top: 1em; font-size: 0.85em;">
+    <strong>Use $p &lt; 0.0001$ — not $0.05$.</strong>
+    SRM is a data-quality alarm, not a hypothesis.
+  </div>
+</section>
+
+<section>
+  <h2>Data Collection Framework</h2>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th>Step</th><th>Questions</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Why</strong></td><td>Hypothesis? Business value? Decision it drives?</td></tr>
+      <tr><td><strong>What</strong></td><td>Primary + secondary + guardrail metrics. Budget/time constraints.</td></tr>
+      <tr><td><strong>Where</strong></td><td>Internal (CRM, POS, app events) vs external (data.gov.sg, APIs)</td></tr>
+      <tr><td><strong>How</strong></td><td>At start: review, discover, validate. Continuous: real-time/batch.</td></tr>
+      <tr><td><strong>Frequency</strong></td><td>Collection vs analysis cadence. Duration for statistical power.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Common data pitfalls</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Silos:</strong> metrics spread across systems, never joined</li>
+    <li><strong>Red tape:</strong> three sign-offs before you can touch data</li>
+    <li><strong>Aggregated only:</strong> daily totals, no user-level</li>
+    <li><strong>Selection bias:</strong> only completers logged</li>
+    <li><strong>Temporal leakage:</strong> experiment window overlaps marketing push</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Worked: BOGO sample size</h2>
+  <pre><code class="language-python" data-trim>
+import numpy as np
+from scipy import stats
+
+p0, delta = 0.08, 0.01
+alpha, power = 0.05, 0.80
+
+z_a = stats.norm.ppf(1 - alpha/2)
+z_b = stats.norm.ppf(power)
+n = int(np.ceil(2 * (z_a + z_b)**2 * p0*(1-p0) / delta**2))
+# n ≈ 5,800
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: load and SRM check</h2>
+  <pre><code class="language-python" data-trim>
+df = MLFPDataLoader().load("mlfp02", "ab_test.parquet")
+counts = df.group_by("arm").agg(pl.len().alias("n"))
+n_c = counts.filter(pl.col("arm")=="control")["n"][0]
+n_t = counts.filter(pl.col("arm")=="treatment")["n"][0]
+expected = [(n_c + n_t)/2]*2
+chi2, p_srm = stats.chisquare([n_c, n_t], f_exp=expected)
+assert p_srm > 1e-4, "SRM detected!"
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: the primary test</h2>
+  <pre><code class="language-python" data-trim>
+from statsmodels.stats.proportion import (
+    proportions_ztest, confint_proportions_2indep)
+
+k_c = df.filter(pl.col("arm")=="control")["converted"].sum()
+k_t = df.filter(pl.col("arm")=="treatment")["converted"].sum()
+
+z, p = proportions_ztest([k_t, k_c], [n_t, n_c])
+lo, hi = confint_proportions_2indep(k_t, n_t, k_c, n_c)
+lift = k_t/n_t - k_c/n_c
+  </code></pre>
+</section>
+
+<section>
+  <h2>Reporting to the business</h2>
+  <div style="background: #F0FDF4; padding: 16px 20px; border-left: 4px solid #22C55E;">
+    <strong>Recommendation:</strong> Ship BOGO. Conversion rate increased by
+    <strong>1.3 percentage points</strong> (95% CI: 0.6 to 2.0, p = 0.003),
+    exceeding the pre-registered MDE of 1pp. Approximately $240K additional
+    revenue/quarter. No SRM. No guardrail metrics degraded.
+  </div>
+  <p style="font-size: 0.85em; margin-top: 1em;">
+    Report in plain language. Quote uncertainty, not just point estimates.
+    Connect to business value. Never say "we prove".
+  </p>
+</section>
+
+<section>
+  <h2>Three rookie mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>1. Peeking.</strong> Monitoring p-values and stopping when
+    significant. Inflates false-positive rate massively.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>2. No power analysis.</strong> Underpowered experiments waste
+    time or worse, ship wrong.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>3. Skipping SRM.</strong> If allocation is broken, nothing else matters.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Pre-register a hypothesis with MDE, $\alpha$, power</li>
+    <li>✓ Compute required sample size from power formulas</li>
+    <li>✓ Detect SRM with a chi-squared test</li>
+    <li>✓ Apply the Why/What/Where/How/Frequency framework</li>
+    <li>✓ Run a z-test for proportions with CI</li>
+    <li>✓ Report results in business language</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.5 — Linear regression from first principles.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.1 — Feature Engineering, ML Pipeline, and Feature Selection | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.1</span>
+  Feature Engineering, ML Pipeline, and Feature Selection
+</h1>
+
+<p class="lead">
+  Module 2 gave you statistics and a single linear model. In the next 75
+  minutes we will answer the question that decides whether a machine-learning
+  project ships or dies: <strong>what goes into the model?</strong> You will
+  engineer features from a messy multi-table ICU dataset, learn the seven
+  stages of the ML pipeline, and apply three feature-selection families —
+  filter, wrapper, and embedded — to shrink forty-five candidate features down
+  to the ones that actually predict mortality. Along the way you will meet the
+  single most expensive mistake in ML: <em>feature leakage</em>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  There is an old saying among practitioners: <em>"data beats models, and
+  features beat data."</em> An XGBoost model trained on the wrong features will
+  lose to a logistic regression trained on the right ones — every time. The
+  skill that separates a junior ML engineer from a senior one is not knowing
+  more algorithms; it is knowing how to <em>represent a real problem as a
+  numeric tensor a model can learn from</em>.
+</p>
+
+<p>
+  Singapore's clinical data illustrates this vividly. A raw ICU record has
+  vital-sign time-series recorded at irregular intervals, medication start and
+  stop times, laboratory panels that are ordered only when the doctor
+  suspects a problem (so the <em>presence</em> of a lab test is itself a
+  signal), and admission metadata. None of this is directly ingestible by a
+  tree-based classifier. Before any model, there is engineering.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 900 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <g font-family="Inter" font-size="12">
+    <rect x="10"  y="70" width="110" height="70" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="65"  y="95"  text-anchor="middle" font-weight="700" fill="#B45309">1. Ingest</text>
+    <text x="65"  y="115" text-anchor="middle" fill="#78350F">CSV, DB, API</text>
+    <text x="65"  y="131" text-anchor="middle" fill="#78350F" font-size="10">raw tables</text>
+
+    <rect x="135" y="70" width="110" height="70" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+    <text x="190" y="95"  text-anchor="middle" font-weight="700" fill="#1D4ED8">2. Preprocess</text>
+    <text x="190" y="115" text-anchor="middle" fill="#1E3A8A">clean, impute,</text>
+    <text x="190" y="131" text-anchor="middle" fill="#1E3A8A">encode</text>
+
+    <rect x="260" y="70" width="120" height="70" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+    <text x="320" y="95"  text-anchor="middle" font-weight="700" fill="#15803D">3. Feature eng.</text>
+    <text x="320" y="115" text-anchor="middle" fill="#166534">lag, interaction,</text>
+    <text x="320" y="131" text-anchor="middle" fill="#166534">aggregate</text>
+
+    <rect x="395" y="70" width="110" height="70" rx="8" fill="#CFFAFE" stroke="#06B6D4" stroke-width="2"/>
+    <text x="450" y="95"  text-anchor="middle" font-weight="700" fill="#0E7490">4. Select</text>
+    <text x="450" y="115" text-anchor="middle" fill="#164E63">filter / wrapper</text>
+    <text x="450" y="131" text-anchor="middle" fill="#164E63">/ embedded</text>
+
+    <rect x="520" y="70" width="110" height="70" rx="8" fill="#E0E7FF" stroke="#6366F1" stroke-width="2"/>
+    <text x="575" y="95"  text-anchor="middle" font-weight="700" fill="#4338CA">5. Train</text>
+    <text x="575" y="115" text-anchor="middle" fill="#3730A3">fit model on</text>
+    <text x="575" y="131" text-anchor="middle" fill="#3730A3">train split</text>
+
+    <rect x="645" y="70" width="120" height="70" rx="8" fill="#FCE7F3" stroke="#EC4899" stroke-width="2"/>
+    <text x="705" y="95"  text-anchor="middle" font-weight="700" fill="#BE185D">6. Evaluate</text>
+    <text x="705" y="115" text-anchor="middle" fill="#831843">CV, metrics,</text>
+    <text x="705" y="131" text-anchor="middle" fill="#831843">calibration</text>
+
+    <rect x="780" y="70" width="110" height="70" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+    <text x="835" y="95"  text-anchor="middle" font-weight="700" fill="#0F766E">7. Deploy</text>
+    <text x="835" y="115" text-anchor="middle" fill="#134E4A">register, serve,</text>
+    <text x="835" y="131" text-anchor="middle" fill="#134E4A">monitor drift</text>
+
+    <line x1="120" y1="105" x2="134" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+    <line x1="245" y1="105" x2="259" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+    <line x1="380" y1="105" x2="394" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+    <line x1="505" y1="105" x2="519" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+    <line x1="630" y1="105" x2="644" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+    <line x1="765" y1="105" x2="779" y2="105" stroke="#475569" stroke-width="2" marker-end="url(#arrow-t)"/>
+
+    <text x="450" y="175" text-anchor="middle" fill="#64748B" font-style="italic">Stages 3 and 4 are this lesson. Stage 5 starts Lesson 3.2.</text>
+    <text x="450" y="195" text-anchor="middle" fill="#94A3B8" font-size="10">Every arrow is a potential leakage site if you are not careful.</text>
+  </g>
+</svg>
+<figcaption>The seven stages of a supervised ML pipeline. This lesson owns stages 3 and 4.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>Statistics vs ML: explaining the past vs predicting the future</h3>
+
+<p>
+  In Module 2 you fitted a linear regression to HDB prices and reported the
+  coefficients: "every additional square metre is worth about S\$4,200". That
+  is a <strong>statistical</strong> exercise — the goal is to explain what is
+  in the data using a small number of interpretable parameters.
+</p>
+
+<p>
+  Machine learning rewrites the goal. A machine-learning model does not care
+  about coefficients; it cares about the expected loss on
+  <em>unseen</em> data:
+</p>
+
+$$\text{ML objective:} \quad \min_{f} \; \mathbb{E}_{(x, y) \sim \mathcal{D}} \bigl[L\bigl(y, f(x)\bigr)\bigr]$$
+
+<p>
+  where $L$ is a loss function (squared error, log loss, hinge), $f$ is the
+  model, and $\mathcal{D}$ is the unknown distribution that produced both the
+  training and the future data. The statistical exercise cares about inference
+  on the parameters; the ML exercise cares about generalisation to new draws
+  from $\mathcal{D}$. That single shift in objective is what justifies
+  everything we are about to do: we will grow features like weeds because we
+  do not care about their interpretability — we care about whether they help
+  the loss.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — The training vs test gap</span>
+  <p>
+    Let $\hat{f}$ be the model fitted on a finite sample. The
+    <em>generalisation gap</em> is
+    $\mathbb{E}_{(x,y) \sim \mathcal{D}}[L(y, \hat{f}(x))] - \hat{L}_{\text{train}}(\hat{f})$.
+    Every design decision in ML — regularisation, cross-validation, feature
+    selection, early stopping — is ultimately a trick to estimate or
+    minimise this gap. We will come back to it in Lesson 3.2 and formally
+    decompose it into bias, variance, and irreducible noise.
+  </p>
+</div>
+
+<h3>Feature engineering: four families that cover most of the work</h3>
+
+<p>
+  A feature is any deterministic function of the raw data that you hand to a
+  model as a column. Most features fall into four families:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Family</th><th>Example</th><th>Why it helps</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Aggregation</strong></td><td>mean heart rate over first 24h of admission</td><td>reduces irregular time-series to a fixed shape</td></tr>
+    <tr><td><strong>Temporal / lag</strong></td><td>rainfall 1 day ago, rainfall 7 days ago</td><td>exposes autoregressive structure</td></tr>
+    <tr><td><strong>Interaction</strong></td><td>age × systolic_bp</td><td>lets linear models capture non-linear effects</td></tr>
+    <tr><td><strong>Domain-derived</strong></td><td>SOFA score, shock index, price per sqm</td><td>encodes expert knowledge the model cannot discover from 5000 rows</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations — A feature is a function</span>
+  <p>
+    Do not think of a feature as "a column in the CSV". Think of it as
+    <em>a function applied to the raw data</em>. The raw data is fixed; the
+    feature space is something you design. The CSV that came out of your
+    hospital database has maybe 30 raw fields; your final feature matrix will
+    have 50–200. You are not transcribing — you are engineering.
+  </p>
+</div>
+
+<h3>Feature leakage: the most expensive mistake in ML</h3>
+
+<p>
+  <strong>Leakage</strong> is when information that will not be available at
+  prediction time sneaks into the training features. It makes your
+  cross-validation scores look spectacular and your deployed model fall over
+  as soon as the first real request arrives.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow-leak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#DC2626"/>
+    </marker>
+  </defs>
+  <g font-family="Inter" font-size="13">
+    <!-- Timeline axis -->
+    <line x1="60" y1="200" x2="720" y2="200" stroke="#475569" stroke-width="2"/>
+    <text x="60"  y="222" text-anchor="start"  font-size="11" fill="#64748B">t = admission</text>
+    <text x="390" y="222" text-anchor="middle" font-size="11" fill="#64748B">t = 24h (prediction time)</text>
+    <text x="720" y="222" text-anchor="end"    font-size="11" fill="#64748B">t = discharge / death</text>
+    <line x1="390" y1="180" x2="390" y2="210" stroke="#0D9488" stroke-width="3"/>
+
+    <!-- Allowed features -->
+    <rect x="80" y="40" width="280" height="100" rx="10" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+    <text x="220" y="65"  text-anchor="middle" font-weight="700" fill="#15803D">✓ Allowed features</text>
+    <text x="220" y="88"  text-anchor="middle" font-size="12" fill="#166534">age, sex, comorbidities</text>
+    <text x="220" y="105" text-anchor="middle" font-size="12" fill="#166534">first-24h vitals, first-24h labs</text>
+    <text x="220" y="122" text-anchor="middle" font-size="12" fill="#166534">admission diagnosis</text>
+
+    <!-- Leaky features -->
+    <rect x="420" y="40" width="280" height="100" rx="10" fill="#FEF2F2" stroke="#DC2626" stroke-width="2"/>
+    <text x="560" y="65"  text-anchor="middle" font-weight="700" fill="#B91C1C">✗ Leaky features</text>
+    <text x="560" y="88"  text-anchor="middle" font-size="12" fill="#7F1D1D">length_of_stay (known only at discharge)</text>
+    <text x="560" y="105" text-anchor="middle" font-size="12" fill="#7F1D1D">max_ventilator_hours</text>
+    <text x="560" y="122" text-anchor="middle" font-size="12" fill="#7F1D1D">icd10 = "I46.9 Cardiac arrest, unspecified"</text>
+
+    <line x1="560" y1="140" x2="560" y2="180" stroke="#DC2626" stroke-width="2" marker-end="url(#arrow-leak)" stroke-dasharray="4 3"/>
+    <text x="570" y="165" fill="#B91C1C" font-size="11" font-style="italic">these only exist after prediction time</text>
+  </g>
+</svg>
+<figcaption>Point-in-time correctness: a feature is legal only if its value would be known at the moment the prediction is made.</figcaption>
+</figure>
+
+<p>
+  The rule is brutally simple: <em>for a prediction made at time $t$, only use
+  information produced strictly before $t$</em>. Violate it and your model
+  memorises the future. Enforce it and your cross-validation scores will drop
+  — sometimes by a lot — but they will finally match what you see in
+  production.
+</p>
+
+<h3>Feature selection: three families</h3>
+
+<p>
+  You will often engineer many more features than you need. Feature selection
+  is the act of keeping the predictive ones and dropping the noise. There are
+  three classical families.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 300" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="13">
+    <!-- Filter box -->
+    <rect x="20" y="30" width="230" height="240" rx="12" fill="#ECFDF5" stroke="#10B981" stroke-width="2"/>
+    <text x="135" y="60"  text-anchor="middle" font-weight="700" font-size="16" fill="#047857">Filter</text>
+    <text x="135" y="85"  text-anchor="middle" font-size="11"  fill="#065F46">(model-free)</text>
+    <text x="135" y="115" text-anchor="middle" font-size="12"  fill="#047857">• correlation threshold</text>
+    <text x="135" y="135" text-anchor="middle" font-size="12"  fill="#047857">• mutual information</text>
+    <text x="135" y="155" text-anchor="middle" font-size="12"  fill="#047857">• chi-squared</text>
+    <text x="135" y="175" text-anchor="middle" font-size="12"  fill="#047857">• ANOVA F-test</text>
+    <text x="135" y="210" text-anchor="middle" font-size="11" font-style="italic" fill="#064E3B">Fast, scales well</text>
+    <text x="135" y="230" text-anchor="middle" font-size="11" font-style="italic" fill="#064E3B">ignores interactions</text>
+
+    <!-- Wrapper box -->
+    <rect x="275" y="30" width="230" height="240" rx="12" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+    <text x="390" y="60"  text-anchor="middle" font-weight="700" font-size="16" fill="#1E40AF">Wrapper</text>
+    <text x="390" y="85"  text-anchor="middle" font-size="11"  fill="#1E3A8A">(model-driven search)</text>
+    <text x="390" y="115" text-anchor="middle" font-size="12"  fill="#1E40AF">• forward selection</text>
+    <text x="390" y="135" text-anchor="middle" font-size="12"  fill="#1E40AF">• backward elimination</text>
+    <text x="390" y="155" text-anchor="middle" font-size="12"  fill="#1E40AF">• RFE (recursive elim.)</text>
+    <text x="390" y="175" text-anchor="middle" font-size="12"  fill="#1E40AF">• genetic search</text>
+    <text x="390" y="210" text-anchor="middle" font-size="11" font-style="italic" fill="#0C1E45">Captures interactions</text>
+    <text x="390" y="230" text-anchor="middle" font-size="11" font-style="italic" fill="#0C1E45">$O(d^2)$ fits — slow</text>
+
+    <!-- Embedded box -->
+    <rect x="530" y="30" width="230" height="240" rx="12" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="645" y="60"  text-anchor="middle" font-weight="700" font-size="16" fill="#B45309">Embedded</text>
+    <text x="645" y="85"  text-anchor="middle" font-size="11"  fill="#78350F">(baked into training)</text>
+    <text x="645" y="115" text-anchor="middle" font-size="12"  fill="#B45309">• L1 (Lasso) sparsity</text>
+    <text x="645" y="135" text-anchor="middle" font-size="12"  fill="#B45309">• tree feature importance</text>
+    <text x="645" y="155" text-anchor="middle" font-size="12"  fill="#B45309">• SHAP importance</text>
+    <text x="645" y="175" text-anchor="middle" font-size="12"  fill="#B45309">• elastic-net path</text>
+    <text x="645" y="210" text-anchor="middle" font-size="11" font-style="italic" fill="#451A03">One fit, not many</text>
+    <text x="645" y="230" text-anchor="middle" font-size="11" font-style="italic" fill="#451A03">Tied to one model family</text>
+  </g>
+</svg>
+<figcaption>Filter → wrapper → embedded: increasing cost, increasing accuracy, decreasing generality.</figcaption>
+</figure>
+
+<h4>Filter: score each feature independently</h4>
+
+<p>
+  Filter methods rank each feature against the target using a model-free
+  statistic and drop the ones below a threshold. The most common statistic
+  for a continuous target is <strong>mutual information</strong>:
+</p>
+
+$$I(X; Y) \;=\; \sum_{x}\sum_{y} p(x, y) \, \log \frac{p(x, y)}{p(x)\,p(y)}$$
+
+<p>
+  $I(X; Y) = 0$ iff $X$ and $Y$ are independent; it captures non-linear
+  dependencies that linear correlation misses. For a categorical target, the
+  <strong>chi-squared statistic</strong> is the classic choice:
+</p>
+
+$$\chi^2 \;=\; \sum_{i} \frac{(O_i - E_i)^2}{E_i}$$
+
+<p>
+  where $O_i$ is the observed count in cell $i$ of a contingency table and
+  $E_i$ is the expected count under independence. Large $\chi^2$ means the
+  feature's distribution differs from what independence would predict.
+</p>
+
+<h4>Wrapper: let the model vote</h4>
+
+<p>
+  A wrapper method repeatedly re-trains the <em>actual</em> model with
+  different feature subsets and keeps whichever subset scores best on
+  cross-validation. The algorithms are greedy because trying every subset is
+  $O(2^d)$ and intractable for $d > 20$:
+</p>
+
+<ul>
+  <li><strong>Forward selection:</strong> start with no features; at each step add the feature whose addition most improves CV score. Stop when no addition helps.</li>
+  <li><strong>Backward elimination:</strong> start with all features; at each step drop the feature whose removal hurts CV score least. Stop when every remaining feature is essential.</li>
+  <li><strong>Recursive Feature Elimination (RFE):</strong> train the model, rank features by importance, drop the lowest, refit, repeat.</li>
+</ul>
+
+<h4>Embedded: selection falls out of training</h4>
+
+<p>
+  Embedded methods fit one model and extract the selection from the fitted
+  parameters. L1-regularised regression (Lasso) drives irrelevant coefficients
+  to exactly zero — fit once, keep the nonzero ones. Tree ensembles expose a
+  <code>feature_importances_</code> array derived from total impurity
+  reduction — again, one fit, one ranking. The cost is near zero; the tradeoff
+  is that the selection is tied to the model family you used.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engines: FeatureEngineer, FeatureStore, PreprocessingPipeline</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Three kailash-ml engines cover almost every operation in this lesson.
+    <code>FeatureEngineer</code> generates derived columns from declarative
+    recipes. <code>PreprocessingPipeline</code> chains encoders, scalers, and
+    splitters as a polars-native pipeline. <code>FeatureStore</code> registers
+    a schema (names, types, allowed ranges) so downstream models can validate
+    incoming batches before inference. Think of them as the three verbs:
+    <em>engineer, preprocess, register</em>.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_ml import FeatureEngineer, PreprocessingPipeline
+from kailash_ml.types import FeatureSchema, FeatureField
+
+fe = FeatureEngineer()
+features = (
+    fe.aggregate(vitals, group_by="admission_id",
+                 agg={"heart_rate": ["mean", "std", "max"]})
+      .then_join(admissions, on="admission_id")
+      .then_derive("shock_index", "heart_rate_mean / systolic_bp_mean")
+)
+
+schema = FeatureSchema([
+    FeatureField("heart_rate_mean",  dtype="float64", min=20,  max=220),
+    FeatureField("heart_rate_std",   dtype="float64", min=0,   max=80),
+    FeatureField("shock_index",      dtype="float64", min=0,   max=5),
+])
+features = schema.validate(features)
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Engineering Features for ICU Mortality</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    We have five tables from a Singapore ICU cohort: <code>patients</code>,
+    <code>admissions</code>, <code>vitals</code>, <code>medications</code>,
+    <code>labs</code>. The target is <em>in-hospital mortality</em> — a binary
+    flag. The prediction is made at the end of the first 24 hours of
+    admission. We need one row per admission, with features that obey
+    point-in-time correctness.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1.</span>
+    <p>Load every table and force the timestamp columns to proper datetimes
+       so we can do temporal filtering later.</p>
+    <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+patients    = loader.load("mlfp02", "icu_patients.parquet")
+admissions  = loader.load("mlfp02", "icu_admissions.parquet")
+vitals      = loader.load("mlfp02", "icu_vitals.parquet")
+medications = loader.load("mlfp02", "icu_medications.parquet")
+labs        = loader.load("mlfp02", "icu_labs.parquet")
+
+admissions = admissions.with_columns(
+    pl.col("admit_time").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+    pl.col("discharge_time").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2.</span>
+    <p>Clip every vital reading to the first 24 hours of the admission it
+       belongs to. This is where point-in-time correctness is enforced: a
+       vital recorded at hour 48 cannot be a feature for a hour-24 prediction.</p>
+    <pre><code class="language-python">vitals_24h = (
+    vitals.join(admissions.select(["admission_id", "admit_time"]),
+                on="admission_id")
+          .with_columns(
+              hours_since_admit=(
+                  pl.col("timestamp") - pl.col("admit_time")
+              ).dt.total_hours()
+          )
+          .filter(pl.col("hours_since_admit") <= 24)
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3.</span>
+    <p>Aggregate the time-series into a fixed-shape summary per admission.
+       Mean, std, min, max of heart rate, systolic BP, SpO₂. This collapses
+       an irregular time series into a flat row.</p>
+    <pre><code class="language-python">vital_features = vitals_24h.group_by("admission_id").agg([
+    pl.col("heart_rate").mean().alias("hr_mean"),
+    pl.col("heart_rate").std().alias("hr_std"),
+    pl.col("heart_rate").max().alias("hr_max"),
+    pl.col("systolic_bp").mean().alias("sbp_mean"),
+    pl.col("systolic_bp").min().alias("sbp_min"),
+    pl.col("spo2").min().alias("spo2_min"),
+    pl.col("heart_rate").count().alias("n_vital_readings"),
+])</code></pre>
+    <p>
+      Note the subtle feature <code>n_vital_readings</code>. In clinical data,
+      the <em>number</em> of times a patient was measured is itself a signal —
+      sicker patients get monitored more frequently. This is an informative
+      missingness pattern, and tree-based models love it.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4.</span>
+    <p>Engineer a domain-derived feature: the <strong>shock index</strong>,
+       defined clinically as <em>heart rate divided by systolic BP</em>. A
+       value above 1 is a red flag for early sepsis. This single derived
+       feature often outperforms the two raw inputs.</p>
+    <pre><code class="language-python">vital_features = vital_features.with_columns(
+    shock_index=pl.col("hr_mean") / pl.col("sbp_mean")
+)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5.</span>
+    <p>Join everything onto the admission table to produce the final feature
+       matrix <code>X</code> and the label vector <code>y</code>.</p>
+    <pre><code class="language-python">features = (
+    admissions
+      .join(patients,       on="patient_id",   how="left")
+      .join(vital_features, on="admission_id", how="left")
+)
+
+y = features["died"].to_numpy()
+X = features.drop(["admission_id", "patient_id", "died",
+                   "admit_time", "discharge_time"])  # drop leaky cols</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6.</span>
+    <p>Apply all three feature-selection families and compare the rankings.</p>
+    <pre><code class="language-python">from sklearn.feature_selection import mutual_info_classif, RFE
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+# 1) Filter: mutual information with the target
+mi = mutual_info_classif(X.to_numpy(), y, random_state=42)
+filter_top = sorted(zip(X.columns, mi), key=lambda t: -t[1])[:10]
+
+# 2) Wrapper: recursive feature elimination with logistic regression
+rfe = RFE(LogisticRegression(max_iter=2000), n_features_to_select=10)
+rfe.fit(X.to_numpy(), y)
+wrapper_top = [c for c, keep in zip(X.columns, rfe.support_) if keep]
+
+# 3) Embedded: random forest feature importance
+rf = RandomForestClassifier(n_estimators=200, random_state=42)
+rf.fit(X.to_numpy(), y)
+embedded_top = sorted(zip(X.columns, rf.feature_importances_),
+                      key=lambda t: -t[1])[:10]</code></pre>
+  </div>
+
+  <p>
+    The three rankings will not agree perfectly — and that is the point. The
+    filter method is fast but feature-blind to interactions. The wrapper
+    method tunes to logistic regression specifically. The embedded random-forest
+    importance captures non-linearities. In practice you use the
+    <em>intersection</em> (features that every method ranks highly) as a robust
+    core and the <em>union</em> (features any method ranks highly) as a
+    candidate set for hyperparameter tuning.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Deeper Theory: Why Mutual Information Generalises Correlation</h2>
+
+<p>
+  Pearson correlation captures linear dependence — that is, the extent to
+  which $Y$ can be written as $aX + b + \varepsilon$. It is zero for perfect
+  non-linear relationships like $Y = X^2$ when $X$ is symmetric about zero.
+  Mutual information does not have this blind spot. From the definition:
+</p>
+
+$$I(X; Y) \;=\; H(X) + H(Y) - H(X, Y) \;=\; H(Y) - H(Y \mid X)$$
+
+<p>
+  The last form is the cleanest: <em>mutual information is how much the
+  entropy of $Y$ drops once you know $X$</em>. If knowing $X$ reduces your
+  uncertainty about $Y$ by half, $I(X; Y) = H(Y)/2$. If $X$ is useless,
+  $I(X; Y) = 0$. If $X$ determines $Y$ exactly, $I(X; Y) = H(Y)$. This holds
+  for any functional form — linear, quadratic, threshold, whatever — which is
+  why MI is the default filter statistic when you do not yet know what shape
+  of relationship you are looking for.
+</p>
+
+<div class="callout advanced">
+  <span class="label">🟣 Advanced — MI is invariant to monotonic reparameterisation</span>
+  <p>
+    A subtle property: $I(X; Y) = I(g(X); Y)$ for any invertible $g$. Scaling,
+    log-transforming, or rank-transforming a feature does not change its MI
+    with the target. That is a property Pearson correlation does <em>not</em>
+    have, which is why an MI-based filter is robust to the unit of
+    measurement in a way that a correlation-based filter is not.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1 — Fitting the scaler on the full dataset</span>
+  <p>
+    A standard scaler learns the mean and std from its input. If you fit it
+    on the combined train+test data before splitting, test-set statistics
+    leak into the training features. Always fit the scaler on
+    <em>train only</em>, then transform both. <code>PreprocessingPipeline</code>
+    enforces this by default; sklearn's <code>Pipeline</code> does too. Doing
+    it by hand is where leakage creeps in.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2 — Using future-looking features</span>
+  <p>
+    Any column whose value is only known <em>after</em> the prediction time is
+    leakage. Classic offenders: length-of-stay, billed revenue, final
+    diagnosis code, total medications prescribed over the admission. Draw the
+    timeline explicitly and ask, for each feature, "would this number exist if
+    I ran the model now?".
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3 — Selecting features before splitting</span>
+  <p>
+    If you rank features by their correlation with the target and then split,
+    you have already leaked information about the test set into the feature
+    selection. The right order is: split first, then fit feature selection on
+    the train split only, then apply the same selection to the test split.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Geocode an HDB address into features</h3>
+  <p>
+    Start from the HDB resale table from Module 1. Write a function that
+    takes an address string and returns two features: distance to the nearest
+    MRT station and distance to the nearest primary school. Justify why each
+    of those numbers is a legitimate feature for a price-prediction model.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Spot three leaky features</h3>
+  <p>
+    The ICU cohort has 30 raw columns. Make a list of every column, and for
+    each one answer: "is this known at hour 24 of admission?". Mark the three
+    most insidious leaky columns and explain why each one would inflate
+    cross-validation scores.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Agreement across selection families</h3>
+  <p>
+    Run the filter / wrapper / embedded selection from the worked example and
+    compute the intersection (features selected by all three) and the union
+    (features selected by at least one). Which features survive the
+    intersection? Which make the union only because of a single method?
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  The preprocessing pipeline from this lesson is used in every subsequent
+  lesson of Module 3. Lesson 3.2 explains why splitting <em>before</em>
+  anything else is essential by deriving the bias-variance decomposition.
+  Lesson 3.3 trains the full model zoo on the features you engineer here.
+  Lesson 3.4 drills into gradient boosting which shines on hand-engineered
+  tabular features. Lesson 3.6 revisits feature importance from the
+  interpretability angle with SHAP. Module 4 generalises feature engineering
+  to <em>learned</em> features via clustering, PCA, and representation
+  learning — the moment "engineered by hand" becomes "engineered by the
+  model".
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In 75 minutes you have learned the discipline that separates a working ML
+  engineer from someone who only knows algorithms. You engineered features
+  from a multi-table ICU dataset, enforced point-in-time correctness,
+  aggregated irregular time-series, derived a clinically meaningful index,
+  and compared three families of feature selection on the same data. You saw
+  that filter, wrapper, and embedded methods disagree in useful ways and that
+  the right move is usually to use all three.
+</p>
+<p>
+  More importantly, you internalised the single most valuable habit in ML:
+  <strong>walk the timeline</strong>. For every feature, ask whether it would
+  exist at prediction time. That habit alone will save you more embarrassment
+  than any algorithm choice you will ever make.
+</p>
+<p>
+  In Lesson 3.2 we derive <em>why</em> all this hand-engineering, splitting,
+  and selection matters — by formalising the bias-variance decomposition and
+  showing how regularisation is just another dial on the same machine.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 3 Index
+  </a>
+  <a href="../02/textbook.html" class="next">
+    <span class="label">Next →</span>
+    3.2 Bias-Variance, Regularisation, and Cross-Validation
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

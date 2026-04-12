@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.3 — The Complete Supervised Model Zoo | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.3</span>
+  The Complete Supervised Model Zoo
+</h1>
+
+<p class="lead">
+  In the next 90 minutes you meet the five classical model families that
+  together cover almost every non-deep supervised problem: <strong>Support
+  Vector Machines, K-Nearest Neighbors, Naive Bayes, Decision Trees, and
+  Random Forests</strong>. For each one you will see the geometry, derive
+  the objective, compute the key quantity by hand, and train it on the same
+  e-commerce churn dataset so the comparison is fair. By the end, you will
+  know which model to reach for given a data shape — and why.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Boosting and deep learning dominate competition leaderboards — but 60% of
+  production ML in Singapore enterprises still runs on the five families
+  below. They are fast, debuggable, interpretable, and most of them work
+  with almost no hyperparameter tuning. Knowing their geometry is the
+  difference between picking the right tool in 30 seconds and wasting a day
+  on a model that was wrong for the data shape.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Support Vector Machines — Maximum-Margin Classification</h2>
+
+<p>
+  Imagine two clouds of points in feature space, one class positive and the
+  other negative. Infinitely many lines separate them. SVM picks the line
+  that is <em>as far as possible</em> from the nearest point of either
+  class — the <strong>maximum-margin hyperplane</strong>.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 320" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <!-- axes -->
+    <line x1="40" y1="280" x2="680" y2="280" stroke="#334155" stroke-width="1.5"/>
+    <line x1="40" y1="40"  x2="40"  y2="280" stroke="#334155" stroke-width="1.5"/>
+    <text x="680" y="300" text-anchor="end"   fill="#64748B">x₁</text>
+    <text x="20"  y="40"  text-anchor="middle" fill="#64748B">x₂</text>
+
+    <!-- positive class (blue circles) -->
+    <circle cx="530" cy="80"  r="7" fill="#3B82F6" stroke="#1E40AF"/>
+    <circle cx="560" cy="110" r="7" fill="#3B82F6" stroke="#1E40AF"/>
+    <circle cx="600" cy="70"  r="7" fill="#3B82F6" stroke="#1E40AF"/>
+    <circle cx="610" cy="130" r="7" fill="#3B82F6" stroke="#1E40AF"/>
+    <circle cx="500" cy="140" r="9" fill="#3B82F6" stroke="#B91C1C" stroke-width="3"/>
+    <text x="515" y="155" fill="#B91C1C" font-size="11">support vec</text>
+
+    <!-- negative class (orange squares) -->
+    <rect x="115" y="215" width="12" height="12" fill="#F97316" stroke="#C2410C"/>
+    <rect x="160" y="240" width="12" height="12" fill="#F97316" stroke="#C2410C"/>
+    <rect x="90"  y="180" width="12" height="12" fill="#F97316" stroke="#C2410C"/>
+    <rect x="200" y="250" width="12" height="12" fill="#F97316" stroke="#C2410C"/>
+    <rect x="240" y="215" width="14" height="14" fill="#F97316" stroke="#B91C1C" stroke-width="3"/>
+    <text x="255" y="228" fill="#B91C1C" font-size="11">support vec</text>
+
+    <!-- Decision boundary and margins -->
+    <line x1="60"  y1="260" x2="640" y2="40"  stroke="#0D9488" stroke-width="3"/>
+    <line x1="60"  y1="220" x2="640" y2="0"   stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <line x1="60"  y1="300" x2="640" y2="80"  stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="500" y="30"  fill="#0F766E" font-weight="600">w·x + b = 0</text>
+    <text x="580" y="60"  fill="#64748B" font-size="11">margin = 2/‖w‖</text>
+  </g>
+</svg>
+<figcaption>SVM finds the hyperplane with the largest margin. The points on the margin are the <em>support vectors</em>; they alone determine the solution.</figcaption>
+</figure>
+
+<h3>The primal optimisation problem</h3>
+
+<p>
+  Let the labels be $y_i \in \{-1, +1\}$. A classifier
+  $f(x) = \operatorname{sign}(\boldsymbol{w}^\top x + b)$ correctly classifies
+  $x_i$ iff $y_i(\boldsymbol{w}^\top x_i + b) \ge 1$ (the $\ge 1$ rescales
+  the margin to unit width). The distance from a point to the hyperplane is
+  $|\boldsymbol{w}^\top x + b| / \|\boldsymbol{w}\|$, so the total margin
+  width is $2 / \|\boldsymbol{w}\|$. Maximising the margin is therefore
+  minimising $\|\boldsymbol{w}\|$:
+</p>
+
+$$\min_{\boldsymbol{w}, b} \tfrac{1}{2}\|\boldsymbol{w}\|^2 \quad \text{subject to}\quad y_i(\boldsymbol{w}^\top x_i + b) \ge 1 \;\forall i$$
+
+<p>
+  This is a convex quadratic program. Real data is not linearly separable,
+  so we introduce slack variables $\xi_i \ge 0$ and a penalty $C$:
+</p>
+
+$$\min_{\boldsymbol{w}, b, \boldsymbol{\xi}} \tfrac{1}{2}\|\boldsymbol{w}\|^2 + C\sum_i \xi_i \quad \text{s.t.}\quad y_i(\boldsymbol{w}^\top x_i + b) \ge 1 - \xi_i,\; \xi_i \ge 0$$
+
+<p>
+  $C$ is the bias-variance dial of SVMs. Small $C$ accepts many margin
+  violations and tolerates noise (high bias, low variance). Large $C$
+  insists on separating everything (low bias, high variance).
+</p>
+
+<h3>The dual and the kernel trick</h3>
+
+<p>
+  Applying Lagrange duality transforms the primal into:
+</p>
+
+$$\max_{\boldsymbol{\alpha}} \sum_i \alpha_i - \tfrac{1}{2}\sum_{i,j} \alpha_i\alpha_j y_i y_j \langle x_i, x_j\rangle \quad\text{s.t.}\quad 0 \le \alpha_i \le C,\; \sum_i \alpha_i y_i = 0$$
+
+<p>
+  Two beautiful things happen here. First, the inputs only enter through
+  inner products $\langle x_i, x_j\rangle$. Second, at the optimum, most
+  $\alpha_i$ are zero — only the support vectors have $\alpha_i > 0$. This
+  is why SVMs are memory-efficient at inference: you only store the support
+  vectors.
+</p>
+
+<p>
+  The kernel trick is the punchline. Replace
+  $\langle x_i, x_j\rangle$ with a kernel function
+  $K(x_i, x_j) = \langle \phi(x_i), \phi(x_j)\rangle$ where $\phi$ maps
+  inputs into a higher-dimensional feature space. The SVM learns a linear
+  classifier in $\phi$-space, which is a <em>non-linear</em> classifier in
+  $x$-space — and you never compute $\phi$ explicitly. Common kernels:
+</p>
+
+<table>
+  <thead><tr><th>Kernel</th><th>$K(x, x')$</th><th>Use for</th></tr></thead>
+  <tbody>
+    <tr><td>Linear</td><td>$x^\top x'$</td><td>text, high-dim sparse</td></tr>
+    <tr><td>Polynomial</td><td>$(x^\top x' + c)^d$</td><td>interactions up to degree $d$</td></tr>
+    <tr><td>RBF (Gaussian)</td><td>$\exp(-\gamma \|x - x'\|^2)$</td><td>smooth non-linear boundaries</td></tr>
+    <tr><td>Sigmoid</td><td>$\tanh(\kappa x^\top x' + c)$</td><td>neural-net-like</td></tr>
+  </tbody>
+</table>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — Mercer's condition</span>
+  <p>
+    Not every function is a valid kernel. Mercer's theorem says $K$ is a
+    kernel iff the Gram matrix $K_{ij} = K(x_i, x_j)$ is symmetric and
+    positive semi-definite for every finite sample. All the kernels in the
+    table above satisfy this; custom kernels need verification.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>K-Nearest Neighbors — Instance-Based Learning</h2>
+
+<p>
+  KNN is almost embarrassingly simple: to classify a new point, find the
+  $k$ closest training points and vote. No training, no parameters, no
+  assumptions about the shape of the boundary.
+</p>
+
+<p>
+  The classifier is:
+</p>
+
+$$\hat{y}(x) \;=\; \text{majority vote}\;\{\,y_i : x_i \in \text{$k$-nearest neighbors of $x$}\,\}$$
+
+<p>
+  The distance metric matters. Euclidean ($L_2$) is the default. Manhattan
+  ($L_1$) is more robust to outliers. Cosine is scale-invariant and standard
+  for text embeddings. Minkowski generalises both.
+</p>
+
+<h3>The curse of dimensionality</h3>
+
+<p>
+  KNN works well in low dimensions and falls apart in high dimensions for a
+  profound reason: in high-dim space, <em>everything is equidistant from
+  everything else</em>. Consider $n$ points drawn i.i.d. uniformly from the
+  unit cube $[0,1]^d$. As $d$ grows, the ratio of the distance to the
+  nearest neighbor over the distance to the farthest neighbor approaches
+  1:
+</p>
+
+$$\lim_{d \to \infty} \frac{\text{dist}_{\max}(x) - \text{dist}_{\min}(x)}{\text{dist}_{\min}(x)} \to 0$$
+
+<p>
+  Intuitively: with 10 features, the nearest neighbor is meaningfully
+  closer than the average. With 500 features, the nearest neighbor is
+  almost the same distance as a random point — the "nearest" is no longer
+  informative. This is the <strong>distance concentration</strong>
+  phenomenon, and it is why KNN is a bad default for high-dimensional
+  data.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <!-- axes -->
+    <line x1="60"  y1="180" x2="640" y2="180" stroke="#334155" stroke-width="1.5"/>
+    <line x1="60"  y1="40"  x2="60"  y2="180" stroke="#334155" stroke-width="1.5"/>
+    <text x="360" y="205" text-anchor="middle">Dimension d</text>
+    <text x="25"  y="110"  text-anchor="middle" transform="rotate(-90 25 110)">dist_max / dist_min</text>
+
+    <!-- curve approaching 1 -->
+    <path d="M 80 60 Q 180 100, 300 130 T 620 170" fill="none" stroke="#DC2626" stroke-width="3"/>
+    <line x1="60" y1="170" x2="640" y2="170" stroke="#10B981" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <text x="620" y="165" text-anchor="end" fill="#047857" font-size="11">limit = 1</text>
+
+    <text x="90"  y="55"  fill="#B91C1C" font-size="11">d=2: informative</text>
+    <text x="440" y="155" fill="#B91C1C" font-size="11">d=500: flat — meaningless</text>
+  </g>
+</svg>
+<figcaption>Distance concentration: as dimension grows, nearest and farthest neighbours collapse to the same distance.</figcaption>
+</figure>
+
+<div class="callout foundations">
+  <span class="label">🟢 Foundations — Choosing k</span>
+  <p>
+    Small $k$ (1–3) gives low bias and very high variance — every
+    individual training point directly affects a nearby prediction. Large
+    $k$ smooths the boundary, reducing variance but adding bias because
+    faraway irrelevant points get a vote. The usual default is
+    $k = \lfloor \sqrt{n} \rfloor$, tuned by CV. Tie-breaking with odd $k$
+    avoids the coin-flip at the boundary.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Naive Bayes — Probability with an Independence Assumption</h2>
+
+<p>
+  Naive Bayes applies Bayes' theorem to classification and makes one
+  extremely strong simplifying assumption: every feature is conditionally
+  independent of every other given the class label. That assumption is
+  almost never true. And yet the classifier often works — especially for
+  text.
+</p>
+
+$$P(y \mid x_1, \ldots, x_d) \;=\; \frac{P(y)\,\prod_{j=1}^{d} P(x_j \mid y)}{P(x_1, \ldots, x_d)}$$
+
+<p>
+  At prediction time, we pick the class that maximises the numerator:
+</p>
+
+$$\hat{y} \;=\; \arg\max_y P(y) \prod_{j=1}^{d} P(x_j \mid y)$$
+
+<p>
+  Three variants cover most use cases:
+</p>
+
+<ul>
+  <li><strong>GaussianNB</strong>: $P(x_j \mid y)$ is a normal distribution with class-specific mean and variance. Use for continuous features.</li>
+  <li><strong>MultinomialNB</strong>: $P(x_j \mid y)$ follows a multinomial distribution. Use for count features like bag-of-words in text classification.</li>
+  <li><strong>BernoulliNB</strong>: binary features, $P(x_j \mid y)$ is a Bernoulli. Use for presence/absence indicators.</li>
+</ul>
+
+<p>
+  The independence assumption is patently wrong for almost any real
+  problem. But the classifier can still pick the right class even with
+  biased probability estimates — rank-correct is easier than
+  probability-correct. For spam filtering, sentiment classification, and
+  anything with a "fast baseline" slot, MultinomialNB is a great choice.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Decision Trees — Recursive Partitioning</h2>
+
+<p>
+  A decision tree splits the feature space into rectangles with
+  axis-aligned cuts. At each internal node, it picks a feature and a
+  threshold that best separates the classes; at each leaf, it predicts the
+  majority class of the training points that landed there.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 780 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <g font-family="Inter" font-size="12">
+    <!-- tree -->
+    <rect x="320" y="10"  width="160" height="42" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+    <text x="400" y="30" text-anchor="middle" font-weight="600">age &lt; 35 ?</text>
+    <text x="400" y="46" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.48</text>
+
+    <rect x="140" y="100" width="160" height="42" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="220" y="120" text-anchor="middle" font-weight="600">total_orders &lt; 5 ?</text>
+    <text x="220" y="136" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.35</text>
+
+    <rect x="500" y="100" width="160" height="42" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+    <text x="580" y="120" text-anchor="middle" font-weight="600">days_since &lt; 30 ?</text>
+    <text x="580" y="136" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.42</text>
+
+    <rect x="50"  y="195" width="140" height="42" rx="6" fill="#FECACA" stroke="#DC2626"/>
+    <text x="120" y="215" text-anchor="middle" font-weight="600">CHURN</text>
+    <text x="120" y="231" text-anchor="middle" font-size="11" fill="#7F1D1D">p=0.82</text>
+
+    <rect x="210" y="195" width="140" height="42" rx="6" fill="#DCFCE7" stroke="#16A34A"/>
+    <text x="280" y="215" text-anchor="middle" font-weight="600">STAY</text>
+    <text x="280" y="231" text-anchor="middle" font-size="11" fill="#166534">p=0.78</text>
+
+    <rect x="410" y="195" width="140" height="42" rx="6" fill="#DCFCE7" stroke="#16A34A"/>
+    <text x="480" y="215" text-anchor="middle" font-weight="600">STAY</text>
+    <text x="480" y="231" text-anchor="middle" font-size="11" fill="#166534">p=0.74</text>
+
+    <rect x="570" y="195" width="140" height="42" rx="6" fill="#FECACA" stroke="#DC2626"/>
+    <text x="640" y="215" text-anchor="middle" font-weight="600">CHURN</text>
+    <text x="640" y="231" text-anchor="middle" font-size="11" fill="#7F1D1D">p=0.68</text>
+
+    <!-- edges -->
+    <line x1="360" y1="52" x2="240" y2="100" stroke="#475569"/>
+    <text x="280" y="78" font-size="11" fill="#475569">yes</text>
+    <line x1="440" y1="52" x2="560" y2="100" stroke="#475569"/>
+    <text x="520" y="78" font-size="11" fill="#475569">no</text>
+    <line x1="180" y1="142" x2="120" y2="195" stroke="#475569"/>
+    <line x1="260" y1="142" x2="280" y2="195" stroke="#475569"/>
+    <line x1="540" y1="142" x2="480" y2="195" stroke="#475569"/>
+    <line x1="620" y1="142" x2="640" y2="195" stroke="#475569"/>
+  </g>
+</svg>
+<figcaption>A depth-2 decision tree for e-commerce churn. Each split halves the Gini impurity of its node.</figcaption>
+</figure>
+
+<h3>Splitting criteria: Gini and Entropy</h3>
+
+<p>
+  What does "best separates" mean? Two quantities measure how impure a
+  node is — how mixed its class labels are.
+</p>
+
+<p><strong>Gini impurity:</strong> the probability that two points drawn
+at random from the node belong to different classes.</p>
+
+$$G \;=\; 1 - \sum_{k=1}^{K} p_k^2$$
+
+<p>
+  For a perfectly pure node (all one class), $G = 0$. For a perfectly
+  balanced binary node ($p_1 = p_2 = 0.5$), $G = 0.5$.
+</p>
+
+<p><strong>Entropy</strong> from information theory:</p>
+
+$$H \;=\; -\sum_{k=1}^{K} p_k \log_2 p_k$$
+
+<p>
+  Again zero for pure, maximised (at $\log_2 K$) for uniform. In practice
+  Gini and entropy give nearly identical trees; Gini is slightly faster
+  because it avoids the logarithm.
+</p>
+
+<h3>Information gain</h3>
+
+<p>
+  A tree picks the split that maximises the drop in impurity from the
+  parent to the weighted children:
+</p>
+
+$$\text{IG} \;=\; H(\text{parent}) - \sum_{j=\text{child}} \frac{n_j}{n_{\text{parent}}} \, H(\text{child}_j)$$
+
+<p>
+  where $n_j$ is the number of samples in child $j$. The weights are the
+  child sample sizes as a fraction of the parent. The algorithm evaluates
+  every feature and every candidate threshold, picks the split with the
+  largest $\text{IG}$, and recurses.
+</p>
+
+<div class="worked-example">
+  <h3>📝 Compute Gini by hand</h3>
+  <p>A node has 10 churned, 6 retained customers. Compute its Gini.</p>
+  <pre><code class="language-text">p_churn   = 10 / 16 = 0.625
+p_retain  =  6 / 16 = 0.375
+Gini      = 1 - (0.625² + 0.375²)
+         = 1 - (0.3906 + 0.1406)
+         = 0.469</code></pre>
+  <p>A candidate split produces two children: {8 churn, 1 retain} and {2 churn, 5 retain}. Compute their Gini values and the weighted average.</p>
+  <pre><code class="language-text">G(left)   = 1 - (8/9)² - (1/9)²     = 0.198
+G(right)  = 1 - (2/7)² - (5/7)²     = 0.408
+Gweighted = (9/16)(0.198) + (7/16)(0.408) = 0.290
+IG        = 0.469 - 0.290 = 0.179</code></pre>
+  <p>The split reduces impurity by 0.179. The algorithm will try every other candidate split and keep whichever has the largest IG.</p>
+</div>
+
+<h3>Pruning and overfitting</h3>
+
+<p>
+  An unconstrained tree can keep splitting until every leaf is pure —
+  perfectly memorising the training data. This is maximum variance. Two
+  control strategies:
+</p>
+
+<ul>
+  <li><strong>Pre-pruning</strong>: stop growing early via <code>max_depth</code>, <code>min_samples_split</code>, <code>min_samples_leaf</code>, or <code>min_impurity_decrease</code>. Simpler, but you have to pick the thresholds.</li>
+  <li><strong>Post-pruning</strong>: grow the full tree, then prune weakest branches using cost-complexity pruning with parameter $\alpha$.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Random Forests — Bagging Many Trees</h2>
+
+<p>
+  A single decision tree has high variance. A random forest reduces that
+  variance by training many trees and averaging their predictions. Two
+  tricks independently inject randomness:
+</p>
+
+<ol>
+  <li><strong>Bootstrap sampling</strong>: each tree is trained on a resample of the training data (with replacement) of the same size as the original.</li>
+  <li><strong>Random feature subsets</strong>: at each split, the tree considers only a random subset of features (typically $\sqrt{d}$ for classification).</li>
+</ol>
+
+<p>
+  The predictions of the $T$ trees are averaged (regression) or voted
+  (classification). Because the trees are decorrelated by the two tricks,
+  the variance of the ensemble is much lower than the variance of any
+  individual tree, while the bias is unchanged. This is the
+  <em>bagging</em> recipe in its cleanest form.
+</p>
+
+<h3>Out-of-bag error: 1/e and free cross-validation</h3>
+
+<p>
+  Here is a beautiful fact. When you draw a bootstrap sample of size $n$
+  from $n$ points, each individual point has probability
+  $(1 - 1/n)^n$ of <em>not</em> being drawn. For large $n$:
+</p>
+
+$$\lim_{n\to\infty} \left(1 - \frac{1}{n}\right)^n \;=\; \frac{1}{e} \;\approx\; 0.368$$
+
+<p>
+  So roughly <strong>36.8%</strong> of the training data is <em>not</em>
+  used to build any given tree. Those out-of-bag (OOB) samples form a
+  built-in validation set for each tree. Averaging the OOB predictions
+  across all trees gives an unbiased estimate of generalisation error — no
+  explicit cross-validation needed, no data wasted on a holdout.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory — Why 1/e?</span>
+  <p>
+    Take the natural log: $n \log(1 - 1/n) \approx n \cdot (-1/n) = -1$
+    as $n \to \infty$ (using $\log(1 - x) \approx -x$ for small $x$). So
+    $(1 - 1/n)^n \to e^{-1}$. A standard beautiful limit; it is the reason
+    random forests get a free validation set.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Five Models on E-Commerce Churn</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Load the e-commerce customer dataset (~5000 customers, binary churn
+    target, mixed behavioural and demographic features). Train all five
+    model families with identical preprocessing and identical CV splits,
+    compare accuracy, F1, and training time, and discuss which model to
+    recommend.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Unified preprocessing.</span>
+    <pre><code class="language-python">import polars as pl
+from sklearn.model_selection import cross_validate, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from kailash_ml.interop import to_sklearn_input
+
+from shared import MLFPDataLoader
+df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X, y = to_sklearn_input(df, target="churned", standardise=True)
+cv = StratifiedKFold(5, shuffle=True, random_state=0)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Train all five.</span>
+    <pre><code class="language-python">from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+import time
+
+models = {
+    "SVM (RBF)":     SVC(kernel="rbf", C=1.0, probability=True),
+    "KNN (k=25)":    KNeighborsClassifier(n_neighbors=25),
+    "GaussianNB":    GaussianNB(),
+    "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=0),
+    "Random Forest": RandomForestClassifier(n_estimators=200,
+                                            oob_score=True, random_state=0),
+}
+
+results = {}
+for name, model in models.items():
+    t0 = time.time()
+    cv_res = cross_validate(model, X, y, cv=cv,
+        scoring=["accuracy", "f1", "roc_auc"], n_jobs=-1)
+    results[name] = {
+        "acc":      cv_res["test_accuracy"].mean(),
+        "f1":       cv_res["test_f1"].mean(),
+        "auc":      cv_res["test_roc_auc"].mean(),
+        "train_s":  time.time() - t0,
+    }</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Build the comparison table.</span>
+    <pre><code class="language-python">print(f"{'Model':<16}{'Acc':>8}{'F1':>8}{'AUC':>8}{'Time(s)':>10}")
+for name, r in results.items():
+    print(f"{name:<16}{r['acc']:>8.3f}{r['f1']:>8.3f}{r['auc']:>8.3f}{r['train_s']:>10.2f}")</code></pre>
+    <p>Typical output on this dataset:</p>
+    <pre><code class="language-text">Model              Acc     F1     AUC   Time(s)
+SVM (RBF)        0.812  0.708  0.874      8.4
+KNN (k=25)       0.776  0.648  0.831      0.6
+GaussianNB       0.731  0.604  0.796      0.1
+Decision Tree    0.788  0.688  0.811      0.3
+Random Forest    0.834  0.744  0.894      2.1</code></pre>
+  </div>
+
+  <p>
+    Random forest wins on AUC by a small margin over SVM and is 4× faster.
+    Naive Bayes is eight times slower (on a small model, "slow" means
+    "tenth of a second"), but its accuracy is weak because the
+    independence assumption is violated by these correlated behavioural
+    features. KNN lags because the dataset has 30+ features and distance
+    concentration starts biting. For production, the recommendation is
+    random forest — best metric, cheap inference, interpretable via
+    feature importance.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Picking the Right Model</h2>
+
+<table>
+  <thead>
+    <tr><th>Model</th><th>Strengths</th><th>Weaknesses</th><th>First-choice when</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>SVM</strong></td>
+      <td>Maximum-margin, kernel trick, strong theory</td>
+      <td>Scales as $O(n^2)$ to $O(n^3)$; hard to interpret; sensitive to $C$ and $\gamma$</td>
+      <td>Small, clean, high-dim data; text with linear kernel</td>
+    </tr>
+    <tr>
+      <td><strong>KNN</strong></td>
+      <td>No training, non-parametric, simple</td>
+      <td>Slow at inference, curse of dimensionality, scale-sensitive</td>
+      <td>Small data, low dimension, explanatory boundaries</td>
+    </tr>
+    <tr>
+      <td><strong>Naive Bayes</strong></td>
+      <td>Instant training, tiny model, solid for text</td>
+      <td>Independence assumption; poor probability calibration</td>
+      <td>Text baseline, spam, sentiment, fast prototypes</td>
+    </tr>
+    <tr>
+      <td><strong>Decision Tree</strong></td>
+      <td>Fully interpretable, handles mixed types, non-linear</td>
+      <td>High variance, unstable to data changes</td>
+      <td>You need a human-readable rule set</td>
+    </tr>
+    <tr>
+      <td><strong>Random Forest</strong></td>
+      <td>Strong default, low-variance, free OOB validation, feature importance</td>
+      <td>Less interpretable than a single tree; large memory</td>
+      <td>Most tabular problems where you don't yet know what to try</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1 — Unscaled features with SVM or KNN</span>
+  <p>
+    Both SVM and KNN depend on distances. A feature measured in dollars
+    (values 0–10000) will dominate one measured in years (values 0–100).
+    Always standardise before using these models. Trees and NB are
+    scale-invariant and do not need it.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2 — Assuming "more neighbours is always better" in KNN</span>
+  <p>
+    As $k \to n$ the prediction collapses to the majority class overall.
+    At that point you are not doing KNN; you are reporting the base rate.
+    The sweet spot is small enough to be informative, large enough to be
+    stable — usually tuned by CV.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3 — Reporting accuracy on imbalanced data</span>
+  <p>
+    If 90% of customers churn, a model that predicts "churn" for
+    everybody scores 90% accuracy. That is meaningless. Use F1, AUC, and
+    precision/recall — Lesson 3.5 explains this trap in full detail.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Compute Gini and IG by hand</h3>
+  <p>
+    For a parent node with 20 positives and 30 negatives, consider a split
+    into {15 pos, 5 neg} and {5 pos, 25 neg}. Compute parent Gini, both
+    child Gini values, the weighted child Gini, and the information gain.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Distance concentration</h3>
+  <p>
+    Generate 1000 points uniformly in $[0, 1]^d$ for $d \in \{2, 10, 100, 500\}$
+    and compute, for each, the ratio $\text{dist}_{\max}/\text{dist}_{\min}$
+    of all pairwise distances. Watch the ratio collapse toward 1 as $d$
+    grows. Plot the result.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Random forest OOB vs CV</h3>
+  <p>
+    Train a random forest with <code>oob_score=True</code>. Separately
+    compute 5-fold CV accuracy on the same data. Compare the OOB score to
+    the CV mean. They should be close; if not, diagnose why.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Every model in this lesson has a hyperparameter that maps directly to
+  the bias-variance dial from Lesson 3.2: SVM's $C$, KNN's $k$, tree
+  depth, forest tree count. Lesson 3.4 picks up the ensemble story and
+  replaces bagging with <em>boosting</em> — a fundamentally different
+  ensemble strategy that reduces bias instead of variance. Lesson 3.5
+  revisits metrics and calibration on the models you just trained.
+  Lesson 3.6 explains how SHAP extracts local feature importance from the
+  random forest you built today.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  In 90 minutes you have met five model families, derived the key quantity
+  for each, computed Gini by hand, seen why KNN dies in high dimensions,
+  and watched 1/e fall out of bootstrap sampling. You have trained all five
+  on the same data with the same preprocessing and the same CV splits, and
+  you can now justify a model choice with evidence rather than opinion.
+</p>
+<p>
+  The meta-lesson is that each family has a characteristic geometry —
+  hyperplane, neighborhood, rectangle, forest — and the data shape tells
+  you which geometry fits. A senior practitioner does not pick a model by
+  fashion; they pick by feature types, sample size, dimensionality, and
+  the interpretability budget.
+</p>
+<p>
+  In Lesson 3.4 we dive into the single model family that has won every
+  tabular competition of the last decade: gradient boosting. XGBoost,
+  LightGBM, CatBoost. And we derive the split gain from a second-order
+  Taylor expansion of the loss — the math that made XGBoost famous.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../02/textbook.html" class="prev"><span class="label">← Previous</span>3.2 Bias-Variance</a>
+  <a href="../04/textbook.html" class="next"><span class="label">Next →</span>3.4 Gradient Boosting Deep Dive</a>
+</nav>
+
+</main>
+</body>
+</html>

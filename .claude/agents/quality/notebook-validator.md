@@ -27,13 +27,13 @@ You ensure that every exercise is consistent across all three delivery formats. 
 - **Local (.py)**: Async code wrapped in `asyncio.run()`
 - **Jupyter (.ipynb)**: Uses top-level `await` for async
 - **Colab (.ipynb)**: Has setup cell with `!pip install` and Drive mount
-- All three use `ASCENTDataLoader` (different backends, same API)
+- All three use `MLFPDataLoader` (different backends, same API)
 
 ### Banned Patterns
 
 - No `import pandas` anywhere (polars only)
 - No hardcoded API keys (must use `.env` or Colab Secrets)
-- No hardcoded file paths (must use `ASCENTDataLoader` or relative paths)
+- No hardcoded file paths (must use `MLFPDataLoader` or relative paths)
 - No `# TODO:` in solution files (solutions must be complete)
 
 ### Converter-Specific Checks (post `scripts/py_to_notebook.py`)

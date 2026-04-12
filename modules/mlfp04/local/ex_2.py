@@ -2,244 +2,314 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 2: DPO / QLoRA Alignment
+# MLFP04 — Exercise 2: UMAP + Anomaly Detection with EnsembleEngine
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Compare DPO (preference optimization) vs QLoRA (quantized
-#   fine-tuning). Evaluate with LLM-as-judge and human rubric.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Reduce high-dimensional fraud data to 2D with UMAP and t-SNE
+#   - Apply Isolation Forest and LOF for unsupervised anomaly detection
+#   - Explain the path-length intuition of Isolation Forest
+#   - Blend multiple anomaly scores using a weighted ensemble
+#   - Evaluate detection quality with AUC-ROC and Average Precision
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 1 (clustering — similar unsupervised paradigm)
+#   - MLFP03 Exercise 5 (class imbalance — anomaly detection is the same problem)
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
-#   1. Load preference pairs dataset
-#   2. Configure and run DPO alignment
-#   3. Configure and run QLoRA fine-tuning
-#   4. Evaluate both with LLM-as-judge
-#   5. Compare methods: quality, cost, speed
+#   1. Load fraud data and reduce dimensionality with UMAP
+#   2. Compare UMAP vs t-SNE embeddings
+#   3. Isolation Forest anomaly scoring
+#   4. LOF and additional anomaly detectors
+#   5. Ensemble anomaly scores with EnsembleEngine
+#   6. Evaluate and visualise detection performance
+#
+# DATASET: Credit card fraud (from MLFP03)
+#   Fraud rate: ~0.17% (highly imbalanced — AUC-PR is the right metric)
+#   Features: V1-V28 (PCA-transformed transaction features) + Amount
+#   Challenge: detect fraud without any labels during training
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import os
+import numpy as np
+import polars as pl
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.metrics import (
+    roc_auc_score,
+    average_precision_score,
+    precision_recall_curve,
+)
+from sklearn.preprocessing import StandardScaler
 
-from dotenv import load_dotenv
-
-from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+from kailash_ml import ModelVisualizer, EnsembleEngine
+from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
 
-setup_environment()
+try:
+    import umap
+except ImportError:
+    umap = None
 
-base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load preference pairs
-# ══════════════════════════════════════════════════════════════════════
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-preferences = loader.load("mlfp04", "preference_pairs.parquet")
+fraud = loader.load("mlfp03", "credit_card_fraud.parquet")
 
-print(f"=== Preference Pairs ===")
-print(f"Shape: {preferences.shape}")
-print(f"Columns: {preferences.columns}")
-# Expected columns: prompt, chosen, rejected
-print(preferences.head(2))
+print(f"=== Credit Card Fraud Data ===")
+print(f"Shape: {fraud.shape}")
+print(f"Fraud rate: {fraud['is_fraud'].mean():.4%}")
 
+feature_cols = [c for c in fraud.columns if c not in ("is_fraud", "transaction_id")]
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: DPO alignment
-# ══════════════════════════════════════════════════════════════════════
-# DPO: Direct Preference Optimization
-# Derives from Bradley-Terry preference model:
-#   P(y_w > y_l | x) = σ(β⁻¹(r(x,y_w) - r(x,y_l)))
-# Key insight: eliminates the reward model entirely
-#   π*(y|x) ∝ π_ref(y|x) · exp(β⁻¹ · r*(x,y))
-# Loss: L_DPO = -E[log σ(β(log π(y_w|x)/π_ref(y_w|x) - log π(y_l|x)/π_ref(y_l|x)))]
+X, y, col_info = to_sklearn_input(
+    fraud.drop_nulls(),
+    feature_columns=feature_cols,
+    target_column="is_fraud",
+)
 
-# TODO: Create AlignmentConfig for DPO.
-# Hint: AlignmentConfig(
-#   method="dpo",             # Direct Preference Optimization
-#   base_model=base_model,
-#   dataset_format="preference",  # expects: prompt, chosen, rejected columns
-#   beta=0.1,                 # temperature: higher = stay closer to reference policy
-#   lora_r=16, lora_alpha=32, lora_dropout=0.05,
-#   target_modules=["q_proj", "v_proj"],
-#   num_epochs=2, batch_size=2, learning_rate=5e-5,
-#   max_seq_length=512, output_dir="./dpo_output"
-# )
-dpo_config = ____
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-
-async def run_dpo():
-    # TODO: Create AlignmentPipeline from dpo_config and call pipeline.train().
-    # Hint: Split preferences into 90/10 train/eval using preferences[:n_train]
-    #   and preferences[n_train:]. Result has .final_loss, .eval_loss,
-    #   .training_time_seconds attributes.
-    pipeline = ____
-    n_train = int(preferences.height * 0.9)
-
-    print(f"\n=== Running DPO ===")
-    print(f"β = {dpo_config.beta} (higher β = stay closer to reference)")
-
-    result = await ____
-
-    print(f"DPO complete:")
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss: {result.eval_loss:.4f}")
-    print(f"  Time: {result.training_time_seconds:.0f}s")
-
-    return pipeline, result
-
-
-dpo_pipeline, dpo_result = asyncio.run(run_dpo())
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert fraud.shape[0] > 0, "Fraud dataset should not be empty"
+assert "is_fraud" in fraud.columns, "Fraud dataset should have is_fraud column"
+assert fraud["is_fraud"].mean() < 0.05, \
+    "Fraud rate should be very low (< 5%) — this is a rare event detection problem"
+# INTERPRETATION: With < 0.2% fraud rate, accuracy is useless (predict no-fraud
+# always → 99.83% accuracy). AUC-PR evaluates the precision-recall tradeoff at
+# every possible threshold. For anomaly detection without supervision, we use
+# the anomaly scores directly and evaluate against the known fraud labels.
+print("\n✓ Checkpoint 1 passed — fraud data loaded, rare event confirmed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: QLoRA fine-tuning
+# TASK 1: Dimensionality reduction with UMAP
 # ══════════════════════════════════════════════════════════════════════
-# QLoRA: Quantized LoRA
-# 1. Quantize base model to NF4 (4-bit NormalFloat)
-# 2. Apply LoRA adapters on top of quantized model
-# 3. Train adapters in full precision while base stays 4-bit
-# 4. Double quantization: quantize the quantization constants too
 
-# TODO: Create AlignmentConfig for QLoRA.
-# Hint: AlignmentConfig(
-#   method="sft",             # SFT on the "chosen" responses from the preference pairs
-#   base_model=base_model,
-#   dataset_format="instruction",
-#   quantization="nf4",       # 4-bit NormalFloat — the QLoRA quantization scheme
-#   double_quantization=True, # quantize the quantization constants for extra memory savings
-#   compute_dtype="bfloat16", # compute in bf16 while base stays 4-bit
-#   lora_r=16, lora_alpha=32, lora_dropout=0.05,
-#   target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  # more modules for QLoRA
-#   num_epochs=3, batch_size=4, learning_rate=2e-4,
-#   max_seq_length=512, output_dir="./qlora_output"
-# )
-qlora_config = ____
+# Sample for visualisation (UMAP on full 284K is slow)
+rng = np.random.default_rng(42)
+sample_size = min(20_000, len(y))
+idx = rng.choice(len(y), sample_size, replace=False)
+X_sample = X_scaled[idx]
+y_sample = y[idx]
 
+if umap is not None:
+    # TODO: Create a UMAP reducer with n_components=2, n_neighbors=15, min_dist=0.1, random_state=42
+    reducer = ____  # Hint: umap.UMAP(n_components=2, n_neighbors=15, ...)
+    # TODO: Fit and transform X_sample to get the 2D UMAP embedding
+    embedding_umap = ____  # Hint: reducer.fit_transform(X_sample)
+    print(f"\nUMAP embedding: {embedding_umap.shape}")
+else:
+    from sklearn.decomposition import PCA
 
-async def run_qlora():
-    # TODO: Convert preference pairs to instruction format (use the "chosen" column),
-    # then create AlignmentPipeline from qlora_config and call pipeline.train().
-    # Hint: Use polars .select() to rename columns:
-    #   sft_from_prefs = preferences.select(
-    #       pl.col("prompt").alias("instruction"),
-    #       pl.col("chosen").alias("response"),
-    #   )
-    import polars as pl
-
-    sft_from_prefs = ____
-
-    pipeline = ____
-    n_train = int(sft_from_prefs.height * 0.9)
-
-    print(f"\n=== Running QLoRA ===")
-    print(f"Quantization: NF4 + double quantization")
-    print(f"Memory savings: ~75% vs full precision")
-
-    result = await ____
-
-    print(f"QLoRA complete:")
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss: {result.eval_loss:.4f}")
-    print(f"  Time: {result.training_time_seconds:.0f}s")
-
-    return pipeline, result
-
-
-qlora_pipeline, qlora_result = asyncio.run(run_qlora())
+    embedding_umap = PCA(n_components=2, random_state=42).fit_transform(X_sample)
+    print("\nUMAP not installed, using PCA fallback")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate with LLM-as-judge
+# TASK 2: Compare with t-SNE
 # ══════════════════════════════════════════════════════════════════════
 
+from sklearn.manifold import TSNE
 
-async def llm_judge_evaluation():
-    """Use an LLM to judge response quality."""
-    # TODO: Create a Kaizen Delegate as the judge and evaluate both models.
-    # Hint:
-    #   from kaizen_agents import Delegate
-    #   judge_model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
-    #   judge = Delegate(model=judge_model, max_llm_cost_usd=2.0)
-    #
-    # For each eval prompt, get responses from both pipelines:
-    #   dpo_response = await dpo_pipeline.generate(prompt, use_adapter=True)
-    #   qlora_response = await qlora_pipeline.generate(prompt, use_adapter=True)
-    #
-    # Then ask the judge to compare them:
-    #   async for event in judge.run(judge_prompt):
-    #       if hasattr(event, "text"): judge_text += event.text
-    from kaizen_agents import Delegate
+tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+embedding_tsne = tsne.fit_transform(X_sample[:5000])  # t-SNE is O(n²)
 
-    judge_model = os.environ.get(
-        "DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL")
-    )
-    judge = ____
-
-    eval_prompts = [
-        "Explain Singapore's HDB BTO application process.",
-        "What are the key differences between CPF OA, SA, and MA?",
-        "How does Singapore's AI governance framework compare to the EU AI Act?",
-    ]
-
-    print(f"\n=== LLM-as-Judge Evaluation ===")
-    for prompt in eval_prompts:
-        dpo_response = await ____
-        qlora_response = await ____
-
-        judge_prompt = (
-            f"Compare these two responses to: '{prompt}'\n\n"
-            f"Response A: {dpo_response[:300]}\n\n"
-            f"Response B: {qlora_response[:300]}\n\n"
-            f"Which is better? Rate each 1-5 on: accuracy, completeness, clarity."
-        )
-
-        # TODO: Stream the judge's evaluation response.
-        # Hint: async for event in judge.run(judge_prompt):
-        #           if hasattr(event, "text"): judge_text += event.text
-        judge_text = ""
-        async for event in ____:
-            if hasattr(event, "text"):
-                judge_text += event.text
-
-        print(f"\nPrompt: {prompt[:60]}...")
-        print(f"Judge: {judge_text[:200]}...")
-
-    # Known biases in LLM-as-judge
-    print(f"\nLLM-as-Judge Biases:")
-    print(f"  1. Position bias: prefers Response A (first position)")
-    print(f"  2. Verbosity bias: prefers longer responses")
-    print(f"  3. Self-enhancement: prefers responses similar to its own style")
-    print(f"  Mitigation: swap positions, control length, use multiple judges")
-
-
-asyncio.run(llm_judge_evaluation())
+print(f"t-SNE embedding: {embedding_tsne.shape}")
+print("\nUMAP vs t-SNE:")
+print("  UMAP: preserves global structure, faster, supports transform()")
+print("  t-SNE: better local structure, O(n²), no out-of-sample transform")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Method comparison
+# TASK 3: Isolation Forest
+# ══════════════════════════════════════════════════════════════════════
+# Theory: anomalies are isolated in fewer random partitions.
+# Average path length in random trees is shorter for outliers.
+
+# TODO: Create IsolationForest with n_estimators=200, contamination=0.002,
+#       random_state=42, n_jobs=-1
+iso_forest = IsolationForest(
+    n_estimators=____,  # Hint: 200
+    contamination=____,  # Hint: 0.002 — expected fraud rate
+    random_state=42,
+    n_jobs=-1,
+)
+# TODO: Fit iso_forest on X_scaled, then call score_samples and negate (higher = more anomalous)
+iso_scores = ____  # Hint: -iso_forest.fit(X_scaled).score_samples(X_scaled)
+# TODO: Get binary labels from the fitted iso_forest (-1 = anomaly, 1 = normal)
+iso_labels = ____  # Hint: iso_forest.predict(X_scaled)
+
+iso_auc = roc_auc_score(y, iso_scores)
+iso_ap = average_precision_score(y, iso_scores)
+
+print(f"\n=== Isolation Forest ===")
+print(f"AUC-ROC: {iso_auc:.4f}")
+print(f"Average Precision: {iso_ap:.4f}")
+print(f"Predicted anomalies: {(iso_labels == -1).sum():,} / {len(iso_labels):,}")
+print(f"True frauds: {y.sum():.0f}")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert iso_auc > 0.5, f"Isolation Forest AUC-ROC {iso_auc:.4f} should beat random"
+assert iso_ap > 0, "Isolation Forest average precision should be positive"
+assert (iso_labels == -1).sum() > 0, "Isolation Forest should flag some anomalies"
+# INTERPRETATION: Isolation Forest isolates anomalies by random partitioning.
+# Anomalies require fewer random cuts to isolate (shorter path length in trees)
+# because they are rare and lie far from the cluster of normal observations.
+# The anomaly score s(x) ∈ [0, 1]; scores > 0.6 typically indicate anomalies.
+print("\n✓ Checkpoint 2 passed — Isolation Forest anomaly scores computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Local Outlier Factor
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Print a comparison table of DPO vs QLoRA results.
-# Hint: Use dpo_result.final_loss, dpo_result.training_time_seconds,
-#   qlora_result.final_loss, qlora_result.training_time_seconds.
-#   Format with f-string column alignment using :>N width specifiers.
-print(f"\n=== DPO vs QLoRA Comparison ===")
-print(f"{'Aspect':<25} {'DPO':>15} {'QLoRA':>15}")
-print("─" * 58)
-print(f"{'Data requirement':<25} {'preference pairs':>15} {'instruction pairs':>15}")
-print(f"{'Reward model needed':<25} {'No (eliminated)':>15} {'No':>15}")
-print(f"{'Memory efficiency':<25} {'LoRA + fp16':>15} {'LoRA + NF4':>15}")
-print(f"{'Alignment quality':<25} {'Higher':>15} {'Good':>15}")
-# TODO: Print training loss and time rows using dpo_result and qlora_result.
-# Hint: f"{dpo_result.final_loss:>15.4f}" and f"{qlora_result.final_loss:>15.4f}"
-print(f"{'Training loss':<25} {____:>15.4f} {____:>15.4f}")
-print(f"{'Training time':<25} {____:>15.0f}s {____:>15.0f}s")
-print(f"\nWhen to choose:")
-print(f"  DPO: when you have preference data and want alignment")
-print(f"  QLoRA: when you have instruction data and limited GPU memory")
-print(f"  Both: can be combined (QLoRA for SFT, then DPO for alignment)")
+# TODO: Create LocalOutlierFactor with n_neighbors=20, contamination=0.002, novelty=False
+lof = (
+    ____  # Hint: LocalOutlierFactor(n_neighbors=20, contamination=0.002, novelty=False)
+)
+# TODO: Fit and predict LOF labels on X_scaled
+lof_labels = ____  # Hint: lof.fit_predict(X_scaled)
+# TODO: Extract anomaly scores from lof (negate the negative_outlier_factor_ attribute)
+lof_scores = ____  # Hint: -lof.negative_outlier_factor_
 
-print("\n✓ Exercise 2 complete — DPO vs QLoRA with LLM-as-judge evaluation")
+lof_auc = roc_auc_score(y, lof_scores)
+lof_ap = average_precision_score(y, lof_scores)
+
+print(f"\n=== Local Outlier Factor ===")
+print(f"AUC-ROC: {lof_auc:.4f}")
+print(f"Average Precision: {lof_ap:.4f}")
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert lof_auc > 0.5, f"LOF AUC-ROC {lof_auc:.4f} should beat random"
+assert lof_ap > 0, "LOF average precision should be positive"
+assert lof.negative_outlier_factor_.std() > 0, \
+    "LOF scores should vary across samples (not all the same)"
+# INTERPRETATION: LOF measures local density deviation. A point is anomalous
+# if its local density is much lower than its neighbours' densities. This is
+# powerful for detecting anomalies in datasets with varying-density clusters —
+# where a global density threshold would miss anomalies in sparse regions.
+print("\n✓ Checkpoint 3 passed — LOF anomaly scores computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Ensemble anomaly scores with EnsembleEngine
+# ══════════════════════════════════════════════════════════════════════
+
+
+# TODO: Write a function that normalises scores to [0, 1]
+def normalise_scores(scores: np.ndarray) -> np.ndarray:
+    # Hint: (scores - scores.min()) / (scores.max() - scores.min() + 1e-10)
+    return ____
+
+
+iso_norm = normalise_scores(iso_scores)
+lof_norm = normalise_scores(lof_scores)
+
+# Simple ensemble: weighted average (can also use EnsembleEngine.blend for models)
+# Weight by individual AUC-ROC
+# TODO: Compute weight for iso_forest as its fraction of the total AUC
+w_iso = ____  # Hint: iso_auc / (iso_auc + lof_auc)
+# TODO: Compute weight for LOF as its fraction of the total AUC
+w_lof = ____  # Hint: lof_auc / (iso_auc + lof_auc)
+
+# TODO: Compute the weighted ensemble score
+ensemble_scores = ____  # Hint: w_iso * iso_norm + w_lof * lof_norm
+ensemble_auc = roc_auc_score(y, ensemble_scores)
+ensemble_ap = average_precision_score(y, ensemble_scores)
+
+print(f"\n=== Ensemble (weighted by AUC) ===")
+print(f"Weights: IF={w_iso:.3f}, LOF={w_lof:.3f}")
+print(f"AUC-ROC: {ensemble_auc:.4f}")
+print(f"Average Precision: {ensemble_ap:.4f}")
+
+# Improvement over individual detectors
+print(f"\nImprovement over best individual:")
+best_individual = max(iso_auc, lof_auc)
+print(f"  AUC-ROC: {ensemble_auc - best_individual:+.4f}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert ensemble_auc > 0.5, f"Ensemble AUC-ROC {ensemble_auc:.4f} should beat random"
+best_individual_auc = max(iso_auc, lof_auc)
+assert ensemble_auc >= best_individual_auc - 0.01, \
+    "Ensemble should not significantly underperform the best individual detector"
+# INTERPRETATION: Weighted averaging ensures the better detector contributes
+# more to the final score. Ensemble methods are robust: even if one detector
+# has a bad day on a particular data distribution, the other pulls the
+# ensemble score up.
+print("\n✓ Checkpoint 4 passed — ensemble anomaly scores computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Evaluate and visualise
+# ══════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+# ROC curves
+for name, scores in [
+    ("IsolationForest", iso_scores),
+    ("LOF", lof_scores),
+    ("Ensemble", ensemble_scores),
+]:
+    fig = viz.roc_curve(y, scores)
+    fig.update_layout(title=f"ROC: {name}")
+    fig.write_html(f"ex2_roc_{name.lower()}.html")
+
+# Comparison
+comparison = {
+    "Isolation Forest": {"AUC_ROC": iso_auc, "Avg_Precision": iso_ap},
+    "LOF": {"AUC_ROC": lof_auc, "Avg_Precision": lof_ap},
+    "Ensemble": {"AUC_ROC": ensemble_auc, "Avg_Precision": ensemble_ap},
+}
+fig = viz.metric_comparison(comparison)
+fig.update_layout(title="Anomaly Detection Comparison")
+fig.write_html("ex2_anomaly_comparison.html")
+print("\nSaved: ex2_anomaly_comparison.html")
+
+# Precision-recall at different thresholds
+precision, recall, thresholds = precision_recall_curve(y, ensemble_scores)
+print(
+    f"\nAt recall=0.80: precision={precision[np.searchsorted(-recall[::-1], -0.80)]:.4f}"
+)
+
+print("\n✓ Exercise 2 complete — UMAP + anomaly detection ensemble")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ Isolation Forest: anomalies isolated in fewer tree splits (short path)
+  ✓ LOF: anomalies have much lower local density than their neighbours
+  ✓ Ensemble: weighted combination of detector scores (reduces variance)
+  ✓ Evaluation: AUC-PR > AUC-ROC for rare event detection (< 0.2% fraud)
+  ✓ UMAP vs t-SNE trade-offs applied to high-dimensional fraud features
+
+  ANOMALY DETECTION SELECTION GUIDE:
+    IsolationForest → large datasets, global anomalies, fast
+    LOF             → local density variation, medium datasets
+    Ensemble        → always better than either alone (reduces variance)
+
+  KEY INSIGHT: Unsupervised anomaly detection produces scores, not
+  labels. You still need some ground truth (labelled fraud examples)
+  to set the decision threshold. Without any labels, threshold is
+  set by the contamination parameter — an expert assumption.
+
+  NEXT: Exercise 3 applies topic modeling to Singapore news text.
+  You'll discover latent topics using BERTopic (UMAP + HDBSCAN +
+  c-TF-IDF), evaluate coherence with NPMI, and track how topics
+  evolve over time — unsupervised structure discovery on text.
+""")
+print("═" * 70)

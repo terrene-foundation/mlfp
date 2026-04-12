@@ -4,8 +4,18 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP01 — Exercise 2: Filtering and Transforming Data
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Master Boolean logic and method chaining in Polars — the
-#   core pattern for slicing and reshaping data without writing loops.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Filter rows using Boolean logic with comparison operators (>, <, ==, !=)
+#   - Select and rename columns to focus your analysis
+#   - Create new derived columns with with_columns() and alias()
+#   - Apply conditional column logic with pl.when().then().otherwise()
+#   - Chain multiple Polars operations together in a readable pipeline
+#
+# PREREQUISITES: Complete Exercise 1 first (variables, DataFrames, describe()).
+#
+# ESTIMATED TIME: 40-55 minutes
 #
 # TASKS:
 #   1. Filter HDB resale transactions by town, price, and date
@@ -13,6 +23,12 @@
 #   3. Create new derived columns with with_columns()
 #   4. Sort results and combine filters with & and |
 #   5. Chain operations together to build a clean analysis pipeline
+#
+# DATASET: Singapore HDB resale flat transactions
+#   Source: Housing & Development Board (data.gov.sg)
+#   Rows: ~500,000 transactions | Columns: month, town, flat_type, floor_area_sqm,
+#   resale_price, and more
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -25,6 +41,12 @@ from shared import MLFPDataLoader
 # ── Data Loading ──────────────────────────────────────────────────────
 loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet")
+
+print("=" * 60)
+print("  MLFP01 Exercise 2: Filtering and Transforming Data")
+print("=" * 60)
+print(f"\n  Data loaded: hdb_resale.parquet ({hdb.height:,} rows, {hdb.width} columns)")
+print(f"  You're ready to start!\n")
 
 print("=== HDB Resale Dataset ===")
 print(f"Shape: {hdb.shape}")
@@ -69,6 +91,15 @@ central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
 central = hdb.filter(pl.col("town").is_in(central_towns))
 print(f"Central towns transactions: {central.height:,}")
 
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert ang_mo_kio.height > 0, "AMK filter returned no rows — check column values"
+assert affordable.height < hdb.height, "Affordable filter should reduce row count"
+assert amk_4room_affordable.height <= ang_mo_kio.height, (
+    "Combined filter should be a subset of the single-town filter"
+)
+assert central.height > 0, "Central towns filter returned no rows"
+print("\n✓ Checkpoint 1 passed — Boolean filtering working\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Select and rename columns
@@ -99,6 +130,12 @@ renamed = core_cols.rename(
 print(f"After rename: {renamed.columns}")
 print(renamed.head(3))
 
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert core_cols.width == 5, "core_cols should have exactly 5 columns"
+assert "resale_price" not in renamed.columns, "resale_price should be renamed to price"
+assert "price" in renamed.columns, "renamed DataFrame should have a 'price' column"
+print("\n✓ Checkpoint 2 passed — select and rename working\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Derived columns with with_columns()
@@ -124,6 +161,17 @@ hdb = hdb.with_columns(
 
 print(f"\n=== After adding derived columns ===")
 print(hdb.select("month", "transaction_date", "year", "price_per_sqm").head(5))
+# INTERPRETATION: price_per_sqm normalises for flat size — a 3-room flat in
+# Bishan may cost less than a 5-room flat in Jurong, but price_per_sqm
+# tells you which neighbourhood is truly more expensive per unit area.
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert "price_per_sqm" in hdb.columns, "price_per_sqm column should be added"
+assert "transaction_date" in hdb.columns, "transaction_date column should be added"
+assert "year" in hdb.columns, "year column should be added"
+sample_psm = hdb["price_per_sqm"].drop_nulls()[0]
+assert sample_psm > 0, "price_per_sqm should be positive"
+print("\n✓ Checkpoint 3 passed — derived columns created correctly\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -156,6 +204,16 @@ tier_counts = (
 )
 print(f"\n=== Price Tier Distribution ===")
 print(tier_counts)
+# INTERPRETATION: In Singapore's public housing market, "mid_range" flats
+# (S$350k–500k) typically dominate. "Luxury" (>S$700k) represents the
+# coveted "million-dollar HDB" transactions that make headlines.
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert "price_tier" in hdb.columns, "price_tier column should be added"
+tier_values = set(hdb["price_tier"].unique().to_list())
+expected_tiers = {"budget", "mid_range", "premium", "luxury"}
+assert tier_values == expected_tiers, f"Expected tiers {expected_tiers}, got {tier_values}"
+print("\n✓ Checkpoint 4 passed — conditional column created with all 4 tiers\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -205,9 +263,41 @@ top_towns = (
 
 print(f"\n=== Towns with Most Premium/Luxury Transactions (2020+) ===")
 print(top_towns.head(10))
+# INTERPRETATION: Towns near MRT interchanges or mature estates (Queenstown,
+# Toa Payoh, Bishan) tend to dominate the premium/luxury tier. The table
+# above lets you compare both volume and price — some towns have high counts
+# at moderate prices; others have fewer but more expensive transactions.
 
 # Polars chaining reads like a sentence:
 # "Take the HDB data, filter to recent years, filter to premium tier,
 #  select relevant columns, sort by price" — each step is clear.
 
-print("\n✓ Exercise 2 complete — filtering, transforming, and method chaining")
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert recent_premium.height > 0, "recent_premium should have rows"
+assert recent_premium.height < hdb.height, "Chained filters should reduce row count"
+assert recent_premium["resale_price"][0] >= recent_premium["resale_price"][-1], (
+    "DataFrame should be sorted descending by resale_price"
+)
+print("\n✓ Checkpoint 5 passed — chained pipeline built and sorted correctly\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 58)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 58)
+print("""
+  ✓ Boolean filters: pl.col() + comparison operators (==, >, <=)
+  ✓ Compound filters: & for AND, | for OR, .is_in() for sets
+  ✓ Column selection: .select() to keep only what you need
+  ✓ Column renaming: .rename({"old": "new"}) for clearer names
+  ✓ Feature engineering: .with_columns() + .alias() for new columns
+  ✓ Conditional logic: pl.when().then().otherwise() for categories
+  ✓ Method chaining: building readable analysis pipelines step by step
+
+  NEXT: In Exercise 3, you'll write Python functions and use
+  group_by() + agg() to compute statistics for every district
+  at once — instead of filtering one town at a time. You'll
+  also learn for loops to iterate over results and build reports.
+""")

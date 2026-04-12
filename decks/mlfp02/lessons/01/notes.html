@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.1 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 2.1</span>
+  Probability and Bayesian Thinking
+</h1>
+
+<p class="lead">
+  Total time: ~45 minutes &nbsp;·&nbsp; 14 slides &nbsp;·&nbsp; ~3 min per slide average
+</p>
+
+<p>
+  This is the first lesson of Module 2 and the first time many learners will
+  touch real statistical notation. Expect anxiety around Greek letters and
+  formulas. Your job is to make probability feel mechanical — it is just
+  counting with weights — and Bayes' theorem an inevitable algebraic
+  consequence. The COVID example is the hook.
+</p>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>Probability and Bayesian Thinking</h3>
+  <p>
+    Open by reminding the class what M1 did: explored data, computed
+    summary statistics, drew charts. "M2 asks the harder question: given
+    what you saw, how sure should you be? That is the language of
+    probability." Set expectation: today we derive Bayes' theorem from
+    scratch and use it on HDB prices.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners look nervous about math:</strong> "Everything we do
+    today is high-school algebra plus counting. No calculus. The formulas
+    look scary but they unpack into multiplication and division."
+  </div>
+  <div class="transition">→ "From exploration to inference."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~2 min</span><span>Motivation</span></div>
+  <h3>From exploration to inference</h3>
+  <p>
+    Walk the contrast: M1 was descriptive, M2 is inferential. The key
+    new concept is uncertainty. "When I compute a mean from 12 months of
+    weather, is that mean the truth or a noisy estimate? If I got 12 more
+    months, how different would the number be? Probability is how we
+    quantify those questions."
+  </p>
+  <div class="transition">→ "Probability starts with just a weight on an event."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Probability basics</span></div>
+  <h3>Probability is a weight on an event</h3>
+  <p>
+    Walk through the axioms without calling them axioms. $P(A)$ is a
+    number between 0 and 1. Total over all outcomes is 1. Joint
+    probability of two things happening; conditional probability restricts
+    attention to a sub-world where $B$ has happened.
+  </p>
+  <p>
+    Emphasise the multiplication rule: $P(A, B) = P(A \mid B) P(B)$. Say
+    it both ways. This is the only fact you need to derive Bayes.
+  </p>
+  <div class="audience-cue beginner">
+    <strong>Analogy for conditional:</strong> "Imagine a box of 100 marbles.
+    $P(\text{red})$ is red marbles divided by 100. $P(\text{red} \mid \text{big})$
+    is red-and-big divided by big — you throw away the small marbles and
+    recount inside the big ones."
+  </div>
+  <div class="transition">→ "Bayes' theorem is what you get when you divide."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Deriving Bayes</span></div>
+  <h3>Deriving Bayes' theorem</h3>
+  <p>
+    Do the algebra live on the slide. "I have $P(A \mid B) P(B) = P(B \mid A) P(A)$
+    from the multiplication rule. Divide both sides by $P(B)$, and I get
+    Bayes." Name the four pieces — posterior, likelihood, prior, evidence.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that $P(B)$ is computed by the
+    law of total probability and in continuous Bayes becomes an integral.
+    That integral is why MCMC exists.
+  </div>
+  <div class="transition">→ "Let's see Bayes in action with a COVID test."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~3 min</span><span>COVID tree</span></div>
+  <h3>The COVID ART tree</h3>
+  <p>
+    Walk the tree from left to right. Start with the population,
+    1% infected branch, 99% not infected branch. At each end, branch again
+    by test result. Point at the four leaves — joint probabilities. Make
+    sure learners see that the four probabilities sum to 1.
+  </p>
+  <p>
+    "Everything we need is on this tree. Bayes' theorem is just: which
+    leaves do you care about, and what's their share of a horizontal
+    cross-section?"
+  </p>
+  <div class="transition">→ "Now the punchline."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>COVID calculation</span></div>
+  <h3>You test positive — how worried?</h3>
+  <p>
+    Walk through the calculation step by step. $P(+)$ is the total
+    probability of a positive test: add the two positive branches,
+    $0.0090 + 0.0198 = 0.0288$. Then $P(T \mid +)$ is the infected-positive
+    leaf divided by all positive leaves, $0.0090/0.0288 \approx 0.31$.
+  </p>
+  <p>
+    Pause here. "31 percent. Most doctors say 90. The test is 90% sensitive,
+    but sensitivity is $P(+ \mid T)$ — the exact wrong direction. Bayes is
+    the flip."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are shocked:</strong> "The reason is the base
+    rate. Out of 10,000 people, only 100 are sick. The test catches 90 of
+    them. But among the 9,900 healthy ones, 2% is 198 false positives. So
+    when you see a positive, most of the time it's a false alarm from the
+    huge healthy group."
+  </div>
+  <div class="transition">→ "Probability lives inside distributions."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>Distributions</span></div>
+  <h3>Distributions — the shapes of uncertainty</h3>
+  <p>
+    Show three curves: Normal, Beta, Poisson. Say when you reach for each
+    one. "Normal for measurements. Beta for probabilities. Poisson for
+    counts. Exponential for waiting times — not shown but I'll mention
+    it. Uniform is the 'I know nothing' prior."
+  </p>
+  <p>
+    Don't get into PDFs and CDFs yet — that's 2.2. Today the picture is
+    enough.
+  </p>
+  <div class="transition">→ "Two numbers summarise any distribution: its mean and its variance."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>E[X] and variance</span></div>
+  <h3>Expected value and variance</h3>
+  <p>
+    Expected value is "probability-weighted average". Walk a simple
+    example — dice: $E[X] = \sum (1/6) \cdot i$ for $i = 1..6$, which is
+    3.5. Variance measures spread.
+  </p>
+  <p>
+    Then show the two equivalent forms. Walk the expansion slowly on
+    the slide — this derivation will be invoked in 2.2 (MLE) and 2.5
+    (R-squared), so it is worth getting right now.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the computational form $E[X^2] - \mu^2$
+    is what numpy uses under the hood for one-pass variance.
+  </div>
+  <div class="transition">→ "Integrals are hard — conjugate priors make them unnecessary."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~3 min</span><span>Conjugate priors</span></div>
+  <h3>Conjugate priors — Bayes without integrals</h3>
+  <p>
+    Explain the word: "conjugate" means the prior and posterior belong to
+    the same family. Pick a Beta prior for a proportion, observe Binomial
+    data, your posterior is still Beta. The update rule is elementary:
+    $\alpha += $ successes, $\beta += $ failures.
+  </p>
+  <p>
+    For Normal–Normal, the update blends prior and data by precision
+    (inverse variance). Precision is how much you "trust" each source.
+    More data = higher precision on the likelihood side = pulls posterior
+    toward sample mean.
+  </p>
+  <div class="transition">→ "Let's do the HDB update."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~4 min</span><span>HDB worked example</span></div>
+  <h3>HDB 4-room Tampines — the update</h3>
+  <p>
+    Walk the code line by line. Set the prior. Set the data. Compute
+    precisions. Compute posterior mean as precision-weighted average.
+    Compute posterior std as $\sqrt{1 / \text{total precision}}$. Print
+    the three numbers.
+  </p>
+  <p>
+    Interpret: "The posterior mean $533K$ sits between the prior $480K$
+    and the sample mean $542K$. It's pulled closer to the sample because
+    $n=30$ gives the data more precision than the prior. The posterior std
+    $9.6K$ is smaller than either input — we're more confident."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners flinch at the code:</strong> "Copy it first,
+    understand it second. We will re-derive this update in 2.2 with MLE."
+  </div>
+  <div class="transition">→ "What happens as n grows?"</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~2 min</span><span>n grows</span></div>
+  <h3>As $n$ grows, the data wins</h3>
+  <p>
+    Walk the curves: dashed prior, dashed likelihood, solid posterior.
+    "With small $n$, the posterior is between the two. With large $n$, the
+    posterior collapses onto the likelihood — the prior has almost no
+    effect. This is why Bayesians and frequentists agree in the limit of
+    infinite data."
+  </p>
+  <div class="transition">→ "And that brings up the credible vs confidence question."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~3 min</span><span>Credible vs confidence</span></div>
+  <h3>Credible vs confidence</h3>
+  <p>
+    This is the trickiest conceptual point of the day. Say it carefully.
+    "A 95% credible interval is a probability statement about the
+    parameter: given our prior and data, there is a 95% chance the true
+    mean is in this range. A 95% confidence interval is a statement about
+    the procedure: if we repeated the experiment many times, 95% of the
+    intervals we compute would contain the true mean."
+  </p>
+  <p>
+    Tell them: "Most people — including many senior analysts — talk about
+    CIs as if they were credible intervals. Today you know the difference.
+    In 2.2 we'll build the frequentist CI explicitly."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>If beginners are confused:</strong> "Don't worry if it doesn't
+    click yet. Just remember: the Bayesian one says what you want; the
+    frequentist one says what you can prove."
+  </div>
+  <div class="transition">→ "One last concept: sampling bias."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~2 min</span><span>Friendship paradox</span></div>
+  <h3>The friendship paradox</h3>
+  <p>
+    Deliver as a fun fact: "Your friends, on average, have more friends
+    than you do. It's true. Not because you're unpopular — because of how
+    we sampled." Point at the formula. "The expected degree along a random
+    edge is $E[X^2]/E[X]$, which is always at least $E[X]$ by
+    Cauchy–Schwarz."
+  </p>
+  <p>
+    Then land the practical point: "Any time you sample through
+    relationships — surveys recruited from existing users, customer
+    feedback forms, social-media polls — you over-sample high-activity
+    users. Bayesian methods don't fix this; you have to model the
+    selection."
+  </p>
+  <div class="transition">→ "Three common mistakes and we close."</div>
+</div>
+
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>Recap + bridge to 2.2</span></div>
+  <h3>Three rookie mistakes + what next</h3>
+  <p>
+    Walk the three mistakes. Then hit the recap bullets on the next slide.
+    Tease 2.2: "Today we had a prior. Tomorrow we'll ask: what if I only
+    have data and no prior? The answer is maximum likelihood estimation —
+    find the parameter that makes the observed data most likely. Then
+    we'll derive the sample variance formula you already know
+    ($s^2 = \sum(x_i - \bar{x})^2 / (n-1)$) and I promised you in 1.1."
+  </p>
+  <div class="transition">→ End of Lesson 2.1. Take 10 minutes.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../../index.html" class="prev">
+    <span class="label">← Up</span>
+    Module 2 Index
+  </a>
+  <a href="../02/notes.html" class="next">
+    <span class="label">Next →</span>
+    2.2 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

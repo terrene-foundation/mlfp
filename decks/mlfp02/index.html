@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 2 — Statistical Mastery | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/textbook.css">
+  <style>
+    .lesson-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 2em 0; }
+    .lesson-card {
+      padding: 22px 26px; background: var(--mlfp-bg-alt); border: 1px solid var(--mlfp-border);
+      border-left: 5px solid var(--mlfp-primary); border-radius: 8px;
+      display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: center;
+      text-decoration: none; color: inherit; transition: all 0.15s;
+    }
+    .lesson-card:hover { background: white; border-left-color: var(--mlfp-depth); transform: translateX(4px); }
+    .lesson-card .num { font-size: 2em; font-weight: 700; color: var(--mlfp-primary); text-align: center; }
+    .lesson-card .title { font-size: 1.2em; font-weight: 600; margin: 0 0 4px; color: var(--mlfp-text); }
+    .lesson-card .summary { font-size: 0.92em; color: var(--mlfp-text-muted); margin: 0; }
+    .lesson-card .formats { display: flex; gap: 6px; }
+    .lesson-card .formats .pill {
+      font-size: 0.72em; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+      background: var(--mlfp-primary); color: white;
+    }
+    .module-header { padding: 32px 0; border-bottom: 1px solid var(--mlfp-border); margin-bottom: 32px; }
+    .module-meta { display: flex; gap: 24px; font-size: 0.9em; color: var(--mlfp-text-muted); margin: 12px 0; }
+    .module-meta strong { color: var(--mlfp-primary); }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2</span>
+  <span>
+    <a href="../index.html">Course Home</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<div class="module-header">
+  <h1 class="lesson-title">
+    <span class="lesson-number">Module 2</span>
+    Statistical Mastery for Machine Learning and AI
+  </h1>
+  <div class="module-meta">
+    <span><strong>8 lessons</strong></span>
+    <span>~28 hours total study</span>
+    <span>Scaffolding: 60% (moderate+)</span>
+    <span>Prerequisite: Module 1</span>
+  </div>
+  <p class="lead">
+    Probability, parameter estimation, hypothesis testing, regression, and causal
+    inference — derived from first principles and applied to real Singapore data.
+    The language of uncertainty that every ML system speaks.
+  </p>
+</div>
+
+<h2>Module Outcomes</h2>
+<p>By the end of this module, you will be able to:</p>
+<ul>
+  <li>Reason about probability, conditional probability, and Bayes' theorem</li>
+  <li>Estimate parameters using MLE, MAP, and bootstrap methods — and explain when each fails</li>
+  <li>Design and analyse A/B tests with proper power analysis, SRM detection, and multiple-testing corrections</li>
+  <li>Derive and interpret linear and logistic regression from the matrix form upward</li>
+  <li>Apply CUPED and difference-in-differences to analyse experiments beyond naive averages</li>
+  <li>Execute an end-to-end statistical analysis using <code>FeatureStore</code> and <code>ExperimentTracker</code></li>
+</ul>
+
+<h2>Datasets You Will Use</h2>
+<table>
+  <thead><tr><th>Dataset</th><th>Used in</th></tr></thead>
+  <tbody>
+    <tr><td>HDB resale transactions (hdb_resale.parquet)</td><td>2.1, 2.2, 2.5, 2.6, 2.8</td></tr>
+    <tr><td>Singapore economic indicators (economic_indicators.csv)</td><td>2.2</td></tr>
+    <tr><td>E-commerce A/B test data (ab_test.parquet)</td><td>2.3, 2.4, 2.7</td></tr>
+    <tr><td>ICU patient records (icu_patients.parquet)</td><td>2.6</td></tr>
+    <tr><td>Policy intervention time series (did_policy.parquet)</td><td>2.7</td></tr>
+  </tbody>
+</table>
+
+<h2>Lessons</h2>
+
+<div class="lesson-grid">
+  <a class="lesson-card" href="lessons/01/textbook.html">
+    <div class="num">2.1</div>
+    <div>
+      <p class="title">Probability and Bayesian Thinking</p>
+      <p class="summary">Conditional probability, Bayes' theorem, distributions, expected value. Medical testing and HDB prices.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/02/textbook.html">
+    <div class="num">2.2</div>
+    <div>
+      <p class="title">Parameter Estimation and Inference</p>
+      <p class="summary">MLE, MAP, CLT, confidence intervals, Bessel's correction. Fitting distributions to Singapore GDP data.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/03/textbook.html">
+    <div class="num">2.3</div>
+    <div>
+      <p class="title">Bootstrapping and Hypothesis Testing</p>
+      <p class="summary">Percentile and BCa bootstrap, p-values, Bonferroni, BH-FDR, permutation tests.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/04/textbook.html">
+    <div class="num">2.4</div>
+    <div>
+      <p class="title">A/B Testing and Experiment Design</p>
+      <p class="summary">Power analysis, minimum detectable effect, SRM detection, the Why/What/Where/How/Frequency framework.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/05/textbook.html">
+    <div class="num">2.5</div>
+    <div>
+      <p class="title">Linear Regression</p>
+      <p class="summary">OLS from first principles: β = (X'X)⁻¹X'y. t-stats, R², F-stats, dummy encoding. HDB price model.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/06/textbook.html">
+    <div class="num">2.6</div>
+    <div>
+      <p class="title">Logistic Regression and Classification</p>
+      <p class="summary">Sigmoid, log-odds, odds ratios, one-way ANOVA, Tukey HSD. ICU outcome prediction.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/07/textbook.html">
+    <div class="num">2.7</div>
+    <div>
+      <p class="title">CUPED and Causal Inference</p>
+      <p class="summary">Var(Y_adj) = Var(Y)(1 − ρ²). Difference-in-differences, parallel trends, placebo tests.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+
+  <a class="lesson-card" href="lessons/08/textbook.html">
+    <div class="num">2.8</div>
+    <div>
+      <p class="title">Capstone — Statistical Analysis Project</p>
+      <p class="summary">FeatureStore, point-in-time correctness, end-to-end pipeline. Choose HDB, economic, or experiment path.</p>
+    </div>
+    <div class="formats"><span class="pill">Textbook</span></div>
+  </a>
+</div>
+
+<h2>Master Documents</h2>
+<ul>
+  <li><a href="deck.html">Full Slide Deck</a> (all 8 lessons, single Reveal.js deck)</li>
+  <li><a href="speaker-notes.md">Master Speaker Notes</a> (markdown, all 8 lessons)</li>
+</ul>
+
+</main>
+</body>
+</html>

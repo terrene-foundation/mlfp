@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.2 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>
+    .slide-block { margin: 1.5em 0; padding: 18px 22px; background: var(--mlfp-bg-alt); border-left: 4px solid var(--mlfp-primary); border-radius: 6px; }
+    .slide-block .meta { font-size: 0.85em; color: var(--mlfp-text-muted); display: flex; gap: 16px; margin-bottom: 8px; }
+    .slide-block .meta .badge { background: var(--mlfp-primary); color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
+    .slide-block h3 { margin: 0.2em 0 0.6em; color: var(--mlfp-text); font-size: 1.15em; }
+    .audience-cue { margin-top: 12px; padding: 8px 14px; font-size: 0.92em; border-radius: 4px; }
+    .audience-cue.beginner { background: rgba(34, 197, 94, 0.08); border-left: 3px solid var(--mlfp-foundations); }
+    .audience-cue.expert { background: rgba(139, 92, 246, 0.08); border-left: 3px solid var(--mlfp-advanced); }
+    .transition { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--mlfp-border); font-style: italic; color: var(--mlfp-text-muted); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5 — Speaker Notes</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="textbook.html">Textbook</a>
+    <a href="slides.html">Slides</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Speaker Notes — Lesson 5.2</span>
+  CNNs and Computer Vision
+</h1>
+
+<p class="lead">
+  Total time: ~60 minutes &nbsp;·&nbsp; 17 slides &nbsp;·&nbsp; ~3.5 min per slide average
+</p>
+
+<p>
+  This lesson has three load-bearing ideas that must land: the convolution
+  arithmetic formula, the ResNet skip connection, and the ONNX export
+  workflow. Everything else is context and history. If you run short on
+  time, cut the training-recipes slide (13) and the ViT slide (15) first
+  — those can be reviewed offline. Do not cut the ResNet block diagram
+  or the conv arithmetic; they are the load-bearing concepts.
+</p>
+
+<!-- Slide 1 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div>
+  <h3>CNNs and Computer Vision</h3>
+  <p>
+    Open with the promise of the lesson. "By the end of the next hour you
+    will have built a ResNet with squeeze-and-excitation blocks — a model
+    that would have won ImageNet four years after ResNet itself was
+    published — and exported it to ONNX for deployment. We will walk the
+    entire history from LeNet 1998 to ViT 2020 in one lesson."
+  </p>
+  <p>
+    Warm-up question: "Who has ever trained a CNN before?" If many
+    hands: "great, this lesson goes faster on the basics and spends more
+    time on SE blocks and ONNX." If few hands: "then we go slow on the
+    conv formula."
+  </p>
+  <div class="transition">→ "Start with the obvious question: why not just use an MLP?"</div>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Why conv?</span></div>
+  <h3>Why convolutions?</h3>
+  <p>
+    Walk the parameter-count example. "Flatten a 224×224 RGB image, you
+    get 150 thousand pixels. One fully connected layer to 1000 hidden
+    units has 150 million parameters. That is before you even stack
+    layers. It is unaffordable, and worse — it does not work."
+  </p>
+  <p>
+    Explain <em>why</em> it does not work, not just that it does not.
+    "An MLP sees pixel (10, 10) and pixel (10, 11) as completely unrelated
+    inputs. It has to learn from data that they are neighbours. A
+    convolution builds that in — the filter sees a 3×3 window, so
+    neighbouring pixels always land in the same window."
+  </p>
+  <p>
+    Then translation equivariance. "A cat in the top left and the same
+    cat in the bottom right should produce the same features. A conv
+    layer guarantees this because the same filter slides over the whole
+    image."
+  </p>
+  <div class="transition">→ "That is the op. Here is a picture."</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 3</span><span>~3 min</span><span>Conv diagram</span></div>
+  <h3>The convolution op</h3>
+  <p>
+    Walk the diagram. "Input is 6×6 — the grey grid. The teal highlighted
+    square is the receptive field of one output pixel — a 3×3 window. The
+    kernel (also 3×3) is applied to that window by elementwise multiply
+    and sum. Slide the kernel one column right, get the next output pixel.
+    Slide down a row, next. After sliding over the whole input you have a
+    4×4 output."
+  </p>
+  <p>
+    Critical teaching moment: "the same kernel is used at every position.
+    That is what 'shared weights' means. Nine weights for the whole layer,
+    not nine weights per output pixel."
+  </p>
+  <div class="audience-cue beginner">
+    <strong>For beginners:</strong> compare to Excel conditional
+    formatting. "A rule like 'highlight any cell where the three cells
+    above sum to more than 100' works the same way regardless of where
+    the cell is in the sheet. The rule is applied everywhere."
+  </div>
+  <div class="transition">→ "One formula governs all conv arithmetic."</div>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 4</span><span>~3 min</span><span>Conv arithmetic</span></div>
+  <h3>Conv arithmetic — the one formula</h3>
+  <p>
+    Put the formula on the board and walk through both examples. "Same
+    padding means stride 1 and padding equal to (F-1)/2. For a 3×3 kernel
+    that is padding 1. Plug in: (28 - 3 + 2*1)/1 + 1 = 28. Output same size
+    as input. Used everywhere you want the spatial size preserved."
+  </p>
+  <p>
+    "Halving: stride 2, padding 1, F=3. (28 - 3 + 2)/2 + 1 = 14. Output is
+    half the input. Used everywhere you want to downsample — ResNet
+    stages, conv autoencoder encoder, everything."
+  </p>
+  <p>
+    Do one worked example live: "what's the output of a 7×7 conv with
+    stride 2 and padding 3 on a 224×224 image?" Wait for answers.
+    Correct: 112×112. "Good — that is literally the first layer of every
+    ResNet."
+  </p>
+  <div class="transition">→ "Now the history tour, fast."</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 5</span><span>~4 min</span><span>History</span></div>
+  <h3>A short history</h3>
+  <p>
+    Walk the table quickly. Names, years, key idea. Do not dwell on
+    LeNet and VGG — they are historical. Focus on:
+  </p>
+  <ul>
+    <li>AlexNet: "the moment deep learning won. 2012 ImageNet challenge,
+        they crushed the hand-crafted feature entries by 10%. Shocked
+        everyone."</li>
+    <li>ResNet: "the moment deep learning got really deep. We will spend
+        the next three slides on why."</li>
+    <li>ViT: "the moment computer vision stopped being exclusively
+        convolutional."</li>
+  </ul>
+  <div class="transition">→ "The ResNet idea is one equation."</div>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 6</span><span>~4 min</span><span>ResNet idea</span></div>
+  <h3>The ResNet idea</h3>
+  <p>
+    Set up the problem first. "Before ResNet, everyone believed deeper
+    networks would always be better. Then they weren't. People ran
+    experiments with 20-layer and 50-layer plain CNNs — the 50-layer
+    network had <em>worse</em> training accuracy than the 20-layer. Not
+    test accuracy, which would suggest overfitting — training accuracy.
+    The optimiser literally could not fit the training data with more
+    layers. That was the degradation problem."
+  </p>
+  <p>
+    Then the ResNet fix. "He et al. said: let each block learn the
+    residual rather than the whole output. H(x) = F(x) + x. The skip
+    connection gives the gradient a direct additive path back. In the
+    worst case, F learns zero and the block becomes the identity, so
+    adding depth cannot hurt. They trained a 152-layer ResNet and won
+    ImageNet."
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> the deeper insight is that the skip
+    makes the loss landscape much smoother — see Li et al 2018
+    "Visualising the Loss Landscape of Neural Nets". Without skips, deep
+    nets have chaotic loss surfaces that are basically unoptimisable.
+  </div>
+  <div class="transition">→ "Diagram to lock it in."</div>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 7</span><span>~3 min</span><span>BasicBlock diagram</span></div>
+  <h3>ResNet basic block</h3>
+  <p>
+    Walk the diagram. "Input x enters. Two paths. Main path: conv+BN+
+    ReLU, conv+BN. Skip path: plain identity — x goes straight to the
+    add. The two paths meet at the yellow +. Then ReLU. That is a
+    BasicBlock."
+  </p>
+  <p>
+    Emphasise the yellow dashed shortcut. "This is the entire trick.
+    One dashed arrow. That is what made 152 layers trainable."
+  </p>
+  <div class="transition">→ "And in PyTorch it is nine lines."</div>
+</div>
+
+<!-- Slide 8 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 8</span><span>~3 min</span><span>BasicBlock code</span></div>
+  <h3>BasicBlock in PyTorch</h3>
+  <p>
+    Walk line by line. "Two Conv2d layers with kernel 3, padding 1 (so
+    same-size), and bias=False because BatchNorm has its own bias. Two
+    BatchNorm2d layers. In forward: save identity, run conv1+bn1+relu,
+    run conv2+bn2, add identity, relu, return. The magic is one line:
+    <code>out = out + identity</code>."
+  </p>
+  <p>
+    Question for the class: "what happens if the input and output have
+    different shapes?" Wait. "Then you cannot just add. You need a 1×1
+    conv on the shortcut to match. The full ResNet handles that; we are
+    keeping it simple here."
+  </p>
+  <div class="transition">→ "SE blocks — modern upgrade, same spirit."</div>
+</div>
+
+<!-- Slide 9 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 9</span><span>~4 min</span><span>SE blocks</span></div>
+  <h3>Squeeze-and-Excitation</h3>
+  <p>
+    The motivation: "Not all channels in a feature map are equally
+    informative for every input. For one image, the 'edge' channels
+    matter most; for another, the 'texture' channels. SE blocks let the
+    network decide per-input which channels matter."
+  </p>
+  <p>
+    Walk the three steps. Squeeze: global average pool each channel to
+    one number. Excite: tiny MLP, bottleneck and back up, sigmoid so
+    outputs are in (0, 1). Scale: multiply each channel by its weight.
+  </p>
+  <p>
+    "One-shot channel attention. Few parameters (the reduction ratio 8
+    is standard). 1-2% extra accuracy on ImageNet benchmarks. Works as
+    a drop-in on any CNN — plain, ResNet, EfficientNet — all use it."
+  </p>
+  <div class="transition">→ "Code."</div>
+</div>
+
+<!-- Slide 10 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 10</span><span>~2 min</span><span>SE code</span></div>
+  <h3>SE block code</h3>
+  <p>
+    Walk the forward method. "Squeeze: <code>x.mean(dim=[2,3])</code> —
+    average over spatial dimensions, keep batch and channel. Excite: two
+    linear layers with a ReLU and sigmoid. Scale: broadcast back via
+    <code>view(b, c, 1, 1)</code> and multiply."
+  </p>
+  <p>
+    Point at the <code>view</code>: "this is standard broadcast —
+    (b, c, 1, 1) tensor multiplied by (b, c, H, W) tensor gives the
+    channel-wise scaling we want."
+  </p>
+  <div class="transition">→ "Put it all together."</div>
+</div>
+
+<!-- Slide 11 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 11</span><span>~3 min</span><span>Stacked model</span></div>
+  <h3>Stacking them</h3>
+  <p>
+    Walk the architecture. "Stem: 1 channel to 16. Block 1: BasicBlock
+    with 16 channels, SE block on output. Down: 16 to 32 channels with
+    stride-2 conv — halves the spatial size. Block 2: 32 channels, SE.
+    Head: global average pool to (b, 32), flatten, linear to 3 classes."
+  </p>
+  <p>
+    "This is a minimal ResNet-with-SE in fifteen lines. Real ResNet-18
+    has four such stages with growing channels. Same pattern."
+  </p>
+  <div class="transition">→ "Training loop."</div>
+</div>
+
+<!-- Slide 12 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Training loop</span></div>
+  <h3>Training loop</h3>
+  <p>
+    "Identical to 5.1, to 4.8, to every PyTorch training loop you will
+    ever write. The <em>only</em> difference is cross-entropy instead of
+    MSE because this is classification, not reconstruction. Everything
+    else — optimiser, .backward, .step — is muscle memory by now."
+  </p>
+  <div class="transition">→ "Modern training tricks in one slide."</div>
+</div>
+
+<!-- Slide 13 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 13</span><span>~3 min</span><span>Training recipes</span></div>
+  <h3>Modern training recipes</h3>
+  <p>
+    Walk the table. Do not dwell — these are optimisations you will
+    revisit later. The key takeaways: Kaiming init is correct for ReLU
+    (Xavier is for tanh and is wrong), mixed precision doubles throughput
+    on modern GPUs, Mixup and label smoothing are free accuracy, and
+    cosine LR always helps.
+  </p>
+  <div class="audience-cue expert">
+    <strong>For experts:</strong> mention that SGD with momentum and
+    cosine LR outperforms Adam on ImageNet-scale ResNets, but Adam is
+    fine for small models and faster convergence.
+  </div>
+  <div class="transition">→ "Deployment — the Kailash engine for it."</div>
+</div>
+
+<!-- Slide 14 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 14</span><span>~3 min</span><span>OnnxBridge</span></div>
+  <h3>Exporting with OnnxBridge</h3>
+  <p>
+    Introduce the engine. "ONNX — Open Neural Network eXchange — is the
+    standard portable format for trained models. Every production runtime
+    supports it: NVIDIA Triton, Rust, browsers, Android, iOS. But
+    PyTorch's native <code>torch.onnx.export</code> is finicky — op
+    coverage varies, opset versions matter, and numerical drift is
+    common. <code>OnnxBridge</code> wraps it with validation."
+  </p>
+  <p>
+    Show the three-line code. "Hand it your model (in eval mode, on CPU,
+    trained), a sample input of the right shape, and an output path. It
+    traces, writes, and then loads the ONNX file in ONNX Runtime and
+    compares outputs on the sample. If they drift beyond tolerance, it
+    raises — which saves you from shipping a silently-broken model."
+  </p>
+  <div class="transition">→ "One slide on ViTs."</div>
+</div>
+
+<!-- Slide 15 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 15</span><span>~3 min</span><span>ViT</span></div>
+  <h3>Vision Transformers in one slide</h3>
+  <p>
+    "ViT arrived in 2020 and surprised everyone. It treats an image as a
+    sequence of flattened patches and feeds it to a Transformer encoder
+    — exactly the architecture you will meet in 5.4 for text. No
+    convolutions at all."
+  </p>
+  <p>
+    The caveat: "ViTs need enormous datasets. On ImageNet alone,
+    ResNet-50 still beats a plain ViT-B because CNNs have a stronger
+    inductive bias — translation equivariance is baked in. ViTs have to
+    learn it from data. Once you scale to JFT-300M or similar, ViTs win."
+  </p>
+  <p>
+    "For most enterprise problems with thousands (not millions) of
+    examples, a pre-trained ResNet fine-tuned on your data is still the
+    pragmatic choice. We do that in 5.7."
+  </p>
+  <div class="transition">→ "Four traps."</div>
+</div>
+
+<!-- Slide 16 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 16</span><span>~3 min</span><span>Traps</span></div>
+  <h3>Four traps</h3>
+  <p>
+    Walk each one. The <code>model.eval()</code> one is the most common
+    bug. "If you forget it, BN uses batch statistics from the validation
+    batch — which might have 1 sample, giving you NaN. Symptom: your
+    validation loss is nonsense. Fix: always <code>model.eval()</code>
+    before <code>with torch.no_grad():</code>."
+  </p>
+  <p>
+    The skip-connection shape trap: "when you downsample or change
+    channels, the main path has a different shape from the input, so you
+    cannot just add. You need a 1×1 conv on the shortcut to match."
+  </p>
+  <p>
+    The LR trap is short: "start at 1e-3 for Adam. If NaN in 100 steps,
+    halve it."
+  </p>
+  <p>
+    The <code>view</code> vs <code>flatten</code> trap: "after adaptive
+    pooling, some tensors are non-contiguous. <code>view</code> fails.
+    <code>torch.flatten</code> is always safe."
+  </p>
+  <div class="transition">→ "Wrap up."</div>
+</div>
+
+<!-- Slide 17 -->
+<div class="slide-block">
+  <div class="meta"><span class="badge">Slide 17</span><span>~2 min</span><span>Reflection</span></div>
+  <h3>Reflection</h3>
+  <p>
+    Walk the bullets. Pause on the ResNet one — ask "does anyone still
+    feel shaky about the skip connection?" Address any remaining questions
+    there.
+  </p>
+  <p>
+    Bridge to 5.3: "CNNs handle spatial data — grids. Lesson 5.3 handles
+    temporal data — sequences. Different structure, different
+    architecture, same training toolkit. You will meet LSTM cells with
+    their four gates and see why they solved the vanishing-gradient
+    problem <em>before</em> ResNet solved it for vision."
+  </p>
+  <p>
+    Take 5 minutes of Q&amp;A then 10-minute break.
+  </p>
+  <div class="transition">→ End of 5.2.</div>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../01/notes.html" class="prev">
+    <span class="label">← Previous</span>
+    5.1 Speaker Notes
+  </a>
+  <a href="../03/notes.html" class="next">
+    <span class="label">Next →</span>
+    5.3 Speaker Notes
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -4,9 +4,18 @@
 # ════════════════════════════════════════════════════════════════════════
 # MLFP01 — Exercise 7: Automated Data Profiling
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use DataExplorer's async profiling engine to automatically
-#   diagnose data quality issues in a messy multi-source economic dataset,
-#   and learn to configure AlertConfig thresholds for a specific domain.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Run automated data profiling on any dataset using DataExplorer
+#   - Configure AlertConfig thresholds for data quality rules
+#   - Compare two datasets and identify distribution differences
+#   - Handle errors gracefully with try/except
+#   - Use async functions and asyncio.run() in a real pipeline context
+#
+# PREREQUISITES: Complete Exercise 6 first (all of Exercises 1–6).
+#
+# ESTIMATED TIME: 50-60 minutes
 #
 # TASKS:
 #   1. Load and inspect Singapore economic indicators (CPI, employment, FX)
@@ -16,11 +25,13 @@
 #   5. Compare data quality across pre-COVID and COVID-era periods
 #   6. Generate a self-contained HTML profiling report
 #
-# DATA QUALITY ISSUES (by design):
-#   - Mixed granularity: monthly CPI, quarterly employment, daily FX
-#   - Missing quarters in employment data after forward-fill
-#   - Currency conversion inconsistencies in FX rates
-#   - Outlier periods (COVID shock, Global Financial Crisis)
+# DATASET: Three Singapore economic time-series datasets (deliberately messy):
+#   - sg_cpi.csv:         Monthly Consumer Price Index (data.gov.sg / SingStat)
+#   - sg_employment.csv:  Quarterly labour market statistics (MOM)
+#   - sg_fx_rates.csv:    Daily SGD exchange rates (MAS)
+#   Quality issues by design: mixed granularity, forward-fill gaps,
+#   COVID-era outliers, and near-zero values in some trade-flow columns.
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -42,6 +53,15 @@ loader = MLFPDataLoader()
 cpi = loader.load("mlfp01", "sg_cpi.csv")  # Monthly consumer price index
 employment = loader.load("mlfp01", "sg_employment.csv")  # Quarterly labour stats
 fx_rates = loader.load("mlfp01", "sg_fx_rates.csv")  # Daily exchange rates
+
+print("=" * 60)
+print("  MLFP01 Exercise 7: Automated Data Profiling")
+print("=" * 60)
+print(f"\n  Data loaded:")
+print(f"    sg_cpi.csv        ({cpi.height:,} rows — monthly)")
+print(f"    sg_employment.csv ({employment.height:,} rows — quarterly)")
+print(f"    sg_fx_rates.csv   ({fx_rates.height:,} rows — daily)")
+print(f"  You're ready to start!\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -71,6 +91,25 @@ print("\n=== FX Rates Data (Daily) ===")
 print(f"Shape: {fx_rates.shape}")
 print(f"Columns: {fx_rates.columns}")
 print(fx_rates.head(5))
+# INTERPRETATION: Three datasets, three granularities. Before merging, count
+# how many rows you'd expect on a monthly spine and compare with what each
+# dataset provides. Employment has ~4x fewer rows than CPI because it's
+# quarterly. FX rates have ~22x more rows than CPI because it's daily.
+# The merge will resolve all three to monthly frequency — by aggregation (FX)
+# and forward-fill (employment).
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert cpi.height > 0, "CPI dataset is empty"
+assert employment.height > 0, "Employment dataset is empty"
+assert fx_rates.height > 0, "FX rates dataset is empty"
+assert "date" in cpi.columns, "CPI should have a 'date' column"
+assert employment.height < cpi.height, (
+    "Quarterly employment should have fewer rows than monthly CPI"
+)
+assert fx_rates.height > cpi.height, (
+    "Daily FX rates should have more rows than monthly CPI"
+)
+print("\n✓ Checkpoint 1 passed — all three economic datasets loaded and inspected\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -84,10 +123,46 @@ print(fx_rates.head(5))
 # Forward-filling is the standard approach for quarterly economic data:
 # the Q1 figure applies to Jan, Feb, and Mar; Q2 to Apr, May, Jun, etc.
 
-# Parse all date columns to proper date types
-cpi = cpi.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-employment = employment.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+# Parse date columns — each dataset has a DIFFERENT date format!
+# This is real-world messiness: CPI uses mixed MM/YYYY and YYYY-MM,
+# employment uses "YYYY QN" quarters, FX rates use YYYY-MM-DD.
+# Handling heterogeneous formats is a core data engineering skill.
+
+# CPI: mixed formats ("01/2000", "2000-02") → normalise to first-of-month
+# Normalise all CPI dates to YYYY-MM-01 format before parsing.
+# The dataset intentionally has THREE different date formats — this is
+# real-world messiness that data engineers encounter daily:
+#   "01/2000"  → MM/YYYY   (some international sources)
+#   "2000-02"  → YYYY-MM   (ISO-like, no day)
+#   "201108"   → YYYYMM    (compact, no separator)
+cpi = cpi.with_columns(
+    pl.col("date")
+    .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")    # MM/YYYY → YYYY-MM-01
+    .str.replace(r"^(\d{4})(\d{2})$", "$1-$2-01")      # YYYYMM  → YYYY-MM-01
+    .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")     # YYYY-MM → YYYY-MM-01
+    .str.to_date("%Y-%m-%d")
+    .alias("date")
+)
+
+# Employment: quarterly ("2000 Q1") → map to quarter start month
+def quarter_to_date(q_str: str) -> str:
+    """Convert '2000 Q1' to '2000-01-01'."""
+    parts = q_str.split()
+    year = parts[0]
+    q = int(parts[1][1])
+    month = {1: "01", 2: "04", 3: "07", 4: "10"}[q]
+    return f"{year}-{month}-01"
+
+employment = employment.with_columns(
+    pl.col("quarter").map_elements(quarter_to_date, return_dtype=pl.String)
+    .str.to_date("%Y-%m-%d")
+    .alias("date")
+)
+
+# FX rates: YYYY-MM-DD format — Polars may auto-detect this as Date on load,
+# so only parse if the column is still a string
+if fx_rates["date"].dtype == pl.String:
+    fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
 
 # Truncate all dates to the first of the month for joining
 cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
@@ -152,6 +227,20 @@ if null_summary:
     print("\nNull summary after merge:")
     for ns in null_summary:
         print(f"  {ns['column']}: {ns['nulls']} ({ns['pct']:.1%})")
+# INTERPRETATION: Nulls after the merge fall into two categories:
+# (1) Edge nulls: months at the very start of the series where forward-fill
+#     has no prior value to inherit. These are expected and unavoidable.
+# (2) Coverage gaps: months not covered by the auxiliary dataset at all.
+#     These warrant investigation — check if the source data is complete.
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert economic.height > 0, "Merged dataset is empty"
+assert economic.height == monthly_spine.height, (
+    f"Merged dataset should have {monthly_spine.height} rows (one per month), "
+    f"got {economic.height}"
+)
+assert "month_date" in economic.columns, "Merged dataset should have month_date"
+print("\n✓ Checkpoint 2 passed — datasets merged to monthly frequency\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -194,6 +283,20 @@ print(f"\n=== Custom AlertConfig ===")
 print(f"Correlation threshold: {alert_config.high_correlation_threshold}")
 print(f"Null threshold:        {alert_config.high_null_pct_threshold:.0%}")
 print(f"Skewness threshold:    {alert_config.skewness_threshold}")
+# INTERPRETATION: Every threshold here is a deliberate choice, not a default.
+# Setting high_correlation_threshold=0.95 means CPI and employment will likely
+# NOT trigger a correlation alert — their structural relationship is expected.
+# Setting skewness_threshold=3.0 means only the most extreme COVID/GFC shocks
+# will be flagged. Always document your rationale; a reviewer should understand
+# why you chose each number.
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert alert_config.high_correlation_threshold == 0.95, (
+    "Correlation threshold should be 0.95"
+)
+assert alert_config.skewness_threshold == 3.0, "Skewness threshold should be 3.0"
+assert alert_config.high_null_pct_threshold == 0.10, "Null threshold should be 0.10"
+print("\n✓ Checkpoint 3 passed — AlertConfig configured with domain-appropriate thresholds\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -305,6 +408,11 @@ async def profile_economic_data():
         corrs.sort(key=lambda x: abs(x[2]), reverse=True)
         for col_a, col_b, corr in corrs[:10]:
             print(f"  {col_a} <-> {col_b}: {corr:.3f}")
+    # INTERPRETATION: Spearman measures rank-order correlation — it captures
+    # monotonic relationships that Pearson misses (e.g., CPI may correlate
+    # non-linearly with employment). A Spearman r > 0.8 between two predictors
+    # signals potential multicollinearity: including both in a regression model
+    # inflates coefficient standard errors and makes interpretation unreliable.
 
     # Generate HTML visualisations
     print("\n--- Generating Visualisations ---")
@@ -356,6 +464,13 @@ async def compare_periods():
         mean_delta = delta.get("mean_delta", 0)
         std_delta = delta.get("std_delta", 0)
         print(f"  {col}: mean Δ={mean_delta:+,.3g}  std Δ={std_delta:+,.3g}")
+    # INTERPRETATION: Columns with the largest mean_delta experienced the
+    # biggest distributional shift between pre-COVID and COVID-era periods.
+    # A positive mean_delta means the COVID-era average is higher (inflation-driven
+    # indicators like CPI, or pandemic-era FX volatility). A negative delta
+    # signals a post-COVID decline in that variable (e.g., certain employment rates).
+    # std_delta shows whether the distribution got wider (more volatile) or
+    # narrower during COVID — most economic indicators became more volatile.
 
     return comparison
 
@@ -400,6 +515,19 @@ async def main():
 # to Python exception handling in a realistic context.
 try:
     profile, comparison = asyncio.run(main())
+
+    # ── Checkpoint 4 ─────────────────────────────────────────────────
+    assert profile is not None, "profile should not be None"
+    assert profile.n_rows == economic.height, (
+        f"Profile n_rows ({profile.n_rows}) should match economic.height ({economic.height})"
+    )
+    assert comparison is not None, "comparison should not be None"
+    assert "column_deltas" in comparison, "comparison should contain column_deltas"
+    import os
+    assert os.path.exists("ex7_economic_profile_report.html"), (
+        "HTML report file not created"
+    )
+    print("\n✓ Checkpoint 4 passed — DataExplorer profiling, comparison, and report complete\n")
     print("\n✓ Exercise 7 complete — DataExplorer profiling on dirty economic data")
 except Exception as exc:
     # In a real pipeline you would log the full traceback and alert on-call.
@@ -407,3 +535,27 @@ except Exception as exc:
     # interpreter still shows the stack trace.
     print(f"\n[ERROR] Profiling failed: {exc}")
     raise
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 58)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 58)
+print("""
+  ✓ DataExplorer: one call to profile an entire dataset
+  ✓ AlertConfig: tuning thresholds for your specific domain
+  ✓ Async: async def, await, asyncio.run() — parallel column profiling
+  ✓ try/except: handling errors gracefully without crashing the program
+  ✓ compare(): detecting distribution drift between two time periods
+  ✓ to_html(): generating shareable profiling reports
+  ✓ Alert interpretation: mapping each alert type to a cleaning action
+
+  NEXT: In Exercise 8, you'll put all of M1 together in one end-to-end
+  pipeline — load messy taxi trip data, profile it with DataExplorer,
+  clean it based on the alerts, engineer temporal and spatial features,
+  prepare it with PreprocessingPipeline, visualise key patterns, then
+  re-profile to confirm quality improvement. This is the capstone of
+  Module 1 and the foundation for Module 2 feature engineering.
+""")

@@ -2,265 +2,222 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 8: Capstone — End-to-End Deep Learning Pipeline
+# MLFP05 — Exercise 8: Reinforcement Learning (REINFORCE on CartPole)
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Complete DL pipeline from data to deployment: TrainingPipeline
-#   → ModelRegistry → OnnxBridge → InferenceServer.
 #
-# TASKS:
-#   1. Load and preprocess image data
-#   2. Train CNN via TrainingPipeline
-#   3. Register in ModelRegistry with metrics
-#   4. Export to ONNX via OnnxBridge
-#   5. Deploy via InferenceServer and test predictions
-#   6. Compare ONNX inference speed vs original
+# WHAT YOU'LL LEARN:
+#   - Explain the RL framework: agent, environment, state, action, reward
+#   - Build a policy network in torch.nn and sample actions with Categorical
+#   - Implement the REINFORCE (policy gradient) update rule by hand
+#   - Train an agent on Gymnasium's CartPole-v1 from interaction alone
+#   - Compare learned policy vs a random baseline
+#   - Explain how REINFORCE relates to PPO (same objective family, PPO adds
+#     a clipped surrogate objective and advantage estimation)
+#
+# PREREQUISITES: M5/ex_2 through M5/ex_4 (PyTorch training loops).
+# ESTIMATED TIME: ~60 min
+# DATASET: No dataset — the environment IS the data source. CartPole-v1
+#   provides (state, reward) tuples as the agent acts.
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import pickle
-import time
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributions import Categorical
 
-import polars as pl
+import gymnasium as gym
 
-from kailash.infrastructure import ConnectionManager
-from kailash_ml import (
-    InferenceServer,
-    ModelRegistry,
-    ModelVisualizer,
-    OnnxBridge,
-    TrainingPipeline,
-)
-from kailash_ml.types import MetricSpec
+from kailash_ml import ModelVisualizer
 
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
-
-setup_environment()
+torch.manual_seed(42)
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load and preprocess image data
-# ══════════════════════════════════════════════════════════════════════
-
-loader = MLFPDataLoader()
-data = loader.load("mlfp05", "fashion_mnist_sample.parquet")
-
-pixel_cols = [c for c in data.columns if c != "label"]
-n_samples = data.height
-
-# Normalize pixel values to [0, 1]
-normalized = data.with_columns([(pl.col(c) / 255.0).alias(c) for c in pixel_cols])
-
-# Train/test split (80/20)
-n_train = int(n_samples * 0.8)
-train_data = normalized[:n_train]
-test_data = normalized[n_train:]
-
-print(f"=== Fashion-MNIST Pipeline ===")
-print(f"Total: {n_samples}, Train: {n_train}, Test: {n_samples - n_train}")
-print(f"Features: {len(pixel_cols)} pixels (28×28 flattened)")
-print(f"Classes: 10 (T-shirt, Trouser, Pullover, Dress, Coat,")
-print(f"          Sandal, Shirt, Sneaker, Bag, Ankle boot)")
+# ════════════════════════════════════════════════════════════════════════
+# PART 1 — Environment: CartPole-v1
+# ════════════════════════════════════════════════════════════════════════
+# State  (4,)   : cart position, cart velocity, pole angle, pole angular velocity
+# Action discrete(2) : 0 = push left, 1 = push right
+# Reward 1.0 per timestep the pole is upright
+# Episode ends when pole tips beyond 15 degrees or cart leaves the track.
+env = gym.make("CartPole-v1")
+obs_dim = env.observation_space.shape[0]
+n_actions = env.action_space.n
+print(f"CartPole-v1  obs_dim={obs_dim}  n_actions={n_actions}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Train CNN via TrainingPipeline
-# ══════════════════════════════════════════════════════════════════════
-
-pipeline = TrainingPipeline(
-    model_type="neural_network",
-    target="label",
-    features=pixel_cols,
-    config={
-        "architecture": "cnn",
-        "hidden_layers": [128, 64],
-        "activation": "relu",
-        "dropout": 0.3,
-        "epochs": 10,
-        "batch_size": 32,
-        "learning_rate": 0.001,
-        "optimizer": "adam",
-    },
-)
-
-print(f"\n=== Training via TrainingPipeline ===")
-start_time = time.time()
-result = pipeline.fit(train_data)
-train_time = time.time() - start_time
-
-print(f"Training time: {train_time:.1f}s")
-print(f"Final training loss: {result.metrics.get('loss', 'N/A')}")
-print(f"Training accuracy: {result.metrics.get('accuracy', 'N/A')}")
-
-# Evaluate on test set
-predictions = pipeline.predict(test_data)
-test_labels = test_data["label"].to_list()
-pred_labels = predictions["prediction"].to_list()
-
-correct = sum(1 for p, t in zip(pred_labels, test_labels) if p == t)
-test_accuracy = correct / len(test_labels)
-print(f"Test accuracy: {test_accuracy:.4f}")
-
-# Visualize training curves
-viz = ModelVisualizer()
-fig = viz.plot_training_curves(result.history)
-fig.write_html("capstone_training_curves.html")
-print(f"Training curves saved to capstone_training_curves.html")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Register in ModelRegistry
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def register_model():
-    conn = ConnectionManager("sqlite:///capstone_models.db")
-    await conn.initialize()
-
-    registry = ModelRegistry(conn)
-    await registry.initialize()
-
-    version = await registry.register_model(
-        name="fashion_mnist_cnn",
-        artifact=pickle.dumps(result.model),
-        metrics=[
-            MetricSpec(name="test_accuracy", value=test_accuracy),
-            MetricSpec(name="train_time_seconds", value=train_time),
-            MetricSpec(name="parameters", value=result.metrics.get("n_params", 0)),
-        ],
-    )
-
-    await registry.promote_model(
-        name="fashion_mnist_cnn",
-        version=version.version,
-        target_stage="production",
-    )
-
-    print(f"\n=== ModelRegistry ===")
-    print(f"Registered: fashion_mnist_cnn v{version.version}")
-    print(f"Stage: production")
-    print(f"Metrics: accuracy={test_accuracy:.4f}, train_time={train_time:.1f}s")
-
-    return registry, version
-
-
-registry, model_version = asyncio.run(register_model())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Export to ONNX via OnnxBridge
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def export_onnx():
-    bridge = OnnxBridge()
-
-    onnx_path = bridge.export(
-        model=result.model,
-        input_shape=(1, len(pixel_cols)),
-        output_path="fashion_mnist_cnn.onnx",
-    )
-
-    # Validate ONNX output matches original model
-    test_sample = test_data.select(pixel_cols).row(0)
-    metrics = bridge.validate(
-        onnx_path,
-        test_data=[list(test_sample)],
-        expected=[pred_labels[:1]],
-    )
-
-    print(f"\n=== ONNX Export ===")
-    print(f"Path: {onnx_path}")
-    print(f"Validation: {metrics}")
-    print(f"ONNX is platform-agnostic: deploy to mobile, edge, browser, or server")
-
-    return bridge, onnx_path
-
-
-bridge, onnx_path = asyncio.run(export_onnx())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Deploy via InferenceServer
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def deploy_and_test():
-    server = InferenceServer(model_path=onnx_path, port=8090)
-
-    print(f"\n=== InferenceServer Deployment ===")
-    await server.start()
-    print(f"Server running on port 8090")
-
-    # Test predictions
-    class_names = [
-        "T-shirt",
-        "Trouser",
-        "Pullover",
-        "Dress",
-        "Coat",
-        "Sandal",
-        "Shirt",
-        "Sneaker",
-        "Bag",
-        "Ankle boot",
-    ]
-
-    for i in range(3):
-        sample = list(test_data.select(pixel_cols).row(i))
-        prediction = await server.predict(sample)
-        true_label = int(test_data["label"][i])
-        pred_class = prediction.get("class", prediction.get("prediction", 0))
-        print(
-            f"  Sample {i+1}: true={class_names[true_label]}, "
-            f"pred={class_names[int(pred_class)]}"
+# ════════════════════════════════════════════════════════════════════════
+# PART 2 — Policy network
+# ════════════════════════════════════════════════════════════════════════
+# A small MLP mapping state -> logits over actions. We sample an action
+# from the Categorical distribution so the policy is STOCHASTIC — critical
+# for REINFORCE because the gradient uses log-probabilities of the sampled
+# actions.
+class PolicyNet(nn.Module):
+    def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, n_actions),
         )
 
-    await server.stop()
-    print(f"Server stopped.")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
-    return server
+    def act(self, state: np.ndarray) -> tuple[int, torch.Tensor]:
+        """Sample an action and return (action, log_prob). The log_prob keeps
+        a gradient graph so we can backprop through it later."""
+        s = torch.from_numpy(state.astype(np.float32)).to(device)
+        logits = self.forward(s)
+        dist = Categorical(logits=logits)
+        a = dist.sample()
+        return int(a.item()), dist.log_prob(a)
 
 
-server = asyncio.run(deploy_and_test())
+policy = PolicyNet(obs_dim, n_actions).to(device)
+optimizer = torch.optim.Adam(policy.parameters(), lr=1e-2)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Compare inference speed
-# ══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# PART 3 — REINFORCE update
+# ════════════════════════════════════════════════════════════════════════
+# Collect a whole episode, compute the discounted return at every step,
+# and update:
+#       theta <- theta + alpha * sum_t [ G_t * d/dtheta log pi(a_t | s_t) ]
+# We standardise returns (subtract mean, divide by std) for variance
+# reduction — this is a simple baseline.
+def discount_returns(rewards: list[float], gamma: float = 0.99) -> torch.Tensor:
+    returns = []
+    g = 0.0
+    for r in reversed(rewards):
+        g = r + gamma * g
+        returns.insert(0, g)
+    returns_t = torch.tensor(returns, dtype=torch.float32, device=device)
+    if len(returns_t) > 1:
+        returns_t = (returns_t - returns_t.mean()) / (returns_t.std() + 1e-8)
+    return returns_t
 
-print(f"\n=== Inference Speed Comparison ===")
 
-# Original model inference
-n_test = 100
-test_samples = [list(test_data.select(pixel_cols).row(i)) for i in range(n_test)]
+def run_episode(policy: PolicyNet, render: bool = False, seed: int | None = None):
+    state, _ = env.reset(seed=seed)
+    log_probs: list[torch.Tensor] = []
+    rewards: list[float] = []
+    done = False
+    while not done:
+        action, log_prob = policy.act(state)
+        state, reward, terminated, truncated, _ = env.step(action)
+        log_probs.append(log_prob)
+        rewards.append(float(reward))
+        done = terminated or truncated
+    return log_probs, rewards
 
-start = time.time()
-for sample in test_samples:
-    pipeline.predict(
-        pl.DataFrame({"label": [0], **{c: [v] for c, v in zip(pixel_cols, sample)}})
-    )
-original_time = time.time() - start
 
-print(
-    f"Original model: {n_test} predictions in {original_time:.3f}s "
-    f"({original_time/n_test*1000:.1f}ms/prediction)"
+# ── Training loop ──────────────────────────────────────────────────────
+# REINFORCE is sample-inefficient — we need several dozen episodes on
+# CartPole. Episode cap 500 timesteps; we aim for a moving average close
+# to 150 within ~80 episodes.
+N_EPISODES = 120
+episode_returns: list[float] = []
+
+print("\n── Training REINFORCE on CartPole-v1 ──")
+for ep in range(N_EPISODES):
+    log_probs, rewards = run_episode(policy, seed=42 + ep)
+    returns = discount_returns(rewards, gamma=0.99)
+    loss = torch.stack([-lp * R for lp, R in zip(log_probs, returns)]).sum()
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    total = float(sum(rewards))
+    episode_returns.append(total)
+    if (ep + 1) % 20 == 0:
+        avg_last_20 = float(np.mean(episode_returns[-20:]))
+        print(f"  episode {ep+1:3d}  return={total:6.1f}  avg20={avg_last_20:6.1f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 4 — Evaluate trained vs random policy
+# ════════════════════════════════════════════════════════════════════════
+def evaluate(pol: nn.Module | None, n: int = 30) -> list[float]:
+    returns_out: list[float] = []
+    for i in range(n):
+        state, _ = env.reset(seed=1000 + i)
+        total = 0.0
+        done = False
+        while not done:
+            if pol is None:
+                action = env.action_space.sample()
+            else:
+                with torch.no_grad():
+                    s = torch.from_numpy(state.astype(np.float32)).to(device)
+                    action = int(pol.forward(s).argmax().item())  # greedy at eval time
+            state, reward, terminated, truncated, _ = env.step(action)
+            total += reward
+            done = terminated or truncated
+        returns_out.append(total)
+    return returns_out
+
+
+random_returns = evaluate(None)
+trained_returns = evaluate(policy)
+
+print(f"\nRandom policy  : mean return {np.mean(random_returns):.1f} ± {np.std(random_returns):.1f}")
+print(f"Trained policy : mean return {np.mean(trained_returns):.1f} ± {np.std(trained_returns):.1f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PART 5 — Visualise the learning curve
+# ════════════════════════════════════════════════════════════════════════
+# Compute a moving average to smooth the jagged episode-return curve.
+def moving_average(xs: list[float], window: int = 10) -> list[float]:
+    if len(xs) < window:
+        return xs
+    arr = np.asarray(xs, dtype=np.float32)
+    kernel = np.ones(window, dtype=np.float32) / window
+    return list(np.convolve(arr, kernel, mode="valid"))
+
+
+viz = ModelVisualizer()
+fig = viz.training_history(
+    metrics={
+        "episode return": episode_returns,
+        "moving avg (10)": moving_average(episode_returns, 10),
+    },
+    x_label="Episode",
+    y_label="Return",
 )
-print(f"ONNX model: typically 2-5× faster due to graph optimizations")
-print(f"\nONNX advantages:")
-print(f"  - Graph-level optimizations (operator fusion, constant folding)")
-print(f"  - Platform-native execution (CPU vectorization, GPU kernels)")
-print(f"  - No Python overhead at inference time")
-print(f"  - Single file deployment (model + weights in one .onnx)")
+fig.write_html("ex_8_training.html")
+print("Training history saved to ex_8_training.html")
 
-print(f"\n=== Full Pipeline Summary ===")
-print(f"1. Data: {n_samples} Fashion-MNIST images → normalized")
-print(f"2. Training: TrainingPipeline (CNN, Adam, dropout=0.3)")
-print(f"3. Registry: ModelRegistry (versioned, promoted to production)")
-print(f"4. Export: OnnxBridge (validated, portable)")
-print(f"5. Deploy: InferenceServer (HTTP endpoint, batch support)")
-print(f"This is the Kailash DL lifecycle — from pixels to production.")
+env.close()
 
-print("\n✓ Exercise 8 complete — end-to-end DL pipeline with Kailash")
+
+# ── Reflection ─────────────────────────────────────────────────────────
+print("\n" + "═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(
+    """
+  [x] Built a stochastic policy network with nn.Module + Categorical sampling
+  [x] Implemented REINFORCE from scratch (policy gradient + discounted returns)
+  [x] Trained an agent on CartPole-v1 purely from environment interaction
+  [x] Used return standardisation as a simple variance-reduction baseline
+  [x] Compared trained vs random policy on evaluation rollouts
+
+  Bridge to M6: PPO uses the same policy-gradient family but adds
+  (1) an advantage estimator (e.g. GAE) for lower variance, and
+  (2) a clipped surrogate objective to prevent catastrophically large
+  updates. RLHF fine-tunes language models with PPO where the reward
+  comes from a learned reward model over human preferences. DPO achieves
+  a similar outcome without the separate reward model.
+"""
+)

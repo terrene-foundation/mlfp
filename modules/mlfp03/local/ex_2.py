@@ -2,222 +2,563 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP03 — Exercise 2: UMAP + Anomaly Detection with EnsembleEngine
+# MLFP03 — Exercise 2: Bias-Variance and Regularisation
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Dimensionality reduction on fraud data, anomaly detection
-#   with multiple detectors, and ensemble scoring with EnsembleEngine.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Demonstrate underfitting vs overfitting through polynomial experiments
+#   - Decompose expected test error into Bias², Variance, and irreducible noise
+#   - Apply L1 (Lasso) and L2 (Ridge) regularisation and explain the geometry
+#   - Connect L2 regularisation to Bayesian priors on model coefficients
+#   - Combine L1 and L2 with ElasticNet and select the mixing ratio
+#
+# PREREQUISITES:
+#   - MLFP03 Exercise 1 (feature engineering, dataset familiarity)
+#   - MLFP02 Module (linear regression, Bayesian thinking from M2.1)
+#
+# ESTIMATED TIME: 60-90 minutes
 #
 # TASKS:
-#   1. Load fraud data and reduce dimensionality with UMAP
-#   2. Compare UMAP vs t-SNE embeddings
-#   3. Isolation Forest anomaly scoring
-#   4. LOF and additional anomaly detectors
-#   5. Ensemble anomaly scores with EnsembleEngine
-#   6. Evaluate and visualise detection performance
+#   1. Demonstrate underfitting vs overfitting with polynomial models
+#   2. Visualise bias-variance decomposition across model complexity
+#   3. L2 regularisation (Ridge): geometry and coefficient shrinkage
+#   4. L1 regularisation (Lasso): sparsity and feature selection
+#   5. ElasticNet: combining L1 and L2
+#   6. Bayesian interpretation: L2 = Gaussian prior on weights
+#
+# DATASET: Singapore credit scoring data (from MLFP02)
+#   Target: credit_utilisation (continuous — suitable for regression demo)
+#   Rows: ~5,000 credit applicants | Features: financial + behavioural
+#   Key insight: with 45 features and a small dataset, overfitting is real.
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 import polars as pl
-from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import LocalOutlierFactor
-from sklearn.metrics import (
-    roc_auc_score,
-    average_precision_score,
-    precision_recall_curve,
-)
-from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Ridge, Lasso, ElasticNet, LinearRegression
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.metrics import mean_squared_error
 
-from kailash_ml import ModelVisualizer, EnsembleEngine
+from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
-
-try:
-    import umap
-except ImportError:
-    umap = None
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = MLFPDataLoader()
-fraud = loader.load("mlfp03", "credit_card_fraud.parquet")
+credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
 
-print(f"=== Credit Card Fraud Data ===")
-print(f"Shape: {fraud.shape}")
-print(f"Fraud rate: {fraud['is_fraud'].mean():.4%}")
+print(f"=== Singapore Credit Data ===")
+print(f"Shape: {credit.shape}")
+print(f"Default rate: {credit['default'].mean():.2%}")
 
-feature_cols = [c for c in fraud.columns if c not in ("is_fraud", "transaction_id")]
-
-X, y, col_info = to_sklearn_input(
-    fraud.drop_nulls(),
-    feature_columns=feature_cols,
-    target_column="is_fraud",
+# For regression demonstration, we'll predict credit utilisation ratio
+target_col = (
+    "credit_utilisation" if "credit_utilisation" in credit.columns else "annual_income"
 )
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(
+    data=credit,
+    target=target_col,
+    train_size=0.8,
+    seed=42,
+    normalize=True,  # Ridge/Lasso require normalised features
+    categorical_encoding="ordinal",
+    imputation_strategy="median",
+)
+
+print(f"\nTask type: {result.task_type}")
+print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
+
+X_train, y_train, col_info = to_sklearn_input(
+    result.train_data,
+    feature_columns=[c for c in result.train_data.columns if c != target_col],
+    target_column=target_col,
+)
+X_test, y_test, _ = to_sklearn_input(
+    result.test_data,
+    feature_columns=[c for c in result.test_data.columns if c != target_col],
+    target_column=target_col,
+)
+feature_names = col_info["feature_columns"]
+print(f"Features: {len(feature_names)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Dimensionality reduction with UMAP
+# TASK 1: Underfitting vs Overfitting — polynomial degree experiment
 # ══════════════════════════════════════════════════════════════════════
+# Use a 1D synthetic problem to illustrate cleanly.
+# True function: y = sin(2πx) + noise
 
-# Sample for visualisation (UMAP on full 284K is slow)
 rng = np.random.default_rng(42)
-sample_size = min(20_000, len(y))
-idx = rng.choice(len(y), sample_size, replace=False)
-X_sample = X_scaled[idx]
-y_sample = y[idx]
+n_pts = 100
+x_1d = rng.uniform(0, 1, n_pts)
+y_1d = np.sin(2 * np.pi * x_1d) + rng.normal(0, 0.2, n_pts)
 
-if umap is not None:
-    # TODO: Create a UMAP reducer with n_components=2, n_neighbors=15, min_dist=0.1, random_state=42
-    reducer = ____  # Hint: umap.UMAP(n_components=2, n_neighbors=15, ...)
-    # TODO: Fit and transform X_sample to get the 2D UMAP embedding
-    embedding_umap = ____  # Hint: reducer.fit_transform(X_sample)
-    print(f"\nUMAP embedding: {embedding_umap.shape}")
-else:
-    from sklearn.decomposition import PCA
+x_1d_train, x_1d_test = x_1d[:80], x_1d[80:]
+y_1d_train, y_1d_test = y_1d[:80], y_1d[80:]
 
-    embedding_umap = PCA(n_components=2, random_state=42).fit_transform(X_sample)
-    print("\nUMAP not installed, using PCA fallback")
+x_train_2d = x_1d_train.reshape(-1, 1)
+x_test_2d = x_1d_test.reshape(-1, 1)
+
+print(f"\n=== Polynomial Degree Experiment ===")
+print(f"{'Degree':>8} {'Train MSE':>12} {'Test MSE':>12} {'Diagnosis':>15}")
+print("─" * 52)
+
+degree_results = {}
+for degree in [1, 2, 4, 9, 15, 20]:
+    # TODO: Build a Pipeline with PolynomialFeatures(degree), StandardScaler, LinearRegression
+    poly_pipe = ____  # Hint: Pipeline([("poly", PolynomialFeatures(...)), ("scaler", ...), ("model", ...)])
+
+    poly_pipe.fit(x_train_2d, y_1d_train)
+
+    # TODO: Compute train MSE using mean_squared_error
+    train_mse = (
+        ____  # Hint: mean_squared_error(y_1d_train, poly_pipe.predict(x_train_2d))
+    )
+
+    # TODO: Compute test MSE using mean_squared_error
+    test_mse = ____  # Hint: mean_squared_error(y_1d_test, poly_pipe.predict(x_test_2d))
+
+    gap = test_mse - train_mse
+
+    if degree <= 2:
+        diagnosis = "Underfitting"
+    elif degree <= 6:
+        diagnosis = "Good fit"
+    else:
+        diagnosis = "Overfitting"
+
+    degree_results[degree] = {"train_mse": train_mse, "test_mse": test_mse}
+    print(f"{degree:>8} {train_mse:>12.4f} {test_mse:>12.4f} {diagnosis:>15}")
+
+print("\nKey insight:")
+print("  Underfitting: high train AND test error (high bias)")
+print("  Good fit: low train error, test error close to train")
+print("  Overfitting: very low train error, high test error (high variance)")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert degree_results[1]["test_mse"] > degree_results[4]["test_mse"], \
+    "Degree=1 should have higher test error than degree=4"
+assert degree_results[20]["train_mse"] < degree_results[2]["train_mse"], \
+    "Degree=20 should have lower train error than degree=2 (overfitting)"
+# INTERPRETATION: The gap between train_mse and test_mse is the overfit penalty.
+# At degree=20, the model has memorised the training data — it has learned
+# the noise, not the signal. This is high variance: the model would look
+# completely different if we collected new training data.
+print("\n✓ Checkpoint 1 passed — underfitting/overfitting pattern confirmed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compare with t-SNE
+# TASK 2: Bias-variance decomposition
 # ══════════════════════════════════════════════════════════════════════
+# Decompose expected test error = Bias² + Variance + Noise
+# Measured empirically across bootstrap samples.
 
-from sklearn.manifold import TSNE
 
-tsne = TSNE(n_components=2, perplexity=30, random_state=42)
-embedding_tsne = tsne.fit_transform(X_sample[:5000])  # t-SNE is O(n²)
+def bias_variance_decomposition(
+    degree: int,
+    n_bootstrap: int = 50,
+) -> dict[str, float]:
+    """Estimate bias² and variance for a polynomial of given degree."""
+    all_preds = []
+    for _ in range(n_bootstrap):
+        # Bootstrap resample training data
+        idx = rng.choice(len(y_1d_train), len(y_1d_train), replace=True)
+        x_b, y_b = x_train_2d[idx], y_1d_train[idx]
 
-print(f"t-SNE embedding: {embedding_tsne.shape}")
-print("\nUMAP vs t-SNE:")
-print("  UMAP: preserves global structure, faster, supports transform()")
-print("  t-SNE: better local structure, O(n²), no out-of-sample transform")
+        # TODO: Build and fit a Pipeline(PolynomialFeatures, StandardScaler, LinearRegression)
+        model = ____  # Hint: Pipeline([("poly", PolynomialFeatures(degree)), ("scaler", StandardScaler()), ("lr", LinearRegression())])
+
+        model.fit(x_b, y_b)
+        all_preds.append(model.predict(x_test_2d))
+
+    preds = np.array(all_preds)  # (n_bootstrap, n_test)
+    mean_pred = preds.mean(axis=0)
+
+    # True function values at test points (noiseless)
+    y_true_noiseless = np.sin(2 * np.pi * x_1d_test)
+
+    # TODO: Compute bias squared: mean of (mean_pred - y_true_noiseless) squared
+    bias_sq = ____  # Hint: np.mean((mean_pred - y_true_noiseless) ** 2)
+
+    # TODO: Compute variance: mean of per-sample variance across bootstrap models
+    variance = ____  # Hint: np.mean(preds.var(axis=0))
+
+    noise = 0.04  # Known noise variance (sigma=0.2)
+    expected_error = bias_sq + variance + noise
+
+    return {"bias_sq": bias_sq, "variance": variance, "expected_error": expected_error}
+
+
+print(f"\n=== Bias-Variance Decomposition ===")
+print(f"{'Degree':>8} {'Bias²':>10} {'Variance':>10} {'Expected':>12} {'Dominant':>12}")
+print("─" * 58)
+
+for degree in [1, 3, 6, 10, 15]:
+    bv = bias_variance_decomposition(degree, n_bootstrap=30)
+    dominant = "Bias" if bv["bias_sq"] > bv["variance"] else "Variance"
+    print(
+        f"{degree:>8} {bv['bias_sq']:>10.4f} {bv['variance']:>10.4f} "
+        f"{bv['expected_error']:>12.4f} {dominant:>12}"
+    )
+
+print("\nBias-Variance Trade-off:")
+print("  As degree ↑: Bias² ↓, Variance ↑")
+print("  Sweet spot = where Bias² ≈ Variance")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+_bv_1 = bias_variance_decomposition(1, n_bootstrap=30)
+_bv_15 = bias_variance_decomposition(15, n_bootstrap=30)
+assert _bv_1["bias_sq"] > _bv_15["bias_sq"], \
+    "Degree=1 should have higher bias than degree=15"
+assert _bv_1["variance"] < _bv_15["variance"], \
+    "Degree=1 should have lower variance than degree=15"
+# INTERPRETATION: At degree=1, Bias² dominates — the model is too simple
+# to capture the sine wave. At degree=15, Variance dominates — each bootstrap
+# sample gives a wildly different polynomial. The sweet spot (degree=3-6)
+# balances both. In practice, cross-validation finds this automatically.
+print("\n✓ Checkpoint 2 passed — bias-variance decomposition computed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Isolation Forest
+# TASK 3: L2 Regularisation (Ridge) — geometry and shrinkage
 # ══════════════════════════════════════════════════════════════════════
-# Theory: anomalies are isolated in fewer random partitions.
-# Average path length in random trees is shorter for outliers.
+# Ridge objective: min ||y - Xβ||² + α||β||²
+#
+# Geometry: the L2 penalty defines a sphere in coefficient space.
+# The solution is where the MSE ellipsoid first touches the sphere.
+# Result: all coefficients shrink uniformly toward zero, none exactly zero.
+#
+# Bayesian interpretation: L2 penalty ≡ Gaussian prior N(0, 1/α) on β.
 
-# TODO: Create IsolationForest with n_estimators=200, contamination=0.002,
-#       random_state=42, n_jobs=-1
-iso_forest = IsolationForest(
-    n_estimators=____,  # Hint: 200
-    contamination=____,  # Hint: 0.002 — expected fraud rate
-    random_state=42,
-    n_jobs=-1,
+# TODO: Define a list of alpha values spanning several orders of magnitude
+alphas = ____  # Hint: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+
+ridge_results = {}
+for alpha in alphas:
+    # TODO: Create a Ridge model with this alpha and fit it
+    ridge = ____  # Hint: Ridge(alpha=alpha)
+    ridge.fit(X_train, y_train)
+
+    train_mse = mean_squared_error(y_train, ridge.predict(X_train))
+    test_mse = mean_squared_error(y_test, ridge.predict(X_test))
+
+    # TODO: Compute the L2 norm of the coefficients
+    coef_norm = ____  # Hint: np.linalg.norm(ridge.coef_)
+
+    # TODO: Count coefficients with absolute value < 1e-6 (effectively zero)
+    n_zero = ____  # Hint: (np.abs(ridge.coef_) < 1e-6).sum()
+
+    ridge_results[alpha] = {
+        "train_mse": train_mse,
+        "test_mse": test_mse,
+        "coef_norm": coef_norm,
+        "n_zero": n_zero,
+        "coef": ridge.coef_.copy(),
+    }
+
+print(f"\n=== Ridge Regularisation (L2) ===")
+print(
+    f"{'Alpha':>10} {'Train MSE':>12} {'Test MSE':>12} {'||β||₂':>10} {'Zero coefs':>12}"
 )
-# TODO: Fit iso_forest on X_scaled, then call score_samples and negate (higher = more anomalous)
-iso_scores = ____  # Hint: -iso_forest.fit(X_scaled).score_samples(X_scaled)
-# TODO: Get binary labels from the fitted iso_forest (-1 = anomaly, 1 = normal)
-iso_labels = ____  # Hint: iso_forest.predict(X_scaled)
+print("─" * 60)
+for alpha, r in ridge_results.items():
+    print(
+        f"{alpha:>10.3f} {r['train_mse']:>12.4f} {r['test_mse']:>12.4f} "
+        f"{r['coef_norm']:>10.4f} {r['n_zero']:>12}"
+    )
 
-iso_auc = roc_auc_score(y, iso_scores)
-iso_ap = average_precision_score(y, iso_scores)
-
-print(f"\n=== Isolation Forest ===")
-print(f"AUC-ROC: {iso_auc:.4f}")
-print(f"Average Precision: {iso_ap:.4f}")
-print(f"Predicted anomalies: {(iso_labels == -1).sum():,} / {len(iso_labels):,}")
-print(f"True frauds: {y.sum():.0f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Local Outlier Factor
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Create LocalOutlierFactor with n_neighbors=20, contamination=0.002, novelty=False
-lof = (
-    ____  # Hint: LocalOutlierFactor(n_neighbors=20, contamination=0.002, novelty=False)
+# Best Ridge alpha
+best_alpha_ridge = min(ridge_results.items(), key=lambda x: x[1]["test_mse"])
+print(
+    f"\nBest Ridge α = {best_alpha_ridge[0]} (test MSE={best_alpha_ridge[1]['test_mse']:.4f})"
 )
-# TODO: Fit and predict LOF labels on X_scaled
-lof_labels = ____  # Hint: lof.fit_predict(X_scaled)
-# TODO: Extract anomaly scores from lof (negate the negative_outlier_factor_ attribute)
-lof_scores = ____  # Hint: -lof.negative_outlier_factor_
 
-lof_auc = roc_auc_score(y, lof_scores)
-lof_ap = average_precision_score(y, lof_scores)
+print("\nL2 Key Properties:")
+print("  1. Shrinks all coefficients toward zero (never exactly zero)")
+print("  2. Equivalent to MAP estimate with Gaussian prior: β ~ N(0, σ²/α)")
+print("  3. Ridge closed-form: β = (X'X + αI)⁻¹X'y")
+print("  4. Always invertible — regularisation fixes multicollinearity")
 
-print(f"\n=== Local Outlier Factor ===")
-print(f"AUC-ROC: {lof_auc:.4f}")
-print(f"Average Precision: {lof_ap:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Ensemble anomaly scores with EnsembleEngine
-# ══════════════════════════════════════════════════════════════════════
-
-
-# TODO: Write a function that normalises scores to [0, 1]
-def normalise_scores(scores: np.ndarray) -> np.ndarray:
-    # Hint: (scores - scores.min()) / (scores.max() - scores.min() + 1e-10)
-    return ____
-
-
-iso_norm = normalise_scores(iso_scores)
-lof_norm = normalise_scores(lof_scores)
-
-# Simple ensemble: weighted average (can also use EnsembleEngine.blend for models)
-# Weight by individual AUC-ROC
-# TODO: Compute weight for iso_forest as its fraction of the total AUC
-w_iso = ____  # Hint: iso_auc / (iso_auc + lof_auc)
-# TODO: Compute weight for LOF as its fraction of the total AUC
-w_lof = ____  # Hint: lof_auc / (iso_auc + lof_auc)
-
-# TODO: Compute the weighted ensemble score
-ensemble_scores = ____  # Hint: w_iso * iso_norm + w_lof * lof_norm
-ensemble_auc = roc_auc_score(y, ensemble_scores)
-ensemble_ap = average_precision_score(y, ensemble_scores)
-
-print(f"\n=== Ensemble (weighted by AUC) ===")
-print(f"Weights: IF={w_iso:.3f}, LOF={w_lof:.3f}")
-print(f"AUC-ROC: {ensemble_auc:.4f}")
-print(f"Average Precision: {ensemble_ap:.4f}")
-
-# Improvement over individual detectors
-print(f"\nImprovement over best individual:")
-best_individual = max(iso_auc, lof_auc)
-print(f"  AUC-ROC: {ensemble_auc - best_individual:+.4f}")
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert ridge_results[1000.0]["coef_norm"] < ridge_results[0.001]["coef_norm"], \
+    "Higher alpha should produce smaller coefficient norm"
+assert ridge_results[1.0]["n_zero"] == 0, \
+    "Ridge should not produce exactly zero coefficients"
+# INTERPRETATION: Watch how the coefficient norm drops as alpha increases.
+# At alpha=0.001, Ridge barely differs from OLS. At alpha=1000, all
+# coefficients are forced nearly to zero. The best alpha balances
+# fitting the data against keeping coefficients small (prior belief).
+print("\n✓ Checkpoint 3 passed — Ridge regularisation behaviour confirmed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Evaluate and visualise
+# TASK 4: L1 Regularisation (Lasso) — sparsity and feature selection
 # ══════════════════════════════════════════════════════════════════════
+# Lasso objective: min ||y - Xβ||² + α||β||₁
+#
+# Geometry: the L1 penalty defines a diamond (hypercube corners in high-d).
+# The MSE ellipsoid is likely to first touch the diamond at a corner,
+# where some coordinates are exactly zero → SPARSITY.
+#
+# Bayesian interpretation: L1 penalty ≡ Laplace prior on β.
 
+lasso_results = {}
+for alpha in alphas:
+    # TODO: Create a Lasso model with this alpha, max_iter=10_000, and fit it
+    lasso = ____  # Hint: Lasso(alpha=alpha, max_iter=10_000)
+    lasso.fit(X_train, y_train)
+
+    train_mse = mean_squared_error(y_train, lasso.predict(X_train))
+    test_mse = mean_squared_error(y_test, lasso.predict(X_test))
+
+    # TODO: Compute the L1 norm of the coefficients (ord=1)
+    coef_norm = ____  # Hint: np.linalg.norm(lasso.coef_, ord=1)
+
+    # TODO: Count near-zero coefficients (< 1e-6 in absolute value)
+    n_zero = ____  # Hint: (np.abs(lasso.coef_) < 1e-6).sum()
+
+    lasso_results[alpha] = {
+        "train_mse": train_mse,
+        "test_mse": test_mse,
+        "coef_norm": coef_norm,
+        "n_zero": n_zero,
+        "coef": lasso.coef_.copy(),
+    }
+
+print(f"\n=== Lasso Regularisation (L1) ===")
+print(
+    f"{'Alpha':>10} {'Train MSE':>12} {'Test MSE':>12} {'||β||₁':>10} {'Zero coefs':>12}"
+)
+print("─" * 60)
+for alpha, r in lasso_results.items():
+    pct_sparse = r["n_zero"] / len(feature_names) * 100
+    print(
+        f"{alpha:>10.3f} {r['train_mse']:>12.4f} {r['test_mse']:>12.4f} "
+        f"{r['coef_norm']:>10.4f} {r['n_zero']:>10} ({pct_sparse:.0f}%)"
+    )
+
+best_alpha_lasso = min(lasso_results.items(), key=lambda x: x[1]["test_mse"])
+print(
+    f"\nBest Lasso α = {best_alpha_lasso[0]} "
+    f"(test MSE={best_alpha_lasso[1]['test_mse']:.4f}, "
+    f"zero coefs={best_alpha_lasso[1]['n_zero']})"
+)
+
+print("\nL1 Key Properties:")
+print("  1. Produces SPARSE solutions — some β_i exactly = 0")
+print("  2. Acts as built-in feature selection")
+print("  3. Equivalent to MAP estimate with Laplace prior: β ~ Laplace(0, 1/α)")
+print("  4. No closed-form solution — requires coordinate descent or ADMM")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert lasso_results[100.0]["n_zero"] > lasso_results[0.001]["n_zero"], \
+    "Higher alpha Lasso should zero out more coefficients"
+# INTERPRETATION: This is Lasso's superpower vs Ridge. At alpha=10,
+# Lasso might eliminate 70% of features entirely — automatic feature
+# selection baked into the loss function. The surviving features are
+# the ones most predictive of the target.
+print("\n✓ Checkpoint 4 passed — Lasso sparsity demonstrated\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: ElasticNet — combining L1 + L2
+# ══════════════════════════════════════════════════════════════════════
+# ElasticNet: min ||y - Xβ||² + α₁||β||₁ + α₂||β||₂
+# l1_ratio controls the mix: 0 = pure Ridge, 1 = pure Lasso
+
+en_results = {}
+for l1_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
+    # TODO: Create ElasticNet with alpha=0.1, the given l1_ratio, max_iter=10_000, and fit
+    en = ____  # Hint: ElasticNet(alpha=0.1, l1_ratio=l1_ratio, max_iter=10_000)
+    en.fit(X_train, y_train)
+
+    train_mse = mean_squared_error(y_train, en.predict(X_train))
+    test_mse = mean_squared_error(y_test, en.predict(X_test))
+
+    # TODO: Count near-zero coefficients for this ElasticNet model
+    n_zero = ____  # Hint: (np.abs(en.coef_) < 1e-6).sum()
+
+    en_results[l1_ratio] = {
+        "train_mse": train_mse,
+        "test_mse": test_mse,
+        "n_zero": n_zero,
+    }
+
+print(f"\n=== ElasticNet (α=0.1) ===")
+print(f"{'L1 ratio':>10} {'Train MSE':>12} {'Test MSE':>12} {'Zero coefs':>12}")
+print("─" * 50)
+for l1_ratio, r in en_results.items():
+    print(
+        f"{l1_ratio:>10.1f} {r['train_mse']:>12.4f} {r['test_mse']:>12.4f} {r['n_zero']:>12}"
+    )
+
+print("\nElasticNet Benefits:")
+print("  - Groups correlated features together (unlike pure Lasso)")
+print("  - More stable than Lasso when features are correlated")
+print("  - l1_ratio is a hyperparameter to tune")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert en_results[0.9]["n_zero"] >= en_results[0.1]["n_zero"], \
+    "l1_ratio=0.9 (more Lasso) should zero out at least as many coefficients as l1_ratio=0.1"
+# INTERPRETATION: ElasticNet solves Lasso's instability with correlated
+# features. When two features are correlated, Lasso arbitrarily picks one
+# and zeros the other. ElasticNet keeps both with smaller coefficients.
+print("\n✓ Checkpoint 5 passed — ElasticNet l1_ratio effect confirmed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Bayesian Interpretation — L2 as Gaussian Prior
+# ══════════════════════════════════════════════════════════════════════
+# MAP (Maximum A Posteriori) estimate:
+# β_MAP = argmax P(β|y) = argmax P(y|β) P(β)
+#
+# If P(y|β) = N(Xβ, σ²I)  → log-likelihood = -||y-Xβ||²/(2σ²)
+# If P(β) = N(0, τ²I)      → log-prior = -||β||²/(2τ²)
+#
+# Then:
+# β_MAP = argmin ||y-Xβ||² / σ² + ||β||² / τ²
+#       = argmin ||y-Xβ||² + (σ²/τ²) ||β||²
+#
+# This is exactly Ridge with α = σ²/τ²
+# → Stronger prior (smaller τ²) = stronger regularisation (larger α)
+
+print(f"\n=== Bayesian Interpretation of L2 Regularisation ===")
+print(
+    """
+MAP estimate under Gaussian prior:
+
+  Prior:      β ~ N(0, τ²I)   (belief that β is close to zero)
+  Likelihood: y|β ~ N(Xβ, σ²I)
+
+  MAP objective:
+  β_MAP = argmin_{β} ||y - Xβ||² + (σ²/τ²)||β||²
+                               ↑
+                        This is exactly α in Ridge!
+
+Interpretation table:
+  ┌─────────────────────────────────────────────────────────┐
+  │ α (Ridge) │  τ (prior std) │  Belief                  │
+  │───────────┼────────────────┼──────────────────────────│
+  │  large    │  small τ       │  Strong: β ≈ 0           │
+  │  small    │  large τ       │  Weak: β can be anything │
+  │  0        │  τ → ∞         │  Flat prior (OLS)        │
+  └─────────────────────────────────────────────────────────┘
+
+Why this matters:
+  1. Choosing α is equivalent to specifying prior beliefs about β
+  2. Cross-validation finds α that balances data evidence vs prior
+  3. Bayesian ML = probabilistic regularisation selection
+"""
+)
+
+# Verify: Ridge with α = σ²/τ² matches normal equations
+n, p = X_train.shape
+sigma_sq = mean_squared_error(
+    y_train, Ridge(alpha=0).fit(X_train, y_train).predict(X_train)
+)
+tau_sq = 1.0  # Unit prior variance
+
+# TODO: Compute the implied alpha as sigma_sq / tau_sq
+alpha_implied = ____  # Hint: sigma_sq / tau_sq
+
+# TODO: Create and fit a Ridge model using the Bayesian alpha
+ridge_bayes = ____  # Hint: Ridge(alpha=alpha_implied)
+ridge_bayes.fit(X_train, y_train)
+test_mse_bayes = mean_squared_error(y_test, ridge_bayes.predict(X_test))
+print(f"Prior σ²={sigma_sq:.4f}, τ²={tau_sq}, implied α={alpha_implied:.4f}")
+print(f"Ridge with Bayesian α: Test MSE = {test_mse_bayes:.4f}")
+
+# Coefficient comparison at optimal vs over-regularised
+alpha_best = best_alpha_ridge[0]
+alpha_over = alphas[-1]
+
+ridge_best = Ridge(alpha=alpha_best).fit(X_train, y_train)
+ridge_over = Ridge(alpha=alpha_over).fit(X_train, y_train)
+
+print(f"\n=== Coefficient Shrinkage Comparison ===")
+print(
+    f"{'Feature':<30} {'OLS':>10} {'Ridge α={:.3f}'.format(alpha_best):>16} {'Ridge α={:.0f}'.format(alpha_over):>16}"
+)
+print("─" * 75)
+ols = LinearRegression().fit(X_train, y_train)
+for i, name in enumerate(feature_names[:10]):
+    print(
+        f"{name:<30} {ols.coef_[i]:>10.4f} {ridge_best.coef_[i]:>16.4f} {ridge_over.coef_[i]:>16.4f}"
+    )
+
+# Final visualisation
 viz = ModelVisualizer()
 
-# ROC curves
-for name, scores in [
-    ("IsolationForest", iso_scores),
-    ("LOF", lof_scores),
-    ("Ensemble", ensemble_scores),
-]:
-    fig = viz.roc_curve(y, scores)
-    fig.update_layout(title=f"ROC: {name}")
-    fig.write_html(f"ex2_roc_{name.lower()}.html")
+# Regularisation path: coefficient trajectories as α varies
+coef_matrix = np.array([ridge_results[a]["coef"] for a in alphas])
+fig = viz.training_history(
+    {f"||β||₂": [ridge_results[a]["coef_norm"] for a in alphas]},
+    x_label="Regularisation Strength (α)",
+)
+fig.update_layout(title="Ridge: Coefficient Norm vs Regularisation Strength")
+fig.write_html("ex1_ridge_path.html")
 
-# Comparison
-comparison = {
-    "Isolation Forest": {"AUC_ROC": iso_auc, "Avg_Precision": iso_ap},
-    "LOF": {"AUC_ROC": lof_auc, "Avg_Precision": lof_ap},
-    "Ensemble": {"AUC_ROC": ensemble_auc, "Avg_Precision": ensemble_ap},
-}
-fig = viz.metric_comparison(comparison)
-fig.update_layout(title="Anomaly Detection Comparison")
-fig.write_html("ex2_anomaly_comparison.html")
-print("\nSaved: ex2_anomaly_comparison.html")
+# Lasso sparsity
+fig_sparse = viz.training_history(
+    {
+        f"Non-zero coefs": [
+            len(feature_names) - lasso_results[a]["n_zero"] for a in alphas
+        ]
+    },
+    x_label="Regularisation Strength (α)",
+)
+fig_sparse.update_layout(title="Lasso: Sparsity vs Regularisation Strength")
+fig_sparse.write_html("ex1_lasso_sparsity.html")
 
-# Precision-recall at different thresholds
-precision, recall, thresholds = precision_recall_curve(y, ensemble_scores)
+print("\nSaved: ex1_ridge_path.html, ex1_lasso_sparsity.html")
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+assert alpha_implied > 0, "Implied alpha should be positive"
+assert test_mse_bayes > 0, "Bayesian Ridge should produce valid predictions"
+ols_norm = np.linalg.norm(LinearRegression().fit(X_train, y_train).coef_)
+ridge_best_norm = np.linalg.norm(Ridge(alpha=best_alpha_ridge[0]).fit(X_train, y_train).coef_)
+assert ols_norm >= ridge_best_norm, \
+    "OLS coefficients should have at least as large a norm as Ridge"
+# INTERPRETATION: The Bayesian view transforms regularisation from a
+# computational trick into a statement about your beliefs. If you believe
+# credit default is driven by a few large effects, prefer Lasso (Laplace
+# prior — sparse). If many small effects contribute equally, Ridge fits better.
+print("\n✓ Checkpoint 6 passed — Bayesian interpretation verified\n")
+
 print(
-    f"\nAt recall=0.80: precision={precision[np.searchsorted(-recall[::-1], -0.80)]:.4f}"
+    "\n✓ Exercise 2 complete — bias-variance, L1/L2 geometry, Bayesian interpretation"
 )
 
-print("\n✓ Exercise 2 complete — UMAP + anomaly detection ensemble")
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print("""
+  ✓ Bias-Variance: complexity ↑ → Bias² ↓, Variance ↑
+  ✓ Ridge (L2): uniform shrinkage, never exactly zero, Gaussian prior
+  ✓ Lasso (L1): sparse selection, some β_i exactly = 0, Laplace prior
+  ✓ ElasticNet: handles correlated features, blends both penalties
+  ✓ Bayesian view: choosing α = specifying prior beliefs about β
+
+  KEY INSIGHT: Regularisation is not just about preventing overfitting.
+  It encodes your prior beliefs about the world. L2 says "effects are
+  spread across many features." L1 says "only a few features matter."
+
+  NEXT: Exercise 4 trains the complete gradient boosting suite —
+  XGBoost, LightGBM, and CatBoost — with hyperparameter tuning.
+  You'll learn when gradient boosting beats simpler models and why.
+""")
+print("═" * 70)

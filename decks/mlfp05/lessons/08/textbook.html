@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5.8 — Reinforcement Learning | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 5: Deep Learning</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 5.8</span>
+  Reinforcement Learning
+</h1>
+
+<p class="lead">
+  All deep learning so far learns from static data — images, text, sequences,
+  graphs. Reinforcement learning (RL) learns from <strong>interaction</strong>
+  with an environment. The agent takes actions, receives rewards, and learns a
+  policy that maximises cumulative reward. Today you derive the Bellman equations
+  from first principles, implement DQN (Deep Q-Network) with a target network for
+  a discrete-action problem, implement PPO (Proximal Policy Optimization) with a
+  clipped objective for a continuous-action problem, build a custom Gymnasium
+  environment for Singapore supply chain optimisation, and understand the bridge
+  from PPO to RLHF — the technique that aligns LLMs with human preferences in M6.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why This Matters</h2>
+
+<p>
+  Supervised learning needs a dataset: pairs of inputs and correct outputs.
+  But many real-world problems have no "correct output" — only a reward signal
+  that tells you how well you did. A Singapore port authority wants to minimise
+  container ship waiting time — there is no labelled dataset of optimal
+  schedules, only the daily reality of ships, berths, cranes, and delays. A
+  DBS dynamic pricing engine needs to set interest rates that balance profit
+  and customer retention — the "correct" rate depends on market conditions that
+  change hourly.
+</p>
+
+<p>
+  RL learns through trial and error: try an action, observe the consequence,
+  adjust the policy, repeat. This makes it uniquely suited to sequential
+  decision-making where the optimal action depends on state and future
+  consequences — not just the current input.
+</p>
+
+<p>
+  More importantly for your M6 journey: RLHF (Reinforcement Learning from Human
+  Feedback) uses PPO to align LLMs with human preferences. Understanding PPO
+  here makes RLHF (and its successor DPO) in Lesson 6.3 straightforward instead
+  of mysterious.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 230" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="rl-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">The RL interaction loop</text>
+
+  <!-- Agent -->
+  <rect x="60" y="50" width="220" height="120" rx="12" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="170" y="80" text-anchor="middle" font-weight="700" font-size="16" fill="#3B82F6">Agent</text>
+  <text x="170" y="105" text-anchor="middle" font-size="12" fill="#1E293B">Policy: $\pi(a|s)$</text>
+  <text x="170" y="125" text-anchor="middle" font-size="12" fill="#1E293B">Value: $V(s)$ or $Q(s,a)$</text>
+  <text x="170" y="145" text-anchor="middle" font-size="11" fill="#64748B">Neural network parameters</text>
+
+  <!-- Environment -->
+  <rect x="440" y="50" width="220" height="120" rx="12" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="550" y="80" text-anchor="middle" font-weight="700" font-size="16" fill="#22C55E">Environment</text>
+  <text x="550" y="105" text-anchor="middle" font-size="12" fill="#1E293B">State: $s_t$</text>
+  <text x="550" y="125" text-anchor="middle" font-size="12" fill="#1E293B">Reward: $r_t$</text>
+  <text x="550" y="145" text-anchor="middle" font-size="11" fill="#64748B">Gymnasium interface</text>
+
+  <!-- Action arrow (top) -->
+  <line x1="285" y1="85" x2="435" y2="85" stroke="#3B82F6" stroke-width="2.5" marker-end="url(#rl-arr)"/>
+  <text x="360" y="78" text-anchor="middle" font-size="12" fill="#3B82F6" font-weight="600">action $a_t$</text>
+
+  <!-- State + Reward arrow (bottom) -->
+  <line x1="435" y1="135" x2="285" y2="135" stroke="#22C55E" stroke-width="2.5" marker-end="url(#rl-arr)"/>
+  <text x="360" y="155" text-anchor="middle" font-size="12" fill="#22C55E" font-weight="600">state $s_{t+1}$, reward $r_{t+1}$</text>
+
+  <!-- Episode timeline -->
+  <text x="360" y="195" text-anchor="middle" font-size="11" fill="#475569">One episode: $(s_0, a_0, r_1, s_1, a_1, r_2, \ldots, s_T)$</text>
+  <text x="360" y="215" text-anchor="middle" font-size="11" fill="#64748B" font-style="italic">Goal: learn $\pi^*$ that maximises $\sum_{t=0}^{T} \gamma^t r_{t+1}$</text>
+</svg>
+<figcaption>The RL loop: agent observes state, takes action, receives reward and next state. The agent learns a policy that maximises discounted cumulative reward over episodes.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Core Concepts</h2>
+
+<h3>RL vocabulary</h3>
+
+<table>
+  <thead><tr><th>Term</th><th>Symbol</th><th>Definition</th><th>Example (supply chain)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>State</strong></td><td>$s_t$</td><td>Current situation</td><td>Inventory levels, demand forecast, lead times</td></tr>
+    <tr><td><strong>Action</strong></td><td>$a_t$</td><td>Decision made by agent</td><td>Order quantity, reorder point</td></tr>
+    <tr><td><strong>Reward</strong></td><td>$r_t$</td><td>Feedback signal</td><td>$-$(holding cost + stockout penalty)</td></tr>
+    <tr><td><strong>Policy</strong></td><td>$\pi(a|s)$</td><td>Decision rule: state to action</td><td>How much to order given current inventory</td></tr>
+    <tr><td><strong>Value</strong></td><td>$V(s)$</td><td>Expected total reward from state</td><td>Expected future profit from current inventory</td></tr>
+    <tr><td><strong>Episode</strong></td><td>—</td><td>One complete trajectory</td><td>One quarter of supply chain decisions</td></tr>
+    <tr><td><strong>Discount</strong></td><td>$\gamma \in [0,1)$</td><td>Weight on future rewards</td><td>0.99: long-term focus; 0.9: short-term focus</td></tr>
+  </tbody>
+</table>
+
+<div class="callout foundations">
+  <span class="label">Foundations</span>
+  <p>
+    Think of RL as learning to ride a bicycle. Nobody gives you a dataset of
+    "correct handlebar angles" — instead, you try steering, fall over (negative
+    reward), adjust, try again, and eventually learn a policy that keeps you
+    upright. The reward signal (staying balanced vs falling) is the only
+    feedback. Every RL problem has this structure: an agent that acts in an
+    environment, receives rewards, and improves through experience.
+  </p>
+</div>
+
+<h3>Value-based vs policy-based methods</h3>
+
+<div class="compare-grid">
+  <div class="col">
+    <h4>Value-based (DQN)</h4>
+    <p>Learn $Q(s, a)$: the value of taking action $a$ in state $s$. Select the action with the highest Q-value. Works for <strong>discrete</strong> action spaces (choose from a finite set).</p>
+    <p><em>Examples:</em> buy/hold/sell a stock, route a package to warehouse A/B/C.</p>
+  </div>
+  <div class="col">
+    <h4>Policy-based (PPO)</h4>
+    <p>Learn $\pi(a|s)$ directly: a probability distribution over actions given state. Sample actions from the distribution. Works for <strong>continuous</strong> action spaces (any real number).</p>
+    <p><em>Examples:</em> set an interest rate (any value in [0%, 15%]), control a robot arm (joint angles).</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Math Foundations</h2>
+
+<h3>The Bellman expectation equation</h3>
+
+<p>
+  The value of a state is the expected immediate reward plus the discounted
+  value of the next state. This recursive definition is the foundation of
+  all RL algorithms:
+</p>
+
+<div class="annotated-equation">
+  $$ V^\pi(s) = \mathbb{E}_\pi\bigl[R_{t+1} + \gamma\, V^\pi(S_{t+1}) \mid S_t = s\bigr] $$
+  <div class="annotations">
+    <span>$V^\pi(s)$ — value of state $s$ under policy $\pi$</span>
+    <span>$R_{t+1}$ — immediate reward</span>
+    <span>$\gamma$ — discount factor (typically 0.99)</span>
+    <span>$\mathbb{E}_\pi$ — expectation under policy $\pi$</span>
+  </div>
+</div>
+
+<p>
+  In words: "The value of being in state $s$ and following policy $\pi$ is the
+  reward I expect to get immediately, plus the discounted value of wherever I
+  end up next." This is recursive — to know $V(s)$ you need $V(s')$ — which
+  is why RL algorithms iterate until convergence.
+</p>
+
+<h3>The Bellman optimality equation</h3>
+
+<p>
+  The optimal policy $\pi^*$ selects the action that maximises the action-value:
+</p>
+
+<div class="annotated-equation">
+  $$ Q^*(s, a) = \mathbb{E}\bigl[R_{t+1} + \gamma\,\max_{a'} Q^*(S_{t+1}, a') \mid S_t = s, A_t = a\bigr] $$
+  <div class="annotations">
+    <span>$Q^*(s,a)$ — optimal action-value function</span>
+    <span>$\max_{a'}$ — best action in the next state</span>
+    <span>$R_{t+1} + \gamma\,\max_{a'} Q^*$ — bootstrap target</span>
+  </div>
+</div>
+
+<p>
+  The key difference from the expectation equation: the <strong>max over
+  actions</strong>. The optimal Q-function assumes you will make the best
+  possible decision at every future step.
+</p>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    The Bellman equations are instances of dynamic programming — breaking an
+    optimisation problem into overlapping sub-problems. Each state's value
+    depends on future states' values, creating a system of equations. In tabular
+    settings (small state space), you solve these equations directly. In deep
+    RL (large or continuous state spaces), you approximate the value function
+    with a neural network and solve iteratively via gradient descent.
+  </p>
+</div>
+
+<h3>Connecting to M5.8 → M6.3</h3>
+
+<p>
+  In RLHF, the "environment" is a reward model that scores LLM outputs. The
+  "state" is the prompt. The "action" is the generated text. The "reward" is
+  the human preference score. PPO fine-tunes the LLM to maximise this reward
+  while staying close to the original policy. Understanding PPO here makes
+  RLHF mechanical, not magical.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>DQN — Deep Q-Network</h2>
+
+<p>
+  DQN (Mnih et al., 2015) approximates $Q^*(s, a)$ with a neural network.
+  Two innovations make this stable:
+</p>
+
+<ol>
+  <li><strong>Experience replay buffer:</strong> store past transitions $(s, a, r, s')$
+  and sample random mini-batches for training. This breaks the correlation
+  between consecutive samples that would otherwise destabilise SGD.</li>
+  <li><strong>Target network:</strong> a slow-updating copy of the Q-network used to
+  compute the target $r + \gamma \max_{a'} Q_{\text{target}}(s', a')$. Without it,
+  the target changes with every gradient step, creating a moving-target problem.</li>
+</ol>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 230" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">DQN: two networks, one replay buffer</text>
+
+  <!-- Q-network -->
+  <rect x="30" y="50" width="200" height="80" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="130" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Q-Network $\theta$</text>
+  <text x="130" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Updated every step</text>
+  <text x="130" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Predicts $Q(s, a; \theta)$</text>
+
+  <!-- Target network -->
+  <rect x="490" y="50" width="200" height="80" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="590" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">Target Network $\theta^-$</text>
+  <text x="590" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Copied every N steps</text>
+  <text x="590" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Computes stable targets</text>
+
+  <!-- Copy arrow -->
+  <line x1="235" y1="70" x2="485" y2="70" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="360" y="63" text-anchor="middle" font-size="10" fill="#94A3B8">copy $\theta \to \theta^-$ every 1000 steps</text>
+
+  <!-- Replay buffer -->
+  <rect x="230" y="160" width="260" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="360" y="185" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">Replay Buffer</text>
+  <text x="360" y="205" text-anchor="middle" font-size="10" fill="#1E293B">Stores $(s, a, r, s')$ tuples</text>
+
+  <!-- Arrows from buffer -->
+  <line x1="280" y1="160" x2="130" y2="135" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="190" y="155" font-size="9" fill="#F59E0B">sample batch</text>
+  <line x1="440" y1="160" x2="590" y2="135" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="530" y="155" font-size="9" fill="#F59E0B">compute targets</text>
+</svg>
+<figcaption>DQN uses two networks: the Q-network (updated every step) and the target network (copied periodically). The replay buffer decorrelates training samples.</figcaption>
+</figure>
+
+<h3>DQN loss function</h3>
+
+<div class="annotated-equation">
+  $$ \mathcal{L}_{\text{DQN}} = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}\Bigl[\bigl(r + \gamma\,\max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta)\bigr)^2\Bigr] $$
+  <div class="annotations">
+    <span>$\mathcal{D}$ — replay buffer</span>
+    <span>$\theta^-$ — frozen target network params</span>
+    <span>$\theta$ — online Q-network params (updated)</span>
+  </div>
+</div>
+
+<h3>DQN implementation</h3>
+
+<pre><code class="language-python">import gymnasium as gym
+import numpy as np
+import torch
+import torch.nn as nn
+from collections import deque
+import random
+
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 128), nn.ReLU(),
+            nn.Linear(128, 128), nn.ReLU(),
+            nn.Linear(128, action_dim)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+class ReplayBuffer:
+    def __init__(self, capacity=10000):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
+        return (torch.FloatTensor(np.array(states)),
+                torch.LongTensor(actions),
+                torch.FloatTensor(rewards),
+                torch.FloatTensor(np.array(next_states)),
+                torch.FloatTensor(dones))
+
+class DQNAgent:
+    def __init__(self, state_dim, action_dim, lr=1e-3, gamma=0.99):
+        self.q_net = QNetwork(state_dim, action_dim)
+        self.target_net = QNetwork(state_dim, action_dim)
+        self.target_net.load_state_dict(self.q_net.state_dict())
+        self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=lr)
+        self.buffer = ReplayBuffer()
+        self.gamma = gamma
+        self.epsilon = 1.0  # Exploration rate
+
+    def select_action(self, state):
+        if random.random() < self.epsilon:
+            return random.randint(0, 1)  # Explore
+        with torch.no_grad():
+            q_values = self.q_net(torch.FloatTensor(state))
+            return q_values.argmax().item()  # Exploit
+
+    def train_step(self, batch_size=64):
+        if len(self.buffer.buffer) < batch_size:
+            return
+        states, actions, rewards, next_states, dones = \
+            self.buffer.sample(batch_size)
+
+        # Current Q-values
+        q_values = self.q_net(states).gather(1, actions.unsqueeze(1))
+
+        # Target Q-values (from frozen target network)
+        with torch.no_grad():
+            next_q = self.target_net(next_states).max(1)[0]
+            targets = rewards + self.gamma * next_q * (1 - dones)
+
+        loss = nn.MSELoss()(q_values.squeeze(), targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def update_target(self):
+        self.target_net.load_state_dict(self.q_net.state_dict())</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>PPO — Proximal Policy Optimization</h2>
+
+<p>
+  DQN learns which actions are valuable (value-based). PPO directly learns
+  <em>which actions to take</em> (policy-based). It maintains two networks:
+  an <strong>actor</strong> (policy $\pi_\theta$) and a <strong>critic</strong>
+  (value function $V_\phi$).
+</p>
+
+<h3>The clipped objective</h3>
+
+<p>
+  PPO's key innovation is the <strong>clipped surrogate objective</strong>
+  that prevents destructively large policy updates:
+</p>
+
+<div class="annotated-equation">
+  $$ L^{\text{CLIP}} = \mathbb{E}_t\Bigl[\min\bigl(r_t(\theta)\,\hat{A}_t,\;\text{clip}\bigl(r_t(\theta),\,1-\epsilon,\,1+\epsilon\bigr)\,\hat{A}_t\bigr)\Bigr] $$
+  <div class="annotations">
+    <span>$r_t(\theta) = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{\text{old}}}(a_t | s_t)}$ — probability ratio</span>
+    <span>$\hat{A}_t$ — advantage estimate (how much better than average)</span>
+    <span>$\epsilon \approx 0.2$ — clip range</span>
+  </div>
+</div>
+
+<p>
+  The probability ratio $r_t$ measures how much the new policy differs from the
+  old policy. If $r_t$ is too far from 1 (the policy changed too much), the
+  clipping prevents the objective from incentivising further change. This keeps
+  the policy update <strong>proximal</strong> — close to the old policy — which
+  prevents catastrophic forgetting.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">PPO clipped objective: prevents large policy changes</text>
+
+  <!-- Axes -->
+  <line x1="80" y1="180" x2="640" y2="180" stroke="#475569" stroke-width="1.5"/>
+  <line x1="80" y1="180" x2="80" y2="50" stroke="#475569" stroke-width="1.5"/>
+  <text x="360" y="210" text-anchor="middle" font-size="12" fill="#475569">Probability ratio $r_t(\theta)$</text>
+  <text x="45" y="115" text-anchor="middle" font-size="12" fill="#475569" transform="rotate(-90 45 115)">Objective</text>
+
+  <!-- Labels on x-axis -->
+  <text x="160" y="200" text-anchor="middle" font-size="10" fill="#64748B">$1-\epsilon$</text>
+  <text x="360" y="200" text-anchor="middle" font-size="10" fill="#64748B">1.0</text>
+  <text x="560" y="200" text-anchor="middle" font-size="10" fill="#64748B">$1+\epsilon$</text>
+
+  <!-- Clip region (shaded) -->
+  <rect x="160" y="50" width="400" height="130" rx="0" fill="rgba(13,148,136,0.08)"/>
+
+  <!-- Unclipped line (dashed) -->
+  <line x1="80" y1="165" x2="640" y2="75" stroke="#3B82F6" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="620" y="68" font-size="10" fill="#3B82F6">unclipped $r_t \hat{A}_t$</text>
+
+  <!-- Clipped line (solid, for positive advantage) -->
+  <polyline points="80,165 160,145 160,130 560,130 560,105 640,85" stroke="#22C55E" stroke-width="3" fill="none"/>
+  <text x="620" y="100" font-size="10" fill="#22C55E">clipped</text>
+
+  <!-- Annotations -->
+  <line x1="160" y1="180" x2="160" y2="50" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="560" y1="180" x2="560" y2="50" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="360" y="230" text-anchor="middle" font-size="10" fill="#64748B" font-style="italic">Within clip range: full gradient. Outside: gradient clipped to zero.</text>
+</svg>
+<figcaption>PPO's clipped objective (green line) matches the unclipped objective (blue dashed) when the probability ratio is within $[1-\epsilon, 1+\epsilon]$, and flattens outside this range. This prevents the policy from changing too quickly.</figcaption>
+</figure>
+
+<div class="callout theory">
+  <span class="label">Theory</span>
+  <p>
+    PPO is a simplification of TRPO (Trust Region Policy Optimization). TRPO
+    constrains the KL divergence between old and new policies, which requires
+    computing second-order derivatives (expensive). PPO achieves a similar
+    effect with the simple clipping trick — first-order optimisation only.
+    This makes PPO the de facto standard for policy optimisation, including
+    in RLHF where it is used to align LLMs (M6.3).
+  </p>
+</div>
+
+<h3>The advantage function</h3>
+
+<p>
+  The advantage $\hat{A}_t$ measures how much better an action was compared
+  to the average action from that state. PPO uses Generalised Advantage
+  Estimation (GAE):
+</p>
+
+<div class="annotated-equation">
+  $$ \hat{A}_t = \sum_{l=0}^{T-t} (\gamma\lambda)^l \delta_{t+l} \qquad\text{where}\qquad \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t) $$
+  <div class="annotations">
+    <span>$\delta_t$ — TD error (temporal difference)</span>
+    <span>$\lambda \approx 0.95$ — GAE parameter (bias-variance tradeoff)</span>
+    <span>$V(s)$ — critic's value estimate</span>
+  </div>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="rl-prog" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <text x="360" y="18" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">From DQN to PPO to RLHF: the same framework, different domains</text>
+
+  <!-- DQN -->
+  <rect x="30" y="50" width="180" height="90" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <text x="120" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">DQN (5.8)</text>
+  <text x="120" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Learn $Q(s,a)$</text>
+  <text x="120" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Discrete actions</text>
+  <text x="120" y="127" text-anchor="middle" font-size="10" fill="#64748B">Game envs, churn</text>
+
+  <!-- Arrow -->
+  <line x1="215" y1="95" x2="255" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#rl-prog)"/>
+
+  <!-- PPO -->
+  <rect x="260" y="50" width="180" height="90" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="350" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">PPO (5.8)</text>
+  <text x="350" y="95" text-anchor="middle" font-size="10" fill="#1E293B">Learn $\pi(a|s)$ directly</text>
+  <text x="350" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Continuous actions</text>
+  <text x="350" y="127" text-anchor="middle" font-size="10" fill="#64748B">Supply chain, pricing</text>
+
+  <!-- Arrow -->
+  <line x1="445" y1="95" x2="485" y2="95" stroke="#0D9488" stroke-width="2.5" marker-end="url(#rl-prog)"/>
+
+  <!-- RLHF -->
+  <rect x="490" y="50" width="200" height="90" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="590" y="75" text-anchor="middle" font-weight="700" font-size="13" fill="#F59E0B">RLHF (M6.3)</text>
+  <text x="590" y="95" text-anchor="middle" font-size="10" fill="#1E293B">PPO + reward model</text>
+  <text x="590" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Action = generated text</text>
+  <text x="590" y="127" text-anchor="middle" font-size="10" fill="#64748B">LLM alignment</text>
+
+  <!-- Bottom: what changes -->
+  <text x="120" y="165" text-anchor="middle" font-size="10" fill="#3B82F6">Env: Gymnasium</text>
+  <text x="120" y="180" text-anchor="middle" font-size="10" fill="#3B82F6">Reward: numeric</text>
+  <text x="350" y="165" text-anchor="middle" font-size="10" fill="#22C55E">Env: Gymnasium</text>
+  <text x="350" y="180" text-anchor="middle" font-size="10" fill="#22C55E">Reward: numeric</text>
+  <text x="590" y="165" text-anchor="middle" font-size="10" fill="#F59E0B">Env: reward model</text>
+  <text x="590" y="180" text-anchor="middle" font-size="10" fill="#F59E0B">Reward: human pref</text>
+</svg>
+<figcaption>DQN, PPO, and RLHF use the same agent-environment framework. The environment changes (game to supply chain to reward model), but the learning principle remains: take actions, receive rewards, improve the policy.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Custom Gymnasium Environments</h2>
+
+<p>
+  Gymnasium (the successor to OpenAI Gym) provides a standard interface for RL
+  environments. You subclass <code>gymnasium.Env</code> and implement four methods:
+</p>
+
+<pre><code class="language-python">import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+
+class SupplyChainEnv(gym.Env):
+    """Singapore supply chain optimisation environment.
+
+    State: [inventory_level, demand_forecast, lead_time, days_remaining]
+    Action: order_quantity (continuous, 0 to 100 units)
+    Reward: -(holding_cost + stockout_penalty + order_cost)
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Continuous action: how much to order
+        self.action_space = spaces.Box(
+            low=0, high=100, shape=(1,), dtype=np.float32
+        )
+        # State: 4 continuous values
+        self.observation_space = spaces.Box(
+            low=0, high=np.inf, shape=(4,), dtype=np.float32
+        )
+        self.holding_cost_per_unit = 0.5   # SGD per unit per day
+        self.stockout_penalty = 10.0        # SGD per unit short
+        self.order_cost_per_unit = 2.0      # SGD per unit ordered
+        self.reset()
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.inventory = 50.0
+        self.day = 0
+        self.max_days = 90  # One quarter
+        state = self._get_state()
+        return state, {}
+
+    def step(self, action):
+        order_qty = float(np.clip(action[0], 0, 100))
+
+        # Simulate demand (stochastic)
+        demand = np.random.normal(10, 3)  # Mean 10 units/day
+        demand = max(0, demand)
+
+        # Update inventory
+        self.inventory += order_qty - demand
+        self.day += 1
+
+        # Compute reward (negative cost)
+        holding = max(0, self.inventory) * self.holding_cost_per_unit
+        stockout = max(0, -self.inventory) * self.stockout_penalty
+        ordering = order_qty * self.order_cost_per_unit
+        reward = -(holding + stockout + ordering)
+
+        # Clamp inventory (cannot go below -20)
+        self.inventory = max(-20, self.inventory)
+
+        done = self.day >= self.max_days
+        state = self._get_state()
+        return state, reward, done, False, {}
+
+    def _get_state(self):
+        demand_forecast = 10.0  # Simple forecast
+        lead_time = 2.0         # Days until order arrives
+        days_remaining = self.max_days - self.day
+        return np.array([
+            self.inventory, demand_forecast,
+            lead_time, days_remaining
+        ], dtype=np.float32)</code></pre>
+
+<div class="callout kailash">
+  <span class="label">Kailash Engine</span>
+  <p>
+    Kailash ML's <code>RLTrainer</code> wraps common RL algorithms (DQN, PPO,
+    A2C, SAC) with a consistent API. You pass the Gymnasium environment and
+    training configuration; the engine handles replay buffers, target networks,
+    advantage estimation, and logging. For custom environments like the supply
+    chain above, <code>RLTrainer</code> provides the training loop while you
+    focus on the environment design and reward shaping.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: DQN for Customer Churn Prevention</h2>
+
+<div class="worked-example">
+  <h3>Goal</h3>
+  <p>
+    Build a DQN agent that decides monthly retention actions for Singapore telco
+    customers (3 discrete actions: no action, discount offer, personal call).
+    The agent observes customer state (tenure, monthly charges, contract type,
+    usage patterns) and receives reward +1 for retained customers and -5 for
+    churned customers.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1. Define the environment.</span>
+    <pre><code class="language-python">class ChurnPreventionEnv(gym.Env):
+    """Each step = one month. Agent picks retention action per customer."""
+
+    def __init__(self, customer_data):
+        super().__init__()
+        self.action_space = spaces.Discrete(3)  # no_action, discount, call
+        self.observation_space = spaces.Box(
+            low=0, high=1, shape=(8,), dtype=np.float32
+        )
+        self.customers = customer_data
+        self.action_costs = [0, 5, 15]  # SGD per action
+        self.reset()
+
+    def step(self, action):
+        # Compute churn probability (influenced by action)
+        base_churn_prob = self._base_churn_prob()
+        action_effect = [0, -0.15, -0.25][action]  # Discount/call reduces churn
+        churn_prob = max(0, min(1, base_churn_prob + action_effect))
+
+        churned = np.random.random() < churn_prob
+        cost = self.action_costs[action]
+        reward = (-5 if churned else 1) - cost / 10  # Normalise cost
+
+        self.month += 1
+        done = self.month >= 12 or churned
+        return self._get_state(), reward, done, False, {}</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2. Train the DQN agent.</span>
+    <pre><code class="language-python">env = ChurnPreventionEnv(customer_data)
+agent = DQNAgent(state_dim=8, action_dim=3)
+
+for episode in range(1000):
+    state, _ = env.reset()
+    total_reward = 0
+
+    while True:
+        action = agent.select_action(state)
+        next_state, reward, done, _, _ = env.step(action)
+        agent.buffer.push(state, action, reward, next_state, float(done))
+        agent.train_step()
+        total_reward += reward
+        state = next_state
+        if done:
+            break
+
+    # Decay exploration
+    agent.epsilon = max(0.01, agent.epsilon * 0.995)
+
+    # Update target network periodically
+    if episode % 10 == 0:
+        agent.update_target()
+
+    if episode % 100 == 0:
+        print(f"Episode {episode}: reward={total_reward:.1f}, "
+              f"epsilon={agent.epsilon:.3f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3. Evaluate the learned policy.</span>
+    <pre><code class="language-python"># Evaluate: what actions does the trained agent take?
+agent.epsilon = 0  # No exploration during evaluation
+state, _ = env.reset()
+actions_taken = []
+
+while True:
+    action = agent.select_action(state)
+    actions_taken.append(action)
+    state, _, done, _, _ = env.step(action)
+    if done:
+        break
+
+# Expected: agent uses discount offers for at-risk customers,
+# no action for loyal customers, and personal calls for
+# high-value customers about to churn.</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The PPO → RLHF Bridge</h2>
+
+<div class="callout advanced">
+  <span class="label">Advanced — Bridge to M6</span>
+  <p>
+    In RLHF (Reinforcement Learning from Human Feedback), the components map as:
+  </p>
+  <table>
+    <thead><tr><th>RL concept</th><th>RLHF equivalent</th></tr></thead>
+    <tbody>
+      <tr><td>Environment</td><td>Reward model (trained on human preferences)</td></tr>
+      <tr><td>State</td><td>Prompt</td></tr>
+      <tr><td>Action</td><td>Generated text (token by token)</td></tr>
+      <tr><td>Policy</td><td>LLM ($\pi_\theta$)</td></tr>
+      <tr><td>Reward</td><td>Reward model score</td></tr>
+      <tr><td>PPO clipping</td><td>KL penalty keeping LLM close to original</td></tr>
+    </tbody>
+  </table>
+  <p>
+    DPO (Direct Preference Optimization) in M6.3 bypasses the reward model
+    entirely — it derives the optimal policy directly from preference pairs,
+    removing the RL loop. This is why DPO is simpler to implement: no reward
+    model, no PPO, no replay buffer. But understanding PPO makes DPO's
+    derivation transparent.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">Mistake 1: Reward shaping too complex</span>
+  <p>
+    Start with simple, sparse rewards: +1 for success, -1 for failure. Complex
+    reward functions with many terms create unexpected optima — the agent finds
+    ways to maximise reward that do not correspond to the desired behaviour
+    (reward hacking). Add shaping terms only if the agent fails to learn with
+    simple rewards.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 2: No reward normalisation</span>
+  <p>
+    PPO needs normalised advantages — subtract mean and divide by standard
+    deviation. Without normalisation, advantages with large magnitude cause
+    instability: the probability ratio $r_t$ swings wildly, overwhelming the
+    clipping mechanism.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 3: Too-small replay buffer</span>
+  <p>
+    DQN's replay buffer should hold at least 10,000-100,000 transitions. A
+    small buffer causes the agent to train on recent, correlated samples —
+    defeating the purpose of experience replay. The buffer should be large
+    enough that samples from different episodes and strategies are mixed.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">Mistake 4: Not enough exploration</span>
+  <p>
+    Without exploration, DQN converges to the first decent policy it finds and
+    never discovers better ones. Use epsilon-greedy with a slow decay:
+    $\epsilon$ starts at 1.0 (pure random) and decays to 0.01 over thousands
+    of episodes. Too-fast decay causes premature convergence.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>Exercise A — CartPole with DQN</h3>
+  <p>
+    Implement DQN for the CartPole-v1 environment (balance a pole on a cart).
+    The environment has 4 state dimensions and 2 actions (push left, push right).
+    Train until the agent consistently achieves 500 steps (the maximum). Plot
+    the reward curve over episodes.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise B — PPO for continuous control</h3>
+  <p>
+    Implement a PPO agent for the supply chain environment defined above.
+    The action is continuous (order quantity). Train for 5,000 episodes. Plot
+    the average reward over time. What ordering policy does the agent learn?
+    Does it maintain a safety stock?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise C — Custom Gymnasium environment</h3>
+  <p>
+    Design a Gymnasium environment for Singapore HDB flat allocation. State:
+    applicant profile (income, family size, location preference). Actions:
+    offer flat A, B, C, or waitlist. Reward: +1 for accepted offer, -0.5 for
+    rejected offer, -2 for applicant dropping out. Train a DQN agent and
+    analyse its allocation policy.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>Exercise D — DQN vs PPO comparison</h3>
+  <p>
+    Convert the churn prevention environment from discrete (DQN) to continuous
+    (retention_effort from 0 to 1, converted to action type). Train both DQN
+    (discretised) and PPO (continuous) on the same task. Compare convergence
+    speed, final reward, and policy interpretability.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  <strong>5.1-5.5 DL architectures:</strong> the neural networks inside DQN
+  and PPO are the same architectures — MLPs, CNNs (for image-based state),
+  and occasionally Transformers (for decision transformers).
+  <br>
+  <strong>M3 Model selection:</strong> the same bias-variance tradeoff
+  applies to RL — overfitting to the training environment, underfitting
+  generalisation to new situations.
+  <br>
+  <strong>M6.3 DPO:</strong> DPO derives the optimal RLHF policy
+  analytically, eliminating the PPO loop. Understanding PPO here makes the
+  derivation transparent.
+  <br>
+  <strong>M6.5 Agents:</strong> the ReAct agent loop is structurally
+  similar to the RL loop — state, action, observation, repeat.
+  <br>
+  <strong>M4.8 Training toolkit:</strong> gradient clipping, learning rate
+  scheduling, and batch normalisation — all tools you use to stabilise RL
+  training.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  Module 5 is complete. You have now implemented every major deep learning
+  architecture: autoencoders (5.1), CNNs (5.2), RNNs (5.3), Transformers
+  (5.4), GANs and diffusion (5.5), GNNs (5.6), transfer learning (5.7), and
+  reinforcement learning (5.8). Each paradigm is optimised for a different
+  data structure and learning signal — static labels, generated data, graph
+  connections, or environment rewards.
+</p>
+<p>
+  The Bellman equations you derived today are more than a formula — they
+  encode a fundamental principle: the value of a decision depends not just on
+  its immediate consequence but on all future consequences. This recursive
+  structure appears everywhere in decision-making, from supply chain
+  optimisation to LLM alignment.
+</p>
+<p>
+  Module 6 applies everything. The PPO-to-RLHF bridge you learned today is
+  the first step: M6.1 covers LLM fundamentals, M6.2 fine-tuning (including
+  LoRA from scratch), M6.3 preference alignment (DPO, which bypasses PPO),
+  M6.4 RAG, M6.5 agents, M6.6 multi-agent orchestration, M6.7 governance,
+  and M6.8 the capstone production platform.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev">
+    <span class="label">← Previous</span>
+    5.7 Transfer Learning
+  </a>
+  <a href="../../../mlfp06/lessons/01/textbook.html" class="next">
+    <span class="label">Next →</span>
+    6.1 LLM Fundamentals
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

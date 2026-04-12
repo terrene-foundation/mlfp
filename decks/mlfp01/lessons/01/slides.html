@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1.1 — Your First Data Exploration | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.5em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══ Slide 1: Title ═══════════════════════════════════════ -->
+<section>
+  <p class="lesson-meta">Module 1 · Lesson 1.1</p>
+  <h1>Your First Data Exploration</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    Variables · DataFrames · Summary statistics · Real Singapore data
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 45 minutes</strong> &nbsp; · &nbsp;
+    <strong>Audience:</strong> zero Python required &nbsp; · &nbsp;
+    <strong>Outcome:</strong> first working program
+  </div>
+  <div class="slide-footer">MLFP — ML Foundations for Professionals</div>
+</section>
+
+<!-- ═══ Slide 2: Why this matters ═══════════════════════════ -->
+<section>
+  <h2>Three steps you will use forever</h2>
+  <figure style="text-align: center; margin-top: 1em;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+      <rect x="20" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="110" y="92" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#0D9488">1. Load</text>
+      <text x="110" y="118" text-anchor="middle" font-family="Inter" font-size="14" fill="#1E293B">CSV → DataFrame</text>
+      <line x1="200" y1="100" x2="265" y2="100" stroke="#0D9488" stroke-width="3" marker-end="url(#arrow1)"/>
+      <rect x="270" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="360" y="92" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#0D9488">2. Inspect</text>
+      <text x="360" y="118" text-anchor="middle" font-family="Inter" font-size="14" fill="#1E293B">Shape, columns, head</text>
+      <line x1="450" y1="100" x2="515" y2="100" stroke="#0D9488" stroke-width="3" marker-end="url(#arrow1)"/>
+      <rect x="520" y="60" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="610" y="92" text-anchor="middle" font-family="Inter" font-weight="700" font-size="20" fill="#0D9488">3. Summarise</text>
+      <text x="610" y="118" text-anchor="middle" font-family="Inter" font-size="14" fill="#1E293B">describe()</text>
+    </svg>
+  </figure>
+  <p style="text-align: center; color: #64748B; font-style: italic; margin-top: 1em;">
+    Every dataset, every project, every language starts here.
+  </p>
+</section>
+
+<!-- ═══ Slide 3: Real motivation ═════════════════════════════ -->
+<section>
+  <h2>Three real Singapore questions</h2>
+  <ul style="font-size: 0.85em;">
+    <li><strong>Retail:</strong> do umbrella sales correlate with monthly rainfall?</li>
+    <li><strong>Property:</strong> do cooler months coincide with HDB price dips?</li>
+    <li><strong>Logistics:</strong> when does taxi demand peak during the monsoon?</li>
+  </ul>
+  <p>Each question starts with the same data, the same DataFrame, and the same three steps.</p>
+  <div style="background: #F8FAFC; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #22C55E;">🟢 Foundations:</strong>
+    Today we focus on the <em>steps</em>. The questions come back in later
+    modules — you will already know how to find the answer.
+  </div>
+</section>
+
+<!-- ═══ Slide 4: Variables ═══════════════════════════════════ -->
+<section>
+  <h2>Variables: names bound to values</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="40" width="150" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="105" y="65" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#15803D">city</text>
+      <text x="105" y="82" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Name</text>
+
+      <rect x="30" y="105" width="150" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="105" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#15803D">temperature</text>
+      <text x="105" y="147" text-anchor="middle" font-family="Inter" font-size="11" fill="#166534">Name</text>
+
+      <rect x="30" y="170" width="150" height="40" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
+      <text x="105" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#15803D">is_raining</text>
+
+      <line x1="180" y1="65" x2="285" y2="65" stroke="#22C55E" stroke-width="2"/>
+      <polygon points="285,65 280,61 280,69" fill="#22C55E"/>
+      <line x1="180" y1="130" x2="285" y2="130" stroke="#22C55E" stroke-width="2"/>
+      <polygon points="285,130 280,126 280,134" fill="#22C55E"/>
+      <line x1="180" y1="190" x2="285" y2="190" stroke="#22C55E" stroke-width="2"/>
+      <polygon points="285,190 280,186 280,194" fill="#22C55E"/>
+
+      <rect x="290" y="40" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="390" y="65" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#1E40AF">"Singapore"</text>
+      <text x="390" y="82" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E3A8A">Value</text>
+
+      <rect x="290" y="105" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="390" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#1E40AF">28.5</text>
+
+      <rect x="290" y="170" width="200" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="390" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="16" fill="#1E40AF">True</text>
+
+      <rect x="510" y="48" width="60" height="30" rx="14" fill="#22C55E"/>
+      <text x="540" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="white">str</text>
+
+      <rect x="510" y="113" width="60" height="30" rx="14" fill="#3B82F6"/>
+      <text x="540" y="133" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="white">float</text>
+
+      <rect x="510" y="175" width="60" height="30" rx="14" fill="#8B5CF6"/>
+      <text x="540" y="195" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="white">bool</text>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 5: Four primitive types ═══════════════════════ -->
+<section>
+  <h2>Four types you will use constantly</h2>
+  <table style="font-size: 0.7em;">
+    <thead>
+      <tr><th>Type</th><th>Example</th><th>Use it for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>str</code></td><td><code>"Singapore"</code></td><td>Names, labels, identifiers</td></tr>
+      <tr><td><code>int</code></td><td><code>2024</code></td><td>Counts, years, indices</td></tr>
+      <tr><td><code>float</code></td><td><code>28.5</code></td><td>Measurements with fractions</td></tr>
+      <tr><td><code>bool</code></td><td><code>True</code></td><td>Yes/no flags</td></tr>
+    </tbody>
+  </table>
+  <pre><code class="language-python" data-trim>
+city = "Singapore"            # str
+year = 2024                   # int
+mean_temp_c = 28.5            # float
+is_tropical = True            # bool
+  </code></pre>
+</section>
+
+<!-- ═══ Slide 6: f-strings ═══════════════════════════════════ -->
+<section>
+  <h2>f-strings: variables inside text</h2>
+  <pre><code class="language-python" data-trim>
+city = "Singapore"
+temperature = 28.5
+
+report = f"The mean temperature in {city} is {temperature:.1f}°C"
+print(report)
+# → The mean temperature in Singapore is 28.5°C
+  </code></pre>
+  <p>Format spec <code>:.1f</code> = floating point with 1 decimal place.</p>
+  <p>Other useful specs: <code>:.0f</code>, <code>:,.0f</code>, <code>:.2%</code>, <code>:>10</code></p>
+</section>
+
+<!-- ═══ Slide 7: DataFrame intro ═════════════════════════════ -->
+<section>
+  <h2>The DataFrame: a typed table</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="20" width="640" height="40" fill="#0D9488"/>
+      <text x="100" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">month</text>
+      <text x="240" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">mean_temperature_c</text>
+      <text x="430" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">total_rainfall_mm</text>
+      <text x="600" y="46" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="14" fill="white">humidity_pct</text>
+
+      <rect x="40" y="60" width="640" height="28" fill="#F0FDFA" stroke="#94A3B8" stroke-width="0.5"/>
+      <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">String</text>
+      <text x="240" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+      <text x="430" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Float64</text>
+      <text x="600" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0F766E">Int64</text>
+
+      <g font-family="JetBrains Mono" font-size="13" fill="#1E293B">
+        <rect x="40" y="88" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+        <text x="100" y="108" text-anchor="middle">"Jan"</text>
+        <text x="240" y="108" text-anchor="middle">26.0</text>
+        <text x="430" y="108" text-anchor="middle">194.7</text>
+        <text x="600" y="108" text-anchor="middle">82</text>
+        <rect x="40" y="120" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="100" y="140" text-anchor="middle">"Feb"</text>
+        <text x="240" y="140" text-anchor="middle">26.5</text>
+        <text x="430" y="140" text-anchor="middle">63.4</text>
+        <text x="600" y="140" text-anchor="middle">79</text>
+        <rect x="40" y="152" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+        <text x="100" y="172" text-anchor="middle">"Mar"</text>
+        <text x="240" y="172" text-anchor="middle">27.0</text>
+        <text x="430" y="172" text-anchor="middle">170.6</text>
+        <text x="600" y="172" text-anchor="middle">81</text>
+        <rect x="40" y="184" width="640" height="32" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="100" y="204" text-anchor="middle">…</text>
+        <text x="240" y="204" text-anchor="middle">…</text>
+        <text x="430" y="204" text-anchor="middle">…</text>
+        <text x="600" y="204" text-anchor="middle">…</text>
+        <rect x="40" y="216" width="640" height="32" fill="white" stroke="#E2E8F0"/>
+        <text x="100" y="236" text-anchor="middle">"Dec"</text>
+        <text x="240" y="236" text-anchor="middle">26.5</text>
+        <text x="430" y="236" text-anchor="middle">227.2</text>
+        <text x="600" y="236" text-anchor="middle">85</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<!-- ═══ Slide 8: Three rules ════════════════════════════════ -->
+<section>
+  <h2>Three rules every DataFrame obeys</h2>
+  <ol>
+    <li><strong>Every column has exactly one type.</strong> All values in a column are floats, or all integers, or all strings — never mixed.</li>
+    <li><strong>Every row has the same shape.</strong> No "extra" columns on some rows. Missing values are explicit nulls.</li>
+    <li><strong>Rows are ordered.</strong> Row 0 is always first; sorting and slicing preserve this.</li>
+  </ol>
+  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1.5em;">
+    These three rules are why DataFrame operations are fast and predictable.
+  </div>
+</section>
+
+<!-- ═══ Slide 9: Loading data ═══════════════════════════════ -->
+<section>
+  <h2>Step 1: Load the data</h2>
+  <pre><code class="language-python" data-trim>
+import polars as pl
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+df = loader.load("mlfp01", "sg_weather.csv")
+
+print(df.shape)
+# → (12, 3)
+  </code></pre>
+  <p>That's it — one method call. Polars detects types and returns a DataFrame.</p>
+</section>
+
+<!-- ═══ Slide 10: Inspecting ════════════════════════════════ -->
+<section>
+  <h2>Step 2: Inspect — the 30-second ritual</h2>
+  <pre><code class="language-python" data-trim>
+print(f"Shape: {df.shape}")
+print(f"Columns: {df.columns}")
+print(f"Schema: {df.schema}")
+print(df.head(5))
+  </code></pre>
+  <pre><code class="language-text" data-trim>
+Shape: (12, 3)
+Columns: ['month', 'mean_temperature_c', 'total_rainfall_mm']
+Schema: {'month': String, 'mean_temperature_c': Float64, 'total_rainfall_mm': Float64}
+  </code></pre>
+  <p style="color: #64748B; font-style: italic;">Read those values aloud. You have just done the most important habit of every careful analyst.</p>
+</section>
+
+<!-- ═══ Slide 11: describe() ════════════════════════════════ -->
+<section>
+  <h2>Step 3: Summarise with describe()</h2>
+  <pre><code class="language-text" data-trim>
+┌────────────┬───────┬────────────────────┬───────────────────┐
+│ statistic  ┆ month ┆ mean_temperature_c ┆ total_rainfall_mm │
+╞════════════╪═══════╪════════════════════╪═══════════════════╡
+│ count      ┆ 12    ┆ 12.0               ┆  12.0             │
+│ mean       ┆ null  ┆ 26.68              ┆ 152.85            │
+│ std        ┆ null  ┆  0.43              ┆  56.71            │
+│ min        ┆ Apr   ┆ 26.00              ┆  63.40            │
+│ 50%        ┆ null  ┆ 26.65              ┆ 156.10            │
+│ max        ┆ Sep   ┆ 27.20              ┆ 227.20            │
+└────────────┴───────┴────────────────────┴───────────────────┘
+  </code></pre>
+  <p style="font-size: 0.8em;">Singapore: temperature is famously consistent (std 0.43°C). Rainfall varies hugely (std 56.71 mm).</p>
+</section>
+
+<!-- ═══ Slide 12: Mathematical foundations ═══════════════════ -->
+<section>
+  <h2>What does mean really compute?</h2>
+  <p>The arithmetic mean is the sum divided by the count:</p>
+  <div style="text-align: center; margin: 2em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ \bar{x} \;=\; \frac{1}{n} \sum_{i=1}^{n} x_i \]
+  </div>
+  <p>For our 12 monthly temperatures: $\bar{x} = (26.0 + 26.5 + \ldots) / 12 = 26.68$°C</p>
+  <div style="background: #EFF6FF; padding: 14px 18px; border-left: 4px solid #3B82F6; border-radius: 4px; margin-top: 1em;">
+    <strong style="color: #3B82F6;">🔵 Theory:</strong>
+    The mean is the unique value $c$ that minimises $\sum (x_i - c)^2$. This
+    fact is why linear regression works the way it does — coming in Module 2.
+  </div>
+</section>
+
+<!-- ═══ Slide 13: Variance and std ══════════════════════════ -->
+<section>
+  <h2>Variance: how spread out is the data?</h2>
+  <div style="text-align: center; margin: 1em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ s^2 \;=\; \frac{1}{n - 1} \sum_{i=1}^{n} (x_i - \bar{x})^2 \]
+  </div>
+  <p>Standard deviation is the square root: $s = \sqrt{s^2}$ — same units as the data.</p>
+  <p style="font-size: 0.85em;">Singapore 2023: $s_{\text{temp}} = 0.43$°C — every month is within half a degree of average.</p>
+  <div style="background: #FFFBEB; padding: 14px 18px; border-left: 4px solid #F59E0B; border-radius: 4px; margin-top: 1em;">
+    <strong>Why $n - 1$?</strong> Bessel's correction. We use one degree of
+    freedom to estimate $\bar{x}$, leaving $n - 1$ "free" observations. We will
+    derive this in Lesson 2.2.
+  </div>
+</section>
+
+<!-- ═══ Slide 14: Find the hottest month ══════════════════ -->
+<section>
+  <h2>Answering questions: the hottest month</h2>
+  <pre><code class="language-python" data-trim>
+max_temp = df["mean_temperature_c"].max()
+
+hottest = df.filter(
+    pl.col("mean_temperature_c") == max_temp
+)
+
+print(f"Hottest: {hottest['month'][0]} at {max_temp}°C")
+# → Hottest: May at 27.2°C
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">
+    <code>pl.col(...)</code> builds an expression. <code>== max_temp</code>
+    turns it into a boolean test. <code>filter</code> keeps matching rows.
+  </p>
+</section>
+
+<!-- ═══ Slide 15: Common mistakes ════════════════════════════ -->
+<section>
+  <h2>Three rookie mistakes to avoid</h2>
+  <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 1em 0;">
+    <strong>1. <code>=</code> vs <code>==</code></strong><br>
+    <code>=</code> assigns. <code>==</code> compares. Python refuses to mix them up.
+  </div>
+  <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 1em 0;">
+    <strong>2. Polars DataFrames are immutable</strong><br>
+    <code>df.filter(...)</code> returns a <em>new</em> DataFrame. Always assign
+    the result to a variable.
+  </div>
+  <div style="background: #FFF1F2; padding: 12px 18px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 1em 0;">
+    <strong>3. Column names are not column values</strong><br>
+    <code>df["mean_temperature_c"]</code> is a Series. <code>"mean_temperature_c"</code>
+    is just a string.
+  </div>
+</section>
+
+<!-- ═══ Slide 16: Reflection ════════════════════════════════ -->
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Assign variables of four types and format them with f-strings</li>
+    <li>✓ Load a CSV into a Polars DataFrame</li>
+    <li>✓ Inspect shape, columns, schema, head — the 30-second ritual</li>
+    <li>✓ Compute mean, std, min, max with <code>.describe()</code></li>
+    <li>✓ Filter to find rows matching a condition</li>
+    <li>✓ Explain what mean and variance compute</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 16px 20px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1.5em;">
+    <strong>Next:</strong> Lesson 1.2 — filtering 50,000 HDB transactions and
+    creating new columns with Polars expressions.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    width: 1280,
+    height: 720,
+    margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ]
+  });
+</script>
+
+</body>
+</html>

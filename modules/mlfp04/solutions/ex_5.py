@@ -2,276 +2,840 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 5: AI Governance with PACT
+# MLFP04 — Exercise 5: Association Rules and Market Basket Analysis
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Define a realistic organization in YAML, compile it, and
-#   create a GovernanceEngine. Verify access decisions.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Implement the Apriori algorithm from scratch with pruning
+#   - Compute support, confidence, and lift for association rules
+#   - Compare Apriori and FP-Growth implementations for consistency
+#   - Engineer rule-based features that improve a supervised classifier
+#   - Explain the connection: co-occurrence → matrix factorisation → neural networks
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 1 (clustering — pattern discovery without labels)
+#   - MLFP03 Exercise 1 (feature engineering — rules as domain features)
+#
+# ESTIMATED TIME: 75-90 minutes
 #
 # TASKS:
-#   1. Define organization structure in YAML (3 departments, 8 roles)
-#   2. Compile organization with compile_org()
-#   3. Create GovernanceEngine
-#   4. Test access decisions: can_access(), explain_access()
-#   5. Verify monotonic tightening and fail-closed behavior
+#   1. Generate synthetic Singapore retail transaction data (2000+ txns)
+#   2. Implement Apriori from scratch: frequent itemsets, candidate gen, pruning
+#   3. Compute support, confidence, lift for discovered rules
+#   4. Compare with mlxtend FP-Growth
+#   5. Filter and rank top association rules by lift
+#   6. Interpret rules with business meaning
+#   7. Engineer features from discovered rules for classification
+#   8. Demonstrate rule-based features improve a supervised model
+#
+# DATASET: Synthetic Singapore retail transactions (2500 transactions, 25 products)
+#   Products: groceries, beverages, household, personal care
+#   Co-purchase patterns: breakfast bundle, kopi bundle, home cooking, etc.
+#   Goal: discover bundles → use as features for 'high-value shopper' prediction
+#
+# THEORY:
+#   Support:    supp(X) = count(X) / N
+#               "How frequently does itemset X appear?"
+#   Confidence: conf(X -> Y) = supp(X ∪ Y) / supp(X)
+#               "Given X purchased, how likely is Y also purchased?"
+#   Lift:       lift(X -> Y) = conf(X -> Y) / supp(Y)
+#               "How much more likely is Y given X, compared to baseline?"
+#               Lift > 1 = positive association (surprise)
+#               Lift = 1 = independent
+#               Lift < 1 = negative association (substitutes)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import tempfile
-from pathlib import Path
+from collections import defaultdict
+from itertools import combinations
 
-from pact import GovernanceEngine, GovernanceContext
-from pact import Address, RoleEnvelope, TaskEnvelope
-from pact import compile_org, load_org_yaml
+import numpy as np
+import polars as pl
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
-from shared.kailash_helpers import setup_environment
+from kailash_ml import ModelVisualizer
 
-setup_environment()
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define organization in YAML
-# ══════════════════════════════════════════════════════════════════════
-
-org_yaml = """
-organization:
-  name: "ASCENT Credit Bureau"
-  version: "1.0"
-
-  departments:
-    - name: "data_science"
-      description: "ML model development and research"
-      teams:
-        - name: "modeling"
-          roles:
-            - name: "senior_data_scientist"
-              permissions:
-                data_access: ["credit_data", "feature_store", "experiment_logs"]
-                tools: ["training_pipeline", "hyperparameter_search", "model_registry"]
-                max_cost_usd: 50.0
-                can_deploy: false
-            - name: "junior_data_scientist"
-              permissions:
-                data_access: ["credit_data", "feature_store"]
-                tools: ["training_pipeline"]
-                max_cost_usd: 10.0
-                can_deploy: false
-        - name: "mlops"
-          roles:
-            - name: "ml_engineer"
-              permissions:
-                data_access: ["credit_data", "feature_store", "model_artifacts", "production_logs"]
-                tools: ["training_pipeline", "model_registry", "inference_server", "drift_monitor"]
-                max_cost_usd: 100.0
-                can_deploy: true
-
-    - name: "risk"
-      description: "Model risk management and compliance"
-      teams:
-        - name: "model_validation"
-          roles:
-            - name: "model_validator"
-              permissions:
-                data_access: ["credit_data", "experiment_logs", "model_artifacts", "audit_logs"]
-                tools: ["model_registry", "drift_monitor"]
-                max_cost_usd: 20.0
-                can_deploy: false
-                can_approve_production: true
-            - name: "compliance_officer"
-              permissions:
-                data_access: ["audit_logs", "governance_reports"]
-                tools: []
-                max_cost_usd: 5.0
-                can_deploy: false
-                can_approve_production: false
-
-    - name: "operations"
-      description: "Production systems and customer-facing"
-      teams:
-        - name: "serving"
-          roles:
-            - name: "sre"
-              permissions:
-                data_access: ["production_logs", "model_artifacts"]
-                tools: ["inference_server", "drift_monitor"]
-                max_cost_usd: 200.0
-                can_deploy: true
-            - name: "customer_service"
-              permissions:
-                data_access: ["credit_decisions"]
-                tools: ["inference_server"]
-                max_cost_usd: 1.0
-                can_deploy: false
-
-  policies:
-    - name: "model_promotion"
-      description: "Models require validator approval before production"
-      rule: "promote_to_production requires model_validator.can_approve_production"
-    - name: "data_classification"
-      description: "Credit data is Confidential; audit logs are Restricted"
-      classifications:
-        credit_data: "confidential"
-        audit_logs: "restricted"
-        production_logs: "internal"
-        credit_decisions: "confidential"
-"""
-
-# Write to temp file
-org_file = Path(tempfile.mktemp(suffix=".yaml"))
-org_file.write_text(org_yaml)
-print(f"=== Organization YAML ===")
-print(f"Departments: 3 (data_science, risk, operations)")
-print(f"Roles: 6 unique roles across 5 teams")
-print(f"Written to: {org_file}")
+try:
+    from mlxtend.frequent_patterns import apriori as mlx_apriori
+    from mlxtend.frequent_patterns import association_rules as mlx_association_rules
+    from mlxtend.frequent_patterns import fpgrowth as mlx_fpgrowth
+except ImportError:
+    mlx_apriori = None
+    mlx_fpgrowth = None
+    mlx_association_rules = None
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile organization
+# TASK 1: Generate synthetic Singapore retail transaction data
 # ══════════════════════════════════════════════════════════════════════
+# We generate 2500 transactions with 25 products, including realistic
+# co-purchase patterns modelled after a Singapore convenience/grocery store.
 
-org = load_org_yaml(str(org_file))
-compiled = compile_org(org)
+rng = np.random.default_rng(42)
 
-print(f"\n=== Compiled Organization ===")
-print(f"Valid: {compiled.valid}")
-if compiled.errors:
-    print(f"Errors: {compiled.errors}")
-if compiled.warnings:
-    print(f"Warnings: {compiled.warnings}")
-print(f"Departments: {[d.name for d in compiled.departments]}")
-print(f"Total roles: {compiled.total_roles}")
+PRODUCTS = [
+    "bread", "butter", "milk", "eggs", "rice",
+    "noodles", "soy_sauce", "cooking_oil", "chicken", "fish",
+    "coffee", "tea", "sugar", "condensed_milk", "biscuits",
+    "chips", "soft_drink", "beer", "wine", "tissue",
+    "shampoo", "soap", "detergent", "toothpaste", "bananas",
+]
 
+N_TRANSACTIONS = 2500
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Create GovernanceEngine
-# ══════════════════════════════════════════════════════════════════════
+# Define realistic co-purchase patterns (bundles that appear together)
+BUNDLES = [
+    (["bread", "butter", "eggs"], 0.15),           # Breakfast bundle
+    (["coffee", "condensed_milk", "sugar"], 0.12),  # Kopi bundle
+    (["rice", "chicken", "soy_sauce"], 0.10),       # Home cooking
+    (["noodles", "eggs", "soy_sauce"], 0.08),       # Quick meal
+    (["beer", "chips"], 0.09),                      # Snack pairing
+    (["milk", "biscuits"], 0.07),                    # Tea-time
+    (["shampoo", "soap", "toothpaste"], 0.06),      # Personal care
+    (["tea", "sugar", "biscuits"], 0.05),            # Afternoon tea
+    (["wine", "chips", "biscuits"], 0.04),           # Entertaining
+    (["cooking_oil", "rice", "fish"], 0.06),         # Fish rice
+    (["detergent", "tissue", "soap"], 0.05),         # Household
+    (["bananas", "milk", "eggs"], 0.05),             # Smoothie
+]
 
+transactions: list[set[str]] = []
 
-async def setup_governance():
-    engine = GovernanceEngine(compiled)
+for _ in range(N_TRANSACTIONS):
+    basket: set[str] = set()
 
-    print(f"\n=== GovernanceEngine ===")
-    print(f"Organization: {compiled.name}")
-    print(f"Enforcement mode: fail-closed (deny on error)")
+    # Add bundles with their probabilities
+    for bundle_items, prob in BUNDLES:
+        if rng.random() < prob:
+            # Add all items in bundle (sometimes drop one for realism)
+            for item in bundle_items:
+                if rng.random() < 0.85:
+                    basket.add(item)
 
-    return engine
+    # Add random individual items (base purchase behaviour)
+    n_random = rng.poisson(2)
+    random_items = rng.choice(PRODUCTS, size=min(n_random, 5), replace=False)
+    basket.update(random_items)
 
+    if len(basket) > 0:
+        transactions.append(basket)
 
-engine = asyncio.run(setup_governance())
+print(f"=== Synthetic Retail Transactions ===")
+print(f"Transactions: {len(transactions):,}")
+print(f"Products: {len(PRODUCTS)}")
+avg_basket = np.mean([len(t) for t in transactions])
+print(f"Avg basket size: {avg_basket:.1f} items")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access decisions
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_access():
-    # D/T/R addressing: Department/Team/Role
-    senior_ds = Address("data_science", "modeling", "senior_data_scientist")
-    junior_ds = Address("data_science", "modeling", "junior_data_scientist")
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    validator = Address("risk", "model_validation", "model_validator")
-    cust_svc = Address("operations", "serving", "customer_service")
-
-    # Test cases
-    test_cases = [
-        (senior_ds, "credit_data", True, "Senior DS can access credit data"),
-        (
-            junior_ds,
-            "experiment_logs",
-            False,
-            "Junior DS cannot access experiment logs",
-        ),
-        (ml_eng, "production_logs", True, "ML Engineer can access production logs"),
-        (validator, "audit_logs", True, "Validator can access audit logs"),
-        (
-            cust_svc,
-            "credit_data",
-            False,
-            "Customer service cannot access raw credit data",
-        ),
-        (cust_svc, "credit_decisions", True, "Customer service can access decisions"),
-    ]
-
-    print(f"\n=== Access Control Tests ===")
-    for address, resource, expected, description in test_cases:
-        decision = await engine.can_access(address, resource)
-        status = "✓" if decision == expected else "✗ UNEXPECTED"
-        print(f"  {status} {description}")
-        print(f"     {address} → {resource}: {'ALLOW' if decision else 'DENY'}")
-
-    # Explain access
-    print(f"\n=== Access Explanations ===")
-    explanation = await engine.explain_access(junior_ds, "production_logs")
-    print(f"Junior DS → production_logs:")
-    print(f"  Decision: {explanation.decision}")
-    print(f"  Reason: {explanation.reason}")
-    print(f"  Chain: {explanation.chain}")
-
-
-asyncio.run(test_access())
+# Show sample transactions
+print(f"\nSample transactions:")
+for i in range(5):
+    print(f"  Txn {i}: {sorted(transactions[i])}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Monotonic tightening and fail-closed
+# TASK 2: Implement Apriori from scratch
 # ══════════════════════════════════════════════════════════════════════
+# Apriori principle: if an itemset is infrequent, all its supersets
+# must also be infrequent. This allows aggressive pruning.
+#
+# Algorithm:
+#   1. Scan database, count support for all single items
+#   2. Prune items below min_support → L1 (frequent 1-itemsets)
+#   3. Generate candidate k-itemsets from L(k-1)
+#   4. Scan database, count support for candidates
+#   5. Prune below min_support → Lk
+#   6. Repeat until no new frequent itemsets found
 
 
-async def test_monotonic_tightening():
+def apriori(
+    transactions: list[set[str]],
+    min_support: float,
+) -> dict[frozenset[str], float]:
     """
-    Monotonic tightening: child envelopes CANNOT exceed parent.
-    If parent budget is $50, child cannot have $100.
+    Apriori algorithm for frequent itemset mining.
+
+    Parameters
+    ----------
+    transactions : list of sets
+        Each set contains items in one transaction.
+    min_support : float
+        Minimum support threshold (0 to 1).
+
+    Returns
+    -------
+    dict mapping frozenset -> support value
+        All frequent itemsets and their support.
     """
-    parent_envelope = RoleEnvelope(
-        address=Address("data_science", "modeling", "senior_data_scientist"),
-        max_cost_usd=50.0,
-        data_access=["credit_data", "feature_store"],
+    n = len(transactions)
+    min_count = min_support * n
+
+    # Step 1: Count single-item support
+    item_counts: dict[str, int] = defaultdict(int)
+    for txn in transactions:
+        for item in txn:
+            item_counts[item] += 1
+
+    # Step 2: L1 — frequent 1-itemsets
+    freq_itemsets: dict[frozenset[str], float] = {}
+    current_level: list[frozenset[str]] = []
+    for item, count in item_counts.items():
+        if count >= min_count:
+            fs = frozenset([item])
+            freq_itemsets[fs] = count / n
+            current_level.append(fs)
+
+    print(f"\n  L1: {len(current_level)} frequent items (min_support={min_support})")
+
+    k = 2
+    while current_level:
+        # Step 3: Generate candidates of size k
+        candidates = _generate_candidates(current_level, k)
+        if not candidates:
+            break
+
+        # Step 4: Count support for candidates
+        candidate_counts: dict[frozenset[str], int] = defaultdict(int)
+        for txn in transactions:
+            txn_frozen = frozenset(txn)
+            for candidate in candidates:
+                if candidate.issubset(txn_frozen):
+                    candidate_counts[candidate] += 1
+
+        # Step 5: Prune — keep only frequent
+        current_level = []
+        for candidate, count in candidate_counts.items():
+            if count >= min_count:
+                freq_itemsets[candidate] = count / n
+                current_level.append(candidate)
+
+        print(f"  L{k}: {len(current_level)} frequent {k}-itemsets")
+        k += 1
+
+    return freq_itemsets
+
+
+def _generate_candidates(
+    prev_level: list[frozenset[str]],
+    k: int,
+) -> list[frozenset[str]]:
+    """
+    Generate candidate k-itemsets from frequent (k-1)-itemsets.
+
+    Uses the Apriori join step: merge two (k-1)-itemsets that share
+    (k-2) items. Then prune any candidate whose (k-1)-subset is
+    not in the previous level (Apriori property).
+    """
+    prev_set = set(prev_level)
+    candidates: set[frozenset[str]] = set()
+
+    for i, a in enumerate(prev_level):
+        for b in prev_level[i + 1 :]:
+            union = a | b
+            if len(union) == k:
+                # Apriori pruning: every (k-1)-subset must be frequent
+                all_subsets_frequent = all(
+                    union - frozenset([item]) in prev_set for item in union
+                )
+                if all_subsets_frequent:
+                    candidates.add(union)
+
+    return list(candidates)
+
+
+# Run Apriori
+print(f"\n=== Apriori Algorithm (from scratch) ===")
+min_sup = 0.03
+frequent_itemsets = apriori(transactions, min_support=min_sup)
+
+print(f"\nTotal frequent itemsets: {len(frequent_itemsets)}")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert len(frequent_itemsets) > 0, "Apriori should find at least one frequent itemset"
+# Verify support values: all itemsets should meet the minimum threshold
+n = len(transactions)
+for itemset, support in list(frequent_itemsets.items())[:5]:
+    actual_count = sum(1 for t in transactions if itemset.issubset(frozenset(t)))
+    actual_support = actual_count / n
+    assert abs(actual_support - support) < 0.005, \
+        f"Reported support {support:.4f} doesn't match actual {actual_support:.4f}"
+    assert support >= min_sup - 0.001, \
+        f"Itemset with support {support:.4f} should not appear below min_support={min_sup}"
+# INTERPRETATION: The Apriori principle is anti-monotone: if {bread, butter} is
+# infrequent, no superset {bread, butter, eggs} can be frequent. This allows
+# aggressive pruning — we never need to count supersets of infrequent sets.
+# For 25 products, there are 2^25 = 33M possible itemsets; Apriori checks only ~1000.
+print("\n✓ Checkpoint 1 passed — Apriori found frequent itemsets with correct support\n")
+
+# Show top itemsets by support
+sorted_itemsets = sorted(frequent_itemsets.items(), key=lambda x: -x[1])
+print(f"\nTop 15 frequent itemsets:")
+print(f"  {'Itemset':<45} {'Support':>8}")
+print("  " + "-" * 55)
+for itemset, support in sorted_itemsets[:15]:
+    items_str = ", ".join(sorted(itemset))
+    print(f"  {items_str:<45} {support:>8.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Compute association rules — support, confidence, lift
+# ══════════════════════════════════════════════════════════════════════
+# For each frequent itemset of size >= 2, generate rules X -> Y
+# where X ∪ Y = itemset.
+#
+# Confidence: conf(X -> Y) = supp(X ∪ Y) / supp(X)
+# Lift:       lift(X -> Y) = conf(X -> Y) / supp(Y)
+# Conviction: conv(X -> Y) = (1 - supp(Y)) / (1 - conf(X -> Y))
+#             Measures departure from independence.
+
+
+def generate_rules(
+    freq_itemsets: dict[frozenset[str], float],
+    min_confidence: float = 0.5,
+) -> list[dict]:
+    """
+    Generate association rules from frequent itemsets.
+
+    Returns list of dicts with antecedent, consequent, support,
+    confidence, lift, and conviction.
+    """
+    rules = []
+
+    for itemset, support in freq_itemsets.items():
+        if len(itemset) < 2:
+            continue
+
+        # Generate all non-empty proper subsets as antecedents
+        items = list(itemset)
+        for r in range(1, len(items)):
+            for antecedent_tuple in combinations(items, r):
+                antecedent = frozenset(antecedent_tuple)
+                consequent = itemset - antecedent
+
+                supp_antecedent = freq_itemsets.get(antecedent)
+                supp_consequent = freq_itemsets.get(consequent)
+
+                if supp_antecedent is None or supp_consequent is None:
+                    continue
+
+                confidence = support / supp_antecedent
+                if confidence < min_confidence:
+                    continue
+
+                lift = confidence / supp_consequent
+                # Conviction: how far from independence
+                if confidence < 1.0:
+                    conviction = (1 - supp_consequent) / (1 - confidence)
+                else:
+                    conviction = float("inf")
+
+                rules.append({
+                    "antecedent": antecedent,
+                    "consequent": consequent,
+                    "support": support,
+                    "confidence": confidence,
+                    "lift": lift,
+                    "conviction": conviction,
+                })
+
+    return rules
+
+
+min_conf = 0.3
+rules = generate_rules(frequent_itemsets, min_confidence=min_conf)
+rules_by_lift = sorted(rules, key=lambda r: -r["lift"])
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert len(rules) > 0, "Should generate at least one association rule"
+for rule in rules[:5]:
+    # Confidence must be in [0, 1]
+    assert 0 <= rule["confidence"] <= 1.0, \
+        f"Confidence must be in [0,1], got {rule['confidence']:.4f}"
+    # Lift > 0 always
+    assert rule["lift"] > 0, f"Lift must be positive, got {rule['lift']:.4f}"
+    # Support of rule ≤ support of antecedent (subset relationship)
+    ant_support = frequent_itemsets.get(rule["antecedent"], 0)
+    assert rule["support"] <= ant_support + 0.001, \
+        "Rule support should not exceed antecedent support"
+# INTERPRETATION: Confidence is the conditional probability P(Y|X): given the
+# customer bought X, how likely are they to buy Y? Lift > 1 means X and Y are
+# positively associated (appearing together more than by chance). The most
+# actionable rules have both high confidence AND high lift.
+print("\n✓ Checkpoint 2 passed — association rules computed with valid metrics\n")
+
+print(f"\n=== Association Rules ===")
+print(f"Rules found: {len(rules)} (min_confidence={min_conf})")
+print(f"\nTop 20 rules by lift:")
+print(f"  {'Antecedent':<25} {'->':>3} {'Consequent':<20} {'Supp':>6} {'Conf':>6} {'Lift':>6}")
+print("  " + "-" * 85)
+for rule in rules_by_lift[:20]:
+    ant = ", ".join(sorted(rule["antecedent"]))
+    con = ", ".join(sorted(rule["consequent"]))
+    print(
+        f"  {ant:<25} {'->':>3} {con:<20} "
+        f"{rule['support']:>6.3f} {rule['confidence']:>6.3f} {rule['lift']:>6.2f}"
     )
 
-    # Try to create child task with higher budget (should be tightened)
-    child_task = TaskEnvelope(
-        parent=parent_envelope,
-        max_cost_usd=100.0,  # Exceeds parent — will be clamped to 50
-        data_access=[
-            "credit_data",
-            "feature_store",
-            "production_logs",
-        ],  # Exceeds parent
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: FP-Growth comparison (mlxtend)
+# ══════════════════════════════════════════════════════════════════════
+# FP-Growth uses a compressed FP-tree representation — no candidate
+# generation step. Two passes: (1) build FP-tree, (2) mine from tree.
+# Much faster than Apriori for large datasets.
+
+# Convert transactions to one-hot encoded polars DataFrame
+all_items = sorted(PRODUCTS)
+rows = []
+for txn in transactions:
+    row = {item: item in txn for item in all_items}
+    rows.append(row)
+
+txn_df = pl.DataFrame(rows)
+print(f"\n=== Transaction Matrix ===")
+print(f"Shape: {txn_df.shape} (transactions x products)")
+print(f"Density: {txn_df.select(pl.all().mean()).to_numpy().mean():.2%}")
+
+if mlx_fpgrowth is not None:
+    # mlxtend requires pandas — convert via polars .to_pandas()
+    txn_pd = txn_df.to_pandas()
+
+    # FP-Growth frequent itemsets
+    fp_frequent = mlx_fpgrowth(txn_pd, min_support=min_sup, use_colnames=True)
+    fp_rules = mlx_association_rules(
+        fp_frequent, metric="confidence", min_threshold=min_conf
     )
 
-    print(f"\n=== Monotonic Tightening ===")
-    print(f"Parent budget: ${parent_envelope.max_cost_usd}")
-    print(f"Child requested: ${100.0}")
-    print(f"Child actual:   ${child_task.effective_max_cost_usd}")
-    print(f"  → Tightened to parent's limit")
-    print(f"\nParent data access: {parent_envelope.data_access}")
-    print(f"Child requested:    {['credit_data', 'feature_store', 'production_logs']}")
-    print(f"Child actual:       {child_task.effective_data_access}")
-    print(f"  → production_logs removed (not in parent's scope)")
+    print(f"\n=== FP-Growth (mlxtend) ===")
+    print(f"Frequent itemsets: {len(fp_frequent)}")
+    print(f"Association rules: {len(fp_rules)}")
 
-    # Test fail-closed: what happens on governance error
-    print(f"\n=== Fail-Closed Behavior ===")
-    print(f"If GovernanceEngine encounters an error during access check:")
-    print(f"  → Access is DENIED (not allowed)")
-    print(f"  → Error is logged to AuditChain")
-    print(f"  → This prevents privilege escalation through bugs")
+    # Compare with our Apriori
+    print(f"\nComparison:")
+    print(f"  Apriori (scratch): {len(frequent_itemsets)} itemsets, {len(rules)} rules")
+    print(f"  FP-Growth (mlxtend): {len(fp_frequent)} itemsets, {len(fp_rules)} rules")
 
-    # GovernanceContext is frozen
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    context = await engine.create_context(ml_eng)
-    print(f"\n=== Frozen GovernanceContext ===")
-    print(f"Context for ML Engineer:")
-    print(f"  max_cost_usd: {context.max_cost_usd}")
-    print(f"  data_access: {context.data_access}")
-    print(f"  can_deploy: {context.can_deploy}")
-    print(f"\n  context.max_cost_usd = 999  # Raises FrozenInstanceError!")
-    print(f"  → Agents RECEIVE governance but CANNOT modify it")
+    # Show FP-Growth top rules
+    fp_rules_sorted = fp_rules.sort_values("lift", ascending=False)
+    print(f"\nFP-Growth top 10 rules by lift:")
+    print(f"  {'Antecedent':<25} {'->':>3} {'Consequent':<20} {'Supp':>6} {'Conf':>6} {'Lift':>6}")
+    print("  " + "-" * 85)
+    for _, row in fp_rules_sorted.head(10).iterrows():
+        ant = ", ".join(sorted(row["antecedents"]))
+        con = ", ".join(sorted(row["consequents"]))
+        print(
+            f"  {ant:<25} {'->':>3} {con:<20} "
+            f"{row['support']:>6.3f} {row['confidence']:>6.3f} {row['lift']:>6.2f}"
+        )
+
+    # Validate: check that top rules match between implementations
+    our_top = set()
+    for r in rules_by_lift[:10]:
+        our_top.add(
+            (frozenset(r["antecedent"]), frozenset(r["consequent"]))
+        )
+    fp_top = set()
+    for _, row in fp_rules_sorted.head(10).iterrows():
+        fp_top.add(
+            (frozenset(row["antecedents"]), frozenset(row["consequents"]))
+        )
+    overlap = len(our_top & fp_top)
+    print(f"\n  Top-10 rule overlap: {overlap}/10")
+    print(f"  Implementations {'agree' if overlap >= 7 else 'diverge'}")
+else:
+    print("\nmlxtend not installed — skipping FP-Growth comparison")
+    print("Install with: pip install mlxtend")
 
 
-asyncio.run(test_monotonic_tightening())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Filter and rank top rules
+# ══════════════════════════════════════════════════════════════════════
+# Actionable rules must pass all three thresholds:
+#   - Support >= 0.03 (appears in 3%+ of transactions — not too rare)
+#   - Confidence >= 0.4 (40%+ conditional probability — reliable)
+#   - Lift > 1.5 (meaningfully above chance — surprising)
 
-# Clean up
-org_file.unlink()
+actionable_rules = [
+    r for r in rules
+    if r["support"] >= 0.03 and r["confidence"] >= 0.4 and r["lift"] > 1.5
+]
+actionable_rules.sort(key=lambda r: -r["lift"])
 
-print("\n✓ Exercise 5 complete — PACT governance setup with access control")
+print(f"\n=== Actionable Rules (supp>=0.03, conf>=0.4, lift>1.5) ===")
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert len(actionable_rules) > 0, \
+    "At least one rule should pass the actionable threshold (supp>=0.03, conf>=0.4, lift>1.5)"
+top_lift = actionable_rules[0]["lift"]
+assert top_lift > 1.5, f"Top rule by lift should exceed 1.5, got {top_lift:.2f}"
+# INTERPRETATION: The three-threshold filter implements actionability. Support
+# ensures we have enough data to trust the rule. Confidence ensures the pattern
+# is reliable. Lift ensures the association is meaningfully above chance —
+# lift=1.5 means the co-purchase is 50% more likely than chance, which is
+# enough to justify a shelf co-placement or bundled promotion.
+print("\n✓ Checkpoint 3 passed — actionable rules filtered by three-threshold criteria\n")
+
+print(f"Rules passing all thresholds: {len(actionable_rules)}")
+print(f"\n  {'Antecedent':<25} {'->':>3} {'Consequent':<20} {'Supp':>6} {'Conf':>6} {'Lift':>6}")
+print("  " + "-" * 85)
+for rule in actionable_rules[:15]:
+    ant = ", ".join(sorted(rule["antecedent"]))
+    con = ", ".join(sorted(rule["consequent"]))
+    print(
+        f"  {ant:<25} {'->':>3} {con:<20} "
+        f"{rule['support']:>6.3f} {rule['confidence']:>6.3f} {rule['lift']:>6.2f}"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Interpret rules with business meaning
+# ══════════════════════════════════════════════════════════════════════
+
+# Categorise product affinities
+CATEGORY_MAP = {
+    "bread": "breakfast", "butter": "breakfast", "eggs": "breakfast",
+    "milk": "dairy", "condensed_milk": "dairy",
+    "coffee": "beverage", "tea": "beverage", "soft_drink": "beverage",
+    "sugar": "pantry", "rice": "pantry", "cooking_oil": "pantry",
+    "soy_sauce": "pantry", "noodles": "pantry",
+    "chicken": "protein", "fish": "protein",
+    "beer": "alcohol", "wine": "alcohol",
+    "chips": "snack", "biscuits": "snack", "bananas": "fruit",
+    "shampoo": "personal_care", "soap": "personal_care",
+    "toothpaste": "personal_care",
+    "tissue": "household", "detergent": "household",
+}
+
+print(f"\n=== Business Interpretation ===")
+for i, rule in enumerate(actionable_rules[:10]):
+    ant_items = sorted(rule["antecedent"])
+    con_items = sorted(rule["consequent"])
+    ant_cats = set(CATEGORY_MAP.get(item, "other") for item in ant_items)
+    con_cats = set(CATEGORY_MAP.get(item, "other") for item in con_items)
+
+    # Determine relationship type
+    if ant_cats == con_cats:
+        rel_type = "within-category complement"
+    elif ant_cats & con_cats:
+        rel_type = "cross-category with overlap"
+    else:
+        rel_type = "cross-category association"
+
+    ant_str = " + ".join(ant_items)
+    con_str = " + ".join(con_items)
+
+    print(f"\n  Rule {i+1}: {ant_str} -> {con_str}")
+    print(f"    Lift={rule['lift']:.2f}, Conf={rule['confidence']:.1%}")
+    print(f"    Categories: {', '.join(ant_cats)} -> {', '.join(con_cats)}")
+    print(f"    Type: {rel_type}")
+    if rule["lift"] > 3.0:
+        print(f"    Action: STRONG pairing — co-locate on shelf, bundle discount")
+    elif rule["lift"] > 2.0:
+        print(f"    Action: Moderate pairing — cross-sell recommendation")
+    else:
+        print(f"    Action: Mild pairing — use in personalised suggestions")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 7: Engineer features from association rules for classification
+# ══════════════════════════════════════════════════════════════════════
+# Forward connection: rules become features for supervised models.
+#
+# Scenario: predict whether a customer is a "high-value" shopper
+# (basket size >= 6 items) using rule-based features.
+#
+# Feature engineering from rules:
+#   - For each strong rule (X -> Y), create a binary feature:
+#     "has_rule_X_Y" = 1 if customer bought items in X
+#   - Also create count features: how many strong rules are triggered
+#   - These capture co-purchase behaviour as structured features
+
+# Label: high-value shopper (basket >= 6 items)
+basket_sizes = np.array([len(t) for t in transactions])
+high_value_threshold = 6
+labels = (basket_sizes >= high_value_threshold).astype(int)
+
+print(f"\n=== Feature Engineering from Rules ===")
+print(f"Target: high-value shopper (basket >= {high_value_threshold} items)")
+print(f"Positive rate: {labels.mean():.1%}")
+
+# Baseline features: just product presence (one-hot)
+X_baseline = txn_df.to_numpy().astype(np.float64)
+
+# Rule-based features: encode top association rules as binary indicators
+top_rules_for_features = actionable_rules[:20]  # Use top 20 actionable rules
+
+rule_features: list[dict[str, int]] = []
+for txn in transactions:
+    txn_set = frozenset(txn)
+    row: dict[str, int] = {}
+
+    rules_triggered = 0
+    total_lift = 0.0
+
+    for idx, rule in enumerate(top_rules_for_features):
+        # Feature: antecedent is present in basket
+        ant_present = int(rule["antecedent"].issubset(txn_set))
+        # Feature: full rule (antecedent + consequent) is present
+        full_present = int(
+            (rule["antecedent"] | rule["consequent"]).issubset(txn_set)
+        )
+
+        ant_name = "_".join(sorted(rule["antecedent"]))
+        con_name = "_".join(sorted(rule["consequent"]))
+        row[f"rule_{idx}_ant_{ant_name}"] = ant_present
+        row[f"rule_{idx}_full_{ant_name}_to_{con_name}"] = full_present
+
+        if full_present:
+            rules_triggered += 1
+            total_lift += rule["lift"]
+
+    row["n_rules_triggered"] = rules_triggered
+    row["total_rule_lift"] = int(total_lift * 100)  # Scale for integer storage
+    rule_features.append(row)
+
+rule_df = pl.DataFrame(rule_features).fill_null(0)
+X_rules = rule_df.to_numpy().astype(np.float64)
+
+# Combined features: baseline + rule-based
+X_combined = np.hstack([X_baseline, X_rules])
+
+print(f"Baseline features: {X_baseline.shape[1]} (product presence)")
+print(f"Rule features: {X_rules.shape[1]} (from {len(top_rules_for_features)} rules)")
+print(f"Combined features: {X_combined.shape[1]}")
+
+# Show rule feature names
+rule_feature_names = rule_df.columns
+print(f"\nSample rule features:")
+for name in rule_feature_names[:8]:
+    print(f"  {name}")
+print(f"  ... and {len(rule_feature_names) - 8} more")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 8: Demonstrate rule features improve supervised model
+# ══════════════════════════════════════════════════════════════════════
+
+# Train/test split (same seed for fair comparison)
+X_base_train, X_base_test, y_train, y_test = train_test_split(
+    X_baseline, labels, test_size=0.3, random_state=42, stratify=labels
+)
+X_rules_train, X_rules_test, _, _ = train_test_split(
+    X_rules, labels, test_size=0.3, random_state=42, stratify=labels
+)
+X_comb_train, X_comb_test, _, _ = train_test_split(
+    X_combined, labels, test_size=0.3, random_state=42, stratify=labels
+)
+
+# Scale features
+scaler_base = StandardScaler()
+scaler_rules = StandardScaler()
+scaler_comb = StandardScaler()
+
+X_base_train_s = scaler_base.fit_transform(X_base_train)
+X_base_test_s = scaler_base.transform(X_base_test)
+X_rules_train_s = scaler_rules.fit_transform(X_rules_train)
+X_rules_test_s = scaler_rules.transform(X_rules_test)
+X_comb_train_s = scaler_comb.fit_transform(X_comb_train)
+X_comb_test_s = scaler_comb.transform(X_comb_test)
+
+# Model comparison: Logistic Regression
+print(f"\n=== Model Comparison: Logistic Regression ===")
+results: dict[str, dict[str, float]] = {}
+
+for name, X_tr, X_te in [
+    ("Baseline (products)", X_base_train_s, X_base_test_s),
+    ("Rules only", X_rules_train_s, X_rules_test_s),
+    ("Combined", X_comb_train_s, X_comb_test_s),
+]:
+    lr = LogisticRegression(max_iter=1000, random_state=42)
+    lr.fit(X_tr, y_train)
+    y_pred = lr.predict(X_te)
+    y_proba = lr.predict_proba(X_te)[:, 1]
+
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_proba)
+
+    results[f"LR: {name}"] = {"Accuracy": acc, "F1": f1, "AUC_ROC": auc}
+    print(f"  {name:<25} Acc={acc:.4f}  F1={f1:.4f}  AUC={auc:.4f}")
+
+# Model comparison: Random Forest
+print(f"\n=== Model Comparison: Random Forest ===")
+for name, X_tr, X_te in [
+    ("Baseline (products)", X_base_train, X_base_test),
+    ("Rules only", X_rules_train, X_rules_test),
+    ("Combined", X_comb_train, X_comb_test),
+]:
+    rf = RandomForestClassifier(
+        n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+    )
+    rf.fit(X_tr, y_train)
+    y_pred = rf.predict(X_te)
+    y_proba = rf.predict_proba(X_te)[:, 1]
+
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_proba)
+
+    results[f"RF: {name}"] = {"Accuracy": acc, "F1": f1, "AUC_ROC": auc}
+    print(f"  {name:<25} Acc={acc:.4f}  F1={f1:.4f}  AUC={auc:.4f}")
+
+# Feature importance from combined RF
+rf_combined = RandomForestClassifier(
+    n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+)
+rf_combined.fit(X_comb_train, y_train)
+importances = rf_combined.feature_importances_
+
+# Separate importances by feature type
+product_importance = importances[: X_baseline.shape[1]].sum()
+rule_importance = importances[X_baseline.shape[1] :].sum()
+total_importance = product_importance + rule_importance
+
+print(f"\n=== Feature Importance Attribution ===")
+print(f"Product features contribute: {product_importance / total_importance:.1%}")
+print(f"Rule features contribute:    {rule_importance / total_importance:.1%}")
+
+# Top individual features
+all_feature_names = all_items + list(rule_feature_names)
+top_features_idx = np.argsort(importances)[::-1][:15]
+print(f"\nTop 15 features (combined model):")
+for idx in top_features_idx:
+    fname = all_feature_names[idx] if idx < len(all_feature_names) else f"feature_{idx}"
+    print(f"  {fname:<50} {importances[idx]:.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Visualisation
+# ══════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+# Model comparison chart
+fig = viz.metric_comparison(results)
+fig.update_layout(title="Baseline vs Rule-Enhanced Model Comparison")
+fig.write_html("ex5_model_comparison.html")
+print(f"\nSaved: ex5_model_comparison.html")
+
+# Rule metrics scatter: support vs confidence, coloured by lift
+rules_for_plot = pl.DataFrame({
+    "support": [r["support"] for r in rules_by_lift[:100]],
+    "confidence": [r["confidence"] for r in rules_by_lift[:100]],
+    "lift": [r["lift"] for r in rules_by_lift[:100]],
+    "rule": [
+        f"{', '.join(sorted(r['antecedent']))} -> {', '.join(sorted(r['consequent']))}"
+        for r in rules_by_lift[:100]
+    ],
+})
+
+fig_scatter = viz.scatter(
+    rules_for_plot, x="support", y="confidence", color="lift"
+)
+fig_scatter.update_layout(title="Association Rules: Support vs Confidence (colour=Lift)")
+fig_scatter.write_html("ex5_rules_scatter.html")
+print("Saved: ex5_rules_scatter.html")
+
+# ROC curves for best models
+for name, X_tr, X_te in [
+    ("Baseline", X_base_train, X_base_test),
+    ("Combined", X_comb_train, X_comb_test),
+]:
+    rf = RandomForestClassifier(
+        n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+    )
+    rf.fit(X_tr, y_train)
+    y_proba = rf.predict_proba(X_te)[:, 1]
+    fig_roc = viz.roc_curve(y_test, y_proba)
+    fig_roc.update_layout(title=f"ROC: RF {name}")
+    fname = f"ex5_roc_{name.lower()}.html"
+    fig_roc.write_html(fname)
+    print(f"Saved: {fname}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Summary and forward connections
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"SUMMARY")
+print(f"{'=' * 70}")
+print(f"\n1. APRIORI from scratch: found {len(frequent_itemsets)} frequent itemsets,")
+print(f"   generated {len(rules)} rules at min_support={min_sup}, min_confidence={min_conf}")
+print(f"\n2. ACTIONABLE RULES: {len(actionable_rules)} rules pass all thresholds")
+print(f"   (support>=0.03, confidence>=0.4, lift>1.5)")
+
+lr_base_auc = results.get("LR: Baseline (products)", {}).get("AUC_ROC", 0)
+lr_comb_auc = results.get("LR: Combined", {}).get("AUC_ROC", 0)
+rf_base_auc = results.get("RF: Baseline (products)", {}).get("AUC_ROC", 0)
+rf_comb_auc = results.get("RF: Combined", {}).get("AUC_ROC", 0)
+
+print(f"\n3. FEATURE ENGINEERING from rules:")
+print(f"   LR:  Baseline AUC={lr_base_auc:.4f} -> Combined AUC={lr_comb_auc:.4f} ({lr_comb_auc - lr_base_auc:+.4f})")
+print(f"   RF:  Baseline AUC={rf_base_auc:.4f} -> Combined AUC={rf_comb_auc:.4f} ({rf_comb_auc - rf_base_auc:+.4f})")
+
+print(f"\n4. FORWARD CONNECTIONS:")
+print(f"   - Association rules discover co-occurrence features automatically")
+print(f"   - These features encode multi-item purchase patterns")
+print(f"   - Collaborative filtering (M4.7) extends this: learn latent factors")
+print(f"     from co-occurrence matrices via matrix factorisation")
+print(f"   - Neural networks (M4.8) generalise further: hidden layers learn")
+print(f"     arbitrary nonlinear feature combinations via backpropagation")
+
+print(f"\n5. KEY METRICS:")
+print(f"   Support    = frequency (how often does this pattern occur?)")
+print(f"   Confidence = conditional probability (given X, how likely Y?)")
+print(f"   Lift       = surprise factor (is this above what chance predicts?)")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+lr_base_auc = results.get("LR: Baseline (products)", {}).get("AUC_ROC", 0)
+lr_comb_auc = results.get("LR: Combined", {}).get("AUC_ROC", 0)
+rf_base_auc = results.get("RF: Baseline (products)", {}).get("AUC_ROC", 0)
+rf_comb_auc = results.get("RF: Combined", {}).get("AUC_ROC", 0)
+assert lr_base_auc > 0.5, "Baseline LR should beat random"
+assert rf_base_auc > 0.5, "Baseline RF should beat random"
+# Combined features should not significantly regress vs baseline
+assert lr_comb_auc >= lr_base_auc - 0.05, \
+    "Rule-enhanced LR should not significantly regress vs baseline"
+# INTERPRETATION: Rule-based features encode co-purchase patterns as explicit
+# signals. If the RF already captures these implicitly (via interaction terms),
+# the improvement will be modest. But for simpler models (LR), the rule features
+# provide structure the model cannot learn from raw product presence alone.
+print("\n✓ Checkpoint 4 passed — rule-enhanced model trained and compared\n")
+
+print("\n--- Exercise 5 complete --- association rules and market basket analysis")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ Apriori: anti-monotone pruning eliminates supersets of infrequent sets
+  ✓ Support, confidence, lift: the three axes of association rule quality
+  ✓ FP-Growth: compressed FP-tree, faster than Apriori for large datasets
+  ✓ Actionable rules: three-threshold filter (support, confidence, lift)
+  ✓ Feature engineering from rules: co-purchase patterns → supervised features
+
+  METRICS REMINDER:
+    Support    = how common (need enough data to trust)
+    Confidence = how reliable (conditional probability)
+    Lift       = how surprising (1.0 = independent, >1 = associated)
+
+  THE FORWARD CONNECTION:
+    Association rules    → discover co-occurrence features manually
+    Matrix factorisation → learn co-occurrence structure automatically (Ex 7)
+    Neural networks      → learn any nonlinear co-occurrence pattern (Ex 8)
+
+  NEXT: Exercise 6 moves to unstructured text. You'll derive TF-IDF from
+  scratch, apply NMF topic modelling, and use BERTopic (UMAP + HDBSCAN +
+  neural embeddings) to extract topics from Singapore news articles without
+  any labelled training data.
+""")
+print("═" * 70)

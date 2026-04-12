@@ -2,291 +2,266 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 8: Capstone — End-to-End Deep Learning Pipeline
+# MLFP05 — Exercise 8: PACT Governance Setup
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Complete DL pipeline from data to deployment: TrainingPipeline
-#   → ModelRegistry → OnnxBridge → InferenceServer.
+# OBJECTIVE: Define a realistic organization in YAML, compile it, and
+#   create a GovernanceEngine. Verify access decisions.
 #
 # TASKS:
-#   1. Load and preprocess image data
-#   2. Train CNN via TrainingPipeline
-#   3. Register in ModelRegistry with metrics
-#   4. Export to ONNX via OnnxBridge
-#   5. Deploy via InferenceServer and test predictions
-#   6. Compare ONNX inference speed vs original
+#   1. Define organization structure in YAML (3 departments, 8 roles)
+#   2. Compile organization with compile_org()
+#   3. Create GovernanceEngine
+#   4. Test access decisions: can_access(), explain_access()
+#   5. Verify monotonic tightening and fail-closed behavior
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-import pickle
-import time
+import tempfile
+from pathlib import Path
 
-import polars as pl
+from pact import GovernanceEngine, GovernanceContext
+from pact import Address, RoleEnvelope, TaskEnvelope
+from pact import compile_org, load_org_yaml
 
-from kailash.infrastructure import ConnectionManager
-from kailash_ml import (
-    InferenceServer,
-    ModelRegistry,
-    ModelVisualizer,
-    OnnxBridge,
-    TrainingPipeline,
-)
-from kailash_ml.types import MetricSpec
-
-from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load and preprocess image data
+# TASK 1: Define organization in YAML
 # ══════════════════════════════════════════════════════════════════════
 
-loader = MLFPDataLoader()
-data = loader.load("mlfp05", "fashion_mnist_sample.parquet")
+# TODO: Write a PACT organization YAML string with 3 departments and 6+ roles.
+# Hint: The org_yaml string must follow this structure:
+#
+#   organization:
+#     name: "MLFP Credit Bureau"
+#     version: "1.0"
+#     departments:
+#       - name: "data_science"
+#         description: "..."
+#         teams:
+#           - name: "modeling"
+#             roles:
+#               - name: "senior_data_scientist"
+#                 permissions:
+#                   data_access: ["credit_data", "feature_store", "experiment_logs"]
+#                   tools: ["training_pipeline", "hyperparameter_search", "model_registry"]
+#                   max_cost_usd: 50.0
+#                   can_deploy: false
+#               - name: "junior_data_scientist"
+#                 permissions:
+#                   data_access: ["credit_data", "feature_store"]
+#                   tools: ["training_pipeline"]
+#                   max_cost_usd: 10.0
+#                   can_deploy: false
+#           - name: "mlops"
+#             roles:
+#               - name: "ml_engineer"
+#                 permissions:
+#                   data_access: ["credit_data", "feature_store", "model_artifacts", "production_logs"]
+#                   tools: ["training_pipeline", "model_registry", "inference_server", "drift_monitor"]
+#                   max_cost_usd: 100.0
+#                   can_deploy: true
+#       - name: "risk"   (model_validator: can_approve_production: true, compliance_officer: read-only)
+#       - name: "operations"   (sre: can_deploy: true, customer_service: decisions only)
+#     policies:
+#       - name: "model_promotion"
+#         rule: "promote_to_production requires model_validator.can_approve_production"
+#       - name: "data_classification"
+#         classifications:
+#           credit_data: "confidential"
+#           audit_logs: "restricted"
+org_yaml = ____
 
-# TODO: Extract pixel column names (all columns except "label").
-# Hint: [c for c in data.columns if c != "label"]
-pixel_cols = ____
-n_samples = data.height
-
-# TODO: Normalize pixel values to [0, 1] by dividing by 255.
-# Hint: data.with_columns([(pl.col(c) / 255.0).alias(c) for c in pixel_cols])
-normalized = ____
-
-# Train/test split (80/20)
-n_train = int(n_samples * 0.8)
-# TODO: Split into train and test sets.
-# Hint: normalized[:n_train]
-train_data = ____
-# Hint: normalized[n_train:]
-test_data = ____
-
-print(f"=== Fashion-MNIST Pipeline ===")
-print(f"Total: {n_samples}, Train: {n_train}, Test: {n_samples - n_train}")
-print(f"Features: {len(pixel_cols)} pixels (28×28 flattened)")
-print(f"Classes: 10 (T-shirt, Trouser, Pullover, Dress, Coat,")
-print(f"          Sandal, Shirt, Sneaker, Bag, Ankle boot)")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Train CNN via TrainingPipeline
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Create a TrainingPipeline for neural network classification.
-# Hint: TrainingPipeline(
-#     model_type="neural_network",
-#     target="label",
-#     features=pixel_cols,
-#     config={
-#         "architecture": "cnn",
-#         "hidden_layers": [128, 64],
-#         "activation": "relu",
-#         "dropout": 0.3,
-#         "epochs": 10,
-#         "batch_size": 32,
-#         "learning_rate": 0.001,
-#         "optimizer": "adam",
-#     },
-# )
-pipeline = ____
-
-print(f"\n=== Training via TrainingPipeline ===")
-start_time = time.time()
-
-# TODO: Fit the pipeline on training data.
-# Hint: pipeline.fit(train_data)
-result = ____
-train_time = time.time() - start_time
-
-print(f"Training time: {train_time:.1f}s")
-print(f"Final training loss: {result.metrics.get('loss', 'N/A')}")
-print(f"Training accuracy: {result.metrics.get('accuracy', 'N/A')}")
-
-# TODO: Generate predictions on test data.
-# Hint: pipeline.predict(test_data)
-predictions = ____
-test_labels = test_data["label"].to_list()
-pred_labels = predictions["prediction"].to_list()
-
-# TODO: Count correct predictions.
-# Hint: sum(1 for p, t in zip(pred_labels, test_labels) if p == t)
-correct = ____
-# TODO: Compute test accuracy.
-# Hint: correct / len(test_labels)
-test_accuracy = ____
-print(f"Test accuracy: {test_accuracy:.4f}")
-
-# Visualize training curves
-viz = ModelVisualizer()
-# TODO: Plot training curves using ModelVisualizer.
-# Hint: viz.plot_training_curves(result.history)
-fig = ____
-fig.write_html("capstone_training_curves.html")
-print(f"Training curves saved to capstone_training_curves.html")
+# Write to temp file
+org_file = Path(tempfile.mktemp(suffix=".yaml"))
+org_file.write_text(org_yaml)
+print(f"=== Organization YAML ===")
+print(f"Departments: 3 (data_science, risk, operations)")
+print(f"Roles: 6 unique roles across 5 teams")
+print(f"Written to: {org_file}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Register in ModelRegistry
+# TASK 2: Compile organization
 # ══════════════════════════════════════════════════════════════════════
 
+# TODO: Load the YAML file and compile it.
+# Hint: org = load_org_yaml(str(org_file))
+#   compiled = compile_org(org)
+#   compiled has: .valid (bool), .errors (list), .warnings (list),
+#                 .departments (list), .total_roles (int), .name (str)
+org = ____
+compiled = ____
 
-async def register_model():
-    # TODO: Create a ConnectionManager for SQLite.
-    # Hint: ConnectionManager("sqlite:///capstone_models.db")
-    conn = ____
-    await conn.initialize()
-
-    # TODO: Create a ModelRegistry with the connection.
-    # Hint: ModelRegistry(conn)
-    registry = ____
-    await registry.initialize()
-
-    # TODO: Register the model with name, artifact, and metrics.
-    # Hint: registry.register_model(
-    #     name="fashion_mnist_cnn",
-    #     artifact=pickle.dumps(result.model),
-    #     metrics=[
-    #         MetricSpec(name="test_accuracy", value=test_accuracy),
-    #         MetricSpec(name="train_time_seconds", value=train_time),
-    #         MetricSpec(name="parameters", value=result.metrics.get("n_params", 0)),
-    #     ],
-    # )
-    version = await ____
-
-    # TODO: Promote the model to production stage.
-    # Hint: registry.promote_model(name="fashion_mnist_cnn", version=version.version, target_stage="production")
-    await ____
-
-    print(f"\n=== ModelRegistry ===")
-    print(f"Registered: fashion_mnist_cnn v{version.version}")
-    print(f"Stage: production")
-    print(f"Metrics: accuracy={test_accuracy:.4f}, train_time={train_time:.1f}s")
-
-    return registry, version
-
-
-registry, model_version = asyncio.run(register_model())
+print(f"\n=== Compiled Organization ===")
+print(f"Valid: {compiled.valid}")
+if compiled.errors:
+    print(f"Errors: {compiled.errors}")
+if compiled.warnings:
+    print(f"Warnings: {compiled.warnings}")
+print(f"Departments: {[d.name for d in compiled.departments]}")
+print(f"Total roles: {compiled.total_roles}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Export to ONNX via OnnxBridge
+# TASK 3: Create GovernanceEngine
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def export_onnx():
-    # TODO: Create an OnnxBridge instance.
-    # Hint: OnnxBridge()
-    bridge = ____
+async def setup_governance():
+    # TODO: Create a GovernanceEngine from the compiled organization.
+    # Hint: engine = GovernanceEngine(compiled)
+    #   The engine is fail-closed: any error during access check → DENY
+    engine = ____
 
-    # TODO: Export the trained model to ONNX format.
-    # Hint: bridge.export(model=result.model, input_shape=(1, len(pixel_cols)), output_path="fashion_mnist_cnn.onnx")
-    onnx_path = ____
+    print(f"\n=== GovernanceEngine ===")
+    print(f"Organization: {compiled.name}")
+    print(f"Enforcement mode: fail-closed (deny on error)")
 
-    # Validate ONNX output matches original model
-    test_sample = test_data.select(pixel_cols).row(0)
-    # TODO: Validate the ONNX model against expected output.
-    # Hint: bridge.validate(onnx_path, test_data=[list(test_sample)], expected=[pred_labels[:1]])
-    metrics = ____
-
-    print(f"\n=== ONNX Export ===")
-    print(f"Path: {onnx_path}")
-    print(f"Validation: {metrics}")
-    print(f"ONNX is platform-agnostic: deploy to mobile, edge, browser, or server")
-
-    return bridge, onnx_path
+    return engine
 
 
-bridge, onnx_path = asyncio.run(export_onnx())
+engine = asyncio.run(setup_governance())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Deploy via InferenceServer
+# TASK 4: Test access decisions
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def deploy_and_test():
-    # TODO: Create an InferenceServer with the ONNX model.
-    # Hint: InferenceServer(model_path=onnx_path, port=8090)
-    server = ____
+async def test_access():
+    # TODO: Use Address to create D/T/R addresses, then call engine.can_access()
+    # and engine.explain_access() to test access control decisions.
+    #
+    # Hint: Address("department", "team", "role") — matches the YAML structure.
+    #   decision = await engine.can_access(address, resource_name)  → bool
+    #   explanation = await engine.explain_access(address, resource_name)
+    #     explanation has: .decision (str), .reason (str), .chain (list)
+    #
+    # Test cases to verify:
+    #   senior_data_scientist → "credit_data": ALLOW (in permissions)
+    #   junior_data_scientist → "experiment_logs": DENY (not in permissions)
+    #   ml_engineer → "production_logs": ALLOW
+    #   model_validator → "audit_logs": ALLOW
+    #   customer_service → "credit_data": DENY (can only access credit_decisions)
+    #   customer_service → "credit_decisions": ALLOW
 
-    print(f"\n=== InferenceServer Deployment ===")
-    await server.start()
-    print(f"Server running on port 8090")
+    # TODO: Create Address objects for each role.
+    # Hint: Address("data_science", "modeling", "senior_data_scientist")
+    senior_ds = ____
+    junior_ds = ____
+    ml_eng = ____
+    validator = ____
+    cust_svc = ____
 
-    # Test predictions
-    class_names = [
-        "T-shirt",
-        "Trouser",
-        "Pullover",
-        "Dress",
-        "Coat",
-        "Sandal",
-        "Shirt",
-        "Sneaker",
-        "Bag",
-        "Ankle boot",
+    test_cases = [
+        (senior_ds, "credit_data", True, "Senior DS can access credit data"),
+        (
+            junior_ds,
+            "experiment_logs",
+            False,
+            "Junior DS cannot access experiment logs",
+        ),
+        (ml_eng, "production_logs", True, "ML Engineer can access production logs"),
+        (validator, "audit_logs", True, "Validator can access audit logs"),
+        (
+            cust_svc,
+            "credit_data",
+            False,
+            "Customer service cannot access raw credit data",
+        ),
+        (cust_svc, "credit_decisions", True, "Customer service can access decisions"),
     ]
 
-    for i in range(3):
-        sample = list(test_data.select(pixel_cols).row(i))
-        # TODO: Run a prediction through the inference server.
-        # Hint: await server.predict(sample)
-        prediction = ____
-        true_label = int(test_data["label"][i])
-        pred_class = prediction.get("class", prediction.get("prediction", 0))
-        print(
-            f"  Sample {i+1}: true={class_names[true_label]}, "
-            f"pred={class_names[int(pred_class)]}"
-        )
+    print(f"\n=== Access Control Tests ===")
+    for address, resource, expected, description in test_cases:
+        # TODO: Call engine.can_access() to get the access decision.
+        # Hint: decision = await engine.can_access(address, resource)  → bool
+        decision = await ____
+        status = "✓" if decision == expected else "✗ UNEXPECTED"
+        print(f"  {status} {description}")
+        print(f"     {address} → {resource}: {'ALLOW' if decision else 'DENY'}")
 
-    await server.stop()
-    print(f"Server stopped.")
+    # Explain access
+    print(f"\n=== Access Explanations ===")
+    # TODO: Call engine.explain_access() to get a detailed explanation.
+    # Hint: explanation = await engine.explain_access(junior_ds, "production_logs")
+    #   explanation.decision, explanation.reason, explanation.chain
+    explanation = await ____
+    print(f"Junior DS → production_logs:")
+    print(f"  Decision: {explanation.decision}")
+    print(f"  Reason: {explanation.reason}")
+    print(f"  Chain: {explanation.chain}")
 
-    return server
 
-
-server = asyncio.run(deploy_and_test())
+asyncio.run(test_access())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Compare inference speed
+# TASK 5: Monotonic tightening and fail-closed
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Inference Speed Comparison ===")
 
-# Original model inference
-n_test = 100
-# TODO: Extract test samples as lists of pixel values.
-# Hint: [list(test_data.select(pixel_cols).row(i)) for i in range(n_test)]
-test_samples = ____
+async def test_monotonic_tightening():
+    """
+    Monotonic tightening: child envelopes CANNOT exceed parent.
+    If parent budget is $50, child cannot have $100.
+    """
+    # TODO: Create a RoleEnvelope and a TaskEnvelope that tries to exceed it.
+    # Hint: RoleEnvelope(
+    #   address=Address("data_science", "modeling", "senior_data_scientist"),
+    #   max_cost_usd=50.0,
+    #   data_access=["credit_data", "feature_store"],
+    # )
+    # TaskEnvelope(
+    #   parent=parent_envelope,
+    #   max_cost_usd=100.0,  # will be clamped to 50 (parent's limit)
+    #   data_access=["credit_data", "feature_store", "production_logs"],  # production_logs removed
+    # )
+    # Check: child_task.effective_max_cost_usd and child_task.effective_data_access
+    parent_envelope = ____
+    child_task = ____
 
-start = time.time()
-for sample in test_samples:
-    pipeline.predict(
-        pl.DataFrame({"label": [0], **{c: [v] for c, v in zip(pixel_cols, sample)}})
-    )
-original_time = time.time() - start
+    print(f"\n=== Monotonic Tightening ===")
+    print(f"Parent budget: ${parent_envelope.max_cost_usd}")
+    print(f"Child requested: ${100.0}")
+    print(f"Child actual:   ${child_task.effective_max_cost_usd}")
+    print(f"  → Tightened to parent's limit")
+    print(f"\nParent data access: {parent_envelope.data_access}")
+    print(f"Child requested:    {['credit_data', 'feature_store', 'production_logs']}")
+    print(f"Child actual:       {child_task.effective_data_access}")
+    print(f"  → production_logs removed (not in parent's scope)")
 
-print(
-    f"Original model: {n_test} predictions in {original_time:.3f}s "
-    f"({original_time/n_test*1000:.1f}ms/prediction)"
-)
-print(f"ONNX model: typically 2-5× faster due to graph optimizations")
-print(f"\nONNX advantages:")
-print(f"  - Graph-level optimizations (operator fusion, constant folding)")
-print(f"  - Platform-native execution (CPU vectorization, GPU kernels)")
-print(f"  - No Python overhead at inference time")
-print(f"  - Single file deployment (model + weights in one .onnx)")
+    print(f"\n=== Fail-Closed Behavior ===")
+    print(f"If GovernanceEngine encounters an error during access check:")
+    print(f"  → Access is DENIED (not allowed)")
+    print(f"  → Error is logged to AuditChain")
+    print(f"  → This prevents privilege escalation through bugs")
 
-print(f"\n=== Full Pipeline Summary ===")
-print(f"1. Data: {n_samples} Fashion-MNIST images → normalized")
-print(f"2. Training: TrainingPipeline (CNN, Adam, dropout=0.3)")
-print(f"3. Registry: ModelRegistry (versioned, promoted to production)")
-print(f"4. Export: OnnxBridge (validated, portable)")
-print(f"5. Deploy: InferenceServer (HTTP endpoint, batch support)")
-print(f"This is the Kailash DL lifecycle — from pixels to production.")
+    # TODO: Create a GovernanceContext using engine.create_context() and demonstrate
+    # that it is frozen (cannot be modified).
+    # Hint: ml_eng = Address("data_science", "mlops", "ml_engineer")
+    #   context = await engine.create_context(ml_eng)
+    #   context.max_cost_usd, context.data_access, context.can_deploy
+    ml_eng = Address("data_science", "mlops", "ml_engineer")
+    context = await ____
+    print(f"\n=== Frozen GovernanceContext ===")
+    print(f"Context for ML Engineer:")
+    print(f"  max_cost_usd: {context.max_cost_usd}")
+    print(f"  data_access: {context.data_access}")
+    print(f"  can_deploy: {context.can_deploy}")
+    print(f"\n  context.max_cost_usd = 999  # Raises FrozenInstanceError!")
+    print(f"  → Agents RECEIVE governance but CANNOT modify it")
 
-print("\n✓ Exercise 8 complete — end-to-end DL pipeline with Kailash")
+
+asyncio.run(test_monotonic_tightening())
+
+# Clean up
+org_file.unlink()
+
+print("\n✓ Exercise 3 complete — PACT governance setup with access control")

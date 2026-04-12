@@ -2,258 +2,188 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP06 — Exercise 7: MCP Integration
+# MLFP06 — Exercise 7: AI Governance with PACT
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build an MCP server exposing kailash-ml tools, then connect
-#   an agent to use those tools for ML operations.
+# OBJECTIVE: Define an organization in YAML with D/T/R roles, compile
+#   with GovernanceEngine, enforce operating envelopes, and verify access.
 #
 # TASKS:
-#   1. Create MCPServer with tool definitions
-#   2. Expose DataExplorer as MCP tool
-#   3. Expose TrainingPipeline as MCP tool
-#   4. Connect ReActAgent to MCP server
-#   5. Run agent-driven ML workflow via MCP
+#   1. Write YAML organization definition (departments, roles, agents)
+#   2. Compile with GovernanceEngine
+#   3. Define operating envelopes (budget, tool access, data clearance)
+#   4. Test access control decisions
+#   5. Generate governance report with decision explanations
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 
-import polars as pl
 from dotenv import load_dotenv
 
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_ml import DataExplorer, TrainingPipeline
-from kailash_mcp import MCPServer
+from kailash_pact import GovernanceEngine
 
-from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Write YAML organization definition
+# ══════════════════════════════════════════════════════════════════════
+
+# TODO: Write a PACT organization YAML definition.
+# Include: organization (name, jurisdiction), departments with agents (id, role, clearance),
+# delegations with D/T/R chains and envelopes, and global operating_envelopes.
+# Hint: Define at least 3 departments, 5+ agents, 4+ delegations with budget/tool/clearance limits.
+org_yaml = """
+____
+"""
+
+# Write YAML to temp file
+org_yaml_path = os.path.join(tempfile.gettempdir(), "sg_fintech_org.yaml")
+with open(org_yaml_path, "w") as f:
+    f.write(org_yaml)
+
+print(f"=== Organization Definition ===")
+print(f"Organization: SG FinTech AI Division")
+print(f"Departments: ML Engineering, Risk & Compliance, Customer Intelligence")
+print(f"Agents: 5 (analyst, engineer, operator, 2 auditors, customer agent)")
+print(f"Delegations: 4 D/T/R chains")
+print(f"YAML written to: {org_yaml_path}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Create MCPServer with tool definitions
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Create an MCPServer with name "kailash-ml-tools"
-server = MCPServer(______)
-
-print(f"=== MCP Server: kailash-ml-tools ===")
-print(f"MCP (Model Context Protocol) exposes tools as a standard interface.")
-print(f"Any MCP-compatible agent can discover and call these tools.")
-print(f"This decouples the agent from the tool implementation.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Expose DataExplorer as MCP tool
-# ══════════════════════════════════════════════════════════════════════
-
-loader = MLFPDataLoader()
-reports = loader.load("mlfp06", "sg_company_reports.parquet")
-
-# Global data context for tools
-_data_cache: dict[str, pl.DataFrame] = {}
-
-
-@server.tool()
-async def explore_dataset(dataset_name: str) -> str:
-    """Load a dataset and return a statistical summary using DataExplorer.
-
-    Args:
-        dataset_name: Name of the dataset to explore (e.g., 'sg_company_reports')
-    """
-    df = loader.load("mlfp06", f"{dataset_name}.parquet")
-    _data_cache[dataset_name] = df
-
-    explorer = DataExplorer()
-    profile = await explorer.profile(df)
-
-    summary = f"Dataset: {dataset_name}\n"
-    summary += f"Shape: {df.shape[0]} rows × {df.shape[1]} columns\n"
-    summary += f"Columns: {', '.join(df.columns)}\n"
-    summary += f"Numeric columns: {profile.get('numeric_columns', [])}\n"
-    summary += f"Missing values: {profile.get('missing_summary', 'none')}\n"
-    summary += f"Sample:\n{df.head(3)}"
-    return summary
-
-
-@server.tool()
-async def get_column_stats(dataset_name: str, column: str) -> str:
-    """Get detailed statistics for a specific column.
-
-    Args:
-        dataset_name: Name of the loaded dataset
-        column: Column name to analyze
-    """
-    if dataset_name not in _data_cache:
-        return f"Dataset '{dataset_name}' not loaded. Call explore_dataset first."
-
-    df = _data_cache[dataset_name]
-    if column not in df.columns:
-        return f"Column '{column}' not found. Available: {df.columns}"
-
-    col = df[column]
-    if col.dtype in [pl.Float64, pl.Int64, pl.Float32, pl.Int32]:
-        stats = {
-            "mean": col.mean(),
-            "std": col.std(),
-            "min": col.min(),
-            "max": col.max(),
-            "median": col.median(),
-            "null_count": col.null_count(),
-        }
-    else:
-        value_counts = col.value_counts().sort("count", descending=True).head(10)
-        stats = {
-            "type": str(col.dtype),
-            "unique": col.n_unique(),
-            "null_count": col.null_count(),
-            "top_values": value_counts.to_dicts(),
-        }
-
-    return str(stats)
-
-
-print(f"\n=== MCP Tools Registered ===")
-print(f"  explore_dataset(dataset_name) → DataExplorer profile")
-print(f"  get_column_stats(dataset_name, column) → Column statistics")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Expose TrainingPipeline as MCP tool
+# TASK 2: Compile with GovernanceEngine
 # ══════════════════════════════════════════════════════════════════════
 
 
-@server.tool()
-async def train_classifier(
-    dataset_name: str,
-    target: str,
-    features: str,
-    algorithm: str = "gradient_boosting",
-) -> str:
-    """Train a classification model using TrainingPipeline.
+async def compile_org():
+    # TODO: Create GovernanceEngine and compile the org YAML.
+    # Hint: GovernanceEngine(), engine.compile_org(org_yaml_path)
+    engine = ____
+    org = ____
 
-    Args:
-        dataset_name: Name of the loaded dataset
-        target: Target column name
-        features: Comma-separated feature column names
-        algorithm: Algorithm to use (gradient_boosting, random_forest, logistic_regression)
-    """
-    if dataset_name not in _data_cache:
-        return f"Dataset '{dataset_name}' not loaded."
+    print(f"\n=== Compiled Organization ===")
+    print(f"Agents registered: {org.n_agents}")
+    print(f"Delegations: {org.n_delegations}")
+    print(f"Departments: {org.n_departments}")
+    print(f"Compilation validates:")
+    print(f"  - Every agent has a responsible delegation chain")
+    print(f"  - No circular delegation (A→B→A)")
+    print(f"  - Clearance levels are monotonically decreasing down chains")
+    print(f"  - Budget envelopes don't exceed parent limits")
 
-    df = _data_cache[dataset_name]
-    feature_list = [f.strip() for f in features.split(",")]
-
-    # TODO: Create TrainingPipeline with model_type, target, features, and config dict
-    pipeline = TrainingPipeline(____)
-
-    n_train = int(df.height * 0.8)
-    result = pipeline.fit(df[:n_train])
-
-    # Evaluate
-    predictions = pipeline.predict(df[n_train:])
-    y_true = df[n_train:][target].to_list()
-    y_pred = predictions["prediction"].to_list()
-    accuracy = sum(1 for t, p in zip(y_true, y_pred) if t == p) / len(y_true)
-
-    return (
-        f"Model trained: {algorithm}\n"
-        f"Training metrics: {result.metrics}\n"
-        f"Test accuracy: {accuracy:.4f}\n"
-        f"Features used: {feature_list}"
-    )
+    return engine, org
 
 
-@server.tool()
-async def list_datasets() -> str:
-    """List all currently loaded datasets and their shapes."""
-    if not _data_cache:
-        return "No datasets loaded. Use explore_dataset to load one."
-    return "\n".join(
-        f"  {name}: {df.shape[0]} rows × {df.shape[1]} columns"
-        for name, df in _data_cache.items()
-    )
-
-
-print(f"  train_classifier(dataset, target, features, algo) → Training results")
-print(f"  list_datasets() → Currently loaded datasets")
+engine, org = asyncio.run(compile_org())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Connect ReActAgent to MCP server
+# TASK 3: Define operating envelopes
 # ══════════════════════════════════════════════════════════════════════
 
-# Get tools from MCP server for agent use
-mcp_tools = server.get_tools()
-
-
-async def agent_with_mcp():
-    # TODO: Create ReActAgent with model, mcp_tools, and max_llm_cost_usd=3.0
-    agent = ReActAgent(____)
-
-    print(f"\n=== ReActAgent + MCP ===")
-    print(f"Agent has access to {len(mcp_tools)} MCP tools")
-    print(f"The agent discovers tools at runtime — no hardcoded tool knowledge.")
-
-    return agent
-
-
-agent = asyncio.run(agent_with_mcp())
+print(f"\n=== Operating Envelopes ===")
+print(f"Each agent operates within strict bounds:")
+print(f"\n  data_analyst:")
+print(f"    Budget: N/A (no delegation for spending)")
+print(f"    Tools: read-only data access")
+print(f"    Clearance: internal (no PII)")
+print(f"\n  model_trainer:")
+print(f"    Budget: $100/task")
+print(f"    Tools: train, evaluate, read")
+print(f"    Clearance: confidential")
+print(f"\n  risk_assessor:")
+print(f"    Budget: $200/task")
+print(f"    Tools: read, audit, report")
+print(f"    Clearance: restricted (highest)")
+print(f"\n  customer_agent:")
+print(f"    Budget: $5/task")
+print(f"    Tools: answer, search")
+print(f"    Clearance: public (lowest)")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Run agent-driven ML workflow via MCP
+# TASK 4: Test access control decisions
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def run_ml_workflow():
-    agent = ReActAgent(
-        model=model,
-        tools=mcp_tools,
-        max_llm_cost_usd=5.0,
-    )
+async def test_access():
+    print(f"\n=== Access Control Tests ===")
 
-    print(f"\n=== Agent-Driven ML Workflow ===")
-    print(f"The agent will autonomously:")
-    print(f"  1. Explore the dataset")
-    print(f"  2. Identify suitable features and target")
-    print(f"  3. Train a classifier")
-    print(f"  4. Report results")
+    test_cases = [
+        # (agent, resource, action, expected_allowed)
+        ("model_trainer", "training_data", "read", True),
+        ("model_trainer", "production_model", "deploy", False),  # Not in allowed_tools
+        ("customer_agent", "customer_faq", "search_faq", True),
+        ("customer_agent", "training_data", "read_data", False),  # Clearance too low
+        ("risk_assessor", "model_audit_log", "audit_model", True),
+        (
+            "risk_assessor",
+            "production_model",
+            "deploy_model",
+            False,
+        ),  # Not in allowed_tools
+        ("model_deployer", "production_model", "deploy_model", True),
+        ("data_analyst", "restricted_data", "read", False),  # Clearance too low
+    ]
 
-    # TODO: Run the agent with an instruction to explore, train, and report
-    result = await agent.run(____)
+    for agent_id, resource, action, expected in test_cases:
+        # TODO: Check access using the governance engine.
+        # Hint: engine.check_access(agent_id=..., resource=..., action=...)
+        decision = ____
+        status = "ALLOWED" if decision.allowed else "DENIED"
+        match = "✓" if decision.allowed == expected else "✗ UNEXPECTED"
+        print(f"  {match} {agent_id} → {action}({resource}): {status}")
+        if not decision.allowed:
+            print(f"      Reason: {decision.reason}")
 
-    print(f"\n--- Agent Result ---")
-    print(f"Final answer: {str(result)[:500]}...")
-
-    # Inspect reasoning trace
-    if hasattr(result, "trace"):
-        print(f"\n--- Reasoning Trace ---")
-        for step in result.trace:
-            print(f"  Thought: {step.get('thought', '')[:100]}...")
-            print(f"  Action:  {step.get('action', '')}")
-            print(f"  Result:  {str(step.get('observation', ''))[:100]}...")
-            print()
-
-    return result
+    return True
 
 
-workflow_result = asyncio.run(run_ml_workflow())
+asyncio.run(test_access())
 
-print(f"\n=== MCP Architecture Summary ===")
-print(f"MCP separates tool providers from tool consumers:")
-print(f"  Server: defines tools (explore, train, predict)")
-print(f"  Client: agent discovers and uses tools at runtime")
-print(f"  Protocol: standard JSON-RPC over stdio/SSE/HTTP")
-print(f"Benefits:")
-print(f"  - Tools are reusable across different agents")
-print(f"  - Agents don't need to know implementation details")
-print(f"  - New tools can be added without changing agent code")
-print(f"  - Security: tool access can be gated per agent")
 
-print("\n✓ Exercise 7 complete — MCP server with kailash-ml tools + ReActAgent")
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Generate governance report
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def generate_report():
+    print(f"\n=== Governance Report ===")
+
+    # TODO: Check a specific access decision and trace the decision chain.
+    # Hint: engine.check_access(agent_id="model_trainer", resource="training_data", action="read")
+    decision = ____
+
+    print(f"Decision trace for model_trainer → read(training_data):")
+    print(f"  1. Agent: model_trainer (role=engineer, clearance=confidential)")
+    print(f"  2. Delegation: chief_ml_officer → model_training → model_trainer")
+    print(f"  3. Envelope check:")
+    print(f"     - Tool 'read_data' in allowed_tools: YES")
+    print(f"     - Data clearance 'confidential' ≤ allowed 'confidential': YES")
+    print(f"     - Budget consumed < $100 limit: YES")
+    print(f"  4. Decision: {decision.allowed}")
+    print(f"  5. Audit: logged to immutable audit chain")
+
+    print(f"\nD/T/R Accountability Grammar:")
+    print(f"  D (Delegator): chief_ml_officer — authorizes the task")
+    print(f"  T (Task): model_training — the bounded scope of work")
+    print(f"  R (Responsible): model_trainer — executes within envelope")
+    print(f"  If model_trainer exceeds envelope → GovernanceEngine blocks")
+    print(f"  If task fails → accountability traces to chief_ml_officer")
+
+    print(f"\nRegulatory mapping:")
+    print(f"  EU AI Act: operating envelopes satisfy Art. 9 (risk management)")
+    print(f"  AI Verify: D/T/R chains satisfy accountability principle")
+    print(f"  MAS TRM: audit trails satisfy record-keeping requirements")
+
+    return decision
+
+
+asyncio.run(generate_report())
+
+print("\n✓ Exercise 6 complete — PACT governance with D/T/R and operating envelopes")

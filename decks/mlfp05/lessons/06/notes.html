@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lesson 5.6 — Speaker Notes | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+  <style>.slide-block{margin:1.5em 0;padding:18px 22px;background:var(--mlfp-bg-alt);border-left:4px solid var(--mlfp-primary);border-radius:6px}.slide-block .meta{font-size:.85em;color:var(--mlfp-text-muted);display:flex;gap:16px;margin-bottom:8px}.slide-block .meta .badge{background:var(--mlfp-primary);color:white;padding:2px 10px;border-radius:12px;font-weight:600}.slide-block h3{margin:.2em 0 .6em;font-size:1.15em}.audience-cue{margin-top:12px;padding:8px 14px;font-size:.92em;border-radius:4px}.audience-cue.beginner{background:rgba(34,197,94,.08);border-left:3px solid var(--mlfp-foundations)}.audience-cue.expert{background:rgba(139,92,246,.08);border-left:3px solid var(--mlfp-advanced)}.transition{margin-top:12px;padding-top:10px;border-top:1px dashed var(--mlfp-border);font-style:italic;color:var(--mlfp-text-muted);font-size:.92em}</style>
+</head>
+<body>
+<nav class="top-nav"><span class="brand">MLFP — Module 5 — Speaker Notes</span><span><a href="../../index.html">Module Index</a> <a href="textbook.html">Textbook</a> <a href="slides.html">Slides</a></span></nav>
+<main class="textbook">
+<h1 class="lesson-title"><span class="lesson-number">Speaker Notes — Lesson 5.6</span>Graph Neural Networks</h1>
+<p class="lead">Total time: ~75 minutes &nbsp;·&nbsp; 13 slides &nbsp;·&nbsp; ~5–6 min per slide</p>
+<p>GNNs are the least familiar architecture for most students. Spend extra time on the message passing concept (Slide 3) — once they get that, GCN/GraphSAGE/GAT are just different aggregation strategies. The torch_geometric code (Slide 8) is the practical anchor. The consolidation table (Slide 11) is critical — it is the architecture selection guide they will use for the rest of the course.</p>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 1</span><span>~2 min</span><span>Title</span></div><h3>Graph Neural Networks</h3><p>Frame: "We have done grids (CNNs), sequences (RNNs/Transformers), and generation (VAE/GAN/Diffusion). Today: graphs. Not every dataset is a table or a sequence. Social networks, molecules, supply chains — these are graphs. GNNs are the architecture for graph-structured data."</p><div class="transition">→ "Why graphs matter."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 2</span><span>~4 min</span><span>Why graphs</span></div><h3>Why graphs?</h3><p>Singapore context: "The MRT network is a graph — stations are nodes, tracks are edges. DBS's fraud detection models transactions as a graph — accounts are nodes, transfers are edges. NUS researchers model proteins as graphs — atoms are nodes, bonds are edges. In every case, the relationships between entities carry information that a flat table loses."</p><div class="audience-cue beginner"><strong>For beginners:</strong> "Think of a social network. Knowing who is friends with whom tells you more about a person than their profile alone. That friendship information is what the graph captures."</div><div class="transition">→ "The key idea: message passing."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 3</span><span>~6 min</span><span>Message passing</span></div><h3>Message passing</h3><p>This is the core concept. Spend time here. "Each node looks at its neighbours, collects their features, aggregates them (sum, mean, or attention-weighted), and updates its own representation. One round of this is one GNN layer. Two layers means each node has information from nodes two hops away."</p><div class="audience-cue beginner"><strong>Gossip analogy:</strong> "Imagine a party. Each person talks to their friends and updates their understanding. After one round, you know what your friends know. After two rounds, you know what your friends' friends know. After three rounds — the whole room."</div><div class="transition">→ "GCN formalises this."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 4–6</span><span>~12 min</span><span>GCN, GraphSAGE, GAT</span></div><h3>Three architectures</h3><p>Walk each in 4 minutes. GCN: fixed degree-normalised aggregation — simple, effective, requires all nodes at training. GraphSAGE: samples neighbours, aggregates with mean/LSTM/max — scales to large graphs, handles unseen nodes. GAT: learned attention weights per neighbour pair — most flexible, connects to Transformer attention.</p><div class="transition">→ "Three task types."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 7–9</span><span>~12 min</span><span>Tasks, code, vis</span></div><h3>Tasks, code, and visualisation</h3><p>Walk the task table (node/graph/link), then the PyG code (GCNConv is one line per layer), then the embedding visualisation. "If the GCN learned good representations, you will see nodes of the same class clustering together in t-SNE — without any labels used for the projection."</p><div class="transition">→ "Mistakes."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slides 10–11</span><span>~6 min</span><span>Mistakes + consolidation</span></div><h3>Mistakes and architecture selection</h3><p>Walk mistakes. Then the consolidation table — this is the architecture selection guide for M5. "Images: CNN or ViT. Sequences: RNN or Transformer. Generation: VAE/GAN/Diffusion. Graphs: GCN/GraphSAGE/GAT. Tabular: gradient boosting (not DL). This table guides every architecture decision."</p><div class="transition">→ "Recap."</div></div>
+
+<div class="slide-block"><div class="meta"><span class="badge">Slide 12</span><span>~2 min</span><span>Recap</span></div><h3>What you can now do</h3><p>Checklist. Preview 5.7: "Transfer learning — instead of training from scratch, start with a pre-trained model and fine-tune. This works spectacularly for images (ResNet) and text (BERT)."</p><div class="transition">→ End of lesson.</div></div>
+
+<nav class="lesson-nav"><a href="../05/notes.html" class="prev"><span class="label">← Previous</span>5.5 Speaker Notes</a><a href="../07/notes.html" class="next"><span class="label">Next →</span>5.7 Speaker Notes</a></nav>
+</main>
+</body>
+</html>

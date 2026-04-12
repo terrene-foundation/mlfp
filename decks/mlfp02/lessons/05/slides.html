@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.5 — Linear Regression | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 460px; }
+    .reveal pre { font-size: 0.5em; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 2 · Lesson 2.5</p>
+  <h1>Linear Regression</h1>
+  <p style="font-size: 0.7em; color: #64748B;">
+    OLS · $(X^\top X)^{-1} X^\top y$ · $t$-stats · $R^2$ · $F$-stat · Dummy encoding
+  </p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong>⏱ 60 minutes</strong> · <strong>Prereq:</strong> 2.2, 2.3
+  </div>
+</section>
+
+<section>
+  <h2>The model</h2>
+  \[ y_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \cdots + \beta_k x_{ik} + \varepsilon_i \]
+  <ul style="font-size: 0.9em;">
+    <li>$\beta_0$: expected $y$ when all predictors are zero</li>
+    <li>$\beta_j$: change in $y$ per unit change in $x_j$, holding other predictors constant</li>
+    <li>$\varepsilon_i$: unobserved error; captures what linear combination can't</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The picture</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+      <line x1="60" y1="220" x2="680" y2="220" stroke="#94A3B8"/>
+      <line x1="60" y1="40" x2="60" y2="220" stroke="#94A3B8"/>
+      <g fill="#0D9488">
+        <circle cx="120" cy="190" r="3"/><circle cx="170" cy="180" r="3"/>
+        <circle cx="230" cy="165" r="3"/><circle cx="280" cy="155" r="3"/>
+        <circle cx="340" cy="135" r="3"/><circle cx="400" cy="110" r="3"/>
+        <circle cx="460" cy="95" r="3"/><circle cx="520" cy="80" r="3"/>
+        <circle cx="580" cy="70" r="3"/>
+      </g>
+      <line x1="90" y1="200" x2="650" y2="50" stroke="#F59E0B" stroke-width="2.5"/>
+      <text x="520" y="45" font-family="Inter" font-size="11" fill="#F59E0B">best-fit line</text>
+      <line x1="340" y1="135" x2="340" y2="155" stroke="#EF4444" stroke-dasharray="3 3"/>
+      <text x="350" y="150" font-family="Inter" font-size="10" fill="#EF4444">residual</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">OLS = minimise the sum of squared vertical distances (residuals).</p>
+</section>
+
+<section>
+  <h2>Deriving OLS — the loss</h2>
+  <p>Stack: $y = X\beta + \varepsilon$. Minimise sum of squared residuals:</p>
+  \[ S(\beta) = (y - X\beta)^\top (y - X\beta) \]
+  <p>Expand:</p>
+  \[ S(\beta) = y^\top y - 2\beta^\top X^\top y + \beta^\top X^\top X \beta \]
+</section>
+
+<section>
+  <h2>Deriving OLS — setting the gradient to zero</h2>
+  \[ \frac{\partial S}{\partial \beta} = -2X^\top y + 2 X^\top X \beta = 0 \]
+  <p>Normal equations:</p>
+  \[ X^\top X \beta = X^\top y \]
+  <p>If $X^\top X$ is invertible:</p>
+  <div style="text-align: center; padding: 20px; background: #F0FDFA; border-radius: 8px; margin-top: 1em;">
+    \[ \boxed{\; \hat\beta = (X^\top X)^{-1} X^\top y \;} \]
+  </div>
+</section>
+
+<section>
+  <h2>Standard errors and $t$-stats</h2>
+  <p>Under Normal errors, the covariance of $\hat\beta$ is:</p>
+  \[ \text{Var}(\hat\beta) = \sigma^2 (X^\top X)^{-1} \]
+  <p>Estimate $\sigma^2$ with residual variance (note $n - k - 1$ denominator — general Bessel):</p>
+  \[ \hat\sigma^2 = \frac{e^\top e}{n - k - 1} \]
+  \[ t_j = \frac{\hat\beta_j}{\text{SE}(\hat\beta_j)} \sim t_{n-k-1} \]
+</section>
+
+<section>
+  <h2>$R^2$: proportion of variance explained</h2>
+  \[ R^2 = 1 - \frac{\text{SS}_{\text{res}}}{\text{SS}_{\text{tot}}} = \frac{\text{SS}_{\text{reg}}}{\text{SS}_{\text{tot}}} \]
+  <p>Adjusted $R^2$ penalises complexity:</p>
+  \[ R^2_{\text{adj}} = 1 - (1 - R^2) \cdot \frac{n - 1}{n - k - 1} \]
+  <p style="font-size: 0.85em; color: #64748B;">$R^2$ only goes up as you add predictors — even useless ones. Always report adjusted.</p>
+</section>
+
+<section>
+  <h2>$F$-statistic: model vs intercept-only</h2>
+  \[ F = \frac{\text{SS}_{\text{reg}} / k}{\text{SS}_{\text{res}} / (n - k - 1)} = \frac{R^2 / k}{(1 - R^2) / (n - k - 1)} \]
+  <p>Under $H_0$ (all slopes zero), $F \sim F_{k, n-k-1}$.</p>
+  <div style="background: #F0FDF4; padding: 10px 16px; border-left: 4px solid #22C55E; margin-top: 1em; font-size: 0.85em;">
+    Large $F$ → small p-value → model is doing something beyond just guessing $\bar y$.
+  </div>
+</section>
+
+<section>
+  <h2>Categorical variables — dummy encoding</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="40" width="140" height="140" fill="#F8FAFC" stroke="#94A3B8"/>
+      <text x="110" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">flat_type</text>
+      <g font-family="JetBrains Mono" font-size="12">
+        <text x="110" y="65" text-anchor="middle">3-room</text>
+        <text x="110" y="90" text-anchor="middle">4-room</text>
+        <text x="110" y="115" text-anchor="middle">5-room</text>
+        <text x="110" y="140" text-anchor="middle">4-room</text>
+        <text x="110" y="165" text-anchor="middle">executive</text>
+      </g>
+      <line x1="190" y1="110" x2="240" y2="110" stroke="#64748B" stroke-width="2"/>
+      <rect x="260" y="40" width="420" height="140" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="320" y="30" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0D9488">is_4room</text>
+      <text x="450" y="30" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0D9488">is_5room</text>
+      <text x="600" y="30" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0D9488">is_exec</text>
+      <g font-family="JetBrains Mono" font-size="13">
+        <text x="320" y="65" text-anchor="middle">0</text><text x="450" y="65" text-anchor="middle">0</text><text x="600" y="65" text-anchor="middle">0</text>
+        <text x="320" y="90" text-anchor="middle">1</text><text x="450" y="90" text-anchor="middle">0</text><text x="600" y="90" text-anchor="middle">0</text>
+        <text x="320" y="115" text-anchor="middle">0</text><text x="450" y="115" text-anchor="middle">1</text><text x="600" y="115" text-anchor="middle">0</text>
+        <text x="320" y="140" text-anchor="middle">1</text><text x="450" y="140" text-anchor="middle">0</text><text x="600" y="140" text-anchor="middle">0</text>
+        <text x="320" y="165" text-anchor="middle">0</text><text x="450" y="165" text-anchor="middle">0</text><text x="600" y="165" text-anchor="middle">1</text>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.8em; text-align: center; color: #64748B;">3-room is the base. Coefficient on is_4room = price difference between 4-room and 3-room.</p>
+</section>
+
+<section>
+  <h2>Worked: HDB load and design matrix</h2>
+  <pre><code class="language-python" data-trim>
+df = (MLFPDataLoader().load("mlfp02", "hdb_resale.parquet")
+      .filter(pl.col("flat_type") == "4 ROOM")
+      .with_columns(
+          age=pl.col("year") - pl.col("lease_commence_date"),
+          log_price=pl.col("resale_price").log()))
+df_enc = df.to_dummies(["town"], drop_first=True)
+
+y = df_enc["log_price"].to_numpy()
+X = df_enc.select(["floor_area_sqm", "age",
+                   "town_BISHAN", "town_TAMPINES",
+                   "town_YISHUN"]).to_numpy()
+X = np.column_stack([np.ones(len(X)), X])  # intercept
+  </code></pre>
+</section>
+
+<section>
+  <h2>Worked: solve the normal equations</h2>
+  <pre><code class="language-python" data-trim>
+XtX = X.T @ X
+Xty = X.T @ y
+beta_hat = np.linalg.solve(XtX, Xty)
+
+# Standard errors
+n, p = X.shape
+e = y - X @ beta_hat
+sigma2 = (e @ e) / (n - p)
+se = np.sqrt(np.diag(sigma2 * np.linalg.inv(XtX)))
+t_stats = beta_hat / se
+  </code></pre>
+  <p style="font-size: 0.8em;">That's the core of OLS — four lines. Everything else is interpretation.</p>
+</section>
+
+<section>
+  <h2>Worked: R² and F</h2>
+  <pre><code class="language-python" data-trim>
+ss_tot = ((y - y.mean())**2).sum()
+ss_res = (e**2).sum()
+r2 = 1 - ss_res/ss_tot
+r2_adj = 1 - (1 - r2) * (n - 1) / (n - p)
+F = (r2 / (p-1)) / ((1 - r2) / (n - p))
+  </code></pre>
+  <p style="font-size: 0.85em;">Typical HDB fit: $R^2 \approx 0.82$, $F > 1000$, p &lt; $10^{-50}$.</p>
+</section>
+
+<section>
+  <h2>Interpreting coefficients (log-price)</h2>
+  <table style="font-size: 0.75em;">
+    <thead><tr><th>Coefficient</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>$\hat\beta_{\text{area}} = 0.012$</td><td>+1 m² → +1.2% in price</td></tr>
+      <tr><td>$\hat\beta_{\text{age}} = -0.004$</td><td>+1 year → −0.4% in price</td></tr>
+      <tr><td>$\hat\beta_{\text{BISHAN}} = 0.18$</td><td>Bishan premium ≈ 18% over the base town</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.85em; color: #64748B; margin-top: 1em;">
+    <em>Ceteris paribus.</em> Drop any predictor from the model and every
+    remaining coefficient can change.
+  </p>
+</section>
+
+<section>
+  <h2>Non-linearity without leaving OLS</h2>
+  <ul style="font-size: 0.9em;">
+    <li><strong>Polynomial:</strong> add $x^2$ to capture curvature (diminishing returns)</li>
+    <li><strong>Interaction:</strong> $x_1 \cdot x_2$ — effect of $x_1$ depends on $x_2$</li>
+    <li><strong>Log transform:</strong> $\log y$ when $y$ is skewed; coefficients become multiplicative</li>
+  </ul>
+  <p>"Linear" means linear in the coefficients — not in the predictors.</p>
+</section>
+
+<section>
+  <h2>Three rookie mistakes</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>1. Interpreting coefficients in isolation.</strong>
+    Coefficients depend on the whole model.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>2. Chasing $R^2$.</strong> It only goes up with more predictors.
+    Use adjusted $R^2$ and cross-validation.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; margin: 0.6em 0;">
+    <strong>3. Multicollinearity.</strong> Correlated predictors → singular
+    $X^\top X$ → exploding standard errors. Check VIF.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.9em;">
+    <li>✓ Derive OLS from squared-error loss</li>
+    <li>✓ Solve the normal equations in numpy</li>
+    <li>✓ Compute standard errors, $t$-stats, p-values from $(X^\top X)^{-1}$</li>
+    <li>✓ Evaluate with $R^2$, adjusted $R^2$, $F$-stat</li>
+    <li>✓ Dummy-encode categoricals and interpret coefficients with ceteris paribus</li>
+    <li>✓ Add polynomial and interaction terms</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 2.6 — logistic regression for binary outcomes.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+
+</body>
+</html>

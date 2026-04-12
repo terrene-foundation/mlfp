@@ -1,71 +1,59 @@
-# Session Notes -- 2026-04-06 (Session 8)
+# Session Notes — 2026-04-13 (MLFP Full Course Overhaul)
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, Kailash engine table
-2. `README.md` -- Programme overview: 1,398 slides, 10 modules, Feature Engineering Spectrum
-3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js spec (three-layer slide architecture, 1280x720)
-4. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
-5. `scripts/py_to_notebook.py` -- .py→.ipynb converter (now auto-detects Kailash packages per exercise)
-6. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
+1. `CLAUDE.md` — course identity, 6-module structure, specs/ is authoritative
+2. `specs/_index.md` — 12-file manifest; read before any spec
+3. `specs/exercise-mapping.md` — maps every exercise to its v2 lesson
+4. `workspaces/curriculum/04-validate/rt1-math-rigor.md` — math audit (1 CRITICAL fixed, 110+ formulas verified)
+5. `workspaces/curriculum/04-validate/rt2-pedagogical-flow.md` — M1:5.0, M2-M4:4.5, M5:3.0, M6:2.5
+6. `workspaces/curriculum/04-validate/rt3-student-experience.md` — beginner accessibility findings
+7. `workspaces/curriculum/04-validate/rt4-spec-compliance.md` — 84% textbook, 42% exercise coverage
+8. `workspaces/curriculum/04-validate/rt5-exercise-alignment.md` — 12 CRITICAL (4 fixed, 8 remain)
 
-## Accomplished (Session 8)
+## Accomplished
 
-- **M7-M10 exercises complete**: 32 solutions + 32 local + 64 notebooks = 128 exercise files
-- **M7-M10 quizzes complete**: 64 AI-resilient questions (16 per module), all 4 types represented
-- **M7-M10 speaker notes complete**: 4 files (1450-2472 lines each), per-slide instructor guidance
-- **M7-M10 READMEs**: 4 module READMEs with lesson plans and dataset lists
-- **Red team round 1 converged**: 6 specialist panels, all CRITICAL/HIGH findings fixed
-  - Removed fake training data (M7 ex_6 Adam, ex_7 CNN) — zero-tolerance violation
-  - Fixed He init scale bug (extra 0.01× multiplier)
-  - Increased scaffolding levels in 6 under-stripped exercises (M7-M9)
-  - Fixed 4 quiz accuracy errors (M9 math, M10 contradiction, M10 percentages, M8 code comment)
-  - Fixed py_to_notebook.py to auto-detect kailash-kaizen/align/pact/nexus/mcp per exercise
-  - Cleaned mid-file imports (6 files) and unused load_dotenv imports (6 files)
-- **Pushed**: 3 commits to `terrene-foundation/ascent` main (a3e7cb3)
+- **48 exercises reorganized** to match v2 spec (was 80 exercises from old 10-module merge)
+- **9 net-new exercises** written (M2 ex_4/5/6, M3 ex_3, M4 ex_5/7, M5 ex_1/5/6)
+- **M5 fully rewritten with PyTorch** — all 8 exercises use nn.Module/torch.optim (was pure-Python loops)
+- **40/40 exercises pass** in fresh venv (kailash 2.8.4, torch 2.11, full ML stack)
+- **6 master deck.html** (78-100 slides each, Reveal.js 5.1.0, KaTeX, viewport correct)
+- **6 speaker-notes.md** all correct modules (M3-M6 were from wrong ASCENT modules — rewritten)
+- **6 textbook.md** chapters (18,217 lines total with full mathematical derivations)
+- **144 per-lesson HTML** files (textbook+slides+notes × 48 lessons) with SVG diagrams
+- **textbook.css** + templates created for self-study reading experience
+- **pyproject.toml** pinned with verified kailash stack + full ML deps
+- **Zero ASCENT/PCML/SMU/SSG references** in student-facing materials (verified: 0 matches)
+- **6 red-team reports** filed by specialist team (math, trainer, student, compliance, QA, naming)
 
-## Outstanding — Next Session Work Queue
+## Outstanding
 
-### P1: Deck PDFs (10 needed, 6 stale exist)
-- 6 existing PDFs are from old deck content; all 10 need regeneration
-- Use decktape or Playwright PDF: `decktape reveal deck.html deck.pdf`
-- KaTeX-heavy decks may need Playwright fallback (`page.pdf()` with `?print-pdf`)
-
-### P1: Curriculum Doc Update (v4 → v5)
-- `workspaces/curriculum/briefs/expanded-curriculum-v4.md` still says "6 modules × 8 lessons = 48"
-- Needs rewrite to 10 modules × 8 lessons = 80 lessons with M7-M10 lesson plans
-- (verified: `head -3 workspaces/curriculum/briefs/expanded-curriculum-v4.md` says "6 Modules")
-
-### P1: Textbook MD/HTML Completion
-- ~50 MD files and ~57 HTML files still needed across multiple sections
-- (verified: this was in session 6 notes, not rechecked — next session should audit)
-
-### P2: Speaker Note Time Calibration
-- M7=300min, M8=293min, M9=244min vs 180min target (M10=180min is correct)
-- Systemic issue — M6 also overruns at 238min
-- Options: add skip markers, reduce per-slide times, or accept longer delivery
-
-### P2: Remaining Scaffolding Calibration
-- Red team fixed 6 worst offenders but other M7-M9 exercises may be slightly under-stripped
-- M10 exercises all hit 20% target (PASS)
-
-### P2: Deck Overflow Audit (M7-M10)
-- `scripts/deck-audit.mjs` exists but hasn't been run on new decks
+- [ ] **7 skeletal lessons** need expansion (60-125 lines → 700+): M5 L06-08, M6 L05-08 (verified: still skeletal, agent was running but may have hit limits)
+- [ ] **RT5 remaining CRITICALs** (8 unfixed): M2 L7 DiD content divergence, M6 L7 D/T/R API conflict, M3 ex_7 mlfp02 refs in experiment names, 5 dataset ref mismatches
+- [ ] **Exercise coverage gaps** (RT4): 44 spec topics with ZERO exercise coverage. Top 5: HyperparameterSearch (M3.7), DriftMonitor (M3.8), GRPO (M6.3), A2A (M6.6), RLTrainer (M5.8)
+- [ ] **RT3 fixes**: async/await bridge in M1 L1.7, sklearn intro callout in M3 L01, M2 L01 math notation callout
+- [ ] **Module index pages** — only M1 has index.html; M2-M6 need them
+- [ ] **M6 exercises** — untested (require LLM API keys)
+- [ ] **Local/colab regeneration** — M5 rewritten exercises need new scaffolded + notebook versions
+- [ ] **Quiz restructure** — 6 quiz files still contain merged ASCENT content
 
 ## Oversight — Verify Before Starting
 
-- [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80 (verified: 80)
-- [ ] 64 quiz questions (M7-M10): `for q in quiz_ascent{07,08,09,10}.py; do grep -c '"id":' modules/assessment/quizzes/$q; done` = 16 each (verified: 16,16,16,16)
-- [ ] 10 speaker notes: `ls decks/ascent*/speaker-notes.md | wc -l` = 10 (verified: 10)
-- [ ] No PCML: `grep -rli "pcml" --include="*.py" --include="*.md" modules/ | wc -l` = 0 (verified: 0)
-- [ ] Remote current: `git log --oneline -1` = a3e7cb3 (verified)
+- [ ] `find modules/*/solutions -name "ex_*.py" | wc -l` → 48 (verified: 48)
+- [ ] `find decks/*/lessons -name "*.html" | wc -l` → 144 (verified: 144)
+- [ ] `grep -rl "ASCENT" decks/ modules/ --include="*.html" --include="*.py" | wc -l` → 0 (verified: 0)
+- [ ] All 6 speaker-notes.md have correct module titles (verified: all correct)
+- [ ] M5 exercises use PyTorch: `grep -l "import torch" modules/mlfp05/solutions/*.py | wc -l` → 8 (verified: 8)
 
 ## Oversight — Verify After Completing
 
-- [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10
-- [ ] Curriculum v5: `head -1 workspaces/curriculum/briefs/expanded-curriculum-v5.md` exists
-- [ ] Push: `git push origin main`
+- [ ] 7 skeletal lessons expanded to 700+ lines each
+- [ ] Fresh venv M1-M5: 40/40 still passing after any exercise changes
+- [ ] No new ASCENT references introduced
+- [ ] Red-team Round 2 shows convergence (fewer findings than Round 1)
 
 ## Blockers
 
-- decktape crashes on heavy KaTeX — use Playwright PDF fallback (`page.pdf()` with `?print-pdf`)
+- **SDK gaps**: kailash-ml missing PreprocessingPipeline, EnsembleEngine wrappers — exercises use sklearn directly
+- **M6 testing**: requires OPENAI_API_KEY and HF_TOKEN — cannot validate in CI
+- **Skeletal lessons**: expansion agent may have hit rate limits — check and restart if needed

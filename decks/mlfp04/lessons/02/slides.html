@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4.2 — EM and GMMs | MLFP Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.45em; }
+    .callout-slide { padding: 12px 16px; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em; }
+    .callout-slide.foundations { background: #F0FDF4; border-left: 4px solid #22C55E; }
+    .callout-slide.theory { background: #EFF6FF; border-left: 4px solid #3B82F6; }
+    .callout-slide.advanced { background: #F5F3FF; border-left: 4px solid #8B5CF6; }
+    .callout-slide.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 4 · Lesson 4.2</p>
+  <h1>EM Algorithm and Gaussian Mixture Models</h1>
+  <p style="font-size: 0.7em; color: #64748B;">Soft clustering · E-step · M-step · GMM · Mixture of Experts</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488;">
+    <strong style="color: #0D9488;">⏱ 75 minutes</strong> &nbsp; · &nbsp; <strong>Outcome:</strong> implement EM in 20 lines
+  </div>
+</section>
+
+<section>
+  <h2>Hard labels lie</h2>
+  <ul>
+    <li>K-means says: "you are cluster 2."</li>
+    <li>GMM says: "you are 70% cluster 2, 25% cluster 1, 5% cluster 3."</li>
+    <li>For boundary points, the soft answer is the honest answer.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>🟢 Foundations:</strong> GMM = "K-means with error bars".
+  </div>
+</section>
+
+<section>
+  <h2>Hard vs soft in one picture</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14">K-means</text>
+      <rect x="30" y="30" width="300" height="190" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <g fill="#EF4444"><circle cx="100" cy="110" r="5"/><circle cx="130" cy="120" r="5"/></g>
+      <g fill="#3B82F6"><circle cx="230" cy="120" r="5"/><circle cx="250" cy="100" r="5"/></g>
+      <circle cx="175" cy="125" r="7" fill="#EF4444" stroke="black" stroke-width="2"/>
+      <text x="175" y="160" text-anchor="middle" font-size="11">"red" — wrong</text>
+
+      <text x="540" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14">GMM</text>
+      <rect x="390" y="30" width="300" height="190" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <ellipse cx="460" cy="120" rx="45" ry="25" fill="#FECACA" opacity="0.5"/>
+      <ellipse cx="600" cy="120" rx="45" ry="25" fill="#BFDBFE" opacity="0.5"/>
+      <g fill="#EF4444"><circle cx="460" cy="110" r="5"/><circle cx="490" cy="120" r="5"/></g>
+      <g fill="#3B82F6"><circle cx="590" cy="120" r="5"/><circle cx="610" cy="100" r="5"/></g>
+      <circle cx="535" cy="125" r="7" fill="#A855F7" stroke="black" stroke-width="2"/>
+      <text x="535" y="160" text-anchor="middle" font-size="11">P(red)=0.55, P(blue)=0.45</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>The generative story</h2>
+  <ol>
+    <li>Pick cluster $k$ with probability $\pi_k$.</li>
+    <li>Draw from $\mathcal{N}(\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)$.</li>
+  </ol>
+  \[ p(\mathbf{x}) \;=\; \sum_{k=1}^{K}\ \pi_k\ \mathcal{N}\!\bigl(\mathbf{x}\,\big|\,\boldsymbol{\mu}_k,\,\boldsymbol{\Sigma}_k\bigr) \]
+  <p>Goal: find $(\pi, \mu, \Sigma)$ that maximises this for the data.</p>
+</section>
+
+<section>
+  <h2>Why maximising the likelihood is hard</h2>
+  \[ \log \prod_n p(\mathbf{x}_n) \;=\; \sum_n \log \sum_k \pi_k\ \mathcal{N}(\mathbf{x}_n|\mu_k,\Sigma_k) \]
+  <p>The "log of a sum" has no closed form. We need a trick.</p>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> The trick is to introduce a hidden variable $z_{nk}$ for "which cluster generated point $n$", then alternate between estimating it and updating parameters.
+  </div>
+</section>
+
+<section>
+  <h2>The EM loop</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="40" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488"/>
+      <text x="85" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#0D9488">Initialise</text>
+      <text x="85" y="85" text-anchor="middle" font-size="11">π, μ, Σ</text>
+      <rect x="190" y="40" width="130" height="60" rx="8" fill="#FEE2E2" stroke="#EF4444"/>
+      <text x="255" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#EF4444">E-step</text>
+      <text x="255" y="85" text-anchor="middle" font-size="11">compute r_{nk}</text>
+      <rect x="360" y="40" width="130" height="60" rx="8" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="425" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">M-step</text>
+      <text x="425" y="85" text-anchor="middle" font-size="11">update π, μ, Σ</text>
+      <rect x="530" y="40" width="130" height="60" rx="8" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="595" y="65" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">ΔL &lt; tol ?</text>
+      <line x1="150" y1="70" x2="185" y2="70" stroke="#475569" stroke-width="2"/>
+      <line x1="320" y1="70" x2="355" y2="70" stroke="#475569" stroke-width="2"/>
+      <line x1="490" y1="70" x2="525" y2="70" stroke="#475569" stroke-width="2"/>
+      <path d="M 595 100 L 595 150 L 255 150 L 255 100" fill="none" stroke="#475569" stroke-dasharray="4 3"/>
+      <text x="425" y="170" text-anchor="middle" font-size="11" fill="#64748B" font-style="italic">loop until convergence</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>E-step: responsibilities via Bayes' rule</h2>
+  \[ r_{nk} \;=\; \frac{\pi_k\ \mathcal{N}(\mathbf{x}_n | \mu_k, \Sigma_k)}{\sum_{j=1}^{K}\pi_j\ \mathcal{N}(\mathbf{x}_n | \mu_j, \Sigma_j)} \]
+  <ul>
+    <li>Numerator: prior × likelihood.</li>
+    <li>Denominator: marginal $p(\mathbf{x}_n)$.</li>
+    <li>$\sum_k r_{nk} = 1$ by construction.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>M-step: weighted means</h2>
+  \[ N_k = \sum_n r_{nk},\quad \pi_k^{\text{new}} = \frac{N_k}{N} \]
+  \[ \mu_k^{\text{new}} = \frac{1}{N_k}\sum_n r_{nk}\,\mathbf{x}_n \]
+  \[ \Sigma_k^{\text{new}} = \frac{1}{N_k}\sum_n r_{nk}(\mathbf{x}_n - \mu_k)(\mathbf{x}_n - \mu_k)^\top \]
+  <p style="font-size: 0.85em; color: #64748B;">Each update is a weighted MLE. Weights are the responsibilities.</p>
+</section>
+
+<section>
+  <h2>Convergence guarantee</h2>
+  <p>Each EM iteration satisfies</p>
+  \[ \log \mathcal{L}(\theta^{t+1}) \;\geq\; \log \mathcal{L}(\theta^{t}) \]
+  <p>with equality only at a stationary point.</p>
+  <div class="callout-slide theory">
+    <strong>🔵 Theory:</strong> EM is coordinate ascent on the ELBO (evidence lower bound). Jensen's inequality does the heavy lifting.
+  </div>
+  <div class="callout-slide warning">
+    <strong>⚠ Caveat:</strong> EM can get stuck in local maxima. Restart from several random inits and keep the best.
+  </div>
+</section>
+
+<section>
+  <h2>Twenty lines of EM (1/2)</h2>
+  <pre><code class="language-python" data-trim>
+def em_gmm(X, K, max_iter=100, tol=1e-4):
+    N, D = X.shape
+    rng = np.random.default_rng(42)
+    mu = X[rng.choice(N, size=K, replace=False)]
+    Sigma = np.array([np.eye(D) for _ in range(K)])
+    pi = np.full(K, 1.0 / K)
+    log_lik = -np.inf
+    for _ in range(max_iter):
+        # E-step
+        weighted = np.stack(
+            [pi[k] * mvn.pdf(X, mu[k], Sigma[k]) for k in range(K)],
+            axis=1,
+        )
+        total = weighted.sum(1, keepdims=True) + 1e-12
+        r = weighted / total
+  </code></pre>
+</section>
+
+<section>
+  <h2>Twenty lines of EM (2/2)</h2>
+  <pre><code class="language-python" data-trim>
+        # M-step
+        Nk = r.sum(0)
+        pi = Nk / N
+        mu = (r.T @ X) / Nk[:, None]
+        for k in range(K):
+            diff = X - mu[k]
+            Sigma[k] = (r[:, k:k+1] * diff).T @ diff / Nk[k]
+
+        new_ll = np.log(total + 1e-12).sum()
+        if abs(new_ll - log_lik) &lt; tol:
+            break
+        log_lik = new_ll
+    return pi, mu, Sigma, r, log_lik
+  </code></pre>
+</section>
+
+<section>
+  <h2>Picking $K$ with BIC</h2>
+  \[ \text{BIC} \;=\; -2\log \hat{\mathcal{L}} + p\log N \]
+  <ul>
+    <li>$\hat{\mathcal{L}}$ = maximised likelihood.</li>
+    <li>$p$ = number of free parameters (penalises complexity).</li>
+    <li>$N$ = sample size.</li>
+    <li>Lower is better. Try $K = 2..10$.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Covariance types: tied, diag, full</h2>
+  <table style="font-size: 0.8em;">
+    <thead><tr><th>Type</th><th>Parameters per cluster</th><th>Use when</th></tr></thead>
+    <tbody>
+      <tr><td><code>spherical</code></td><td>1</td><td>Tiny data, spherical clusters</td></tr>
+      <tr><td><code>diag</code></td><td>D</td><td>Default for high-dim</td></tr>
+      <tr><td><code>tied</code></td><td>D(D+1)/2 (shared)</td><td>All clusters same shape</td></tr>
+      <tr><td><code>full</code></td><td>D(D+1)/2</td><td>Low-dim, different orientations</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Mixture of Experts — where GMM meets GPT-4</h2>
+  <ul>
+    <li>Replace fixed $\pi_k$ with a <strong>gating network</strong> $g_k(\mathbf{x})$.</li>
+    <li>Each "expert" is a sub-network; the gate routes inputs.</li>
+    <li>GPT-4, Mixtral, DeepSeek — all use MoE layers for scale.</li>
+  </ul>
+  <div class="callout-slide advanced">
+    <strong>🟣 Advanced:</strong> Classical GMM is MoE with constant gates. We revisit this in M6 when we route between Kaizen agents.
+  </div>
+</section>
+
+<section>
+  <h2>Worked example: 3 Gaussians in 2D</h2>
+  <pre><code class="language-python" data-trim>
+means = np.array([[0, 0], [5, 5], [-3, 4]])
+X = np.vstack([rng.multivariate_normal(m, np.eye(2), 200) for m in means])
+
+pi, mu, Sigma, r, ll = em_gmm(X, K=3)
+print(f"LL: {ll:.2f}, π: {pi.round(3)}")
+
+# Cross-check with sklearn
+gm = GaussianMixture(n_components=3, random_state=0).fit(X)
+print(f"sklearn LL: {gm.score(X) * len(X):.2f}")
+  </code></pre>
+  <p style="font-size: 0.85em; color: #64748B;">Both implementations should agree to 3 decimal places.</p>
+</section>
+
+<section>
+  <h2>The uncertain points are where the money is</h2>
+  <pre><code class="language-python" data-trim>
+# Points with ambiguous membership
+uncertain = X[r.max(axis=1) &lt; 0.6]
+print(f"{len(uncertain)} customers need manual review")
+  </code></pre>
+  <p>These are the customers worth flagging for human review in a real segmentation pipeline. Hard clustering hides them.</p>
+</section>
+
+<section>
+  <h2>Four rookie mistakes</h2>
+  <ol>
+    <li>Zero-initialised covariance → singular matrix.</li>
+    <li>Fixed iteration count, no $\Delta \mathcal{L}$ check.</li>
+    <li>Comparing GMM to K-means by "accuracy vs labels" (no ground truth!).</li>
+    <li><code>covariance_type="full"</code> with $D > 20$ — overfits.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Cross-references</h2>
+  <ul>
+    <li><strong>4.1:</strong> K-means = GMM with $\Sigma = \sigma^2 I$ + hard argmax.</li>
+    <li><strong>M2 Bayes:</strong> E-step is Bayes' rule applied to cluster assignment.</li>
+    <li><strong>4.7 PIVOT:</strong> Matrix factorisation ALS is coordinate ascent — structurally the same as EM.</li>
+    <li><strong>M6 LLMs:</strong> Mixture of Experts generalises GMM to input-dependent gates.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul>
+    <li>✓ Explain the generative story of a mixture model.</li>
+    <li>✓ Derive the E-step and M-step formulas.</li>
+    <li>✓ Implement EM in 20 lines of NumPy.</li>
+    <li>✓ Cross-validate against sklearn.</li>
+    <li>✓ Pick $K$ with BIC.</li>
+    <li>✓ Explain how Mixture of Experts extends the idea.</li>
+  </ul>
+  <div class="callout-slide foundations">
+    <strong>Next:</strong> Lesson 4.3 — dimensionality reduction. Stop asking "which group" and start asking "which axis".
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

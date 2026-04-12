@@ -2,266 +2,388 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP04 — Exercise 3: PACT Governance Setup
+# MLFP04 — Exercise 3: Topic Modeling with BERTopic
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Define a realistic organization in YAML, compile it, and
-#   create a GovernanceEngine. Verify access decisions.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Apply the BERTopic pipeline: sentence embeddings → UMAP → HDBSCAN → c-TF-IDF
+#   - Explain why BERTopic outperforms LDA on short, modern text
+#   - Compute NPMI coherence to objectively evaluate topic quality
+#   - Analyse temporal topic evolution to spot trending themes
+#   - Use TF-IDF + NMF as a lightweight fallback when GPU is unavailable
+#
+# PREREQUISITES:
+#   - MLFP04 Exercise 2 (UMAP + HDBSCAN — both are used inside BERTopic)
+#   - MLFP03 Exercise 3 (model zoo — NLP is just another ML task)
+#
+# ESTIMATED TIME: 60-75 minutes
 #
 # TASKS:
-#   1. Define organization structure in YAML (3 departments, 8 roles)
-#   2. Compile organization with compile_org()
-#   3. Create GovernanceEngine
-#   4. Test access decisions: can_access(), explain_access()
-#   5. Verify monotonic tightening and fail-closed behavior
+#   1. Load and preprocess Singapore news corpus
+#   2. Build BERTopic model (UMAP + HDBSCAN + c-TF-IDF)
+#   3. Evaluate topic coherence (NPMI)
+#   4. Analyse temporal topic evolution
+#   5. Visualise topic distributions
+#
+# DATASET: Singapore news corpus
+#   Source: curated APAC news articles with publication dates
+#   Goal: discover latent topics and track their evolution over time
+#   Context: same unsupervised approach as clustering — no labels provided
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import tempfile
-from pathlib import Path
+import numpy as np
+import polars as pl
+from collections import Counter
 
-from pact import GovernanceEngine, GovernanceContext
-from pact import Address, RoleEnvelope, TaskEnvelope
-from pact import compile_org, load_org_yaml
+from kailash_ml import ModelVisualizer
 
-from shared.kailash_helpers import setup_environment
+from shared import MLFPDataLoader
 
-setup_environment()
+try:
+    from bertopic import BERTopic
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    BERTopic = None
+    SentenceTransformer = None
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define organization in YAML
-# ══════════════════════════════════════════════════════════════════════
+# ── Data Loading ──────────────────────────────────────────────────────
 
-# TODO: Write a PACT organization YAML string with 3 departments and 6+ roles.
-# Hint: The org_yaml string must follow this structure:
-#
-#   organization:
-#     name: "ASCENT Credit Bureau"
-#     version: "1.0"
-#     departments:
-#       - name: "data_science"
-#         description: "..."
-#         teams:
-#           - name: "modeling"
-#             roles:
-#               - name: "senior_data_scientist"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store", "experiment_logs"]
-#                   tools: ["training_pipeline", "hyperparameter_search", "model_registry"]
-#                   max_cost_usd: 50.0
-#                   can_deploy: false
-#               - name: "junior_data_scientist"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store"]
-#                   tools: ["training_pipeline"]
-#                   max_cost_usd: 10.0
-#                   can_deploy: false
-#           - name: "mlops"
-#             roles:
-#               - name: "ml_engineer"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store", "model_artifacts", "production_logs"]
-#                   tools: ["training_pipeline", "model_registry", "inference_server", "drift_monitor"]
-#                   max_cost_usd: 100.0
-#                   can_deploy: true
-#       - name: "risk"   (model_validator: can_approve_production: true, compliance_officer: read-only)
-#       - name: "operations"   (sre: can_deploy: true, customer_service: decisions only)
-#     policies:
-#       - name: "model_promotion"
-#         rule: "promote_to_production requires model_validator.can_approve_production"
-#       - name: "data_classification"
-#         classifications:
-#           credit_data: "confidential"
-#           audit_logs: "restricted"
-org_yaml = ____
+loader = MLFPDataLoader()
+news = loader.load("mlfp03", "sg_news_corpus.parquet")
 
-# Write to temp file
-org_file = Path(tempfile.mktemp(suffix=".yaml"))
-org_file.write_text(org_yaml)
-print(f"=== Organization YAML ===")
-print(f"Departments: 3 (data_science, risk, operations)")
-print(f"Roles: 6 unique roles across 5 teams")
-print(f"Written to: {org_file}")
+print(f"=== Singapore News Corpus ===")
+print(f"Shape: {news.shape}")
+print(f"Columns: {news.columns}")
+print(f"Date range: {news['published_date'].min()} to {news['published_date'].max()}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile organization
+# TASK 1: Text preprocessing with Polars
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Load the YAML file and compile it.
-# Hint: org = load_org_yaml(str(org_file))
-#   compiled = compile_org(org)
-#   compiled has: .valid (bool), .errors (list), .warnings (list),
-#                 .departments (list), .total_roles (int), .name (str)
-org = ____
-compiled = ____
+# TODO: Build news_clean by chaining Polars transformations:
+#   - Combine "title" and "body" columns into a "text" column
+#   - Parse "published_date" string to a date using str.to_date("%Y-%m-%d")
+#   - Filter out articles where body is <= 100 characters
+#   - Extract year-month string (e.g. "2024-03") as "year_month" using dt.strftime
+news_clean = (
+    news.with_columns(
+        # TODO: Concatenate title + ". " + body as "text"
+        ____,  # Hint: (pl.col("title") + ". " + pl.col("body")).alias("text")
+        # TODO: Parse published_date string to date
+        ____,  # Hint: pl.col("published_date").str.to_date("%Y-%m-%d").alias("date")
+    )
+    .filter(
+        # TODO: Keep only articles with body length > 100
+        ____  # Hint: pl.col("body").str.len_chars() > 100
+    )
+    .with_columns(
+        # TODO: Extract "year_month" as a formatted string from the date column
+        ____  # Hint: pl.col("date").dt.strftime("%Y-%m").alias("year_month")
+    )
+)
 
-print(f"\n=== Compiled Organization ===")
-print(f"Valid: {compiled.valid}")
-if compiled.errors:
-    print(f"Errors: {compiled.errors}")
-if compiled.warnings:
-    print(f"Warnings: {compiled.warnings}")
-print(f"Departments: {[d.name for d in compiled.departments]}")
-print(f"Total roles: {compiled.total_roles}")
+documents = news_clean["text"].to_list()
+dates = news_clean["date"].to_list()
+print(f"\nCleaned corpus: {len(documents):,} articles")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Create GovernanceEngine
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup_governance():
-    # TODO: Create a GovernanceEngine from the compiled organization.
-    # Hint: engine = GovernanceEngine(compiled)
-    #   The engine is fail-closed: any error during access check → DENY
-    engine = ____
-
-    print(f"\n=== GovernanceEngine ===")
-    print(f"Organization: {compiled.name}")
-    print(f"Enforcement mode: fail-closed (deny on error)")
-
-    return engine
-
-
-engine = asyncio.run(setup_governance())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access decisions
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_access():
-    # TODO: Use Address to create D/T/R addresses, then call engine.can_access()
-    # and engine.explain_access() to test access control decisions.
-    #
-    # Hint: Address("department", "team", "role") — matches the YAML structure.
-    #   decision = await engine.can_access(address, resource_name)  → bool
-    #   explanation = await engine.explain_access(address, resource_name)
-    #     explanation has: .decision (str), .reason (str), .chain (list)
-    #
-    # Test cases to verify:
-    #   senior_data_scientist → "credit_data": ALLOW (in permissions)
-    #   junior_data_scientist → "experiment_logs": DENY (not in permissions)
-    #   ml_engineer → "production_logs": ALLOW
-    #   model_validator → "audit_logs": ALLOW
-    #   customer_service → "credit_data": DENY (can only access credit_decisions)
-    #   customer_service → "credit_decisions": ALLOW
-
-    # TODO: Create Address objects for each role.
-    # Hint: Address("data_science", "modeling", "senior_data_scientist")
-    senior_ds = ____
-    junior_ds = ____
-    ml_eng = ____
-    validator = ____
-    cust_svc = ____
-
-    test_cases = [
-        (senior_ds, "credit_data", True, "Senior DS can access credit data"),
-        (
-            junior_ds,
-            "experiment_logs",
-            False,
-            "Junior DS cannot access experiment logs",
-        ),
-        (ml_eng, "production_logs", True, "ML Engineer can access production logs"),
-        (validator, "audit_logs", True, "Validator can access audit logs"),
-        (
-            cust_svc,
-            "credit_data",
-            False,
-            "Customer service cannot access raw credit data",
-        ),
-        (cust_svc, "credit_decisions", True, "Customer service can access decisions"),
-    ]
-
-    print(f"\n=== Access Control Tests ===")
-    for address, resource, expected, description in test_cases:
-        # TODO: Call engine.can_access() to get the access decision.
-        # Hint: decision = await engine.can_access(address, resource)  → bool
-        decision = await ____
-        status = "✓" if decision == expected else "✗ UNEXPECTED"
-        print(f"  {status} {description}")
-        print(f"     {address} → {resource}: {'ALLOW' if decision else 'DENY'}")
-
-    # Explain access
-    print(f"\n=== Access Explanations ===")
-    # TODO: Call engine.explain_access() to get a detailed explanation.
-    # Hint: explanation = await engine.explain_access(junior_ds, "production_logs")
-    #   explanation.decision, explanation.reason, explanation.chain
-    explanation = await ____
-    print(f"Junior DS → production_logs:")
-    print(f"  Decision: {explanation.decision}")
-    print(f"  Reason: {explanation.reason}")
-    print(f"  Chain: {explanation.chain}")
-
-
-asyncio.run(test_access())
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert len(documents) > 0, "Cleaned corpus should not be empty"
+assert "year_month" in news_clean.columns, "news_clean should have year_month column"
+assert "text" in news_clean.columns, "news_clean should have text column"
+assert all(len(doc) > 100 for doc in documents[:10]), \
+    "All documents should be longer than 100 chars (filter applied)"
+# INTERPRETATION: Text preprocessing combines title and body to give each
+# article its full context. Filtering short articles removes stubs and
+# boilerplate that would confuse topic models. The year_month column
+# enables temporal analysis of how topics evolve across time.
+print("\n✓ Checkpoint 1 passed — news corpus loaded and cleaned\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Monotonic tightening and fail-closed
+# TASK 2: BERTopic model
 # ══════════════════════════════════════════════════════════════════════
 
+if BERTopic is not None:
+    # BERTopic pipeline:
+    # 1. Sentence embeddings (SBERT)
+    # 2. Dimensionality reduction (UMAP)
+    # 3. Clustering (HDBSCAN)
+    # 4. Topic representation (c-TF-IDF)
 
-async def test_monotonic_tightening():
-    """
-    Monotonic tightening: child envelopes CANNOT exceed parent.
-    If parent budget is $50, child cannot have $100.
-    """
-    # TODO: Create a RoleEnvelope and a TaskEnvelope that tries to exceed it.
-    # Hint: RoleEnvelope(
-    #   address=Address("data_science", "modeling", "senior_data_scientist"),
-    #   max_cost_usd=50.0,
-    #   data_access=["credit_data", "feature_store"],
-    # )
-    # TaskEnvelope(
-    #   parent=parent_envelope,
-    #   max_cost_usd=100.0,  # will be clamped to 50 (parent's limit)
-    #   data_access=["credit_data", "feature_store", "production_logs"],  # production_logs removed
-    # )
-    # Check: child_task.effective_max_cost_usd and child_task.effective_data_access
-    parent_envelope = ____
-    child_task = ____
+    # TODO: Create a BERTopic model with embedding_model="all-MiniLM-L6-v2",
+    #       umap_model=None, hdbscan_model=None, min_topic_size=20,
+    #       nr_topics="auto", verbose=True
+    topic_model = BERTopic(
+        embedding_model=____,  # Hint: "all-MiniLM-L6-v2"
+        umap_model=____,  # Hint: None (use defaults)
+        hdbscan_model=____,  # Hint: None
+        min_topic_size=____,  # Hint: 20
+        nr_topics=____,  # Hint: "auto"
+        verbose=True,
+    )
 
-    print(f"\n=== Monotonic Tightening ===")
-    print(f"Parent budget: ${parent_envelope.max_cost_usd}")
-    print(f"Child requested: ${100.0}")
-    print(f"Child actual:   ${child_task.effective_max_cost_usd}")
-    print(f"  → Tightened to parent's limit")
-    print(f"\nParent data access: {parent_envelope.data_access}")
-    print(f"Child requested:    {['credit_data', 'feature_store', 'production_logs']}")
-    print(f"Child actual:       {child_task.effective_data_access}")
-    print(f"  → production_logs removed (not in parent's scope)")
+    # TODO: Fit the topic model on documents and get topics + probabilities
+    topics, probs = ____  # Hint: topic_model.fit_transform(documents)
 
-    print(f"\n=== Fail-Closed Behavior ===")
-    print(f"If GovernanceEngine encounters an error during access check:")
-    print(f"  → Access is DENIED (not allowed)")
-    print(f"  → Error is logged to AuditChain")
-    print(f"  → This prevents privilege escalation through bugs")
+    # Topic summary
+    topic_info = topic_model.get_topic_info()
+    n_topics = len(topic_info) - 1  # Exclude outlier topic -1
+    print(f"\n=== BERTopic Results ===")
+    print(f"Topics found: {n_topics}")
+    print(f"Outlier documents: {(np.array(topics) == -1).sum():,}")
 
-    # TODO: Create a GovernanceContext using engine.create_context() and demonstrate
-    # that it is frozen (cannot be modified).
-    # Hint: ml_eng = Address("data_science", "mlops", "ml_engineer")
-    #   context = await engine.create_context(ml_eng)
-    #   context.max_cost_usd, context.data_access, context.can_deploy
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    context = await ____
-    print(f"\n=== Frozen GovernanceContext ===")
-    print(f"Context for ML Engineer:")
-    print(f"  max_cost_usd: {context.max_cost_usd}")
-    print(f"  data_access: {context.data_access}")
-    print(f"  can_deploy: {context.can_deploy}")
-    print(f"\n  context.max_cost_usd = 999  # Raises FrozenInstanceError!")
-    print(f"  → Agents RECEIVE governance but CANNOT modify it")
+    # Display top topics
+    print(f"\nTop 10 Topics:")
+    for _, row in topic_info.head(11).iterrows():
+        if row["Topic"] == -1:
+            continue
+        print(f"  Topic {row['Topic']}: {row['Name'][:60]} (n={row['Count']})")
+
+else:
+    # Fallback: TF-IDF + NMF for environments without BERTopic
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import NMF
+
+    print("\nBERTopic not installed, using TF-IDF + NMF fallback")
+
+    # TODO: Create a TfidfVectorizer with max_features=5000, stop_words="english",
+    #       max_df=0.95, min_df=5
+    vectorizer = TfidfVectorizer(
+        max_features=____,  # Hint: 5000
+        stop_words=____,  # Hint: "english"
+        max_df=____,  # Hint: 0.95
+        min_df=____,  # Hint: 5
+    )
+    tfidf_matrix = vectorizer.fit_transform(documents)
+    feature_names = vectorizer.get_feature_names_out()
+
+    n_topics = 15
+    # TODO: Create NMF with n_components=n_topics, random_state=42
+    nmf = ____  # Hint: NMF(n_components=n_topics, random_state=42)
+    # TODO: Fit NMF to get document-topic matrix W and topic-word matrix H
+    W = ____  # Hint: nmf.fit_transform(tfidf_matrix)
+    H = ____  # Hint: nmf.components_
+
+    topics = W.argmax(axis=1).tolist()
+    probs = W / (W.sum(axis=1, keepdims=True) + 1e-10)
+
+    print(f"\nNMF Topics ({n_topics}):")
+    for topic_idx in range(n_topics):
+        top_words = [feature_names[i] for i in H[topic_idx].argsort()[-8:][::-1]]
+        count = sum(1 for t in topics if t == topic_idx)
+        print(f"  Topic {topic_idx}: {', '.join(top_words)} (n={count})")
 
 
-asyncio.run(test_monotonic_tightening())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Topic coherence evaluation (NPMI)
+# ══════════════════════════════════════════════════════════════════════
+# NPMI (Normalised Pointwise Mutual Information):
+# NPMI(w_i, w_j) = (log P(w_i,w_j)/(P(w_i)P(w_j))) / (-log P(w_i,w_j))
+# Range: [-1, 1]. Higher = more coherent topic.
 
-# Clean up
-org_file.unlink()
 
-print("\n✓ Exercise 3 complete — PACT governance setup with access control")
+def compute_npmi(
+    documents: list[str], topic_words: list[list[str]], window_size: int = 10
+) -> list[float]:
+    """Compute NPMI coherence for each topic."""
+    # TODO: Build word_doc_count (word -> doc frequency) and pair_doc_count
+    #       (sorted word pair -> co-occurrence count) by iterating over documents
+    word_doc_count = Counter()
+    pair_doc_count = Counter()
+    n_docs = len(documents)
+
+    for doc in documents:
+        words = set(doc.lower().split())
+        # TODO: Increment word_doc_count for each word in this document
+        for w in words:
+            ____  # Hint: word_doc_count[w] += 1
+        # TODO: Increment pair_doc_count for each sorted word pair in this document
+        word_list = list(words)
+        for i in range(len(word_list)):
+            for j in range(i + 1, len(word_list)):
+                pair = tuple(sorted([word_list[i], word_list[j]]))
+                ____  # Hint: pair_doc_count[pair] += 1
+
+    coherences = []
+    for topic in topic_words:
+        npmi_sum = 0
+        n_pairs = 0
+        for i in range(len(topic)):
+            for j in range(i + 1, len(topic)):
+                w_i, w_j = topic[i].lower(), topic[j].lower()
+                pair = tuple(sorted([w_i, w_j]))
+                # TODO: Compute p_i, p_j, p_ij as fractions of n_docs
+                p_i = ____  # Hint: word_doc_count.get(w_i, 0) / n_docs
+                p_j = ____  # Hint: word_doc_count.get(w_j, 0) / n_docs
+                p_ij = ____  # Hint: pair_doc_count.get(pair, 0) / n_docs
+
+                if p_ij > 0 and p_i > 0 and p_j > 0:
+                    pmi = np.log(p_ij / (p_i * p_j))
+                    npmi = pmi / (-np.log(p_ij))
+                    npmi_sum += npmi
+                    n_pairs += 1
+
+        coherences.append(npmi_sum / max(n_pairs, 1))
+    return coherences
+
+
+# Get topic words
+if BERTopic is not None:
+    topic_words = []
+    for topic_id in range(n_topics):
+        words = [w for w, _ in topic_model.get_topic(topic_id)[:10]]
+        topic_words.append(words)
+else:
+    topic_words = []
+    for topic_idx in range(n_topics):
+        words = [feature_names[i] for i in H[topic_idx].argsort()[-10:][::-1]]
+        topic_words.append(words)
+
+coherences = compute_npmi(documents[:5000], topic_words)  # Sample for speed
+
+print(f"\n=== Topic Coherence (NPMI) ===")
+print(f"Mean NPMI: {np.mean(coherences):.4f}")
+print(f"Best topic: {np.argmax(coherences)} (NPMI={max(coherences):.4f})")
+print(f"Worst topic: {np.argmin(coherences)} (NPMI={min(coherences):.4f})")
+for i, c in enumerate(coherences[:10]):
+    bar = "█" * max(0, int((c + 0.5) * 20))
+    print(f"  Topic {i}: {c:+.4f} {bar}")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert len(coherences) == n_topics, \
+    f"Should have one coherence score per topic, got {len(coherences)} vs {n_topics}"
+assert all(-1.0 <= c <= 1.0 for c in coherences), \
+    "NPMI scores should be in [-1, 1]"
+assert np.mean(coherences) > -1.0, "Mean NPMI should be above minimum value"
+# INTERPRETATION: NPMI (Normalised Pointwise Mutual Information) measures
+# how often the top words of a topic co-occur in documents vs by chance.
+# NPMI = 0 means co-occurrence is exactly as expected by chance (independent).
+# Positive NPMI means words co-occur more than chance — a coherent topic.
+# Good topic models typically achieve mean NPMI > 0.1.
+print("\n✓ Checkpoint 2 passed — topic coherence computed with NPMI\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Temporal topic evolution
+# ══════════════════════════════════════════════════════════════════════
+
+# Add topics to dataframe
+news_with_topics = news_clean.with_columns(
+    pl.Series("topic", topics[: news_clean.height])
+)
+
+# TODO: Build a temporal topic distribution:
+#   - Filter out outlier topics (topic >= 0)
+#   - Group by "year_month" and "topic"
+#   - Aggregate count of topic occurrences
+#   - Sort by year_month and topic
+temporal = (
+    news_with_topics.filter(____)  # Hint: pl.col("topic") >= 0
+    .group_by("year_month", "topic")
+    .agg(____)  # Hint: pl.col("topic").count().alias("count")
+    .sort("year_month", "topic")
+)
+
+# TODO: Compute topic proportion per month by joining with monthly totals
+monthly_totals = temporal.group_by("year_month").agg(
+    pl.col("count").sum().alias("total")
+)
+temporal = temporal.join(monthly_totals, on="year_month").with_columns(
+    # TODO: Add a "proportion" column = count / total
+    ____  # Hint: (pl.col("count") / pl.col("total")).alias("proportion")
+)
+
+print(f"\n=== Temporal Evolution ===")
+print(f"Months covered: {temporal['year_month'].n_unique()}")
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert "year_month" in temporal.columns, "Temporal data should have year_month column"
+assert "count" in temporal.columns, "Temporal data should have count column"
+assert "proportion" in temporal.columns, "Temporal data should have proportion column"
+# INTERPRETATION: Topic proportions normalise by monthly article count,
+# enabling fair comparison across months with different article volumes.
+# A topic that accounts for 5% of articles in January and 15% in June
+# has genuinely grown, not just benefited from more articles being published.
+print("\n✓ Checkpoint 3 passed — temporal topic evolution computed\n")
+
+# Show trending topics (biggest increase in recent months)
+months = sorted(temporal["year_month"].unique().to_list())
+if len(months) >= 6:
+    early = months[:3]
+    late = months[-3:]
+
+    print("\nTrending topics (last 3 months vs first 3 months):")
+    for topic_id in range(min(n_topics, 10)):
+        early_prop = temporal.filter(
+            (pl.col("year_month").is_in(early)) & (pl.col("topic") == topic_id)
+        )["proportion"].mean()
+        late_prop = temporal.filter(
+            (pl.col("year_month").is_in(late)) & (pl.col("topic") == topic_id)
+        )["proportion"].mean()
+
+        if early_prop is not None and late_prop is not None:
+            change = (late_prop - early_prop) * 100
+            arrow = "↑" if change > 1 else "↓" if change < -1 else "→"
+            print(f"  Topic {topic_id}: {change:+.1f}pp {arrow}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Visualise
+# ══════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+# Topic coherence comparison
+coherence_data = {f"Topic_{i}": {"NPMI": c} for i, c in enumerate(coherences[:10])}
+fig = viz.metric_comparison(coherence_data)
+fig.update_layout(title="Topic Coherence (NPMI)")
+fig.write_html("ex3_topic_coherence.html")
+print("\nSaved: ex3_topic_coherence.html")
+
+# TODO: Build topic_counts as a Counter of topics (excluding -1), then create
+#       size_data dict with key "Topic Size" mapping to a list of counts per topic
+topic_counts = ____  # Hint: Counter(t for t in topics if t >= 0)
+size_data = ____  # Hint: {"Topic Size": [topic_counts.get(i, 0) for i in range(min(n_topics, 15))]}
+fig_size = viz.training_history(size_data, x_label="Topic ID")
+fig_size.update_layout(title="Topic Size Distribution")
+fig_size.write_html("ex3_topic_sizes.html")
+print("Saved: ex3_topic_sizes.html")
+
+print("\n✓ Exercise 3 complete — topic modeling with BERTopic / NMF")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("═" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("═" * 70)
+print(f"""
+  ✓ BERTopic pipeline: sentence embeddings → UMAP → HDBSCAN → c-TF-IDF
+  ✓ NPMI coherence: objective measure of topic word co-occurrence quality
+  ✓ Temporal evolution: track topics across months to spot trends
+  ✓ NMF fallback: TF-IDF + matrix factorisation when GPU unavailable
+  ✓ Polars text processing: chain transformations without intermediate copies
+
+  KEY INSIGHT: BERTopic = clustering applied to text. The pipeline is:
+    1. Embed documents (semantic meaning → vector space)
+    2. Reduce dimensions (UMAP — preserve structure, enable clustering)
+    3. Cluster embeddings (HDBSCAN — find dense topic regions)
+    4. Represent topics (c-TF-IDF — find discriminative words per cluster)
+
+  BERTopic vs LDA:
+    LDA    → bag-of-words, fast, interpretable, misses context
+    BERTopic → contextual embeddings, modern, better on short texts
+
+  NEXT: Exercise 4 moves to production monitoring. You'll use
+  DriftMonitor to detect when the feature distribution of new loan
+  applications diverges from the training data — a key obligation
+  for any production ML model under MAS AI governance guidelines.
+""")
+print("═" * 70)

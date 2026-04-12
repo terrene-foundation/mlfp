@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.3 — The Complete Supervised Model Zoo | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
+  <style>
+    .reveal section { text-align: left; }
+    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
+    .reveal .lesson-meta { font-size: 0.5em; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; }
+    .reveal svg { max-width: 100%; max-height: 480px; }
+    .reveal pre { font-size: 0.48em; }
+    .reveal code { font-family: "JetBrains Mono", monospace; }
+    .slide-footer { position: absolute; bottom: 8px; left: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <p class="lesson-meta">Module 3 · Lesson 3.3</p>
+  <h1>The Complete Supervised Model Zoo</h1>
+  <p style="font-size: 0.7em; color: #64748B;">SVM · KNN · Naive Bayes · Decision Trees · Random Forests</p>
+  <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
+    <strong style="color: #0D9488;">⏱ 90 minutes</strong> &nbsp; · &nbsp;
+    <strong>Prereq:</strong> 3.2 &nbsp; · &nbsp;
+    <strong>Outcome:</strong> train and compare five model families on churn data
+  </div>
+  <div class="slide-footer">MLFP — Module 3: Supervised ML</div>
+</section>
+
+<section>
+  <h2>Five families cover most non-deep supervised problems</h2>
+  <ol style="font-size: 0.88em;">
+    <li><strong>SVM</strong> — hyperplane with maximum margin</li>
+    <li><strong>KNN</strong> — vote of nearest training points</li>
+    <li><strong>Naive Bayes</strong> — Bayes' theorem with conditional independence</li>
+    <li><strong>Decision Trees</strong> — recursive axis-aligned splits</li>
+    <li><strong>Random Forests</strong> — bagged ensemble of decorrelated trees</li>
+  </ol>
+  <p style="font-size: 0.82em; color: #64748B; font-style: italic;">Every family has a distinct geometry. The data tells you which geometry fits.</p>
+</section>
+
+<section>
+  <h2>SVM — maximum margin</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <line x1="40" y1="270" x2="680" y2="270" stroke="#334155"/>
+        <line x1="40" y1="40"  x2="40"  y2="270" stroke="#334155"/>
+        <circle cx="530" cy="80" r="7" fill="#3B82F6"/><circle cx="560" cy="110" r="7" fill="#3B82F6"/>
+        <circle cx="600" cy="70" r="7" fill="#3B82F6"/><circle cx="500" cy="140" r="9" fill="#3B82F6" stroke="#B91C1C" stroke-width="3"/>
+        <rect x="115" y="215" width="12" height="12" fill="#F97316"/><rect x="160" y="240" width="12" height="12" fill="#F97316"/>
+        <rect x="90" y="180" width="12" height="12" fill="#F97316"/><rect x="240" y="215" width="14" height="14" fill="#F97316" stroke="#B91C1C" stroke-width="3"/>
+        <line x1="60" y1="260" x2="640" y2="40" stroke="#0D9488" stroke-width="3"/>
+        <line x1="60" y1="220" x2="640" y2="0"  stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <line x1="60" y1="300" x2="640" y2="80" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <text x="500" y="30" fill="#0F766E" font-weight="600">w·x + b = 0</text>
+        <text x="580" y="60" fill="#64748B" font-size="11">margin = 2/‖w‖</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>SVM — the quadratic program</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \min_{\boldsymbol{w}, b} \tfrac{1}{2}\|\boldsymbol{w}\|^2 + C\sum_i \xi_i \quad \text{s.t.}\quad y_i(\boldsymbol{w}^\top x_i + b) \ge 1 - \xi_i \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li>Small $C$ = tolerate violations, smooth boundary (high bias)</li>
+    <li>Large $C$ = separate everything (high variance)</li>
+    <li>Only support vectors have $\alpha_i &gt; 0$ in the dual — sparse solution</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The kernel trick</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ K(x, x') = \langle \phi(x), \phi(x') \rangle \quad\text{(never compute }\phi\text{ explicitly)} \]
+  </div>
+  <table style="font-size: 0.7em;">
+    <thead><tr><th>Kernel</th><th>$K(x, x')$</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td>Linear</td><td>$x^\top x'$</td><td>text, high-dim sparse</td></tr>
+      <tr><td>Polynomial</td><td>$(x^\top x' + c)^d$</td><td>degree-$d$ interactions</td></tr>
+      <tr><td>RBF</td><td>$\exp(-\gamma \|x-x'\|^2)$</td><td>smooth non-linear</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>KNN — the curse of dimensionality</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <line x1="60" y1="200" x2="640" y2="200" stroke="#334155"/>
+        <line x1="60" y1="40"  x2="60"  y2="200" stroke="#334155"/>
+        <text x="360" y="225" text-anchor="middle">dimension d</text>
+        <text x="25" y="120" text-anchor="middle" transform="rotate(-90 25 120)">dist_max / dist_min</text>
+        <path d="M 80 60 Q 180 110, 300 140 T 620 185" fill="none" stroke="#DC2626" stroke-width="3"/>
+        <line x1="60" y1="185" x2="640" y2="185" stroke="#10B981" stroke-dasharray="3 3"/>
+        <text x="620" y="180" text-anchor="end" fill="#047857" font-size="11">limit = 1</text>
+        <text x="90"  y="55" fill="#B91C1C" font-size="11">d=2 useful</text>
+        <text x="440" y="170" fill="#B91C1C" font-size="11">d=500 meaningless</text>
+      </g>
+    </svg>
+  </figure>
+  <p style="font-size: 0.82em; text-align:center; color: #64748B;">
+    $\lim_{d\to\infty}\; (\text{dist}_{\max} - \text{dist}_{\min}) / \text{dist}_{\min} \to 0$
+  </p>
+</section>
+
+<section>
+  <h2>Naive Bayes — fast baseline</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \hat{y} = \arg\max_y P(y) \prod_{j=1}^{d} P(x_j \mid y) \]
+  </div>
+  <ul style="font-size: 0.82em;">
+    <li><strong>GaussianNB</strong> — continuous features, $P(x_j|y) = \mathcal{N}(\mu_{yj}, \sigma^2_{yj})$</li>
+    <li><strong>MultinomialNB</strong> — count features (text bag-of-words)</li>
+    <li><strong>BernoulliNB</strong> — binary features</li>
+  </ul>
+  <p style="font-size: 0.82em;">Independence assumption is wrong — but rank-correct is easier than probability-correct. Great text baseline.</p>
+</section>
+
+<section>
+  <h2>Decision trees — splitting criteria</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ G = 1 - \sum_k p_k^2 \qquad H = -\sum_k p_k \log_2 p_k \]
+  </div>
+  <div style="padding: 14px; background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; margin: 1em 0;">
+    \[ \text{IG} = H(\text{parent}) - \sum_j \tfrac{n_j}{n} H(\text{child}_j) \]
+  </div>
+  <p style="font-size: 0.82em;">Try every feature, every threshold, pick the split with the largest IG. Recurse until stopping rule.</p>
+</section>
+
+<section>
+  <h2>Decision tree by hand — Gini</h2>
+  <pre><code class="language-text" data-trim>
+Parent: 10 churn, 6 retain  (n=16)
+  p_churn = 10/16 = 0.625
+  Gini = 1 - 0.625² - 0.375² = 0.469
+
+Split → {8 churn, 1 retain}, {2 churn, 5 retain}
+  G(left)  = 1 - (8/9)² - (1/9)² = 0.198
+  G(right) = 1 - (2/7)² - (5/7)² = 0.408
+  Gweighted = (9/16)(0.198) + (7/16)(0.408) = 0.290
+  IG = 0.469 - 0.290 = 0.179
+  </code></pre>
+</section>
+
+<section>
+  <h2>Random forest — bagging + feature subsets</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="12">
+        <rect x="270" y="15" width="160" height="40" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+        <text x="350" y="40" text-anchor="middle" font-weight="700" fill="#0F766E">Training data</text>
+        <g transform="translate(0,80)">
+          <rect x="50"  y="0" width="120" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+          <text x="110" y="30" text-anchor="middle">tree 1 (bootstrap)</text>
+          <rect x="200" y="0" width="120" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+          <text x="260" y="30" text-anchor="middle">tree 2 (bootstrap)</text>
+          <rect x="350" y="0" width="120" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+          <text x="410" y="30" text-anchor="middle">...</text>
+          <rect x="500" y="0" width="120" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+          <text x="560" y="30" text-anchor="middle">tree T (bootstrap)</text>
+        </g>
+        <line x1="350" y1="55" x2="110" y2="75" stroke="#475569"/>
+        <line x1="350" y1="55" x2="260" y2="75" stroke="#475569"/>
+        <line x1="350" y1="55" x2="410" y2="75" stroke="#475569"/>
+        <line x1="350" y1="55" x2="560" y2="75" stroke="#475569"/>
+        <rect x="270" y="190" width="160" height="50" rx="6" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="350" y="220" text-anchor="middle" font-weight="700" fill="#166534">Average / vote</text>
+        <line x1="110" y1="130" x2="320" y2="190" stroke="#475569"/>
+        <line x1="260" y1="130" x2="340" y2="190" stroke="#475569"/>
+        <line x1="410" y1="130" x2="360" y2="190" stroke="#475569"/>
+        <line x1="560" y1="130" x2="380" y2="190" stroke="#475569"/>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>OOB = 1/e — free validation</h2>
+  <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
+    \[ \lim_{n\to\infty}\left(1 - \frac{1}{n}\right)^n = \frac{1}{e} \approx 0.368 \]
+  </div>
+  <p style="font-size: 0.85em;">Each tree is built on a bootstrap sample. ~36.8% of rows never enter that particular tree. Those out-of-bag rows are an automatic validation set — unbiased generalisation estimate with zero extra compute.</p>
+</section>
+
+<section>
+  <h2>Five models, one dataset, same CV</h2>
+  <pre><code class="language-python" data-trim>
+models = {
+    "SVM (RBF)":     SVC(kernel="rbf", C=1.0),
+    "KNN (k=25)":    KNeighborsClassifier(n_neighbors=25),
+    "GaussianNB":    GaussianNB(),
+    "Decision Tree": DecisionTreeClassifier(max_depth=6),
+    "Random Forest": RandomForestClassifier(n_estimators=200,
+                                            oob_score=True),
+}
+
+for name, m in models.items():
+    cv_res = cross_validate(m, X, y, cv=StratifiedKFold(5),
+        scoring=["accuracy", "f1", "roc_auc"])
+  </code></pre>
+</section>
+
+<section>
+  <h2>Typical leaderboard on e-commerce churn</h2>
+  <table style="font-size: 0.72em;">
+    <thead><tr><th>Model</th><th>Acc</th><th>F1</th><th>AUC</th><th>Time</th></tr></thead>
+    <tbody>
+      <tr><td>SVM (RBF)</td><td>0.812</td><td>0.708</td><td>0.874</td><td>8.4 s</td></tr>
+      <tr><td>KNN (k=25)</td><td>0.776</td><td>0.648</td><td>0.831</td><td>0.6 s</td></tr>
+      <tr><td>GaussianNB</td><td>0.731</td><td>0.604</td><td>0.796</td><td>0.1 s</td></tr>
+      <tr><td>Decision Tree</td><td>0.788</td><td>0.688</td><td>0.811</td><td>0.3 s</td></tr>
+      <tr style="background:#F0FDF4;"><td><strong>Random Forest</strong></td><td><strong>0.834</strong></td><td><strong>0.744</strong></td><td><strong>0.894</strong></td><td>2.1 s</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size: 0.82em; color: #64748B;">Random forest wins AUC. SVM close second but 4× slower. NB held back by violated independence assumption.</p>
+</section>
+
+<section>
+  <h2>Pick the right tool</h2>
+  <table style="font-size: 0.66em;">
+    <thead><tr><th>Model</th><th>First choice when</th></tr></thead>
+    <tbody>
+      <tr><td>SVM</td><td>small, clean, high-dim; text with linear kernel</td></tr>
+      <tr><td>KNN</td><td>small data, low dim, interpretable boundaries</td></tr>
+      <tr><td>Naive Bayes</td><td>text baseline, spam, sentiment, fast prototype</td></tr>
+      <tr><td>Decision Tree</td><td>need a human-readable rule set</td></tr>
+      <tr><td>Random Forest</td><td>most tabular problems, default when unsure</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Three traps</h2>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>1.</strong> Unscaled features with SVM or KNN — dollars dominate years. Always standardise.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>2.</strong> KNN with very large $k$ — collapses to base rate. Tune by CV.
+  </div>
+  <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.8em 0; font-size: 0.82em;">
+    <strong>3.</strong> Reporting accuracy on imbalanced data — meaningless. Use F1/AUC. More in 3.5.
+  </div>
+</section>
+
+<section>
+  <h2>What you can now do</h2>
+  <ul style="font-size: 0.88em;">
+    <li>✓ Derive the SVM primal-to-dual and explain the kernel trick</li>
+    <li>✓ Explain distance concentration and know when KNN dies</li>
+    <li>✓ Compute Gini and information gain by hand</li>
+    <li>✓ Explain why OOB = 1/e and how random forests get free CV</li>
+    <li>✓ Train five model families and compare with a fair table</li>
+  </ul>
+  <div style="background: #F0FDFA; padding: 14px 18px; border-left: 4px solid #0D9488; border-radius: 4px; margin-top: 1em;">
+    <strong>Next:</strong> Lesson 3.4 — gradient boosting. XGBoost, LightGBM, CatBoost. And a second-order Taylor derivation.
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
+<script>
+  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+    plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+</script>
+</body>
+</html>

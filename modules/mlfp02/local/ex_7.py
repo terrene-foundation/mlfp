@@ -2,35 +2,36 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP02 — Exercise 7: Feature Engineering
+# MLFP02 — Exercise 7: CUPED and Variance Reduction
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Engineer clinical features from messy ICU data using
-#   kailash-ml FeatureEngineer. Track all work with ExperimentTracker
-#   from the first exercise — building cumulative experiment history.
+# OBJECTIVE: Reduce A/B test variance using CUPED and pre-experiment
+#   covariates, apply Bayesian A/B testing, and use sequential testing
+#   to safely monitor experiments without inflating Type I error.
 #
 # TASKS:
-#   1. Load and inspect messy ICU data (irregular vitals, multi-table)
-#   2. Create ExperimentTracker experiment (used across all M2 exercises)
-#   3. Handle temporal features with point-in-time correctness
-#   4. Engineer clinical features (rolling vitals, medication interactions)
-#   5. Validate features with FeatureSchema
-#   6. Log feature engineering run to ExperimentTracker
+#   1. Load experiment data with pre-experiment covariates
+#   2. SRM check and power analysis (recap from Exercise 3, deeper)
+#   3. CUPED variance reduction — derive and apply
+#   4. Bayesian A/B testing — posterior probability of improvement
+#   5. Sequential testing with always-valid p-values
+#   6. Log experiment analysis to ExperimentTracker
 #
-# DATA QUALITY:
-#   - Irregular time-series (vitals recorded at different frequencies)
-#   - Multi-table joins (patients, admissions, vitals, medications, labs)
-#   - Clinical missing patterns (not MCAR — sicker patients get more tests)
+# THEORY (CUPED):
+#   Y_adj = Y - theta(X - E[X])  where theta = Cov(Y,X)/Var(X)
+#   Var(Y_adj) = Var(Y)(1 - rho^2)  where rho = Cor(Y,X)
+#   If rho=0.5, CI width reduces by 1 - sqrt(1-0.25) = 13.4%
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
 
+import numpy as np
 import polars as pl
+from scipy import stats
 from kailash.db.connection import ConnectionManager
-from kailash_ml import FeatureEngineer, DataExplorer
 from kailash_ml.engines.experiment_tracker import ExperimentTracker
-from kailash_ml.types import FeatureSchema, FeatureField
+from kailash_ml import ModelVisualizer
 
 from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
@@ -42,251 +43,253 @@ setup_environment()
 
 loader = MLFPDataLoader()
 
-patients = loader.load("mlfp02", "icu_patients.parquet")
-admissions = loader.load("mlfp02", "icu_admissions.parquet")
-vitals = loader.load("mlfp02", "icu_vitals.parquet")
-medications = loader.load("mlfp02", "icu_medications.parquet")
-labs = loader.load("mlfp02", "icu_labs.parquet")
+# Experiment data with pre-experiment covariates
+experiment = loader.load("mlfp02", "ecommerce_experiment.parquet")
 
-print("=== ICU Dataset ===")
-for name, df in [
-    ("patients", patients),
-    ("admissions", admissions),
-    ("vitals", vitals),
-    ("medications", medications),
-    ("labs", labs),
-]:
-    print(f"  {name}: {df.shape} — columns: {df.columns}")
+print("=== E-commerce Experiment Data ===")
+print(f"Shape: {experiment.shape}")
+print(f"Columns: {experiment.columns}")
+print(experiment.head(5))
+
+# Separate groups
+control = experiment.filter(pl.col("group") == "control")
+treatment = experiment.filter(pl.col("group") == "treatment")
+
+n_c, n_t = control.height, treatment.height
+print(f"\nControl: {n_c:,} | Treatment: {n_t:,}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Inspect the data — understand the mess
+# TASK 1: SRM check (recap, faster this time)
 # ══════════════════════════════════════════════════════════════════════
 
-# Vitals are recorded at irregular intervals
-print("\n=== Vital Signs Sample (one patient) ===")
-sample_patient = vitals["patient_id"].unique()[0]
-patient_vitals = vitals.filter(pl.col("patient_id") == sample_patient).sort(
-    "recorded_at"
+expected = np.array([n_c + n_t] * 2) / 2
+observed = np.array([n_c, n_t])
+
+# TODO: Run chi-square goodness-of-fit test for SRM detection
+_, srm_p = ____  # Hint: stats.chisquare(observed, f_exp=expected)
+print(f"\nSRM check: p={srm_p:.6f} — {'OK' if srm_p > 0.01 else 'SRM DETECTED'}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Standard analysis (before CUPED)
+# ══════════════════════════════════════════════════════════════════════
+
+# Primary metric: revenue per user
+y_c = control["revenue"].to_numpy().astype(np.float64)
+y_t = treatment["revenue"].to_numpy().astype(np.float64)
+
+mean_c, mean_t = y_c.mean(), y_t.mean()
+lift = mean_t - mean_c
+
+# TODO: Compute the naive standard error using pooled per-group variances
+se_naive = ____  # Hint: np.sqrt(y_c.var(ddof=1) / n_c + y_t.var(ddof=1) / n_t)
+
+ci_naive = (lift - 1.96 * se_naive, lift + 1.96 * se_naive)
+
+# TODO: Compute z-statistic then two-sided p-value for the naive test
+z_naive = ____  # Hint: lift / se_naive
+p_naive = ____  # Hint: 2 * (1 - stats.norm.cdf(abs(z_naive)))
+
+print(f"\n=== Standard Analysis (no CUPED) ===")
+print(f"Control mean: ${mean_c:.2f}")
+print(f"Treatment mean: ${mean_t:.2f}")
+print(f"Lift: ${lift:.2f} ({lift / mean_c:.2%} relative)")
+print(f"SE: ${se_naive:.2f}")
+print(f"95% CI: [${ci_naive[0]:.2f}, ${ci_naive[1]:.2f}]")
+print(f"p-value: {p_naive:.6f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: CUPED variance reduction
+# ══════════════════════════════════════════════════════════════════════
+# CUPED (Controlled-experiment Using Pre-Experiment Data)
+# Key insight: subtract a correlated pre-experiment covariate to reduce variance
+#
+# Y_adj = Y - theta * (X - E[X])
+# where X = pre-experiment metric (e.g., revenue in prior period)
+# theta = Cov(Y, X) / Var(X) = optimal coefficient
+# Var(Y_adj) = Var(Y) * (1 - rho^2)
+
+# Pre-experiment covariate: revenue in the 30 days before experiment
+x_c = control["pre_revenue"].to_numpy().astype(np.float64)
+x_t = treatment["pre_revenue"].to_numpy().astype(np.float64)
+
+# Compute CUPED adjustment
+x_all = np.concatenate([x_c, x_t])
+y_all = np.concatenate([y_c, y_t])
+
+# TODO: Compute theta = Cov(Y, X) / Var(X) using the combined arrays
+theta = ____  # Hint: np.cov(y_all, x_all)[0, 1] / np.var(x_all, ddof=1)
+
+# TODO: Compute the Pearson correlation between pre and post metrics
+rho = ____  # Hint: np.corrcoef(y_all, x_all)[0, 1]
+
+# TODO: Apply the CUPED adjustment: Y_adj = Y - theta * (X - E[X])
+x_mean = x_all.mean()
+y_c_adj = ____  # Hint: y_c - theta * (x_c - x_mean)
+y_t_adj = ____  # Hint: y_t - theta * (x_t - x_mean)
+
+# CUPED analysis
+mean_c_adj = y_c_adj.mean()
+mean_t_adj = y_t_adj.mean()
+lift_adj = mean_t_adj - mean_c_adj
+
+# TODO: Compute the CUPED standard error using the adjusted arrays
+se_cuped = ____  # Hint: np.sqrt(y_c_adj.var(ddof=1) / n_c + y_t_adj.var(ddof=1) / n_t)
+
+ci_cuped = (lift_adj - 1.96 * se_cuped, lift_adj + 1.96 * se_cuped)
+z_cuped = lift_adj / se_cuped
+p_cuped = 2 * (1 - stats.norm.cdf(abs(z_cuped)))
+
+# TODO: Compute actual variance reduction: 1 - (se_cuped^2 / se_naive^2)
+var_reduction = ____  # Hint: 1 - se_cuped**2 / se_naive**2
+ci_width_reduction = 1 - se_cuped / se_naive
+
+print(f"\n=== CUPED Analysis ===")
+print(f"Correlation (pre <-> post revenue): rho = {rho:.3f}")
+print(f"theta (optimal coefficient): {theta:.4f}")
+print(f"Theoretical variance reduction: {rho**2:.1%}")
+print(f"Actual variance reduction: {var_reduction:.1%}")
+print(f"CI width reduction: {ci_width_reduction:.1%}")
+print(f"\nCUPED-adjusted lift: ${lift_adj:.2f}")
+print(f"SE (CUPED): ${se_cuped:.2f} (was ${se_naive:.2f})")
+print(f"95% CI: [${ci_cuped[0]:.2f}, ${ci_cuped[1]:.2f}]")
+print(f"p-value: {p_cuped:.6f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Bayesian A/B testing
+# ══════════════════════════════════════════════════════════════════════
+# Instead of p-values, compute:
+#   - P(treatment > control | data)
+#   - Expected loss from choosing treatment
+#   - Credible interval for the lift
+
+# Use Normal approximation for posterior
+# Posterior for treatment mean: N(mean_t_adj, se_t^2)
+# Posterior for control mean:   N(mean_c_adj, se_c^2)
+se_c_post = y_c_adj.std(ddof=1) / np.sqrt(n_c)
+se_t_post = y_t_adj.std(ddof=1) / np.sqrt(n_t)
+
+# P(treatment > control) = P(lift > 0)
+# lift ~ N(lift_adj, se_c^2 + se_t^2)
+se_lift = np.sqrt(se_c_post**2 + se_t_post**2)
+
+# TODO: Compute P(treatment > control) using the Normal CDF
+prob_treatment_better = ____  # Hint: 1 - stats.norm.cdf(0, loc=lift_adj, scale=se_lift)
+
+# Expected loss: E[max(control - treatment, 0)]
+# For Normal: se_lift * phi(-lift_adj/se_lift) - lift_adj * Phi(-lift_adj/se_lift)
+z_ratio = -lift_adj / se_lift
+expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(
+    z_ratio
 )
-print(patient_vitals.head(20))
-
-# Check recording frequency
-if patient_vitals.height > 1:
-    time_diffs = patient_vitals.with_columns(
-        (pl.col("recorded_at").diff()).alias("time_gap")
-    )
-    print(f"\nTime gaps between readings:")
-    print(time_diffs.select("vital_name", "time_gap").head(10))
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Set up ExperimentTracker (persists across all M2 exercises)
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup_tracking():
-    """Initialize ExperimentTracker for Module 2."""
-    # TODO: Create and initialize a ConnectionManager for the shared DB
-    conn = ____  # Hint: ConnectionManager("sqlite:///mlfp02_experiments.db")
-    await conn.initialize()
-
-    # TODO: Create and initialize an ExperimentTracker
-    tracker = ____  # Hint: ExperimentTracker(conn)
-    await tracker.initialize()
-
-    # TODO: Create the Module 2 experiment with name, description, and tags
-    experiment_id = await tracker.create_experiment(
-        name=____,          # Hint: "mlfp02_healthcare_features"
-        description=____,   # Hint: "Feature engineering experiments on ICU data — Module 2"
-        tags=____,          # Hint: ["mlfp02", "healthcare", "feature-engineering"]
-    )
-    print(f"\nExperiment created: {experiment_id}")
-
-    return conn, tracker, experiment_id
-
-
-conn, tracker, experiment_id = asyncio.run(setup_tracking())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Temporal features with point-in-time correctness
-# ══════════════════════════════════════════════════════════════════════
-# CRITICAL: Features must only use data available BEFORE the prediction
-# time. Using future data (leakage) inflates validation metrics but
-# fails catastrophically in production.
-
-# Join patients with admissions
-patient_admissions = patients.join(admissions, on="patient_id", how="inner")
-
-# Aggregate vitals PER ADMISSION with temporal correctness
-# Only use vitals recorded DURING this admission (between admit and discharge)
-vitals_features = (
-    vitals.join(
-        admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
-        on="patient_id",
-        how="inner",
-    )
-    # Point-in-time filter: only vitals during THIS admission
-    .filter(
-        (pl.col("recorded_at") >= pl.col("admit_time"))
-        & (pl.col("recorded_at") <= pl.col("discharge_time"))
-    )
+expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(
+    -z_ratio
 )
 
-# Pivot vital signs to columns and compute temporal aggregates
-vital_names = vitals_features["vital_name"].unique().to_list()
+# 95% credible interval for lift
+bayesian_ci = (
+    lift_adj - 1.96 * se_lift,
+    lift_adj + 1.96 * se_lift,
+)
 
-vital_aggs = []
-for vital in vital_names:
-    vital_data = vitals_features.filter(pl.col("vital_name") == vital)
-    agg = vital_data.group_by("admission_id").agg(
-        pl.col("value").mean().alias(f"{vital}_mean"),
-        pl.col("value").std().alias(f"{vital}_std"),
-        pl.col("value").min().alias(f"{vital}_min"),
-        pl.col("value").max().alias(f"{vital}_max"),
-        # Trend: last reading minus first reading
-        (pl.col("value").last() - pl.col("value").first()).alias(f"{vital}_trend"),
-        # Count of readings (proxy for severity — sicker patients get more monitoring)
-        pl.col("value").count().alias(f"{vital}_count"),
-    )
-    vital_aggs.append(agg)
-
-# Join all vital aggregates
-features = patient_admissions.clone()
-for agg in vital_aggs:
-    features = features.join(agg, on="admission_id", how="left")
-
-print(f"\n=== Features after vital aggregation ===")
-print(f"Shape: {features.shape}")
+print(f"\n=== Bayesian A/B Test ===")
 print(
-    f"New vital columns: {[c for c in features.columns if any(v in c for v in vital_names)][:10]}..."
+    f"P(treatment > control): {prob_treatment_better:.4f} ({prob_treatment_better:.1%})"
 )
+print(f"Expected loss (choose treatment): ${expected_loss_treatment:.2f}/user")
+print(f"Expected loss (choose control):   ${expected_loss_control:.2f}/user")
+print(f"95% credible interval for lift: [${bayesian_ci[0]:.2f}, ${bayesian_ci[1]:.2f}]")
+print(f"\nDecision recommendation:")
+if prob_treatment_better > 0.95 and expected_loss_treatment < 0.50:
+    print("  -> SHIP: High confidence + low expected loss")
+elif prob_treatment_better > 0.80:
+    print("  -> CONTINUE: Promising but need more data")
+else:
+    print("  -> HOLD: Insufficient evidence for treatment superiority")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Engineer clinical features (medications, labs, interactions)
+# TASK 5: Sequential testing — always-valid p-values
 # ══════════════════════════════════════════════════════════════════════
+# Problem: peeking at results before full sample inflates Type I error.
+# Solution: always-valid p-values that maintain coverage at any stopping time.
+# Method: mixture sequential probability ratio test (mSPRT)
 
-# Medication features — count of distinct medications, specific drug flags
-med_features = (
-    medications.join(
-        admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
-        on="patient_id",
-        how="inner",
-    )
-    .filter(
-        (pl.col("administered_at") >= pl.col("admit_time"))
-        & (pl.col("administered_at") <= pl.col("discharge_time"))
-    )
-    .group_by("admission_id")
-    .agg(
-        pl.col("medication_name").n_unique().alias("n_unique_medications"),
-        pl.col("medication_name").count().alias("n_medication_doses"),
-        # Flag high-risk medications (vasopressors indicate hemodynamic instability)
-        pl.col("medication_name")
-        .str.contains("(?i)vasopressor|norepinephrine|dopamine")
-        .any()
-        .alias("received_vasopressors"),
-        # Antibiotic flag (infection)
-        pl.col("medication_name")
-        .str.contains("(?i)antibiotic|vancomycin|meropenem")
-        .any()
-        .alias("received_antibiotics"),
-    )
+# Simulate sequential analysis (process data in daily batches)
+experiment_with_day = experiment.with_columns(
+    pl.col("signup_date").str.to_date("%Y-%m-%d").alias("day")
 )
 
-features = features.join(med_features, on="admission_id", how="left")
+days = sorted(experiment_with_day["day"].unique().to_list())
+sequential_results = []
 
-# Lab features — most recent lab values and abnormal counts
-lab_features = (
-    labs.join(
-        admissions.select("patient_id", "admission_id", "admit_time", "discharge_time"),
-        on="patient_id",
-        how="inner",
+for i, day in enumerate(days):
+    if i < 3:  # Need minimum 3 days
+        continue
+
+    # Cumulative data up to this day
+    cumulative = experiment_with_day.filter(pl.col("day") <= day)
+    c = (
+        cumulative.filter(pl.col("group") == "control")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
     )
-    .filter(
-        (pl.col("collected_at") >= pl.col("admit_time"))
-        & (pl.col("collected_at") <= pl.col("discharge_time"))
+    t = (
+        cumulative.filter(pl.col("group") == "treatment")["revenue"]
+        .to_numpy()
+        .astype(np.float64)
     )
-    .group_by("admission_id")
-    .agg(
-        pl.col("lab_name").n_unique().alias("n_unique_labs"),
-        pl.col("value").count().alias("n_lab_results"),
-        # Abnormal results (flag=True in source data)
-        pl.col("abnormal_flag").sum().alias("n_abnormal_labs"),
+
+    if len(c) < 100 or len(t) < 100:
+        continue
+
+    # Standard z-test (WRONG for sequential — inflated alpha)
+    diff = t.mean() - c.mean()
+    se = np.sqrt(c.var(ddof=1) / len(c) + t.var(ddof=1) / len(t))
+    z = diff / se if se > 0 else 0
+    p_fixed = 2 * (1 - stats.norm.cdf(abs(z)))
+
+    # mSPRT always-valid p-value (simplified)
+    # Uses a mixture of likelihood ratios with a normal mixing distribution
+    n_curr = len(c) + len(t)
+    # Variance of the mixing distribution (tuning parameter)
+    tau_sq = se_naive**2  # Use naive SE as scale
+    v_n = se**2  # Current variance of the test statistic
+
+    # TODO: Compute the mSPRT lambda statistic
+    # lambda_n = sqrt(v_n / (v_n + tau_sq)) * exp(tau_sq * z^2 / (2 * (v_n + tau_sq)))
+    lambda_n = ____  # Hint: np.sqrt(v_n / (v_n + tau_sq)) * np.exp(tau_sq * z**2 / (2 * (v_n + tau_sq)))
+
+    # TODO: Convert lambda_n to an always-valid p-value: min(1/lambda_n, 1.0)
+    p_sequential = ____  # Hint: min(1.0, 1.0 / lambda_n) if lambda_n > 0 else 1.0
+
+    sequential_results.append(
+        {
+            "day": i + 1,
+            "n": n_curr,
+            "lift": diff,
+            "p_fixed": p_fixed,
+            "p_sequential": p_sequential,
+        }
     )
-)
 
-features = features.join(lab_features, on="admission_id", how="left")
-
-# Derived features
-features = features.with_columns(
-    # Abnormal lab ratio
-    (pl.col("n_abnormal_labs") / pl.col("n_lab_results").clip(lower_bound=1)).alias(
-        "abnormal_lab_ratio"
-    ),
-    # Medication intensity (doses per day of stay)
-    (
-        pl.col("n_medication_doses") / pl.col("length_of_stay_days").clip(lower_bound=1)
-    ).alias("medication_intensity"),
-)
-
-# Fill nulls for patients with no medications/labs (they exist!)
-features = features.with_columns(
-    pl.col("n_unique_medications").fill_null(0),
-    pl.col("n_medication_doses").fill_null(0),
-    pl.col("received_vasopressors").fill_null(False),
-    pl.col("received_antibiotics").fill_null(False),
-    pl.col("n_unique_labs").fill_null(0),
-    pl.col("n_lab_results").fill_null(0),
-    pl.col("n_abnormal_labs").fill_null(0),
-    pl.col("abnormal_lab_ratio").fill_null(0.0),
-    pl.col("medication_intensity").fill_null(0.0),
-)
-
-print(f"\n=== Features after medication + lab engineering ===")
-print(f"Shape: {features.shape}")
-print(f"Total feature columns: {len(features.columns)}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Validate features with FeatureSchema
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Define a FeatureSchema for the ICU clinical features
-# Include: age, length_of_stay_days, n_unique_medications, received_vasopressors,
-#          n_abnormal_labs, abnormal_lab_ratio, medication_intensity
-icu_schema = FeatureSchema(
-    name=____,      # Hint: "icu_clinical_features_v1"
-    features=[
-        # TODO: Add FeatureField for "age" — float64, not nullable
-        ____,  # Hint: FeatureField(name="age", dtype="float64", nullable=False, description="Patient age at admission")
-        # TODO: Add FeatureField for "length_of_stay_days" — float64, not nullable
-        ____,  # Hint: FeatureField(name="length_of_stay_days", dtype="float64", nullable=False, description="Length of ICU stay in days")
-        # TODO: Add FeatureField for "n_unique_medications" — int64, not nullable
-        ____,  # Hint: FeatureField(name="n_unique_medications", dtype="int64", nullable=False, description="Count of distinct medications administered")
-        # TODO: Add FeatureField for "received_vasopressors" — bool, not nullable
-        ____,  # Hint: FeatureField(name="received_vasopressors", dtype="bool", nullable=False, description="Whether patient received vasopressor drugs")
-        # TODO: Add FeatureField for "n_abnormal_labs" — int64, not nullable
-        ____,  # Hint: FeatureField(name="n_abnormal_labs", dtype="int64", nullable=False, description="Count of abnormal lab results")
-        # TODO: Add FeatureField for "abnormal_lab_ratio" — float64, not nullable
-        ____,  # Hint: FeatureField(name="abnormal_lab_ratio", dtype="float64", nullable=False, description="Proportion of lab results flagged abnormal")
-        # TODO: Add FeatureField for "medication_intensity" — float64, not nullable
-        ____,  # Hint: FeatureField(name="medication_intensity", dtype="float64", nullable=False, description="Medication doses per day of stay")
-    ],
-    entity_id_column=____,    # Hint: "patient_id"
-    timestamp_column=____,    # Hint: "admit_time"
-    version=1,
-)
-
-print(f"\n=== FeatureSchema: {icu_schema.name} ===")
-print(f"Entity ID: {icu_schema.entity_id_column}")
-print(f"Timestamp: {icu_schema.timestamp_column}")
-for f in icu_schema.features:
+print(f"\n=== Sequential Testing ===")
+print(f"{'Day':>4} {'n':>8} {'Lift':>10} {'p (fixed)':>12} {'p (mSPRT)':>12}")
+print("-" * 52)
+for r in sequential_results[:: max(1, len(sequential_results) // 10)]:
     print(
-        f"  {f.name}: {f.dtype} ({'nullable' if f.nullable else 'required'}) — {f.description}"
+        f"{r['day']:>4} {r['n']:>8,} ${r['lift']:>8.2f} {r['p_fixed']:>12.6f} {r['p_sequential']:>12.6f}"
     )
+
+# Show the danger of peeking
+early_sig = sum(1 for r in sequential_results if r["p_fixed"] < 0.05)
+early_sig_seq = sum(1 for r in sequential_results if r["p_sequential"] < 0.05)
+print(f"\nDays with p < 0.05 (fixed):      {early_sig}/{len(sequential_results)}")
+print(f"Days with p < 0.05 (sequential): {early_sig_seq}/{len(sequential_results)}")
+print("-> Fixed p-values cross significance more often (inflated Type I error)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -294,55 +297,73 @@ for f in icu_schema.features:
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def log_feature_run():
-    """Log the feature engineering results to ExperimentTracker."""
+async def log_ab_analysis():
+    # TODO: Create a ConnectionManager for the shared SQLite database
+    conn = ____  # Hint: ConnectionManager("sqlite:///mlfp02_experiments.db")
+    await conn.initialize()
 
-    # Quick profile for quality metrics
-    explorer = DataExplorer()
-    profile = await explorer.profile(features)
+    # TODO: Create an ExperimentTracker using conn and initialize it
+    tracker = ____  # Hint: ExperimentTracker(conn)
+    await tracker.initialize()
 
-    # TODO: Log the run using the async context manager pattern
-    async with ____ as run:  # Hint: tracker.run(experiment_id, run_name="icu_clinical_features_v1")
+    experiments = await tracker.list_experiments()
+    # Find the M2 experiment or create new
+    exp_id = None
+    for exp in experiments:
+        if exp.get("name") == "mlfp02_healthcare_features":
+            exp_id = exp["id"]
+            break
+    if not exp_id:
+        exp_id = await tracker.create_experiment(
+            name="mlfp02_ab_test_analysis",
+            description="A/B test analysis with CUPED and Bayesian methods",
+            tags=["mlfp02", "ab-test", "cuped", "bayesian"],
+        )
+
+    # TODO: Open a tracker run using the async context manager
+    async with ____ as run:  # Hint: tracker.run(exp_id, run_name="ecommerce_ab_cuped_bayesian")
         await run.log_params(
             {
-                "source_tables": "patients,admissions,vitals,medications,labs",
-                "temporal_filter": "point_in_time",
-                "vital_aggregations": "mean,std,min,max,trend,count",
-                "medication_flags": "vasopressors,antibiotics",
-                "derived_features": "abnormal_lab_ratio,medication_intensity",
+                "method": "CUPED + Bayesian",
+                "pre_covariate": "pre_revenue",
+                "cuped_theta": str(float(theta)),
+                "cuped_rho": str(float(rho)),
+                "sequential_method": "mSPRT",
             }
         )
         await run.log_metrics(
             {
-                "n_features": float(len(features.columns)),
-                "n_samples": float(features.height),
-                "null_rate": sum(features[c].null_count() for c in features.columns)
-                / (features.height * len(features.columns)),
-                "n_alerts": float(len(profile.alerts)),
+                "lift_naive": float(lift),
+                "lift_cuped": float(lift_adj),
+                "se_naive": float(se_naive),
+                "se_cuped": float(se_cuped),
+                "p_naive": float(p_naive),
+                "p_cuped": float(p_cuped),
+                "variance_reduction": float(var_reduction),
+                "prob_treatment_better": float(prob_treatment_better),
+                "expected_loss": float(expected_loss_treatment),
             }
         )
-        await run.set_tag("domain", "clinical")
-        run_id = run.id if hasattr(run, "id") else "logged"
-
-    print(f"\n=== Experiment Run Logged ===")
-    print(f"Run ID: {run_id}")
-    print(f"Features: {len(features.columns)}, Samples: {features.height}")
-
-    # List all runs in the experiment
-    runs = await tracker.list_runs(experiment_id)
-    print(f"Total runs in experiment: {len(runs)}")
-
-    return run_id
+        await run.set_tag("method", "cuped-bayesian-sequential")
+    print(f"\nLogged run")
+    await conn.close()
 
 
-run_id = asyncio.run(log_feature_run())
+asyncio.run(log_ab_analysis())
 
-# Clean up
-asyncio.run(conn.close())
 
-print(
-    "\nExercise 7 complete — healthcare feature engineering with temporal correctness"
+# Visualize comparison
+viz = ModelVisualizer()
+fig = viz.metric_comparison(
+    {
+        "Standard": {"SE": se_naive, "CI_Width": ci_naive[1] - ci_naive[0]},
+        "CUPED": {"SE": se_cuped, "CI_Width": ci_cuped[1] - ci_cuped[0]},
+    }
 )
+fig.update_layout(title="Standard vs CUPED: Variance Reduction")
+fig.write_html("ex5_cuped_comparison.html")
+print("Saved: ex5_cuped_comparison.html")
+
 print(
-    "  ExperimentTracker is now tracking. Exercises 7 and 8 share this experiment history."
+    "\nExercise 5 complete — A/B testing with CUPED + Bayesian + sequential testing"
 )

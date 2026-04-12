@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3.8 — Production Pipeline | MLFP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 3: Supervised ML</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 3.8</span>
+  Production Pipeline — DataFlow, Drift, and Deployment
+</h1>
+
+<p class="lead">
+  A model in a notebook is a prototype. A model in production persists
+  results to a database, monitors for drift, documents its limitations,
+  and reports prediction uncertainty. This lesson completes the production
+  story: <code>DataFlow</code> for database persistence,
+  <code>DriftMonitor</code> for detecting distribution shift with PSI and
+  KS tests, Model Cards for documentation, and conformal prediction for
+  distribution-free prediction intervals.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>DataFlow: Persisting ML Results</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>DataFlow</code> provides zero-config database operations. Define
+    a model with <code>@db.model</code>, and DataFlow generates CRUD
+    operations automatically. For ML, this means persisting predictions,
+    model metadata, and evaluation results to a database without writing
+    SQL.
+  </p>
+</div>
+
+<pre><code class="language-python">from kailash_dataflow import DataFlow, field
+
+db = DataFlow()
+
+@db.model
+class Prediction:
+    id: int = field(primary_key=True)
+    customer_id: str
+    probability: float
+    model_version: int
+    created_at: str
+
+# Create
+await db.express.create(Prediction,
+    customer_id="C001", probability=0.73,
+    model_version=1, created_at="2024-01-15")
+
+# Query
+high_risk = await db.express.list(Prediction,
+    filters={"probability__gt": 0.7})</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr38a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+    </marker>
+  </defs>
+  <rect x="20" y="60" width="160" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="100" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">ML Pipeline</text>
+  <text x="100" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">predictions, metrics</text>
+  <line x1="185" y1="100" x2="260" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr38a)"/>
+  <rect x="265" y="40" width="200" height="120" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="365" y="70" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">DataFlow</text>
+  <g font-family="JetBrains Mono" font-size="10" fill="#334155">
+    <text x="285" y="95">@db.model</text>
+    <text x="285" y="113">express.create()</text>
+    <text x="285" y="131">express.list()</text>
+    <text x="285" y="149">ConnectionManager</text>
+  </g>
+  <line x1="470" y1="100" x2="535" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr38a)"/>
+  <rect x="540" y="60" width="160" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="620" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">Database</text>
+  <text x="620" y="110" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">SQLite / PostgreSQL</text>
+</svg>
+<figcaption>DataFlow: define a model, get CRUD for free. No SQL required.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>DriftMonitor</h2>
+
+<p>
+  A model trained on January data may fail on July data if the
+  distribution has shifted. <code>DriftMonitor</code> detects this using
+  two statistical tests:
+</p>
+
+<h3>PSI: Population Stability Index</h3>
+
+<div class="annotated-equation">
+  $$\text{PSI} = \sum_{i=1}^{k} (p_i - q_i) \cdot \ln\!\left(\frac{p_i}{q_i}\right)$$
+  <div class="annotations">
+    <span>$p_i$ = proportion in bin $i$ (reference)</span>
+    <span>$q_i$ = proportion in bin $i$ (current)</span>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>PSI</th><th>Interpretation</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td>&lt; 0.1</td><td>No significant shift</td><td>Continue serving</td></tr>
+    <tr><td>0.1 - 0.25</td><td>Moderate shift</td><td>Investigate</td></tr>
+    <tr><td>&gt; 0.25</td><td>Significant shift</td><td>Retrain</td></tr>
+  </tbody>
+</table>
+
+<h3>KS test: Kolmogorov-Smirnov</h3>
+
+<p>
+  The KS test compares two CDFs and returns the maximum vertical distance
+  between them. A small p-value indicates the distributions differ
+  significantly.
+</p>
+
+<pre><code class="language-python">from kailash_ml import DriftMonitor, DriftSpec
+
+monitor = DriftMonitor(
+    spec=DriftSpec(
+        features=["income", "age", "credit_score"],
+        psi_threshold=0.15,
+        ks_alpha=0.05,
+        check_interval="daily",
+    )
+)
+
+# Compare reference (training) to current (production)
+drift_report = monitor.check(df_reference, df_current)
+
+for alert in drift_report.alerts:
+    print(f"  {alert.feature}: PSI={alert.psi:.3f}, "
+          f"KS p={alert.ks_pvalue:.4f}")</code></pre>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Two distributions overlaid -->
+  <line x1="80" y1="200" x2="650" y2="200" stroke="#94A3B8" stroke-width="1.5"/>
+  <line x1="80" y1="30" x2="80" y2="200" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="365" y="230" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Feature value</text>
+  <text x="50" y="115" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 50 115)">Density</text>
+  <!-- Reference distribution -->
+  <path d="M 120,190 Q 200,180 280,100 Q 340,40 400,100 Q 460,180 540,190" fill="#3B82F6" opacity="0.15" stroke="#3B82F6" stroke-width="2"/>
+  <text x="300" y="55" font-family="Inter" font-size="11" fill="#3B82F6">Reference (training)</text>
+  <!-- Current distribution (shifted) -->
+  <path d="M 200,190 Q 280,175 360,90 Q 420,35 480,90 Q 540,175 620,190" fill="#F43F5E" opacity="0.15" stroke="#F43F5E" stroke-width="2"/>
+  <text x="490" y="50" font-family="Inter" font-size="11" fill="#F43F5E">Current (production)</text>
+  <!-- KS distance -->
+  <line x1="380" y1="80" x2="380" y2="120" stroke="#F59E0B" stroke-width="2.5"/>
+  <text x="395" y="105" font-family="Inter" font-weight="600" font-size="10" fill="#F59E0B">KS distance</text>
+</svg>
+<figcaption>Drift detection: when the current distribution (red) shifts from the reference (blue), PSI and KS test catch it. The KS distance is the maximum vertical gap between the two CDFs.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Model Cards</h2>
+
+<p>
+  A Model Card (Mitchell et al., 2019) documents a model's purpose,
+  performance, limitations, and fairness findings. Every model promoted
+  to production should have one.
+</p>
+
+<table>
+  <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td>Model details</td><td>Name, version, type, training date, author</td></tr>
+    <tr><td>Intended use</td><td>Primary use case, out-of-scope uses</td></tr>
+    <tr><td>Training data</td><td>Source, size, date range, preprocessing</td></tr>
+    <tr><td>Evaluation</td><td>Metrics (AUC, F1, calibration), test set description</td></tr>
+    <tr><td>Fairness</td><td>Disparate impact, equalised odds, subgroup performance</td></tr>
+    <tr><td>Limitations</td><td>Known failure modes, data gaps, temporal constraints</td></tr>
+    <tr><td>Monitoring</td><td>Drift thresholds, retraining triggers, alert contacts</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Conformal Prediction</h2>
+
+<p>
+  Traditional ML gives a point prediction: "this customer will default
+  with probability 0.73". Conformal prediction adds a prediction
+  <em>interval</em> with guaranteed coverage:
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory</span>
+  <p>
+    Conformal prediction is <strong>distribution-free</strong>: it makes no
+    assumptions about the data distribution. Given a calibration set and a
+    desired coverage level $\alpha$, it produces prediction sets that
+    contain the true value with probability at least $1 - \alpha$. For
+    regression, this means prediction intervals; for classification, this
+    means sets of possible classes.
+  </p>
+</div>
+
+<pre><code class="language-python"># Conformal prediction interval for regression
+residuals = np.abs(y_cal - model.predict(X_cal))
+q = np.quantile(residuals, 1 - alpha)
+
+# For a new point:
+y_hat = model.predict(X_new)
+interval = (y_hat - q, y_hat + q)
+print(f"Prediction: {y_hat:.0f}, 90% interval: [{interval[0]:.0f}, {interval[1]:.0f}]")</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Full Production Pipeline</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>Deploy the credit scoring model as a production pipeline: persist to DataFlow, monitor for drift, generate a Model Card.</p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Persist predictions to DataFlow.</span>
+    <pre><code class="language-python">predictions = model.predict_proba(X_prod)[:, 1]
+for cust_id, prob in zip(customer_ids, predictions):
+    await db.express.create(Prediction,
+        customer_id=cust_id, probability=prob,
+        model_version=1)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Set up drift monitoring.</span>
+    <pre><code class="language-python">monitor = DriftMonitor(spec=DriftSpec(
+    features=["income", "age", "credit_score"],
+    psi_threshold=0.15, ks_alpha=0.05,
+    check_interval="daily",
+))
+report = monitor.check(df_train, df_prod)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Add conformal prediction intervals.</span>
+    <pre><code class="language-python">residuals = np.abs(y_cal - model.predict(X_cal))
+q90 = np.quantile(residuals, 0.90)
+# Each prediction now has a 90% interval</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Generate Model Card.</span>
+    <p>Document: model details, intended use, training data, evaluation metrics, fairness findings (from 3.6), limitations, and monitoring thresholds.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common Mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: No drift monitoring</span>
+  <p>A model without drift monitoring degrades silently. By the time someone notices, the predictions have been wrong for weeks.</p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: PSI on the wrong features</span>
+  <p>Monitor the features the model actually uses, not all features in the dataset. Irrelevant features drifting do not affect predictions.</p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Point predictions without uncertainty</span>
+  <p>"The predicted price is $450,000" is less useful than "The predicted price is $450,000 with a 90% interval of [$420,000, $480,000]". Conformal prediction provides this for free.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — DataFlow CRUD</h3>
+  <p>Define a Prediction model in DataFlow. Create 100 predictions, query for high-risk ones, update a probability, delete a stale record.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Drift injection</h3>
+  <p>Take the training data, shift one feature by 2 standard deviations, and run DriftMonitor. Verify that PSI and KS correctly detect the injected drift.</p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — Full production pipeline</h3>
+  <p>Build the complete production pipeline: train, persist to DataFlow, calibrate, register in ModelRegistry, set up DriftMonitor, generate Model Card, add conformal prediction intervals.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  DataFlow replaces the CSV output from 1.8 with database persistence.
+  DriftMonitor extends DataExplorer's compare() from 1.7 to continuous
+  production monitoring. Model Cards incorporate fairness findings from
+  3.6. Conformal prediction uses the calibration concepts from 3.5.
+  The full pipeline ties together every lesson in Module 3.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have completed Module 3 and the entire Foundation Certificate. You
+  can engineer features, train every major supervised model, evaluate with
+  proper metrics, explain with SHAP, audit for fairness, orchestrate
+  workflows, search hyperparameters, register models, persist to
+  databases, monitor for drift, and document with Model Cards. This is
+  the complete supervised ML pipeline from data to production.
+</p>
+<p>
+  The Advanced Certificate (Modules 4-6) builds on this foundation:
+  unsupervised learning, deep learning, NLP, LLMs, reinforcement learning,
+  and AI governance.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../07/textbook.html" class="prev"><span class="label">← Previous</span>3.7 Workflow Orchestration</a>
+  <a href="../../index.html" class="next"><span class="label">Next →</span>Module 3 Index</a>
+</nav>
+
+</main>
+</body>
+</html>

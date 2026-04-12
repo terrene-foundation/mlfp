@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.2 — Parameter Estimation and Inference | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.2</span>
+  Parameter Estimation and Inference
+</h1>
+
+<p class="lead">
+  You have data but no prior — how do you pick the "best" parameter value?
+  This lesson derives maximum likelihood estimation from first principles,
+  proves Bessel's correction, introduces the central limit theorem as the
+  engine of frequentist confidence intervals, and shows when MLE fails and
+  how MAP estimation fixes it.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Population versus sample</h2>
+
+<p>
+  A <strong>population</strong> is the idealised infinite set of all possible
+  observations. A <strong>sample</strong> is the finite collection you actually
+  have. Parameters (denoted with Greek letters like $\mu$ and $\sigma^2$)
+  describe the population; statistics (denoted $\bar{x}$, $s^2$) are what we
+  compute from the sample in an attempt to estimate those parameters.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 240" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="200" cy="120" r="90" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+  <text x="200" y="110" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">Population</text>
+  <text x="200" y="135" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">μ, σ²</text>
+  <text x="200" y="155" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">unknown parameters</text>
+
+  <path d="M 290,120 C 360,90 400,90 430,120" stroke="#64748B" stroke-width="2" fill="none" marker-end="url(#arr22)"/>
+  <defs>
+    <marker id="arr22" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <text x="360" y="85" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" font-style="italic">sample</text>
+
+  <circle cx="550" cy="120" r="70" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+  <text x="550" y="110" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#3B82F6">Sample</text>
+  <text x="550" y="135" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#1E293B">x̄, s²</text>
+  <text x="550" y="155" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">estimators</text>
+
+  <path d="M 540,180 C 430,200 350,200 210,180" stroke="#F59E0B" stroke-width="2" fill="none" marker-end="url(#arr22b)"/>
+  <defs>
+    <marker id="arr22b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#F59E0B"/>
+    </marker>
+  </defs>
+  <text x="370" y="220" text-anchor="middle" font-family="Inter" font-size="11" fill="#F59E0B" font-style="italic">inference</text>
+</svg>
+<figcaption>The central question of frequentist statistics: the population is unknowable; we only see a sample. Parameter estimation is how we run the arrow backward.</figcaption>
+</figure>
+
+<p>
+  The subtlety is that $\bar{x}$ and $s^2$ are themselves random — different
+  samples give different values. A good estimator is one whose distribution
+  is concentrated around the true parameter.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The sampling distribution and the CLT</h2>
+
+<p>
+  Take a population with mean $\mu$ and variance $\sigma^2$. Draw samples of
+  size $n$ and compute the mean of each sample. Those sample means form their
+  own distribution — the <strong>sampling distribution of the mean</strong>.
+  Two facts are true for <em>any</em> finite-variance population:
+</p>
+
+<div class="annotated-equation">
+  $$E[\bar{X}] \;=\; \mu \qquad \text{Var}(\bar{X}) \;=\; \frac{\sigma^2}{n}$$
+  <div class="annotations">
+    <span>the sample mean is unbiased</span>
+    <span>variance shrinks like $1/n$</span>
+  </div>
+</div>
+
+<p>
+  The standard deviation of $\bar{X}$ is $\sigma/\sqrt{n}$, called the
+  <strong>standard error</strong>. The CLT adds a remarkable third fact:
+  whatever the shape of the original population, for large enough $n$, the
+  sampling distribution of $\bar{X}$ is approximately Normal.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: the central limit theorem</span>
+  <p>
+    Let $X_1, X_2, \ldots, X_n$ be i.i.d. draws from a distribution with mean
+    $\mu$ and finite variance $\sigma^2$. Then as $n \to \infty$,
+  </p>
+  $$\frac{\bar{X} - \mu}{\sigma / \sqrt{n}} \;\xrightarrow{d}\; N(0, 1)$$
+  <p>
+    This is why the Normal distribution dominates statistics: it shows up
+    whenever you average enough independent things, regardless of where they
+    came from. The HDB price distribution is right-skewed, but the
+    distribution of <em>mean prices computed from samples of 100 flats</em>
+    is beautifully Normal.
+  </p>
+</div>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 220" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <!-- Population (skewed) -->
+  <g>
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Population (skewed)</text>
+    <path d="M 20,190 L 40,60 L 80,90 L 120,130 L 160,160 L 200,180 L 200,190 Z" fill="#FECACA" stroke="#EF4444" stroke-width="2"/>
+    <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+  </g>
+  <!-- n=5 -->
+  <g transform="translate(240,0)">
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Mean of n=5</text>
+    <path d="M 20,190 Q 70,80 110,80 Q 160,80 200,190" fill="#FED7AA" stroke="#F59E0B" stroke-width="2"/>
+    <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+  </g>
+  <!-- n=100 -->
+  <g transform="translate(480,0)">
+    <text x="110" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#64748B">Mean of n=100</text>
+    <path d="M 20,190 Q 100,40 110,40 Q 120,40 200,190" fill="#BBF7D0" stroke="#22C55E" stroke-width="2"/>
+    <line x1="20" y1="190" x2="200" y2="190" stroke="#94A3B8"/>
+  </g>
+</svg>
+<figcaption>The CLT in action. The population is skewed right (HDB prices). The distribution of the sample mean becomes more Normal — and narrower — as $n$ grows.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Maximum Likelihood Estimation</h2>
+
+<p>
+  Suppose you observe $n$ data points $x_1, \ldots, x_n$ that you believe were
+  drawn independently from a Normal distribution $N(\mu, \sigma^2)$. You do
+  not know $\mu$ or $\sigma^2$. What values should you pick? The maximum
+  likelihood principle says: pick the values that make the observed data most
+  probable.
+</p>
+
+<h3>Deriving the Normal MLE</h3>
+
+<p>
+  The probability density of a single Normal observation is:
+</p>
+
+$$f(x_i \mid \mu, \sigma^2) \;=\; \frac{1}{\sqrt{2\pi\sigma^2}} \exp\!\left(-\frac{(x_i - \mu)^2}{2\sigma^2}\right)$$
+
+<p>
+  For $n$ independent observations, the joint density — the
+  <em>likelihood</em> $L(\mu, \sigma^2)$ — is the product:
+</p>
+
+$$L(\mu, \sigma^2) \;=\; \prod_{i=1}^{n} \frac{1}{\sqrt{2\pi\sigma^2}} \exp\!\left(-\frac{(x_i - \mu)^2}{2\sigma^2}\right)$$
+
+<p>
+  Products are hard to differentiate, so we take the logarithm — the
+  <strong>log-likelihood</strong> $\ell = \log L$. Since log is monotonic, the
+  maximum is in the same place:
+</p>
+
+$$\ell(\mu, \sigma^2) \;=\; -\frac{n}{2}\log(2\pi) - \frac{n}{2}\log\sigma^2 - \frac{1}{2\sigma^2}\sum_{i=1}^{n}(x_i - \mu)^2$$
+
+<h3>Solving for $\hat{\mu}$</h3>
+
+<p>
+  Take the partial derivative with respect to $\mu$ and set it to zero:
+</p>
+
+$$\frac{\partial \ell}{\partial \mu} \;=\; \frac{1}{\sigma^2}\sum_{i=1}^{n}(x_i - \mu) \;=\; 0$$
+
+<p>
+  This gives $\sum x_i = n\mu$, so:
+</p>
+
+<div class="annotated-equation">
+  $$\hat{\mu}_{\text{MLE}} \;=\; \frac{1}{n}\sum_{i=1}^{n} x_i \;=\; \bar{x}$$
+  <div class="annotations">
+    <span>The MLE of the mean is the sample mean — the familiar $\bar{x}$.</span>
+  </div>
+</div>
+
+<h3>Solving for $\hat{\sigma}^2$</h3>
+
+<p>
+  Take the partial derivative with respect to $\sigma^2$ (treating $\sigma^2$
+  as a single variable) and set it to zero:
+</p>
+
+$$\frac{\partial \ell}{\partial \sigma^2} \;=\; -\frac{n}{2\sigma^2} + \frac{1}{2\sigma^4}\sum_{i=1}^{n}(x_i - \mu)^2 \;=\; 0$$
+
+<p>
+  Multiplying through by $2\sigma^4$ and substituting $\hat{\mu} = \bar{x}$:
+</p>
+
+$$\hat{\sigma}^2_{\text{MLE}} \;=\; \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
+
+<p>
+  Look carefully — this divides by $n$, not $n - 1$. The MLE of the variance
+  is <em>biased</em>: it systematically underestimates the true population
+  variance. This is where Bessel's correction comes in.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Bessel's correction: why divide by $n - 1$</h2>
+
+<p>
+  We want an estimator $s^2$ whose expected value equals the true variance
+  $\sigma^2$. Let's compute the expected value of the naive MLE variance and
+  see the gap.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: the derivation</span>
+  <p>
+    Let $X_1, \ldots, X_n$ be i.i.d. with mean $\mu$ and variance $\sigma^2$.
+    Define $\tilde{s}^2 = \frac{1}{n}\sum_i (X_i - \bar{X})^2$.
+  </p>
+  <p>
+    Expand $(X_i - \bar{X})^2 = ((X_i - \mu) - (\bar{X} - \mu))^2$ and sum:
+  </p>
+  $$\sum_i (X_i - \bar{X})^2 \;=\; \sum_i (X_i - \mu)^2 - n(\bar{X} - \mu)^2$$
+  <p>Take expectations:</p>
+  $$E\!\left[\sum_i (X_i - \bar{X})^2\right] \;=\; \sum_i E[(X_i - \mu)^2] - n\,E[(\bar{X} - \mu)^2]$$
+  <p>Each term $E[(X_i - \mu)^2] = \sigma^2$, and $E[(\bar{X} - \mu)^2] = \sigma^2/n$:</p>
+  $$= n\sigma^2 - n \cdot \frac{\sigma^2}{n} \;=\; (n-1)\sigma^2$$
+  <p>Therefore:</p>
+  $$E[\tilde{s}^2] \;=\; \frac{n-1}{n}\sigma^2$$
+  <p>
+    To fix the bias, multiply by $n/(n-1)$ — which is the same as dividing
+    the sum by $n-1$ instead of $n$:
+  </p>
+  $$s^2 \;=\; \frac{1}{n-1}\sum_{i=1}^{n}(X_i - \bar{X})^2 \qquad \Rightarrow \qquad E[s^2] \;=\; \sigma^2$$
+</div>
+
+<p>
+  The intuition: using $\bar{X}$ (instead of the unknown $\mu$) to center the
+  squared deviations makes them systematically smaller, because $\bar{X}$ is
+  the value that minimises $\sum(x_i - c)^2$. The $n/(n-1)$ factor exactly
+  compensates for this self-centering. One degree of freedom was spent
+  computing $\bar{X}$; only $n - 1$ remain.
+</p>
+
+<div class="callout foundations">
+  <span class="label">🟢 The intuition</span>
+  <p>
+    If you only have two data points, say $10$ and $14$, their sample mean is
+    $12$. The squared deviations from the mean are both $4$, total $8$.
+    Dividing by $n = 2$ gives variance $4$; dividing by $n - 1 = 1$ gives
+    variance $8$. With only two points, the $n - 1$ version is the honest
+    one — you cannot have zero uncertainty after seeing two numbers.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Confidence intervals</h2>
+
+<p>
+  Once you know the sampling distribution of an estimator, you can build a
+  <strong>confidence interval</strong>: a range that would contain the true
+  parameter in a specified fraction of repeated experiments.
+</p>
+
+<p>
+  For the sample mean with large $n$, the CLT says
+  $\bar{X} \approx N(\mu, \sigma^2/n)$. A 95% confidence interval for $\mu$
+  is then:
+</p>
+
+<div class="annotated-equation">
+  $$\bar{x} \;\pm\; 1.96 \cdot \frac{s}{\sqrt{n}}$$
+  <div class="annotations">
+    <span>$1.96$ — the 97.5th percentile of $N(0,1)$</span>
+    <span>$s/\sqrt{n}$ — standard error</span>
+  </div>
+</div>
+
+<p>
+  When $\sigma$ is unknown and estimated by $s$, for small $n$ we use the
+  Student's $t$ distribution instead of Normal. The $t$ distribution is
+  slightly wider (heavier tails) to account for the extra uncertainty in
+  estimating $\sigma$.
+</p>
+
+<div class="callout warning">
+  <span class="label">⚠ Interpreting a CI correctly</span>
+  <p>
+    A 95% CI does <em>not</em> mean "there is a 95% probability the true mean
+    is in this range". That is the Bayesian credible interval from Lesson 2.1.
+    A frequentist CI means "if I repeated the experiment many times and
+    computed a CI each time, 95% of the CIs would contain the true mean". For
+    any <em>specific</em> CI you computed, it either contains the true mean
+    or it does not — you don't know which.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>MAP estimation: MLE with a prior</h2>
+
+<p>
+  MLE uses only the likelihood. MAP — Maximum A Posteriori — combines the
+  likelihood with a prior belief (exactly the Bayesian update from Lesson
+  2.1) and returns the <em>mode</em> of the posterior:
+</p>
+
+$$\hat{\theta}_{\text{MAP}} \;=\; \arg\max_\theta P(\text{data} \mid \theta)\,P(\theta) \;=\; \arg\max_\theta \big[\ell(\theta) + \log P(\theta)\big]$$
+
+<p>
+  The $\log P(\theta)$ term is a <strong>regularizer</strong>. It pulls the
+  estimate toward the prior mean, trading off fit against prior knowledge.
+  When $n$ is small, the prior dominates; when $n$ is large, the likelihood
+  dominates and MAP converges to MLE.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: ExperimentTracker</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    Every MLE run you log to <code>ExperimentTracker</code> captures the
+    likelihood function, the optimiser trajectory, and the final parameter
+    vector. When you return to the experiment six months later (or when a
+    reviewer asks you to justify a number), you replay the entire fit. In
+    today's exercise you will call <code>scipy.optimize.minimize</code>
+    directly; the tracker just records what you did.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: Fitting a Normal to Singapore GDP growth</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Load Singapore quarterly GDP growth rates from
+    <code>economic_indicators.csv</code>, compute the MLE of $(\mu, \sigma^2)$
+    for a Normal model, and construct a 95% confidence interval for the mean.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load.</span>
+    <pre><code class="language-python">import polars as pl
+import numpy as np
+from scipy import stats
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+df = loader.load("mlfp02", "economic_indicators.csv")
+growth = df["gdp_growth_pct"].drop_nulls().to_numpy()
+n = len(growth)
+print(f"n = {n}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Closed-form MLE.</span>
+    <p>
+      For a Normal, the MLE is the sample mean and (biased) sample variance:
+    </p>
+    <pre><code class="language-python">mu_hat    = growth.mean()
+sigma2_ml = growth.var(ddof=0)   # divide by n (MLE)
+sigma2_s  = growth.var(ddof=1)   # divide by n-1 (unbiased)
+print(f"MLE variance        = {sigma2_ml:.4f}")
+print(f"Unbiased variance   = {sigma2_s:.4f}")
+print(f"Ratio (n/(n-1))     = {sigma2_s/sigma2_ml:.4f}")</code></pre>
+    <p>
+      The ratio should be exactly $n/(n-1)$ — Bessel's correction in numbers.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Numerical MLE with scipy.</span>
+    <p>
+      For models without a closed-form solution, you optimise the
+      log-likelihood. We do it here for the Normal just to see the machinery.
+    </p>
+    <pre><code class="language-python">from scipy.optimize import minimize
+
+def neg_log_lik(params, x):
+    mu, log_sigma = params
+    sigma = np.exp(log_sigma)           # keep sigma > 0
+    return -np.sum(stats.norm.logpdf(x, loc=mu, scale=sigma))
+
+result = minimize(
+    neg_log_lik,
+    x0=[0.0, 0.0],
+    args=(growth,),
+    method="BFGS",
+)
+mu_fit, log_sigma_fit = result.x
+print(f"Numerical MLE: mu = {mu_fit:.4f}, sigma = {np.exp(log_sigma_fit):.4f}")</code></pre>
+    <p>
+      The numerical fit should match $\bar{x}$ and the biased sample std to
+      within floating-point precision.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — 95% CI via CLT.</span>
+    <pre><code class="language-python">s  = float(growth.std(ddof=1))
+se = s / np.sqrt(n)
+t_crit = stats.t.ppf(0.975, df=n - 1)
+lo, hi = mu_hat - t_crit * se, mu_hat + t_crit * se
+print(f"mu_hat = {mu_hat:.3f} ± {t_crit * se:.3f}")
+print(f"95% CI  = [{lo:.3f}, {hi:.3f}]")</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>When MLE fails</h2>
+
+<table>
+  <thead><tr><th>Failure mode</th><th>Symptom</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Small $n$</td><td>Huge variance in estimate</td><td>MAP with an informative prior</td></tr>
+    <tr><td>Multimodal likelihood</td><td>Optimiser returns a local max</td><td>Multiple random restarts; visualise the surface</td></tr>
+    <tr><td>Misspecified model</td><td>MLE fits garbage confidently</td><td>Goodness-of-fit tests; compare Normal vs Student-$t$</td></tr>
+    <tr><td>Heavy-tailed data</td><td>Normal MLE gives a huge $\hat\sigma^2$ dominated by outliers</td><td>Robust M-estimators; Student-$t$ likelihood</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Bessel in numbers</h3>
+  <p>
+    Generate 20 samples from a standard Normal using <code>np.random.normal</code>.
+    Compute both the biased ($n$) and unbiased ($n-1$) variance. Repeat 10,000
+    times and compare the average of each to the true variance $1$. Confirm
+    that only the $n-1$ version is unbiased on average.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — CI coverage</h3>
+  <p>
+    Simulate 1,000 samples of size $n = 30$ from $N(10, 4)$. For each sample,
+    compute a 95% CI for the mean. What fraction of the intervals contain
+    the true mean $10$? It should be close to 95%.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — MLE vs MAP</h3>
+  <p>
+    With 5 data points from $N(0, 1)$, compute the MLE of the mean and a MAP
+    estimate using a $N(0, 0.5)$ prior. How different are they? Repeat with
+    500 data points and watch them converge.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Lesson 2.1 introduced the prior and posterior; Lesson 2.2 shows what
+  happens when you use only the likelihood. Bessel's correction (derived
+  here) is the $n-1$ that Lesson 1.1's <code>describe()</code> has been
+  using without explanation. The CLT that powers the confidence interval
+  reappears in Lesson 2.3 as the null distribution for the $z$-test and in
+  Lesson 2.5 as the sampling distribution of OLS coefficients.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You have derived the sample mean and variance as maximum likelihood
+  estimators, proved Bessel's correction from first principles, learned why
+  the sampling distribution of the mean becomes Normal regardless of the
+  population, and built your first frequentist confidence interval. The
+  pieces you assembled today are the engine block of every classical
+  statistical test you will meet from now on.
+</p>
+<p>
+  Lesson 2.3 is the bridge from "I have an estimate" to "I have a decision":
+  given an observed difference, is it real or could chance explain it? We
+  meet the p-value, the bootstrap, and the machinery of hypothesis testing.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<nav class="lesson-nav">
+  <a href="../01/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.1 Probability and Bayesian Thinking
+  </a>
+  <a href="../03/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.3 Bootstrapping and Hypothesis Testing
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

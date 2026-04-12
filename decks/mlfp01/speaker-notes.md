@@ -9,7 +9,7 @@ Total time: ~180 minutes (3 hours)
 **Time**: ~1 min
 **Talking points**:
 
-- Welcome to Module 1 of the ASCENT — ML Engineering from Foundations to Mastery at Terrene Open Academy.
+- Welcome to Module 1 of the MLFP — ML Engineering from Foundations to Mastery at Terrene Open Academy.
 - Read the provocation aloud: "Can you trust a number you didn't explore yourself?"
 - Let it sit for a moment. This is the theme of the entire module.
 - If beginners look confused: "Today you will go from zero Python to loading a dataset with 15 million rows. By the end, you will have skills no spreadsheet can match."
@@ -157,7 +157,7 @@ Total time: ~180 minutes (3 hours)
 **Time**: ~4 min
 **Talking points**:
 
-- "Polars is what we use instead of pandas. It is faster, uses less memory, and the entire ASCENT programme uses it."
+- "Polars is what we use instead of pandas. It is faster, uses less memory, and the entire MLFP programme uses it."
 - Walk through: `pl.read_csv()`, `.shape`, `.columns`, `.head()`, `.describe()`.
 - "describe() is your first diagnostic on any dataset. Run it before anything else."
 - Kailash connection callout: DataExplorer does describe() plus 50 more diagnostics. But first you need to know what each one means.
@@ -757,7 +757,7 @@ Total time: ~180 minutes (3 hours)
 **Time**: ~3 min
 **Talking points**:
 
-- Walk through the table: Load (ASCENTDataLoader) -> Profile (DataExplorer) -> Clean (PreprocessingPipeline) -> Visualise (ModelVisualizer) -> Persist (ConnectionManager).
+- Walk through the table: Load (MLFPDataLoader) -> Profile (DataExplorer) -> Clean (PreprocessingPipeline) -> Visualise (ModelVisualizer) -> Persist (ConnectionManager).
 - "You learn both paths: manual and engine. The manual knowledge lets you debug when the engine gives unexpected results."
 
 **[PAUSE FOR QUESTIONS — 3 min]**
@@ -877,7 +877,7 @@ Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 72: ASCENTDataLoader
+## Slide 72: MLFPDataLoader
 
 **Time**: ~2 min
 **Talking points**:
@@ -898,7 +898,7 @@ Total time: ~180 minutes (3 hours)
 
 - Walk through the 8 exercises. "Each exercise builds on the previous one. Start with 1.1 and work through."
 - "~70% of the code is provided. You fill in the TODO blanks."
-- "Solutions are in modules/ascent01/solutions/ — but try the exercise first."
+- "Solutions are in modules/mlfp01/solutions/ — but try the exercise first."
 
 **[SWITCH TO EXERCISE DEMO — 5 min]**
 

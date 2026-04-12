@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2.6 — Logistic Regression and Classification Foundations | MLFP</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+  <link rel="stylesheet" href="../../../assets/css/textbook.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">MLFP — Module 2: Statistical Mastery</span>
+  <span>
+    <a href="../../index.html">Module Index</a>
+    <a href="slides.html">Slides</a>
+    <a href="notes.html">Notes</a>
+  </span>
+</nav>
+
+<main class="textbook">
+
+<h1 class="lesson-title">
+  <span class="lesson-number">Lesson 2.6</span>
+  Logistic Regression and Classification Foundations
+</h1>
+
+<p class="lead">
+  Linear regression predicts continuous outcomes. But many questions in
+  business and medicine have binary answers — did the customer convert?
+  did the patient survive? This lesson introduces logistic regression as
+  linear regression in the log-odds space, derives the sigmoid link,
+  interprets coefficients as odds ratios, and closes with one-way ANOVA for
+  multi-group comparisons.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Why not linear regression for binary outcomes?</h2>
+
+<p>
+  You could fit a linear regression with $y \in \{0, 1\}$. It would even
+  work, sort of. But linear predictions can exceed 1 or drop below 0, which
+  has no probability interpretation. And the constant-variance assumption
+  is violated for binary data — the variance depends on the probability.
+  We need a model whose output is bounded in $[0, 1]$ and whose optimisation
+  respects the Bernoulli likelihood.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <line x1="60" y1="200" x2="680" y2="200" stroke="#94A3B8"/>
+  <line x1="370" y1="30"  x2="370" y2="240" stroke="#94A3B8"/>
+  <text x="680" y="220" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">z = β₀ + β₁x</text>
+  <text x="385" y="25" font-family="Inter" font-size="11" fill="#64748B">σ(z)</text>
+  <line x1="60" y1="60"  x2="680" y2="60"  stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <text x="48" y="64" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#64748B">1.0</text>
+  <line x1="60" y1="130" x2="680" y2="130" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <text x="48" y="134" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#64748B">0.5</text>
+  <line x1="60" y1="200" x2="680" y2="200" stroke="#E2E8F0" stroke-dasharray="3 3"/>
+  <text x="48" y="204" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#64748B">0.0</text>
+
+  <!-- Sigmoid curve -->
+  <path d="M 60,198 C 200,196 300,190 370,130 C 440,70 540,62 680,60"
+        fill="none" stroke="#0D9488" stroke-width="3"/>
+</svg>
+<figcaption>The sigmoid (logistic) function $\sigma(z) = 1 / (1 + e^{-z})$. It maps any real number $z$ to a probability in $(0, 1)$. Symmetric around $\sigma(0) = 0.5$.</figcaption>
+</figure>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The sigmoid and the log-odds link</h2>
+
+<p>
+  Define the <strong>odds</strong> of an event with probability $p$ as
+  $p / (1 - p)$. The <strong>log-odds</strong> (or logit) is:
+</p>
+
+$$\text{logit}(p) \;=\; \log\!\left(\frac{p}{1 - p}\right)$$
+
+<p>
+  As $p$ ranges from 0 to 1, the log-odds ranges from $-\infty$ to
+  $+\infty$. Logistic regression assumes the log-odds is a linear function
+  of the predictors:
+</p>
+
+<div class="annotated-equation">
+  $$\log\!\left(\frac{p}{1 - p}\right) \;=\; \beta_0 + \beta_1 x_1 + \cdots + \beta_k x_k \;=\; z$$
+  <div class="annotations">
+    <span>linear predictor $z$ lives in $(-\infty, \infty)$</span>
+    <span>so we transform it back to a probability</span>
+  </div>
+</div>
+
+<h3>Inverting the link</h3>
+
+<p>
+  Given $z$, we can recover $p$ by solving for it. Start from $\log(p/(1-p)) = z$:
+</p>
+
+$$\begin{aligned}
+\frac{p}{1 - p} &\;=\; e^z \\
+p               &\;=\; (1 - p)\,e^z \\
+p(1 + e^z)      &\;=\; e^z \\
+p               &\;=\; \frac{e^z}{1 + e^z} \;=\; \frac{1}{1 + e^{-z}} \;=\; \sigma(z)
+\end{aligned}$$
+
+<p>
+  That last function $\sigma$ is the <strong>sigmoid</strong>. It squashes
+  the linear predictor into a valid probability. Logistic regression is
+  exactly "linear regression in the log-odds, then sigmoid to get back
+  probabilities".
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Bernoulli likelihood</h2>
+
+<p>
+  For a binary outcome $y_i \in \{0, 1\}$ with probability $p_i = \sigma(x_i^\top \beta)$,
+  the likelihood is Bernoulli:
+</p>
+
+$$P(y_i \mid x_i, \beta) \;=\; p_i^{y_i}\,(1 - p_i)^{1 - y_i}$$
+
+<p>
+  The log-likelihood over $n$ observations is:
+</p>
+
+$$\ell(\beta) \;=\; \sum_{i=1}^{n} \big[y_i \log p_i + (1 - y_i) \log(1 - p_i)\big]$$
+
+<p>
+  Substitute $p_i = \sigma(x_i^\top \beta)$ and you get an equation with no
+  closed-form solution. Unlike OLS, logistic regression has no
+  $(X^\top X)^{-1} X^\top y$ — you optimise it numerically.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: why no closed form?</span>
+  <p>
+    For OLS, the gradient of the loss is linear in $\beta$, so setting it
+    to zero gives a linear system. For logistic regression, the gradient
+    is $X^\top (p - y)$ where $p$ itself depends non-linearly on $\beta$
+    through the sigmoid. Solving $X^\top (p(\beta) - y) = 0$ requires an
+    iterative method like Newton-Raphson (also called Iteratively Reweighted
+    Least Squares, IRLS). Scipy's <code>minimize</code> with BFGS does this
+    under the hood.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Odds ratios: the multiplicative interpretation</h2>
+
+<p>
+  From $\log(p / (1 - p)) = \beta_0 + \beta_1 x_1 + \cdots$, a one-unit
+  increase in $x_j$ adds $\beta_j$ to the log-odds, which multiplies the
+  odds themselves by $e^{\beta_j}$:
+</p>
+
+<div class="annotated-equation">
+  $$\frac{\text{odds}(x_j + 1)}{\text{odds}(x_j)} \;=\; e^{\beta_j}$$
+  <div class="annotations">
+    <span>$e^{\beta_j}$ is called the <em>odds ratio</em></span>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>$\beta_j$</th><th>$e^{\beta_j}$</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td>$+0.69$</td><td>$\approx 2.0$</td><td>Odds double per unit increase in $x_j$</td></tr>
+    <tr><td>$+0.10$</td><td>$\approx 1.10$</td><td>10% increase in odds per unit</td></tr>
+    <tr><td>$0$</td><td>$1$</td><td>No effect</td></tr>
+    <tr><td>$-0.22$</td><td>$\approx 0.80$</td><td>Odds decrease by 20% per unit</td></tr>
+    <tr><td>$-\infty$</td><td>$0$</td><td>Event never happens</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warning">
+  <span class="label">⚠ Odds are not probabilities</span>
+  <p>
+    An odds ratio of 2 does <em>not</em> mean "twice as likely". It means
+    the odds — the ratio $p/(1-p)$ — are twice as big. For a baseline
+    probability of 10%, doubling the odds gives about 18%, not 20%. Always
+    convert back to probabilities when reporting to non-specialists.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Multiclass extensions</h2>
+
+<p>
+  For outcomes with more than two classes, three common approaches:
+</p>
+
+<ul>
+  <li><strong>One-vs-rest</strong>: fit $k$ binary classifiers, each
+    separating one class from the rest. Pick the one with the highest
+    predicted probability.</li>
+  <li><strong>One-vs-one</strong>: fit $\binom{k}{2}$ binary classifiers
+    and vote. More classifiers but each deals with less-imbalanced data.</li>
+  <li><strong>Multinomial (softmax) regression</strong>: a single model
+    with one coefficient vector per class, trained jointly:
+    $P(y = j \mid x) = e^{z_j} / \sum_{m} e^{z_m}$. The natural extension
+    and what sklearn uses by default.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Evaluation: accuracy, confusion matrix, AUC</h2>
+
+<p>
+  A probabilistic classifier needs a threshold to produce binary
+  predictions (usually $0.5$). The <strong>confusion matrix</strong> tallies
+  the four possible outcomes:
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 260" class="illustration" xmlns="http://www.w3.org/2000/svg">
+  <rect x="200" y="30" width="460" height="200" fill="none" stroke="#94A3B8"/>
+  <line x1="430" y1="30" x2="430" y2="230" stroke="#94A3B8"/>
+  <line x1="200" y1="130" x2="660" y2="130" stroke="#94A3B8"/>
+
+  <text x="315" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Predicted 0</text>
+  <text x="545" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Predicted 1</text>
+  <text x="190" y="85" text-anchor="end" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Actual 0</text>
+  <text x="190" y="180" text-anchor="end" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Actual 1</text>
+
+  <rect x="200" y="30" width="230" height="100" fill="#DCFCE7"/>
+  <text x="315" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#15803D">TN</text>
+  <text x="315" y="105" text-anchor="middle" font-family="Inter" font-size="11" fill="#15803D">true negative</text>
+
+  <rect x="430" y="30" width="230" height="100" fill="#FEE2E2"/>
+  <text x="545" y="85" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#B91C1C">FP</text>
+  <text x="545" y="105" text-anchor="middle" font-family="Inter" font-size="11" fill="#B91C1C">false positive</text>
+
+  <rect x="200" y="130" width="230" height="100" fill="#FEF3C7"/>
+  <text x="315" y="185" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#B45309">FN</text>
+  <text x="315" y="205" text-anchor="middle" font-family="Inter" font-size="11" fill="#B45309">false negative</text>
+
+  <rect x="430" y="130" width="230" height="100" fill="#DCFCE7"/>
+  <text x="545" y="185" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#15803D">TP</text>
+  <text x="545" y="205" text-anchor="middle" font-family="Inter" font-size="11" fill="#15803D">true positive</text>
+</svg>
+<figcaption>The confusion matrix. Accuracy = (TP + TN) / total. Precision = TP / (TP + FP). Recall = TP / (TP + FN).</figcaption>
+</figure>
+
+<p>
+  Accuracy can be misleading on imbalanced data — a classifier that always
+  predicts "no ICU mortality" has 95% accuracy on a dataset with 5%
+  mortality, despite being useless. The <strong>AUC-ROC</strong> (area under
+  the ROC curve) is a threshold-independent summary that measures how well
+  the classifier ranks positives above negatives. Module 3 goes deeper into
+  evaluation metrics; today we use accuracy, confusion matrix, and AUC as
+  a quick sanity check.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>One-way ANOVA: comparing three or more groups</h2>
+
+<p>
+  ANOVA (Analysis of Variance) generalises the two-sample $t$-test to three
+  or more groups. It asks: <em>are the group means different?</em> without
+  saying which group differs from which (that is the job of post-hoc
+  tests). The test decomposes total variance into between-group and
+  within-group components:
+</p>
+
+<div class="annotated-equation">
+  $$\text{SS}_{\text{total}} \;=\; \text{SS}_{\text{between}} + \text{SS}_{\text{within}}$$
+  <div class="annotations">
+    <span>between: group means vs grand mean</span>
+    <span>within: observations vs their own group mean</span>
+  </div>
+</div>
+
+<p>
+  The test statistic is the ratio of mean squares:
+</p>
+
+$$F \;=\; \frac{\text{MS}_{\text{between}}}{\text{MS}_{\text{within}}} \;=\; \frac{\text{SS}_{\text{between}} / (k - 1)}{\text{SS}_{\text{within}} / (n - k)}$$
+
+<p>
+  where $k$ is the number of groups and $n$ is the total sample size. Under
+  $H_0$ (all groups have the same mean), $F \sim F_{k-1, n-k}$. Large $F$
+  → group means differ.
+</p>
+
+<div class="callout theory">
+  <span class="label">🔵 Theory: why $F$, not $t$?</span>
+  <p>
+    With two groups, ANOVA's $F$ equals the square of the two-sample
+    $t$-statistic. ANOVA is the generalisation of the $t$-test to more
+    groups; it reduces to the same test in the two-group case.
+  </p>
+</div>
+
+<h3>Post-hoc tests: Tukey's HSD</h3>
+
+<p>
+  ANOVA tells you that the group means are not all equal. It does not tell
+  you <em>which</em> groups differ. Running pairwise $t$-tests inflates the
+  false-positive rate (back to the multiple testing problem from 2.3).
+  <strong>Tukey's HSD</strong> (Honest Significant Difference) corrects for
+  this: it computes all pairwise differences and compares them to a
+  critical value based on the studentised range distribution, giving
+  family-wise error control:
+</p>
+
+$$\text{HSD} \;=\; q_{\alpha, k, n - k} \cdot \sqrt{\frac{\text{MS}_{\text{within}}}{n_{\text{group}}}}$$
+
+<p>
+  Two group means are significantly different if their difference exceeds
+  HSD.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>The Kailash Engine: TrainingPipeline</h2>
+
+<div class="callout kailash">
+  <span class="label">⚙ Kailash Engine</span>
+  <p>
+    <code>TrainingPipeline</code> handles logistic regression the same way it
+    handles OLS — you pass features and labels, it picks the right
+    objective, runs the optimiser, logs the run, and stores the model.
+    In the exercise you will hand-roll logistic MLE with scipy first, then
+    repeat it through <code>TrainingPipeline</code> to see the engine
+    wrapping.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked Example: ICU mortality prediction</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Predict ICU 30-day mortality from age, APACHE score, and admission
+    type using logistic regression. Interpret the coefficients as odds
+    ratios and evaluate with a confusion matrix and AUC.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — Load and prepare.</span>
+    <pre><code class="language-python">import polars as pl
+import numpy as np
+from scipy.optimize import minimize
+from shared import MLFPDataLoader
+
+df = MLFPDataLoader().load("mlfp02", "icu_patients.parquet")
+df = df.with_columns(died=pl.col("outcome_30d").eq("died").cast(pl.Int8))
+
+X_cols = ["age", "apache_score", "emergency_admission"]
+X = df.select(X_cols).to_numpy()
+X = np.column_stack([np.ones(len(X)), X])
+y = df["died"].to_numpy()</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Define the sigmoid and the loss.</span>
+    <pre><code class="language-python">def sigmoid(z):
+    # Numerically stable form
+    return np.where(z >= 0, 1 / (1 + np.exp(-z)), np.exp(z) / (1 + np.exp(z)))
+
+def neg_log_lik(beta, X, y):
+    z = X @ beta
+    p = sigmoid(z)
+    eps = 1e-12
+    return -np.sum(y * np.log(p + eps) + (1 - y) * np.log(1 - p + eps))</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 3 — Optimise.</span>
+    <pre><code class="language-python">beta0 = np.zeros(X.shape[1])
+result = minimize(neg_log_lik, beta0, args=(X, y), method="BFGS")
+beta_hat = result.x
+names = ["intercept"] + X_cols
+for name, b in zip(names, beta_hat):
+    print(f"{name:>20s}: {b:+.4f}  (OR = {np.exp(b):.2f})")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Predict, confusion matrix, AUC.</span>
+    <pre><code class="language-python">from sklearn.metrics import confusion_matrix, roc_auc_score
+
+p_hat = sigmoid(X @ beta_hat)
+y_hat = (p_hat >= 0.5).astype(int)
+cm = confusion_matrix(y, y_hat)
+auc = roc_auc_score(y, p_hat)
+print("Confusion matrix:\n", cm)
+print(f"Accuracy: {(y == y_hat).mean():.3f}")
+print(f"AUC:      {auc:.3f}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Interpret.</span>
+    <p>
+      Suppose the coefficient on APACHE score is $\hat\beta = 0.08$, so
+      $e^{0.08} \approx 1.08$. Each one-point increase in APACHE multiplies
+      the mortality odds by about 1.08 — an 8% increase in odds per APACHE
+      point, holding age and admission type constant. For a 20-point
+      APACHE increase, odds multiply by $e^{1.6} \approx 4.95$.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Worked: ANOVA on HDB flat types</h2>
+
+<div class="worked-example">
+  <h3>📝 Goal</h3>
+  <p>
+    Do 3-room, 4-room, 5-room, and executive flats have different average
+    resale prices? Use one-way ANOVA and Tukey's HSD.
+  </p>
+
+  <div class="step">
+    <span class="step-label">Step 1 — ANOVA.</span>
+    <pre><code class="language-python">from scipy import stats
+
+groups = {
+    "3-room": df.filter(pl.col("flat_type") == "3 ROOM")["resale_price"].to_numpy(),
+    "4-room": df.filter(pl.col("flat_type") == "4 ROOM")["resale_price"].to_numpy(),
+    "5-room": df.filter(pl.col("flat_type") == "5 ROOM")["resale_price"].to_numpy(),
+    "exec":   df.filter(pl.col("flat_type") == "EXECUTIVE")["resale_price"].to_numpy(),
+}
+F, p = stats.f_oneway(*groups.values())
+print(f"ANOVA: F = {F:.1f}, p = {p:.3g}")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 2 — Tukey's HSD.</span>
+    <pre><code class="language-python">from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+prices = np.concatenate(list(groups.values()))
+labels = np.concatenate([[k] * len(v) for k, v in groups.items()])
+result = pairwise_tukeyhsd(prices, labels, alpha=0.05)
+print(result)</code></pre>
+    <p>
+      Tukey tells you which pairs of flat types differ significantly. In
+      practice all six pairs will be flagged because the sample is huge and
+      the differences are real. With smaller samples or smaller effects,
+      Tukey lets you say <em>which</em> groups carry the ANOVA result.
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Common mistakes</h2>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 1: Thresholding at 0.5 blindly</span>
+  <p>
+    The 0.5 cutoff is arbitrary. If one class is rare or one type of error
+    is more costly, pick the threshold that optimises your business metric,
+    not 0.5.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 2: Reporting accuracy on imbalanced data</span>
+  <p>
+    95% accuracy sounds great — until you learn the base rate is 95%.
+    Always report the confusion matrix and AUC alongside accuracy, or use
+    balanced metrics like F1.
+  </p>
+</div>
+
+<div class="callout warning">
+  <span class="label">⚠ Mistake 3: Running many $t$-tests instead of ANOVA</span>
+  <p>
+    With 4 groups you have 6 pairs. Running 6 $t$-tests at $\alpha = 0.05$
+    inflates family-wise error to about 26%. Use ANOVA first; if
+    significant, use Tukey for post-hoc.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Try It Yourself</h2>
+
+<div class="try-it">
+  <h3>🎯 Exercise A — Sigmoid by hand</h3>
+  <p>
+    Plot $\sigma(z)$ for $z \in [-6, 6]$. Mark $\sigma(0) = 0.5$,
+    $\sigma(2) \approx 0.88$, and $\sigma(-2) \approx 0.12$. Confirm that
+    $\sigma(-z) = 1 - \sigma(z)$ (symmetry).
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise B — Odds ratio interpretation</h3>
+  <p>
+    A logistic regression of attrition on tenure gives
+    $\hat\beta_{\text{tenure}} = -0.15$. Interpret as an odds ratio.
+    For a baseline attrition probability of 12% (tenure = 2 years), what
+    is the predicted probability at tenure = 5 years?
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise C — ANOVA vs multiple t-tests</h3>
+  <p>
+    Simulate 4 groups of 30 observations each from a single $N(0, 1)$
+    distribution — all the nulls are true. Run ANOVA and all 6 pairwise
+    $t$-tests with no correction. Repeat 1,000 times. Count how often
+    ANOVA rejects (should be ~5%) vs how often at least one pairwise
+    $t$-test rejects (should be ~26%).
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Cross-References</h2>
+
+<p class="xref">
+  Logistic regression is numerical MLE from Lesson 2.2 applied to a
+  Bernoulli likelihood. Every coefficient $t$-test is the same statistic
+  from 2.3 and 2.5. ANOVA's $F$-statistic generalises the regression
+  $F$-statistic: ANOVA is the same thing as regressing on a one-hot encoded
+  categorical variable. In Module 3 classification becomes the central ML
+  problem and AUC, precision, recall get their full treatment.
+</p>
+
+<div class="reflection">
+<h2>Reflection</h2>
+<p>
+  You can now build and interpret a logistic regression model and
+  compare multiple groups with ANOVA. The sigmoid function you derived
+  today will reappear in Module 4 as the activation function in a neural
+  network — same formula, different story. Odds ratios are the currency
+  of reporting logistic results to clinicians, product managers, and
+  regulators.
+</p>
+<p>
+  Lesson 2.7 returns to A/B testing with two big ideas that sharpen the
+  tools from 2.4: CUPED to cut variance nearly in half using
+  pre-experiment data, and difference-in-differences to measure causal
+  effects when randomisation is impossible.
+</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../05/textbook.html" class="prev">
+    <span class="label">← Prev</span>
+    2.5 Linear Regression
+  </a>
+  <a href="../07/textbook.html" class="next">
+    <span class="label">Next →</span>
+    2.7 CUPED and Causal Inference
+  </a>
+</nav>
+
+</main>
+</body>
+</html>

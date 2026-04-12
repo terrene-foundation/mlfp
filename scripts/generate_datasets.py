@@ -44,11 +44,9 @@ DATA_ROOT = REPO_ROOT / "data"
 DIRS = [
     DATA_ROOT / "mlfp01",
     DATA_ROOT / "mlfp02",
-    DATA_ROOT / "mlfp02",
-    DATA_ROOT / "mlfp03",
     DATA_ROOT / "mlfp03",
     DATA_ROOT / "mlfp04",
-    DATA_ROOT / "ascent_assessment",
+    DATA_ROOT / "mlfp_assessment",
 ]
 
 RNG = np.random.default_rng(42)
@@ -2066,7 +2064,7 @@ def make_preference_pairs() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 9. mrt_stations.parquet  (ascent_assessment) — keep as-is (~150 stations)
+# 9. mrt_stations.parquet  (mlfp_assessment) — keep as-is (~150 stations)
 # ---------------------------------------------------------------------------
 
 
@@ -2283,7 +2281,7 @@ def make_mrt_stations() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 10. schools.parquet  (ascent_assessment) — 350 rows
+# 10. schools.parquet  (mlfp_assessment) — 350 rows
 # ---------------------------------------------------------------------------
 
 
@@ -2595,6 +2593,974 @@ def make_schools() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# 11. hdb_resale.parquet  (mlfp01) — 50,000 HDB resale flat transactions
+# ---------------------------------------------------------------------------
+
+
+def make_hdb_resale() -> pl.DataFrame:
+    """
+    Singapore HDB resale flat transactions (50,000 rows).
+    Used by M1/ex_2,3,4,5,6 and M2/ex_1,5,6,8.
+
+    Columns mirror data.gov.sg schema:
+      month, town, flat_type, block, street_name, storey_range,
+      floor_area_sqm, flat_model, lease_commence_date, remaining_lease,
+      resale_price
+
+    Intentional messiness:
+    - remaining_lease: mixed formats — "95 years 04 months" vs plain integer "95"
+      in ~30% of rows, and ~3% null
+    - storey_range: occasional typo ("O4 TO 06" instead of "04 TO 06") in ~1%
+    - resale_price: ~0.5% outliers (clerical errors — $10 or $9,000,000)
+    - duplicate rows: ~0.3% exact duplicates
+    - flat_type: rare "MULTI-GENERATION" and "2 ROOM" mixed in
+    - month: mostly "YYYY-MM" but ~2% written as "MM/YYYY"
+    """
+    n = 50_000
+
+    towns = [
+        "ANG MO KIO",
+        "BEDOK",
+        "BISHAN",
+        "BOON LAY",
+        "BUKIT BATOK",
+        "BUKIT MERAH",
+        "BUKIT PANJANG",
+        "BUKIT TIMAH",
+        "CENTRAL AREA",
+        "CHOA CHU KANG",
+        "CLEMENTI",
+        "GEYLANG",
+        "HOUGANG",
+        "JURONG EAST",
+        "JURONG WEST",
+        "KALLANG/WHAMPOA",
+        "MARINE PARADE",
+        "PASIR RIS",
+        "PUNGGOL",
+        "QUEENSTOWN",
+        "SEMBAWANG",
+        "SENGKANG",
+        "SERANGOON",
+        "TAMPINES",
+        "TOA PAYOH",
+        "WOODLANDS",
+        "YISHUN",
+    ]
+
+    # Town weights roughly proportional to actual HDB stock
+    town_weights = np.array(
+        [
+            0.05, 0.06, 0.03, 0.02, 0.04, 0.04, 0.03, 0.01,
+            0.01, 0.04, 0.03, 0.03, 0.05, 0.03, 0.07, 0.03,
+            0.02, 0.03, 0.05, 0.03, 0.02, 0.06, 0.03, 0.06,
+            0.03, 0.05, 0.05,
+        ],
+        dtype=float,
+    )
+    town_weights /= town_weights.sum()
+
+    town_arr = RNG.choice(towns, size=n, p=town_weights)
+
+    flat_types = ["3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE", "2 ROOM", "MULTI-GENERATION"]
+    flat_type_weights = np.array([0.25, 0.40, 0.22, 0.08, 0.04, 0.01], dtype=float)
+    flat_type_weights /= flat_type_weights.sum()
+    flat_type_arr = RNG.choice(flat_types, size=n, p=flat_type_weights)
+
+    # Floor area by flat type
+    flat_area_map = {
+        "2 ROOM": (36, 45),
+        "3 ROOM": (60, 75),
+        "4 ROOM": (90, 105),
+        "5 ROOM": (110, 130),
+        "EXECUTIVE": (130, 160),
+        "MULTI-GENERATION": (155, 185),
+    }
+    floor_area = np.array(
+        [
+            round(float(RNG.uniform(*flat_area_map[ft])), 1)
+            for ft in flat_type_arr
+        ]
+    )
+
+    # Base resale price by flat type and town desirability
+    central_premium_towns = {
+        "CENTRAL AREA", "QUEENSTOWN", "BUKIT TIMAH", "BISHAN",
+        "MARINE PARADE", "TOA PAYOH", "KALLANG/WHAMPOA",
+    }
+    price_base_map = {
+        "2 ROOM": 200_000,
+        "3 ROOM": 350_000,
+        "4 ROOM": 500_000,
+        "5 ROOM": 650_000,
+        "EXECUTIVE": 800_000,
+        "MULTI-GENERATION": 900_000,
+    }
+    prices = np.array(
+        [
+            price_base_map[ft]
+            * (1.25 if town in central_premium_towns else 1.0)
+            * RNG.uniform(0.85, 1.20)
+            + floor_area[i] * RNG.uniform(2000, 4500)
+            + RNG.normal(0, 20_000)
+            for i, (ft, town) in enumerate(zip(flat_type_arr, town_arr))
+        ]
+    )
+    prices = np.clip(prices, 180_000, 1_800_000).astype(int)
+
+    # Inject price outliers (~0.5%)
+    outlier_idx = RNG.choice(n, size=int(n * 0.005), replace=False)
+    for i in outlier_idx:
+        prices[i] = int(RNG.choice([10, 9_000_000]))
+
+    # Month: 2015-01 to 2024-12
+    months_range = []
+    for y in range(2015, 2025):
+        for m in range(1, 13):
+            months_range.append((y, m))
+    month_idx = RNG.integers(0, len(months_range), n)
+    month_arr = []
+    for i in range(n):
+        y, m = months_range[month_idx[i]]
+        # All months as YYYY-MM (clean primary key — messiness is in other columns)
+        month_arr.append(f"{y}-{m:02d}")
+
+    # Block numbers (3-digit with occasional letter suffix)
+    block_arr = []
+    for _ in range(n):
+        num = RNG.integers(1, 999)
+        if RNG.random() < 0.15:
+            suffix = random.choice(list("ABCDE"))
+            block_arr.append(f"{num}{suffix}")
+        else:
+            block_arr.append(str(num))
+
+    # Street names (realistic SG HDB streets)
+    street_templates = [
+        "ANG MO KIO AVE {n}",
+        "BEDOK NORTH RD",
+        "BISHAN ST {n}",
+        "BT BATOK ST {n}",
+        "BT MERAH VIEW",
+        "CHOA CHU KANG AVE {n}",
+        "CLEMENTI AVE {n}",
+        "COMMONWEALTH AVE WEST",
+        "GEYLANG BAHRU",
+        "HOUGANG AVE {n}",
+        "JURONG WEST ST {n}",
+        "TAMPINES ST {n}",
+        "TOA PAYOH LORONG {n}",
+        "WOODLANDS AVE {n}",
+        "YISHUN AVE {n}",
+        "PASIR RIS ST {n}",
+        "PUNGGOL CENTRAL",
+        "SENGKANG EAST AVE",
+        "SERANGOON AVE {n}",
+        "SEMBAWANG DR",
+    ]
+    street_arr = [
+        s.format(n=RNG.integers(1, 12)) if "{n}" in s else s
+        for s in RNG.choice(street_templates, size=n)
+    ]
+
+    # Storey range (banded)
+    storey_bands = [
+        "01 TO 03", "04 TO 06", "07 TO 09", "10 TO 12", "13 TO 15",
+        "16 TO 18", "19 TO 21", "22 TO 24", "25 TO 27", "28 TO 30",
+        "31 TO 33", "34 TO 36", "37 TO 39", "40 TO 42", "43 TO 45",
+    ]
+    storey_arr = RNG.choice(storey_bands, size=n).tolist()
+    # Inject ~1% typo (O instead of 0)
+    typo_idx = RNG.choice(n, size=int(n * 0.01), replace=False)
+    for i in typo_idx:
+        storey_arr[i] = storey_arr[i].replace("0", "O", 1)
+
+    # Flat model
+    flat_models = [
+        "Model A", "Improved", "New Generation", "Standard", "DBSS",
+        "Maisonette", "Special", "Premium Apartment", "Simplified", "Terrace",
+    ]
+    flat_model_arr = RNG.choice(flat_models, size=n).tolist()
+
+    # Lease commence date (1970-2023)
+    lease_commence_arr = RNG.integers(1970, 2024, n).tolist()
+
+    # Remaining lease — messy: mixed formats and some nulls
+    remaining_lease_arr = []
+    for lc in lease_commence_arr:
+        years_left = 99 - (2024 - lc)
+        years_left = max(0, years_left)
+        months_left = RNG.integers(0, 12)
+        r = RNG.random()
+        if r < 0.03:
+            remaining_lease_arr.append(None)
+        elif r < 0.33:
+            # Plain integer string
+            remaining_lease_arr.append(str(years_left))
+        else:
+            # Full format
+            remaining_lease_arr.append(f"{years_left:02d} years {months_left:02d} months")
+
+    df = pl.DataFrame(
+        {
+            "month": month_arr,
+            "town": town_arr.tolist(),
+            "flat_type": flat_type_arr.tolist(),
+            "block": block_arr,
+            "street_name": street_arr,
+            "storey_range": storey_arr,
+            "floor_area_sqm": floor_area.tolist(),
+            "flat_model": flat_model_arr,
+            "lease_commence_date": lease_commence_arr,
+            "remaining_lease": remaining_lease_arr,
+            "resale_price": prices.tolist(),
+        }
+    )
+
+    # Inject ~0.3% duplicate rows
+    dup_count = int(n * 0.003)
+    dup_idx = RNG.choice(n, size=dup_count, replace=False)
+    df = pl.concat([df, df[dup_idx.tolist()]])
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 12. sg_weather.csv  (mlfp01) — 12 monthly climate normals
+# ---------------------------------------------------------------------------
+
+
+def make_sg_weather() -> pl.DataFrame:
+    """
+    Singapore monthly climate normals (12 rows).
+    Used by M1 introductory exercises.
+
+    Very small reference table — intentionally clean, students use it
+    as their first successful data load before tackling messier files.
+    """
+    months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+    # Realistic SG climate normals
+    mean_temp = [26.5, 27.1, 27.5, 28.0, 28.3, 28.2, 27.9, 27.8, 27.6, 27.4, 26.8, 26.5]
+    total_rainfall = [
+        167, 108, 170, 165, 171, 130, 155, 150, 163, 196, 254, 232
+    ]
+
+    df = pl.DataFrame(
+        {
+            "month": months,
+            "mean_temperature_c": mean_temp,
+            "total_rainfall_mm": total_rainfall,
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 13. sg_cpi.csv  (mlfp01) — Consumer Price Index 2000-2024
+# ---------------------------------------------------------------------------
+
+
+def make_sg_cpi() -> pl.DataFrame:
+    """
+    Singapore Consumer Price Index, monthly 2000-2024 (~300 rows).
+    Used by M1/ex_7 (DataExplorer profiling).
+
+    Intentional messiness:
+    - Mixed date formats: "YYYY-MM", "MM/YYYY", "YYYYMM" (~20% each variant)
+    - ~5% missing values across CPI sub-indices
+    - Realistic inflation dynamics (COVID spike 2020-2022, moderation 2023-2024)
+    """
+    rows = []
+    for y in range(2000, 2025):
+        for m in range(1, 13):
+            rows.append((y, m))
+
+    n = len(rows)
+
+    # Base CPI (2019=100 base year, starting ~70 in 2000)
+    cpi_all = np.zeros(n)
+    cpi_all[0] = 70.0
+    for i in range(1, n):
+        y, m = rows[i]
+        seasonal = 0.003 if m in (1, 7) else 0.001
+        shock = RNG.normal(0.002 + seasonal, 0.008)
+        if 240 <= i <= 251:  # 2020: mild due to demand collapse
+            shock = RNG.normal(0.001, 0.006)
+        if 252 <= i <= 263:  # 2021: supply chain
+            shock = RNG.normal(0.005, 0.010)
+        if 264 <= i <= 275:  # 2022: peak inflation
+            shock = RNG.normal(0.008, 0.012)
+        if 276 <= i <= 287:  # 2023: easing
+            shock = RNG.normal(0.004, 0.008)
+        cpi_all[i] = cpi_all[i - 1] * (1 + shock)
+
+    # Sub-indices
+    cpi_food = cpi_all * RNG.uniform(0.95, 1.05, n)
+    cpi_food[252:276] *= RNG.uniform(1.02, 1.05, 24)  # food inflation worse 2021-2022
+
+    cpi_transport = cpi_all * RNG.uniform(0.90, 1.10, n)
+    cpi_transport[240:252] *= RNG.uniform(0.85, 0.95, 12)  # COVID: low travel demand
+
+    cpi_housing = cpi_all * RNG.uniform(0.98, 1.02, n)
+    cpi_housing[264:288] *= RNG.uniform(1.02, 1.06, 24)  # housing expensive 2022-2023
+
+    # Date format messiness
+    date_arr = []
+    for y, m in rows:
+        r = RNG.random()
+        if r < 0.33:
+            date_arr.append(f"{m:02d}/{y}")
+        elif r < 0.50:
+            date_arr.append(f"{y}{m:02d}")
+        else:
+            date_arr.append(f"{y}-{m:02d}")
+
+    df = pl.DataFrame(
+        {
+            "date": date_arr,
+            "cpi_all_items": _nullify(np.round(cpi_all, 2), rate=0.05),
+            "cpi_food": _nullify(np.round(cpi_food, 2), rate=0.05),
+            "cpi_transport": _nullify(np.round(cpi_transport, 2), rate=0.05),
+            "cpi_housing": _nullify(np.round(cpi_housing, 2), rate=0.05),
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 14. sg_employment.csv  (mlfp01) — Labour statistics 2000-2024
+# ---------------------------------------------------------------------------
+
+
+def make_sg_employment() -> pl.DataFrame:
+    """
+    Singapore quarterly labour statistics, 2000-2024 (~100 rows).
+    Used by M1/ex_7.
+
+    Intentional messiness:
+    - Some quarters missing (gaps in series)
+    - Outliers: COVID spike in unemployment, income drop
+    - median_income has ~8% nulls
+    - labour_force has 2 impossible values (negative — data entry errors)
+    """
+    quarters = []
+    for y in range(2000, 2025):
+        for q in range(1, 5):
+            quarters.append((y, q))
+
+    n = len(quarters)
+
+    # Employment rate (~95-97% normally, dips during recessions)
+    emp_base = np.full(n, 96.0)
+    # 2001-2002 recession
+    emp_base[4:12] = np.linspace(96, 93, 8)
+    emp_base[12:16] = np.linspace(93, 96, 4)
+    # 2008-2009 GFC
+    emp_base[32:40] = np.linspace(96, 92, 8)
+    emp_base[40:44] = np.linspace(92, 96, 4)
+    # 2020 COVID
+    emp_base[80:84] = np.linspace(96, 88, 4)
+    emp_base[84:88] = np.linspace(88, 94, 4)
+    emp_base[88:] = np.linspace(94, 96, n - 88)
+
+    emp_rate = np.round(emp_base + RNG.normal(0, 0.3, n), 1)
+
+    # Unemployment rate (inverse)
+    unemp_rate = np.round(100 - emp_rate + RNG.normal(0, 0.2, n), 1)
+    unemp_rate = np.clip(unemp_rate, 1.5, 8.0)
+
+    # Median income (SGD monthly)
+    income_base = np.zeros(n)
+    income_base[0] = 2200
+    for i in range(1, n):
+        growth = RNG.normal(0.008, 0.01)
+        if 80 <= i <= 83:
+            growth = RNG.normal(-0.02, 0.02)  # COVID income shock
+        income_base[i] = income_base[i - 1] * (1 + growth)
+    median_income = np.round(income_base).astype(int)
+    median_income_raw = _nullify(median_income, rate=0.08)
+
+    # Labour force (thousands)
+    lf_base = np.zeros(n)
+    lf_base[0] = 2100
+    for i in range(1, n):
+        lf_base[i] = lf_base[i - 1] * RNG.uniform(1.003, 1.008)
+    labour_force = np.round(lf_base).astype(int).tolist()
+    # Inject 2 impossible (negative) values
+    bad_idx = RNG.choice(n, size=2, replace=False)
+    for i in bad_idx:
+        labour_force[i] = int(RNG.uniform(-500, -10))
+
+    # Quarter label
+    quarter_arr = [f"{y} Q{q}" for y, q in quarters]
+
+    # Drop ~5% quarters to simulate missing reporting periods
+    keep_mask = RNG.random(n) > 0.05
+    keep_idx = [i for i in range(n) if keep_mask[i]]
+
+    df = pl.DataFrame(
+        {
+            "quarter": [quarter_arr[i] for i in keep_idx],
+            "employment_rate": emp_rate[keep_idx].tolist(),
+            "unemployment_rate": unemp_rate[keep_idx].tolist(),
+            "median_income": [median_income_raw[i] for i in keep_idx],
+            "labour_force": [labour_force[i] for i in keep_idx],
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 15. sg_fx_rates.csv  (mlfp01) — Daily FX rates 2020-2024
+# ---------------------------------------------------------------------------
+
+
+def make_sg_fx_rates() -> pl.DataFrame:
+    """
+    Singapore dollar FX rates, daily 2020-2024 (~1,826 calendar rows,
+    ~1,305 after removing weekends).
+    Used by M1/ex_7.
+
+    Intentional messiness:
+    - Weekend rows are absent (realistic FX gap)
+    - ~3% of remaining rows have one or more null rates (missing feed)
+    - ~0.5% of date strings written as "DD-MM-YYYY" instead of "YYYY-MM-DD"
+    """
+    from datetime import date, timedelta
+
+    start = date(2020, 1, 1)
+    end = date(2024, 12, 31)
+
+    all_dates = []
+    d = start
+    while d <= end:
+        if d.weekday() < 5:  # Monday=0 ... Friday=4
+            all_dates.append(d)
+        d += timedelta(days=1)
+
+    n = len(all_dates)
+
+    # USD/SGD random walk starting ~1.36
+    def random_walk(start_val, mu, sigma, n):
+        steps = RNG.normal(mu, sigma, n)
+        return np.cumprod(1 + steps) * start_val
+
+    usd_sgd = random_walk(1.36, 0.0001, 0.003, n)
+    eur_sgd = random_walk(1.52, 0.0001, 0.004, n)
+    gbp_sgd = random_walk(1.75, 0.0001, 0.004, n)
+    jpy_sgd = random_walk(0.0124, 0.00005, 0.003, n)
+
+    # Date format: all YYYY-MM-DD (clean primary key — messiness is in rate nulls)
+    date_arr = [d.strftime("%Y-%m-%d") for d in all_dates]
+
+    df = pl.DataFrame(
+        {
+            "date": date_arr,
+            "usd_sgd": _nullify(np.round(usd_sgd, 4), rate=0.03),
+            "eur_sgd": _nullify(np.round(eur_sgd, 4), rate=0.03),
+            "gbp_sgd": _nullify(np.round(gbp_sgd, 4), rate=0.03),
+            "jpy_sgd": _nullify(np.round(jpy_sgd, 6), rate=0.03),
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 16. icu_patients.parquet  (mlfp02) — ICU patient demographics
+# ---------------------------------------------------------------------------
+
+
+def make_icu_patients() -> pl.DataFrame:
+    """
+    ICU patient demographics (~5,000 rows).
+    Used by M3/ex_1 (Feature Engineering). Multi-table with icu_admissions,
+    icu_vitals, icu_medications, icu_labs — joined on patient_id/admission_id.
+
+    Intentional messiness:
+    - ~4% null height_cm (not recorded at admission)
+    - ~6% null weight_kg → bmi computed from those is also null
+    - insurance has inconsistent capitalisation ("private"/"Private"/"PRIVATE")
+    """
+    n = 5_000
+
+    patient_ids = [f"PAT-{10000 + i}" for i in range(n)]
+
+    age = RNG.integers(18, 90, n)
+    gender = RNG.choice(["M", "F"], size=n, p=[0.55, 0.45]).tolist()
+
+    height_cm_raw = np.round(RNG.normal(168, 10, n), 1)
+    height_cm_raw = np.clip(height_cm_raw, 140, 210)
+    height_cm = _nullify(height_cm_raw, rate=0.04)
+
+    weight_kg_raw = np.round(RNG.normal(70, 15, n), 1)
+    weight_kg_raw = np.clip(weight_kg_raw, 35, 160)
+    weight_kg = _nullify(weight_kg_raw, rate=0.06)
+
+    # BMI — null when either dimension is null
+    bmi = []
+    for h, w in zip(height_cm, weight_kg):
+        if h is None or w is None:
+            bmi.append(None)
+        else:
+            bmi.append(round(w / (h / 100) ** 2, 1))
+
+    # Insurance — inconsistent capitalisation
+    insurance_variants = {
+        "private": ["private", "Private", "PRIVATE"],
+        "medishield": ["medishield", "MediShield", "MEDISHIELD", "Medishield Life"],
+        "subsidised": ["subsidised", "Subsidised", "SUBSIDISED"],
+        "uninsured": ["uninsured", "Uninsured"],
+    }
+    insurance_arr = []
+    for _ in range(n):
+        cat = RNG.choice(
+            ["private", "medishield", "subsidised", "uninsured"],
+            p=[0.30, 0.45, 0.20, 0.05],
+        )
+        insurance_arr.append(random.choice(insurance_variants[cat]))
+
+    ethnicity = RNG.choice(
+        ["Chinese", "Malay", "Indian", "Others"],
+        size=n,
+        p=[0.74, 0.13, 0.09, 0.04],
+    ).tolist()
+
+    df = pl.DataFrame(
+        {
+            "patient_id": patient_ids,
+            "age": age.tolist(),
+            "gender": gender,
+            "height_cm": height_cm,
+            "weight_kg": weight_kg,
+            "bmi": bmi,
+            "insurance": insurance_arr,
+            "ethnicity": ethnicity,
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 17. icu_admissions.parquet  (mlfp02) — ICU admission records
+# ---------------------------------------------------------------------------
+
+
+def make_icu_admissions() -> pl.DataFrame:
+    """
+    ICU admission records (~8,000 rows).
+    Multi-table: joins to icu_patients on patient_id.
+
+    Intentional messiness:
+    - ~200 patient_ids reference IDs outside icu_patients (orphan records)
+    - discharge_time occasionally before admit_time (~0.5%) — data entry error
+    - los_days derived but sometimes inconsistent with admit/discharge diff
+    """
+    n = 8_000
+
+    admission_ids = [f"ADM-{20000 + i}" for i in range(n)]
+
+    # Most patients map into the 5,000-patient pool; ~2.5% are orphan references
+    patient_pool = [f"PAT-{10000 + i}" for i in range(5_000)]
+    orphan_pool = [f"PAT-{90000 + i}" for i in range(200)]
+
+    patient_id_arr = []
+    for _ in range(n):
+        if RNG.random() < 0.025:
+            patient_id_arr.append(random.choice(orphan_pool))
+        else:
+            patient_id_arr.append(random.choice(patient_pool))
+
+    # Admit times: 2020-2024
+    from datetime import datetime, timedelta, timezone
+
+    base_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp())
+    end_ts = int(datetime(2024, 12, 31, tzinfo=timezone.utc).timestamp())
+    admit_ts = RNG.integers(base_ts, end_ts, n)
+    los_hours = RNG.integers(12, 30 * 24, n)  # 12h to 30 days
+    discharge_ts = admit_ts + los_hours * 3600
+
+    # Inject ~0.5% where discharge < admit
+    bad_ts_idx = RNG.choice(n, size=int(n * 0.005), replace=False)
+    for i in bad_ts_idx:
+        discharge_ts[i] = admit_ts[i] - RNG.integers(1, 3600)
+
+    def fmt_ts(ts):
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    admit_arr = [fmt_ts(t) for t in admit_ts]
+    discharge_arr = [fmt_ts(t) for t in discharge_ts]
+
+    los_days = np.round(los_hours / 24, 1).tolist()
+    # Make a fraction of los_days inconsistent (rounded differently)
+    inconsistent_idx = RNG.choice(n, size=int(n * 0.05), replace=False)
+    for i in inconsistent_idx:
+        los_days[i] = round(los_days[i] + RNG.uniform(-1, 1), 0)
+
+    diagnosis = RNG.choice(
+        [
+            "Sepsis",
+            "Respiratory failure",
+            "Cardiac arrest",
+            "Post-op monitoring",
+            "Traumatic injury",
+            "Stroke",
+            "Renal failure",
+            "Pneumonia",
+            "Drug overdose",
+            "Burns",
+        ],
+        size=n,
+    ).tolist()
+
+    icu_type = RNG.choice(
+        ["Medical ICU", "Surgical ICU", "Cardiac ICU", "Neuro ICU"],
+        size=n,
+        p=[0.40, 0.30, 0.20, 0.10],
+    ).tolist()
+
+    df = pl.DataFrame(
+        {
+            "admission_id": admission_ids,
+            "patient_id": patient_id_arr,
+            "admit_time": admit_arr,
+            "discharge_time": discharge_arr,
+            "diagnosis": diagnosis,
+            "icu_type": icu_type,
+            "los_days": los_days,
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 18. icu_vitals.parquet  (mlfp02) — ICU vital signs (~60,000 rows)
+# ---------------------------------------------------------------------------
+
+
+def make_icu_vitals() -> pl.DataFrame:
+    """
+    ICU vital signs (~60,000 rows).
+    Irregular monitoring intervals (realistic: Q1h to Q4h depending on severity).
+    Joins to icu_admissions on admission_id.
+
+    Intentional messiness:
+    - ~5% null spo2 (probe detached)
+    - ~3% null heart_rate (artefact)
+    - Occasional physiologically impossible values (~1%): HR > 250 or < 10
+    - temperature in Celsius for most rows, Fahrenheit for ~2% (mixed units)
+    """
+    from datetime import datetime, timedelta, timezone
+
+    # Sample 1,000 admission IDs to attach vitals to
+    n_admissions = 1_000
+    admission_ids = [f"ADM-{20000 + i}" for i in range(n_admissions)]
+
+    # Each admission gets between 20 and 120 vital sign records
+    records = []
+    for adm_id in admission_ids:
+        n_vitals = int(RNG.integers(20, 121))
+        base_hr = float(RNG.uniform(65, 100))
+        base_sbp = float(RNG.uniform(105, 135))
+        base_dbp = base_sbp - float(RNG.uniform(30, 50))
+        base_temp = float(RNG.uniform(36.5, 38.5))
+        base_spo2 = float(RNG.uniform(94, 100))
+        base_rr = float(RNG.uniform(14, 22))
+
+        ts = datetime(2020, 1, 1, tzinfo=timezone.utc) + timedelta(
+            hours=int(RNG.integers(0, 8760 * 4))
+        )
+        for _ in range(n_vitals):
+            # Irregular intervals: 30min to 4 hours
+            interval_min = int(RNG.choice([30, 60, 120, 240], p=[0.20, 0.45, 0.25, 0.10]))
+            ts += timedelta(minutes=interval_min)
+
+            hr = round(base_hr + float(RNG.normal(0, 8)), 0)
+            sbp = round(base_sbp + float(RNG.normal(0, 10)), 0)
+            dbp = round(base_dbp + float(RNG.normal(0, 6)), 0)
+            temp = round(base_temp + float(RNG.normal(0, 0.3)), 1)
+            spo2 = round(min(100, base_spo2 + float(RNG.normal(0, 1.5))), 1)
+            rr = round(base_rr + float(RNG.normal(0, 2)), 0)
+
+            records.append(
+                {
+                    "admission_id": adm_id,
+                    "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+                    "heart_rate": hr,
+                    "systolic_bp": sbp,
+                    "diastolic_bp": dbp,
+                    "temperature": temp,
+                    "spo2": spo2,
+                    "respiratory_rate": rr,
+                }
+            )
+
+    n = len(records)
+
+    # Build arrays for nullification and outlier injection
+    hr_arr = [r["heart_rate"] for r in records]
+    spo2_arr = [r["spo2"] for r in records]
+    temp_arr = [r["temperature"] for r in records]
+
+    # Null injections
+    null_hr_idx = set(RNG.choice(n, size=int(n * 0.03), replace=False).tolist())
+    null_spo2_idx = set(RNG.choice(n, size=int(n * 0.05), replace=False).tolist())
+
+    # Impossible HR values (~1%)
+    bad_hr_idx = set(RNG.choice(n, size=int(n * 0.01), replace=False).tolist())
+
+    # Mixed temperature units (~2%)
+    fahren_idx = set(RNG.choice(n, size=int(n * 0.02), replace=False).tolist())
+
+    final_hr = []
+    final_spo2 = []
+    final_temp = []
+    for i in range(n):
+        # HR
+        if i in null_hr_idx:
+            final_hr.append(None)
+        elif i in bad_hr_idx:
+            final_hr.append(float(RNG.choice([5.0, 280.0, 310.0])))
+        else:
+            final_hr.append(hr_arr[i])
+
+        # SpO2
+        final_spo2.append(None if i in null_spo2_idx else spo2_arr[i])
+
+        # Temperature
+        if i in fahren_idx:
+            final_temp.append(round(temp_arr[i] * 9 / 5 + 32, 1))
+        else:
+            final_temp.append(float(temp_arr[i]))
+
+    # Cast numpy types to Python native to avoid Polars strict mode errors
+    def _to_native(lst):
+        return [None if v is None else float(v) for v in lst]
+
+    df = pl.DataFrame(
+        {
+            "admission_id": [r["admission_id"] for r in records],
+            "timestamp": [r["timestamp"] for r in records],
+            "heart_rate": _to_native(final_hr),
+            "systolic_bp": _to_native([r["systolic_bp"] for r in records]),
+            "diastolic_bp": _to_native([r["diastolic_bp"] for r in records]),
+            "temperature": _to_native(final_temp),
+            "spo2": _to_native(final_spo2),
+            "respiratory_rate": _to_native([r["respiratory_rate"] for r in records]),
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 19. icu_medications.parquet  (mlfp02) — ICU medication orders (~20,000 rows)
+# ---------------------------------------------------------------------------
+
+
+def make_icu_medications() -> pl.DataFrame:
+    """
+    ICU medication orders (~20,000 rows).
+    Joins to icu_admissions on admission_id.
+
+    Intentional messiness:
+    - end_time occasionally null (ongoing infusions)
+    - dose is a string with mixed units ("5 mg", "5mg", "5MG") — ~30% each variant
+    - ~1% rows have start_time after end_time (data entry error)
+    """
+    from datetime import datetime, timedelta, timezone
+
+    n = 20_000
+    n_admissions = 1_000
+    admission_ids = [f"ADM-{20000 + i}" for i in range(n_admissions)]
+
+    drugs = [
+        "Norepinephrine", "Propofol", "Midazolam", "Fentanyl", "Heparin",
+        "Insulin", "Vancomycin", "Piperacillin-Tazobactam", "Metoprolol",
+        "Furosemide", "Morphine", "Dexamethasone", "Amiodarone", "Dopamine",
+        "Dobutamine", "Pantoprazole", "Potassium Chloride", "Magnesium Sulphate",
+    ]
+    routes = ["IV", "PO", "IM", "SQ", "ET"]
+    route_weights = np.array([0.60, 0.20, 0.10, 0.07, 0.03])
+
+    base_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp())
+    end_ts = int(datetime(2024, 12, 31, tzinfo=timezone.utc).timestamp())
+
+    def fmt_ts(ts):
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    adm_ids = RNG.choice(admission_ids, size=n).tolist()
+    start_ts = RNG.integers(base_ts, end_ts, n)
+    duration_h = RNG.integers(1, 72, n)
+    end_ts_arr = start_ts + duration_h * 3600
+
+    # Inject ~1% where start > end
+    bad_idx = RNG.choice(n, size=int(n * 0.01), replace=False)
+    for i in bad_idx:
+        end_ts_arr[i] = start_ts[i] - RNG.integers(1, 3600)
+
+    # ~10% ongoing (null end_time)
+    ongoing_idx = set(RNG.choice(n, size=int(n * 0.10), replace=False).tolist())
+    end_time_arr = [
+        None if i in ongoing_idx else fmt_ts(end_ts_arr[i]) for i in range(n)
+    ]
+
+    drug_arr = RNG.choice(drugs, size=n).tolist()
+
+    # Dose: mixed unit formatting
+    dose_values = np.round(RNG.uniform(1, 50, n), 1)
+    dose_arr = []
+    for v in dose_values:
+        r = RNG.random()
+        if r < 0.33:
+            dose_arr.append(f"{v} mg")
+        elif r < 0.66:
+            dose_arr.append(f"{v}mg")
+        else:
+            dose_arr.append(f"{v}MG")
+
+    route_arr = RNG.choice(
+        routes, size=n, p=route_weights / route_weights.sum()
+    ).tolist()
+
+    df = pl.DataFrame(
+        {
+            "admission_id": adm_ids,
+            "start_time": [fmt_ts(t) for t in start_ts],
+            "end_time": end_time_arr,
+            "drug_name": drug_arr,
+            "dose": dose_arr,
+            "route": route_arr,
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 20. icu_labs.parquet  (mlfp02) — ICU lab results (~30,000 rows)
+# ---------------------------------------------------------------------------
+
+
+def make_icu_labs() -> pl.DataFrame:
+    """
+    ICU lab results (~30,000 rows).
+    Joins to icu_admissions on admission_id.
+
+    Intentional messiness:
+    - value stored as string to preserve mixed numeric/text entries
+      (e.g., "<0.1" for below-detection-limit, "HAEMOLYSED" for invalid samples)
+    - unit inconsistency: "mmol/L" vs "mMol/L" vs "MMOL/L" in ~30% each
+    - ~4% null flag (flag not always recorded)
+    """
+    n = 30_000
+    n_admissions = 1_000
+    admission_ids = [f"ADM-{20000 + i}" for i in range(n_admissions)]
+
+    tests = [
+        # (test_name, typical_range_low, typical_range_high, unit)
+        ("Haemoglobin", 12.0, 17.5, "g/dL"),
+        ("White Cell Count", 4.0, 11.0, "x10^9/L"),
+        ("Platelet Count", 150, 400, "x10^9/L"),
+        ("Sodium", 136, 145, "mmol/L"),
+        ("Potassium", 3.5, 5.0, "mmol/L"),
+        ("Creatinine", 53, 106, "umol/L"),
+        ("Urea", 2.5, 7.8, "mmol/L"),
+        ("ALT", 7, 56, "U/L"),
+        ("AST", 10, 40, "U/L"),
+        ("Bilirubin Total", 5, 21, "umol/L"),
+        ("Glucose", 4.0, 7.8, "mmol/L"),
+        ("Lactate", 0.5, 2.2, "mmol/L"),
+        ("CRP", 0, 10, "mg/L"),
+        ("Procalcitonin", 0.0, 0.5, "ug/L"),
+        ("PT", 11, 15, "seconds"),
+        ("APTT", 25, 37, "seconds"),
+        ("Fibrinogen", 2.0, 4.0, "g/L"),
+        ("pH", 7.35, 7.45, ""),
+        ("pCO2", 35, 45, "mmHg"),
+        ("pO2", 75, 100, "mmHg"),
+    ]
+
+    adm_ids = RNG.choice(admission_ids, size=n).tolist()
+    test_idx = RNG.integers(0, len(tests), n)
+
+    from datetime import datetime, timezone
+
+    base_ts = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp())
+    end_base = int(datetime(2024, 12, 31, tzinfo=timezone.utc).timestamp())
+    ts_raw = RNG.integers(base_ts, end_base, n)
+    timestamp_arr = [
+        datetime.fromtimestamp(int(t), tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        for t in ts_raw
+    ]
+
+    test_name_arr = []
+    value_arr = []
+    unit_arr = []
+    flag_arr = []
+
+    unit_variants = {
+        "mmol/L": ["mmol/L", "mMol/L", "MMOL/L"],
+        "g/dL": ["g/dL", "G/DL", "g/dl"],
+        "x10^9/L": ["x10^9/L", "10^9/L", "x10e9/L"],
+        "umol/L": ["umol/L", "uMol/L", "UMOL/L"],
+        "U/L": ["U/L", "u/L", "IU/L"],
+        "mg/L": ["mg/L", "MG/L", "mg/l"],
+        "ug/L": ["ug/L", "UG/L", "ng/mL"],
+        "g/L": ["g/L", "G/L", "g/l"],
+        "seconds": ["seconds", "sec", "s"],
+        "mmHg": ["mmHg", "MMHG", "mm Hg"],
+        "": [""],
+    }
+
+    for i in range(n):
+        t = tests[test_idx[i]]
+        tname, tlow, thigh, unit = t
+        test_name_arr.append(tname)
+
+        # Most values in range; ~8% outside (flag=abnormal)
+        if RNG.random() < 0.08:
+            # Abnormal: outside reference range
+            if RNG.random() < 0.5:
+                val = round(float(RNG.uniform(tlow * 0.3, tlow * 0.9)), 2)
+            else:
+                val = round(float(RNG.uniform(thigh * 1.1, thigh * 2.5)), 2)
+            flag = "abnormal"
+        elif RNG.random() < 0.02:
+            # Invalid sample or below detection
+            val_str = RNG.choice(["HAEMOLYSED", "LIPAEMIC", "<0.1", "CLOTTED"])
+            value_arr.append(str(val_str))
+            unit_variants_list = unit_variants.get(unit, [unit])
+            unit_arr.append(random.choice(unit_variants_list))
+            flag_arr.append(None if RNG.random() < 0.04 else "invalid")
+            continue
+        else:
+            val = round(float(RNG.uniform(tlow, thigh)), 2)
+            flag = "normal"
+
+        value_arr.append(str(val))
+        unit_variants_list = unit_variants.get(unit, [unit])
+        unit_arr.append(random.choice(unit_variants_list))
+        flag_arr.append(None if RNG.random() < 0.04 else flag)
+
+    df = pl.DataFrame(
+        {
+            "admission_id": adm_ids,
+            "timestamp": timestamp_arr,
+            "test_name": test_name_arr,
+            "value": value_arr,
+            "unit": unit_arr,
+            "flag": flag_arr,
+        }
+    )
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -2612,6 +3578,11 @@ def main():
         ),
         # sg_taxi_trips is now parquet (50K rows too large for CSV in git)
         (make_sg_taxi_trips, DATA_ROOT / "mlfp01" / "sg_taxi_trips.parquet", "parquet"),
+        (make_hdb_resale, DATA_ROOT / "mlfp01" / "hdb_resale.parquet", "parquet"),
+        (make_sg_weather, DATA_ROOT / "mlfp01" / "sg_weather.csv", "csv"),
+        (make_sg_cpi, DATA_ROOT / "mlfp01" / "sg_cpi.csv", "csv"),
+        (make_sg_employment, DATA_ROOT / "mlfp01" / "sg_employment.csv", "csv"),
+        (make_sg_fx_rates, DATA_ROOT / "mlfp01" / "sg_fx_rates.csv", "csv"),
         (
             make_experiment_data,
             DATA_ROOT / "mlfp02" / "experiment_data.parquet",
@@ -2622,6 +3593,19 @@ def main():
             DATA_ROOT / "mlfp02" / "sg_credit_scoring.parquet",
             "parquet",
         ),
+        (make_icu_patients, DATA_ROOT / "mlfp02" / "icu_patients.parquet", "parquet"),
+        (
+            make_icu_admissions,
+            DATA_ROOT / "mlfp02" / "icu_admissions.parquet",
+            "parquet",
+        ),
+        (make_icu_vitals, DATA_ROOT / "mlfp02" / "icu_vitals.parquet", "parquet"),
+        (
+            make_icu_medications,
+            DATA_ROOT / "mlfp02" / "icu_medications.parquet",
+            "parquet",
+        ),
+        (make_icu_labs, DATA_ROOT / "mlfp02" / "icu_labs.parquet", "parquet"),
         (
             make_ecommerce_customers,
             DATA_ROOT / "mlfp03" / "ecommerce_customers.parquet",
@@ -2636,10 +3620,10 @@ def main():
         ),
         (
             make_mrt_stations,
-            DATA_ROOT / "ascent_assessment" / "mrt_stations.parquet",
+            DATA_ROOT / "mlfp_assessment" / "mrt_stations.parquet",
             "parquet",
         ),
-        (make_schools, DATA_ROOT / "ascent_assessment" / "schools.parquet", "parquet"),
+        (make_schools, DATA_ROOT / "mlfp_assessment" / "schools.parquet", "parquet"),
     ]
 
     print("\nGenerating datasets...")

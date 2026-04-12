@@ -34,7 +34,7 @@ def get_connection_manager(db_url: str | None = None):
     Args:
         db_url: Database URL. Defaults to SQLite at ./mlfp.db
     """
-    from kailash.db.connection import ConnectionManager
+    from kailash.db import ConnectionManager
 
     url = db_url or os.environ.get("DATABASE_URL", "sqlite:///mlfp.db")
     return ConnectionManager(url)

@@ -13,12 +13,16 @@ description: "Load phase 02 (todos) for the current workspace"
 ## Phase Check
 
 - Read files in `workspaces/<project>/02-plans/` for context
+- Read `specs/_index.md` and all relevant spec files for domain truth (MUST — see `rules/specs-authority.md`). **If `specs/_index.md` does not exist, STOP — return to `/analyze` Step 5. Do NOT create specs during /todos.**
+- Read ALL journal entries from `/analyze` phase — especially DECISION, TRADE-OFF, and DISCOVERY types. Journal is a read-gate, not just a write-gate.
 - Check if `todos/active/` already has files (resuming)
 - All todos go into `workspaces/<project>/todos/active/`
 
 ## Execution Model
 
 This phase executes under the **autonomous execution model** (see `rules/autonomous-execution.md`). All effort estimates in todos MUST use autonomous execution cycles, not human-days. When referencing external plans that estimate in human-days, apply the 10x multiplier to translate. Do not phase work based on "team bandwidth" — phase based on dependency order and validation gates.
+
+**Per-session capacity budget (MUST):** Each todo MUST fit within a single session's capacity — ≤500 LOC load-bearing logic, ≤5–10 simultaneous invariants, ≤3–4 call-graph hops, describable in 3 sentences. See `rules/autonomous-execution.md` § Per-Session Capacity Budget. Todos that exceed the budget MUST be sharded at this phase, not deferred to `/implement`.
 
 **The /todos approval gate is a structural gate**: the human approves the plan (what and why), not the execution (how and when). Once approved, /implement executes autonomously.
 
@@ -47,6 +51,8 @@ Reference plans in `workspaces/<project>/02-plans/` and work through every singl
 - Each todo should be detailed enough to implement independently
 - If the plans reference it, there must be a todo for it
 - For large projects (20+ todos), organize into numbered milestones/groups for clarity
+- Each todo MUST reference which spec file(s) it implements (e.g., "Implements: specs/authentication.md §Login Flow")
+- Update spec files if /todos planning reveals new contracts or interfaces (first-instance update discipline)
 
 **CRITICAL: Integration wiring is a separate todo.** Every component that consumes or produces data MUST have TWO todos:
 
@@ -84,12 +90,12 @@ For frontend projects, additionally deploy:
 
 Red team the todo list with agents until they confirm no gaps remain.
 
-### Journal
+### Journal (MUST — phase-complete gate)
 
-Create journal entries for decisions made during planning:
+Before reporting `/todos` complete, create journal entries for journal-worthy decisions made during planning:
 
-- **DECISION** entries for scope choices, prioritization rationale, and architectural direction
-- **TRADE-OFF** entries for competing approaches evaluated
-- **RISK** entries for risks identified during planning
+- **DECISION** — scope choices, prioritization rationale, architectural direction
+- **TRADE-OFF** — competing approaches evaluated and why one was chosen
+- **RISK** — risks identified during planning (scope, dependency, schedule, technical)
 
-Use sequential naming: check the highest existing `NNNN-` prefix and increment.
+Use `/journal new <TYPE> <slug>` (or write directly to `workspaces/<project>/journal/NNNN-TYPE-slug.md`). Skip only when the phase genuinely produced nothing journal-worthy — use judgment, not formulas. Do not batch: create each entry as you recognize it, not at the end.

@@ -1,0 +1,21 @@
+last_sync: 2026-04-13T00:00:00Z
+source: kailash-coc-claude-py
+source_path: /Users/esperie/repos/loom/kailash-coc-claude-py
+template_version: 3.4.0
+upstream_build_version: 2.8.4
+project_sdk_version: 2.8.4
+synced_from_local_version: 2.6.0
+files_updated: 565
+files_new: 42
+files_preserved: 10
+preserved_list:
+  - .claude/agents/education/dataset-curator.md
+  - .claude/agents/education/exercise-designer.md
+  - .claude/agents/education/kailash-tutor.md
+  - .claude/agents/education/quiz-designer.md
+  - .claude/agents/quality/notebook-validator.md
+  - .claude/commands/checkpoint.md
+  - .claude/commands/evolve.md
+  - .claude/rules/domain-integrity.md
+  - .claude/rules/exercise-standards.md
+  - .claude/rules/two-format.md

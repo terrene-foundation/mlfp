@@ -1,111 +1,55 @@
-# MLFP — Getting Started
+---
+name: start
+description: "New user orientation — explains the COC workflow and how to get started"
+---
 
-Welcome to the MLFP training repository. This is both a professional ML course AND the definitive training material for the Kailash Python SDK.
+Present this orientation to the user in a warm, clear, jargon-free way. Adapt tone based on context — if they seem technical, be concise; if they seem new, take more time.
 
-## What This Repo Is
+## What is COC?
 
-**Dual purpose**:
-1. **MLFP ML curriculum** — 10 modules covering statistics through governed AI deployment, benchmarked at Stanford CS229 depth
-2. **Kailash SDK training** — every exercise uses Kailash engines, every concept bridges theory to SDK
+COC is a structured workflow where YOU direct an AI to build software. You don't need to write code. Your job is to:
 
-**Three delivery formats**: Local Python, Jupyter notebooks, Google Colab
+1. **Describe what you want** (in your own words, as detailed as you like)
+2. **Make decisions** when choices come up (we'll always explain the options clearly)
+3. **Approve the plan** before building starts
+4. **Review the results** to make sure they match your vision
 
-## Repository Layout
+The AI handles all the technical work — writing code, testing, security checks, and deployment.
 
-```
-modules/ascent01-6/        — Exercise content (local/, notebooks/, colab/, solutions/, quiz/)
-shared/                 — Data loader, Kailash helpers, Colab setup
-docs/                   — Course outline, setup guide, polars cheatsheet
-decks/                  — Reveal.js presentation slides
-workspaces/             — COC workspaces for course development
-tests/                  — Exercise validation tests
-```
+## The 5 Phases
 
-## Workflow Commands (for instructors and course developers)
+| Step | Command | What Happens | Your Role |
+|------|---------|-------------|-----------|
+| 1. Research | `/analyze` | Study your idea — market fit, user needs, competition | Confirm we understood your vision |
+| 2. Planning | `/todos` | Create a complete project roadmap | Approve the plan before building starts |
+| 3. Building | `/implement` | Build the project one task at a time | Answer questions when choices come up |
+| 4. Testing | `/redteam` | Test everything from a real user's perspective | Review results |
+| 5. Knowledge | `/codify` | Capture what we learned for future sessions | Confirm the knowledge is accurate |
 
-### COC Phase Commands (standard workflow)
+Plus **`/deploy`** when you're ready to launch, and **`/ws`** anytime to check progress.
 
-| Command | Phase | Purpose |
-|---------|-------|---------|
-| `/analyze` | 01 | Research: examine SDK capabilities, dataset suitability, pedagogical approach |
-| `/todos` | 02 | Plan: create task list for module implementation, stops for approval |
-| `/implement` | 03 | Build: write solutions, generate exercises, create notebooks |
-| `/redteam` | 04 | Validate: test all exercises, verify 3-format consistency, SDK correctness |
-| `/codify` | 05 | Capture: update agents/skills with lessons learned |
-| `/release` | — | Publish: version, tag, prepare for distribution |
+## Getting Started
 
-### Course-Specific Commands
+Walk the user through these steps:
 
-| Command | Purpose |
-|---------|---------|
-| `/build-module` | Scaffold a complete module: solutions → exercises → 3 formats → quiz |
-| `/build-exercise` | Create a single exercise across local/Jupyter/Colab from a solution |
-| `/validate-notebooks` | Cross-validate all 3 formats for consistency |
-| `/start` | This guide — explains the repo and all commands |
+1. **Create a workspace**: Ask the AI to set up a workspace for your project (e.g., "create a workspace called my-project"), or manually create a folder `workspaces/my-project/briefs/`
+2. **Write a brief**: Create a file in the briefs folder describing what you want to build — in your own words, as detailed as you like. Include who it's for, what problem it solves, and what success looks like. You can also just tell the AI what you want and ask it to write the brief for you.
+3. **Run `/analyze`**: This kicks off the research phase
 
-### Utility Commands
+If the user already has a workspace, show them their current status with `/ws` instead.
 
-| Command | Purpose |
-|---------|---------|
-| `/ws` | Show workspace status dashboard (read-only) |
-| `/wrapup` | Write session notes before ending |
-| `/cc-audit` | Audit COC artifacts for quality and completeness |
+## Helpful Commands
 
-## How to Build a Module (instructor workflow)
+- **`/ws`** — Check project status at any time
+- **`/wrapup`** — Save your progress before ending a session (the AI picks up where you left off next time)
+- **Ask anything** — You can always just type a question in plain language
 
-```
-1. Choose workspace:     cd to workspaces/ascentNN/
-2. Read the brief:       workspaces/ascentNN/briefs/module-brief.md
-3. Write solutions:      modules/ascentNN/solutions/ (complete, runnable code)
-4. Generate exercises:   /build-exercise (strips solutions → fill-in-blank)
-5. Create 3 formats:     /build-module (local .py + Jupyter .ipynb + Colab .ipynb)
-6. Write quiz:           modules/ascentNN/quiz/ (see quiz-designer agent)
-7. Build deck:           decks/ascentNN/ (Reveal.js slides from deck brief)
-8. Validate:             /validate-notebooks (cross-check all formats)
-9. Red team:             /redteam (SDK correctness, exercise quality)
-```
+## Tips for Non-Coders
 
-## How to Add/Update Content (developer workflow)
+Present these naturally, not as a lecture:
 
-```
-1. /analyze              — Research what needs changing
-2. /todos                — Plan the changes (get approval)
-3. /implement            — Make the changes
-4. /redteam              — Validate (SDK paths, consistency, quality)
-5. /codify               — Update agents/skills if patterns changed
-```
-
-## Key Agents (available to all commands)
-
-### Education Specialists
-- **exercise-designer** — Generates exercises from solutions with progressive scaffolding
-- **kailash-tutor** — Maps traditional ML → Kailash patterns
-- **dataset-curator** — Validates dataset quality and availability
-- **quiz-designer** — Creates Kailash-pattern assessment questions
-
-### Quality
-- **notebook-validator** — Cross-validates 3 delivery formats
-- **reviewer** — Code review and content quality
-- **security-reviewer** — No hardcoded keys, no exposed secrets
-
-### Framework Specialists (inherited from COC)
-- **ml-specialist**, **dataflow-specialist**, **nexus-specialist**
-- **kaizen-specialist**, **pact-specialist**, **align-specialist**
-
-## Key Rules
-
-1. **Framework-first** — All ML content uses Kailash. Never raw sklearn/pandas.
-2. **Polars-native** — No pandas anywhere. kailash-ml is polars-native.
-3. **Three-format** — Every exercise in local + Jupyter + Colab.
-4. **Solution-first** — Write solutions first, then strip to exercises.
-5. **Progressive disclosure** — M1: 70% scaffolding → M6: 20%.
-6. **Kailash from Lesson 1** — First exercise uses a Kailash engine.
-7. **Governance throughout** — Trust, audit, governance concepts woven into every module, not just M6.
-
-## Environment Setup
-
-```bash
-uv venv && uv sync          # Local development
-cp .env.example .env         # Configure API keys (M5-M6 need LLM keys)
-uv run pytest tests/ -v      # Validate exercises
-```
+- **You don't need to understand code.** When the AI mentions technical things, ask it to explain in plain language.
+- **Your knowledge is the most valuable input.** You know your users, your market, and your vision better than any AI.
+- **"I don't understand" is always valid.** The AI will rephrase — no judgment.
+- **Approval gates protect you.** Never approve something you don't fully understand. Ask questions first.
+- **The AI remembers across sessions.** Run `/wrapup` before leaving, and your next session starts right where you left off.

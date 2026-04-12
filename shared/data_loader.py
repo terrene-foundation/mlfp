@@ -1,10 +1,9 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Unified data loading for ASCENT course — supports local, Jupyter, and Colab."""
+"""Unified data loading for MLFP course — supports local and Colab."""
 
 from __future__ import annotations
 
-import os
 import logging
 from pathlib import Path
 
@@ -12,19 +11,18 @@ import polars as pl
 
 logger = logging.getLogger(__name__)
 
-# Google Drive shared folder containing all ASCENT datasets
+# Google Drive shared folder containing all MLFP datasets
 _DRIVE_FOLDER_ID = "16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws"
 
 # Module subfolders on the shared Drive
 _MODULES = {
-    "ascent01",
-    "ascent02",
-    "ascent03",
-    "ascent04",
-    "ascent05",
-    "ascent06",
-    "ascent06-dl",
-    "ascent_assessment",
+    "mlfp01",
+    "mlfp02",
+    "mlfp03",
+    "mlfp04",
+    "mlfp05",
+    "mlfp06",
+    "mlfp_assessment",
 }
 
 
@@ -39,8 +37,8 @@ def _is_colab() -> bool:
 
 
 def _colab_data_root() -> Path:
-    """Return the Drive-mounted ascent_data path in Colab."""
-    return Path("/content/drive/MyDrive/ascent_data")
+    """Return the Drive-mounted mlfp_data path in Colab."""
+    return Path("/content/drive/MyDrive/mlfp_data")
 
 
 def _local_cache_dir() -> Path:
@@ -76,7 +74,6 @@ def _download_from_drive(module: str, filename: str, dest: Path) -> Path:
 
     if not dest_file.exists():
         # Try direct download if folder download didn't isolate the file
-        # Attempt to find in downloaded structure
         for candidate in dest.rglob(filename):
             if candidate.is_file():
                 if candidate != dest_file:
@@ -85,7 +82,7 @@ def _download_from_drive(module: str, filename: str, dest: Path) -> Path:
 
         msg = (
             f"File not found after download: {module}/{filename}. "
-            f"Check that it exists in the ascent_data shared Drive."
+            f"Check that it exists in the mlfp_data shared Drive."
         )
         raise FileNotFoundError(msg)
 
@@ -127,20 +124,20 @@ def _repo_data_dir() -> Path | None:
     return None
 
 
-class ASCENTDataLoader:
-    """Load ASCENT course datasets with automatic source resolution.
+class MLFPDataLoader:
+    """Load MLFP course datasets with automatic source resolution.
 
     Resolution order:
-    1. Colab: Drive mount at /content/drive/MyDrive/ascent_data/
+    1. Colab: Drive mount at /content/drive/MyDrive/mlfp_data/
     2. Local repo data/ directory (committed datasets)
     3. Google Drive download via gdown (cached in .data_cache/)
 
     Usage:
-        loader = ASCENTDataLoader()
-        df = loader.load("ascent01", "hdbprices.csv")
+        loader = MLFPDataLoader()
+        df = loader.load("mlfp01", "hdbprices.csv")
 
     Shortcut:
-        df = ASCENTDataLoader.ascent01("hdbprices.csv")
+        df = MLFPDataLoader.mlfp01("hdbprices.csv")
     """
 
     def __init__(self, cache_dir: Path | str | None = None):
@@ -155,7 +152,7 @@ class ASCENTDataLoader:
         """Load a dataset file as a polars DataFrame.
 
         Args:
-            module: Module subfolder (e.g., "ascent01", "ascent_assessment")
+            module: Module subfolder (e.g., "mlfp01", "mlfp_assessment")
             filename: File name within the module folder (e.g., "hdbprices.csv")
 
         Returns:
@@ -171,7 +168,7 @@ class ASCENTDataLoader:
             if not path.exists():
                 raise FileNotFoundError(
                     f"File not found: {path}. "
-                    f"Ensure ascent_data is accessible in your Google Drive."
+                    f"Ensure mlfp_data is accessible in your Google Drive."
                 )
         else:
             # Check repo-local data/ first, then fall back to Drive download
@@ -205,39 +202,39 @@ class ASCENTDataLoader:
 
         return sorted(f.name for f in root.iterdir() if f.is_file())
 
-    # ── Module shortcuts ──
+    # -- Module shortcuts --
 
     @classmethod
-    def ascent01(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent01 (Python, Polars & Visualization)."""
-        return cls().load("ascent01", filename)
+    def mlfp01(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp01 (Data Pipelines & Visualisation)."""
+        return cls().load("mlfp01", filename)
 
     @classmethod
-    def ascent02(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent02 (Statistics & Feature Engineering)."""
-        return cls().load("ascent02", filename)
+    def mlfp02(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp02 (Statistical Mastery)."""
+        return cls().load("mlfp02", filename)
 
     @classmethod
-    def ascent03(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent03 (Inferential Stats & Workflows)."""
-        return cls().load("ascent03", filename)
+    def mlfp03(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp03 (Supervised ML)."""
+        return cls().load("mlfp03", filename)
 
     @classmethod
-    def ascent04(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent04 (Supervised ML & Production Lifecycle)."""
-        return cls().load("ascent04", filename)
+    def mlfp04(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp04 (Unsupervised ML)."""
+        return cls().load("mlfp04", filename)
 
     @classmethod
-    def ascent05(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent05 (Unsupervised ML, Deep Learning & AI Agents)."""
-        return cls().load("ascent05", filename)
+    def mlfp05(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp05 (Deep Learning & Vision)."""
+        return cls().load("mlfp05", filename)
 
     @classmethod
-    def ascent06(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent06 (Deep Learning & Agents)."""
-        return cls().load("ascent06", filename)
+    def mlfp06(cls, filename: str) -> pl.DataFrame:
+        """Load from mlfp06 (LLMs, Agents & Transformation)."""
+        return cls().load("mlfp06", filename)
 
     @classmethod
     def assessment(cls, filename: str) -> pl.DataFrame:
-        """Load from ascent_assessment (capstone datasets)."""
-        return cls().load("ascent_assessment", filename)
+        """Load from mlfp_assessment (capstone datasets)."""
+        return cls().load("mlfp_assessment", filename)

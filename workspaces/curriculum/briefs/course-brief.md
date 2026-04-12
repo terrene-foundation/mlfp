@@ -336,10 +336,10 @@ Each module deck is a workspace task:
 decks/
 ├── assets/css/theme.css     # Shared Reveal.js theme
 ├── assets/img/              # Shared images
-├── ascent01/deck.html          # Module 1 deck
-├── ascent02/deck.html          # Module 2 deck
+├── mlfp01/deck.html          # Module 1 deck
+├── mlfp02/deck.html          # Module 2 deck
 ├── ...
-└── ascent06/deck.html          # Module 6 deck
+└── mlfp04/deck.html          # Module 6 deck
 ```
 
 ---

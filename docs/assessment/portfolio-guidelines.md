@@ -8,7 +8,7 @@
 
 ## Overview
 
-The individual portfolio is your opportunity to demonstrate end-to-end ML engineering competence. You will select a dataset from any ASCENT module, extend it beyond the exercise scope, and build a production-ready system using the Kailash Python SDK.
+The individual portfolio is your opportunity to demonstrate end-to-end ML engineering competence. You will select a dataset from any MLFP module, extend it beyond the exercise scope, and build a production-ready system using the Kailash Python SDK.
 
 This is not a research paper. It is a working system with rigorous documentation. Your portfolio should demonstrate the journey from raw data to a monitored, deployable model — the kind of work a senior ML engineer delivers.
 
@@ -18,7 +18,7 @@ This is not a research paper. It is a working system with rigorous documentation
 
 ### Dataset Selection
 
-Choose any dataset from the ASCENT course modules or the integrated Singapore urban planning dataset in `ascent_assessment/`. You may combine multiple datasets if your problem requires it.
+Choose any dataset from the MLFP course modules or the integrated Singapore urban planning dataset in `ascent_assessment/`. You may combine multiple datasets if your problem requires it.
 
 Your selected dataset must present genuine complexity: missing values, class imbalance, temporal dependencies, or multi-source joins. If the data is clean and simple, the portfolio cannot demonstrate production readiness.
 
@@ -112,12 +112,12 @@ These are starting points, not prescriptions. The best portfolios define a clear
 
 | Module | Dataset                 | Example Portfolio Direction                                                                                                    |
 | ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| ASCENT01  | HDB Resale Prices       | Price prediction with spatial features, temporal drift analysis, calibrated confidence intervals for valuation                 |
-| ASCENT02  | A/B Testing Dataset     | Causal inference pipeline: propensity score matching, CUPED variance reduction, heterogeneous treatment effects                |
-| ASCENT03  | Credit Risk / Fraud     | End-to-end credit scoring: regulatory-compliant features, calibrated default probabilities, fairness audit across demographics |
-| ASCENT04  | Customer Reviews (NLP)  | BERTopic-based topic modelling with sentiment overlay, UMAP visualisation, topic drift monitoring for brand health             |
-| ASCENT05  | Multi-source Urban Data | RAG-augmented property advisor: agent-based retrieval over planning documents, grounded in structured data                     |
-| ASCENT06  | Policy / Governance     | RL-based resource allocation with PACT governance constraints, alignment evaluation, deployment with Nexus                     |
+| MLFP01  | HDB Resale Prices       | Price prediction with spatial features, temporal drift analysis, calibrated confidence intervals for valuation                 |
+| MLFP02  | A/B Testing Dataset     | Causal inference pipeline: propensity score matching, CUPED variance reduction, heterogeneous treatment effects                |
+| MLFP03  | Credit Risk / Fraud     | End-to-end credit scoring: regulatory-compliant features, calibrated default probabilities, fairness audit across demographics |
+| MLFP04  | Customer Reviews (NLP)  | BERTopic-based topic modelling with sentiment overlay, UMAP visualisation, topic drift monitoring for brand health             |
+| MLFP05  | Multi-source Urban Data | RAG-augmented property advisor: agent-based retrieval over planning documents, grounded in structured data                     |
+| MLFP06  | Policy / Governance     | RL-based resource allocation with PACT governance constraints, alignment evaluation, deployment with Nexus                     |
 
 ---
 

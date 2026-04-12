@@ -1,6 +1,6 @@
-# ASCENT Curriculum v3 — 6 Modules x 8 Lessons (Final)
+# MLFP Curriculum v3 — 6 Modules x 8 Lessons (Final)
 
-**Official name**: Professional Certificate in Machine Learning (Python) — Terrene Open Academy
+**Official name**: ML Foundations for Professionals — Terrene Open Academy
 **Audience**: Working professionals with ZERO Python experience → Masters-level ML engineering
 **Structure**: 6 modules x 8 lessons = 48 lessons (~4 hours each)
 **Design principle**: Python taught through immediate, tangible results — not abstract infrastructure

@@ -4,9 +4,9 @@
 """Convert local .py exercise files to Jupyter and Colab .ipynb notebooks.
 
 Usage:
-    python scripts/py_to_notebook.py modules/ascent01/local/ex_1.py
+    python scripts/py_to_notebook.py modules/mlfp01/local/ex_1.py
     python scripts/py_to_notebook.py --all          # Convert all modules
-    python scripts/py_to_notebook.py --module ascent01  # Convert one module
+    python scripts/py_to_notebook.py --module mlfp01  # Convert one module
 """
 from __future__ import annotations
 
@@ -220,7 +220,7 @@ def convert_asyncio_for_notebook(cells: list[dict]) -> list[dict]:
 def convert_file(py_path: Path):
     """Convert a single .py exercise to Jupyter and Colab notebooks."""
     source = py_path.read_text()
-    module = py_path.parent.parent.name  # e.g., ascent01
+    module = py_path.parent.parent.name  # e.g., mlfp01
 
     # Parse into cells
     cells = py_to_cells(source)
@@ -269,7 +269,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert .py exercises to notebooks")
     parser.add_argument("file", nargs="?", help="Single .py file to convert")
     parser.add_argument("--all", action="store_true", help="Convert all modules")
-    parser.add_argument("--module", help="Convert a specific module (e.g., ascent01)")
+    parser.add_argument("--module", help="Convert a specific module (e.g., mlfp01)")
     args = parser.parse_args()
 
     root = Path(__file__).parent.parent / "modules"

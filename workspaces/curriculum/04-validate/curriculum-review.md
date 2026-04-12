@@ -27,7 +27,7 @@ However, there are structural inconsistencies between the course brief and indiv
 
 ### C1. Module 5 Brief Title and Content Mismatch Against Course Brief
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md` vs `workspaces/curriculum/briefs/course-brief.md`
+**Location**: `workspaces/mlfp03/briefs/module-brief.md` vs `workspaces/curriculum/briefs/course-brief.md`
 
 The course brief defines Module 5 as **"LLMs, AI Agents & RAG Systems"** with three lecture sections:
 - 5A: Transformer Architecture & LLMs (90 min) -- tokenization, pre-training objectives, scaling laws, inference optimization
@@ -65,7 +65,7 @@ These are fundamentally different schemes. The course brief includes a Peer Revi
 
 ### C3. Exercise Ordering Mismatch Between Course Brief and Module 5 Brief
 
-**Location**: `workspaces/curriculum/briefs/course-brief.md` M5 exercises vs `workspaces/ascent05/briefs/module-brief.md`
+**Location**: `workspaces/curriculum/briefs/course-brief.md` M5 exercises vs `workspaces/mlfp03/briefs/module-brief.md`
 
 Course brief M5 exercise order:
 1. Delegate + SimpleQAAgent
@@ -89,7 +89,7 @@ The reordering breaks the pedagogical progression. The course brief's order foll
 
 ### C4. Module 5 References "Module 4" Where It Should Reference "Module 3"
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md` exercise 5.3
+**Location**: `workspaces/mlfp03/briefs/module-brief.md` exercise 5.3
 
 Exercise 5.3 says: "Compare agent recommendations to manual choices from Module 4". But supervised ML model training is Module 3, not Module 4. Module 4 covers unsupervised ML, NLP, and deep learning. Exercise 5.6 also says "Compare autonomous result to manual pipeline from Module 4" -- again, the comparison should be to Module 3's supervised ML work.
 
@@ -103,7 +103,7 @@ This error further confirms the M5 brief is from a previous curriculum revision 
 
 ### H1. Module Briefs Missing Lecture Content Structure
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md`, `workspaces/ascent06/briefs/module-brief.md`
+**Location**: `workspaces/mlfp03/briefs/module-brief.md`, `workspaces/mlfp04/briefs/module-brief.md`
 
 The course brief contains detailed lecture sections (5A/5B/5C, 6A/6B/6C) with specific topic breakdowns. The module briefs for M5 and M6 have "Learning Outcomes" and "Key Import Paths" but omit the lecture topic sections entirely. Modules 1-4 briefs do include lecture topic sections, creating an inconsistency in document structure.
 
@@ -135,7 +135,7 @@ README.md says "14 engines". CLAUDE.md says "13 engines". Actual engine files in
 
 ### H3. Module 4 Engine Usage Gap
 
-**Location**: `workspaces/ascent04/briefs/module-brief.md`
+**Location**: `workspaces/mlfp03/briefs/module-brief.md`
 
 The M4 header lists "kailash-ml (AutoMLEngine, EnsembleEngine, DriftMonitor, InferenceServer)" but the lab exercises only explicitly use DriftMonitor (exercise 4) and InferenceServer (exercise 6). AutoMLEngine and EnsembleEngine appear in the header but are never used in any M4 exercise.
 
@@ -171,7 +171,7 @@ The course brief emphasizes statistical rigor as a dimension; the assessment bri
 
 ### H6. Missing Quiz Topics for Modules 5 and 6
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md`, `workspaces/ascent06/briefs/module-brief.md`
+**Location**: `workspaces/mlfp03/briefs/module-brief.md`, `workspaces/mlfp04/briefs/module-brief.md`
 
 Module briefs for M1-M4 each include a "Quiz Topics" section listing specific question themes. M5 and M6 briefs omit this section entirely. Without quiz topic specifications, the quiz-designer agent cannot generate appropriately scoped assessment questions.
 
@@ -179,7 +179,7 @@ Module briefs for M1-M4 each include a "Quiz Topics" section listing specific qu
 
 ### H7. Missing Deck Opening Cases for Modules 5 and 6 in Module Briefs
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md`, `workspaces/ascent06/briefs/module-brief.md`
+**Location**: `workspaces/mlfp03/briefs/module-brief.md`, `workspaces/mlfp04/briefs/module-brief.md`
 
 M1-M4 module briefs each have a "Deck Opening Case" section. M5 and M6 module briefs omit this. The opening cases ARE defined in the deck brief and course brief (M5: BloombergGPT, M6: EU AI Act enforcement) but should also appear in the module briefs for consistency and to ensure the exercise-designer and deck-building agents have a single source of truth per module.
 
@@ -190,12 +190,12 @@ M1-M4 module briefs each have a "Deck Opening Case" section. M5 and M6 module br
 **Location**: `workspaces/datasets/briefs/dataset-brief.md`
 
 The dataset brief uses old module titles:
-- ascent03 is called "Workflows & Inferential Stats" (should be "Supervised ML -- Theory to Production")
-- ascent04 is called "Supervised ML & Production" (should be "Unsupervised ML, NLP & Deep Learning")
-- ascent05 is called "Agents & Unsupervised ML" (should be "LLMs, AI Agents & RAG Systems")
-- ascent06 is called "LLMs, Fine-Tuning, Governance" (should be "Alignment, Governance, RL & Deployment")
+- mlfp02 is called "Workflows & Inferential Stats" (should be "Supervised ML -- Theory to Production")
+- mlfp03 is called "Supervised ML & Production" (should be "Unsupervised ML, NLP & Deep Learning")
+- mlfp03 is called "Agents & Unsupervised ML" (should be "LLMs, AI Agents & RAG Systems")
+- mlfp04 is called "LLMs, Fine-Tuning, Governance" (should be "Alignment, Governance, RL & Deployment")
 
-The dataset recommendations also reflect the old module boundaries -- ascent04 datasets mention "credit scoring" and "supply chain" that now belong in ascent03.
+The dataset recommendations also reflect the old module boundaries -- mlfp03 datasets mention "credit scoring" and "supply chain" that now belong in mlfp02.
 
 **Fix**: Rewrite the dataset brief to match current module structure. Reassign datasets to their correct modules based on the course brief.
 
@@ -213,7 +213,7 @@ The course brief mentions progressive disclosure (70% -> 20% scaffolding) and mo
 
 ### M2. Kailash SDK Import Path for Kaizen BaseAgent
 
-**Location**: `workspaces/ascent05/briefs/module-brief.md` line 28
+**Location**: `workspaces/mlfp03/briefs/module-brief.md` line 28
 
 The brief specifies:
 ```python
@@ -226,7 +226,7 @@ This is a valid path but bypasses the public API. The canonical import should us
 
 ### M3. Missing Explicit Mention of ModelSpec/EvalSpec Pattern
 
-**Location**: `workspaces/ascent03/briefs/module-brief.md`
+**Location**: `workspaces/mlfp02/briefs/module-brief.md`
 
 The M3 brief includes a "Key Patterns" code snippet showing `ModelSpec` and `EvalSpec` usage, but these classes are not mentioned in the lecture topics or exercises. Students need to understand these configuration objects to use TrainingPipeline effectively.
 

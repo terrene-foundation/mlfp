@@ -1,58 +1,52 @@
-# ASCENT
+# ML Foundations for Professionals
 
-### ML Engineering from Foundations to Mastery
+### From Zero Python to Production ML Engineering
 
 > _"The question isn't whether AI will transform your industry. The question is: will you be the one leading that transformation?"_
 
-**1,333 lecture slides. 10 modules. 320 hours. Zero to masters.**
+**6 modules. 48 lessons. 192 contact hours. Zero to production.**
 
-ASCENT is the open-source ML engineering programme from [Terrene Open Academy](https://terrene.foundation), powered by the [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). It takes working professionals from their first line of Python to production-grade ML systems with full governance — and every step is backed by rigorous mathematical derivations.
+ML Foundations for Professionals (MLFP) is an open-source ML engineering course from [Terrene Open Academy](https://terrene.foundation), powered by the [Kailash Python SDK](https://github.com/terrene-foundation/kailash-py). It takes working professionals from their first line of Python to production-grade ML systems with language models and agentic workflows — every step backed by rigorous mathematical derivations.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://python.org)
 [![Data](https://img.shields.io/badge/Data-Polars%20Native-orange.svg)](https://pola.rs)
-[![Slides](https://img.shields.io/badge/Slides-1%2C333-purple.svg)](#lecture-decks)
 
 ---
 
-## The Programme
+## The Course
 
-|             | Foundation Ascent (M1-M5)    | Summit Ascent (M6-M10)         |
-| ----------- | ---------------------------- | ------------------------------ |
-| **Level**   | Zero Python to production ML | Advanced to masters            |
-| **Hours**   | 160h (40 lessons)            | 160h (40 lessons)              |
-| **Outcome** | Deploy governed ML models    | Build aligned AI agent systems |
+|             | Foundation Certificate (M1-M4) | Advanced Certificate (M5-M6)           |
+| ----------- | ------------------------------ | -------------------------------------- |
+| **Level**   | Zero Python to production ML   | Deep learning to organisational AI     |
+| **Hours**   | ~128h (32 lessons)             | ~64h (16 lessons)                      |
+| **Outcome** | Deploy governed ML models      | Build LLM agents and transform organisations |
 
 ### Module Map
 
-| #   | Module                                  | What You Master                                                                                                                                                      | Slides    |
-| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | **Python & Data Fluency**               | Python from scratch, Polars, data profiling, visualization                                                                                                           | 85        |
-| 2   | **Statistical Foundations**             | 20+ distributions, MLE, Bayesian inference, hypothesis testing, bootstrap, information theory                                                                        | 131       |
-| 3   | **Feature Engineering & Experiments**   | CUPED variance reduction, DiD, causal forests, Double ML, 9 encoding methods, Boruta, leakage detection                                                              | 99        |
-| 4   | **Supervised ML**                       | Complete model zoo (linear through CatBoost), XGBoost 2nd-order Taylor, bias-variance decomposition, conformal prediction                                            | 83        |
-| 5   | **ML Engineering & Production**         | SHAP axioms + TreeSHAP, LIME, ALE, fairness (impossibility theorem), workflows, DataFlow, model registry, ensembles                                                  | 150       |
-| 6   | **Unsupervised ML & Pattern Discovery** | K-means through HDBSCAN, EM/GMM (full derivation), PCA-SVD connection, t-SNE, UMAP, LDA, NMF, BERTopic, anomaly detection                                            | 146       |
-| 7   | **Deep Learning**                       | Linear regression as NN, backpropagation (full chain rule), parallelized training (data/model/pipeline/tensor), CNN, ResNet, Adam derivation                         | 100       |
-| 8   | **NLP & Transformers**                  | BPE tokenization, Word2Vec (negative sampling derivation), LSTM gates, self-attention (why divide by sqrt d_k), transformer architecture, BERT, GPT, Flash Attention | 150       |
-| 9   | **LLMs, AI Agents & RAG**               | LLM landscape Q1 2026, 7 RAG architectures, hybrid retrieval, RAGAS evaluation, ReAct/Reflexion agents, multi-agent A2A, MCP protocol, Nexus deployment              | 235       |
-| 10  | **Alignment, RL & Governance**          | LoRA/QLoRA, DPO (5-step derivation from RLHF), GRPO, PPO (clipped objective + GAE), Bellman equations, EU AI Act, PACT D/T/R governance, full platform capstone      | 154       |
-|     |                                         | **Total**                                                                                                                                                            | **1,333** |
+| #   | Module                                                                                        | What You Master                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Machine Learning Data Pipelines and Visualisation Mastery with Python**                     | Python from scratch, Polars data pipelines, interactive visualisation, data profiling, automated cleaning                |
+| 2   | **Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success**          | Probability, Bayesian inference, hypothesis testing, bootstrap, experiment design, feature engineering, feature stores    |
+| 3   | **Supervised Machine Learning for Building and Deploying Models**                             | Model zoo (linear through CatBoost), bias-variance decomposition, workflow orchestration, model registry, hyperparameter search |
+| 4   | **Unsupervised Machine Learning and Advanced Techniques for Insights**                        | Clustering (K-means through HDBSCAN), dimensionality reduction, anomaly detection, NLP text analysis, drift monitoring   |
+| 5   | **Deep Learning and Machine Learning Mastery in Vision and Transfer Learning**                | Neural networks, backpropagation, CNNs, vision architectures, NLP transformers, transfer learning, ONNX deployment       |
+| 6   | **Machine Learning with Language Models and Agentic Workflows for Organisational Transformation** | LLM agents, RAG systems, multi-agent orchestration, fine-tuning (LoRA/DPO), governance, production deployment        |
 
-### The Organizing Principle: Feature Engineering Spectrum
+### The Organising Principle: Feature Engineering Spectrum
 
 Every module builds on a single insight — the evolution of how we create features:
 
 ```
-M3-M5                    M6                        M7                     M8-M9
-Manual                   USML discovers            DL learns features     Transformers learn
+M3                       M4                        M5                     M6
+Manual                   USML discovers            DL learns features     LLMs learn
 Human designs            patterns within X         via architecture       semantic features
-features                 n → 1 (clustering)        n → m (embeddings)     from language
-                         n → k (dim reduction)
-                         n → k (topics)
+features                 n -> 1 (clustering)       n -> m (embeddings)    from language
+                         n -> k (dim reduction)
+                         n -> k (topics)
 ```
 
-**Unsupervised ML is automated feature engineering.** Supervised ML discovers combinations of X that predict y. Unsupervised ML discovers patterns _within_ X and represents them as new features. Deep learning uses architecture to _learn_ features through gradient optimization. This progression — manual, algorithmic, architectural, semantic — is the spine of the entire curriculum.
+**Unsupervised ML is automated feature engineering.** Supervised ML discovers combinations of X that predict y. Unsupervised ML discovers patterns _within_ X. Deep learning uses architecture to _learn_ features. LLMs learn semantic features from language. This progression — manual, algorithmic, architectural, semantic — is the spine of the entire curriculum.
 
 ---
 
@@ -63,8 +57,8 @@ Every concept is taught at three depths simultaneously:
 | Layer           | Marker                     | Audience                      | Example (Bias-Variance)                                                                                                                      |
 | --------------- | -------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Intuition**   | :green_circle: FOUNDATIONS | Zero-background professionals | _"Imagine throwing darts at a target. Bias is how far the center of your throws is from the bullseye. Variance is how spread out they are."_ |
-| **Mathematics** | :blue_circle: THEORY       | Intermediate practitioners    | E[(y-y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2 — derived step by step, each term color-coded                                          |
-| **Research**    | :purple_circle: ADVANCED   | Masters+ / PhD holders        | Double descent (Belkin et al., 2019): test error _decreases_ past the interpolation threshold in over-parameterized models                   |
+| **Mathematics** | :blue_circle: THEORY       | Intermediate practitioners    | E[(y-y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2 — derived step by step, each term colour-coded                                        |
+| **Research**    | :purple_circle: ADVANCED   | Masters+ / PhD holders        | Double descent (Belkin et al., 2019): test error _decreases_ past the interpolation threshold in over-parameterised models                   |
 
 A banker and a PhD sit in the same classroom. Both leave having learned something they didn't know.
 
@@ -72,31 +66,70 @@ A banker and a PhD sit in the same classroom. Both leave having learned somethin
 
 ## What's In The Box
 
-| Component          | Count         | Details                                                            |
-| ------------------ | ------------- | ------------------------------------------------------------------ |
-| Lecture decks      | 10            | Reveal.js HTML, three-layer depth, KaTeX math, speaker notes       |
-| Slides             | 1,333         | Every equation derived, every algorithm stepped through            |
-| Speaker notes      | 6             | Per-slide timing, beginner tips, expert tangents                   |
-| Exercises          | 48+           | Solutions + local + Jupyter + Colab (three-format consistency)     |
-| Datasets           | 11            | Singapore-context: HDB 15M, taxi 50K, credit 100K, experiment 500K |
-| Quizzes            | 6             | AI-resilient questions (context-specific, not recall)              |
-| SDK Textbook       | 163 tutorials | 83 Python + 80 Rust, basic to advanced, every Kailash engine       |
-| Assessment rubrics | 6             | Portfolio, capstone, peer review, model card template              |
+| Component          | Details                                                       |
+| ------------------ | ------------------------------------------------------------- |
+| Lecture decks      | 6 Reveal.js HTML decks, three-layer depth, KaTeX math         |
+| Speaker notes      | Per-slide timing, beginner tips, expert tangents              |
+| Coding exercises   | Solutions + VS Code (.py) + Google Colab (.ipynb)             |
+| Datasets           | Singapore-context: HDB resale, taxi trips, economic data      |
+| End-of-module quizzes | AI-resilient questions (context-specific, not recall)       |
 
-### Verified Mathematical Content
+---
 
-Every derivation was red-teamed by specialist reviewers:
+## Quick Start
 
-- Bias-variance decomposition (squared loss)
-- XGBoost 2nd-order Taylor expansion + split gain formula
-- EM algorithm (E-step responsibilities, M-step MLE, convergence)
-- PCA eigendecomposition + SVD connection
-- DPO 5-step derivation (RLHF objective through Z(x) cancellation)
-- PPO clipped objective + Generalized Advantage Estimation
-- Bellman equations (expectation + optimality)
-- SHAP Shapley axioms (efficiency, symmetry, dummy, linearity)
-- LSTM gate equations (all 6)
-- Transformer scaled dot-product attention (why divide by sqrt d_k)
+```bash
+git clone https://github.com/terrene-foundation/mlfp.git
+cd mlfp
+uv venv && uv sync
+cp .env.example .env  # API keys for M6
+
+# Your first exercise
+uv run python modules/mlfp01/local/ex_1.py
+
+# View lecture deck
+open decks/mlfp01/deck.html
+
+# Advanced modules (DL, agents, alignment)
+uv sync --extra full
+```
+
+### Two Delivery Formats
+
+| Format       | Location                         | Best For                     |
+| ------------ | -------------------------------- | ---------------------------- |
+| VS Code      | `modules/mlfp*/local/*.py`       | Full async, local development |
+| Google Colab | `modules/mlfp*/colab/*.ipynb`    | Zero-install, GPU access     |
+
+### Data Loading
+
+```python
+from shared import MLFPDataLoader
+
+loader = MLFPDataLoader()
+df = loader.load("mlfp01", "hdb_resale.parquet")
+```
+
+Auto-detects environment (local vs Colab) and pulls from Google Drive when needed.
+
+---
+
+## Repository Structure
+
+```
+mlfp/
+  modules/
+    mlfp01-06/          6 modules, each with:
+      solutions/        Complete runnable solutions (instructor reference)
+      local/            Python exercises (fill-in-the-blank)
+      colab/            Colab notebooks (Drive mount)
+  decks/
+    mlfp01-06/          6 Reveal.js lecture decks
+    assets/css/         Custom theme (teal/indigo, three-layer markers)
+  data/                 Singapore-context datasets (CSV/Parquet)
+  shared/               Data loader, Kailash helpers
+  scripts/              Notebook converter, dataset generator
+```
 
 ---
 
@@ -118,68 +151,6 @@ Every concept has a derivation, an industry-standard implementation, _and_ a Kai
 
 ---
 
-## Quick Start
-
-```bash
-git clone https://github.com/terrene-foundation/ascent.git
-cd ascent
-uv venv && uv sync
-cp .env.example .env  # API keys for M9-M10
-
-# Your first exercise
-uv run python modules/ascent01/local/ex_1.py
-
-# View lecture deck
-open decks/ascent01/deck.html
-
-# Advanced modules (DL, agents, alignment)
-uv sync --extra full
-```
-
-### Three Delivery Formats
-
-| Format       | Location                            | Best For                     |
-| ------------ | ----------------------------------- | ---------------------------- |
-| Local Python | `modules/ascent*/local/*.py`        | Full async, Nexus deployment |
-| Jupyter      | `modules/ascent*/notebooks/*.ipynb` | Interactive exploration      |
-| Google Colab | `modules/ascent*/colab/*.ipynb`     | Zero-install, GPU access     |
-
-### Data Loading
-
-```python
-from shared import ASCENTDataLoader
-
-loader = ASCENTDataLoader()
-df = loader.load("ascent01", "hdb_resale.parquet")
-```
-
-Auto-detects environment (local vs Colab) and pulls from Google Drive when needed.
-
----
-
-## Repository Structure
-
-```
-ascent/
-  modules/
-    ascent01-10/        10 modules, each with:
-      solutions/        Complete runnable solutions (instructor reference)
-      local/            Python exercises (fill-in-the-blank)
-      notebooks/        Jupyter notebooks
-      colab/            Colab notebooks (Drive mount)
-  decks/
-    ascent01-10/        10 Reveal.js lecture decks (1,333 slides)
-    assets/css/         Custom theme (teal/indigo, three-layer markers)
-  textbook/
-    python/             83 tutorials (all 8 Kailash packages)
-    rust/               80 tutorials (all 9 Kailash packages)
-  data/                 11 Singapore-context datasets (CSV/Parquet)
-  shared/               Data loader, async wrappers, Kailash helpers
-  scripts/              Notebook converter, dataset generator, deck auditor
-```
-
----
-
 ## Kailash Platform
 
 | Package                                                     | Purpose                                  | Install                        |
@@ -196,9 +167,9 @@ ascent/
 
 ## For Instructors
 
-**Solution-first authoring.** Solutions in `modules/ascent*/solutions/` are the source of truth. Exercises are generated by stripping to the appropriate scaffolding level.
+**Solution-first authoring.** Solutions in `modules/mlfp*/solutions/` are the source of truth. Exercises are generated by stripping to the appropriate scaffolding level.
 
-**Progressive scaffolding.** M1 provides ~70% of code. M10 provides ~20%. By the end, students write from documentation alone.
+**Progressive scaffolding.** M1 provides ~70% of code. M6 provides ~20%. By the end, students write from documentation alone.
 
 **Three-layer delivery.** Green/blue/purple markers let instructors calibrate depth in real time. Beginners follow green. Experts engage with purple. Everyone sees the same deck.
 
@@ -220,7 +191,7 @@ ascent/
 
 ## Contributing
 
-Contributions welcome via [pull request](https://github.com/terrene-foundation/ascent/pulls). Questions via [issues](https://github.com/terrene-foundation/ascent/issues).
+Contributions welcome via [pull request](https://github.com/terrene-foundation/mlfp/pulls). Questions via [issues](https://github.com/terrene-foundation/mlfp/issues).
 
 ## License
 

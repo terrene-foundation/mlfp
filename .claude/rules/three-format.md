@@ -1,3 +1,8 @@
+---
+paths:
+  - "modules/**"
+---
+
 # Three-Format Consistency
 
 Every exercise MUST exist in three formats with identical learning content.

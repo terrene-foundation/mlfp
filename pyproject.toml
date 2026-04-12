@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ascent"
+name = "mlfp"
 version = "0.1.0"
-description = "ASCENT — ML Engineering from Foundations to Mastery, powered by the Kailash Python SDK"
+description = "ML Foundations for Professionals — Terrene Open Academy course powered by the Kailash Python SDK"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [
     { name = "Terrene Foundation" },
 ]
 readme = "README.md"
-keywords = ["machine-learning", "kailash", "course", "training", "polars"]
+keywords = ["machine-learning", "kailash", "course", "training", "polars", "ml-foundations"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",

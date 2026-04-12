@@ -43,7 +43,7 @@ print(f'polars {pl.__version__}')
 
 ```bash
 # Run a local Python exercise
-uv run python modules/ascent01/local/01_polars_fundamentals.py
+uv run python modules/mlfp01/local/01_polars_fundamentals.py
 
 # Run tests to validate your solutions
 uv run pytest tests/test_module1.py -v
@@ -117,4 +117,4 @@ Modules 1-4 require no API keys.
 
 **Data download fails**: The data loader caches files in `.data_cache/`. Delete this directory and retry. Check your internet connection.
 
-**Colab Drive mount fails**: Ensure the ascent_data shared folder is accessible. You may need to "Add shortcut to My Drive" from the shared link.
+**Colab Drive mount fails**: Ensure the mlfp_data shared folder is accessible. You may need to "Add shortcut to My Drive" from the shared link.

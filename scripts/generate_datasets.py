@@ -1,7 +1,7 @@
 """
-ASCENT Dataset Generator
+MLFP Dataset Generator
 ======================
-Generates all synthetic training datasets for the ASCENT course.
+Generates all synthetic training datasets for the MLFP course.
 
 Run with:
     python3 scripts/generate_datasets.py
@@ -42,12 +42,12 @@ REPO_ROOT = Path(__file__).parent.parent
 DATA_ROOT = REPO_ROOT / "data"
 
 DIRS = [
-    DATA_ROOT / "ascent01",
-    DATA_ROOT / "ascent02",
-    DATA_ROOT / "ascent03",
-    DATA_ROOT / "ascent04",
-    DATA_ROOT / "ascent05",
-    DATA_ROOT / "ascent06",
+    DATA_ROOT / "mlfp01",
+    DATA_ROOT / "mlfp02",
+    DATA_ROOT / "mlfp02",
+    DATA_ROOT / "mlfp03",
+    DATA_ROOT / "mlfp03",
+    DATA_ROOT / "mlfp04",
     DATA_ROOT / "ascent_assessment",
 ]
 
@@ -80,7 +80,7 @@ def _nullify_list(lst: list, rate: float) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 1. economic_indicators.csv  (ascent01)
+# 1. economic_indicators.csv  (mlfp01)
 #    Target: 500+ rows — monthly 2000-2024 with quarterly aggregates mixed in
 # ---------------------------------------------------------------------------
 
@@ -467,7 +467,7 @@ def make_economic_indicators() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 2. sg_taxi_trips.parquet  (ascent01) — intentionally very messy, 50K rows
+# 2. sg_taxi_trips.parquet  (mlfp01) — intentionally very messy, 50K rows
 # ---------------------------------------------------------------------------
 
 
@@ -642,7 +642,7 @@ def make_sg_taxi_trips() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 3. experiment_data.parquet  (ascent02) — 500,000 rows
+# 3. experiment_data.parquet  (mlfp02) — 500,000 rows
 # ---------------------------------------------------------------------------
 
 
@@ -744,7 +744,7 @@ def make_experiment_data() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 4. sg_credit_scoring.parquet  (ascent03) — 100,000 rows, 45 features
+# 4. sg_credit_scoring.parquet  (mlfp02) — 100,000 rows, 45 features
 # ---------------------------------------------------------------------------
 
 
@@ -994,7 +994,7 @@ def make_sg_credit_scoring() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 5. ecommerce_customers.parquet  (ascent04) — 50,000 customers
+# 5. ecommerce_customers.parquet  (mlfp03) — 50,000 customers
 # ---------------------------------------------------------------------------
 
 
@@ -1171,7 +1171,7 @@ def make_ecommerce_customers() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 6. documents.parquet  (ascent05) — 500 rows
+# 6. documents.parquet  (mlfp03) — 500 rows
 # ---------------------------------------------------------------------------
 
 
@@ -1594,7 +1594,7 @@ def make_documents() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 7. sg_domain_qa.parquet  (ascent06) — 1,000 rows
+# 7. sg_domain_qa.parquet  (mlfp04) — 1,000 rows
 # ---------------------------------------------------------------------------
 
 
@@ -1912,7 +1912,7 @@ def make_sg_domain_qa() -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 8. preference_pairs.parquet  (ascent06) — 500 rows
+# 8. preference_pairs.parquet  (mlfp04) — 500 rows
 # ---------------------------------------------------------------------------
 
 
@@ -2607,31 +2607,31 @@ def main():
     tasks = [
         (
             make_economic_indicators,
-            DATA_ROOT / "ascent01" / "economic_indicators.csv",
+            DATA_ROOT / "mlfp01" / "economic_indicators.csv",
             "csv",
         ),
         # sg_taxi_trips is now parquet (50K rows too large for CSV in git)
-        (make_sg_taxi_trips, DATA_ROOT / "ascent01" / "sg_taxi_trips.parquet", "parquet"),
+        (make_sg_taxi_trips, DATA_ROOT / "mlfp01" / "sg_taxi_trips.parquet", "parquet"),
         (
             make_experiment_data,
-            DATA_ROOT / "ascent02" / "experiment_data.parquet",
+            DATA_ROOT / "mlfp02" / "experiment_data.parquet",
             "parquet",
         ),
         (
             make_sg_credit_scoring,
-            DATA_ROOT / "ascent03" / "sg_credit_scoring.parquet",
+            DATA_ROOT / "mlfp02" / "sg_credit_scoring.parquet",
             "parquet",
         ),
         (
             make_ecommerce_customers,
-            DATA_ROOT / "ascent04" / "ecommerce_customers.parquet",
+            DATA_ROOT / "mlfp03" / "ecommerce_customers.parquet",
             "parquet",
         ),
-        (make_documents, DATA_ROOT / "ascent05" / "documents.parquet", "parquet"),
-        (make_sg_domain_qa, DATA_ROOT / "ascent06" / "sg_domain_qa.parquet", "parquet"),
+        (make_documents, DATA_ROOT / "mlfp03" / "documents.parquet", "parquet"),
+        (make_sg_domain_qa, DATA_ROOT / "mlfp04" / "sg_domain_qa.parquet", "parquet"),
         (
             make_preference_pairs,
-            DATA_ROOT / "ascent06" / "preference_pairs.parquet",
+            DATA_ROOT / "mlfp04" / "preference_pairs.parquet",
             "parquet",
         ),
         (
@@ -2655,7 +2655,7 @@ def main():
         )
 
     # Remove the old sg_taxi_trips.csv if it exists (replaced by parquet)
-    old_csv = DATA_ROOT / "ascent01" / "sg_taxi_trips.csv"
+    old_csv = DATA_ROOT / "mlfp01" / "sg_taxi_trips.csv"
     if old_csv.exists():
         old_csv.unlink()
         print(f"\n  Removed old file: {old_csv}")

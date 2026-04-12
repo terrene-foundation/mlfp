@@ -1,4 +1,4 @@
-# ASCENT — ASCENT — ML Engineering from Foundations to Mastery
+# MLFP — MLFP — ML Engineering from Foundations to Mastery
 
 **Institution**: Terrene Open Academy  
 **Platform**: Kailash Python SDK (Terrene Foundation)  
@@ -58,13 +58,13 @@ No module introduces more than 2 new framework packages. Each builds on the prio
 | **Jupyter** (.ipynb) | `%pip install kailash-ml`               | gdown from Drive | Top-level `await` |
 | **Colab** (.ipynb)   | `!pip install kailash-ml` + Drive mount | Drive mount path | Top-level `await` |
 
-All formats use `shared/data_loader.py` (ASCENTDataLoader) which auto-detects the environment.
+All formats use `shared/data_loader.py` (MLFPDataLoader) which auto-detects the environment.
 
 ---
 
 ## Data Strategy
 
-All datasets live on a shared Google Drive (`ascent_data`). Emphasis on:
+All datasets live on a shared Google Drive (`mlfp_data`). Emphasis on:
 
 - Complex, messy, real-world data (not toy CSVs)
 - Singapore/APAC relevance where possible

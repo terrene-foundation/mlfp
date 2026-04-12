@@ -1,6 +1,6 @@
-# ASCENT Expanded Curriculum v2 — 6 Modules x 8 Lessons
+# MLFP Curriculum v2 — 6 Modules x 8 Lessons
 
-**Official name**: Professional Certificate in Machine Learning (Python) — Terrene Open Academy
+**Official name**: ML Foundations for Professionals — Terrene Open Academy
 **Philosophy**: Learn Python BY building with Kailash from Lesson 1. Every Python concept is grounded in a Kailash use case.
 **Progression**: Zero Python knowledge → Masters-level ML engineering
 **Structure**: 6 modules x 8 lessons = 48 lessons. Each lesson is a full session (~4 hours).

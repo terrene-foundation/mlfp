@@ -2,7 +2,7 @@
 
 ## Shared Drive Location
 
-All datasets live on Google Drive shared folder `ascent_data` (folder ID: `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`), organized by module subfolder.
+All datasets live on Google Drive shared folder `mlfp_data` (folder ID: `16c3RkGmiwMWbjD7cJKbJx-JRZlgmQdws`), organized by module subfolder.
 
 ## Quality Criteria
 
@@ -15,26 +15,26 @@ Every dataset must be:
 
 ## Module Datasets
 
-### ascent01/ (Statistics, Probability & Data Fluency)
+### mlfp01/ (Statistics, Probability & Data Fluency)
 **Existing**: HDB prices, election data, happiness index, COVID panel, sentiments
 **Action**: Merge HDB prices with MRT/school data from ascent_assessment for multi-table complexity
 **Source**: data.gov.sg (HDB Resale Flat Prices), ascent_assessment parquets
 **New needed**: Singapore weather station data (NEA), Singapore taxi trips (LTA, schema drift), e-commerce A/B test data
 
-### ascent02/ (Feature Engineering & Experiment Design)
+### mlfp02/ (Feature Engineering & Experiment Design)
 **Existing**: CPI, HDB prices, Toto history, dirty cafe sales
 **Action**: Add Singapore economic indicators + healthcare ICU data + experiment data
 **Source**: data.gov.sg, World Bank Open Data (APAC subset)
 **New needed**: Healthcare ICU synthetic (MIMIC-style, 60K stays), e-commerce experiment data (500K users, SRM issues)
 
-### ascent03/ (Supervised ML — Theory to Production)
+### mlfp02/ (Supervised ML — Theory to Production)
 **Existing**: Bank data, credit card, customer value, heart, housing, wine, zoo
 **Action**: Replace with credit scoring + Lending Club. This is where supervised ML lives now.
 **New needed**:
 - Singapore credit scoring (synthetic, 100K apps, 12% default, protected attributes, leakage trap, 30% missing income)
 - Lending Club loans (300K+, 150 features, real messiness)
 
-### ascent04/ (Unsupervised ML, NLP & Deep Learning)
+### mlfp03/ (Unsupervised ML, NLP & Deep Learning)
 **Existing**: Netflix, online retail, Reddit news, text emotion
 **Action**: Add e-commerce customer data, fraud data, news corpus, medical images
 **New needed**:
@@ -43,14 +43,14 @@ Every dataset must be:
 - ChestX-ray14 subset (10K images, multi-label)
 - Keep credit card fraud from Kaggle (284K txns, 0.17% fraud)
 
-### ascent05/ (LLMs, AI Agents & RAG Systems)
+### mlfp03/ (LLMs, AI Agents & RAG Systems)
 **Existing**: COVID symptoms, credit card, customer value, housing, text emotion, trained models
 **Action**: Reuse M3-M4 datasets (agents reason over familiar data). Add documentation corpora.
 **New needed**:
 - Kailash SDK documentation corpus (for RAG exercise)
 - Singapore regulatory corpus (AI Verify, PDPA guidelines)
 
-### ascent06/ and ascent06-dl/ (Alignment, Governance, RL & Deployment)
+### mlfp04/ and mlfp04-dl/ (Alignment, Governance, RL & Deployment)
 **Existing**: Emotions, Netflix, Reddit, RFM, spam, stock, wiki, MNIST, mask wearing, UCI-HAR, Shakespeare
 **Action**: Keep text emotion for NLP baseline. Add alignment + governance datasets.
 **New needed**:

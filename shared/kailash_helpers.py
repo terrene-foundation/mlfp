@@ -1,6 +1,6 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Common Kailash SDK setup patterns for ASCENT exercises."""
+"""Common Kailash SDK setup patterns for MLFP exercises."""
 
 from __future__ import annotations
 
@@ -32,11 +32,11 @@ def get_connection_manager(db_url: str | None = None):
     """Create a ConnectionManager for kailash-ml engines.
 
     Args:
-        db_url: Database URL. Defaults to SQLite at ./ascent.db
+        db_url: Database URL. Defaults to SQLite at ./mlfp.db
     """
     from kailash.db.connection import ConnectionManager
 
-    url = db_url or os.environ.get("DATABASE_URL", "sqlite:///ascent.db")
+    url = db_url or os.environ.get("DATABASE_URL", "sqlite:///mlfp.db")
     return ConnectionManager(url)
 
 

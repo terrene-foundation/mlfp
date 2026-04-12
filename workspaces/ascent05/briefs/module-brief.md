@@ -100,7 +100,7 @@ from kailash_ml.agents.retraining_decision import RetrainingDecisionAgent
 - **Kailash SDK documentation corpus**: For RAG exercise
 - **Singapore regulatory corpus**: AI Verify framework, PDPA guidelines (for governance-aware RAG)
 
-**Data source**: `ascent_data/ascent05/` on shared Google Drive.
+**Data source**: `mlfp_data/mlfp03/` on shared Google Drive.
 
 ## Quiz Topics
 - Signature InputField/OutputField: "What's wrong with this Signature definition?"

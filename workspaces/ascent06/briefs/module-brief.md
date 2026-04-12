@@ -94,7 +94,7 @@ from nexus import Nexus
 - **Singapore parliamentary Hansard**: Public record for governance text analysis
 - **Gymnasium environments**: CartPole, LunarLander, custom inventory management
 
-**Data source**: `ascent_data/ascent06/` and `ascent_data/ascent06-dl/` on shared Google Drive.
+**Data source**: `mlfp_data/mlfp04/` and `mlfp_data/mlfp04-dl/` on shared Google Drive.
 
 ## PACT Patterns (Critical)
 

@@ -1,3 +1,9 @@
+---
+paths:
+  - "workspaces/**"
+  - "modules/**"
+---
+
 # Domain Integrity — Assessment Quality
 
 Adapted from CO for Education (COE). Assessments must test genuine understanding, not pattern matching.

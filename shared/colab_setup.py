@@ -8,7 +8,7 @@ as their first code cell.
 
 COLAB_SETUP_CELL = '''
 # ══════════════════════════════════════════════════════════
-# ASCENT Course Setup (Google Colab)
+# MLFP Course Setup (Google Colab)
 # ══════════════════════════════════════════════════════════
 # Run this cell first. It installs Kailash SDK and mounts
 # your Google Drive to access the course datasets.
@@ -23,11 +23,11 @@ drive.mount("/content/drive")
 
 # Verify data access
 from pathlib import Path
-data_root = Path("/content/drive/MyDrive/ascent_data")
+data_root = Path("/content/drive/MyDrive/mlfp_data")
 if data_root.exists():
     print(f"Data folder found: {sorted(p.name for p in data_root.iterdir())}")
 else:
-    print("WARNING: ascent_data not found in Drive. Add the shared folder shortcut to My Drive.")
+    print("WARNING: mlfp_data not found in Drive. Add the shared folder shortcut to My Drive.")
 
 import polars as pl
 print(f"polars {pl.__version__} ready")

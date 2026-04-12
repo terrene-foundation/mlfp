@@ -31,22 +31,22 @@ The repository skeleton (Phase 0) is partially built. Root files, shared utiliti
 | README.md | PASS | Exists with quick start, data loading, platform table |
 | CHANGELOG.md | **MISSING** | Plan Section 1 specifies `CHANGELOG.md` at repo root. File does not exist. |
 
-### Module Directories (modules/ascent01 through ascent06)
+### Module Directories (modules/mlfp01 through mlfp04)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| modules/ascent01/README.md | PASS | Exists |
-| modules/ascent02/README.md | PASS | Exists |
-| modules/ascent03/README.md | PASS | Exists |
-| modules/ascent04/README.md | PASS | Exists |
-| modules/ascent05/README.md | PASS | Exists |
-| modules/ascent06/README.md | PASS | Exists |
-| modules/ascent01/local/ | **MISSING** | Plan specifies `local/` subdirectory for .py scripts. Directory does not exist. |
-| modules/ascent01/notebooks/ | **MISSING** | Plan specifies `notebooks/` subdirectory for Jupyter. Directory does not exist. |
-| modules/ascent01/colab/ | **MISSING** | Plan specifies `colab/` subdirectory for Colab. Directory does not exist. |
-| modules/ascent01/solutions/ | **MISSING** | Plan specifies `solutions/` subdirectory. Directory does not exist. |
-| modules/ascent01/quiz/ | **MISSING** | Plan specifies `quiz/` subdirectory. Directory does not exist. |
-| modules/ascent02-6 (same 5 dirs) | **MISSING** | Same pattern missing for all 6 modules (30 directories total). Confirmed by globbing `modules/*/local/`, `modules/*/notebooks/`, etc. -- all returned empty. |
+| modules/mlfp01/README.md | PASS | Exists |
+| modules/mlfp02/README.md | PASS | Exists |
+| modules/mlfp02/README.md | PASS | Exists |
+| modules/mlfp03/README.md | PASS | Exists |
+| modules/mlfp03/README.md | PASS | Exists |
+| modules/mlfp04/README.md | PASS | Exists |
+| modules/mlfp01/local/ | **MISSING** | Plan specifies `local/` subdirectory for .py scripts. Directory does not exist. |
+| modules/mlfp01/notebooks/ | **MISSING** | Plan specifies `notebooks/` subdirectory for Jupyter. Directory does not exist. |
+| modules/mlfp01/colab/ | **MISSING** | Plan specifies `colab/` subdirectory for Colab. Directory does not exist. |
+| modules/mlfp01/solutions/ | **MISSING** | Plan specifies `solutions/` subdirectory. Directory does not exist. |
+| modules/mlfp01/quiz/ | **MISSING** | Plan specifies `quiz/` subdirectory. Directory does not exist. |
+| modules/mlfp02-6 (same 5 dirs) | **MISSING** | Same pattern missing for all 6 modules (30 directories total). Confirmed by globbing `modules/*/local/`, `modules/*/notebooks/`, etc. -- all returned empty. |
 
 ### Assessment Directory
 
@@ -142,12 +142,12 @@ The repository skeleton (Phase 0) is partially built. Root files, shared utiliti
 | Item | Status | Notes |
 |------|--------|-------|
 | workspaces/curriculum/briefs/course-brief.md | PASS | Exists, 404 lines, comprehensive |
-| workspaces/ascent01/briefs/module-brief.md | PASS | Exists |
-| workspaces/ascent02/briefs/module-brief.md | PASS | Exists |
-| workspaces/ascent03/briefs/module-brief.md | PASS | Exists |
-| workspaces/ascent04/briefs/module-brief.md | PASS | Exists |
-| workspaces/ascent05/briefs/module-brief.md | PASS | Exists |
-| workspaces/ascent06/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp01/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp02/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp02/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp03/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp03/briefs/module-brief.md | PASS | Exists |
+| workspaces/mlfp04/briefs/module-brief.md | PASS | Exists |
 | workspaces/assessment/briefs/module-brief.md | PASS | Exists |
 | workspaces/datasets/briefs/dataset-brief.md | PASS | Exists with per-module dataset inventory, quality criteria |
 | workspaces/decks/briefs/deck-brief.md | PASS | Exists with Reveal.js spec, color palette, slide structure |
@@ -170,11 +170,11 @@ Module titles are inconsistent across documents. The original plan used differen
 
 **Specific findings:**
 
-- **M5 workspace brief** (`/Users/esperie/repos/training/ascent/workspaces/ascent05/briefs/module-brief.md`, line 1): Title is "Module 5: Unsupervised ML, Deep Learning & AI Agents" which matches the **original plan title**, not the revised built title "LLMs, AI Agents & RAG Systems" used in CLAUDE.md line 56, course-outline.md line 31, and module README line 1.
+- **M5 workspace brief** (`/Users/esperie/repos/training/ascent/workspaces/mlfp03/briefs/module-brief.md`, line 1): Title is "Module 5: Unsupervised ML, Deep Learning & AI Agents" which matches the **original plan title**, not the revised built title "LLMs, AI Agents & RAG Systems" used in CLAUDE.md line 56, course-outline.md line 31, and module README line 1.
 
-- **M6 workspace brief** (`/Users/esperie/repos/training/ascent/workspaces/ascent06/briefs/module-brief.md`, line 1): Title is "Module 6: LLMs, Fine-Tuning, Governance & Deployment" which matches the **original plan title**, not the revised title "Alignment, Governance, RL & Deployment" used in CLAUDE.md line 57.
+- **M6 workspace brief** (`/Users/esperie/repos/training/ascent/workspaces/mlfp04/briefs/module-brief.md`, line 1): Title is "Module 6: LLMs, Fine-Tuning, Governance & Deployment" which matches the **original plan title**, not the revised title "Alignment, Governance, RL & Deployment" used in CLAUDE.md line 57.
 
-- **M6 module README** (`/Users/esperie/repos/training/ascent/modules/ascent06/README.md`, line 1): Uses "Alignment, Governance, RL & Production Deployment" (with "Production") which differs from CLAUDE.md's "Alignment, Governance, RL & Deployment" (without "Production").
+- **M6 module README** (`/Users/esperie/repos/training/ascent/modules/mlfp04/README.md`, line 1): Uses "Alignment, Governance, RL & Production Deployment" (with "Production") which differs from CLAUDE.md's "Alignment, Governance, RL & Deployment" (without "Production").
 
 - **M1 README.md** (`/Users/esperie/repos/training/ascent/README.md`, line 15): Uses truncated "Statistics & Data Fluency" missing "Probability" which appears in CLAUDE.md and course-outline.md.
 
@@ -215,7 +215,7 @@ The curriculum was significantly reorganized from the plan. This is a deliberate
 | M5 | "Unsupervised ML, Deep Learning & AI Agents" -- Kaizen + ML agents | "LLMs, AI Agents & RAG Systems" -- Kaizen + ML agents |
 | M6 | "LLMs, Fine-Tuning, Governance & Deployment" -- Align + PACT + RL | "Alignment, Governance, RL & Deployment" -- Align + PACT + RL |
 
-The M5 workspace brief (`/Users/esperie/repos/training/ascent/workspaces/ascent05/briefs/module-brief.md`) retains the plan's original title and description ("Unsupervised ML, Deep Learning & AI Agents") while the module README uses the revised title. Its exercises reference "Module 4" correctly for the revised structure but the title/overview are stale.
+The M5 workspace brief (`/Users/esperie/repos/training/ascent/workspaces/mlfp03/briefs/module-brief.md`) retains the plan's original title and description ("Unsupervised ML, Deep Learning & AI Agents") while the module README uses the revised title. Its exercises reference "Module 4" correctly for the revised structure but the title/overview are stale.
 
 ### 4.5 Assessment Weights — FAIL
 

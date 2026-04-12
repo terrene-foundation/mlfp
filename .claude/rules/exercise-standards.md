@@ -1,3 +1,8 @@
+---
+paths:
+  - "modules/**"
+---
+
 # Exercise Standards
 
 ## Every Exercise MUST Have

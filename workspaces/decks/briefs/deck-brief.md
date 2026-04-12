@@ -389,10 +389,10 @@ decks/
 │   ├── css/theme.css          # Reveal.js custom theme (dual-track markers)
 │   ├── img/                   # Shared images, diagrams, architecture visuals
 │   └── diagrams/              # Kailash architecture diagrams, engine flow charts
-├── ascent01/
+├── mlfp01/
 │   ├── deck.html              # Reveal.js slides (80-100 slides)
 │   └── speaker-notes.md       # Instructor notes with timing + dual-audience tips
-├── ascent02/ through ascent06/     # Same structure
+├── mlfp02/ through mlfp04/     # Same structure
 └── README.md                  # How to present, PDF export, timing guide
 ```
 

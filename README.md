@@ -66,13 +66,29 @@ A banker and a PhD sit in the same classroom. Both leave having learned somethin
 
 ## What's In The Box
 
-| Component          | Details                                                       |
-| ------------------ | ------------------------------------------------------------- |
-| Lecture decks      | 6 Reveal.js HTML decks, three-layer depth, KaTeX math         |
-| Speaker notes      | Per-slide timing, beginner tips, expert tangents              |
-| Coding exercises   | Solutions + VS Code (.py) + Google Colab (.ipynb)             |
-| Datasets           | Singapore-context: HDB resale, taxi trips, economic data      |
-| End-of-module quizzes | AI-resilient questions (context-specific, not recall)       |
+| Component                 | Details                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| **Master lecture decks**  | 6 Reveal.js HTML decks (541 slides total), three-layer depth, KaTeX math                 |
+| **Master textbooks**      | 6 markdown chapters (~18,200 lines), full derivations, worked examples, glossaries       |
+| **Master speaker notes**  | 6 markdown files (~7,300 lines), per-slide timing, beginner/expert cues                  |
+| **Per-lesson HTML**       | 144 files (48 lessons × 3 formats): standalone `textbook.html`, `slides.html`, `notes.html` |
+| **Coding exercises**      | 48 solutions + scaffolded `local/*.py` + `colab/*.ipynb` (144 exercise files)            |
+| **Datasets**              | Singapore-context: HDB resale (50K), ICU patient data, weather, taxi, economic indicators |
+| **Red-team reports**      | 6 independent audits (math, pedagogy, student UX, spec compliance, QA, naming)           |
+| **End-of-module quizzes** | AI-resilient questions (context-specific, not recall)                                    |
+
+### Exercise Validation
+
+All exercises validated in a fresh `uv venv` with `kailash 2.8.4 + torch 2.11 + full ML stack`:
+
+| Module | Exercises | Status | Notes                                    |
+| ------ | --------- | ------ | ---------------------------------------- |
+| M1     | 8/8       | ✅ PASS | Polars pipelines, no external deps       |
+| M2     | 8/8       | ✅ PASS | Statistics, FeatureStore degrades gracefully |
+| M3     | 8/8       | ✅ PASS | sklearn + XGBoost/LightGBM/CatBoost + SHAP |
+| M4     | 8/8       | ✅ PASS | Clustering, NLP, recommenders, PyTorch DL |
+| M5     | 8/8       | ✅ PASS | PyTorch nn.Module (runs in 34s total)    |
+| M6     | —         | Requires API keys (OPENAI_API_KEY, HF_TOKEN) |
 
 ---
 
@@ -82,24 +98,37 @@ A banker and a PhD sit in the same classroom. Both leave having learned somethin
 git clone https://github.com/terrene-foundation/mlfp.git
 cd mlfp
 uv venv && uv sync
-cp .env.example .env  # API keys for M6
+cp .env.example .env  # API keys for M6 (OPENAI_API_KEY, HF_TOKEN)
 
-# Your first exercise
-uv run python modules/mlfp01/local/ex_1.py
+# First exercise (no setup — Polars + Kailash only)
+uv run python modules/mlfp01/solutions/ex_1.py
 
-# View lecture deck
+# View the first lecture deck
 open decks/mlfp01/deck.html
 
-# Advanced modules (DL, agents, alignment)
-uv sync --extra full
+# Or read the textbook chapter for self-study
+open decks/mlfp01/lessons/01/textbook.html
 ```
 
-### Two Delivery Formats
+### Three Ways to Consume Each Lesson
 
-| Format       | Location                         | Best For                     |
-| ------------ | -------------------------------- | ---------------------------- |
-| VS Code      | `modules/mlfp*/local/*.py`       | Full async, local development |
-| Google Colab | `modules/mlfp*/colab/*.ipynb`    | Zero-install, GPU access     |
+Every lesson ships as **three independent HTML files**, so instructors, students, and self-learners each get the right tool:
+
+| Format           | File                                       | Audience       | Layout    |
+| ---------------- | ------------------------------------------ | -------------- | --------- |
+| **Slides**       | `decks/mlfpNN/lessons/LL/slides.html`      | Lecturers      | Landscape (Reveal.js 1280×720) |
+| **Textbook**     | `decks/mlfpNN/lessons/LL/textbook.html`    | Self-learners  | Portrait (long-form reading)    |
+| **Speaker notes**| `decks/mlfpNN/lessons/LL/notes.html`       | Instructors    | Portrait (per-slide cues)       |
+
+A module-level `deck.html` concatenates all 8 lessons into one Reveal.js deck for a continuous 3-hour session. A `textbook.md` / `speaker-notes.md` provides the markdown equivalents for instructors who prefer a single file.
+
+### Exercise Delivery Formats
+
+| Format           | Location                              | Best For                                |
+| ---------------- | ------------------------------------- | --------------------------------------- |
+| **Solutions**    | `modules/mlfpNN/solutions/ex_N.py`    | Complete reference (instructor)         |
+| **Scaffolded**   | `modules/mlfpNN/local/ex_N.py`        | VS Code fill-in-the-blank (learner)     |
+| **Colab**        | `modules/mlfpNN/colab/ex_N.ipynb`     | Zero-install, GPU access (learner)      |
 
 ### Data Loading
 
@@ -119,16 +148,52 @@ Auto-detects environment (local vs Colab) and pulls from Google Drive when neede
 ```
 mlfp/
   modules/
-    mlfp01-06/          6 modules, each with:
-      solutions/        Complete runnable solutions (instructor reference)
-      local/            Python exercises (fill-in-the-blank)
-      colab/            Colab notebooks (Drive mount)
+    mlfp01-06/                    6 modules, 8 exercises each
+      solutions/ex_1-8.py         Complete reference implementations
+      local/ex_1-8.py             Scaffolded fill-in-the-blank
+      colab/ex_1-8.ipynb          Colab notebooks
+      notebooks/ex_1-8.ipynb      Jupyter notebooks
+      README.md                   Module description
   decks/
-    mlfp01-06/          6 Reveal.js lecture decks
-    assets/css/         Custom theme (teal/indigo, three-layer markers)
-  data/                 Singapore-context datasets (CSV/Parquet)
-  shared/               Data loader, Kailash helpers
-  scripts/              Notebook converter, dataset generator
+    mlfp01-06/                    Per-module content
+      deck.html                   Master 78-100 slide Reveal.js deck
+      speaker-notes.md            Master instructor notes (markdown)
+      textbook.md                 Master textbook chapter (markdown)
+      index.html                  Module landing page with lesson TOC
+      lessons/01-08/              Per-lesson HTML files
+        textbook.html             Standalone textbook chapter (portrait)
+        slides.html               Standalone slide deck (landscape)
+        notes.html                Standalone speaker notes (portrait)
+    assets/
+      css/theme.css               Reveal.js theme (--mlfp-* variables)
+      css/textbook.css            Portrait reading theme
+      templates/                  HTML templates for lesson generation
+  data/
+    mlfp01-04/                    Singapore-context datasets
+    mlfp_assessment/              Capstone assessment datasets
+  shared/                         Data loader, Kailash helpers
+  specs/                          Authoritative v2 course specs
+    module-1.md .. module-6.md    Per-module lesson specs
+    design-principles.md          Feature Engineering Spectrum, 3-layer system
+    exercise-mapping.md           Exercise-to-lesson map
+  workspaces/curriculum/
+    04-validate/                  Red-team audit reports (rt1-rt6)
+  scripts/
+    generate-pdfs.sh              Build PDFs for all HTML deliverables
+    generate_datasets.py          Regenerate datasets (reproducible seed)
+  pdf/                            Generated PDFs (gitignored, build locally)
+```
+
+### Build PDFs
+
+All 6 master decks, 6 textbook chapters, 6 speaker notes, and 144 per-lesson files can be rendered to PDF via Chrome headless:
+
+```bash
+./scripts/generate-pdfs.sh
+# → pdf/decks/         (6 landscape master decks)
+# → pdf/textbooks/     (6 portrait textbook chapters)
+# → pdf/notes/         (6 portrait speaker notes)
+# → pdf/lessons/       (144 per-lesson PDFs: textbook/slides/notes × 48 lessons)
 ```
 
 ---
@@ -153,15 +218,21 @@ Every concept has a derivation, an industry-standard implementation, _and_ a Kai
 
 ## Kailash Platform
 
-| Package                                                     | Purpose                                  | Install                        |
-| ----------------------------------------------------------- | ---------------------------------------- | ------------------------------ |
-| [kailash](https://github.com/terrene-foundation/kailash-py) | Workflow orchestration, 140+ nodes       | `pip install kailash`          |
-| kailash-ml                                                  | 13 ML engines + RLTrainer, polars-native | `pip install kailash-ml`       |
-| kailash-dataflow                                            | Zero-config database operations          | `pip install kailash-dataflow` |
-| kailash-nexus                                               | API + CLI + MCP deployment               | `pip install kailash-nexus`    |
-| kailash-kaizen                                              | AI agent framework, signatures, A2A      | `pip install kailash-kaizen`   |
-| kailash-pact                                                | D/T/R governance, operating envelopes    | `pip install kailash-pact`     |
-| kailash-align                                               | SFT, DPO, QLoRA, GRPO fine-tuning        | `pip install kailash-align`    |
+Pinned stack (verified in fresh venv — see `pyproject.toml`):
+
+| Package                                                     | Version | Purpose                                  |
+| ----------------------------------------------------------- | ------- | ---------------------------------------- |
+| [kailash](https://github.com/terrene-foundation/kailash-py) | 2.8.4   | Workflow orchestration, 140+ nodes       |
+| kailash-ml                                                  | 0.9.0   | 13 ML engines + RLTrainer, polars-native |
+| kailash-dataflow                                            | 2.0.6   | Zero-config database operations          |
+| kailash-nexus                                               | 2.0.1   | API + CLI + MCP deployment               |
+| kailash-kaizen                                              | 2.7.3   | AI agent framework, signatures, A2A      |
+| kaizen-agents                                               | 0.9.2   | ReActAgent, RAGResearchAgent, etc.       |
+| kailash-pact                                                | 0.8.1   | D/T/R governance, operating envelopes    |
+| kailash-align                                               | 0.3.1   | SFT, DPO, QLoRA, GRPO fine-tuning        |
+
+Plus the classical/deep ML stack (`pip install` or `uv sync`):
+`torch 2.11`, `torchvision`, `pytorch-lightning`, `polars 1.x`, `scikit-learn`, `xgboost`, `lightgbm`, `catboost`, `shap`, `imbalanced-learn`, `gymnasium`, `mlxtend`.
 
 ---
 
@@ -173,7 +244,15 @@ Every concept has a derivation, an industry-standard implementation, _and_ a Kai
 
 **Three-layer delivery.** Green/blue/purple markers let instructors calibrate depth in real time. Beginners follow green. Experts engage with purple. Everyone sees the same deck.
 
-**Speaker notes.** Per-slide timing, common student questions, "if beginners look confused" alternatives, "if experts look bored" tangents.
+**Speaker notes.** Per-slide timing, common student questions, "if beginners look confused" alternatives, "if experts look bored" tangents. Available as both a per-module master file (`speaker-notes.md`) and per-lesson HTML (`notes.html`) with audience cues and transition lines.
+
+**Red-team validated.** Six independent audits in `workspaces/curriculum/04-validate/`:
+- `rt1-math-rigor.md` — 110+ formulas verified, full derivations checked
+- `rt2-pedagogical-flow.md` — lesson progression, scaffolding consistency
+- `rt3-student-experience.md` — zero-Python beginner accessibility
+- `rt4-spec-compliance.md` — topic coverage across 456 spec items
+- `rt5-exercise-alignment.md` — exercise ↔ textbook alignment (all 48 pairs)
+- `rt6-naming-branding.md` — naming, cross-references, navigation
 
 ---
 

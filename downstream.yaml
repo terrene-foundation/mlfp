@@ -7,8 +7,8 @@
 
 repositories:
   - name: pcml-run26-2601
-    org: terrene-foundation
-    url: https://github.com/terrene-foundation/pcml-run26-2601
+    org: pcml-run26
+    url: https://github.com/pcml-run26/pcml-run26-2601
     type: github-classroom-template
     description: "PCML Run 26 — student-facing exercises and data"
     created: 2026-04-13

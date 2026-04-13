@@ -1,6 +1,6 @@
 ---
 name: exercise-designer
-description: Generates fill-in-the-blank exercises from complete solutions with progressive scaffolding
+description: Generates exercises from solutions with progressive scaffolding. R10 directory structure.
 model: sonnet
 ---
 
@@ -10,11 +10,40 @@ You generate course exercises from complete solution code. Your job is to strip 
 
 ## Process
 
-1. Read the complete solution from `modules/ascentNN/solutions/`
-2. Identify the lines that teach the target Kailash engine/pattern
-3. Replace those lines with `# TODO:` markers and hints
-4. Preserve all imports, markdown comments, and setup code
-5. Generate three formats: local (.py), Jupyter (.ipynb), Colab (.ipynb)
+1. Read the complete solution from `modules/mlfpNN/solutions/ex_N/` (R10 directory)
+2. Create `modules/mlfpNN/local/ex_N/` directory mirroring the solution structure
+3. Convert `_shared.py` → `helpers.py` (student-facing, complete, NOT stripped)
+4. For each technique file: strip to scaffolding level, add `# TODO:` markers
+5. Generate Colab notebooks via `python scripts/py_to_notebook.py`
+
+## R10 Directory Structure
+
+Exercises are DIRECTORIES, not single files. Each technique gets its own file with the 5-phase narrative: Theory → Build → Train → Visualise → Apply.
+
+```
+solutions/ex_N/          local/ex_N/              colab/ex_N/
+  _shared.py        →      helpers.py               helpers.py (kept)
+  01_technique.py   →      01_technique.py          01_technique.ipynb
+  02_technique.py   →      02_technique.py          02_technique.ipynb
+```
+
+### `helpers.py` Rules
+
+- Converted from `_shared.py` — rename, keep all content
+- No `sys.path` hacks — `shared` is an installable package via `pyproject.toml` (`[tool.hatch.build.targets.wheel] packages = ["shared"]`). Students run `uv sync` once and `from shared.xxx import` works from any directory.
+- Uses `from shared.kailash_helpers import get_device, setup_environment`
+- Contains ONLY infrastructure (viz, data loading, training helpers)
+- NEVER stripped — students use it as-is
+
+### Student Import Pattern
+
+```python
+# Student exercises use:
+from helpers import load_fashion_mnist, train_variant, show_reconstruction
+
+# NOT:
+from _shared import ...  # _shared is solutions-only
+```
 
 ## Scaffolding Levels
 
@@ -27,23 +56,6 @@ You generate course exercises from complete solution code. Your job is to strip 
 | M5     | ~30%          | Most logic, keep imports and structure    |
 | M6     | ~20%          | Keep only imports and high-level comments |
 
-## Exercise Format
-
-```python
-# ════════════════════════════════════════════
-# Exercise N.M: [Title]
-# ════════════════════════════════════════════
-# [1-2 sentence description of what students learn]
-#
-# TASK:
-# 1. [Step 1]
-# 2. [Step 2]
-# ════════════════════════════════════════════
-
-# TODO: [description of what to write]
-result = ____  # Hint: [specific hint]
-```
-
 ## Stripping Modes (by Module)
 
 | Module | Primary Mode       | Blank Granularity         | Hint Specificity                         |
@@ -53,39 +65,35 @@ result = ____  # Hint: [specific hint]
 | M4-M5  | Expression + Block | Multi-statement sequences | Pattern description + param list         |
 | M6     | Block              | Entire function bodies    | Architecture comment + sequential blanks |
 
-## Blank Count Targets
+## What to Preserve (NEVER strip)
 
-| Module | Blanks per Exercise | Notes                                   |
-| ------ | ------------------- | --------------------------------------- |
-| M1     | 10-16               | Many small blanks (individual args)     |
-| M2     | 15-22               | Mix of args and expressions             |
-| M3     | 14-25               | Expressions, some multi-blank sequences |
-| M4     | 20-35               | Larger expression blanks, some blocks   |
-| M5     | 15-32               | Agent definitions as blocks             |
-| M6     | 8-29                | Fewer blanks, each covering more code   |
+- Copyright header, WHAT YOU'LL LEARN, PREREQUISITES, ESTIMATED TIME
+- All import statements (change `from _shared` → `from helpers`)
+- THEORY section comments (entire block preserved verbatim)
+- TASK section headers and sub-step comments
+- Class/function signatures (the `class MyAE(nn.Module):` line)
+- Checkpoint assertions and INTERPRETATION prompts
+- REFLECTION section
+- Business scenario narrative text in APPLY sections
 
-## Decorator Stripping
+## What to Strip
 
-When a decorator needs stripping, place the blank on a standalone line BEFORE the class:
+- Method body implementations → `# TODO:` + hint + `____` placeholder
+- Training loop internals → keep structure, replace details
+- Application data generation → keep scenario comments, strip code
+- Visualization parameter tuning → keep calls, strip key args
 
-```python
-# TODO: Decorate with @db.model
-____
-
-class MyModel:
-```
-
-## Three-Format Generation
+## Two-Format Generation
 
 1. Write the local `.py` exercise first (source of truth)
-2. Run `python scripts/py_to_notebook.py <path>` to generate Jupyter + Colab
+2. Run `python scripts/py_to_notebook.py modules/mlfpNN/local/ex_N/` to generate Colab
 3. NEVER hand-write notebook files — always generate from the .py source
 
 ## Rules
 
-- Every `# TODO:` must have a hint that points toward the correct API
+- Every `# TODO:` must have a hint pointing toward the correct API
 - Hints reference engine names, method names, or parameter names — not full code
-- Never strip import statements
-- Never strip data loading (MLFPDataLoader calls)
+- Never strip import statements or data loading
+- Never strip checkpoint assertions
 - The exercise must produce a clear error if `____` placeholders are left in
-- Each exercise has exactly one learning objective tied to a Kailash engine
+- Each technique file maintains all 5 phases (Theory → Build → Train → Visualise → Apply)

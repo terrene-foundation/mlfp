@@ -9,10 +9,17 @@ Every exercise MUST exist in two formats with identical learning content.
 
 ## Formats
 
-| Format  | Location                          | Data Loading         | Best For                      |
-| ------- | --------------------------------- | -------------------- | ----------------------------- |
-| VS Code | `modules/mlfpNN/local/ex_N.py`    | `shared.data_loader` | Full async, local development |
-| Colab   | `modules/mlfpNN/colab/ex_N.ipynb` | Drive mount + gdown  | Zero-install, GPU access      |
+| Format   | Location                                        | Data Loading         | Best For                      |
+| -------- | ----------------------------------------------- | -------------------- | ----------------------------- |
+| VS Code  | `modules/mlfpNN/local/ex_N/NN_technique.py`     | `shared.data_loader` | Full async, local development |
+| Colab    | `modules/mlfpNN/colab/ex_N/NN_technique.ipynb`  | Drive mount + gdown  | Zero-install, GPU access      |
+| Solution | `modules/mlfpNN/solutions/ex_N/NN_technique.py` | `shared.data_loader` | Source of truth               |
+
+Exercises with multiple techniques are directories (Redline 10). Each technique file follows the 5-phase structure independently.
+
+### Solution `_shared.py` vs Student `helpers.py`
+
+Solutions contain `_shared.py` with reusable infrastructure. Students receive `helpers.py` (renamed, no underscore prefix). Both MUST include `sys.path` setup to find the project root. `_shared.py` is NOT distributed to students.
 
 ## Format Differences (ONLY these may differ)
 
@@ -43,8 +50,8 @@ The loader auto-detects Colab vs local and uses the appropriate backend.
 Local `.py` is the source of truth. Colab notebooks are generated, never hand-written.
 
 ```bash
-# Convert a single exercise
-python scripts/py_to_notebook.py modules/mlfp01/local/ex_1.py
+# Convert a single exercise directory
+python scripts/py_to_notebook.py modules/mlfp01/local/ex_1/
 
 # Convert an entire module
 python scripts/py_to_notebook.py --module mlfp01

@@ -1,32 +1,55 @@
-# Session Notes — 2026-04-13 (M5 deep overhaul + R9 established)
+# Session Notes — 2026-04-13 (R10 restructure + student repo + M5 complete)
 
 ## Where we are
 
-All 6 modules expanded to 25h depth. M5 deck overhauled (KaTeX fix, 20 SVG diagrams, 8 application slides, overflow check codified). M5 ex_1 rewritten as R9 reference implementation (10 AE variants + 7 application scripts). Redline 9 ("Seeing is Believing") codified. All changes uncommitted. Next: audit remaining 47 exercises against R9, then M5 quizzes using DIS as baseline.
+M5 is DONE — all 8 exercises restructured as R10 directories across all 3 formats (solutions, local, colab). Student repo live and pushed at terrene-foundation/pcml-run26-2601 (GitHub Classroom template). Redline 10 codified. All source repo changes uncommitted.
+
+## Final M5 audit (all passing)
+
+| Ex | Techniques | Solutions | Local | Colab | Parity |
+|----|-----------|-----------|-------|-------|--------|
+| 1  | 11 (10 AE variants + comparison) | 11 + _shared | 11 + helpers | 11 + helpers | YES |
+| 2  | 4 (CNN, ResNet-SE, ONNX, hyperparams) | 4 + _shared | 4 + helpers | 4 + helpers | YES |
+| 3  | 5 (RNN, LSTM, GRU, attention, comparison) | 5 + _shared | 5 + helpers | 5 + helpers | YES |
+| 4  | 5 (attention, transformer, LSTM, BERT, comparison) | 5 + _shared | 5 + helpers | 5 + helpers | YES |
+| 5  | 3 (vanilla GAN, WGAN-GP, evaluation) | 3 + _shared | 3 + helpers | 3 + helpers | YES |
+| 6  | 5 (GCN, GAT, GraphSAGE, link pred, comparison) | 5 + _shared | 5 + helpers | 5 + helpers | YES |
+| 7  | 5 (scratch, transfer, efficiency, adapters, deploy) | 5 + _shared | 5 + helpers | 5 + helpers | YES |
+| 8  | 4 (DQN, PPO, custom envs, comparison) | 4 + _shared | 4 + helpers | 4 + helpers | YES |
+| **Total** | **42** | 42 + 8 _shared | 42 + 8 helpers | 42 + 8 helpers | |
+
+## What was done this session
+
+1. **Redline 10** — `specs/redlines.md` updated (exercise directories, 5-phase narrative)
+2. **M5 solutions** — 8 exercises restructured to R10 directories (8 parallel agents)
+3. **M5 local exercises** — stripped to 30% scaffolding, `helpers.py` replaces `_shared.py` (8 parallel agents)
+4. **M5 colab notebooks** — 42 notebooks generated from local exercises + helpers.py per directory
+5. **Student repo** — terrene-foundation/pcml-run26-2601 created, no LFS, 18MB custom data, standard datasets auto-download
+6. **GitHub Classroom** — template enabled, protected paths configured by user
+7. **Downstream tracking** — `downstream.yaml` + `scripts/build-student-repo.sh --sync` + project memory
+8. **Codification** — exercise-designer agent, two-format rule, exercise-standards rule updated for R10
+9. **Root cleanup** — 66 audit screenshots moved to `outputs/`, `readings/` directories created in all modules
 
 ## Read first
 
-1. `specs/redlines.md` — now 9 redlines. R9 (visual intuition + real-world application) is the new standard. Read R9 fully before touching any exercise.
-2. `modules/mlfp05/solutions/ex_1.py` — the R9 reference implementation (10 AE variants, reconstruction grids, latent traversal). All other exercises must match this pattern.
-3. `modules/mlfp05/solutions/ex_1_app_*.py` — 7 standalone application scripts (fraud, medical, denoising, timeseries, generation, compression, manufacturing). This is the application script pattern for R9B.
-4. `scripts/check-deck-overflow.js` — new puppeteer-based visual overflow detector, wired into `redline-check.py`. Run before any deck change.
-5. `modules/mlfp05/deck.html` — KaTeX double-render fixed (idempotent `mlfpRenderMath`), 20 SVGs + 8 app slides integrated. Same KaTeX bug exists in M3/M6 decks (not yet fixed).
+1. `specs/redlines.md` — 10 redlines. R10 = exercise directory mandate.
+2. `STUDENT-REPO.md` — student/instructor content boundary.
+3. `downstream.yaml` — downstream repos and sync workflow.
+4. `modules/mlfp05/solutions/ex_1/` — R10 reference (solutions).
+5. `modules/mlfp05/local/ex_1/` — R10 reference (student exercises).
 
-## In-flight state
+## Still pending
 
-- ALL changes uncommitted — solutions (6 modules), local exercises (6 modules), colab notebooks (M5), exams (6), deck overhaul (M5), CSS (theme.css), scripts (overflow checker, redline-check), specs (redlines R9), pyproject.toml (pyright config, python 3.13, uv overrides), learner fixes (async intro M3, Bayesian intuition M2, EM hint M4 exam).
-- M5 local exercises use modern `async with tracker.run() as ctx` API. Other modules do NOT use ExperimentTracker.start_run so no migration needed there.
-- M5 ex_1 local/colab NOT yet regenerated from the new 1,919-line solution. Must strip to 30% scaffolding + regenerate colab.
-- `.vscode/settings.json` created (gitignored) pointing Pylance to `.venv`. Pyright config added to `pyproject.toml`.
+- **Source repo uncommitted** — all changes from this session need a commit + push
+- **M1-M4, M6 exercises** — still monolithic, not converted to R10 directories
+- **Missing PDFs** — textbooks (M1-M4, M6), notes (all), deck (M6)
+- **M5 exercises not runtime-tested** — stripped exercises haven't been verified to error on `____` and pass when completed
+- **py_to_notebook.py** — the existing script wasn't used (colab gen was done by agents). Script should be updated to handle R10 directories natively.
+- **exercise-standards.md** — still needs full R10 directory section (was in codify agent output but not applied)
 
 ## Traps
 
-- `.venv/bin/python` hangs if stale `mlfp05_*.db-shm`/`.db-wal` files exist from interrupted runs. Clean with `rm -f mlfp05_*.db*` before running solutions.
-- `scripts/py_to_notebook.py` creates `modules/mlfpNN/notebooks/` dir (non-standard). Must `rm -rf` after every run — only `local/` and `colab/` are in the two-format spec.
-- KaTeX double-render bug exists in M3 and M6 decks (same root cause as M5, not yet ported). Port `mlfpRenderMath` function or lift to `modules/assets/js/`.
-- DIS reference materials at `~/Library/CloudStorage/GoogleDrive-jack@integrum.global/.shortcut-targets-by-id/.../PCML_DIS_R5_2601/` — MUST check before writing exercises or quizzes. They set the visualization quality bar.
-
-## Open questions for the human
-
-- R9 audit of remaining 47 exercises: parallel (all modules at once) or sequential (finish M5 first as gold standard, then M1-M4, M6)?
-- DIS-style quizzes: still needed after R9 exercise rewrite, or does the application-script pattern replace quizzes?
+- `shared` package installable via `pyproject.toml` — `uv sync` makes `from shared.xxx import` work everywhere. No sys.path hacks.
+- No LFS in student repo — GitHub template repos can't have LFS. Standard datasets gitignored + auto-download.
+- Student exercises: `from helpers import` (no underscore). Solutions: `from _shared import`.
+- Sync workflow: `./scripts/build-student-repo.sh --sync /tmp/pcml-run26-2601` then commit+push.

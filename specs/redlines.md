@@ -1,6 +1,6 @@
 # MLFP Redlines — Non-Negotiable Quality Standards
 
-These 8 principles are ABSOLUTE. No deviations without explicit justification. All `/redteam` audits MUST validate against every redline. Any violation is a BLOCKING finding.
+These 10 principles are ABSOLUTE. No deviations without explicit justification. All `/redteam` audits MUST validate against every redline. Any violation is a BLOCKING finding.
 
 ## Redline 1: 25-Hour Depth Per Module
 
@@ -188,11 +188,72 @@ Redline 2 requires "illustrations and diagrams" — that covers the DECK (slides
 
 **Origin**: Session 2026-04-13. Comparison of DIS PCML6-1 autoencoder notebook (10 variants, each with original-vs-reconstruction image grid) against MLFP M5 ex_1 (4 variants, zero image visualizations, only loss curves). The DIS notebook builds intuition in 24 cells that MLFP's 790-line exercise fails to build because it substitutes engineering metrics for visual proof. Extended to the full curriculum after audit revealed the same pattern across all 48 exercises.
 
+## Redline 10: One Technique, One Script, Full Value Chain — Exercise Directories
+
+Every exercise is a DIRECTORY, not a single file. Each file in the directory covers ONE technique and tells the COMPLETE story: theory → build → train → visualise → real-world application. The learner never leaves the file to understand why a technique matters or to see it applied.
+
+This redline mandates exercise structure. R9 mandates exercise content (visual proof + application). Together they ensure the learner experiences a complete narrative arc per technique, in a single script, with no context-switching between files.
+
+### Structure
+
+```
+modules/mlfpNN/solutions/ex_N/
+  _shared.py                    — common utilities (viz, data loading, training helpers)
+  01_technique_name.py          — full value chain for technique 1
+  02_technique_name.py          — full value chain for technique 2
+  ...
+  NN_grand_comparison.py        — (optional) side-by-side comparison of all techniques
+```
+
+Each `NN_technique_name.py` file MUST contain, in this order:
+
+1. **Theory** — Why this technique exists. What problem it solves. The intuition a finance director would understand.
+2. **Build** — The model/algorithm implementation (torch.nn.Module, sklearn pipeline, kailash-ml engine call).
+3. **Train** — Training on the canonical dataset with ExperimentTracker logging.
+4. **Visualise** — R9A visual proof (reconstruction grids, feature maps, attention heatmaps — whatever the technique demands).
+5. **Apply** — R9B real-world application with business scenario, domain dataset, business interpretation, and stakeholder-ready output. This is NOT a separate file. It is the climax of the narrative.
+
+### Why This Is Separate From R9
+
+R9 says every exercise needs visual proof and real-world application. It does not say HOW to organise them. Before R10, an exercise could satisfy R9 by having `ex_1.py` (technique + visuals) and `ex_1_app_fraud.py` (application) as separate files. That breaks the narrative: the student learns the technique, closes the file, opens another file, and must rebuild context to see why the technique matters.
+
+R10 forbids this separation. The application IS the payoff. It lives in the same script, right after the visualisation, while the student's understanding is fresh. One technique, one script, one unbroken narrative from "why does this exist?" to "here's how it saves S$2.3M in fraud annually."
+
+### Audit Test
+
+For every exercise directory:
+
+1. Verify it IS a directory (not a single file)
+2. For each technique file, verify all 5 phases are present (search for section markers or structural indicators: class/function definitions for Build, training loops for Train, `plt.` or viz calls for Visualise, business scenario text for Apply)
+3. Verify no `ex_N_app_*.py` files exist alongside the directory — applications MUST be inline, not separate
+
+```bash
+# Check exercise structure — every ex_N should be a directory
+for ex in modules/mlfp*/solutions/ex_*; do
+  if [ -f "$ex" ] && [[ "$ex" == *.py ]]; then
+    echo "BLOCKING: $ex is a file, not a directory"
+  fi
+done
+
+# Check no separated application files exist
+find modules/ -name "ex_*_app_*.py" -type f
+# Any matches = BLOCKING
+```
+
+### BLOCKED
+
+- Single-file exercises for any topic with more than one technique/variant. A single technique MAY be a single file if it genuinely has only one narrative arc.
+- Separate `ex_N_app_*.py` application files. Applications are inline in the technique file.
+- Technique files that stop at "Train" or "Visualise" without the "Apply" phase. If a technique has no real-world application, it doesn't belong in a professional course.
+- Shared utility files that contain domain logic. `_shared.py` holds ONLY reusable infrastructure (viz functions, data loaders, training helpers). Business scenarios, domain datasets, and application logic live in the technique files.
+
+**Origin**: Session 2026-04-13. M5 ex_1 was a monolithic 1,919-line file covering 10 AE variants with 7 separate application scripts (`ex_1_app_fraud.py`, `ex_1_app_medical.py`, etc.). The separation broke learner UX — students had to context-switch between files to see why each technique matters. Restructured to one technique per file with inline applications.
+
 ---
 
 ## Red Team Protocol
 
-Every `/redteam` run MUST validate ALL 9 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
+Every `/redteam` run MUST validate ALL 10 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
 
 1. **Status**: PASS / FAIL / PARTIAL
 2. **Evidence**: Specific files, line numbers, measurements

@@ -1,0 +1,46 @@
+{
+  "last_codified": "2026-04-13T16:00:00Z",
+  "digest_hash": "empty-digest-208-observations",
+  "actions_taken": [
+    {
+      "type": "spec_update",
+      "file": "specs/redlines.md",
+      "reason": "Added Redline 10: exercise directories with per-technique files, 5-phase narrative arc (Theory→Build→Train→Visualise→Apply)"
+    },
+    {
+      "type": "agent_update",
+      "file": ".claude/agents/education/exercise-designer.md",
+      "reason": "Updated for R10 directory structure, two-format (not three), correct module paths, student import pattern"
+    },
+    {
+      "type": "rule_update",
+      "file": ".claude/rules/two-format.md",
+      "reason": "Updated for R10 directory-based exercises instead of single files"
+    },
+    {
+      "type": "rule_update",
+      "file": ".claude/rules/exercise-standards.md",
+      "reason": "Added R10 directory structure section"
+    },
+    {
+      "type": "new_file",
+      "file": "STUDENT-REPO.md",
+      "reason": "Documented student/instructor content boundary and build process"
+    },
+    {
+      "type": "new_file",
+      "file": "scripts/build-student-repo.sh",
+      "reason": "Script to build student-facing repo from source"
+    },
+    {
+      "type": "restructure",
+      "file": "modules/mlfp05/solutions/ex_1/ through ex_8/",
+      "reason": "Restructured all 8 M5 exercises from monolithic files to R10 directories with per-technique files"
+    },
+    {
+      "type": "reorganize",
+      "file": "modules/mlfpNN/readings/",
+      "reason": "Created readings/ directory in each module for student-facing PDFs (deck, textbook, notes)"
+    }
+  ]
+}

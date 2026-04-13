@@ -1,0 +1,27 @@
+# Downstream repositories derived from this source repo.
+# Updated via: ./scripts/build-student-repo.sh <target> && cd <target> && git push
+#
+# Source: lyceum/courses/mlfp (this repo)
+# Authority: solutions, specs, deck.html, textbook.md, lessons/
+# Students receive: exercises (local/), colab/, readings/, data/, shared/
+
+repositories:
+  - name: pcml-run26-2601
+    org: terrene-foundation
+    url: https://github.com/terrene-foundation/pcml-run26-2601
+    type: github-classroom-template
+    description: "PCML Run 26 — student-facing exercises and data"
+    created: 2026-04-13
+    modules: [mlfp01, mlfp02, mlfp03, mlfp04, mlfp05, mlfp06]
+    notes: |
+      - Template repo (is_template: true), no LFS
+      - Standard datasets (MNIST, CIFAR-10, etc.) gitignored, auto-download via torchvision
+      - Custom datasets (18MB) committed directly
+      - Protected paths: shared/**, modules/*/local/*/helpers.py, pyproject.toml, uv.lock, data/**, .gitignore
+
+# To sync:
+#   ./scripts/build-student-repo.sh /tmp/pcml-run26-2601
+#   cd /tmp/pcml-run26-2601
+#   git add -A && git commit -m "sync: update from source" && git push
+#
+# Future runs can be added here with different names (e.g., pcml-run27-2602)

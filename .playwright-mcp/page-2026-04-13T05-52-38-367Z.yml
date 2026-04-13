@@ -1,0 +1,437 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: Lesson 5.2 Summary
+      - generic: Foundations
+      - generic: "CNNs extract spatial features hierarchically: edges → textures → objects. Skip connections enable depth. Modern enhancements push accuracy further."
+      - generic:
+        - generic:
+          - heading [level=3]: Key Takeaways
+          - list:
+            - listitem:
+              - text: "Conv output size:"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: (
+                          - generic: W
+                          - generic: −
+                          - generic: F
+                          - generic: +
+                          - generic: "2"
+                          - generic: P
+                          - generic: )
+                          - generic: /
+                          - generic: S
+                          - generic: +
+                          - generic: "1"
+                  - generic:
+                    - generic: (W −
+                    - generic: F +
+                    - generic: 2P)/S +
+                    - generic: "1"
+            - listitem: ResNet enables 150+ layer networks
+            - listitem: SE blocks add channel attention cheaply
+            - listitem: OnnxBridge exports models for deployment
+        - generic:
+          - heading [level=3]: What Comes Next
+          - paragraph:
+            - text: "Lesson 5.3:"
+            - strong: RNNs and Sequence Models
+            - text: — from spatial features (grids) to temporal features (sequences). The hidden state replaces the feature map.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Lesson 5.2: Real-World Applications"
+      - generic: Applications
+      - generic: The same CIFAR-10 pipeline you just built — convolutions, residual blocks, SE attention, ONNX export — powers production image classifiers across every industry that has cameras.
+      - generic:
+        - generic:
+          - generic:
+            - strong: Healthcare — Chest X-Ray Triage
+            - paragraph: ResNet with SE blocks, fine-tuned on a Singapore public-health chest X-ray corpus, classifies scans into "normal / pneumonia / tuberculosis / other" and ranks the worst cases to the top of the radiologist's queue. The same architecture you wrote in Exercise 2, trained on medical images instead of CIFAR.
+          - generic:
+            - strong: Retail — Shelf Monitoring at FairPrice, Cold Storage
+            - paragraph: "Cameras above each aisle feed a CNN that counts SKUs, detects out-of-stocks, and identifies misplaced items. The store manager gets a dashboard ranked by lost-sales-per-hour, not a 200-aisle walkthrough. Latency budget: under 200ms per frame — exactly the kind of workload ONNX export was built for."
+        - generic:
+          - generic:
+            - strong: Manufacturing — Automated Quality Control
+            - paragraph: A Singapore precision-engineering firm uses a ResNet variant to grade machined parts on a conveyor belt. Mixed-precision training halved GPU cost during weekly retraining; SE blocks improved recall on a rare defect class from 71% to 89%. The trained model is exported to ONNX and served on the factory-floor edge server.
+          - generic:
+            - strong: Public Safety — MRT Crowd Density from CCTV
+            - paragraph: SMRT platforms use CNN-based crowd counting from existing CCTV feeds to predict overcrowding before it happens, triggering train dispatch or gate throttling. The output of the last conv layer is a density map, not a single number — the same "later layers = higher-level features" hierarchy you learned.
+      - generic:
+        - strong: "Why this matters for YOU:"
+        - text: "Every production CNN you will deploy starts with the same three decisions you faced in Exercise 2 — how deep, which residual pattern, and whether attention blocks earn their compute budget. The exercise numbers transfer directly: a 2% accuracy gain from SE blocks at modest compute cost is often the difference between a model that ships and one that does not."
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e616]:
+      - heading "Lesson 5.3" [level=1] [ref=e617]
+      - heading "RNNs and Sequence Models" [level=2] [ref=e618]
+      - paragraph [ref=e619]: Temporal Feature Learning — Extracting Patterns from Sequences
+      - paragraph [ref=e620]: "\"What if the model could remember what it saw five steps ago?\""
+      - generic [ref=e622]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Recurrent Neural Networks
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Core Concept
+          - list:
+            - listitem:
+              - strong: "Hidden state:"
+              - text: memory that persists across time steps
+            - listitem: At each step, combine current input with previous hidden state
+            - listitem: Same weights applied at every time step (weight sharing)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: h
+                            - generic: t
+                          - generic: =
+                          - generic: tanh
+                          - generic: (
+                          - generic:
+                            - generic: W
+                            - generic:
+                              - generic: h
+                              - generic: h
+                          - generic:
+                            - generic: h
+                            - generic:
+                              - generic: t
+                              - generic: −
+                              - generic: "1"
+                          - generic: +
+                          - generic:
+                            - generic: W
+                            - generic:
+                              - generic: x
+                              - generic: h
+                          - generic:
+                            - generic: x
+                            - generic: t
+                          - generic: +
+                          - generic: b
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic:
+                      - generic: tanh
+                      - text: (
+                      - generic:
+                        - text: W
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: hh
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t−1
+                      - text: +
+                    - generic:
+                      - generic:
+                        - text: W
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: xh
+                      - generic:
+                        - text: x
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: +
+                    - generic: b)
+            - generic: Hidden state update at time t
+        - generic:
+          - heading [level=3]: "The Problem: Vanishing Gradients"
+          - generic:
+            - strong: Gradients shrink exponentially
+            - text: as they backpropagate through time steps. After ~10-20 steps, gradients are effectively zero. The network "forgets" early inputs.
+          - generic:
+            - strong: "Formally:"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: ∂
+                            - generic:
+                              - generic: h
+                              - generic: T
+                          - generic:
+                            - generic: ∂
+                            - generic:
+                              - generic: h
+                              - generic: "1"
+                        - generic: =
+                        - generic:
+                          - generic: ∏
+                          - generic:
+                            - generic: t
+                            - generic: =
+                            - generic: "1"
+                          - generic:
+                            - generic: T
+                            - generic: −
+                            - generic: "1"
+                        - generic:
+                          - generic:
+                            - generic: ∂
+                            - generic:
+                              - generic: h
+                              - generic:
+                                - generic: t
+                                - generic: +
+                                - generic: "1"
+                          - generic:
+                            - generic: ∂
+                            - generic:
+                              - generic: h
+                              - generic: t
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - text: ∂
+                                  - generic:
+                                    - text: h
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: "1"
+                              - generic:
+                                - generic:
+                                  - text: ∂
+                                  - generic:
+                                    - text: h
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: T
+                    - text: =
+                  - generic:
+                    - generic:
+                      - text: ∏
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t=1
+                              - generic:
+                                - generic: T−1
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - text: ∂
+                                  - generic:
+                                    - text: h
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: t
+                              - generic:
+                                - generic:
+                                  - text: ∂
+                                  - generic:
+                                    - text: h
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: t+1
+            - text: . If each factor <1, the product vanishes.
+          - paragraph: "Solution: LSTM and GRU (next slides)."
+      - generic:
+        - img:
+          - generic:
+            - generic: h₀
+            - generic: h₁
+            - generic: h₂
+            - generic: h₃
+            - generic: h₄
+          - generic:
+            - generic: x₁
+            - generic: x₂
+            - generic: x₃
+            - generic: x₄
+          - generic:
+            - generic: y₁
+            - generic: y₂
+            - generic: y₃
+            - generic: y₄
+          - generic: Same weights W reused at every time step → hₜ = tanh(Wₕ·xₜ + Wₕ·hₜ₋₁)
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "LSTM: Long Short-Term Memory"
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Four Components
+          - list:
+            - listitem:
+              - strong: Cell state
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: C
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: C
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+              - text: — the "highway" that carries information across time steps with minimal modification
+            - listitem:
+              - strong: Forget gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: f
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: f
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+              - text: — decides what to discard from cell state
+            - listitem:
+              - strong: Input gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: i
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: i
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+              - text: — decides what new information to store
+            - listitem:
+              - strong: Output gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: o
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: o
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+              - text: — decides what to output from cell state
+        - generic:
+          - generic:
+            - strong: "Analogy:"
+            - text: The cell state is a conveyor belt running through the factory. Gates are workers who add items (input gate), remove items (forget gate), and select items for the next station (output gate). The belt itself flows freely.
+          - generic:
+            - strong: "Why it solves vanishing gradients:"
+            - text: The cell state path has
+            - emphasis: additive
+            - text: interactions (not multiplicative). Gradients flow through addition, not repeated multiplication, preventing exponential decay.
+      - generic:
+        - img:
+          - generic: LSTM cell at time t
+          - generic: Cₜ₋₁
+          - generic: Cₜ
+          - generic: cell state "conveyor belt"
+          - generic: ×
+          - generic: fₜ (forget)
+          - generic: +
+          - generic: iₜ (input)
+          - generic: tanh(C̃ₜ)
+          - generic: ×
+          - generic: oₜ (output)
+          - generic: hₜ
+          - generic: hₜ₋₁
+          - generic: xₜ
+          - generic: All four gates take [hₜ₋₁, xₜ] as input
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "32 / 104" [ref=e623] [cursor=pointer]:
+    - /url: "#/31"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: Lesson 5.3 RNNs and Sequence Models Temporal Feature Learning — Extracting Patterns from Sequences "What if the model could remember what it saw five steps ago?" MLFP Module 5 — Terrene Open Academy

@@ -1,0 +1,33 @@
+{
+  "name": "simple_cnn_cifar10",
+  "version": 1,
+  "signature": null,
+  "metrics": [
+    {
+      "name": "final_loss",
+      "value": 0.5452906529769264,
+      "split": "test",
+      "higher_is_better": true
+    },
+    {
+      "name": "val_accuracy",
+      "value": 0.7057,
+      "split": "test",
+      "higher_is_better": true
+    },
+    {
+      "name": "epochs",
+      "value": 8.0,
+      "split": "test",
+      "higher_is_better": true
+    },
+    {
+      "name": "batch_size",
+      "value": 128.0,
+      "split": "test",
+      "higher_is_better": true
+    }
+  ],
+  "onnx_status": "not_applicable",
+  "model_uuid": "56571cb1-90b5-4ef9-8109-9a7c96ba1413"
+}

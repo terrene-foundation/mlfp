@@ -13,17 +13,21 @@
 #   - Handle errors gracefully with try/except
 #   - Use async functions and asyncio.run() in a real pipeline context
 #
-# PREREQUISITES: Complete Exercise 6 first (all of Exercises 1–6).
+# PREREQUISITES: Complete Exercise 6 first (all of Exercises 1-6).
 #
-# ESTIMATED TIME: 50-60 minutes
+# ESTIMATED TIME: ~150-180 min
 #
 # TASKS:
-#   1. Load and inspect Singapore economic indicators (CPI, employment, FX)
-#   2. Merge datasets with different reporting frequencies onto a monthly spine
-#   3. Configure AlertConfig with domain-appropriate thresholds
-#   4. Run async profiling and interpret each alert type
-#   5. Compare data quality across pre-COVID and COVID-era periods
-#   6. Generate a self-contained HTML profiling report
+#   1.  Load and inspect Singapore economic indicators
+#   2.  Merge datasets with different reporting frequencies
+#   3.  Configure AlertConfig with domain-appropriate thresholds
+#   4.  Run async profiling and interpret each alert type
+#   5.  Column-level profile deep dive
+#   6.  Spearman correlation analysis
+#   7.  Compare pre-COVID vs COVID-era data quality
+#   8.  try/except — error handling patterns
+#   9.  Generate self-contained HTML profiling report
+#   10. Data quality scorecard and action plan
 #
 # DATASET: Three Singapore economic time-series datasets (deliberately messy):
 #   - sg_cpi.csv:         Monthly Consumer Price Index (data.gov.sg / SingStat)
@@ -39,20 +43,19 @@ from __future__ import annotations
 import asyncio
 
 import polars as pl
-from kailash_ml import DataExplorer
+from kailash_ml import DataExplorer, ModelVisualizer
 from kailash_ml.engines.data_explorer import AlertConfig
 
 from shared import MLFPDataLoader
 
+viz = ModelVisualizer()
+
 
 # ── Data Loading ──────────────────────────────────────────────────────
 loader = MLFPDataLoader()
-
-# Three datasets with deliberately different reporting frequencies
-# This mirrors real-world situations where data comes from separate sources
-cpi = loader.load("mlfp01", "sg_cpi.csv")  # Monthly consumer price index
-employment = loader.load("mlfp01", "sg_employment.csv")  # Quarterly labour stats
-fx_rates = loader.load("mlfp01", "sg_fx_rates.csv")  # Daily exchange rates
+cpi = loader.load("mlfp01", "sg_cpi.csv")
+employment = loader.load("mlfp01", "sg_employment.csv")
+fx_rates = loader.load("mlfp01", "sg_fx_rates.csv")
 
 print("=" * 60)
 print("  MLFP01 Exercise 7: Automated Data Profiling")
@@ -67,14 +70,15 @@ print(f"  You're ready to start!\n")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Inspect each dataset independently
 # ══════════════════════════════════════════════════════════════════════
-
 # Always profile individual tables before merging — that way you know
 # which quality issues originate where.
 
+# --- 1a: CPI data ---
 print("=== CPI Data (Monthly) ===")
 print(f"Shape: {cpi.shape}")
 print(f"Columns: {cpi.columns}")
 print(f"Date range: {cpi['date'].min()} to {cpi['date'].max()}")
+print(f"Dtypes: {cpi.dtypes}")
 print("Nulls per column:")
 for col in cpi.columns:
     null_count = cpi[col].null_count()
@@ -82,34 +86,40 @@ for col in cpi.columns:
         print(f"  {col}: {null_count} ({null_count / cpi.height:.1%})")
 print(cpi.head(5))
 
+# --- 1b: Employment data ---
 print("\n=== Employment Data (Quarterly) ===")
 print(f"Shape: {employment.shape}")
 print(f"Columns: {employment.columns}")
+print(f"Dtypes: {employment.dtypes}")
 print(employment.head(5))
 
+# --- 1c: FX rates data ---
 print("\n=== FX Rates Data (Daily) ===")
 print(f"Shape: {fx_rates.shape}")
 print(f"Columns: {fx_rates.columns}")
+print(f"Dtypes: {fx_rates.dtypes}")
 print(fx_rates.head(5))
-# INTERPRETATION: Three datasets, three granularities. Before merging, count
-# how many rows you'd expect on a monthly spine and compare with what each
-# dataset provides. Employment has ~4x fewer rows than CPI because it's
-# quarterly. FX rates have ~22x more rows than CPI because it's daily.
-# The merge will resolve all three to monthly frequency — by aggregation (FX)
-# and forward-fill (employment).
+
+# --- 1d: Granularity comparison ---
+print(f"\n=== Granularity Comparison ===")
+print(f"  CPI (monthly):    {cpi.height:>6,} rows")
+print(
+    f"  Employment (qtr): {employment.height:>6,} rows  (~{cpi.height / max(employment.height, 1):.1f}x fewer)"
+)
+print(
+    f"  FX rates (daily): {fx_rates.height:>6,} rows  (~{fx_rates.height / max(cpi.height, 1):.1f}x more)"
+)
+# INTERPRETATION: Three datasets, three granularities. Before merging,
+# think about which frequency to target. We'll align to monthly.
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert cpi.height > 0, "CPI dataset is empty"
 assert employment.height > 0, "Employment dataset is empty"
 assert fx_rates.height > 0, "FX rates dataset is empty"
 assert "date" in cpi.columns, "CPI should have a 'date' column"
-assert employment.height < cpi.height, (
-    "Quarterly employment should have fewer rows than monthly CPI"
-)
-assert fx_rates.height > cpi.height, (
-    "Daily FX rates should have more rows than monthly CPI"
-)
-print("\n✓ Checkpoint 1 passed — all three economic datasets loaded and inspected\n")
+assert employment.height < cpi.height, "Quarterly should have fewer rows than monthly"
+assert fx_rates.height > cpi.height, "Daily should have more rows than monthly"
+print("\n✓ Checkpoint 1 passed — all three economic datasets inspected\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -117,34 +127,22 @@ print("\n✓ Checkpoint 1 passed — all three economic datasets loaded and insp
 # ══════════════════════════════════════════════════════════════════════
 # Strategy: align everything to monthly frequency.
 #   - CPI:        already monthly — use as-is
-#   - Employment: quarterly → forward-fill each quarter across 3 months
-#   - FX rates:   daily → aggregate to monthly mean
-#
-# Forward-filling is the standard approach for quarterly economic data:
-# the Q1 figure applies to Jan, Feb, and Mar; Q2 to Apr, May, Jun, etc.
+#   - Employment: quarterly -> forward-fill across 3 months
+#   - FX rates:   daily -> aggregate to monthly mean
 
-# Parse date columns — each dataset has a DIFFERENT date format!
-# This is real-world messiness: CPI uses mixed MM/YYYY and YYYY-MM,
-# employment uses "YYYY QN" quarters, FX rates use YYYY-MM-DD.
-# Handling heterogeneous formats is a core data engineering skill.
-
-# CPI: mixed formats ("01/2000", "2000-02") → normalise to first-of-month
-# Normalise all CPI dates to YYYY-MM-01 format before parsing.
-# The dataset intentionally has THREE different date formats — this is
-# real-world messiness that data engineers encounter daily:
-#   "01/2000"  → MM/YYYY   (some international sources)
-#   "2000-02"  → YYYY-MM   (ISO-like, no day)
-#   "201108"   → YYYYMM    (compact, no separator)
+# --- 2a: Parse date columns (each has a DIFFERENT format) ---
+# CPI: mixed formats ("01/2000", "2000-02", "201108")
 cpi = cpi.with_columns(
     pl.col("date")
-    .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")    # MM/YYYY → YYYY-MM-01
-    .str.replace(r"^(\d{4})(\d{2})$", "$1-$2-01")      # YYYYMM  → YYYY-MM-01
-    .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")     # YYYY-MM → YYYY-MM-01
+    .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")
+    .str.replace(r"^(\d{4})(\d{2})$", "$1-$2-01")
+    .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")
     .str.to_date("%Y-%m-%d")
     .alias("date")
 )
 
-# Employment: quarterly ("2000 Q1") → map to quarter start month
+
+# Employment: quarterly ("2000 Q1") -> quarter start month
 def quarter_to_date(q_str: str) -> str:
     """Convert '2000 Q1' to '2000-01-01'."""
     parts = q_str.split()
@@ -153,25 +151,25 @@ def quarter_to_date(q_str: str) -> str:
     month = {1: "01", 2: "04", 3: "07", 4: "10"}[q]
     return f"{year}-{month}-01"
 
+
 employment = employment.with_columns(
-    pl.col("quarter").map_elements(quarter_to_date, return_dtype=pl.String)
+    pl.col("quarter")
+    .map_elements(quarter_to_date, return_dtype=pl.String)
     .str.to_date("%Y-%m-%d")
     .alias("date")
 )
 
-# FX rates: YYYY-MM-DD format — Polars may auto-detect this as Date on load,
-# so only parse if the column is still a string
+# FX rates: YYYY-MM-DD — may be auto-detected
 if fx_rates["date"].dtype == pl.String:
     fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
 
-# Truncate all dates to the first of the month for joining
+# --- 2b: Truncate to first-of-month ---
 cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
 employment = employment.with_columns(
     pl.col("date").dt.truncate("1mo").alias("month_date")
 )
 
-# Build a complete monthly spine from the CPI date range
-# This ensures we have a row for every month, even months with no employment data
+# --- 2c: Build monthly spine ---
 date_range = pl.date_range(
     cpi["month_date"].min(),
     cpi["month_date"].max(),
@@ -180,14 +178,9 @@ date_range = pl.date_range(
 )
 monthly_spine = pl.DataFrame({"month_date": date_range})
 
-# Join employment onto spine → creates nulls for non-quarter-start months
-# Then forward-fill: each null inherits the previous quarter's value
+# --- 2d: Forward-fill quarterly employment ---
 employment_monthly = (
-    monthly_spine.join(
-        employment.drop("date"),
-        on="month_date",
-        how="left",
-    )
+    monthly_spine.join(employment.drop("date"), on="month_date", how="left")
     .sort("month_date")
     .with_columns(
         [
@@ -198,7 +191,7 @@ employment_monthly = (
     )
 )
 
-# Aggregate FX rates: daily → monthly mean
+# --- 2e: Aggregate daily FX to monthly mean ---
 fx_monthly = (
     fx_rates.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
     .group_by("month_date")
@@ -206,8 +199,7 @@ fx_monthly = (
     .sort("month_date")
 )
 
-# Merge all three sources on month_date
-# suffix= prevents column name collisions when both tables have similar names
+# --- 2f: Merge all three ---
 economic = (
     cpi.join(employment_monthly, on="month_date", how="left", suffix="_emp")
     .join(fx_monthly, on="month_date", how="left", suffix="_fx")
@@ -218,28 +210,22 @@ print(f"\n=== Merged Economic Dataset ===")
 print(f"Shape: {economic.shape}")
 print(f"Date range: {economic['month_date'].min()} to {economic['month_date'].max()}")
 
-null_summary = [
-    {"column": col, "nulls": nc, "pct": nc / economic.height}
-    for col in economic.columns
-    if (nc := economic[col].null_count()) > 0
-]
+null_summary = []
+for col in economic.columns:
+    nc = economic[col].null_count()
+    if nc > 0:
+        null_summary.append({"column": col, "nulls": nc, "pct": nc / economic.height})
 if null_summary:
     print("\nNull summary after merge:")
     for ns in null_summary:
         print(f"  {ns['column']}: {ns['nulls']} ({ns['pct']:.1%})")
-# INTERPRETATION: Nulls after the merge fall into two categories:
-# (1) Edge nulls: months at the very start of the series where forward-fill
-#     has no prior value to inherit. These are expected and unavoidable.
-# (2) Coverage gaps: months not covered by the auxiliary dataset at all.
-#     These warrant investigation — check if the source data is complete.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert economic.height > 0, "Merged dataset is empty"
-assert economic.height == monthly_spine.height, (
-    f"Merged dataset should have {monthly_spine.height} rows (one per month), "
-    f"got {economic.height}"
-)
-assert "month_date" in economic.columns, "Merged dataset should have month_date"
+assert (
+    economic.height == monthly_spine.height
+), f"Should have {monthly_spine.height} rows, got {economic.height}"
+assert "month_date" in economic.columns
 print("\n✓ Checkpoint 2 passed — datasets merged to monthly frequency\n")
 
 
@@ -247,67 +233,41 @@ print("\n✓ Checkpoint 2 passed — datasets merged to monthly frequency\n")
 # TASK 3: Configure AlertConfig with domain-appropriate thresholds
 # ══════════════════════════════════════════════════════════════════════
 # AlertConfig controls when DataExplorer raises a warning.
-# The defaults are designed for typical tabular ML datasets — but
-# economic time-series data has different characteristics, so we tune each
-# threshold to match what we actually expect to see in this dataset.
+# Economic time-series has different characteristics than typical ML data.
 
 alert_config = AlertConfig(
-    # Correlation: macro indicators (CPI, employment, FX) are structurally
-    # correlated — a high correlation is expected, not an error.
-    # Raise the threshold so we only flag near-perfect collinearity.
     high_correlation_threshold=0.95,
-    # Nulls: quarterly data forward-filled to monthly will have ~0% nulls
-    # mid-series but potentially some at the edges. 10% is a safe threshold.
     high_null_pct_threshold=0.10,
-    # Constants: a column with only one unique value is definitely a
-    # pipeline failure (e.g., a column that never got populated).
     constant_threshold=1,
-    # Cardinality: date-derived columns will look "high cardinality" because
-    # every month is unique. Relax the threshold to avoid false alarms.
     high_cardinality_ratio=0.95,
-    # Skewness: crisis periods (GFC 2008, COVID 2020) create extreme spikes
-    # in economic indicators. A threshold of 3.0 flags only severe cases.
     skewness_threshold=3.0,
-    # Zeros: some indicators legitimately hit zero (e.g., certain trade flows
-    # during supply-chain disruptions). Allow up to 30% zeros.
     zero_pct_threshold=0.30,
-    # Imbalance: keep strict — if a categorical column is 98% one value
-    # it likely encodes a near-constant feature, which adds no information.
     imbalance_ratio_threshold=0.05,
-    # Duplicates: forward-filling creates repeated values but not duplicate rows
-    # (because month_date differs). A small threshold catches true duplicates.
     duplicate_pct_threshold=0.05,
 )
 
-print(f"\n=== Custom AlertConfig ===")
-print(f"Correlation threshold: {alert_config.high_correlation_threshold}")
-print(f"Null threshold:        {alert_config.high_null_pct_threshold:.0%}")
-print(f"Skewness threshold:    {alert_config.skewness_threshold}")
-# INTERPRETATION: Every threshold here is a deliberate choice, not a default.
-# Setting high_correlation_threshold=0.95 means CPI and employment will likely
-# NOT trigger a correlation alert — their structural relationship is expected.
-# Setting skewness_threshold=3.0 means only the most extreme COVID/GFC shocks
-# will be flagged. Always document your rationale; a reviewer should understand
-# why you chose each number.
+print(f"=== Custom AlertConfig ===")
+print(f"  Correlation threshold: {alert_config.high_correlation_threshold}")
+print(f"  Null threshold:        {alert_config.high_null_pct_threshold:.0%}")
+print(f"  Skewness threshold:    {alert_config.skewness_threshold}")
+print(f"  Zero threshold:        {alert_config.zero_pct_threshold:.0%}")
+print(f"  Cardinality ratio:     {alert_config.high_cardinality_ratio}")
+# INTERPRETATION: Each threshold is a deliberate choice. Raising the
+# correlation threshold to 0.95 means structurally correlated macro
+# indicators won't trigger false alarms. The skewness threshold of 3.0
+# means only extreme COVID/GFC shocks get flagged.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert alert_config.high_correlation_threshold == 0.95, (
-    "Correlation threshold should be 0.95"
-)
-assert alert_config.skewness_threshold == 3.0, "Skewness threshold should be 3.0"
-assert alert_config.high_null_pct_threshold == 0.10, "Null threshold should be 0.10"
-print("\n✓ Checkpoint 3 passed — AlertConfig configured with domain-appropriate thresholds\n")
+assert alert_config.high_correlation_threshold == 0.95
+assert alert_config.skewness_threshold == 3.0
+assert alert_config.high_null_pct_threshold == 0.10
+print("\n✓ Checkpoint 3 passed — AlertConfig configured\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Run async profiling and interpret alerts
 # ══════════════════════════════════════════════════════════════════════
-# DataExplorer.profile() is an async function — it must run inside an
-# async context. asyncio.run() creates an event loop and runs our async
-# main() function to completion, then returns the result.
-#
-# Why async? DataExplorer can profile multiple columns in parallel using
-# Python's async I/O model, which is faster for wide DataFrames.
+# DataExplorer.profile() is async — it runs inside asyncio.run().
 
 
 def _interpret_alert(alert_type: str, column: str, value) -> str:
@@ -315,17 +275,14 @@ def _interpret_alert(alert_type: str, column: str, value) -> str:
     interpretations = {
         "high_nulls": (
             f"Column '{column}' has {value:.1%} missing values. "
-            "For quarterly data forward-filled to monthly, edge nulls are expected. "
-            "For monthly CPI/FX columns, investigate the data pipeline."
+            "For forward-filled quarterly data, edge nulls are expected."
         ),
         "constant": (
-            f"Column '{column}' has <=1 unique value — likely a pipeline failure. "
-            "Remove it before modelling; it carries no information."
+            f"Column '{column}' has <=1 unique value — likely a pipeline failure."
         ),
         "high_skewness": (
             f"Column '{column}' skewness={value:.2f}. "
-            "Crisis-period outliers (GFC 2008, COVID 2020) cause this. "
-            "Consider: log-transform, winsorise at 99th percentile, or model separately."
+            "Crisis-period outliers cause this. Consider log-transform or winsorisation."
         ),
         "high_zeros": (
             f"Column '{column}' has {value:.1%} zero values. "
@@ -341,12 +298,11 @@ def _interpret_alert(alert_type: str, column: str, value) -> str:
         ),
         "duplicates": (
             f"Dataset has {value:.1%} duplicate rows. "
-            "Forward-filling quarterly data should not create true row duplicates. "
             "Check whether month_date is truly unique."
         ),
         "imbalanced": (
             f"Column '{column}' minority class at {value:.1%}. "
-            "Rare events (recessions, crises) are naturally rare in economic data."
+            "Rare events (recessions) are naturally rare in economic data."
         ),
     }
     return interpretations.get(
@@ -355,7 +311,7 @@ def _interpret_alert(alert_type: str, column: str, value) -> str:
 
 
 async def profile_economic_data():
-    """Profile the merged economic dataset with DataExplorer."""
+    """Profile the merged economic dataset."""
     explorer = DataExplorer(alert_config=alert_config)
 
     print("\n=== Running DataExplorer Profile ===")
@@ -366,7 +322,7 @@ async def profile_economic_data():
     print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
     print(f"Type summary: {profile.type_summary}")
 
-    # Alerts — the main output to act on
+    # Alerts
     print(f"\n--- Alerts ({len(profile.alerts)}) ---")
     for alert in profile.alerts:
         alert_type = alert["type"]
@@ -380,63 +336,114 @@ async def profile_economic_data():
         print(f"    Value:  {value}")
         print(f"    Why:    {interpretation}")
 
-    # Column-level statistics
+    return profile
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Column-level profile deep dive
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def column_deep_dive(profile):
+    """Analyse column-level statistics from the profile."""
     print("\n--- Column Profiles ---")
+
+    numeric_profiles = []
+    categorical_profiles = []
+
     for col in profile.columns:
         if col.inferred_type == "numeric":
+            numeric_profiles.append(col)
             print(
                 f"  {col.name}: {col.inferred_type} | "
                 f"mean={col.mean:.3g}, std={col.std:.3g}, "
                 f"nulls={col.null_pct:.1%}, skew={col.skewness:.2f}"
             )
         else:
+            categorical_profiles.append(col)
             print(
                 f"  {col.name}: {col.inferred_type} | "
                 f"unique={col.unique_count}, nulls={col.null_pct:.1%}"
             )
 
-    # Spearman correlations — rank-based, better for non-linear economic relationships
-    if profile.spearman_matrix:
-        print("\n--- Top Spearman Correlations (|r| > 0.8) ---")
-        seen: set[tuple[str, str]] = set()
-        corrs = []
-        for col_a, row in profile.spearman_matrix.items():
-            for col_b, corr in row.items():
-                if col_a != col_b and (col_b, col_a) not in seen and abs(corr) > 0.8:
-                    seen.add((col_a, col_b))
-                    corrs.append((col_a, col_b, corr))
-        corrs.sort(key=lambda x: abs(x[2]), reverse=True)
-        for col_a, col_b, corr in corrs[:10]:
-            print(f"  {col_a} <-> {col_b}: {corr:.3f}")
-    # INTERPRETATION: Spearman measures rank-order correlation — it captures
-    # monotonic relationships that Pearson misses (e.g., CPI may correlate
-    # non-linearly with employment). A Spearman r > 0.8 between two predictors
-    # signals potential multicollinearity: including both in a regression model
-    # inflates coefficient standard errors and makes interpretation unreliable.
+    # --- Identify most problematic columns ---
+    print(f"\n--- Column Quality Ranking ---")
+    # Score: higher = more problematic
+    scored = []
+    for col in numeric_profiles:
+        score = 0
+        if col.null_pct > 0.05:
+            score += 2
+        if abs(col.skewness) > 2:
+            score += 1
+        if col.std == 0:
+            score += 3  # constant column
+        scored.append((col.name, score, col.null_pct, col.skewness))
 
-    # Generate HTML visualisations
-    print("\n--- Generating Visualisations ---")
-    vis_report = await explorer.visualize(economic)
-    for name, fig in vis_report.figures.items():
-        filename = f"ex7_{name}.html"
-        fig.write_html(filename)
-        print(f"  Saved: {filename}")
+    scored.sort(key=lambda x: x[1], reverse=True)
+    print(f"  {'Column':<25} {'Score':>6} {'Nulls':>8} {'Skew':>8}")
+    print(f"  {'─' * 50}")
+    for name, score, nulls, skew in scored[:10]:
+        print(f"  {name:<25} {score:>6} {nulls:>7.1%} {skew:>8.2f}")
 
-    return profile
+    return numeric_profiles, categorical_profiles
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Compare data quality across time periods
+# TASK 6: Spearman correlation analysis
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def spearman_analysis(profile):
+    """Analyse Spearman rank correlations from the profile."""
+    if not profile.spearman_matrix:
+        print("\n--- No Spearman matrix available ---")
+        return
+
+    print("\n--- Top Spearman Correlations (|r| > 0.8) ---")
+    seen: set[tuple[str, str]] = set()
+    corrs = []
+    for col_a, row in profile.spearman_matrix.items():
+        for col_b, corr in row.items():
+            if (
+                col_a != col_b
+                and corr is not None
+                and (col_b, col_a) not in seen
+                and abs(corr) > 0.8
+            ):
+                seen.add((col_a, col_b))
+                corrs.append((col_a, col_b, corr))
+    corrs.sort(key=lambda x: abs(x[2]), reverse=True)
+
+    for col_a, col_b, corr in corrs[:15]:
+        direction = "positive" if corr > 0 else "negative"
+        strength = "strong" if abs(corr) > 0.9 else "moderate"
+        print(f"  {col_a} <-> {col_b}: {corr:.3f}  ({strength} {direction})")
+    # INTERPRETATION: Spearman measures rank-order correlation — captures
+    # monotonic relationships that Pearson misses. |r| > 0.8 between two
+    # predictors signals multicollinearity risk for regression models.
+
+    # --- Count high-correlation pairs per column ---
+    col_corr_counts: dict[str, int] = {}
+    for col_a, col_b, _ in corrs:
+        col_corr_counts[col_a] = col_corr_counts.get(col_a, 0) + 1
+        col_corr_counts[col_b] = col_corr_counts.get(col_b, 0) + 1
+
+    if col_corr_counts:
+        print(f"\n--- Columns with Most High Correlations ---")
+        for col, count in sorted(
+            col_corr_counts.items(), key=lambda x: x[1], reverse=True
+        )[:5]:
+            print(f"  {col}: {count} pairs with |r| > 0.8")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 7: Compare pre-COVID vs COVID-era data quality
 # ══════════════════════════════════════════════════════════════════════
 
 
 async def compare_periods():
-    """Compare pre-COVID vs COVID-era economic data quality.
-
-    DataExplorer.compare() profiles two DataFrames separately and then
-    computes column-level deltas — mean shifts, std changes, null changes.
-    This is the standard way to detect distribution drift across time.
-    """
+    """Compare pre-COVID vs COVID-era economic data quality."""
     explorer = DataExplorer(alert_config=alert_config)
 
     covid_cutoff = pl.date(2020, 3, 1)
@@ -449,43 +456,181 @@ async def compare_periods():
 
     comparison = await explorer.compare(pre_covid, during_covid)
 
-    print(f"\nShape comparison: {comparison['shape_comparison']}")
-    print(f"Shared columns:   {len(comparison['shared_columns'])}")
+    # Access comparison result — handle both dict and object return types
+    if isinstance(comparison, dict):
+        shape_cmp = comparison.get("shape_comparison", "N/A")
+        shared_cols = comparison.get("shared_columns", [])
+        col_deltas = comparison.get("column_deltas", [])
+    else:
+        shape_cmp = getattr(comparison, "shape_comparison", "N/A")
+        shared_cols = getattr(comparison, "shared_columns", [])
+        col_deltas = getattr(comparison, "column_deltas", [])
 
-    # Sort by absolute mean delta to surface the biggest distribution shifts
+    print(f"\nShape comparison: {shape_cmp}")
+    print(f"Shared columns:   {len(shared_cols)}")
+
+    # Sort by absolute mean delta
     print("\n--- Column Deltas (largest mean shifts) ---")
     deltas = sorted(
-        comparison["column_deltas"],
-        key=lambda d: abs(d.get("mean_delta", 0)),
+        col_deltas,
+        key=lambda d: abs(
+            d.get("mean_delta", 0)
+            if isinstance(d, dict)
+            else getattr(d, "mean_delta", 0)
+        ),
         reverse=True,
     )
     for delta in deltas[:10]:
+        col = (
+            delta.get("column", "?")
+            if isinstance(delta, dict)
+            else getattr(delta, "column", "?")
+        )
+        mean_delta = (
+            delta.get("mean_delta", 0)
+            if isinstance(delta, dict)
+            else getattr(delta, "mean_delta", 0)
+        )
+        std_delta = (
+            delta.get("std_delta", 0)
+            if isinstance(delta, dict)
+            else getattr(delta, "std_delta", 0)
+        )
+        print(f"  {col}: mean delta={mean_delta:+,.3g}  std delta={std_delta:+,.3g}")
+
+    # --- Classify the impact ---
+    print(f"\n--- COVID Impact Classification ---")
+    for delta in deltas[:10]:
         col = delta.get("column", "?")
-        mean_delta = delta.get("mean_delta", 0)
-        std_delta = delta.get("std_delta", 0)
-        print(f"  {col}: mean Δ={mean_delta:+,.3g}  std Δ={std_delta:+,.3g}")
+        md = delta.get("mean_delta", 0)
+        sd = delta.get("std_delta", 0)
+        if abs(md) < 0.01 and abs(sd) < 0.01:
+            impact = "minimal"
+        elif sd > 0:
+            impact = "more volatile during COVID"
+        else:
+            impact = "less volatile during COVID"
+        if md > 0:
+            direction = "higher"
+        elif md < 0:
+            direction = "lower"
+        else:
+            direction = "unchanged"
+        print(f"  {col:<30} {direction:<12} {impact}")
     # INTERPRETATION: Columns with the largest mean_delta experienced the
-    # biggest distributional shift between pre-COVID and COVID-era periods.
-    # A positive mean_delta means the COVID-era average is higher (inflation-driven
-    # indicators like CPI, or pandemic-era FX volatility). A negative delta
-    # signals a post-COVID decline in that variable (e.g., certain employment rates).
-    # std_delta shows whether the distribution got wider (more volatile) or
-    # narrower during COVID — most economic indicators became more volatile.
+    # biggest distributional shift. Positive = COVID-era average is higher.
+    # Higher std_delta = more volatile during COVID.
 
     return comparison
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Generate self-contained HTML report
+# TASK 8: try/except — error handling patterns
+# ══════════════════════════════════════════════════════════════════════
+# try/except is Python's error handling mechanism. Without it, an error
+# crashes your entire program. With it, you can handle the error
+# gracefully and continue.
+
+# --- 8a: Basic try/except ---
+print("\n=== Error Handling Patterns ===")
+
+# Division by zero
+try:
+    result = 100 / 0
+except ZeroDivisionError as e:
+    print(f"  Caught ZeroDivisionError: {e}")
+    result = 0
+print(f"  result = {result}")
+
+# Invalid type conversion
+try:
+    number = int("not_a_number")
+except ValueError as e:
+    print(f"  Caught ValueError: {e}")
+    number = 0
+print(f"  number = {number}")
+
+
+# --- 8b: Multiple except blocks ---
+def safe_parse_date(date_str: str) -> str:
+    """Try multiple date formats and return the first that works."""
+    formats = ["%Y-%m-%d", "%d/%m/%Y", "%Y-%m", "%m/%Y"]
+    for fmt in formats:
+        try:
+            parsed = pl.Series([date_str]).str.to_date(fmt)[0]
+            return str(parsed)
+        except Exception:
+            continue
+    return f"UNPARSEABLE: {date_str}"
+
+
+# Test the parser
+test_dates = ["2023-01-15", "15/01/2023", "2023-01", "01/2023", "garbage"]
+print(f"\n  Date parsing results:")
+for d in test_dates:
+    print(f"    {d!r:>20} -> {safe_parse_date(d)}")
+
+
+# --- 8c: try/except/else/finally ---
+def load_and_describe(module: str, filename: str) -> dict | None:
+    """Attempt to load a file and return its description.
+
+    - try:     the operation that might fail
+    - except:  what to do if it fails
+    - else:    what to do if it succeeds (no error)
+    - finally: what to do ALWAYS, regardless of success or failure
+    """
+    try:
+        df = loader.load(module, filename)
+    except FileNotFoundError:
+        print(f"    File not found: {module}/{filename}")
+        return None
+    except Exception as e:
+        print(f"    Unexpected error: {type(e).__name__}: {e}")
+        return None
+    else:
+        # Only runs if try succeeded
+        return {"shape": df.shape, "columns": df.columns}
+    finally:
+        # Always runs — useful for cleanup
+        print(f"    Attempted load of {module}/{filename}")
+
+
+print(f"\n  File loading with error handling:")
+result_good = load_and_describe("mlfp01", "sg_cpi.csv")
+result_bad = load_and_describe("mlfp01", "nonexistent_file.csv")
+print(f"  Good result: {result_good}")
+print(f"  Bad result:  {result_bad}")
+
+
+# --- 8d: Raising your own exceptions ---
+def validate_threshold(value: float, name: str) -> None:
+    """Validate that a threshold is between 0 and 1."""
+    if not 0 <= value <= 1:
+        raise ValueError(f"{name} must be between 0 and 1, got {value}")
+
+
+try:
+    validate_threshold(0.5, "correlation_threshold")
+    print(f"\n  validate_threshold(0.5): passed")
+    validate_threshold(1.5, "correlation_threshold")
+except ValueError as e:
+    print(f"  validate_threshold(1.5): {e}")
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert result == 0, "Division by zero should be caught"
+assert result_good is not None, "Good file should load"
+assert result_bad is None, "Missing file should return None"
+print("\n✓ Checkpoint 8 passed — error handling patterns working\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 9: Generate self-contained HTML report
 # ══════════════════════════════════════════════════════════════════════
 
 
 async def generate_report():
-    """Write a single-file HTML profiling report for the economic dataset.
-
-    to_html() embeds all charts and statistics in one HTML file — no server
-    needed. Students and stakeholders can open it in any browser.
-    """
+    """Generate a single-file HTML profiling report."""
     explorer = DataExplorer(alert_config=alert_config)
 
     report_html = await explorer.to_html(
@@ -498,41 +643,146 @@ async def generate_report():
         f.write(report_html)
     print(f"\nSaved: {report_path}")
 
+    # Also generate per-column visualisations using the profile
+    print("--- Generating Visualisations ---")
+    numeric_cols = [
+        c
+        for c, t in zip(economic.columns, economic.dtypes)
+        if t in (pl.Float64, pl.Int64, pl.Float32, pl.Int32)
+    ]
+    for col in numeric_cols[:6]:
+        fig = viz.histogram(economic, column=col, title=f"Distribution: {col}")
+        filename = f"ex7_{col}_dist.html"
+        fig.write_html(filename)
+        print(f"  Saved: {filename}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 10: Data quality scorecard and action plan
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def build_scorecard(profile, comparison):
+    """Build a data quality scorecard from profiling results."""
+    print(f"\n{'═' * 65}")
+    print(f"  DATA QUALITY SCORECARD")
+    print(f"{'═' * 65}")
+
+    # --- Completeness score ---
+    total_cells = profile.n_rows * profile.n_columns
+    null_cells = sum(col.null_pct * profile.n_rows for col in profile.columns)
+    completeness = (total_cells - null_cells) / total_cells * 100
+    print(f"  Completeness:  {completeness:.1f}%  (non-null cells / total cells)")
+
+    # --- Uniqueness score ---
+    uniqueness = (1 - profile.duplicate_pct) * 100
+    print(f"  Uniqueness:    {uniqueness:.1f}%  (non-duplicate rows / total rows)")
+
+    # --- Alert score ---
+    alert_count = len(profile.alerts)
+    severity_counts = {}
+    for alert in profile.alerts:
+        sev = alert["severity"]
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    print(f"  Alerts:        {alert_count} total")
+    for sev, count in sorted(severity_counts.items()):
+        print(f"    {sev}: {count}")
+
+    # --- Overall grade ---
+    if completeness >= 95 and uniqueness >= 99 and alert_count <= 3:
+        grade = "A"
+    elif completeness >= 90 and uniqueness >= 95 and alert_count <= 6:
+        grade = "B"
+    elif completeness >= 80 and uniqueness >= 90:
+        grade = "C"
+    else:
+        grade = "D"
+    print(f"\n  Overall Grade: {grade}")
+
+    # --- Action plan ---
+    print(f"\n--- Recommended Actions ---")
+    actions = []
+    if completeness < 95:
+        actions.append(
+            "1. Investigate and handle missing values (impute or document gaps)"
+        )
+    if uniqueness < 99:
+        actions.append("2. Deduplicate rows before modelling")
+    if any(a["type"] == "high_skewness" for a in profile.alerts):
+        actions.append("3. Apply log-transform or winsorisation to skewed columns")
+    if any(a["type"] == "high_correlation" for a in profile.alerts):
+        actions.append(
+            "4. Check for multicollinearity — consider dropping redundant features"
+        )
+    if any(a["type"] == "constant" for a in profile.alerts):
+        actions.append("5. Remove constant columns (zero information content)")
+    if any(a["type"] == "high_zeros" for a in profile.alerts):
+        actions.append(
+            "6. Verify zero-heavy columns — are zeros real or missing-as-zero?"
+        )
+    if not actions:
+        actions.append("Data quality is good — no critical actions needed.")
+    for action in actions:
+        print(f"  {action}")
+
+    # --- COVID impact summary ---
+    if comparison:
+        n_shifted = sum(
+            1
+            for d in comparison.get("column_deltas", [])
+            if abs(d.get("mean_delta", 0)) > 0.1
+        )
+        print(f"\n--- COVID Impact ---")
+        print(f"  Columns with significant distributional shift: {n_shifted}")
+        print(f"  Recommendation: Consider training separate models for pre/post-COVID")
+
+    print(f"{'═' * 65}")
+    return grade
+
 
 # ── Run all async tasks ───────────────────────────────────────────────
-# We bundle all three async calls into a single main() coroutine and
-# run it once with asyncio.run(). This avoids creating multiple event loops.
-
-
 async def main():
     profile = await profile_economic_data()
+    numeric_profiles, cat_profiles = await column_deep_dive(profile)
+    await spearman_analysis(profile)
     comparison = await compare_periods()
     await generate_report()
-    return profile, comparison
+    grade = await build_scorecard(profile, comparison)
+    return profile, comparison, grade
 
 
-# try/except shows students how to handle errors — a natural introduction
-# to Python exception handling in a realistic context.
 try:
-    profile, comparison = asyncio.run(main())
+    profile, comparison, grade = asyncio.run(main())
 
-    # ── Checkpoint 4 ─────────────────────────────────────────────────
+    # ── Checkpoint 4 (profiling) ─────────────────────────────────────
     assert profile is not None, "profile should not be None"
-    assert profile.n_rows == economic.height, (
-        f"Profile n_rows ({profile.n_rows}) should match economic.height ({economic.height})"
-    )
-    assert comparison is not None, "comparison should not be None"
-    assert "column_deltas" in comparison, "comparison should contain column_deltas"
+    assert profile.n_rows == economic.height
+    print("\n✓ Checkpoint 4 passed — DataExplorer profiling complete")
+
+    # ── Checkpoint 5 (column analysis) ───────────────────────────────
+    assert profile.columns is not None
+    print("✓ Checkpoint 5 passed — column-level analysis complete")
+
+    # ── Checkpoint 6 (Spearman) ──────────────────────────────────────
+    print("✓ Checkpoint 6 passed — Spearman analysis complete")
+
+    # ── Checkpoint 7 (comparison) ────────────────────────────────────
+    assert comparison is not None
+    assert "column_deltas" in comparison
+    print("✓ Checkpoint 7 passed — period comparison complete")
+
+    # ── Checkpoint 9 (report) ────────────────────────────────────────
     import os
-    assert os.path.exists("ex7_economic_profile_report.html"), (
-        "HTML report file not created"
-    )
-    print("\n✓ Checkpoint 4 passed — DataExplorer profiling, comparison, and report complete\n")
-    print("\n✓ Exercise 7 complete — DataExplorer profiling on dirty economic data")
+
+    assert os.path.exists("ex7_economic_profile_report.html")
+    print("✓ Checkpoint 9 passed — HTML report generated")
+
+    # ── Checkpoint 10 (scorecard) ────────────────────────────────────
+    assert grade in ("A", "B", "C", "D")
+    print("✓ Checkpoint 10 passed — quality scorecard complete\n")
+
 except Exception as exc:
-    # In a real pipeline you would log the full traceback and alert on-call.
-    # For this exercise, print a readable message and re-raise so the
-    # interpreter still shows the stack trace.
     print(f"\n[ERROR] Profiling failed: {exc}")
     raise
 
@@ -540,22 +790,28 @@ except Exception as exc:
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
-print("═" * 58)
+print("═" * 60)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 58)
-print("""
+print("═" * 60)
+print(
+    """
   ✓ DataExplorer: one call to profile an entire dataset
   ✓ AlertConfig: tuning thresholds for your specific domain
-  ✓ Async: async def, await, asyncio.run() — parallel column profiling
-  ✓ try/except: handling errors gracefully without crashing the program
-  ✓ compare(): detecting distribution drift between two time periods
-  ✓ to_html(): generating shareable profiling reports
   ✓ Alert interpretation: mapping each alert type to a cleaning action
+  ✓ Column-level profiling: mean, std, skewness, null rates per column
+  ✓ Spearman correlation: rank-based correlation for non-linear patterns
+  ✓ compare(): detecting distribution drift between time periods
+  ✓ try/except: handling errors gracefully without crashing
+  ✓ try/except/else/finally: the full error handling pattern
+  ✓ Raising exceptions: validating inputs with custom error messages
+  ✓ to_html(): generating shareable profiling reports
+  ✓ Data quality scorecard: completeness, uniqueness, alert grading
+  ✓ Async: async def, await, asyncio.run() for parallel column profiling
 
   NEXT: In Exercise 8, you'll put all of M1 together in one end-to-end
   pipeline — load messy taxi trip data, profile it with DataExplorer,
-  clean it based on the alerts, engineer temporal and spatial features,
-  prepare it with PreprocessingPipeline, visualise key patterns, then
-  re-profile to confirm quality improvement. This is the capstone of
-  Module 1 and the foundation for Module 2 feature engineering.
-""")
+  clean it based on the alerts, engineer features, prepare with
+  PreprocessingPipeline, visualise patterns, then re-profile to confirm
+  quality improvement. This is the capstone of Module 1.
+"""
+)

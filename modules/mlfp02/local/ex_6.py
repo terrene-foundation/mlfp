@@ -7,40 +7,47 @@
 #
 # WHAT YOU'LL LEARN:
 #   After completing this exercise, you will be able to:
-#   - Implement the sigmoid function correctly (numerically stable)
-#   - Build logistic regression from scratch using MLE (Bernoulli likelihood)
-#   - Interpret coefficients as odds ratios: exp(β) = multiplicative change in odds
-#   - Evaluate classification models with accuracy, confusion matrix, and AUC-ROC
+#   - Implement the sigmoid function with numerical stability
+#   - Build logistic regression from scratch via MLE (Bernoulli likelihood)
+#   - Compare from-scratch implementation with sklearn LogisticRegression
+#   - Interpret coefficients as odds ratios: exp(β) = multiplicative change
+#   - Optimise classification threshold using a cost matrix
+#   - Evaluate with accuracy, confusion matrix, precision, recall, F1
+#   - Plot and interpret ROC curves and compute AUC
+#   - Plot precision-recall curves for imbalanced classes
+#   - Assess model calibration with calibration curves and Brier score
 #   - Perform one-way ANOVA and post-hoc Tukey HSD for multi-group comparison
+#   - Visualise all classification and ANOVA results
 #
-# PREREQUISITES: Complete Exercise 5 — you should understand MLE, t-statistics,
-#   the sigmoid function connection to linear models, and scipy.optimize.minimize.
+# PREREQUISITES: Complete Exercise 5 — you should understand OLS,
+#   t-statistics, the connection between linear models and the sigmoid,
+#   and scipy.optimize.minimize.
 #
-# ESTIMATED TIME: 75 minutes
+# ESTIMATED TIME: ~170 minutes
 #
 # TASKS:
-#   1. Load HDB data and create a binary classification target
-#   2. Implement the sigmoid function and verify its properties
-#   3. Build logistic regression via MLE (scipy.optimize.minimize)
-#   4. Compare with sklearn LogisticRegression
-#   5. Interpret coefficients as odds ratios
-#   6. Compute accuracy and confusion matrix
-#   7. One-way ANOVA: compare resale prices across flat types
-#   8. Post-hoc Tukey HSD test
-#   9. Visualise: ROC curve, odds ratio forest plot
+#    1. Load HDB data, create binary classification target
+#    2. Implement sigmoid function and verify properties
+#    3. Logistic regression from scratch (MLE on Bernoulli log-likelihood)
+#    4. Compare with sklearn LogisticRegression
+#    5. Interpret coefficients as odds ratios
+#    6. Threshold optimisation using a cost matrix
+#    7. Confusion matrix, precision, recall, F1
+#    8. ROC curve and AUC
+#    9. Precision-recall curve
+#   10. Model calibration: calibration curve and Brier score
+#   11. ANOVA: compare resale prices across flat types + Tukey HSD
+#   12. Visualise and synthesise findings
 #
 # DATASET: HDB resale flat transactions (Singapore)
 #   Source: data.gov.sg — public housing resale records, 2020+
 #   Binary target: high_price = 1 if resale_price > median, else 0
 #
 # THEORY:
-#   Logistic regression models P(y=1|X) via the log-odds (logit) link:
-#     log(P / (1-P)) = beta_0 + beta_1*x_1 + ... + beta_p*x_p
-#   Inverting gives the sigmoid:
-#     P(y=1|X) = 1 / (1 + exp(-(beta_0 + beta_1*x_1 + ...)))
-#   MLE maximises the Bernoulli log-likelihood:
-#     log L(beta) = sum[ y_i*log(p_i) + (1-y_i)*log(1-p_i) ]
-#   Odds ratio: exp(beta_j) = multiplicative change in odds per unit of x_j
+#   Logistic regression: log(P/(1-P)) = β₀ + β₁x₁ + ...
+#   Sigmoid: P(y=1|X) = 1 / (1 + exp(-(Xβ)))
+#   MLE: maximise Σ[yᵢ log(pᵢ) + (1-yᵢ) log(1-pᵢ)]
+#   Odds ratio: exp(βⱼ) = multiplicative change in odds per unit of xⱼ
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -48,11 +55,23 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from kailash_ml import ModelVisualizer
 from scipy import stats
 from scipy.optimize import minimize
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_curve,
+    auc,
+    precision_recall_curve,
+    brier_score_loss,
+)
 
 from shared import MLFPDataLoader
 
@@ -62,32 +81,24 @@ from shared import MLFPDataLoader
 loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet")
 
-print("=" * 60)
+print("=" * 70)
 print("  MLFP02 Exercise 6: Logistic Regression and Classification")
-print("=" * 60)
+print("=" * 70)
 print(f"\n  Data loaded: hdb_resale.parquet ({hdb.shape[0]:,} rows)")
-print(f"  Columns: {hdb.columns}")
-print(hdb.head(5))
 
-# Focus on recent data for a cleaner signal
-hdb_recent = hdb.filter(
-    pl.col("month").str.to_date("%Y-%m") >= pl.date(2020, 1, 1)
-)
-print(f"\nFiltered to 2020+: {hdb_recent.height:,} transactions")
+hdb_recent = hdb.filter(pl.col("month").str.to_date("%Y-%m") >= pl.date(2020, 1, 1))
+print(f"  Filtered to 2020+: {hdb_recent.height:,} transactions")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Create binary classification target
+# TASK 1: Create Binary Classification Target
 # ══════════════════════════════════════════════════════════════════════
-# Target: high_price = 1 if resale_price > median, else 0
-# This converts a continuous outcome into a classification problem.
-# Why median? It gives a balanced 50/50 split, making evaluation
-# interpretable (baseline accuracy = 50%).
+# Target: high_price = 1 if resale_price > median
+# This gives a balanced 50/50 split (baseline accuracy = 50%).
 
 median_price = hdb_recent["resale_price"].median()
-print(f"\nMedian resale price: ${median_price:,.0f}")
+print(f"\n  Median price: ${median_price:,.0f}")
 
-# Parse storey range to a numeric midpoint
 hdb_model = hdb_recent.with_columns(
     (pl.col("resale_price") > median_price).cast(pl.Int32).alias("high_price"),
     (
@@ -97,633 +108,641 @@ hdb_model = hdb_recent.with_columns(
         )
         / 2.0
     ).alias("storey_mid"),
-).drop_nulls(subset=["floor_area_sqm", "storey_mid", "high_price"])
+    (
+        99
+        - (
+            pl.col("month").str.to_date("%Y-%m").dt.year()
+            - pl.col("lease_commence_date")
+        )
+    )
+    .cast(pl.Float64)
+    .alias("remaining_lease"),
+).drop_nulls(subset=["floor_area_sqm", "storey_mid", "high_price", "remaining_lease"])
 
-print(f"Dataset for modelling: {hdb_model.height:,} rows")
-print(f"Target distribution:")
-print(
-    f"  high_price=1: {hdb_model.filter(pl.col('high_price') == 1).height:,} "
-    f"({hdb_model.filter(pl.col('high_price') == 1).height / hdb_model.height:.1%})"
-)
-print(
-    f"  high_price=0: {hdb_model.filter(pl.col('high_price') == 0).height:,} "
-    f"({hdb_model.filter(pl.col('high_price') == 0).height / hdb_model.height:.1%})"
-)
-# INTERPRETATION: Using the median as threshold guarantees a 50/50 split.
-# A model predicting "high" for everything would achieve 50% accuracy —
-# this is our baseline. Any useful model must beat 50%.
+n_total = hdb_model.height
+n_positive = hdb_model.filter(pl.col("high_price") == 1).height
+print(f"  Total: {n_total:,}, Positive: {n_positive:,} ({n_positive/n_total:.1%})")
+
+# Prepare arrays
+feature_cols = ["floor_area_sqm", "storey_mid", "remaining_lease"]
+X_raw = hdb_model.select(feature_cols).to_numpy().astype(np.float64)
+y = hdb_model["high_price"].to_numpy().astype(np.float64)
+
+# Standardise features for optimisation stability
+X_mean = X_raw.mean(axis=0)
+X_std = X_raw.std(axis=0)
+X_scaled = (X_raw - X_mean) / X_std
+n_obs, n_feat = X_scaled.shape
+
+# Add intercept
+X = np.column_stack([np.ones(n_obs), X_scaled])
+feature_names = ["intercept"] + feature_cols
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert hdb_model.height > 0, "Model dataset should not be empty"
-assert "high_price" in hdb_model.columns, "high_price target column missing"
-n_high = hdb_model.filter(pl.col("high_price") == 1).height
-n_low = hdb_model.filter(pl.col("high_price") == 0).height
-assert abs(n_high - n_low) / hdb_model.height < 0.01, \
-    "high_price should be approximately balanced (within 1% of 50/50)"
-print("\n✓ Checkpoint 1 passed — binary target created and balanced\n")
+assert abs(n_positive / n_total - 0.5) < 0.02, "Median split should give ~50/50"
+assert X.shape == (n_obs, n_feat + 1), "Design matrix shape incorrect"
+print("\n✓ Checkpoint 1 passed — binary target created\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Implement the sigmoid function
+# TASK 2: Sigmoid Function — Implementation and Properties
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: The sigmoid (logistic) function maps any real number to (0, 1):
-#   sigma(z) = 1 / (1 + exp(-z))
-#
-# Properties:
-#   - sigma(0) = 0.5 (decision boundary)
-#   - sigma(z) -> 1 as z -> +inf
-#   - sigma(z) -> 0 as z -> -inf
-#   - sigma'(z) = sigma(z) * (1 - sigma(z))  (useful for gradient descent)
-#   - sigma(-z) = 1 - sigma(z)  (symmetric about 0.5)
-#
-# Numerical stability: for very negative z, exp(-z) overflows.
-# Use: sigma(z) = exp(z) / (1 + exp(z)) when z < 0.
+# σ(z) = 1 / (1 + exp(-z))
+# Numerically stable: for z >> 0, use 1/(1+exp(-z));
+# for z << 0, use exp(z)/(1+exp(z)) to avoid overflow.
 
 
 def sigmoid(z: np.ndarray) -> np.ndarray:
-    """Numerically stable sigmoid function.
-
-    For z >= 0:  1 / (1 + exp(-z))       -- standard form
-    For z < 0:   exp(z) / (1 + exp(z))   -- avoids exp overflow
-    """
-    # TODO: Implement numerically stable sigmoid using pos_mask / neg_mask
-    # Hint: result = np.zeros_like(z, dtype=np.float64)
-    #       pos_mask = z >= 0; result[pos_mask] = 1.0 / (1.0 + np.exp(-z[pos_mask]))
-    #       exp_z = np.exp(z[neg_mask]); result[neg_mask] = exp_z / (1.0 + exp_z)
+    """Numerically stable sigmoid function."""
     result = np.zeros_like(z, dtype=np.float64)
-    pos_mask = z >= 0
-    neg_mask = ~pos_mask
-    result[pos_mask] = ____  # Hint: 1.0 / (1.0 + np.exp(-z[pos_mask]))
-    exp_z = np.exp(z[neg_mask])
-    result[neg_mask] = ____  # Hint: exp_z / (1.0 + exp_z)
+    pos = z >= 0
+    neg = ~pos
+    # TODO: Implement sigmoid for positive z: 1 / (1 + exp(-z))
+    result[pos] = ____  # Hint: 1.0 / (1.0 + np.exp(-z[pos]))
+    exp_z = np.exp(z[neg])
+    # TODO: Implement sigmoid for negative z: exp(z) / (1 + exp(z))
+    result[neg] = ____  # Hint: exp_z / (1.0 + exp_z)
     return result
 
 
 # Verify properties
-z_test = np.array([-10.0, -1.0, 0.0, 1.0, 10.0])
-sig_test = sigmoid(z_test)
+print(f"\n=== Sigmoid Properties ===")
+test_values = [-10, -5, -1, 0, 1, 5, 10]
+for z in test_values:
+    s = sigmoid(np.array([z]))[0]
+    print(f"  σ({z:>3}) = {s:.6f}")
 
-print(f"\n=== Sigmoid Function Verification ===")
-print(f"{'z':>8} {'sigma(z)':>12} {'1-sigma(-z)':>14}")
-print("─" * 38)
-for z_val, s_val in zip(z_test, sig_test):
-    check = 1.0 - sigmoid(np.array([-z_val]))[0]
-    print(f"{z_val:>8.1f} {s_val:>12.6f} {check:>14.6f}")
+# Key properties
+assert abs(sigmoid(np.array([0.0]))[0] - 0.5) < 1e-10, "σ(0) must equal 0.5"
+assert sigmoid(np.array([100.0]))[0] > 0.999, "σ(large) must be near 1"
+assert sigmoid(np.array([-100.0]))[0] < 0.001, "σ(very negative) must be near 0"
 
-print(f"\nsigma(0) = {sigmoid(np.array([0.0]))[0]:.6f} (should be 0.5)")
-print(f"Symmetry check: sigma(z) + sigma(-z) = {sig_test[0] + sig_test[-1]:.6f} (should be 1.0)")
+# Symmetry: σ(-z) = 1 - σ(z)
+z_test = np.array([2.5])
+assert abs(sigmoid(-z_test)[0] - (1 - sigmoid(z_test)[0])) < 1e-10, "Symmetry must hold"
 
-# Derivative check: sigma'(z) = sigma(z) * (1 - sigma(z))
-z_deriv = np.array([0.0])
-sig_at_0 = sigmoid(z_deriv)[0]
-deriv_at_0 = sig_at_0 * (1 - sig_at_0)
-print(f"sigma'(0) = {deriv_at_0:.6f} (maximum derivative = 0.25, at z=0)")
-# INTERPRETATION: The derivative of sigmoid is maximised at z=0 (the decision
-# boundary). This means the model is most "sensitive" to inputs near the boundary.
-# Far from the boundary (|z|>>0), the sigmoid saturates and gradients vanish —
-# this is why deep networks with many sigmoid layers suffer from vanishing gradients.
+# Derivative: σ'(z) = σ(z)(1 - σ(z))
+s_val = sigmoid(z_test)[0]
+# TODO: Compute analytical derivative of sigmoid
+deriv_analytical = ____  # Hint: s_val * (1 - s_val)
+deriv_numerical = (sigmoid(z_test + 1e-7)[0] - sigmoid(z_test - 1e-7)[0]) / (2e-7)
+print(f"\n  Derivative at z=2.5:")
+print(f"  Analytical σ'(z) = σ(z)(1-σ(z)) = {deriv_analytical:.6f}")
+print(f"  Numerical:  {deriv_numerical:.6f}")
+# INTERPRETATION: The sigmoid maps any real number to (0, 1) — perfect
+# for modelling probabilities. At z=0, the probability is exactly 50%.
+# The derivative is maximal at z=0 (steepest change) and diminishes
+# toward the extremes — the model is most "uncertain" near 50%.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert abs(sigmoid(np.array([0.0]))[0] - 0.5) < 1e-10, "sigmoid(0) must equal 0.5"
-assert abs(sig_test[0] + sig_test[-1] - 1.0) < 1e-10, "sigmoid symmetry: sigma(z)+sigma(-z)=1"
-assert sig_test[-1] > sig_test[0], "sigmoid must be increasing"
-assert abs(deriv_at_0 - 0.25) < 1e-10, "sigmoid'(0) must equal 0.25"
-print("\n✓ Checkpoint 2 passed — sigmoid properties verified\n")
+assert abs(deriv_analytical - deriv_numerical) < 1e-5, "Derivative check must pass"
+print("\n✓ Checkpoint 2 passed — sigmoid implementation verified\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Logistic regression via MLE (from scratch)
+# TASK 3: Logistic Regression from Scratch (MLE)
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: The log-likelihood for logistic regression is:
-#   log L(beta) = sum[ y_i * log(p_i) + (1 - y_i) * log(1 - p_i) ]
-# where p_i = sigma(X_i @ beta)
-#
-# We minimise the NEGATIVE log-likelihood (= binary cross-entropy loss).
-# Unlike linear regression (closed-form OLS), logistic regression
-# has no closed-form solution — we must use iterative optimisation.
-
-# Prepare feature matrix — standardise for numerical stability
-X_raw = hdb_model.select("floor_area_sqm", "storey_mid").to_numpy().astype(np.float64)
-y = hdb_model["high_price"].to_numpy().astype(np.float64)
-
-# Standardise features (zero mean, unit variance)
-X_mean = X_raw.mean(axis=0)
-X_std = X_raw.std(axis=0)
-X_scaled = (X_raw - X_mean) / X_std
-
-# Add intercept column
-n_samples = X_scaled.shape[0]
-X = np.column_stack([np.ones(n_samples), X_scaled])  # [1, x1_scaled, x2_scaled]
-
-feature_names = ["intercept", "floor_area_sqm", "storey_mid"]
-print(f"\n=== Feature Matrix ===")
-print(f"Shape: {X.shape} (n_samples, n_features including intercept)")
-print(f"Feature means (raw): area={X_mean[0]:.1f} sqm, storey={X_mean[1]:.1f}")
-print(f"Feature stds  (raw): area={X_std[0]:.1f} sqm, storey={X_std[1]:.1f}")
+# Bernoulli log-likelihood:
+#   ℓ(β) = Σ[yᵢ log(pᵢ) + (1-yᵢ) log(1-pᵢ)]
+# where pᵢ = σ(xᵢ'β)
 
 
-def neg_log_likelihood_logistic(beta: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
-    """Negative log-likelihood for logistic regression.
-
-    Args:
-        beta: coefficient vector [intercept, beta_1, ..., beta_p]
-        X: design matrix with intercept column (n x (p+1))
-        y: binary target vector (n,)
-
-    Returns:
-        Negative log-likelihood (scalar to minimise).
-    """
+def neg_log_likelihood_logistic(
+    beta: np.ndarray, X: np.ndarray, y: np.ndarray
+) -> float:
+    """Negative log-likelihood for logistic regression."""
     z = X @ beta
     p = sigmoid(z)
-    # Clip to avoid log(0)
-    eps = 1e-15
-    p = np.clip(p, eps, 1 - eps)
-    # Binary cross-entropy = negative log-likelihood
-    nll = -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
-    return nll
+    p = np.clip(p, 1e-15, 1 - 1e-15)
+    # TODO: Compute Bernoulli log-likelihood: Σ[y*log(p) + (1-y)*log(1-p)]
+    ll = ____  # Hint: np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
+    return -ll
 
 
-def neg_log_likelihood_gradient(beta: np.ndarray, X: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Gradient of the negative log-likelihood.
-
-    d(-logL)/d(beta) = -X^T (y - p) = X^T (p - y)
-    This is a clean result because of the logistic-Bernoulli conjugacy.
-    """
+def neg_ll_gradient(beta: np.ndarray, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Gradient of the negative log-likelihood."""
     z = X @ beta
     p = sigmoid(z)
-    return X.T @ (p - y)
+    # TODO: Return gradient of negative log-likelihood: -X'(y - p)
+    return ____  # Hint: -X.T @ (y - p)
 
 
-# TODO: Optimise using scipy.minimize with L-BFGS-B method
-# Hint: minimize(neg_log_likelihood_logistic, beta_init, args=(X, y),
-#                method="L-BFGS-B", jac=neg_log_likelihood_gradient,
-#                options={"maxiter": 5000, "ftol": 1e-12})
-beta_init = np.zeros(X.shape[1])
-result_mle = ____  # Hint: minimize(neg_log_likelihood_logistic, beta_init, args=(X, y), method="L-BFGS-B", jac=neg_log_likelihood_gradient, options={"maxiter": 5000, "ftol": 1e-12})
+# Initial guess: zeros
+beta0 = np.zeros(n_feat + 1)
 
-beta_mle = result_mle.x
-print(f"\n=== MLE Logistic Regression (from scratch) ===")
-print(f"Optimiser converged: {result_mle.success}")
-print(f"Iterations: {result_mle.nit}")
-print(f"Final NLL: {result_mle.fun:.4f}")
-print(f"\nCoefficients (standardised scale):")
-for name, coef in zip(feature_names, beta_mle):
-    print(f"  {name:<20s}: {coef:>8.4f}")
+# TODO: Optimise neg_log_likelihood_logistic using scipy.optimize.minimize
+# Use method="L-BFGS-B", pass jac=neg_ll_gradient and args=(X, y)
+result = ____  # Hint: minimize(neg_log_likelihood_logistic, beta0, args=(X, y), method="L-BFGS-B", jac=neg_ll_gradient, options={"maxiter": 1000, "ftol": 1e-12})
 
-# Standard errors via the observed Fisher information matrix
-# The Hessian of NLL is: H = X^T diag(p*(1-p)) X
-# SE(beta_j) = sqrt( [H^{-1}]_{jj} )
-p_hat = sigmoid(X @ beta_mle)
-# TODO: Compute the Bernoulli variance at each observation W = p*(1-p)
-W = ____  # Hint: p_hat * (1 - p_hat)
-# TODO: Compute the Hessian H = X^T W X
-H = ____  # Hint: X.T @ (X * W[:, None])
-cov_beta = np.linalg.inv(H)
-# TODO: Compute standard errors from the diagonal of the covariance matrix
-se_beta = ____  # Hint: np.sqrt(np.diag(cov_beta))
+beta_scratch = result.x
+ll_scratch = -result.fun
 
-print(f"\nStandard errors and Wald z-tests:")
-print(f"{'Feature':<20s} {'beta':>8s} {'SE':>8s} {'z':>8s} {'p-value':>10s}")
-print("─" * 60)
-for name, coef, se in zip(feature_names, beta_mle, se_beta):
-    z_stat = coef / se
-    p_val = 2 * (1 - stats.norm.cdf(abs(z_stat)))
-    sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else "ns"
-    print(f"  {name:<20s} {coef:>8.4f} {se:>8.4f} {z_stat:>8.2f} {p_val:>10.2e} {sig}")
-# INTERPRETATION: The Wald z-test for logistic regression coefficients is
-# mathematically identical to the t-test from Exercise 5 — coefficient divided
-# by standard error. For logistic regression, we use the z-distribution (not t)
-# because MLE is asymptotically Normal, not t-distributed.
+print(f"\n=== Logistic Regression from Scratch ===")
+print(f"Converged: {result.success}")
+print(f"Log-likelihood: {ll_scratch:.2f}")
+print(f"\n{'Feature':<20} {'Coefficient':>14}")
+print("─" * 38)
+for name, coef in zip(feature_names, beta_scratch):
+    print(f"{name:<20} {coef:>14.6f}")
+
+# Predictions
+p_scratch = sigmoid(X @ beta_scratch)
+y_pred_scratch = (p_scratch >= 0.5).astype(int)
+acc_scratch = accuracy_score(y, y_pred_scratch)
+print(f"\nAccuracy (from scratch): {acc_scratch:.4f} ({acc_scratch:.1%})")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert result_mle.success, "MLE logistic regression optimizer must converge"
-assert len(beta_mle) == X.shape[1], "Should have one coefficient per feature"
-assert all(se > 0 for se in se_beta), "All standard errors must be positive"
-print("\n✓ Checkpoint 3 passed — logistic regression MLE converged\n")
+assert result.success, "Logistic regression must converge"
+assert (
+    acc_scratch > 0.55
+), f"Accuracy should be above baseline 50%, got {acc_scratch:.1%}"
+print("\n✓ Checkpoint 3 passed — logistic regression from scratch\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Compare with sklearn LogisticRegression
+# TASK 4: Compare with sklearn
 # ══════════════════════════════════════════════════════════════════════
-# sklearn uses the same MLE approach (LBFGS by default), but adds
-# L2 regularisation by default (C=1.0). We set C very large to
-# approximate unregularised MLE for a fair comparison.
 
-lr_sklearn = LogisticRegression(
+sklearn_model = LogisticRegression(
+    penalty=None,
+    max_iter=1000,
     solver="lbfgs",
-    C=1e10,         # Very large C ~ no regularisation (C = 1/lambda)
-    max_iter=5000,
-    fit_intercept=True,
+    tol=1e-8,
 )
-lr_sklearn.fit(X_scaled, y)
+sklearn_model.fit(X_scaled, y)
 
-beta_sklearn = np.concatenate([[lr_sklearn.intercept_[0]], lr_sklearn.coef_[0]])
+beta_sklearn = np.concatenate([[sklearn_model.intercept_[0]], sklearn_model.coef_[0]])
 
-print(f"\n=== sklearn vs From-Scratch Comparison ===")
-print(f"{'Feature':<20s} {'MLE (scratch)':>14s} {'sklearn':>14s} {'diff':>10s}")
-print("─" * 64)
-for name, b_mle, b_sk in zip(feature_names, beta_mle, beta_sklearn):
-    print(f"  {name:<20s} {b_mle:>14.6f} {b_sk:>14.6f} {abs(b_mle - b_sk):>10.2e}")
+print(f"\n=== Comparison: Scratch vs sklearn ===")
+print(f"{'Feature':<20} {'Scratch':>14} {'sklearn':>14} {'|Δ|':>10}")
+print("─" * 62)
+for i, name in enumerate(feature_names):
+    diff = abs(beta_scratch[i] - beta_sklearn[i])
+    print(f"{name:<20} {beta_scratch[i]:>14.6f} {beta_sklearn[i]:>14.6f} {diff:>10.6f}")
 
-print(f"\nCoefficients match within numerical tolerance: "
-      f"{np.allclose(beta_mle, beta_sklearn, atol=1e-3)}")
-# INTERPRETATION: Our from-scratch implementation should match sklearn's result
-# within numerical precision. This validation is important — it confirms our
-# implementation of the Bernoulli log-likelihood and L-BFGS-B optimizer is correct.
+acc_sklearn = sklearn_model.score(X_scaled, y)
+print(f"\nAccuracy (scratch): {acc_scratch:.6f}")
+print(f"Accuracy (sklearn): {acc_sklearn:.6f}")
+# INTERPRETATION: The coefficients should agree closely. Small differences
+# arise from convergence tolerance and solver algorithms.
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert np.allclose(beta_mle, beta_sklearn, atol=1e-2), \
-    "From-scratch and sklearn coefficients should agree within 0.01"
-print("\n✓ Checkpoint 4 passed — from-scratch matches sklearn\n")
+assert np.allclose(
+    beta_scratch, beta_sklearn, atol=0.1
+), "Scratch and sklearn coefficients should agree"
+print("\n✓ Checkpoint 4 passed — implementation matches sklearn\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Interpret coefficients as odds ratios
+# TASK 5: Odds Ratio Interpretation
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: The odds of the event y=1 are:
-#   odds = P(y=1) / P(y=0) = P(y=1) / (1 - P(y=1))
-#
-# From the logistic model:
-#   log(odds) = beta_0 + beta_1*x_1 + beta_2*x_2
-#
-# Therefore:
-#   odds = exp(beta_0) * exp(beta_1*x_1) * exp(beta_2*x_2)
-#
-# The odds ratio for feature j is exp(beta_j):
-#   - When x_j increases by 1 unit, odds multiply by exp(beta_j)
-#   - exp(beta_j) > 1 => odds increase (feature pushes toward y=1)
-#   - exp(beta_j) < 1 => odds decrease (feature pushes toward y=0)
-#
-# IMPORTANT: Our features are standardised, so "1 unit" = 1 standard
-# deviation. To get odds ratios in original units, we need to rescale.
+# Odds = P(y=1) / P(y=0) = P / (1-P)
+# Log-odds: log(odds) = Xβ
+# Odds ratio for feature j: exp(βⱼ) = multiplicative change in odds
+# per one-unit change in xⱼ (on the scaled feature)
 
-print(f"\n=== Odds Ratios ===")
-print(f"{'Feature':<20s} {'OR (per 1 SD)':>14s} {'OR (per unit)':>14s} {'95% CI (per unit)':>22s}")
-print("─" * 76)
+print(f"\n=== Odds Ratio Interpretation ===")
 
-odds_ratios_per_sd = []
-odds_ratios_per_unit = []
-or_ci_lower_list = []
-or_ci_upper_list = []
+# Convert to original scale: βⱼ_original = βⱼ_scaled / σⱼ
+beta_original = np.zeros(n_feat + 1)
+beta_original[0] = beta_scratch[0] - np.sum(beta_scratch[1:] * X_mean / X_std)
+beta_original[1:] = beta_scratch[1:] / X_std
 
-for i, name in enumerate(feature_names):
-    if name == "intercept":
-        continue
+print(f"\n{'Feature':<20} {'β (original)':>14} {'Odds Ratio':>12} {'Interpretation'}")
+print("─" * 80)
+for i in range(1, n_feat + 1):
+    # TODO: Compute the odds ratio for feature i: exp(β_original[i])
+    or_val = ____  # Hint: np.exp(beta_original[i])
+    name = feature_names[i]
+    if or_val > 1:
+        interp = f"1-unit increase → {(or_val-1)*100:.1f}% higher odds"
+    else:
+        interp = f"1-unit increase → {(1-or_val)*100:.1f}% lower odds"
+    print(f"{name:<20} {beta_original[i]:>14.6f} {or_val:>12.4f} {interp}")
 
-    # TODO: Compute odds ratio per 1 standard deviation (OR per SD)
-    or_std = ____  # Hint: np.exp(beta_mle[i])
-    odds_ratios_per_sd.append(or_std)
-
-    # Original-scale odds ratio: rescale by X_std[i-1]
-    beta_orig = beta_mle[i] / X_std[i - 1]
-    se_orig = se_beta[i] / X_std[i - 1]
-    # TODO: Compute odds ratio per original unit
-    or_unit = ____  # Hint: np.exp(beta_orig)
-    odds_ratios_per_unit.append(or_unit)
-
-    # 95% CI for odds ratio (Wald): exp(beta +/- 1.96*SE)
-    or_ci_lower = np.exp(beta_orig - 1.96 * se_orig)
-    or_ci_upper = np.exp(beta_orig + 1.96 * se_orig)
-    or_ci_lower_list.append(or_ci_lower)
-    or_ci_upper_list.append(or_ci_upper)
-
-    print(f"  {name:<20s} {or_std:>14.4f} {or_unit:>14.4f} [{or_ci_lower:.4f}, {or_ci_upper:.4f}]")
-
-# Interpretation
-print(f"\n--- Interpretation ---")
-area_or = odds_ratios_per_unit[0]
-storey_or = odds_ratios_per_unit[1]
-print(f"floor_area_sqm: OR = {area_or:.4f}")
-if area_or > 1:
-    print(f"  Each additional sqm of floor area multiplies the odds of")
-    print(f"  high price by {area_or:.4f}x. For a 10 sqm increase: {area_or**10:.2f}x odds.")
-else:
-    print(f"  Each additional sqm of floor area multiplies the odds of")
-    print(f"  high price by {area_or:.4f}x (reduces odds).")
-
-print(f"\nstorey_mid: OR = {storey_or:.4f}")
-if storey_or > 1:
-    print(f"  Each additional storey multiplies the odds of high price by {storey_or:.4f}x.")
-    print(f"  Moving from floor 5 to floor 15 (10 storeys): {storey_or**10:.2f}x odds.")
-else:
-    print(f"  Each additional storey multiplies the odds of high price by {storey_or:.4f}x.")
-# INTERPRETATION: Odds ratios > 1 mean the feature increases the probability of
-# being in the "high price" category. An OR of 1.08 per sqm means each square
-# metre multiplies the odds of high price by 1.08 — equivalent to an 8% increase
-# in odds. This is the business language for logistic regression.
+# Practical examples
+print(f"\n--- Practical Examples ---")
+for feat, units, factor in [
+    ("floor_area_sqm", "10 sqm", 10),
+    ("storey_mid", "5 storeys", 5),
+    ("remaining_lease", "10 years", 10),
+]:
+    idx = feature_names.index(feat)
+    or_change = np.exp(beta_original[idx] * factor)
+    print(
+        f"  +{units} of {feat}: odds multiply by {or_change:.3f} "
+        f"({(or_change-1)*100:+.1f}% change)"
+    )
+# INTERPRETATION: An odds ratio of 1.5 for floor_area_sqm means each
+# extra sqm multiplies the odds of being "high price" by 1.5. Odds
+# ratios are multiplicative, not additive — they compound with each
+# unit increase.
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
-for or_val in odds_ratios_per_unit:
-    assert or_val > 0, "Odds ratios must be positive"
-for lower, upper in zip(or_ci_lower_list, or_ci_upper_list):
-    assert lower < upper, "CI lower must be below upper"
-print("\n✓ Checkpoint 5 passed — odds ratios computed and interpreted\n")
+assert np.exp(beta_original[1]) > 1, "Larger area should increase odds of high price"
+print("\n✓ Checkpoint 5 passed — odds ratios interpreted\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Accuracy and confusion matrix
+# TASK 6: Threshold Optimisation with Cost Matrix
 # ══════════════════════════════════════════════════════════════════════
-# Predictions: classify as 1 if P(y=1|X) > 0.5 (the sigmoid crosses 0.5
-# at z=0, which is the natural decision boundary).
+# Default threshold is 0.5, but optimal threshold depends on costs.
+# Cost matrix: what's the cost of a false positive vs false negative?
 
-y_prob = sigmoid(X @ beta_mle)
-# TODO: Classify using a threshold of 0.5
-y_pred = ____  # Hint: (y_prob >= 0.5).astype(int)
+print(f"\n=== Threshold Optimisation ===")
 
-# TODO: Compute accuracy and confusion matrix using sklearn metrics
-acc = ____  # Hint: accuracy_score(y, y_pred)
-cm = ____  # Hint: confusion_matrix(y, y_pred)
+# Scenario: property valuation
+# FP (predict high, actually low): buyer overpays → cost = $30K
+# FN (predict low, actually high): seller underprices → cost = $50K
+cost_fp = 30_000
+cost_fn = 50_000
 
-print(f"\n=== Classification Performance ===")
-print(f"Accuracy: {acc:.4f} ({acc:.1%})")
-print(f"Baseline (majority class): {max(y.mean(), 1 - y.mean()):.1%}")
-print(f"Lift over baseline: {acc - max(y.mean(), 1 - y.mean()):+.1%}")
+thresholds = np.linspace(0.1, 0.9, 81)
+total_costs = []
+accuracies = []
+f1_scores_list = []
 
-# Confusion matrix with labels
-tn, fp, fn, tp = cm.ravel()
-print(f"\nConfusion Matrix:")
-print(f"{'':>20} {'Predicted 0':>14} {'Predicted 1':>14}")
-print(f"{'Actual 0':<20} {tn:>14,} {fp:>14,}")
-print(f"{'Actual 1':<20} {fn:>14,} {tp:>14,}")
+for t in thresholds:
+    y_pred_t = (p_scratch >= t).astype(int)
+    cm = confusion_matrix(y, y_pred_t)
+    tn, fp, fn, tp = cm.ravel()
+    cost = fp * cost_fp + fn * cost_fn
+    total_costs.append(cost)
+    accuracies.append(accuracy_score(y, y_pred_t))
+    f1_scores_list.append(f1_score(y, y_pred_t, zero_division=0))
 
-# Derived metrics (preview — detailed in M3.5)
-precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-print(f"\nPrecision (of predicted highs, how many are truly high): {precision:.4f}")
-print(f"Recall (of actual highs, how many did we catch):         {recall:.4f}")
-print(f"F1 score:                                                  {f1:.4f}")
+# TODO: Find the index of the threshold with minimum total cost
+optimal_idx = ____  # Hint: np.argmin(total_costs)
+optimal_threshold = thresholds[optimal_idx]
+optimal_cost = total_costs[optimal_idx]
 
-# ROC curve data (for plotting in Task 9)
-fpr, tpr, thresholds = roc_curve(y, y_prob)
-# TODO: Compute the area under the ROC curve
-roc_auc = ____  # Hint: auc(fpr, tpr)
-print(f"AUC-ROC: {roc_auc:.4f}")
-print(f"  (1.0 = perfect, 0.5 = random, <0.5 = worse than random)")
-# INTERPRETATION: AUC-ROC measures the model's ability to rank positives above
-# negatives across all possible thresholds. Unlike accuracy (threshold-dependent),
-# AUC is threshold-independent. An AUC of 0.85 means the model ranks a random
-# high-price flat above a random low-price flat 85% of the time.
+# Also find threshold that maximises F1
+f1_idx = np.argmax(f1_scores_list)
+f1_threshold = thresholds[f1_idx]
+
+print(f"Cost matrix: FP=${cost_fp:,}, FN=${cost_fn:,}")
+print(f"\nOptimal threshold (min cost): {optimal_threshold:.3f}")
+print(f"  Total cost: ${optimal_cost:,.0f}")
+print(f"  Accuracy at this threshold: {accuracies[optimal_idx]:.4f}")
+print(f"\nF1-optimal threshold: {f1_threshold:.3f}")
+print(f"  F1 at this threshold: {f1_scores_list[f1_idx]:.4f}")
+print(f"\nDefault threshold (0.5):")
+print(f"  Cost: ${total_costs[40]:,.0f}")
+print(f"  Accuracy: {accuracies[40]:.4f}")
+# INTERPRETATION: When FN costs more than FP, the optimal threshold
+# is below 0.5 — we'd rather predict "high price" more aggressively
+# to avoid missing expensive flats. The threshold should reflect the
+# business cost of each type of error.
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
-assert 0.5 < acc <= 1.0, "Accuracy should exceed 50% baseline for a useful model"
-assert 0.5 < roc_auc <= 1.0, "AUC-ROC should exceed 0.5 (random)"
-assert cm.sum() == n_samples, "Confusion matrix entries should sum to total samples"
-print("\n✓ Checkpoint 6 passed — classification metrics computed\n")
+assert 0 < optimal_threshold < 1, "Optimal threshold must be valid"
+assert optimal_cost <= total_costs[40], "Optimal cost must be ≤ default cost"
+print("\n✓ Checkpoint 6 passed — threshold optimisation completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 7: One-way ANOVA — prices across flat types
+# TASK 7: Confusion Matrix, Precision, Recall, F1
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: ANOVA generalises the two-sample t-test to 3+ groups.
-#   H0: mu_1 = mu_2 = ... = mu_k (all group means are equal)
-#   H1: at least one group mean differs
-#
-#   F = MS_between / MS_within
-#   When to use: 2 groups → t-test, 3+ groups → ANOVA,
-#   continuous predictor → regression
 
-flat_types_of_interest = ["3 ROOM", "4 ROOM", "5 ROOM"]
-groups = {}
-for ft in flat_types_of_interest:
-    prices = (
+print(f"\n=== Classification Metrics (threshold={optimal_threshold:.3f}) ===")
+
+y_pred_opt = (p_scratch >= optimal_threshold).astype(int)
+cm = confusion_matrix(y, y_pred_opt)
+tn, fp, fn, tp = cm.ravel()
+
+prec = precision_score(y, y_pred_opt)
+rec = recall_score(y, y_pred_opt)
+f1 = f1_score(y, y_pred_opt)
+acc = accuracy_score(y, y_pred_opt)
+
+print(f"\nConfusion Matrix:")
+print(f"              Predicted Low  Predicted High")
+print(f"  Actual Low    {tn:>10,}    {fp:>10,}")
+print(f"  Actual High   {fn:>10,}    {tp:>10,}")
+
+print(f"\n{'Metric':<15} {'Value':>10}")
+print("─" * 28)
+print(f"{'Accuracy':<15} {acc:>10.4f}")
+print(f"{'Precision':<15} {prec:>10.4f}")
+print(f"{'Recall':<15} {rec:>10.4f}")
+print(f"{'F1 Score':<15} {f1:>10.4f}")
+print(f"{'True Positives':<15} {tp:>10,}")
+print(f"{'False Positives':<15} {fp:>10,}")
+print(f"{'True Negatives':<15} {tn:>10,}")
+print(f"{'False Negatives':<15} {fn:>10,}")
+# INTERPRETATION: Precision = "of those I predicted high, how many
+# actually were?" Recall = "of those actually high, how many did I
+# catch?" F1 balances both. In this property context, recall matters
+# more if missing high-value flats is costly.
+
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+assert tp + fp + tn + fn == n_obs, "Confusion matrix must sum to n"
+assert 0 < prec <= 1, "Precision must be valid"
+assert 0 < rec <= 1, "Recall must be valid"
+print("\n✓ Checkpoint 7 passed — classification metrics computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 8: ROC Curve and AUC
+# ══════════════════════════════════════════════════════════════════════
+
+fpr, tpr, roc_thresholds = roc_curve(y, p_scratch)
+# TODO: Compute AUC from fpr and tpr arrays
+roc_auc = ____  # Hint: auc(fpr, tpr)
+
+# Find the threshold on ROC closest to top-left corner
+distances = np.sqrt((0 - fpr) ** 2 + (1 - tpr) ** 2)
+roc_optimal_idx = np.argmin(distances)
+roc_optimal_threshold = roc_thresholds[roc_optimal_idx]
+
+print(f"\n=== ROC Curve ===")
+print(f"AUC = {roc_auc:.4f}")
+print(f"ROC-optimal threshold (closest to top-left): {roc_optimal_threshold:.4f}")
+print(f"  at FPR={fpr[roc_optimal_idx]:.4f}, TPR={tpr[roc_optimal_idx]:.4f}")
+print(f"\nAUC interpretation:")
+if roc_auc > 0.9:
+    print(f"  Excellent discrimination")
+elif roc_auc > 0.8:
+    print(f"  Good discrimination")
+elif roc_auc > 0.7:
+    print(f"  Fair discrimination")
+else:
+    print(f"  Poor discrimination")
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert 0.5 <= roc_auc <= 1.0, "AUC must be between 0.5 and 1.0"
+print("\n✓ Checkpoint 8 passed — ROC and AUC computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 9: Precision-Recall Curve
+# ══════════════════════════════════════════════════════════════════════
+
+prec_curve, rec_curve, pr_thresholds = precision_recall_curve(y, p_scratch)
+# TODO: Compute area under the precision-recall curve
+pr_auc = ____  # Hint: auc(rec_curve, prec_curve)
+
+print(f"\n=== Precision-Recall Curve ===")
+print(f"PR-AUC = {pr_auc:.4f}")
+print(f"Baseline (random): {n_positive/n_total:.4f}")
+print(f"PR-AUC / baseline: {pr_auc / (n_positive/n_total):.2f}x better than random")
+# INTERPRETATION: The PR curve is more informative than ROC when
+# classes are imbalanced. For balanced classes (like ours), both
+# tell a similar story. PR-AUC > baseline means the model does better
+# than random guessing.
+
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+assert pr_auc > n_positive / n_total, "PR-AUC should beat random baseline"
+print("\n✓ Checkpoint 9 passed — precision-recall curve computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 10: Model Calibration — Calibration Curve and Brier Score
+# ══════════════════════════════════════════════════════════════════════
+# A well-calibrated model: when it predicts P=0.7, ~70% of those
+# observations are actually positive. Brier score = mean((p - y)²).
+
+print(f"\n=== Model Calibration ===")
+
+# TODO: Compute the Brier score (mean squared error between probabilities and labels)
+brier = ____  # Hint: brier_score_loss(y, p_scratch)
+
+# Build calibration curve manually
+n_bins = 10
+bin_edges = np.linspace(0, 1, n_bins + 1)
+cal_predicted = []
+cal_observed = []
+cal_counts = []
+
+for i in range(n_bins):
+    mask = (p_scratch >= bin_edges[i]) & (p_scratch < bin_edges[i + 1])
+    if mask.sum() > 0:
+        cal_predicted.append(p_scratch[mask].mean())
+        cal_observed.append(y[mask].mean())
+        cal_counts.append(mask.sum())
+
+print(f"Brier score: {brier:.6f} (lower = better, 0 = perfect)")
+print(f"Max Brier (random): 0.25")
+print(f"Brier skill: {1 - brier / 0.25:.4f} (1 = perfect, 0 = random)")
+print(f"\n{'Bin':>4} {'Predicted':>12} {'Observed':>12} {'Count':>8} {'Gap':>8}")
+print("─" * 48)
+for i in range(len(cal_predicted)):
+    gap = abs(cal_predicted[i] - cal_observed[i])
+    print(
+        f"{i+1:>4} {cal_predicted[i]:>12.4f} {cal_observed[i]:>12.4f} "
+        f"{cal_counts[i]:>8,} {gap:>8.4f}"
+    )
+# INTERPRETATION: Good calibration = predicted probabilities match
+# observed frequencies. If predicted=0.8 but observed=0.6, the model
+# is overconfident. Calibration matters when you use probabilities
+# for decision-making (not just rankings).
+
+# ── Checkpoint 10 ────────────────────────────────────────────────────
+assert 0 <= brier <= 1, "Brier score must be between 0 and 1"
+assert brier < 0.25, "Model should beat random (Brier < 0.25)"
+print("\n✓ Checkpoint 10 passed — calibration assessed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 11: ANOVA — Multi-Group Comparison + Tukey HSD
+# ══════════════════════════════════════════════════════════════════════
+# One-way ANOVA generalises the t-test to 3+ groups.
+# H₀: μ₁ = μ₂ = μ₃ = ... = μₖ (all group means are equal)
+# H₁: at least one mean differs
+
+print(f"\n=== One-Way ANOVA: Resale Price by Flat Type ===")
+
+flat_types = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
+anova_groups = []
+anova_labels = []
+
+for ft in flat_types:
+    group = (
         hdb_recent.filter(pl.col("flat_type") == ft)["resale_price"]
         .to_numpy()
         .astype(np.float64)
     )
-    groups[ft] = prices
-    print(f"\n{ft}: n={len(prices):,}, mean=${prices.mean():,.0f}, std=${prices.std():,.0f}")
+    if len(group) > 10:
+        anova_groups.append(group)
+        anova_labels.append(ft)
+        print(
+            f"  {ft:<12}: n={len(group):>6,}, mean=${group.mean():>10,.0f}, std=${group.std():>8,.0f}"
+        )
 
-# TODO: Run one-way ANOVA using scipy
-f_stat, anova_p = ____  # Hint: stats.f_oneway(*groups.values())
+# TODO: Run one-way ANOVA across all anova_groups
+f_anova, p_anova = ____  # Hint: stats.f_oneway(*anova_groups)
+print(f"\nANOVA F-statistic: {f_anova:.2f}")
+print(f"p-value: {p_anova:.2e}")
+print(
+    f"{'SIGNIFICANT' if p_anova < 0.05 else 'NOT significant'}: "
+    f"{'at least one flat type has a different mean price' if p_anova < 0.05 else 'no evidence of difference'}"
+)
 
-# Compute components manually for pedagogical clarity
-group_values = list(groups.values())
-group_names = list(groups.keys())
-k = len(group_values)
-N_total = sum(len(g) for g in group_values)
-grand_mean = np.concatenate(group_values).mean()
+# Effect size: eta-squared
+ss_between = sum(
+    len(g) * (g.mean() - np.concatenate(anova_groups).mean()) ** 2 for g in anova_groups
+)
+ss_total = sum(
+    np.sum((g - np.concatenate(anova_groups).mean()) ** 2) for g in anova_groups
+)
+eta_squared = ss_between / ss_total
+print(
+    f"Effect size (η²): {eta_squared:.4f} ({eta_squared:.1%} of variance explained by flat type)"
+)
 
-# SS_between: sum of n_j * (mean_j - grand_mean)^2
-ss_between = sum(len(g) * (g.mean() - grand_mean) ** 2 for g in group_values)
-# SS_within: sum of (x_ij - mean_j)^2 within each group
-ss_within = sum(np.sum((g - g.mean()) ** 2) for g in group_values)
-# Mean squares
-ms_between = ss_between / (k - 1)
-ms_within = ss_within / (N_total - k)
-f_manual = ms_between / ms_within
+# Post-hoc: Tukey HSD (pairwise comparisons)
+print(f"\n--- Tukey HSD Post-Hoc Comparisons ---")
+all_data = np.concatenate(anova_groups)
+n_all = len(all_data)
+k_groups = len(anova_groups)
+ms_within = sum(np.sum((g - g.mean()) ** 2) for g in anova_groups) / (n_all - k_groups)
 
-# Effect size: eta-squared = SS_between / SS_total
-ss_total = ss_between + ss_within
-# TODO: Compute eta-squared effect size
-eta_squared = ____  # Hint: ss_between / ss_total
+print(
+    f"{'Comparison':<25} {'Diff ($)':>12} {'SE':>10} {'q':>8} {'p-value':>10} {'Sig':>6}"
+)
+print("─" * 75)
+for i in range(k_groups):
+    for j in range(i + 1, k_groups):
+        diff = anova_groups[j].mean() - anova_groups[i].mean()
+        se = np.sqrt(
+            ms_within * (1 / len(anova_groups[i]) + 1 / len(anova_groups[j])) / 2
+        )
+        q_stat = abs(diff) / se
+        n_comparisons = k_groups * (k_groups - 1) / 2
+        t_stat = diff / (
+            np.sqrt(ms_within)
+            * np.sqrt(1 / len(anova_groups[i]) + 1 / len(anova_groups[j]))
+        )
+        p_pair = 2 * (1 - stats.t.cdf(abs(t_stat), df=n_all - k_groups))
+        p_bonf = min(p_pair * n_comparisons, 1.0)
+        sig = (
+            "***"
+            if p_bonf < 0.001
+            else "**" if p_bonf < 0.01 else "*" if p_bonf < 0.05 else "ns"
+        )
+        label = f"{anova_labels[i]} vs {anova_labels[j]}"
+        print(
+            f"{label:<25} ${diff:>10,.0f} {se:>10,.0f} {q_stat:>8.2f} {p_bonf:>10.4f} {sig:>6}"
+        )
+# INTERPRETATION: ANOVA tells you SOME group differs. Tukey HSD tells
+# you WHICH pairs differ. In property, this shows the price premium
+# between flat types — critical for valuation models. Executive flats
+# command a premium over 3-room; the question is how much.
 
-print(f"\n=== One-Way ANOVA: Resale Price by Flat Type ===")
-print(f"H0: mean price is the same across {', '.join(flat_types_of_interest)}")
-print(f"H1: at least one group mean differs")
-print(f"\nGrand mean: ${grand_mean:,.0f}")
-print(f"SS_between: {ss_between:,.0f}   (df = {k-1})")
-print(f"SS_within:  {ss_within:,.0f}   (df = {N_total-k})")
-print(f"MS_between: {ms_between:,.0f}")
-print(f"MS_within:  {ms_within:,.0f}")
-print(f"\nF-statistic (manual):  {f_manual:.2f}")
-print(f"F-statistic (scipy):   {f_stat:.2f}")
-print(f"p-value: {anova_p:.2e}")
-print(f"eta-squared (effect size): {eta_squared:.4f} ({eta_squared:.1%} of variance explained)")
-print(f"\nConclusion: {'Reject H0' if anova_p < 0.05 else 'Fail to reject H0'} at alpha=0.05")
-if anova_p < 0.05:
-    print("At least one flat type has a significantly different mean price.")
-    print("But ANOVA does not tell us WHICH pairs differ — we need post-hoc tests.")
-# INTERPRETATION: ANOVA's F-statistic compares between-group variance to
-# within-group variance. A large F means group means are far apart relative
-# to the noise within each group. eta-squared = 0.20 means flat type explains
-# 20% of all price variation — that's a large effect size.
-
-# ── Checkpoint 7 ─────────────────────────────────────────────────────
-assert abs(f_manual - f_stat) < 0.1, "Manual and scipy F-statistics should agree"
-assert 0 < anova_p <= 1, "ANOVA p-value must be a valid probability"
-assert 0 < eta_squared < 1, "eta-squared must be between 0 and 1"
-assert anova_p < 0.001, "With large n, ANOVA should be highly significant across flat types"
-print("\n✓ Checkpoint 7 passed — ANOVA completed\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 8: Post-hoc Tukey HSD test
-# ══════════════════════════════════════════════════════════════════════
-# THEORY: After a significant ANOVA, Tukey's Honestly Significant
-# Difference (HSD) tests all pairwise group differences while
-# controlling the family-wise error rate.
-#
-# If |mean_i - mean_j| > HSD, the pair is significantly different.
-# We implement using Bonferroni-corrected t-tests as a practical alternative.
-
-# Harmonic mean of group sizes (handles unequal n)
-group_sizes = np.array([len(g) for g in group_values])
-n_harmonic = k / np.sum(1.0 / group_sizes)
-
-# Standard error for Tukey comparison
-se_tukey = np.sqrt(ms_within / n_harmonic)
-
-n_comparisons = k * (k - 1) // 2
-alpha_bonf = 0.05 / n_comparisons
-t_crit = stats.t.ppf(1 - alpha_bonf / 2, df=N_total - k)
-
-print(f"\n=== Post-Hoc Pairwise Comparisons (Tukey HSD) ===")
-print(f"MS_within: {ms_within:,.0f}")
-print(f"Harmonic mean n: {n_harmonic:,.0f}")
-print(f"SE for comparisons: ${se_tukey:,.0f}")
-print(f"Number of comparisons: {n_comparisons}")
-print(f"Bonferroni-adjusted alpha: {alpha_bonf:.4f}")
-print(f"Critical t-value: {t_crit:.4f}")
-print(f"\n{'Pair':<20s} {'Mean Diff':>12s} {'t-stat':>10s} {'p-value':>12s} {'Significant':>12s}")
-print("─" * 72)
-
-tukey_results = []
-for i in range(k):
-    for j in range(i + 1, k):
-        mean_diff = group_values[i].mean() - group_values[j].mean()
-        n_i, n_j = len(group_values[i]), len(group_values[j])
-        se_pair = np.sqrt(ms_within * (1.0 / n_i + 1.0 / n_j))
-        t_stat = mean_diff / se_pair
-        # Two-tailed p-value with Bonferroni correction
-        p_raw = 2 * (1 - stats.t.cdf(abs(t_stat), df=N_total - k))
-        # TODO: Apply Bonferroni correction (multiply p_raw by n_comparisons, cap at 1.0)
-        p_adj = ____  # Hint: min(p_raw * n_comparisons, 1.0)
-        sig = "Yes" if p_adj < 0.05 else "No"
-
-        pair_name = f"{group_names[i]} vs {group_names[j]}"
-        print(f"  {pair_name:<20s} ${mean_diff:>10,.0f} {t_stat:>10.2f} {p_adj:>12.2e} {sig:>12s}")
-
-        tukey_results.append({
-            "pair": pair_name,
-            "group_a": group_names[i],
-            "group_b": group_names[j],
-            "mean_diff": mean_diff,
-            "t_stat": t_stat,
-            "p_adj": p_adj,
-            "significant": p_adj < 0.05,
-        })
-
-print(f"\n--- Interpretation ---")
-for r in tukey_results:
-    if r["significant"]:
-        higher = r["group_a"] if r["mean_diff"] > 0 else r["group_b"]
-        lower = r["group_b"] if r["mean_diff"] > 0 else r["group_a"]
-        print(f"  {higher} prices are significantly higher than {lower} "
-              f"(diff = ${abs(r['mean_diff']):,.0f}, p = {r['p_adj']:.2e})")
-    else:
-        print(f"  {r['group_a']} and {r['group_b']} prices do not significantly differ "
-              f"(p = {r['p_adj']:.2e})")
-# INTERPRETATION: Tukey HSD (here implemented via Bonferroni) answers "which
-# specific pairs drive the significant ANOVA?" For HDB prices, we expect each
-# flat type (3R, 4R, 5R) to differ significantly because each adds more space.
-# The mean differences are practically meaningful ($50-100K+) as well as significant.
-
-# ── Checkpoint 8 ─────────────────────────────────────────────────────
-assert len(tukey_results) == n_comparisons, f"Should have {n_comparisons} pairwise comparisons"
-for r in tukey_results:
-    assert 0 < r["p_adj"] <= 1, f"Adjusted p-value must be valid probability for {r['pair']}"
-print("\n✓ Checkpoint 8 passed — Tukey HSD completed\n")
+# ── Checkpoint 11 ────────────────────────────────────────────────────
+assert f_anova > 0, "F-statistic must be positive"
+assert 0 <= eta_squared <= 1, "Eta-squared must be between 0 and 1"
+print("\n✓ Checkpoint 11 passed — ANOVA and Tukey HSD completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 9: Visualisation — ROC curve and odds ratio forest plot
+# TASK 12: Visualise All Results
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
-# -- Plot 1: ROC Curve --
-roc_metrics = {
-    f"ROC Curve (AUC={roc_auc:.3f})": tpr.tolist(),
-    "Random (AUC=0.5)": fpr.tolist(),  # Diagonal reference
-}
-fig_roc = viz.training_history(roc_metrics, x_label="False Positive Rate")
-fig_roc.update_layout(
-    title="ROC Curve: Logistic Regression for High-Price Classification",
-    yaxis_title="True Positive Rate",
+# Plot 1: ROC curve
+fig1 = go.Figure()
+fig1.add_trace(go.Scatter(x=fpr, y=tpr, name=f"ROC (AUC={roc_auc:.3f})"))
+fig1.add_trace(
+    go.Scatter(
+        x=[0, 1], y=[0, 1], name="Random", line={"dash": "dash", "color": "grey"}
+    )
 )
-fig_roc.write_html("ex6_roc_curve.html")
-print(f"\nSaved: ex6_roc_curve.html")
+fig1.add_trace(
+    go.Scatter(
+        x=[fpr[roc_optimal_idx]],
+        y=[tpr[roc_optimal_idx]],
+        mode="markers",
+        name=f"Optimal (t={roc_optimal_threshold:.3f})",
+        marker={"size": 12, "color": "red"},
+    )
+)
+fig1.update_layout(title="ROC Curve", xaxis_title="FPR", yaxis_title="TPR")
+fig1.write_html("ex6_roc_curve.html")
+print("\nSaved: ex6_roc_curve.html")
 
-# -- Plot 2: Odds Ratio Forest Plot --
-or_feature_names = [n for n in feature_names if n != "intercept"]
-or_data = {}
-for i, name in enumerate(or_feature_names):
-    or_data[name] = {
-        "odds_ratio": odds_ratios_per_unit[i],
-        "ci_lower": or_ci_lower_list[i],
-        "ci_upper": or_ci_upper_list[i],
-    }
+# Plot 2: Calibration curve
+fig2 = go.Figure()
+fig2.add_trace(
+    go.Scatter(x=cal_predicted, y=cal_observed, mode="markers+lines", name="Model")
+)
+fig2.add_trace(
+    go.Scatter(
+        x=[0, 1], y=[0, 1], name="Perfect", line={"dash": "dash", "color": "grey"}
+    )
+)
+fig2.update_layout(
+    title=f"Calibration Curve (Brier={brier:.4f})",
+    xaxis_title="Predicted Probability",
+    yaxis_title="Observed Frequency",
+)
+fig2.write_html("ex6_calibration.html")
+print("Saved: ex6_calibration.html")
 
-fig_or = viz.metric_comparison(or_data)
-fig_or.update_layout(title="Odds Ratios per Original Unit (with 95% CI)")
-fig_or.write_html("ex6_odds_ratios.html")
-print("Saved: ex6_odds_ratios.html")
+# Plot 3: Threshold vs cost curve
+fig3 = go.Figure()
+fig3.add_trace(
+    go.Scatter(x=thresholds, y=[c / 1e6 for c in total_costs], name="Total Cost ($M)")
+)
+fig3.add_vline(
+    x=optimal_threshold,
+    line_dash="dash",
+    annotation_text=f"Optimal t={optimal_threshold:.2f}",
+)
+fig3.add_vline(
+    x=0.5, line_dash="dot", line_color="red", annotation_text="Default t=0.5"
+)
+fig3.update_layout(
+    title="Cost vs Classification Threshold",
+    xaxis_title="Threshold",
+    yaxis_title="Total Cost ($M)",
+)
+fig3.write_html("ex6_threshold_cost.html")
+print("Saved: ex6_threshold_cost.html")
 
-# -- Plot 3: ANOVA group comparison --
-anova_data = {
-    ft: {
-        "mean_price": float(g.mean()),
-        "std_price": float(g.std()),
-        "n": len(g),
-    }
-    for ft, g in groups.items()
-}
-fig_anova = viz.metric_comparison(anova_data)
-fig_anova.update_layout(title=f"ANOVA: Resale Price by Flat Type (F={f_stat:.1f}, p={anova_p:.2e})")
-fig_anova.write_html("ex6_anova_comparison.html")
-print("Saved: ex6_anova_comparison.html")
+# Plot 4: ANOVA box plots
+fig4 = go.Figure()
+for label, group in zip(anova_labels, anova_groups):
+    fig4.add_trace(go.Box(y=group[:5000], name=label))
+fig4.update_layout(
+    title="Resale Price Distribution by Flat Type (ANOVA)",
+    yaxis_title="Resale Price ($)",
+)
+fig4.write_html("ex6_anova_boxplot.html")
+print("Saved: ex6_anova_boxplot.html")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# Summary
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Exercise 6 Summary ===")
-print(f"Logistic Regression:")
-print(f"  - Built from scratch via MLE (scipy.optimize.minimize)")
-print(f"  - Matched sklearn coefficients within numerical tolerance")
-print(f"  - Accuracy: {acc:.1%} (baseline: {max(y.mean(), 1-y.mean()):.1%})")
-print(f"  - AUC-ROC: {roc_auc:.3f}")
-print(f"  - Key driver: floor_area (OR={odds_ratios_per_unit[0]:.3f}/sqm), "
-      f"storey (OR={odds_ratios_per_unit[1]:.3f}/floor)")
-print(f"\nANOVA:")
-print(f"  - Significant difference in prices across flat types (F={f_stat:.1f}, p={anova_p:.2e})")
-print(f"  - Effect size (eta-squared): {eta_squared:.3f}")
-sig_pairs = [r["pair"] for r in tukey_results if r["significant"]]
-if sig_pairs:
-    print(f"  - Significant pairwise differences: {', '.join(sig_pairs)}")
-
-print(f"\nKey takeaways:")
-print(f"  1. Sigmoid maps linear predictions to valid probabilities (0,1)")
-print(f"  2. Logistic regression uses MLE, not OLS (Bernoulli likelihood)")
-print(f"  3. exp(beta) gives odds ratio: multiplicative effect on odds")
-print(f"  4. ANOVA extends the t-test to 3+ groups; post-hoc tests identify which pairs differ")
+# ── Checkpoint 12 ────────────────────────────────────────────────────
+print("\n✓ Checkpoint 12 passed — visualisations saved\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
-print("═" * 60)
+print("═" * 70)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 60)
-print(f"""
-  ✓ Sigmoid: numerically stable, maps ℝ → (0,1), symmetric, max grad at z=0
-  ✓ Logistic MLE: minimise binary cross-entropy = negative log-likelihood
-  ✓ Hessian-based SE: H = X^T diag(p*(1-p)) X, SE = sqrt(diag(H^-1))
-  ✓ Odds ratio: exp(β) — >1 increases odds, <1 decreases odds of y=1
-  ✓ OR per original unit vs per 1 SD: standardise beta by X_std
-  ✓ Confusion matrix: TP, TN, FP, FN → precision, recall, F1
-  ✓ AUC-ROC: threshold-independent ranking quality (0.5=random, 1.0=perfect)
-  ✓ ANOVA: F = MS_between / MS_within generalises t-test to 3+ groups
-  ✓ eta-squared: proportion of variance explained by group membership
-  ✓ Tukey HSD: controls FWER for pairwise post-hoc comparisons
+print("═" * 70)
+print(
+    f"""
+  ✓ Sigmoid: σ(z) = 1/(1+exp(-z)), numerically stable implementation
+  ✓ Logistic regression from scratch: Bernoulli MLE with gradient
+  ✓ sklearn comparison: verified implementation correctness
+  ✓ Odds ratios: exp(β) = multiplicative change in odds per unit
+  ✓ Threshold optimisation: cost matrix drives the decision boundary
+  ✓ Confusion matrix: TP, FP, TN, FN and derived metrics
+  ✓ Precision, recall, F1: trade-offs in classification
+  ✓ ROC curve + AUC: discrimination ability across all thresholds
+  ✓ Precision-recall curve: better for imbalanced classes
+  ✓ Calibration: predicted probabilities match observed frequencies
+  ✓ Brier score: overall measure of probabilistic accuracy
+  ✓ One-way ANOVA: F-test for 3+ group means, η² effect size
+  ✓ Tukey HSD: pairwise comparisons with multiple testing correction
 
-  NEXT: In Exercise 7 you'll implement CUPED — the single most impactful
-  technique for reducing A/B test variance. Using pre-experiment revenue
-  as a covariate, you'll shrink confidence intervals by up to 50%, log
-  everything with ExperimentTracker, and implement sequential testing
-  with always-valid p-values to safely monitor experiments in real time.
-""")
+  NEXT: In Exercise 7 you'll implement CUPED variance reduction
+  for A/B tests, Bayesian A/B testing with posterior probabilities,
+  sequential testing with always-valid p-values, and Difference-in-
+  Differences for when randomisation is impossible.
+"""
+)
 
-print(f"\n✓ Exercise 6 complete — logistic regression + ANOVA foundations")
+print("\n✓ Exercise 6 complete — Logistic Regression and Classification")

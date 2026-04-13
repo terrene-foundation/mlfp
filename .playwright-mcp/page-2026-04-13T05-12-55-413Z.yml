@@ -1,0 +1,1534 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: "LSTM: Long Short-Term Memory"
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Four Components
+          - list:
+            - listitem:
+              - strong: Cell state
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: C
+                          - generic: t
+                          - generic:
+                            - generic: C
+                            - generic: t
+                          - generic: C
+                          - generic: t
+                  - generic:
+                    - generic:
+                      - text: Ct
+                      - generic:
+                        - text: C
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: Ct
+              - text: — the "highway" that carries information across time steps with minimal modification
+            - listitem:
+              - strong: Forget gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: f
+                          - generic: t
+                          - generic:
+                            - generic: f
+                            - generic: t
+                          - generic: f
+                          - generic: t
+                  - generic:
+                    - generic:
+                      - text: ft
+                      - generic:
+                        - text: f
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ft
+              - text: — decides what to discard from cell state
+            - listitem:
+              - strong: Input gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: i
+                          - generic: t
+                          - generic:
+                            - generic: i
+                            - generic: t
+                          - generic: i
+                          - generic: t
+                  - generic:
+                    - generic:
+                      - text: it
+                      - generic:
+                        - text: i
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: it
+              - text: — decides what new information to store
+            - listitem:
+              - strong: Output gate
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: o
+                          - generic: t
+                          - generic:
+                            - generic: o
+                            - generic: t
+                          - generic: o
+                          - generic: t
+                  - generic:
+                    - generic:
+                      - text: ot
+                      - generic:
+                        - text: o
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ot
+              - text: — decides what to output from cell state
+        - generic:
+          - generic:
+            - strong: "Analogy:"
+            - text: The cell state is a conveyor belt running through the factory. Gates are workers who add items (input gate), remove items (forget gate), and select items for the next station (output gate). The belt itself flows freely.
+          - generic:
+            - strong: "Why it solves vanishing gradients:"
+            - text: The cell state path has
+            - emphasis: additive
+            - text: interactions (not multiplicative). Gradients flow through addition, not repeated multiplication, preventing exponential decay.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "LSTM: All Five Equations"
+      - generic: Theory
+      - generic:
+        - generic: Forget Gate
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: f
+                        - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic: W
+                        - generic: f
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: f
+                        - generic: )
+                        - generic:
+                          - generic: f
+                          - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic:
+                          - generic: W
+                          - generic: f
+                        - generic: ⋅
+                        - generic: "["
+                        - generic:
+                          - generic: h
+                          - generic:
+                            - generic: t
+                            - generic: −
+                            - generic: "1"
+                        - generic: ","
+                        - generic:
+                          - generic: x
+                          - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic:
+                          - generic: b
+                          - generic: f
+                        - generic: )
+                        - generic: f
+                        - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic: W
+                        - generic: f
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: f
+                        - generic: )
+                - generic:
+                  - generic: ft =
+                  - generic: σ(Wf ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic:
+                    - text: bf)
+                    - generic:
+                      - text: f
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: =
+                  - generic:
+                    - text: σ(
+                    - generic:
+                      - text: W
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: f
+                    - text: ⋅
+                  - generic:
+                    - text: "["
+                    - generic:
+                      - text: h
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t−1
+                    - text: ","
+                    - generic:
+                      - text: x
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: "] +"
+                  - generic:
+                    - generic:
+                      - text: b
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: f
+                    - text: )ft =
+                  - generic: σ(Wf ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic: bf)
+        - paragraph: Sigmoid output in [0,1]. Close to 0 = forget. Close to 1 = remember.
+      - generic:
+        - generic: Input Gate
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: i
+                        - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic: W
+                        - generic: i
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: i
+                        - generic: )
+                        - generic:
+                          - generic: i
+                          - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic:
+                          - generic: W
+                          - generic: i
+                        - generic: ⋅
+                        - generic: "["
+                        - generic:
+                          - generic: h
+                          - generic:
+                            - generic: t
+                            - generic: −
+                            - generic: "1"
+                        - generic: ","
+                        - generic:
+                          - generic: x
+                          - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic:
+                          - generic: b
+                          - generic: i
+                        - generic: )
+                        - generic: i
+                        - generic: t
+                        - generic: =
+                        - generic: σ
+                        - generic: (
+                        - generic: W
+                        - generic: i
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: i
+                        - generic: )
+                - generic:
+                  - generic: it =
+                  - generic: σ(Wi ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic:
+                    - text: bi)
+                    - generic:
+                      - text: i
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: =
+                  - generic:
+                    - text: σ(
+                    - generic:
+                      - text: W
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: i
+                    - text: ⋅
+                  - generic:
+                    - text: "["
+                    - generic:
+                      - text: h
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t−1
+                    - text: ","
+                    - generic:
+                      - text: x
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: "] +"
+                  - generic:
+                    - generic:
+                      - text: b
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: i
+                    - text: )it =
+                  - generic: σ(Wi ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic: bi)
+        - paragraph: Controls how much of the new candidate to add.
+      - generic:
+        - generic: Cell Update
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: C
+                        - generic: t
+                        - generic: =
+                        - generic: f
+                        - generic: t
+                        - generic: ⊙
+                        - generic: C
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: +
+                        - generic: i
+                        - generic: t
+                        - generic: ⊙
+                        - generic: t
+                        - generic: a
+                        - generic: "n"
+                        - generic: h
+                        - generic: (
+                        - generic: W
+                        - generic: C
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: C
+                        - generic: )
+                        - generic:
+                          - generic: C
+                          - generic: t
+                        - generic: =
+                        - generic:
+                          - generic: f
+                          - generic: t
+                        - generic: ⊙
+                        - generic:
+                          - generic: C
+                          - generic:
+                            - generic: t
+                            - generic: −
+                            - generic: "1"
+                        - generic: +
+                        - generic:
+                          - generic: i
+                          - generic: t
+                        - generic: ⊙
+                        - generic: tanh
+                        - generic: (
+                        - generic:
+                          - generic: W
+                          - generic: C
+                        - generic: ⋅
+                        - generic: "["
+                        - generic:
+                          - generic: h
+                          - generic:
+                            - generic: t
+                            - generic: −
+                            - generic: "1"
+                        - generic: ","
+                        - generic:
+                          - generic: x
+                          - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic:
+                          - generic: b
+                          - generic: C
+                        - generic: )
+                        - generic: C
+                        - generic: t
+                        - generic: =
+                        - generic: f
+                        - generic: t
+                        - generic: ⊙
+                        - generic: C
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: +
+                        - generic: i
+                        - generic: t
+                        - generic: ⊙
+                        - generic: t
+                        - generic: a
+                        - generic: "n"
+                        - generic: h
+                        - generic: (
+                        - generic: W
+                        - generic: C
+                        - generic: ⋅
+                        - generic: "["
+                        - generic: h
+                        - generic: t
+                        - generic: −
+                        - generic: "1"
+                        - generic: ","
+                        - generic: x
+                        - generic: t
+                        - generic: "]"
+                        - generic: +
+                        - generic: b
+                        - generic: C
+                        - generic: )
+                - generic:
+                  - generic: Ct =
+                  - generic: ft ⊙
+                  - generic: Ct −
+                  - generic: 1 +
+                  - generic: it ⊙
+                  - generic: tanh(WC ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic:
+                    - text: bC)
+                    - generic:
+                      - text: C
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: =
+                  - generic:
+                    - generic:
+                      - text: f
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: ⊙
+                  - generic:
+                    - generic:
+                      - text: C
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t−1
+                    - text: +
+                  - generic:
+                    - generic:
+                      - text: i
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: ⊙
+                  - generic:
+                    - generic: tanh
+                    - text: (
+                    - generic:
+                      - text: W
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: C
+                    - text: ⋅
+                  - generic:
+                    - text: "["
+                    - generic:
+                      - text: h
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t−1
+                    - text: ","
+                    - generic:
+                      - text: x
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: t
+                    - text: "] +"
+                  - generic:
+                    - generic:
+                      - text: b
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: C
+                    - text: )Ct =
+                  - generic: ft ⊙
+                  - generic: Ct −
+                  - generic: 1 +
+                  - generic: it ⊙
+                  - generic: tanh(WC ⋅
+                  - generic: "[ht −"
+                  - generic: 1, xt] +
+                  - generic: bC)
+        - paragraph: Forget old + add new. The additive structure preserves gradients.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e3]:
+      - 'heading "LSTM: Output Gate and Hidden State" [level=2] [ref=e4]'
+      - generic [ref=e5]: Theory
+      - generic [ref=e6]:
+        - generic [ref=e7]: Output Gate
+        - generic [ref=e11]:
+          - math [ref=e13]:
+            - generic [ref=e15]:
+              - generic [ref=e16]: o
+              - generic [ref=e17]: t
+              - generic [ref=e18]: =
+              - generic [ref=e19]: σ
+              - generic [ref=e20]: (
+              - generic [ref=e21]: W
+              - generic [ref=e22]: o
+              - generic [ref=e23]: ⋅
+              - generic [ref=e24]: "["
+              - generic [ref=e25]: h
+              - generic [ref=e26]: t
+              - generic [ref=e27]: −
+              - generic [ref=e28]: "1"
+              - generic [ref=e29]: ","
+              - generic [ref=e30]: x
+              - generic [ref=e31]: t
+              - generic [ref=e32]: "]"
+              - generic [ref=e33]: +
+              - generic [ref=e34]: b
+              - generic [ref=e35]: o
+              - generic [ref=e36]: )
+              - generic [ref=e37]:
+                - generic [ref=e38]: o
+                - generic [ref=e39]: t
+              - generic [ref=e40]: =
+              - generic [ref=e41]: σ
+              - generic [ref=e42]: (
+              - generic [ref=e43]:
+                - generic [ref=e44]: W
+                - generic [ref=e45]: o
+              - generic [ref=e46]: ⋅
+              - generic [ref=e47]: "["
+              - generic [ref=e48]:
+                - generic [ref=e49]: h
+                - generic [ref=e50]:
+                  - generic [ref=e51]: t
+                  - generic [ref=e52]: −
+                  - generic [ref=e53]: "1"
+              - generic [ref=e54]: ","
+              - generic [ref=e55]:
+                - generic [ref=e56]: x
+                - generic [ref=e57]: t
+              - generic [ref=e58]: "]"
+              - generic [ref=e59]: +
+              - generic [ref=e60]:
+                - generic [ref=e61]: b
+                - generic [ref=e62]: o
+              - generic [ref=e63]: )
+              - generic [ref=e64]: o
+              - generic [ref=e65]: t
+              - generic [ref=e66]: =
+              - generic [ref=e67]: σ
+              - generic [ref=e68]: (
+              - generic [ref=e69]: W
+              - generic [ref=e70]: o
+              - generic [ref=e71]: ⋅
+              - generic [ref=e72]: "["
+              - generic [ref=e73]: h
+              - generic [ref=e74]: t
+              - generic [ref=e75]: −
+              - generic [ref=e76]: "1"
+              - generic [ref=e77]: ","
+              - generic [ref=e78]: x
+              - generic [ref=e79]: t
+              - generic [ref=e80]: "]"
+              - generic [ref=e81]: +
+              - generic [ref=e82]: b
+              - generic [ref=e83]: o
+              - generic [ref=e84]: )
+          - generic [ref=e85]:
+            - generic [ref=e86]: ot =
+            - generic [ref=e87]: σ(Wo ⋅
+            - generic [ref=e88]: "[ht −"
+            - generic [ref=e89]: 1, xt] +
+            - generic [ref=e90]:
+              - text: bo)
+              - generic [ref=e91]:
+                - text: o
+                - generic [ref=e96]: t
+              - text: =
+            - generic [ref=e100]:
+              - text: σ(
+              - generic [ref=e101]:
+                - text: W
+                - generic [ref=e106]: o
+              - text: ⋅
+            - generic [ref=e110]:
+              - text: "["
+              - generic [ref=e111]:
+                - text: h
+                - generic [ref=e117]: t−1
+              - text: ","
+              - generic [ref=e121]:
+                - text: x
+                - generic [ref=e126]: t
+              - text: "] +"
+            - generic [ref=e130]:
+              - generic [ref=e131]:
+                - text: b
+                - generic [ref=e136]: o
+              - text: )ot =
+            - generic [ref=e140]: σ(Wo ⋅
+            - generic [ref=e141]: "[ht −"
+            - generic [ref=e142]: 1, xt] +
+            - generic [ref=e143]: bo)
+        - paragraph [ref=e144]: Controls which parts of the cell state become the output.
+      - generic [ref=e145]:
+        - generic [ref=e146]: Hidden State
+        - generic [ref=e150]:
+          - math [ref=e152]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: h
+              - generic [ref=e156]: t
+              - generic [ref=e157]: =
+              - generic [ref=e158]: o
+              - generic [ref=e159]: t
+              - generic [ref=e160]: ⊙
+              - generic [ref=e161]: t
+              - generic [ref=e162]: a
+              - generic [ref=e163]: "n"
+              - generic [ref=e164]: h
+              - generic: ⁡
+              - generic [ref=e165]: (
+              - generic [ref=e166]: C
+              - generic [ref=e167]: t
+              - generic [ref=e168]: )
+              - generic [ref=e169]:
+                - generic [ref=e170]: h
+                - generic [ref=e171]: t
+              - generic [ref=e172]: =
+              - generic [ref=e173]:
+                - generic [ref=e174]: o
+                - generic [ref=e175]: t
+              - generic [ref=e176]: ⊙
+              - generic [ref=e177]: tanh
+              - generic: ⁡
+              - generic [ref=e178]: (
+              - generic [ref=e179]:
+                - generic [ref=e180]: C
+                - generic [ref=e181]: t
+              - generic [ref=e182]: )
+              - generic [ref=e183]: h
+              - generic [ref=e184]: t
+              - generic [ref=e185]: =
+              - generic [ref=e186]: o
+              - generic [ref=e187]: t
+              - generic [ref=e188]: ⊙
+              - generic [ref=e189]: t
+              - generic [ref=e190]: a
+              - generic [ref=e191]: "n"
+              - generic [ref=e192]: h
+              - generic [ref=e193]: (
+              - generic [ref=e194]: C
+              - generic [ref=e195]: t
+              - generic [ref=e196]: )
+          - generic [ref=e197]:
+            - generic [ref=e198]: ht =
+            - generic [ref=e199]: ot ⊙
+            - generic [ref=e200]:
+              - text: tanh(Ct)
+              - generic [ref=e201]:
+                - text: h
+                - generic [ref=e206]: t
+              - text: =
+            - generic [ref=e210]:
+              - generic [ref=e211]:
+                - text: o
+                - generic [ref=e216]: t
+              - text: ⊙
+            - generic [ref=e220]:
+              - generic [ref=e221]: tanh
+              - text: (
+              - generic [ref=e222]:
+                - text: C
+                - generic [ref=e227]: t
+              - text: )ht =
+            - generic [ref=e231]: ot ⊙
+            - generic [ref=e232]: tanh(Ct)
+        - paragraph [ref=e233]: The hidden state is a filtered, squashed version of the cell state. This is the output at time t.
+      - generic [ref=e234]:
+        - strong [ref=e235]: "5 equations, 4 gates:"
+        - text: forget (
+        - generic [ref=e237]:
+          - math [ref=e239]:
+            - generic [ref=e241]:
+              - generic [ref=e242]: f
+              - generic [ref=e243]: t
+              - generic [ref=e244]:
+                - generic [ref=e245]: f
+                - generic [ref=e246]: t
+              - generic [ref=e247]: f
+              - generic [ref=e248]: t
+          - generic [ref=e250]:
+            - text: ft
+            - generic [ref=e251]:
+              - text: f
+              - generic [ref=e256]: t
+            - text: ft
+        - text: ), input (
+        - generic [ref=e261]:
+          - math [ref=e263]:
+            - generic [ref=e265]:
+              - generic [ref=e266]: i
+              - generic [ref=e267]: t
+              - generic [ref=e268]:
+                - generic [ref=e269]: i
+                - generic [ref=e270]: t
+              - generic [ref=e271]: i
+              - generic [ref=e272]: t
+          - generic [ref=e274]:
+            - text: it
+            - generic [ref=e275]:
+              - text: i
+              - generic [ref=e280]: t
+            - text: it
+        - text: ), cell update (
+        - generic [ref=e285]:
+          - math [ref=e287]:
+            - generic [ref=e289]:
+              - generic [ref=e290]: C
+              - generic [ref=e291]: t
+              - generic [ref=e292]:
+                - generic [ref=e293]: C
+                - generic [ref=e294]: t
+              - generic [ref=e295]: C
+              - generic [ref=e296]: t
+          - generic [ref=e298]:
+            - text: Ct
+            - generic [ref=e299]:
+              - text: C
+              - generic [ref=e304]: t
+            - text: Ct
+        - text: ), output (
+        - generic [ref=e309]:
+          - math [ref=e311]:
+            - generic [ref=e313]:
+              - generic [ref=e314]: o
+              - generic [ref=e315]: t
+              - generic [ref=e316]:
+                - generic [ref=e317]: o
+                - generic [ref=e318]: t
+              - generic [ref=e319]: o
+              - generic [ref=e320]: t
+          - generic [ref=e322]:
+            - text: ot
+            - generic [ref=e323]:
+              - text: o
+              - generic [ref=e328]: t
+            - text: ot
+        - text: ), hidden state (
+        - generic [ref=e333]:
+          - math [ref=e335]:
+            - generic [ref=e337]:
+              - generic [ref=e338]: h
+              - generic [ref=e339]: t
+              - generic [ref=e340]:
+                - generic [ref=e341]: h
+                - generic [ref=e342]: t
+              - generic [ref=e343]: h
+              - generic [ref=e344]: t
+          - generic [ref=e346]:
+            - text: ht
+            - generic [ref=e347]:
+              - text: h
+              - generic [ref=e352]: t
+            - text: ht
+        - text: "). Every gate takes the same inputs:"
+        - generic [ref=e357]:
+          - math [ref=e359]:
+            - generic [ref=e361]:
+              - generic [ref=e362]: "["
+              - generic [ref=e363]: h
+              - generic [ref=e364]: t
+              - generic [ref=e365]: −
+              - generic [ref=e366]: "1"
+              - generic [ref=e367]: ","
+              - generic [ref=e368]: x
+              - generic [ref=e369]: t
+              - generic [ref=e370]: "]"
+              - generic [ref=e371]: "["
+              - generic [ref=e372]:
+                - generic [ref=e373]: h
+                - generic [ref=e374]:
+                  - generic [ref=e375]: t
+                  - generic [ref=e376]: −
+                  - generic [ref=e377]: "1"
+              - generic [ref=e378]: ","
+              - generic [ref=e379]:
+                - generic [ref=e380]: x
+                - generic [ref=e381]: t
+              - generic [ref=e382]: "]"
+              - generic [ref=e383]: "["
+              - generic [ref=e384]: h
+              - generic [ref=e385]: t
+              - generic [ref=e386]: −
+              - generic [ref=e387]: "1"
+              - generic [ref=e388]: ","
+              - generic [ref=e389]: x
+              - generic [ref=e390]: t
+              - generic [ref=e391]: "]"
+          - generic [ref=e392]:
+            - generic [ref=e393]: "[ht −"
+            - generic [ref=e394]:
+              - text: 1, xt][
+              - generic [ref=e395]:
+                - text: h
+                - generic [ref=e401]: t−1
+              - text: ","
+              - generic [ref=e405]:
+                - text: x
+                - generic [ref=e410]: t
+              - text: "][ht −"
+            - generic [ref=e414]: 1, xt]
+        - text: . The difference is the learned weight matrices.
+      - generic [ref=e415]:
+        - strong [ref=e416]: "Parameter count:"
+        - text: For input size
+        - generic [ref=e418]:
+          - math [ref=e420]:
+            - generic [ref=e422]:
+              - generic [ref=e423]: d
+              - generic [ref=e424]: d
+              - generic [ref=e425]: d
+          - generic [ref=e427]: ddd
+        - text: and hidden size
+        - generic [ref=e429]:
+          - math [ref=e431]:
+            - generic [ref=e433]:
+              - generic [ref=e434]: h
+              - generic [ref=e435]: h
+              - generic [ref=e436]: h
+          - generic [ref=e438]: hhh
+        - text: ", an LSTM has"
+        - generic [ref=e440]:
+          - math [ref=e442]:
+            - generic [ref=e444]:
+              - generic [ref=e445]: "4"
+              - generic [ref=e446]: (
+              - generic [ref=e447]: d
+              - generic [ref=e448]: ⋅
+              - generic [ref=e449]: h
+              - generic [ref=e450]: +
+              - generic [ref=e451]: h
+              - generic [ref=e452]: ⋅
+              - generic [ref=e453]: h
+              - generic [ref=e454]: +
+              - generic [ref=e455]: h
+              - generic [ref=e456]: )
+              - generic [ref=e457]: "4"
+              - generic [ref=e458]: (
+              - generic [ref=e459]: d
+              - generic [ref=e460]: ⋅
+              - generic [ref=e461]: h
+              - generic [ref=e462]: +
+              - generic [ref=e463]: h
+              - generic [ref=e464]: ⋅
+              - generic [ref=e465]: h
+              - generic [ref=e466]: +
+              - generic [ref=e467]: h
+              - generic [ref=e468]: )
+              - generic [ref=e469]: "4"
+              - generic [ref=e470]: (
+              - generic [ref=e471]: d
+              - generic [ref=e472]: ⋅
+              - generic [ref=e473]: h
+              - generic [ref=e474]: +
+              - generic [ref=e475]: h
+              - generic [ref=e476]: ⋅
+              - generic [ref=e477]: h
+              - generic [ref=e478]: +
+              - generic [ref=e479]: h
+              - generic [ref=e480]: )
+          - generic [ref=e481]:
+            - generic [ref=e482]: 4(d ⋅
+            - generic [ref=e483]: h +
+            - generic [ref=e484]: h ⋅
+            - generic [ref=e485]: h +
+            - generic [ref=e486]: h)4(d ⋅
+            - generic [ref=e487]: h +
+            - generic [ref=e488]: h ⋅
+            - generic [ref=e489]: h +
+            - generic [ref=e490]: h)4(d ⋅
+            - generic [ref=e491]: h +
+            - generic [ref=e492]: h ⋅
+            - generic [ref=e493]: h +
+            - generic [ref=e494]: h)
+        - text: parameters — four weight matrices, four bias vectors.
+      - generic [ref=e496]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "GRU: Gated Recurrent Unit"
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Simplified LSTM
+          - list:
+            - listitem: Merges cell state and hidden state into one
+            - listitem:
+              - text: "Two gates instead of three:"
+              - strong: update
+              - text: and
+              - strong: reset
+            - listitem: Fewer parameters, faster training
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: z
+                          - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic: W
+                          - generic: z
+                          - generic: ⋅
+                          - generic: "["
+                          - generic: h
+                          - generic: t
+                          - generic: −
+                          - generic: "1"
+                          - generic: ","
+                          - generic: x
+                          - generic: t
+                          - generic: "]"
+                          - generic: )
+                          - generic:
+                            - generic: z
+                            - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic:
+                            - generic: W
+                            - generic: z
+                          - generic: ⋅
+                          - generic: "["
+                          - generic:
+                            - generic: h
+                            - generic:
+                              - generic: t
+                              - generic: −
+                              - generic: "1"
+                          - generic: ","
+                          - generic:
+                            - generic: x
+                            - generic: t
+                          - generic: "]"
+                          - generic: )
+                          - generic: z
+                          - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic: W
+                          - generic: z
+                          - generic: ⋅
+                          - generic: "["
+                          - generic: h
+                          - generic: t
+                          - generic: −
+                          - generic: "1"
+                          - generic: ","
+                          - generic: x
+                          - generic: t
+                          - generic: "]"
+                          - generic: )
+                  - generic:
+                    - generic: zt =
+                    - generic: σ(Wz ⋅
+                    - generic: "[ht −"
+                    - generic:
+                      - text: 1, xt])
+                      - generic:
+                        - text: z
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic:
+                      - text: σ(
+                      - generic:
+                        - text: W
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: z
+                      - text: ⋅
+                    - generic:
+                      - text: "["
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t−1
+                      - text: ","
+                      - generic:
+                        - text: x
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: "])zt ="
+                    - generic: σ(Wz ⋅
+                    - generic: "[ht −"
+                    - generic: 1, xt])
+            - generic: Update gate (combines forget + input)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: r
+                          - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic: W
+                          - generic: r
+                          - generic: ⋅
+                          - generic: "["
+                          - generic: h
+                          - generic: t
+                          - generic: −
+                          - generic: "1"
+                          - generic: ","
+                          - generic: x
+                          - generic: t
+                          - generic: "]"
+                          - generic: )
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic:
+                            - generic: W
+                            - generic: r
+                          - generic: ⋅
+                          - generic: "["
+                          - generic:
+                            - generic: h
+                            - generic:
+                              - generic: t
+                              - generic: −
+                              - generic: "1"
+                          - generic: ","
+                          - generic:
+                            - generic: x
+                            - generic: t
+                          - generic: "]"
+                          - generic: )
+                          - generic: r
+                          - generic: t
+                          - generic: =
+                          - generic: σ
+                          - generic: (
+                          - generic: W
+                          - generic: r
+                          - generic: ⋅
+                          - generic: "["
+                          - generic: h
+                          - generic: t
+                          - generic: −
+                          - generic: "1"
+                          - generic: ","
+                          - generic: x
+                          - generic: t
+                          - generic: "]"
+                          - generic: )
+                  - generic:
+                    - generic: rt =
+                    - generic: σ(Wr ⋅
+                    - generic: "[ht −"
+                    - generic:
+                      - text: 1, xt])
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic:
+                      - text: σ(
+                      - generic:
+                        - text: W
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: r
+                      - text: ⋅
+                    - generic:
+                      - text: "["
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t−1
+                      - text: ","
+                      - generic:
+                        - text: x
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: "])rt ="
+                    - generic: σ(Wr ⋅
+                    - generic: "[ht −"
+                    - generic: 1, xt])
+            - generic: Reset gate (controls previous state influence)
+        - generic:
+          - heading [level=3]: LSTM vs GRU
+          - table:
+            - rowgroup:
+              - row:
+                - columnheader: Property
+                - columnheader: LSTM
+                - columnheader: GRU
+            - rowgroup:
+              - row:
+                - cell: Gates
+                - cell: 3 + cell
+                - cell: "2"
+              - row:
+                - cell: Parameters
+                - cell: More
+                - cell: ~25% fewer
+              - row:
+                - cell: Long sequences
+                - cell: Better
+                - cell: Comparable
+              - row:
+                - cell: Small data
+                - cell: Overfits more
+                - cell: Better
+              - row:
+                - cell: Speed
+                - cell: Slower
+                - cell: Faster
+          - generic:
+            - strong: "Rule of thumb:"
+            - text: Start with GRU. Switch to LSTM if performance is insufficient on long sequences.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Attention Mechanisms for Sequences
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Temporal Attention
+          - paragraph:
+            - text: Instead of using only the final hidden state,
+            - strong: attend to all time steps
+            - text: with learned importance weights.
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: α
+                          - generic: t
+                          - generic: =
+                          - generic: e
+                          - generic: x
+                          - generic: p
+                          - generic: (
+                          - generic: e
+                          - generic: t
+                          - generic: )
+                          - generic: ∑
+                          - generic: k
+                          - generic: =
+                          - generic: "1"
+                          - generic: T
+                          - generic: e
+                          - generic: x
+                          - generic: p
+                          - generic: (
+                          - generic: e
+                          - generic: k
+                          - generic: )
+                          - generic:
+                            - generic: α
+                            - generic: t
+                          - generic: =
+                          - generic:
+                            - generic:
+                              - generic: exp
+                              - generic: (
+                              - generic:
+                                - generic: e
+                                - generic: t
+                              - generic: )
+                            - generic:
+                              - generic:
+                                - generic: ∑
+                                - generic:
+                                  - generic: k
+                                  - generic: =
+                                  - generic: "1"
+                                - generic: T
+                              - generic: exp
+                              - generic: (
+                              - generic:
+                                - generic: e
+                                - generic: k
+                              - generic: )
+                          - generic: α
+                          - generic: t
+                          - generic: =
+                          - generic: ∑
+                          - generic: k
+                          - generic: =
+                          - generic: "1"
+                          - generic: T
+                          - generic: e
+                          - generic: x
+                          - generic: p
+                          - generic: (
+                          - generic: e
+                          - generic: k
+                          - generic: )
+                          - generic: e
+                          - generic: x
+                          - generic: p
+                          - generic: (
+                          - generic: e
+                          - generic: t
+                          - generic: )
+                  - generic:
+                    - generic: αt =
+                    - generic: exp(et) ∑ k =
+                    - generic:
+                      - text: 1Texp(ek)
+                      - generic:
+                        - text: α
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - text: ∑
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: k=1
+                                            - generic:
+                                              - generic: T
+                                  - generic: exp
+                                  - text: (
+                                  - generic:
+                                    - text: e
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: k
+                                  - text: )
+                                - generic:
+                                  - generic: exp
+                                  - text: (
+                                  - generic:
+                                    - text: e
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: t
+                                  - text: )
+                      - text: αt =
+                    - generic: ∑ k =
+                    - generic: 1Texp(ek)exp(et)
+            - generic: Attention weight for time step t (softmax over scores)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: c
+                          - generic: =
+                          - generic: ∑
+                          - generic: t
+                          - generic: =
+                          - generic: "1"
+                          - generic: T
+                          - generic: α
+                          - generic: t
+                          - generic: h
+                          - generic: t
+                          - generic: c
+                          - generic: =
+                          - generic:
+                            - generic: ∑
+                            - generic:
+                              - generic: t
+                              - generic: =
+                              - generic: "1"
+                            - generic: T
+                          - generic:
+                            - generic: α
+                            - generic: t
+                          - generic:
+                            - generic: h
+                            - generic: t
+                          - generic: c
+                          - generic: =
+                          - generic: t
+                          - generic: =
+                          - generic: "1"
+                          - generic: ∑
+                          - generic: T
+                          - generic: α
+                          - generic: t
+                          - generic: h
+                          - generic: t
+                  - generic:
+                    - generic: c =
+                    - generic: ∑ t =
+                    - generic: 1Tαthtc =
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t=1
+                              - generic: ∑
+                              - generic:
+                                - generic: T
+                      - generic:
+                        - text: α
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: c =
+                    - generic: t =
+                    - generic: 1 ∑ Tαtht
+            - generic: Context vector = weighted sum of hidden states
+        - generic:
+          - heading [level=3]: Why Attention?
+          - generic:
+            - strong: "Without attention:"
+            - text: the model must compress an entire sequence into a single fixed-size vector (the last hidden state). Long sequences lose early information.
+          - generic:
+            - strong: "With attention:"
+            - text: the model can "look back" at any time step. The attention weights are interpretable — you can see which inputs the model focuses on.
+          - paragraph: This is the precursor to self-attention in Transformers (Lesson 5.4).
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "34 / 96" [ref=e501] [cursor=pointer]:
+    - /url: "#/33"
+  - complementary:
+    - button "previous slide" [ref=e502] [cursor=pointer]
+    - button "next slide" [ref=e504] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e508]: "LSTM: Output Gate and Hidden State Theory Output Gate o t = σ ( W o ⋅ [ h t − 1 , x t ] + b o ) Controls which parts of the cell state become the output. Hidden State h t = o t ⊙ tanh ⁡ ( C t ) The hidden state is a filtered, squashed version of the cell state. This is the output at time t. 5 equations, 4 gates: forget ( f t ), input ( i t ), cell update ( C t ), output ( o t ), hidden state ( h t ). Every gate takes the same inputs: [ h t − 1 , x t ] . The difference is the learned weight matrices. Parameter count: For input size d and hidden size h , an LSTM has 4 ( d ⋅ h + h ⋅ h + h ) parameters — four weight matrices, four bias vectors. MLFP Module 5 — Terrene Open Academy"

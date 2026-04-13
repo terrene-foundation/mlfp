@@ -2,321 +2,738 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 3: Sequence Models — RNNs and LSTMs
+# MLFP05 — Exercise 3: RNNs, LSTMs, GRUs, and Temporal Attention
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Understand sequence modeling with RNNs and LSTMs — vanishing
-#   gradients, gating mechanisms — for text classification.
+#
+# WHAT YOU'LL LEARN:
+#   After completing this exercise, you will be able to:
+#   - Build vanilla RNN, LSTM, and GRU networks with torch.nn
+#   - Write the six LSTM gate equations as vectorised torch operations
+#   - Compare gradient norms across RNN/LSTM/GRU to see vanishing gradients
+#   - Add a temporal attention mechanism on top of LSTM (preview of M5.4)
+#   - Train multi-step forecasters on REAL multi-stock data (STI + 5 tickers)
+#   - Track every model variant with ExperimentTracker (per-epoch metrics)
+#   - Register the best-performing model in ModelRegistry
+#   - Visualise training curves and prediction-vs-actual with ModelVisualizer
+#
+# PREREQUISITES: M5/ex_2 (CNNs, PyTorch training loops, batch norm).
+# ESTIMATED TIME: ~120-150 min
+#
+# DATASET: STI + 5 APAC/global stocks via yfinance (2010-2024, ~3,700 days/ticker).
+#   Cached to data/mlfp05/stocks/*.parquet.
 #
 # TASKS:
-#   1. Implement vanilla RNN cell forward pass
-#   2. Demonstrate vanishing gradient problem
-#   3. Implement LSTM cell with gates (forget, input, output)
-#   4. Build bidirectional LSTM for sentiment analysis
-#   5. Compare RNN vs LSTM convergence with ModelVisualizer
+#   1. Load multi-stock data and build windowed datasets
+#   2. Set up ExperimentTracker and ModelRegistry
+#   3. Build VanillaRNN, LSTMRegressor, GRURegressor, LSTMWithAttention
+#   4. Train all four architectures with gradient clipping, log to tracker
+#   5. Compare gradient decay: RNN vs LSTM (vanishing gradients demo)
+#   6. Sanity-check hand-rolled LSTM cell with gate equations
+#   7. Multi-stock generalisation test with LSTM+Attention
+#   8. Register the best model in ModelRegistry
+#   9. Visualise training curves, gradient norms, prediction vs actual
+#
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import math
-import random
-import re
-from collections import Counter
+import asyncio
+import pickle
+from pathlib import Path
 
+import numpy as np
 import polars as pl
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 
-from kailash_ml import DataExplorer, ModelVisualizer, TrainingPipeline
+from kailash.db import ConnectionManager
+from kailash_ml import ModelVisualizer
+from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml.engines.model_registry import ModelRegistry
 
-from shared import MLFPDataLoader
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import get_device, setup_environment
 
 setup_environment()
 
-
-# ── Data Loading ──────────────────────────────────────────────────────
-
-loader = MLFPDataLoader()
-df = loader.load("mlfp05", "sg_product_reviews.parquet")
-
-explorer = DataExplorer()
-summary = explorer.analyze(df)
-print(f"=== Dataset: {df.height} reviews, columns: {df.columns} ===")
-print(summary)
+torch.manual_seed(42)
+np.random.seed(42)
+device = get_device()
+print(f"Using device: {device}")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1 — Download multi-stock data and build windowed datasets
+# ════════════════════════════════════════════════════════════════════════
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "stocks"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+TICKERS = {
+    "^STI": "Straits Times Index",
+    "DBS.SI": "DBS Group",
+    "9988.HK": "Alibaba HK",
+    "AAPL": "Apple",
+    "005930.KS": "Samsung",
+    "7203.T": "Toyota",
+}
+
+SEQ_LEN = 20
+FORECAST_HORIZON = 5
+FEATURES = ["Close", "High", "Low", "Volume"]
 
 
-def tokenize(text: str) -> list[str]:
-    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+def fetch_ticker(symbol: str) -> pl.DataFrame:
+    """Download daily OHLCV bars from yfinance, return polars DataFrame."""
+    import yfinance as yf
+
+    df = yf.download(
+        symbol, start="2010-01-01", end="2024-12-31", progress=False, auto_adjust=True
+    )
+    if df is None or len(df) == 0:
+        raise RuntimeError(f"yfinance returned empty frame for {symbol}")
+    df = df.copy()
+    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+    return pl.from_pandas(df.reset_index())
 
 
-corpus = df.select("text").to_series().to_list()
-word_counts = Counter(tok for t in corpus for tok in tokenize(t))
-vocab = ["<pad>", "<unk>"] + [w for w, c in word_counts.most_common(2000) if c >= 2]
-word_to_idx = {w: i for i, w in enumerate(vocab)}
-vocab_size = len(vocab)
-
-print(f"Vocabulary: {vocab_size} words")
-
-
-def text_to_indices(text: str, max_len: int = 50) -> list[int]:
-    """Convert text to padded index sequence."""
-    tokens = tokenize(text)[:max_len]
-    indices = [word_to_idx.get(t, 1) for t in tokens]
-    indices += [0] * (max_len - len(indices))  # pad
-    return indices
+def load_or_fetch(symbol: str):
+    cache = DATA_DIR / f"{symbol.replace('^', '').replace('.', '_')}.parquet"
+    if cache.exists():
+        return pl.read_parquet(cache), "cache"
+    try:
+        df = fetch_ticker(symbol)
+        df.write_parquet(cache)
+        return df, "yfinance"
+    except Exception as exc:
+        print(f"  {symbol} unavailable ({type(exc).__name__}: {exc})")
+        return None, "failed"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Vanilla RNN cell forward pass
-# ══════════════════════════════════════════════════════════════════════
+stock_data: dict[str, pl.DataFrame] = {}
+for symbol, name in TICKERS.items():
+    df, source = load_or_fetch(symbol)
+    if df is not None:
+        stock_data[symbol] = df
+        print(f"  {symbol} ({name}): {len(df)} days [{source}]")
+
+if "^STI" not in stock_data and "AAPL" not in stock_data:
+    raise RuntimeError("Need at least ^STI or AAPL data to proceed")
+
+PRIMARY = "^STI" if "^STI" in stock_data else "AAPL"
+primary_df = stock_data[PRIMARY]
+print(
+    f"\nPrimary: {PRIMARY} — {len(primary_df)} days, "
+    f"{primary_df['Date'].min()} -> {primary_df['Date'].max()}"
+)
 
 
-def tanh(x: float) -> float:
-    """Hyperbolic tangent activation."""
-    return math.tanh(x)
+def build_dataset(df: pl.DataFrame, seq_len: int, horizon: int):
+    """Build windowed (seq_len, features) -> (next horizon closes) arrays."""
+    data = df.select(FEATURES).to_numpy().astype(np.float32)
+    n = len(data)
+    split_n = int(0.8 * n)
+    train_data = data[:split_n]
+    mean = train_data.mean(axis=0, keepdims=True)
+    std = train_data.std(axis=0, keepdims=True) + 1e-8
+    data_norm = (data - mean) / std
+
+    n_windows = n - seq_len - horizon + 1
+    X = np.stack([data_norm[i : i + seq_len] for i in range(n_windows)])
+    y = np.stack(
+        [data_norm[i + seq_len : i + seq_len + horizon, 0] for i in range(n_windows)]
+    )
+    split_idx = split_n - seq_len
+    return X.astype(np.float32), y.astype(np.float32), mean, std, split_idx
 
 
-class RNNCell:
-    """Vanilla RNN: h_t = tanh(W_hh * h_{t-1} + W_xh * x_t + b)."""
+X_all, y_all, norm_mean, norm_std, n_train_w = build_dataset(
+    primary_df, SEQ_LEN, FORECAST_HORIZON
+)
+print(
+    f"Built {len(X_all)} windows (seq_len={SEQ_LEN}, horizon={FORECAST_HORIZON}); "
+    f"train {n_train_w}, val {len(X_all) - n_train_w}"
+)
 
+X_train_t = torch.from_numpy(X_all[:n_train_w]).to(device)
+y_train_t = torch.from_numpy(y_all[:n_train_w]).to(device)
+X_val_t = torch.from_numpy(X_all[n_train_w:]).to(device)
+y_val_t = torch.from_numpy(y_all[n_train_w:]).to(device)
+print(f"  X_train: {tuple(X_train_t.shape)}  y_train: {tuple(y_train_t.shape)}")
+
+train_loader = DataLoader(
+    TensorDataset(X_train_t, y_train_t), batch_size=64, shuffle=True
+)
+val_loader = DataLoader(TensorDataset(X_val_t, y_val_t), batch_size=64)
+N_FEATURES = X_train_t.shape[-1]
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert len(stock_data) >= 2, f"Need >= 2 tickers, got {len(stock_data)}"
+assert X_train_t.shape[1] == SEQ_LEN
+assert y_train_t.shape[1] == FORECAST_HORIZON, "Multi-step target shape mismatch"
+print("--- Checkpoint 1 passed --- multi-stock data loaded and windowed\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2 — Set up ExperimentTracker and ModelRegistry
+# ════════════════════════════════════════════════════════════════════════
+async def setup_engines():
+    # TODO: Create ConnectionManager("sqlite:///mlfp05_rnns.db"), initialize,
+    #       create ExperimentTracker and experiment "m5_rnns_sequence_models"
+    # Hint: same pattern as ex_1 and ex_2
+    conn = ____  # Hint: ConnectionManager("sqlite:///mlfp05_rnns.db")
+    await conn.initialize()
+    tracker = ____  # Hint: ExperimentTracker(conn)
+    exp_name = await tracker.create_experiment(
+        name=____,  # Hint: "m5_rnns_sequence_models"
+        description=____,  # Hint: describe multi-step forecasting task
+    )
+    try:
+        registry = ____  # Hint: ModelRegistry(conn)
+        has_registry = True
+    except Exception as e:
+        registry = None
+        has_registry = False
+        print(f"  Note: ModelRegistry setup skipped ({e})")
+    return conn, tracker, exp_name, registry, has_registry
+
+
+conn, tracker, exp_name, registry, has_registry = asyncio.run(setup_engines())
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert tracker is not None, "ExperimentTracker should be initialised"
+assert exp_name is not None, "Experiment should be created"
+print("--- Checkpoint 2 passed --- ExperimentTracker and ModelRegistry ready\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3 — Build model architectures
+# ════════════════════════════════════════════════════════════════════════
+
+
+# ── PART A: Vanilla RNN ──────────────────────────────────────────────
+# h_t = tanh(W_hh h_{t-1} + W_xh x_t + b)
+# Gradient passes through tanh at every step — shrinks to zero on long sequences.
+class VanillaRNN(nn.Module):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
+    ):
+        super().__init__()
+        # TODO: Define self.rnn as nn.RNN(input_dim, hidden_dim, batch_first=True, nonlinearity="tanh")
+        # and self.head as nn.Linear(hidden_dim, horizon)
+        # Hint: nn.RNN takes input_size, hidden_size, batch_first=True
+        self.rnn = ____
+        self.head = ____
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO: Pass through rnn, take the last hidden state, pass through head
+        # Hint: out, _ = self.rnn(x); return self.head(out[:, -1])
+        out, _ = ____
+        return self.head(out[:, -1])
+
+
+# ── PART B: LSTM — six gate equations, cell state highway ────────────
+# LSTM gate equations (implemented by nn.LSTM internally):
+#   f_t = sigma(W_f [h_{t-1}, x_t] + b_f)   (forget gate)
+#   i_t = sigma(W_i [h_{t-1}, x_t] + b_i)   (input gate)
+#   g_t = tanh (W_g [h_{t-1}, x_t] + b_g)   (candidate cell)
+#   C_t = f_t * C_{t-1} + i_t * g_t          (cell update — additive highway)
+#   o_t = sigma(W_o [h_{t-1}, x_t] + b_o)   (output gate)
+#   h_t = o_t * tanh(C_t)                    (hidden state)
+class LSTMRegressor(nn.Module):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
+    ):
+        super().__init__()
+        # TODO: Define self.lstm as nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        # and self.head as nn.Linear(hidden_dim, horizon)
+        self.lstm = ____
+        self.head = ____
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO: Pass through lstm, take last output position, pass through head
+        # Hint: out, (h_n, c_n) = self.lstm(x); return self.head(out[:, -1])
+        out, (h_n, c_n) = ____
+        return self.head(out[:, -1])
+
+
+# Hand-rolled LSTM cell — makes gate equations concrete
+class LSTMCellFromScratch(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int):
+        super().__init__()
+        # Single linear combines all 4 gate projections: i, f, g, o
+        self.gates = nn.Linear(input_dim + hidden_dim, 4 * hidden_dim)
         self.hidden_dim = hidden_dim
-        # Initialize weights
-        scale = 1.0 / math.sqrt(hidden_dim)
-        self.W_xh = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)]
-            for _ in range(input_dim)
-        ]
-        self.W_hh = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)]
-            for _ in range(hidden_dim)
-        ]
-        self.b_h = [0.0] * hidden_dim
 
-    def forward(self, x: list[float], h_prev: list[float]) -> list[float]:
-        """Single step: compute new hidden state."""
-        h_new = [0.0] * self.hidden_dim
-        for j in range(self.hidden_dim):
-            val = self.b_h[j]
-            for k in range(len(x)):
-                val += x[k] * self.W_xh[k][j]
-            for k in range(self.hidden_dim):
-                val += h_prev[k] * self.W_hh[k][j]
-            # TODO: Apply tanh activation to val.
-            # Hint: tanh(val)
-            h_new[j] = ____
-        return h_new
-
-    def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        """Process a full sequence, return all hidden states."""
-        h = [0.0] * self.hidden_dim
-        hidden_states = []
-        for x_t in sequence:
-            h = self.forward(x_t, h)
-            hidden_states.append(h[:])
-        return hidden_states
+    def forward(self, x_t: torch.Tensor, h_prev: torch.Tensor, c_prev: torch.Tensor):
+        combined = torch.cat([x_t, h_prev], dim=-1)
+        pre = self.gates(combined)
+        # TODO: Split pre into 4 gates (i, f, g, o) then apply sigmoid/tanh
+        # Hint: i, f, g, o = pre.chunk(4, dim=-1)
+        #        i = torch.sigmoid(i); f = torch.sigmoid(f)
+        #        g = torch.tanh(g);    o = torch.sigmoid(o)
+        i, f, g, o = ____
+        i = ____
+        f = ____
+        g = ____
+        o = ____
+        # TODO: Compute cell update: c_next = f * c_prev + i * g
+        # Then hidden state: h_next = o * torch.tanh(c_next)
+        c_next = ____
+        h_next = ____
+        return h_next, c_next
 
 
-# Demo with a short sequence
-input_dim = 10
-hidden_dim = 8
-rnn = RNNCell(input_dim, hidden_dim)
+# ── PART C: GRU — simpler, two gates ─────────────────────────────────
+# GRU merges forget + input into a single update gate. Fewer parameters
+# (roughly 75% of LSTM), similar performance on many tasks.
+class GRURegressor(nn.Module):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
+    ):
+        super().__init__()
+        # TODO: Define self.gru as nn.GRU(input_dim, hidden_dim, batch_first=True)
+        # and self.head as nn.Linear(hidden_dim, horizon)
+        self.gru = ____
+        self.head = ____
 
-demo_seq = [[random.gauss(0, 1) for _ in range(input_dim)] for _ in range(5)]
-states = rnn.forward_sequence(demo_seq)
-
-print(f"\nRNN Cell: input_dim={input_dim}, hidden_dim={hidden_dim}")
-for t, h in enumerate(states):
-    norm = math.sqrt(sum(v * v for v in h))
-    print(f"  t={t}: ||h||={norm:.4f}, h[:3]={[f'{v:.3f}' for v in h[:3]]}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = ____
+        return self.head(out[:, -1])
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Demonstrate vanishing gradient problem
-# ══════════════════════════════════════════════════════════════════════
+# ── PART D: LSTM with Temporal Attention ──────────────────────────────
+# Attention learns which past timesteps matter most for prediction.
+# a = softmax(tanh(H @ W) @ v)   ->   context = sum(a * H)
+class TemporalAttention(nn.Module):
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.W = nn.Linear(hidden_dim, hidden_dim)
+        self.v = nn.Linear(hidden_dim, 1, bias=False)
+
+    def forward(self, lstm_outputs: torch.Tensor):
+        """lstm_outputs: (batch, seq, hidden) -> context (batch, hidden), weights (batch, seq)."""
+        # TODO: Compute energy = tanh(W(lstm_outputs)), scores = v(energy).squeeze(-1)
+        # Then weights = softmax(scores, dim=-1), context = bmm(weights.unsqueeze(1), lstm_outputs).squeeze(1)
+        # Hint: energy shape (batch, seq, hidden); scores shape (batch, seq)
+        energy = ____
+        scores = ____
+        weights = ____
+        context = ____
+        return context, weights
 
 
-def measure_gradient_flow(cell: RNNCell, seq_len: int) -> list[float]:
-    """Approximate gradient magnitude at each time step via perturbation."""
-    epsilon = 1e-5
-    sequence = [
-        [random.gauss(0, 0.5) for _ in range(input_dim)] for _ in range(seq_len)
-    ]
+class LSTMWithAttention(nn.Module):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, horizon: int = FORECAST_HORIZON
+    ):
+        super().__init__()
+        # TODO: Define self.lstm = nn.LSTM(...), self.attention = TemporalAttention(hidden_dim),
+        #       self.head = nn.Linear(hidden_dim, horizon)
+        self.lstm = ____
+        self.attention = ____
+        self.head = ____
 
-    # Forward pass
-    states = cell.forward_sequence(sequence)
-    final_output = sum(states[-1])
+    def forward(self, x: torch.Tensor):
+        lstm_out, _ = self.lstm(x)  # (batch, seq, hidden)
+        # TODO: Pass lstm_out through attention to get context and attn_weights
+        # Hint: context, attn_weights = self.attention(lstm_out)
+        context, attn_weights = ____
+        pred = self.head(context)
+        return pred, attn_weights
 
-    # Measure how much perturbing input at step t affects the final output
-    sensitivities = []
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4 — Training harness with gradient tracking and experiment logging
+# ════════════════════════════════════════════════════════════════════════
+HIDDEN_DIM = 64
+EPOCHS = 15
+LR = 1e-3
+CLIP = 1.0
+
+
+def compute_gradient_norm(model: nn.Module) -> float:
+    """Compute the total L2 norm of all gradients (before clipping)."""
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            total_norm += p.grad.data.norm(2).item() ** 2
+    return total_norm**0.5
+
+
+def _predict(model, x, attn=False):
+    out = model(x)
+    return out[0] if attn else out
+
+
+async def train_model_async(model, name, epochs=EPOCHS, lr=LR, clip=CLIP, attn=False):
+    """Train with gradient tracking, log to ExperimentTracker."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    train_losses, val_losses, gradient_norms = [], [], []
+    n_params = sum(p.numel() for p in model.parameters())
+
+    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
+        # TODO: Log all params as a dict with ctx.log_params({...})
+        # Hint: await ctx.log_params({"model_type": name, "hidden_dim": str(HIDDEN_DIM), ...})
+        await ctx.log_params(
+            {
+                "model_type": ____,  # Hint: name
+                "hidden_dim": ____,  # Hint: str(HIDDEN_DIM)
+                "seq_len": ____,  # Hint: str(SEQ_LEN)
+                "forecast_horizon": ____,  # Hint: str(FORECAST_HORIZON)
+                "epochs": ____,  # Hint: str(epochs)
+                "lr": ____,  # Hint: str(lr)
+                "clip_norm": ____,  # Hint: str(clip)
+                "n_params": ____,  # Hint: str(n_params)
+                "ticker": ____,  # Hint: PRIMARY
+            }
+        )
+        print(f"  [{name}] {n_params:,} parameters")
+
+        for epoch in range(epochs):
+            model.train()
+            b_losses, e_grads = [], []
+            for xb, yb in train_loader:
+                opt.zero_grad()
+                loss = F.mse_loss(_predict(model, xb, attn), yb)
+                loss.backward()
+                e_grads.append(compute_gradient_norm(model))
+                # TODO: Clip gradients using nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip)
+                # Hint: gradient clipping prevents the exploding gradient problem in RNNs
+                ____
+                opt.step()
+                b_losses.append(loss.item())
+
+            tl, gn = float(np.mean(b_losses)), float(np.mean(e_grads))
+            train_losses.append(tl)
+            gradient_norms.append(gn)
+
+            model.eval()
+            with torch.no_grad():
+                vl = float(
+                    np.mean(
+                        [
+                            F.mse_loss(_predict(model, xb, attn), yb).item()
+                            for xb, yb in val_loader
+                        ]
+                    )
+                )
+            val_losses.append(vl)
+
+            await ctx.log_metrics(
+                {
+                    ____: tl,
+                    ____: vl,
+                    ____: gn,
+                },  # Hint: "train_loss", "val_loss", "gradient_norm"
+                step=epoch + 1,
+            )
+            print(
+                f"  [{name}] epoch {epoch+1:2d}/{epochs}  train={tl:.4f}  val={vl:.4f}  grad={gn:.4f}"
+            )
+
+        await ctx.log_metric(____, val_losses[-1])  # Hint: "final_val_loss"
+
+    return {
+        "train_losses": train_losses,
+        "val_losses": val_losses,
+        "gradient_norms": gradient_norms,
+        "final_val_loss": val_losses[-1],
+    }
+
+
+def train_model(model, name, epochs=EPOCHS, lr=LR, clip=CLIP, attn=False):
+    """Sync wrapper — one asyncio.run per training call."""
+    return asyncio.run(train_model_async(model, name, epochs, lr, clip, attn))
+
+
+# ── Train all four architectures ──────────────────────────────────────
+rnn_model = VanillaRNN(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
+lstm_model = LSTMRegressor(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
+gru_model = GRURegressor(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
+attn_model = LSTMWithAttention(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM)
+
+print(f"\n== Training on {PRIMARY} ==")
+rnn_results = train_model(rnn_model, "VanillaRNN")
+lstm_results = train_model(lstm_model, "LSTM")
+gru_results = train_model(gru_model, "GRU")
+attn_results = train_model(attn_model, "LSTM_Attention", attn=True)
+
+all_results = {
+    "VanillaRNN": rnn_results,
+    "LSTM": lstm_results,
+    "GRU": gru_results,
+    "LSTM_Attention": attn_results,
+}
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+for name, res in all_results.items():
+    assert len(res["train_losses"]) == EPOCHS, f"{name} should have {EPOCHS} epochs"
+    assert res["final_val_loss"] < 5.0, f"{name} val loss suspiciously high"
+print("\n--- Checkpoint 3 passed --- all four architectures trained\n")
+
+print(f"{'Model':<18s} {'Train':>8s} {'Val':>8s} {'GradNorm':>10s}")
+for name, res in all_results.items():
+    print(
+        f"{name:<18s} {res['train_losses'][-1]:>8.4f} "
+        f"{res['final_val_loss']:>8.4f} {np.mean(res['gradient_norms']):>10.4f}"
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5 — Gradient decay across time (vanishing gradients demonstration)
+# ════════════════════════════════════════════════════════════════════════
+# Hand-roll RNN and LSTM step-by-step, measure gradient norm at each
+# timestep. RNN decays geometrically; LSTM preserves via additive highway.
+def _collect_grad_norms(hiddens):
+    return [float(h.grad.norm().item()) if h.grad is not None else 0.0 for h in hiddens]
+
+
+def gradient_decay_rnn(seq_len: int = 60) -> list[float]:
+    """Gradient norm at each timestep for a vanilla RNN."""
+    torch.manual_seed(0)
+    hd = 16
+    W_xh = torch.randn(N_FEATURES, hd, device=device).mul_(0.5).requires_grad_(True)
+    W_hh = torch.randn(hd, hd, device=device).mul_(0.5).requires_grad_(True)
+    b = torch.zeros(hd, device=device, requires_grad=True)
+    x = torch.randn(1, seq_len, N_FEATURES, device=device)
+    h = torch.zeros(1, hd, device=device, requires_grad=True)
+    hiddens: list[torch.Tensor] = []
     for t in range(seq_len):
-        perturbed = [row[:] for row in sequence]
-        perturbed[t][0] += epsilon
-        perturbed_states = cell.forward_sequence(perturbed)
-        perturbed_output = sum(perturbed_states[-1])
-        sensitivity = abs(perturbed_output - final_output) / epsilon
-        sensitivities.append(sensitivity)
-
-    return sensitivities
-
-
-print(f"\n--- Vanishing Gradient Demonstration ---")
-for seq_len in [10, 25, 50]:
-    grads = measure_gradient_flow(rnn, seq_len)
-    print(f"\n  Sequence length={seq_len}:")
-    print(f"    Gradient at t=0: {grads[0]:.6f}")
-    print(f"    Gradient at t={seq_len//2}: {grads[seq_len//2]:.6f}")
-    print(f"    Gradient at t={seq_len-1}: {grads[-1]:.6f}")
-    print(f"    Ratio (first/last): {grads[0] / (grads[-1] + 1e-10):.4f}")
-
-print(f"\nEarly inputs have diminishing influence — the vanishing gradient problem.")
-print(f"tanh derivatives < 1 compound multiplicatively across time steps.")
+        # TODO: Compute one RNN step: h = tanh(x[:,t] @ W_xh + h @ W_hh + b)
+        # Then h.retain_grad() and append to hiddens
+        # Hint: torch.tanh(x[:, t] @ W_xh + h @ W_hh + b)
+        h = ____
+        h.retain_grad()
+        hiddens.append(h)
+    hiddens[-1].pow(2).sum().backward()
+    return _collect_grad_norms(hiddens)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: LSTM cell with gates
-# ══════════════════════════════════════════════════════════════════════
+def gradient_decay_lstm(seq_len: int = 60) -> list[float]:
+    """Gradient norm at each timestep for an LSTM (hand-rolled)."""
+    torch.manual_seed(0)
+    hd = 16
+    cell = LSTMCellFromScratch(N_FEATURES, hd).to(device)
+    x = torch.randn(1, seq_len, N_FEATURES, device=device)
+    h = torch.zeros(1, hd, device=device, requires_grad=True)
+    c = torch.zeros(1, hd, device=device, requires_grad=True)
+    hiddens: list[torch.Tensor] = []
+    for t in range(seq_len):
+        h, c = cell(x[:, t], h, c)
+        h.retain_grad()
+        hiddens.append(h)
+    hiddens[-1].pow(2).sum().backward()
+    return _collect_grad_norms(hiddens)
 
 
-def sigmoid(x: float) -> float:
-    if x >= 0:
-        return 1.0 / (1.0 + math.exp(-x))
-    ex = math.exp(x)
-    return ex / (1.0 + ex)
+rnn_decay = gradient_decay_rnn(seq_len=60)
+lstm_decay = gradient_decay_lstm(seq_len=60)
+
+rnn_ratio = rnn_decay[0] / max(rnn_decay[-1], 1e-12)
+lstm_ratio = lstm_decay[0] / max(lstm_decay[-1], 1e-12)
+print(f"\n== Gradient Decay (60 steps) ==")
+print(
+    f"  RNN:  first={rnn_decay[0]:.4e}  last={rnn_decay[-1]:.4e}  ratio={rnn_ratio:.4e}"
+)
+print(
+    f"  LSTM: first={lstm_decay[0]:.4e}  last={lstm_decay[-1]:.4e}  ratio={lstm_ratio:.4e}"
+)
+print("  LSTM ratio >> RNN ratio: cell-state highway preserves gradients")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert rnn_decay[0] < rnn_decay[-1], "RNN should show vanishing gradients"
+assert lstm_ratio > rnn_ratio, "LSTM should preserve gradients better than RNN"
+# INTERPRETATION: The RNN gradient shrinks toward zero as it propagates
+# backward through 60 tanh activations. The LSTM's cell state C_t uses
+# ADDITIVE updates (C_t = f * C_{t-1} + i * g), so gradients travel
+# the cell-state highway without multiplicative shrinkage.
+print("--- Checkpoint 4 passed --- vanishing gradient problem demonstrated\n")
 
 
-class LSTMCell:
-    """LSTM with forget, input, and output gates."""
-
-    def __init__(self, input_dim: int, hidden_dim: int):
-        self.hidden_dim = hidden_dim
-        scale = 1.0 / math.sqrt(hidden_dim)
-        combined = input_dim + hidden_dim
-
-        # Weights for all four gates: forget, input, cell_candidate, output
-        self.W_f = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_i = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_c = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_o = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.b_f = [1.0] * hidden_dim  # Forget gate bias = 1 (remember by default)
-        self.b_i = [0.0] * hidden_dim
-        self.b_c = [0.0] * hidden_dim
-        self.b_o = [0.0] * hidden_dim
-
-    def _gate(
-        self, combined: list[float], W: list[list[float]], b: list[float], activation
-    ) -> list[float]:
-        result = [0.0] * self.hidden_dim
-        for j in range(self.hidden_dim):
-            val = b[j]
-            for k in range(len(combined)):
-                val += combined[k] * W[k][j]
-            result[j] = activation(val)
-        return result
-
-    def forward(
-        self, x: list[float], h_prev: list[float], c_prev: list[float]
-    ) -> tuple[list[float], list[float]]:
-        """Single LSTM step returning (h_t, c_t)."""
-        combined = x + h_prev
-
-        f_t = self._gate(combined, self.W_f, self.b_f, sigmoid)  # Forget gate
-        i_t = self._gate(combined, self.W_i, self.b_i, sigmoid)  # Input gate
-        c_hat = self._gate(combined, self.W_c, self.b_c, tanh)  # Cell candidate
-        o_t = self._gate(combined, self.W_o, self.b_o, sigmoid)  # Output gate
-
-        # TODO: Compute cell state update: c_t = f_t * c_prev + i_t * c_hat (element-wise).
-        # Hint: [f_t[j] * c_prev[j] + i_t[j] * c_hat[j] for j in range(self.hidden_dim)]
-        c_t = ____
-        # TODO: Compute hidden state: h_t = o_t * tanh(c_t) (element-wise).
-        # Hint: [o_t[j] * tanh(c_t[j]) for j in range(self.hidden_dim)]
-        h_t = ____
-
-        return h_t, c_t
-
-    def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        """Process full sequence, return all hidden states."""
-        h = [0.0] * self.hidden_dim
-        c = [0.0] * self.hidden_dim
-        hidden_states = []
-        for x_t in sequence:
-            h, c = self.forward(x_t, h, c)
-            hidden_states.append(h[:])
-        return hidden_states
+# ── TASK 6 — Sanity-check hand-rolled LSTM cell ──────────────────────
+cell = LSTMCellFromScratch(input_dim=N_FEATURES, hidden_dim=16).to(device)
+h, c = torch.zeros(4, 16, device=device), torch.zeros(4, 16, device=device)
+x_seq = torch.randn(4, SEQ_LEN, N_FEATURES, device=device)
+for t in range(x_seq.size(1)):
+    h, c = cell(x_seq[:, t], h, c)
+assert h.shape == (4, 16), "Expected (batch=4, hidden=16)"
+print(f"Hand-rolled LSTMCell: {tuple(h.shape)} -- verified\n")
 
 
-lstm = LSTMCell(input_dim, hidden_dim)
-lstm_states = lstm.forward_sequence(demo_seq)
+# ── TASK 7 — Multi-stock comparison (generalisation test) ────────────
+print("== Multi-Stock Comparison (LSTM+Attention) ==")
+multi_stock_results: dict[str, float] = {PRIMARY: attn_results["final_val_loss"]}
 
-print(f"\nLSTM Cell: input_dim={input_dim}, hidden_dim={hidden_dim}")
-for t, h in enumerate(lstm_states):
-    norm = math.sqrt(sum(v * v for v in h))
-    print(f"  t={t}: ||h||={norm:.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Bidirectional LSTM for sentiment
-# ══════════════════════════════════════════════════════════════════════
-
-
-class BiLSTM:
-    """Bidirectional LSTM: forward + backward, concatenate outputs."""
-
-    def __init__(self, input_dim: int, hidden_dim: int):
-        self.forward_lstm = LSTMCell(input_dim, hidden_dim)
-        self.backward_lstm = LSTMCell(input_dim, hidden_dim)
-        self.hidden_dim = hidden_dim
-
-    def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        """Returns concatenated [forward; backward] hidden states."""
-        fwd_states = self.forward_lstm.forward_sequence(sequence)
-        # TODO: Run the backward LSTM on the reversed sequence, then reverse the output.
-        # Hint: self.backward_lstm.forward_sequence(sequence[::-1])[::-1]
-        bwd_states = ____
-        return [f + b for f, b in zip(fwd_states, bwd_states)]
-
-
-bilstm = BiLSTM(input_dim, hidden_dim)
-bi_states = bilstm.forward_sequence(demo_seq)
-
-print(f"\nBiLSTM output dim: {len(bi_states[0])} (2 x {hidden_dim})")
-print(f"Forward captures left context, backward captures right context.")
-print(f"Concatenation gives full sentence context at every position.")
-
-# TODO: Configure TrainingPipeline for sentiment classification on "rating" target.
-# Hint: TrainingPipeline(model_type="text_classifier", target="rating", features=["text"])
-pipeline = ____
-result = pipeline.fit(df)
-print(f"\nTrainingPipeline sentiment result: {result}")
+for symbol, sdf in stock_data.items():
+    if symbol == PRIMARY or len(sdf) < SEQ_LEN + FORECAST_HORIZON + 50:
+        continue
+    X_s, y_s, _, _, sp = build_dataset(sdf, SEQ_LEN, FORECAST_HORIZON)
+    ldr = DataLoader(
+        TensorDataset(
+            torch.from_numpy(X_s[:sp]).to(device), torch.from_numpy(y_s[:sp]).to(device)
+        ),
+        batch_size=64,
+        shuffle=True,
+    )
+    ldr_v = DataLoader(
+        TensorDataset(
+            torch.from_numpy(X_s[sp:]).to(device), torch.from_numpy(y_s[sp:]).to(device)
+        ),
+        batch_size=64,
+    )
+    m = LSTMWithAttention(input_dim=N_FEATURES, hidden_dim=HIDDEN_DIM).to(device)
+    opt = torch.optim.Adam(m.parameters(), lr=LR)
+    for _ in range(8):
+        m.train()
+        for xb, yb in ldr:
+            opt.zero_grad()
+            F.mse_loss(m(xb)[0], yb).backward()
+            nn.utils.clip_grad_norm_(m.parameters(), max_norm=CLIP)
+            opt.step()
+    m.eval()
+    with torch.no_grad():
+        vl = float(np.mean([F.mse_loss(m(xb)[0], yb).item() for xb, yb in ldr_v]))
+    multi_stock_results[symbol] = vl
+    print(f"  {symbol} ({TICKERS[symbol]}): val_loss={vl:.4f}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Compare RNN vs LSTM convergence
-# ══════════════════════════════════════════════════════════════════════
+# ── TASK 8 — Register best model in ModelRegistry ────────────────────
+best_name = min(all_results, key=lambda k: all_results[k]["final_val_loss"])
+best_val = all_results[best_name]["final_val_loss"]
+print(f"\nBest model: {best_name} (val_loss={best_val:.4f})")
 
-print(f"\n--- RNN vs LSTM Gradient Flow ---")
-rnn_grads_50 = measure_gradient_flow(rnn, 50)
-lstm_grads_50 = measure_gradient_flow(lstm, 50)
+models_map = {
+    "VanillaRNN": rnn_model,
+    "LSTM": lstm_model,
+    "GRU": gru_model,
+    "LSTM_Attention": attn_model,
+}
+if has_registry and registry is not None:
+    # TODO: Serialize the best model's state_dict with pickle.dumps and register it
+    # Hint: registry.register(name=..., model_data=model_bytes, metadata={...})
+    model_bytes = ____
+    try:
+        reg_result = asyncio.run(
+            registry.register(
+                name=f"m5_rnn_{best_name.lower()}_{PRIMARY.replace('^', '')}",
+                model_data=model_bytes,
+                metadata={
+                    "architecture": best_name,
+                    "ticker": PRIMARY,
+                    "hidden_dim": HIDDEN_DIM,
+                    "seq_len": SEQ_LEN,
+                    "forecast_horizon": FORECAST_HORIZON,
+                    "val_loss": best_val,
+                    "epochs": EPOCHS,
+                },
+            )
+        )
+        print(f"  Registered: {reg_result}")
+    except Exception as e:
+        print(f"  ModelRegistry registration skipped ({type(e).__name__}: {e})")
 
-print(f"{'Step':<8} {'RNN grad':<15} {'LSTM grad':<15}")
-print("-" * 38)
-for t in [0, 10, 25, 40, 49]:
-    print(f"  t={t:<4} {rnn_grads_50[t]:<15.6f} {lstm_grads_50[t]:<15.6f}")
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert best_val < 5.0, "Best model val loss should be reasonable"
+# INTERPRETATION: The LSTM and GRU should outperform vanilla RNN because
+# their gating mechanisms prevent vanishing gradients. LSTM+Attention
+# often performs best because it can focus on the most informative
+# historical timesteps rather than treating all equally.
+print("--- Checkpoint 5 passed --- best model registered\n")
 
+
+# ── TASK 9 — Visualisations with ModelVisualizer ─────────────────────
 viz = ModelVisualizer()
-# TODO: Plot RNN vs LSTM gradient flow as training curves.
-# Hint: viz.plot_training_curves(history={"rnn_gradient": rnn_grads_50, "lstm_gradient": lstm_grads_50}, title="RNN vs LSTM Gradient Flow Over Time Steps")
-fig = ____
-print(f"\nLSTM maintains gradient flow via the cell state highway.")
-print(f"Forget gate = 1 lets gradients pass through unattenuated.")
 
-print("\n✓ Exercise 4 complete — RNN/LSTM cells, vanishing gradients, BiLSTM sentiment")
+# TODO: Plot training + validation curves for all four architectures
+# Hint: viz.training_history(metrics={...}, x_label="Epoch", y_label="MSE Loss")
+train_metrics = {}
+for label, res in all_results.items():
+    train_metrics[f"{label} train"] = res["train_losses"]
+    train_metrics[f"{label} val"] = res["val_losses"]
+
+viz.training_history(
+    metrics=____,
+    x_label="Epoch",
+    y_label="MSE Loss",
+).write_html("ex_3_training_curves.html")
+
+# TODO: Plot gradient norms over training epochs for each architecture
+# Hint: {k: v["gradient_norms"] for k, v in all_results.items()}
+viz.training_history(
+    metrics=____,
+    x_label="Epoch",
+    y_label="Gradient L2 Norm",
+).write_html("ex_3_gradient_norms.html")
+
+viz.training_history(
+    metrics={"RNN": rnn_decay, "LSTM": lstm_decay},
+    x_label="Timestep",
+    y_label="Gradient Norm",
+).write_html("ex_3_gradient_decay.html")
+
+best_model_eval = models_map[best_name]
+best_model_eval.eval()
+with torch.no_grad():
+    if best_name == "LSTM_Attention":
+        val_preds, val_attn_weights = best_model_eval(X_val_t)
+    else:
+        val_preds, val_attn_weights = best_model_eval(X_val_t), None
+
+close_mean, close_std = norm_mean[0, 0], norm_std[0, 0]
+preds_denorm = val_preds.cpu().numpy() * close_std + close_mean
+actual_denorm = y_val_t.cpu().numpy() * close_std + close_mean
+
+pred_df = pl.DataFrame(
+    {"actual": actual_denorm[:, 0].tolist(), "predicted": preds_denorm[:, 0].tolist()}
+)
+viz.scatter(pred_df, x="actual", y="predicted").write_html("ex_3_pred_vs_actual.html")
+print(
+    "Plots saved: ex_3_training_curves.html, ex_3_gradient_norms.html, ex_3_pred_vs_actual.html"
+)
+
+if val_attn_weights is not None:
+    attn_np = val_attn_weights.cpu().numpy()
+    sample_attn = attn_np[len(attn_np) // 2]
+    top3 = np.argsort(sample_attn)[-3:][::-1]
+    print(
+        f"Attention top-3 steps: {list(top3)} (peak weight={sample_attn[top3[0]]:.4f})"
+    )
+
+print("\n== Forecast Error by Horizon Day ==")
+for day in range(FORECAST_HORIZON):
+    rmse = float(np.mean((preds_denorm[:, day] - actual_denorm[:, day]) ** 2)) ** 0.5
+    print(f"  Day {day + 1}: RMSE={rmse:.2f}")
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+assert Path("ex_3_training_curves.html").exists()
+assert Path("ex_3_pred_vs_actual.html").exists()
+# INTERPRETATION: Forecast error increases with horizon distance — day 1
+# is most accurate, day 5 accumulates more uncertainty. This is the
+# compounding error in multi-step forecasting. Attention mitigates this
+# by weighting recent high-volatility periods more heavily.
+print("--- Checkpoint 6 passed --- visualisations generated\n")
+
+asyncio.run(conn.close())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print(
+    """
+What you've mastered:
+  ✓ Vanilla RNN, LSTM, GRU — why gating solves vanishing gradients
+  ✓ All six LSTM gate equations (forget/input/candidate/cell/output/hidden)
+  ✓ Temporal attention — weighting LSTM outputs by importance
+  ✓ Gradient clipping — essential for stable RNN training
+  ✓ Demonstrated vanishing gradient problem quantitatively (60-step decay)
+  ✓ Multi-step forecasting with windowed sequence datasets
+
+Next: In Exercise 4, you'll derive SELF-ATTENTION from scratch and see
+how Transformers replace RNNs entirely — processing all timesteps
+in parallel using the scaled dot-product attention mechanism.
+"""
+)

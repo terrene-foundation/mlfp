@@ -9,23 +9,25 @@
 #   After completing this exercise, you will be able to:
 #   - Build a complete data pipeline from raw data to clean output
 #   - Profile raw data, translate alerts into cleaning actions, and verify
-#   - Use PreprocessingPipeline for automated encoding, scaling, and imputation
+#   - Use PreprocessingPipeline for automated encoding, scaling, imputation
 #   - Structure a multi-stage pipeline using all three M1 Kailash engines
-#   - Measure data quality improvement quantitatively (alerts before vs after)
+#   - Measure data quality improvement quantitatively (alerts before/after)
 #
-# PREREQUISITES: Complete Exercises 1–7 (all of Module 1).
+# PREREQUISITES: Complete Exercises 1-7 (all of Module 1).
 #
-# ESTIMATED TIME: 60-75 minutes (capstone exercise — the longest in M1)
+# ESTIMATED TIME: ~150-180 min (capstone exercise — the longest in M1)
 #
 # TASKS:
-#   1. Load and inspect messy Singapore taxi trip data
-#   2. Profile raw data with DataExplorer to identify quality issues
-#   3. Clean the data based on profile alerts (GPS noise, fare outliers,
-#      duration anomalies)
-#   4. Engineer temporal and spatial features
-#   5. Prepare a model-ready dataset with PreprocessingPipeline
-#   6. Visualise key patterns with ModelVisualizer
-#   7. Re-profile cleaned data to confirm quality improvements
+#   1.  Load and inspect messy Singapore taxi trip data
+#   2.  Manual quality analysis — range checks, null patterns
+#   3.  Profile raw data with DataExplorer
+#   4.  Translate alerts into a cleaning action plan
+#   5.  Clean the data — GPS, fare, duration filters
+#   6.  Engineer temporal features (hour, weekday, peak period)
+#   7.  Engineer spatial features (haversine distance, speed)
+#   8.  PreprocessingPipeline — model-ready features
+#   9.  Visualise key patterns with ModelVisualizer
+#   10. Re-profile cleaned data and generate quality report
 #
 # DATASET: Singapore taxi trip data (deliberately messy)
 #   Source: Singapore Land Transport Authority (LTA) / synthetic extension
@@ -34,13 +36,14 @@
 #     - Negative and extreme fare outliers
 #     - Zero-length and unrealistically long trips
 #     - Missing pickup/dropoff coordinates
-#     - Schema drift across collection years (column names changed)
+#     - Schema drift across collection years
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
+import os
 
 import polars as pl
 from kailash_ml import DataExplorer, ModelVisualizer, PreprocessingPipeline
@@ -60,80 +63,140 @@ print(f"\n  Data loaded: sg_taxi_trips.parquet")
 print(f"    {taxi_raw.height:,} rows | {taxi_raw.width} columns")
 print(f"  You're ready to start!\n")
 
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Load and inspect — understand the mess before touching it
+# ══════════════════════════════════════════════════════════════════════
+# Rule: never clean data blindly. First describe what is wrong, then
+# decide what to do about each problem.
+
 print("=== Raw Taxi Trip Data ===")
 print(f"Shape: {taxi_raw.shape}")
 print(f"Columns: {taxi_raw.columns}")
-print(f"Dtypes:\n{taxi_raw.dtypes}")
+print(f"\nData types:")
+for col, dtype in zip(taxi_raw.columns, taxi_raw.dtypes):
+    print(f"  {col:>30}: {dtype}")
+
+print(f"\nFirst 5 rows:")
 print(taxi_raw.head(5))
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Initial inspection — understand the mess before touching it
-# ══════════════════════════════════════════════════════════════════════
-
-# Rule: never clean data blindly. First describe what is wrong,
-# then decide what to do about each problem.
-
-print(f"\n=== Basic Statistics ===")
+# Basic statistics
+print(f"\n=== describe() ===")
 print(taxi_raw.describe())
 
-print(f"\n=== Null Counts ===")
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert taxi_raw.height > 0, "Raw taxi dataset is empty"
+assert taxi_raw.width >= 3, "Should have at least 3 columns"
+print("\n✓ Checkpoint 1 passed — raw data loaded and inspected\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Manual quality analysis — ranges, nulls, suspicious values
+# ══════════════════════════════════════════════════════════════════════
+
+# --- 2a: Null counts ---
+print("=== Null Analysis ===")
+null_cols = []
 for col in taxi_raw.columns:
     nc = taxi_raw[col].null_count()
     if nc > 0:
-        print(f"  {col}: {nc:,} ({nc / taxi_raw.height:.1%})")
+        pct = nc / taxi_raw.height
+        null_cols.append({"column": col, "nulls": nc, "pct": pct})
+        print(f"  {col:>30}: {nc:>8,} nulls ({pct:>6.1%})")
 
-# Value ranges for numeric columns — spot impossible values early
+if not null_cols:
+    print("  No null values found!")
+
+# --- 2b: Numeric range check ---
 numeric_dtypes = (pl.Float64, pl.Float32, pl.Int64, pl.Int32)
 numeric_cols = [
     c for c, d in zip(taxi_raw.columns, taxi_raw.dtypes) if d in numeric_dtypes
 ]
+
 print(f"\n=== Numeric Column Ranges ===")
+print(f"  {'Column':>30} {'Min':>12} {'Max':>12} {'Mean':>12} {'Nulls':>8}")
+print(f"  {'─' * 76}")
 for col in numeric_cols:
     series = taxi_raw[col].drop_nulls()
     if series.len() > 0:
         print(
-            f"  {col}: [{series.min():.3g}, {series.max():.3g}]"
-            f"  mean={series.mean():.3g}"
+            f"  {col:>30} {series.min():>12.3g} {series.max():>12.3g} "
+            f"{series.mean():>12.3g} {taxi_raw[col].null_count():>8,}"
         )
-# INTERPRETATION: You're looking for red flags in the ranges:
-# - Negative fares: physically impossible — these are data entry errors
-# - Latitude outside [1.15, 1.47]: Singapore's bounding box is tiny;
-#   anything outside it is GPS drift or a recording error
-# - trip_duration_sec = 0 or negative: meter malfunction or bad data
-# - trip_duration_sec > 10,800 (3 hours): plausible but unusual; above this
-#   it's almost certainly a meter left running after the trip ended
-# Seeing these in describe() before any cleaning confirms the dataset is messy.
 
-# ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert taxi_raw.height > 0, "Raw taxi dataset is empty"
-assert len(numeric_cols) > 0, "Should have at least one numeric column"
-print("\n✓ Checkpoint 1 passed — raw data inspected, ranges and nulls reviewed\n")
+# --- 2c: Identify specific quality issues ---
+lat_cols = [c for c in taxi_raw.columns if "lat" in c.lower()]
+lng_cols = [c for c in taxi_raw.columns if "lng" in c.lower() or "lon" in c.lower()]
+
+SG_LAT_MIN, SG_LAT_MAX = 1.15, 1.47
+SG_LNG_MIN, SG_LNG_MAX = 103.60, 104.05
+
+quality_issues = []
+
+# Check GPS bounds
+for lat_col in lat_cols:
+    series = taxi_raw[lat_col].drop_nulls()
+    out_of_bounds = series.filter((series < SG_LAT_MIN) | (series > SG_LAT_MAX)).len()
+    if out_of_bounds > 0:
+        quality_issues.append(
+            f"GPS: {lat_col} has {out_of_bounds:,} out-of-bounds values"
+        )
+
+for lng_col in lng_cols:
+    series = taxi_raw[lng_col].drop_nulls()
+    out_of_bounds = series.filter((series < SG_LNG_MIN) | (series > SG_LNG_MAX)).len()
+    if out_of_bounds > 0:
+        quality_issues.append(
+            f"GPS: {lng_col} has {out_of_bounds:,} out-of-bounds values"
+        )
+
+# Check fare
+if "fare" in taxi_raw.columns:
+    neg_fares = taxi_raw.filter(pl.col("fare") < 0).height
+    zero_fares = taxi_raw.filter(pl.col("fare") == 0).height
+    if neg_fares > 0:
+        quality_issues.append(f"Fare: {neg_fares:,} negative fares")
+    if zero_fares > 0:
+        quality_issues.append(f"Fare: {zero_fares:,} zero fares")
+
+# Check trip duration
+if "trip_duration_sec" in taxi_raw.columns:
+    zero_dur = taxi_raw.filter(pl.col("trip_duration_sec") <= 0).height
+    very_long = taxi_raw.filter(pl.col("trip_duration_sec") > 10_800).height
+    if zero_dur > 0:
+        quality_issues.append(f"Duration: {zero_dur:,} zero/negative durations")
+    if very_long > 0:
+        quality_issues.append(f"Duration: {very_long:,} trips > 3 hours")
+
+print(f"\n=== Identified Quality Issues ({len(quality_issues)}) ===")
+for i, issue in enumerate(quality_issues, 1):
+    print(f"  {i}. {issue}")
+# INTERPRETATION: Ranges reveal red flags:
+# - Negative fares: impossible — data entry errors
+# - Lat outside [1.15, 1.47]: outside Singapore
+# - Duration = 0: meter malfunction or cancelled trip
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert len(numeric_cols) > 0, "Should have numeric columns"
+print("\n✓ Checkpoint 2 passed — manual quality analysis complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Profile raw data with DataExplorer
+# TASK 3: Profile raw data with DataExplorer
 # ══════════════════════════════════════════════════════════════════════
-# DataExplorer automates the column-level analysis you just did manually.
-# It surfaces problems as typed alerts with severity levels, which you
-# can programmatically map to cleaning actions.
 
 
 async def profile_raw_data():
-    """Profile the raw taxi data and collect recommended cleaning actions."""
-
-    # Strict thresholds for raw data: every problem should surface
+    """Profile raw taxi data and return alerts."""
     alert_config = AlertConfig(
-        high_null_pct_threshold=0.02,  # Even 2% missing is worth investigating
-        skewness_threshold=2.0,  # Flag heavy tails in fare/distance
-        high_cardinality_ratio=0.80,  # Flag near-unique string columns
-        zero_pct_threshold=0.10,  # Flag columns with >10% zeros
-        high_correlation_threshold=0.90,  # Flag potentially redundant features
+        high_null_pct_threshold=0.02,
+        skewness_threshold=2.0,
+        high_cardinality_ratio=0.80,
+        zero_pct_threshold=0.10,
+        high_correlation_threshold=0.90,
     )
 
     explorer = DataExplorer(alert_config=alert_config)
-
-    # Sample for profiling speed — full dataset may be millions of rows
     sample_size = min(200_000, taxi_raw.height)
     taxi_sample = taxi_raw.sample(n=sample_size, seed=42)
 
@@ -143,81 +206,115 @@ async def profile_raw_data():
     print(f"Rows: {profile.n_rows}  Columns: {profile.n_columns}")
     print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
 
-    # Map each alert type to a concrete cleaning action
-    # This is the key skill: translating a data quality report into a plan
-    cleaning_actions: list[str] = []
-    print(f"\n--- Data Quality Alerts ({len(profile.alerts)}) ---")
+    # Categorise alerts
+    alert_categories: dict[str, list] = {}
     for alert in profile.alerts:
-        col = alert.get("column", "N/A")
         alert_type = alert["type"]
-        severity = alert["severity"]
-        print(f"  [{severity.upper()}] {alert_type}: {col}")
+        if alert_type not in alert_categories:
+            alert_categories[alert_type] = []
+        alert_categories[alert_type].append(alert)
 
-        if alert_type == "high_nulls":
-            cleaning_actions.append(
-                f"Handle missing values in '{col}' — impute or drop rows"
-            )
-        elif alert_type == "high_skewness":
-            cleaning_actions.append(
-                f"Investigate outliers in '{col}' — check min/max for impossible values"
-            )
-        elif alert_type == "high_zeros":
-            cleaning_actions.append(
-                f"Verify zeros in '{col}' — are they real measurements or missing data?"
-            )
-        elif alert_type == "duplicates":
-            cleaning_actions.append("Remove duplicate rows before modelling")
+    print(f"\n--- Alert Summary ({len(profile.alerts)} total) ---")
+    for alert_type, alerts in sorted(alert_categories.items()):
+        print(f"  {alert_type}: {len(alerts)} alerts")
+        for alert in alerts[:3]:
+            col = alert.get("column", "N/A")
+            severity = alert["severity"]
+            print(f"    [{severity.upper()}] {col}")
 
-    print(f"\n--- Recommended Cleaning Actions ---")
-    for i, action in enumerate(cleaning_actions, 1):
-        print(f"  {i}. {action}")
-    # INTERPRETATION: Each alert type maps to a specific cleaning decision.
-    # high_skewness + inspection of ranges → outlier removal (Steps 3b, 3c)
-    # high_nulls for coordinate columns → drop rows (Step 3d)
-    # duplicates → dedup before training
-    # The value of DataExplorer is that it forces you to be systematic:
-    # you don't miss columns because they look "fine" on the surface.
-
-    return profile, cleaning_actions
+    return profile, alert_categories
 
 
-profile_raw, cleaning_actions = asyncio.run(profile_raw_data())
+profile_raw, alert_categories = asyncio.run(profile_raw_data())
 
-# ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert profile_raw is not None, "profile_raw should not be None"
-assert profile_raw.n_rows > 0, "Profile should report rows"
-assert isinstance(cleaning_actions, list), "cleaning_actions should be a list"
-print("\n✓ Checkpoint 2 passed — DataExplorer profile complete with cleaning plan\n")
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert profile_raw is not None
+assert profile_raw.n_rows > 0
+print("\n✓ Checkpoint 3 passed — DataExplorer profile complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Clean the data based on profile alerts
+# TASK 4: Translate alerts into a cleaning action plan
 # ══════════════════════════════════════════════════════════════════════
-# Each cleaning step below maps to a specific alert or observation above.
-# Good data cleaning is transparent: document what you removed and why.
 
-# Singapore's geographic bounding box — any coordinate outside this
-# is either a GPS error or a trip that didn't occur in Singapore
-SG_LAT_MIN, SG_LAT_MAX = 1.15, 1.47
-SG_LNG_MIN, SG_LNG_MAX = 103.60, 104.05
+cleaning_plan: list[dict] = []
+
+for alert in profile_raw.alerts:
+    col = alert.get("column", "N/A")
+    alert_type = alert["type"]
+
+    if alert_type == "high_nulls":
+        cleaning_plan.append(
+            {
+                "action": f"Handle nulls in '{col}'",
+                "method": "Drop rows if critical (coordinates) or impute (numeric)",
+                "priority": "high",
+            }
+        )
+    elif alert_type == "high_skewness":
+        cleaning_plan.append(
+            {
+                "action": f"Investigate outliers in '{col}'",
+                "method": "Check min/max, apply domain filters, consider log transform",
+                "priority": "high",
+            }
+        )
+    elif alert_type == "high_zeros":
+        cleaning_plan.append(
+            {
+                "action": f"Verify zeros in '{col}'",
+                "method": "Determine if zeros are real measurements or missing data",
+                "priority": "medium",
+            }
+        )
+    elif alert_type == "duplicates":
+        cleaning_plan.append(
+            {
+                "action": "Remove duplicate rows",
+                "method": "df.unique() before modelling",
+                "priority": "medium",
+            }
+        )
+    elif alert_type == "high_correlation":
+        cleaning_plan.append(
+            {
+                "action": f"Review collinearity: {col}",
+                "method": "Consider dropping one of the highly correlated features",
+                "priority": "low",
+            }
+        )
+
+print(f"=== Cleaning Action Plan ({len(cleaning_plan)} actions) ===")
+for i, plan in enumerate(cleaning_plan, 1):
+    print(f"  {i}. [{plan['priority'].upper():>6}] {plan['action']}")
+    print(f"             Method: {plan['method']}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert isinstance(cleaning_plan, list)
+print("\n✓ Checkpoint 4 passed — cleaning action plan created\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Clean the data — GPS, fare, duration filters
+# ══════════════════════════════════════════════════════════════════════
+# Each cleaning step maps to a specific alert or observation above.
 
 taxi_clean = taxi_raw.clone()
 rows_before = taxi_clean.height
+cleaning_log: list[str] = []
 
-# Step 3a: Remove GPS coordinates outside Singapore
-lat_cols = [c for c in taxi_clean.columns if "lat" in c.lower()]
-lng_cols = [c for c in taxi_clean.columns if "lng" in c.lower() or "lon" in c.lower()]
-
+# --- 5a: Remove GPS coordinates outside Singapore ---
 for lat_col in lat_cols:
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(
-        # Keep nulls at this stage — we handle them in step 3d
         pl.col(lat_col).is_null()
         | ((pl.col(lat_col) >= SG_LAT_MIN) & (pl.col(lat_col) <= SG_LAT_MAX))
     )
     removed = before - taxi_clean.height
     if removed > 0:
-        print(f"GPS filter ({lat_col}): removed {removed:,} out-of-bounds rows")
+        msg = f"GPS filter ({lat_col}): removed {removed:,} out-of-bounds rows"
+        cleaning_log.append(msg)
+        print(msg)
 
 for lng_col in lng_cols:
     before = taxi_clean.height
@@ -227,73 +324,93 @@ for lng_col in lng_cols:
     )
     removed = before - taxi_clean.height
     if removed > 0:
-        print(f"GPS filter ({lng_col}): removed {removed:,} out-of-bounds rows")
+        msg = f"GPS filter ({lng_col}): removed {removed:,} out-of-bounds rows"
+        cleaning_log.append(msg)
+        print(msg)
 
-# Step 3b: Remove fare outliers
+# --- 5b: Remove fare outliers ---
 if "fare" in taxi_clean.columns:
+    # Remove negative and zero fares
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("fare") > 0)
-    print(f"Negative fare filter: removed {before - taxi_clean.height:,} rows")
+    removed = before - taxi_clean.height
+    if removed > 0:
+        msg = f"Non-positive fare filter: removed {removed:,} rows"
+        cleaning_log.append(msg)
+        print(msg)
 
-    # 99.9th percentile cap — values above this are almost certainly data errors
+    # Cap at 99.9th percentile
     fare_p999 = taxi_clean["fare"].quantile(0.999)
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("fare") <= fare_p999)
-    print(
-        f"Extreme fare cap (>{fare_p999:.0f}): removed {before - taxi_clean.height:,} rows"
-    )
+    removed = before - taxi_clean.height
+    if removed > 0:
+        msg = f"Extreme fare cap (>{fare_p999:.0f}): removed {removed:,} rows"
+        cleaning_log.append(msg)
+        print(msg)
 
-# Step 3c: Remove duration anomalies
+# --- 5c: Remove duration anomalies ---
 if "trip_duration_sec" in taxi_clean.columns:
-    # Less than 60 seconds: too short to be a real paid trip
+    # Too short: < 60 seconds
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") > 60)
-    print(f"Short trip filter (<60 s): removed {before - taxi_clean.height:,} rows")
+    removed = before - taxi_clean.height
+    if removed > 0:
+        msg = f"Short trip filter (<60s): removed {removed:,} rows"
+        cleaning_log.append(msg)
+        print(msg)
 
-    # More than 3 hours: plausible for cross-island trips but beyond that
-    # the data is likely a GPS dropout or a meter left running
+    # Too long: > 3 hours
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") <= 10_800)
-    print(f"Long trip filter (>3 h): removed {before - taxi_clean.height:,} rows")
+    removed = before - taxi_clean.height
+    if removed > 0:
+        msg = f"Long trip filter (>3h): removed {removed:,} rows"
+        cleaning_log.append(msg)
+        print(msg)
 
-# Step 3d: Drop rows missing critical coordinates (can't compute distance)
+# --- 5d: Drop rows missing critical coordinates ---
 critical_cols = lat_cols + lng_cols
 if critical_cols:
     before = taxi_clean.height
     taxi_clean = taxi_clean.drop_nulls(subset=critical_cols)
-    print(f"Null coordinate filter: removed {before - taxi_clean.height:,} rows")
+    removed = before - taxi_clean.height
+    if removed > 0:
+        msg = f"Null coordinate filter: removed {removed:,} rows"
+        cleaning_log.append(msg)
+        print(msg)
 
+# --- 5e: Remove duplicates ---
+before = taxi_clean.height
+taxi_clean = taxi_clean.unique()
+removed = before - taxi_clean.height
+if removed > 0:
+    msg = f"Deduplication: removed {removed:,} duplicate rows"
+    cleaning_log.append(msg)
+    print(msg)
+
+retention_pct = taxi_clean.height / rows_before * 100
 print(f"\n=== Cleaning Summary ===")
 print(
-    f"Rows: {rows_before:,} → {taxi_clean.height:,}"
-    f"  ({taxi_clean.height / rows_before:.1%} retained)"
+    f"  Rows: {rows_before:,} -> {taxi_clean.height:,} ({retention_pct:.1f}% retained)"
 )
-# INTERPRETATION: The retention rate tells you how "dirty" the original data was.
-# Retaining 85%+ is typical for a well-instrumented system with occasional errors.
-# Retaining less than 70% suggests systematic data quality issues — worth filing
-# a bug report against the data collection pipeline. Each step is logged
-# separately so you can trace exactly which filter removed the most rows.
+print(f"  Steps applied: {len(cleaning_log)}")
+for step in cleaning_log:
+    print(f"    - {step}")
 
-# ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert taxi_clean.height > 0, "Cleaning removed all rows — filters too aggressive"
-assert taxi_clean.height <= taxi_raw.height, (
-    "Cleaning should not add rows"
-)
-# No negative fares after cleaning
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert taxi_clean.height > 0, "Cleaning removed all rows"
+assert taxi_clean.height <= taxi_raw.height, "Cleaning should not add rows"
 if "fare" in taxi_clean.columns:
-    assert (taxi_clean["fare"] > 0).all(), "All fares should be positive after cleaning"
-print("\n✓ Checkpoint 3 passed — data cleaned and all filters validated\n")
+    assert (taxi_clean["fare"] > 0).all(), "All fares should be positive"
+print("\n✓ Checkpoint 5 passed — data cleaned and validated\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Engineer features for trip analysis
+# TASK 6: Engineer temporal features
 # ══════════════════════════════════════════════════════════════════════
-# Raw columns like pickup_datetime don't directly tell us about demand
-# patterns. We extract meaningful signals: hour of day, weekend flag,
-# distance, speed. This is feature engineering — turning raw data into
-# model-ready signals.
 
-# Parse datetime columns
+# --- 6a: Parse datetime columns ---
 datetime_cols = [
     c for c in taxi_clean.columns if "time" in c.lower() or "date" in c.lower()
 ]
@@ -301,7 +418,7 @@ for col in datetime_cols:
     if taxi_clean[col].dtype == pl.Utf8:
         taxi_clean = taxi_clean.with_columns(pl.col(col).str.to_datetime().alias(col))
 
-# Temporal features from pickup time
+# --- 6b: Extract pickup time features ---
 pickup_col = next(
     (
         c
@@ -314,15 +431,13 @@ pickup_col = next(
 if pickup_col:
     taxi_clean = taxi_clean.with_columns(
         pl.col(pickup_col).dt.hour().alias("hour_of_day"),
-        # 0=Monday … 6=Sunday
         pl.col(pickup_col).dt.weekday().alias("day_of_week"),
         pl.col(pickup_col).dt.month().alias("month"),
-        # is_weekend is a Boolean — weekday() returns 5 for Saturday, 6 for Sunday
+        pl.col(pickup_col).dt.day().alias("day_of_month"),
         (pl.col(pickup_col).dt.weekday() >= 5).alias("is_weekend"),
     )
 
-    # Peak-hour classification — useful as a categorical feature
-    # Singapore Land Transport Authority defines peak hours as 7–9 am and 6–8 pm
+    # --- 6c: Peak-hour classification ---
     taxi_clean = taxi_clean.with_columns(
         pl.when((pl.col("hour_of_day") >= 7) & (pl.col("hour_of_day") <= 9))
         .then(pl.lit("morning_peak"))
@@ -334,21 +449,73 @@ if pickup_col:
         .alias("time_period")
     )
 
-# Haversine distance between pickup and dropoff
-# The haversine formula computes the great-circle distance (shortest path
-# on a sphere) between two lat/lng points. For Singapore-scale distances
-# this is accurate to within ~0.5%, which is more than sufficient.
+    # --- 6d: Day type classification ---
+    taxi_clean = taxi_clean.with_columns(
+        pl.when(pl.col("day_of_week") >= 5)
+        .then(pl.lit("weekend"))
+        .when(pl.col("day_of_week") == 4)
+        .then(pl.lit("friday"))
+        .otherwise(pl.lit("weekday"))
+        .alias("day_type")
+    )
+
+# --- 6e: Duration features ---
+if "trip_duration_sec" in taxi_clean.columns:
+    taxi_clean = taxi_clean.with_columns(
+        (pl.col("trip_duration_sec") / 60).alias("trip_duration_min"),
+        pl.when(pl.col("trip_duration_sec") < 600)
+        .then(pl.lit("short"))
+        .when(pl.col("trip_duration_sec") < 1800)
+        .then(pl.lit("medium"))
+        .otherwise(pl.lit("long"))
+        .alias("trip_length_category"),
+    )
+
+temporal_cols = [
+    c
+    for c in taxi_clean.columns
+    if c
+    in (
+        "hour_of_day",
+        "day_of_week",
+        "month",
+        "is_weekend",
+        "time_period",
+        "day_type",
+        "trip_duration_min",
+        "trip_length_category",
+        "day_of_month",
+    )
+]
+print(f"=== Temporal Features ({len(temporal_cols)}) ===")
+if temporal_cols:
+    print(taxi_clean.select(temporal_cols).head(5))
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+if pickup_col:
+    assert "hour_of_day" in taxi_clean.columns
+    assert "time_period" in taxi_clean.columns
+    assert "day_type" in taxi_clean.columns
+    time_periods = set(taxi_clean["time_period"].unique().to_list())
+    assert "morning_peak" in time_periods
+print("\n✓ Checkpoint 6 passed — temporal features engineered\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 7: Engineer spatial features
+# ══════════════════════════════════════════════════════════════════════
+
+# --- 7a: Haversine distance ---
 if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
     pickup_lat, dropoff_lat = lat_cols[0], lat_cols[1]
     pickup_lng, dropoff_lng = lng_cols[0], lng_cols[1]
 
-    # π / 180 converts degrees to radians (required for trig functions)
     _RAD = pl.lit(3.141592653589793 / 180)
 
     taxi_clean = taxi_clean.with_columns(
         (
             2
-            * 6371  # Earth radius in km
+            * 6371
             * (
                 (
                     ((pl.col(dropoff_lat) - pl.col(pickup_lat)) * _RAD / 2).sin().pow(2)
@@ -364,7 +531,7 @@ if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
         ).alias("haversine_km")
     )
 
-    # Average speed — another quality check (>120 km/h in Singapore is impossible)
+    # --- 7b: Average speed ---
     if "trip_duration_sec" in taxi_clean.columns:
         taxi_clean = taxi_clean.with_columns(
             (pl.col("haversine_km") / (pl.col("trip_duration_sec") / 3600)).alias(
@@ -372,67 +539,71 @@ if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
             )
         )
 
+        # Remove impossible speeds (> 120 km/h in Singapore)
         before = taxi_clean.height
         taxi_clean = taxi_clean.filter(
             (pl.col("avg_speed_kmh") > 0) & (pl.col("avg_speed_kmh") <= 120)
         )
-        if before - taxi_clean.height > 0:
-            print(
-                f"Speed filter (>120 km/h): removed {before - taxi_clean.height:,} rows"
-            )
+        removed = before - taxi_clean.height
+        if removed > 0:
+            print(f"Speed filter (>120 km/h): removed {removed:,} rows")
 
-# Fare per km — normalised efficiency metric
-if "fare" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
+    # --- 7c: Distance category ---
     taxi_clean = taxi_clean.with_columns(
-        (pl.col("fare") / pl.col("haversine_km")).alias("fare_per_km")
+        pl.when(pl.col("haversine_km") < 3)
+        .then(pl.lit("short_distance"))
+        .when(pl.col("haversine_km") < 8)
+        .then(pl.lit("medium_distance"))
+        .when(pl.col("haversine_km") < 15)
+        .then(pl.lit("long_distance"))
+        .otherwise(pl.lit("cross_island"))
+        .alias("distance_category"),
     )
+
+    # --- 7d: Fare per km ---
+    if "fare" in taxi_clean.columns:
+        taxi_clean = taxi_clean.with_columns(
+            (pl.col("fare") / pl.col("haversine_km")).alias("fare_per_km")
+        )
+
+        # Filter extreme fare_per_km
+        fare_km_p99 = taxi_clean["fare_per_km"].quantile(0.99)
+        before = taxi_clean.height
+        taxi_clean = taxi_clean.filter(
+            (pl.col("fare_per_km") > 0) & (pl.col("fare_per_km") <= fare_km_p99)
+        )
+        removed = before - taxi_clean.height
+        if removed > 0:
+            print(f"Fare/km filter: removed {removed:,} rows")
+
+spatial_cols = [
+    c
+    for c in taxi_clean.columns
+    if c in ("haversine_km", "avg_speed_kmh", "distance_category", "fare_per_km")
+]
+print(f"\n=== Spatial Features ({len(spatial_cols)}) ===")
+if spatial_cols:
+    print(taxi_clean.select(spatial_cols).head(5))
 
 new_cols = [c for c in taxi_clean.columns if c not in taxi_raw.columns]
-print(f"\n=== Engineered Features ({len(new_cols)}) ===")
-print(new_cols)
-print(taxi_clean.select(new_cols).head(5))
-# INTERPRETATION: Feature engineering is what separates a good model from a
-# mediocre one. hour_of_day matters far more than raw pickup_datetime because
-# demand is cyclical — 8am Tuesday and 8am Saturday have different patterns.
-# haversine_km gives the model a direct measure of trip length that it can't
-# infer from lat/lng alone. fare_per_km normalises for trip length — useful
-# for detecting surge pricing patterns or driver route efficiency.
-# This is a preview of M2: in the next module, you'll build feature stores
-# and apply FeatureEngineer to automate this process at scale.
+print(f"\nTotal new features: {len(new_cols)}")
 
-# ── Checkpoint 4 ─────────────────────────────────────────────────────
-if pickup_col:
-    assert "hour_of_day" in taxi_clean.columns, "hour_of_day should be engineered"
-    assert "time_period" in taxi_clean.columns, "time_period should be engineered"
-    time_periods = set(taxi_clean["time_period"].unique().to_list())
-    assert "morning_peak" in time_periods, "morning_peak should be one of the time periods"
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
 if "haversine_km" in taxi_clean.columns:
-    assert (taxi_clean["haversine_km"].drop_nulls() > 0).all(), (
-        "All haversine distances should be positive"
-    )
-print("\n✓ Checkpoint 4 passed — temporal and spatial features engineered correctly\n")
+    assert (taxi_clean["haversine_km"].drop_nulls() >= 0).all()
+if "avg_speed_kmh" in taxi_clean.columns:
+    assert (taxi_clean["avg_speed_kmh"].drop_nulls() <= 120).all()
+print("\n✓ Checkpoint 7 passed — spatial features engineered\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: PreprocessingPipeline — model-ready features
+# TASK 8: PreprocessingPipeline — model-ready features
 # ══════════════════════════════════════════════════════════════════════
-# PreprocessingPipeline automates the final steps before training:
-#   - Splits data into train/test sets (stratified or random)
-#   - Imputes remaining nulls (median for numeric, mode for categorical)
-#   - Scales numeric features (standardise to mean=0, std=1)
-#   - Encodes categorical columns (one-hot or ordinal)
-#   - Infers task type (regression vs classification) from the target
-#
-# You tell it: what is the target? what encoding strategy? what imputation?
-# It handles the rest and returns a result object with split DataFrames.
+# PreprocessingPipeline automates: train/test split, imputation,
+# scaling, categorical encoding.
 
-# Select feature columns: exclude raw coordinates, raw datetimes, and the target
-exclude = set(
-    ["fare", "fare_per_km"]  # target and derivative of target
-    + datetime_cols  # raw datetimes — use extracted features instead
-    + lat_cols
-    + lng_cols  # raw coordinates — use haversine instead
-)
+# --- 8a: Select feature columns ---
+exclude = set(["fare", "fare_per_km"] + datetime_cols + lat_cols + lng_cols)
 feature_cols = [
     c
     for c in taxi_clean.columns
@@ -449,18 +620,18 @@ feature_cols = [
     )
 ]
 
-# Cast string columns to Categorical — PreprocessingPipeline expects this
+# --- 8b: Cast strings to Categorical ---
 for col in feature_cols:
     if taxi_clean[col].dtype == pl.Utf8:
         taxi_clean = taxi_clean.with_columns(pl.col(col).cast(pl.Categorical))
 
-# Work with a sample — PreprocessingPipeline is synchronous
+# --- 8c: Run PreprocessingPipeline ---
 taxi_sample = taxi_clean.sample(n=min(50_000, taxi_clean.height), seed=42)
+result = None
 
 if "fare" in taxi_sample.columns:
-    pipeline_df = taxi_sample.select(
-        [c for c in feature_cols if c in taxi_sample.columns] + ["fare"]
-    )
+    pipeline_cols = [c for c in feature_cols if c in taxi_sample.columns] + ["fare"]
+    pipeline_df = taxi_sample.select(pipeline_cols)
 
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(
@@ -473,58 +644,55 @@ if "fare" in taxi_sample.columns:
         imputation_strategy="median",
     )
 
-    print(f"\n=== PreprocessingPipeline Result ===")
+    print(f"=== PreprocessingPipeline Result ===")
     print(result.summary)
-    print(f"Task type:          {result.task_type}")
-    print(f"Train shape:        {result.train_data.shape}")
-    print(f"Test shape:         {result.test_data.shape}")
-    print(f"Numeric features:   {result.numeric_columns}")
-    print(f"Categorical feats:  {result.categorical_columns}")
-    # INTERPRETATION: result.task_type will be "regression" because the target
-    # (fare) is continuous. The pipeline has already standardised numerics
-    # (mean=0, std=1) and one-hot encoded categoricals (time_period → 4 binary
-    # columns). The 80/20 train/test split is the standard starting point.
-    # In M3, you'll pass result.train_data directly into TrainingPipeline —
-    # no additional preprocessing needed. That's the whole point of this step.
+    print(f"  Task type:     {result.task_type}")
+    print(f"  Train shape:   {result.train_data.shape}")
+    print(f"  Test shape:    {result.test_data.shape}")
+    print(f"  Numeric feats: {len(result.numeric_columns)}")
+    print(f"  Cat feats:     {len(result.categorical_columns)}")
 
-    # ── Checkpoint 5 ─────────────────────────────────────────────────
-    assert result.task_type == "regression", (
-        f"Task type should be 'regression' for a continuous fare target, got: {result.task_type}"
-    )
+    # --- 8d: Inspect the processed features ---
+    print(f"\n  Numeric columns: {result.numeric_columns[:10]}...")
+    print(f"  Categorical columns: {result.categorical_columns[:10]}...")
+
+    # --- 8e: Verify train/test split ---
     total_rows = result.train_data.shape[0] + result.test_data.shape[0]
-    assert abs(total_rows - taxi_sample.height) <= 1, (
-        "Train + test rows should sum to sample size"
-    )
-    print("\n✓ Checkpoint 5 passed — PreprocessingPipeline produced train/test split\n")
+    train_pct = result.train_data.shape[0] / total_rows * 100
+    print(f"\n  Train: {result.train_data.shape[0]:,} ({train_pct:.0f}%)")
+    print(f"  Test:  {result.test_data.shape[0]:,} ({100 - train_pct:.0f}%)")
 else:
-    print("\n'fare' column not found — skipping PreprocessingPipeline demo")
-    result = None
+    print("\n'fare' column not found — skipping PreprocessingPipeline")
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+if result is not None:
+    assert result.task_type == "regression"
+    total_rows = result.train_data.shape[0] + result.test_data.shape[0]
+    assert abs(total_rows - taxi_sample.height) <= 1
+print("\n✓ Checkpoint 8 passed — PreprocessingPipeline complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Visualise key patterns with ModelVisualizer
+# TASK 9: Visualise key patterns with ModelVisualizer
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
+os.makedirs("charts", exist_ok=True)
+viz_files: list[str] = []
 
-# Fare distribution — compare before and after cleaning
-raw_fares = (
-    taxi_raw["fare"].drop_nulls().to_list() if "fare" in taxi_raw.columns else []
-)
-clean_fares = (
-    taxi_clean["fare"].drop_nulls().to_list() if "fare" in taxi_clean.columns else []
-)
-
-if clean_fares:
+# --- 9a: Fare distribution (cleaned) ---
+if "fare" in taxi_clean.columns:
+    clean_fares = taxi_clean["fare"].drop_nulls().to_list()
     fig_dist = viz.feature_distribution(
-        values=clean_fares,
+        values=clean_fares[:50_000],
         feature_name="Fare (S$) — Cleaned",
     )
     fig_dist.update_layout(title="Taxi Fare Distribution (After Cleaning)")
-    fig_dist.write_html("ex8_fare_distribution.html")
-    print("\nSaved: ex8_fare_distribution.html")
+    fig_dist.write_html("charts/ex8_fare_distribution.html")
+    viz_files.append("charts/ex8_fare_distribution.html")
+    print("Saved: charts/ex8_fare_distribution.html")
 
-# Trip metrics by time period
+# --- 9b: Trip metrics by time period ---
 if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
     periods = ["morning_peak", "evening_peak", "off_peak", "late_night"]
     time_metrics: dict[str, dict[str, float]] = {}
@@ -532,34 +700,32 @@ if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
     for period in periods:
         subset = taxi_clean.filter(pl.col("time_period") == period)
         if subset.height > 0:
-            time_metrics[period] = {
+            metrics_dict: dict[str, float] = {
                 "avg_fare": float(subset["fare"].mean() or 0),
-                "avg_distance_km": (
-                    float(subset["haversine_km"].mean() or 0)
-                    if "haversine_km" in subset.columns
-                    else 0.0
-                ),
                 "trip_count": float(subset.height),
             }
+            if "haversine_km" in subset.columns:
+                metrics_dict["avg_distance_km"] = float(
+                    subset["haversine_km"].mean() or 0
+                )
+            if "avg_speed_kmh" in subset.columns:
+                metrics_dict["avg_speed_kmh"] = float(
+                    subset["avg_speed_kmh"].mean() or 0
+                )
+            time_metrics[period] = metrics_dict
 
     if time_metrics:
         fig_periods = viz.metric_comparison(time_metrics)
         fig_periods.update_layout(title="Trip Metrics by Time Period")
-        fig_periods.write_html("ex8_time_period_metrics.html")
-        print("Saved: ex8_time_period_metrics.html")
+        fig_periods.write_html("charts/ex8_time_period_metrics.html")
+        viz_files.append("charts/ex8_time_period_metrics.html")
+        print("Saved: charts/ex8_time_period_metrics.html")
 
-# Hourly trip volume — shows demand rhythm through the day
+# --- 9c: Hourly trip volume ---
 if "hour_of_day" in taxi_clean.columns:
     hourly = (
         taxi_clean.group_by("hour_of_day")
-        .agg(
-            pl.len().alias("trip_count"),
-            (
-                pl.col("fare").mean().alias("avg_fare")
-                if "fare" in taxi_clean.columns
-                else pl.lit(0.0).alias("avg_fare")
-            ),
-        )
+        .agg(pl.len().alias("trip_count"))
         .sort("hour_of_day")
     )
 
@@ -569,51 +735,65 @@ if "hour_of_day" in taxi_clean.columns:
         y_label="Number of Trips",
     )
     fig_hourly.update_layout(title="Taxi Trip Volume by Hour of Day")
-    fig_hourly.write_html("ex8_hourly_volume.html")
-    print("Saved: ex8_hourly_volume.html")
-    # INTERPRETATION: The hourly volume chart reveals Singapore's urban rhythm.
-    # You'll typically see two peaks: 7–9am (morning commute) and 6–8pm
-    # (evening commute). Late-night demand (11pm–2am) reflects nightlife in
-    # Clarke Quay and Orchard. The trough at 4–6am is when shift workers
-    # swap and demand is genuinely low — not a data quality issue.
-    # This demand pattern matters because ML models for fare prediction
-    # need hour_of_day as a feature to avoid treating all trips equally.
+    fig_hourly.write_html("charts/ex8_hourly_volume.html")
+    viz_files.append("charts/ex8_hourly_volume.html")
+    print("Saved: charts/ex8_hourly_volume.html")
 
-# Feature importances — if PreprocessingPipeline ran, show feature list
+# --- 9d: Distance distribution ---
+if "haversine_km" in taxi_clean.columns:
+    distances = taxi_clean["haversine_km"].drop_nulls().to_list()
+    fig_dist_km = viz.feature_distribution(
+        values=distances[:50_000],
+        feature_name="Trip Distance (km)",
+    )
+    fig_dist_km.update_layout(title="Trip Distance Distribution")
+    fig_dist_km.write_html("charts/ex8_distance_distribution.html")
+    viz_files.append("charts/ex8_distance_distribution.html")
+    print("Saved: charts/ex8_distance_distribution.html")
+
+# --- 9e: Day type comparison ---
+if "day_type" in taxi_clean.columns and "fare" in taxi_clean.columns:
+    day_metrics = {}
+    for dt in ["weekday", "friday", "weekend"]:
+        subset = taxi_clean.filter(pl.col("day_type") == dt)
+        if subset.height > 0:
+            day_metrics[dt] = {
+                "avg_fare": float(subset["fare"].mean() or 0),
+                "trips": float(subset.height),
+            }
+    if day_metrics:
+        fig_day = viz.metric_comparison(day_metrics)
+        fig_day.update_layout(title="Trip Metrics: Weekday vs Friday vs Weekend")
+        fig_day.write_html("charts/ex8_day_type_comparison.html")
+        viz_files.append("charts/ex8_day_type_comparison.html")
+        print("Saved: charts/ex8_day_type_comparison.html")
+
+# --- 9f: Feature list (if pipeline ran) ---
 if result is not None:
     all_features = result.numeric_columns + result.categorical_columns
-    # Use a uniform importance placeholder so students can see the bar chart
-    # (real importances come in M3 after training a model)
     feat_metrics = {
-        f: {"Weight": 1.0 / len(all_features)} for f in all_features
+        f: {"Weight": 1.0 / max(len(all_features), 1)} for f in all_features[:20]
     }
     fig_feats = viz.metric_comparison(feat_metrics)
-    fig_feats.write_html("ex8_feature_list.html")
-    print("Saved: ex8_feature_list.html")
+    fig_feats.update_layout(title="Pipeline Features (Equal Weight Placeholder)")
+    fig_feats.write_html("charts/ex8_feature_list.html")
+    viz_files.append("charts/ex8_feature_list.html")
+    print("Saved: charts/ex8_feature_list.html")
 
-# ── Checkpoint 6 ─────────────────────────────────────────────────────
-import os
-expected_outputs = []
-if clean_fares:
-    expected_outputs.append("ex8_fare_distribution.html")
-if "hour_of_day" in taxi_clean.columns:
-    expected_outputs.append("ex8_hourly_volume.html")
-for output in expected_outputs:
-    assert os.path.exists(output), f"Expected output file not found: {output}"
-print("\n✓ Checkpoint 6 passed — visualisation files saved\n")
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+assert len(viz_files) > 0, "Should have saved at least one chart"
+for f in viz_files:
+    assert os.path.exists(f), f"Missing: {f}"
+print(f"\n✓ Checkpoint 9 passed — {len(viz_files)} visualisation files saved\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 7: Re-profile cleaned data — confirm quality improvements
+# TASK 10: Re-profile cleaned data and generate quality report
 # ══════════════════════════════════════════════════════════════════════
-# The goal of cleaning is measurable: fewer alerts, lower null rates,
-# no impossible values. Profiling after cleaning verifies the work.
 
 
-async def profile_cleaned_data():
-    """Profile cleaned data and compare alert counts with the raw profile."""
-
-    # Stricter thresholds post-cleaning — problems that survived should be rare
+async def profile_and_report():
+    """Re-profile cleaned data, compare to raw, and generate report."""
     explorer = DataExplorer(
         alert_config=AlertConfig(
             high_null_pct_threshold=0.01,
@@ -624,85 +804,108 @@ async def profile_cleaned_data():
     sample = taxi_clean.sample(n=min(200_000, taxi_clean.height), seed=42)
     profile_clean = await explorer.profile(sample)
 
+    # --- Compare alerts ---
     print(f"\n=== Data Quality: Before vs After Cleaning ===")
+    print(f"  Rows before:   {taxi_raw.height:,}")
+    print(f"  Rows after:    {taxi_clean.height:,}")
+    print(f"  Retention:     {taxi_clean.height / taxi_raw.height:.1%}")
     print(f"  Alerts before: {len(profile_raw.alerts)}")
     print(f"  Alerts after:  {len(profile_clean.alerts)}")
-    # INTERPRETATION: The alert count comparison is your quality proof.
-    # If alerts_after < alerts_before, cleaning worked. If alerts_after >= alerts_before,
-    # either the cleaning was ineffective or new issues were introduced (e.g., imputation
-    # created unexpected patterns). Zero alerts after cleaning is aspirational — in
-    # practice, a 50%+ reduction in alerts is a good outcome for a single-pass clean.
 
+    alert_reduction = len(profile_raw.alerts) - len(profile_clean.alerts)
+    if alert_reduction > 0:
+        print(f"  Improvement:   {alert_reduction} fewer alerts")
+    elif alert_reduction == 0:
+        print(f"  No change in alert count")
+    else:
+        print(f"  Warning: {abs(alert_reduction)} MORE alerts after cleaning")
+
+    # Remaining alerts
     if profile_clean.alerts:
-        print("\nRemaining alerts (investigate further):")
+        print(f"\n  Remaining alerts ({len(profile_clean.alerts)}):")
         for alert in profile_clean.alerts:
             print(
-                f"  [{alert['severity'].upper()}] {alert['type']}: "
+                f"    [{alert['severity'].upper()}] {alert['type']}: "
                 f"{alert.get('column', 'N/A')}"
             )
     else:
-        print("  No remaining alerts — data quality confirmed clean.")
+        print(f"\n  No remaining alerts — data quality confirmed clean.")
 
-    # Final HTML report combining statistics and charts
+    # --- Generate HTML report ---
     report_html = await explorer.to_html(
         sample,
         title="Singapore Taxi Trips — Cleaned Data Profile",
     )
     with open("ex8_taxi_profile_clean.html", "w") as f:
         f.write(report_html)
-    print("\nSaved: ex8_taxi_profile_clean.html")
+    print(f"\nSaved: ex8_taxi_profile_clean.html")
 
     return profile_clean
 
 
 try:
-    profile_clean = asyncio.run(profile_cleaned_data())
+    profile_clean = asyncio.run(profile_and_report())
 except Exception as exc:
     print(f"\n[ERROR] Post-cleaning profile failed: {exc}")
     raise
 
-# ── Checkpoint 7 ─────────────────────────────────────────────────────
-assert profile_clean is not None, "profile_clean should not be None"
-assert os.path.exists("ex8_taxi_profile_clean.html"), "Cleaned data report not saved"
-print("\n✓ Checkpoint 7 passed — post-cleaning profile complete and report saved\n")
+
+# ── Checkpoint 10 ────────────────────────────────────────────────────
+assert profile_clean is not None
+assert os.path.exists("ex8_taxi_profile_clean.html")
+print("\n✓ Checkpoint 10 passed — post-cleaning profile and report complete\n")
+
 
 # ── Pipeline summary ─────────────────────────────────────────────────
-print(f"\n{'=' * 60}")
+print(f"\n{'═' * 65}")
 print(f"  END-TO-END PIPELINE SUMMARY")
-print(f"{'=' * 60}")
-print(f"  Stage 1 Load:       {taxi_raw.height:,} rows, {taxi_raw.width} cols")
-print(f"  Stage 2 Profile:    {len(profile_raw.alerts)} alerts identified")
-print(f"  Stage 3 Clean:      {taxi_clean.height:,} rows retained")
-print(f"  Stage 4 Engineer:   {len(new_cols)} new features created")
+print(f"{'═' * 65}")
+print(f"  Stage 1  Load:       {taxi_raw.height:,} rows, {taxi_raw.width} cols")
+print(f"  Stage 2  Inspect:    {len(quality_issues)} quality issues identified")
+print(f"  Stage 3  Profile:    {len(profile_raw.alerts)} alerts from DataExplorer")
+print(f"  Stage 4  Plan:       {len(cleaning_plan)} cleaning actions defined")
+print(
+    f"  Stage 5  Clean:      {taxi_clean.height:,} rows retained ({retention_pct:.1f}%)"
+)
+print(f"  Stage 6  Temporal:   {len(temporal_cols)} temporal features")
+print(f"  Stage 7  Spatial:    {len(spatial_cols)} spatial features")
 if result is not None:
     print(
-        f"  Stage 5 Preprocess: {result.train_data.shape[0]:,} train / "
-        f"{result.test_data.shape[0]:,} test rows"
+        f"  Stage 8  Pipeline:   {result.train_data.shape[0]:,} train / "
+        f"{result.test_data.shape[0]:,} test"
     )
-print(f"  Stage 6 Visualise:  4 HTML charts saved")
-print(f"  Stage 7 Verify:     {len(profile_clean.alerts)} alerts remaining")
-print(f"{'=' * 60}")
+print(f"  Stage 9  Visualise:  {len(viz_files)} charts saved")
+print(f"  Stage 10 Verify:     {len(profile_clean.alerts)} alerts remaining")
+print(f"{'═' * 65}")
 
 print(
-    "\n✓ Exercise 8 complete — full data pipeline: load → profile → clean → model-ready"
+    "\n✓ Exercise 8 complete — full pipeline: load -> profile -> clean -> "
+    "engineer -> preprocess -> visualise -> verify"
 )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
-print("═" * 58)
+print("═" * 60)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 58)
-print("""
-  ✓ End-to-end thinking: load → profile → clean → engineer → preprocess
-  ✓ DataExplorer: automated quality assessment with typed, actionable alerts
+print("═" * 60)
+print(
+    """
+  ✓ End-to-end thinking: load -> inspect -> profile -> plan -> clean
+    -> engineer -> preprocess -> visualise -> verify
+  ✓ Manual quality checks: null counts, range validation, domain rules
+  ✓ DataExplorer: automated profiling with typed, actionable alerts
+  ✓ Action planning: translating alerts into specific cleaning steps
   ✓ Domain-aware cleaning: GPS bounding boxes, fare ranges, duration limits
-  ✓ Feature engineering: temporal (hour, weekday, peak period), spatial
-    (haversine distance), and derived (speed, fare per km)
-  ✓ PreprocessingPipeline: one call to standardise, encode, impute, and split
+  ✓ Feature engineering:
+    - Temporal: hour, weekday, peak period, day type, duration category
+    - Spatial: haversine distance, average speed, distance category
+    - Derived: fare per km
+  ✓ PreprocessingPipeline: standardise, encode, impute, and split in one call
+  ✓ ModelVisualizer: fare distributions, hourly patterns, segment comparisons
   ✓ Quality measurement: alert count before vs after as a cleaning KPI
-  ✓ Three engines working together: DataExplorer + PreprocessingPipeline +
+  ✓ Three engines together: DataExplorer + PreprocessingPipeline +
     ModelVisualizer — the full M1 toolkit
 
   MODULE 1 COMPLETE — you've gone from raw CSV to model-ready data.
@@ -710,12 +913,10 @@ print("""
   NEXT — MODULE 2: Feature Engineering and Experiment Design
   In M2, you'll move beyond data exploration into systematic feature
   construction. You'll learn:
-    - FeatureEngineer: automated feature generation (interactions, polynomials,
-      target encoding, lag features) at scale
-    - FeatureStore: versioning and retrieving feature sets across experiments
-    - ExperimentTracker: logging runs, parameters, and metrics for
-      reproducibility and comparison
-  The taxi trip data you cleaned in this exercise will become a feature
-  store entry — and you'll compare model performance across different
-  feature sets using tracked experiments.
-""")
+    - FeatureEngineer: automated feature generation (interactions,
+      polynomials, target encoding, lag features) at scale
+    - FeatureStore: versioning and retrieving feature sets
+    - ExperimentTracker: logging runs, parameters, and metrics
+  The taxi trip data you cleaned here will become a feature store entry.
+"""
+)

@@ -1,0 +1,218 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: GAN Training Challenges
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Mode Collapse
+          - generic:
+            - strong: "Symptom:"
+            - text: Generator produces the same output regardless of input noise. It found one image that fools the discriminator and keeps producing it.
+          - heading [level=3]: Solutions
+          - list:
+            - listitem:
+              - strong: "WGAN:"
+              - text: Wasserstein distance encourages full coverage
+            - listitem:
+              - strong: "Minibatch discrimination:"
+              - text: D sees batch statistics
+            - listitem:
+              - strong: "Spectral normalisation:"
+              - text: stabilise D's Lipschitz constant
+        - generic:
+          - heading [level=3]: Training Instability
+          - generic:
+            - strong: "Symptom:"
+            - text: Loss oscillates wildly. G and D alternate between dominance. No convergence.
+          - heading [level=3]: Best Practices
+          - list:
+            - listitem: Use Adam with low learning rate (0.0002)
+            - listitem: Train D more steps than G (e.g., 5:1 ratio)
+            - listitem: Use label smoothing (real labels = 0.9, not 1.0)
+            - listitem: Monitor FID during training, not just loss
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Exercise 5.5: Generative Models"
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Tasks
+          - list:
+            - listitem: Implement DCGAN for MNIST image generation
+            - listitem: Implement WGAN-GP — compare training stability
+            - listitem: Compute FID score for both models
+            - listitem: "Document: when to use GANs vs VAE vs diffusion"
+        - generic:
+          - heading [level=3]: Assessment Criteria
+          - list:
+            - listitem: DCGAN generates recognisable digits
+            - listitem: WGAN is demonstrably more stable (loss curves)
+            - listitem: FID computed and compared
+            - listitem: Generation model selection guide understood
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e1256]:
+      - heading "Lesson 5.5 Summary" [level=2] [ref=e1257]
+      - generic [ref=e1258]: Foundations
+      - generic [ref=e1259]: GANs learn to generate data through adversarial competition. WGAN stabilises training. Diffusion models offer higher quality at higher cost.
+      - generic [ref=e1260]:
+        - generic [ref=e1261]:
+          - heading "Key Equations" [level=3] [ref=e1262]
+          - list [ref=e1263]:
+            - listitem [ref=e1264]:
+              - strong [ref=e1265]: "GAN:"
+              - generic [ref=e1267]:
+                - math [ref=e1269]:
+                  - generic [ref=e1271]:
+                    - generic [ref=e1272]:
+                      - generic [ref=e1273]:
+                        - generic [ref=e1274]: min
+                        - generic: ⁡
+                      - generic [ref=e1275]: G
+                    - generic [ref=e1276]:
+                      - generic [ref=e1277]:
+                        - generic [ref=e1278]: max
+                        - generic: ⁡
+                      - generic [ref=e1279]: D
+                    - generic [ref=e1280]: "["
+                    - generic [ref=e1281]: E
+                    - generic [ref=e1282]: "["
+                    - generic [ref=e1283]: log
+                    - generic: ⁡
+                    - generic [ref=e1284]: D
+                    - generic [ref=e1285]: (
+                    - generic [ref=e1286]: x
+                    - generic [ref=e1287]: )
+                    - generic [ref=e1288]: "]"
+                    - generic [ref=e1289]: +
+                    - generic [ref=e1290]: E
+                    - generic [ref=e1291]: "["
+                    - generic [ref=e1292]: log
+                    - generic: ⁡
+                    - generic [ref=e1293]: (
+                    - generic [ref=e1294]: "1"
+                    - generic [ref=e1295]: −
+                    - generic [ref=e1296]: D
+                    - generic [ref=e1297]: (
+                    - generic [ref=e1298]: G
+                    - generic [ref=e1299]: (
+                    - generic [ref=e1300]: z
+                    - generic [ref=e1301]: )
+                    - generic [ref=e1302]: )
+                    - generic [ref=e1303]: )
+                    - generic [ref=e1304]: "]"
+                    - generic [ref=e1305]: "]"
+                - generic [ref=e1306]:
+                  - generic [ref=e1307]:
+                    - generic [ref=e1308]:
+                      - generic [ref=e1309]: min
+                      - generic [ref=e1314]: G
+                    - generic [ref=e1318]:
+                      - generic [ref=e1319]: max
+                      - generic [ref=e1324]: D
+                    - text: "[E["
+                    - generic [ref=e1328]: log
+                    - text: D(x)] +
+                  - generic [ref=e1329]:
+                    - text: E[
+                    - generic [ref=e1330]: log
+                    - text: (1 −
+                  - generic [ref=e1331]: D(G(z)))]]
+            - listitem [ref=e1332]:
+              - strong [ref=e1333]: "WGAN:"
+              - generic [ref=e1335]:
+                - math [ref=e1337]:
+                  - generic [ref=e1339]:
+                    - generic [ref=e1340]:
+                      - generic [ref=e1341]:
+                        - generic [ref=e1342]: min
+                        - generic: ⁡
+                      - generic [ref=e1343]: G
+                    - generic [ref=e1344]:
+                      - generic [ref=e1345]:
+                        - generic [ref=e1346]: max
+                        - generic: ⁡
+                      - generic [ref=e1347]: D
+                    - generic [ref=e1348]: "["
+                    - generic [ref=e1349]: E
+                    - generic [ref=e1350]: "["
+                    - generic [ref=e1351]: D
+                    - generic [ref=e1352]: (
+                    - generic [ref=e1353]: x
+                    - generic [ref=e1354]: )
+                    - generic [ref=e1355]: "]"
+                    - generic [ref=e1356]: −
+                    - generic [ref=e1357]: E
+                    - generic [ref=e1358]: "["
+                    - generic [ref=e1359]: D
+                    - generic [ref=e1360]: (
+                    - generic [ref=e1361]: G
+                    - generic [ref=e1362]: (
+                    - generic [ref=e1363]: z
+                    - generic [ref=e1364]: )
+                    - generic [ref=e1365]: )
+                    - generic [ref=e1366]: "]"
+                    - generic [ref=e1367]: "]"
+                - generic [ref=e1368]:
+                  - generic [ref=e1369]:
+                    - generic [ref=e1370]:
+                      - generic [ref=e1371]: min
+                      - generic [ref=e1376]: G
+                    - generic [ref=e1380]:
+                      - generic [ref=e1381]: max
+                      - generic [ref=e1386]: D
+                    - text: "[E[D(x)] −"
+                  - generic [ref=e1390]: E[D(G(z))]]
+        - generic [ref=e1391]:
+          - heading "What Comes Next" [level=3] [ref=e1392]
+          - paragraph [ref=e1393]:
+            - text: "Lesson 5.6:"
+            - strong [ref=e1394]: Graph Neural Networks
+            - text: — what if your data is not a grid (images) or a sequence (text) but a graph (social networks, molecules)?
+      - generic [ref=e1396]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Lesson 5.5: Real-World Applications"
+      - generic: Applications
+      - generic: DCGAN, WGAN-GP, and diffusion — the three generators you built in Exercise 5 — solve a class of problems where the business constraint is "we need more data, but we cannot collect it". Synthetic generation converts a hard collection problem into an ML problem.
+      - generic:
+        - generic:
+          - generic:
+            - strong: Healthcare — Privacy-Preserving Training Data
+            - paragraph:
+              - text: SGH cannot share patient CT scans with a research lab overseas, but it
+              - emphasis: can
+              - text: share a diffusion model trained on them. The collaborator samples synthetic scans indistinguishable at the pixel level from real ones but containing no actual patient. This is how rare-disease classifiers get enough training data without violating PDPA or HIPAA.
+          - generic:
+            - strong: Retail — Virtual Try-On & Product Visualisation
+            - paragraph: Shopee and Lazada use CycleGAN-style networks (the same adversarial loss family, just with two generators) to paste products onto user photos. A single SKU photo on white background becomes dozens of lifestyle shots — no photo studio, no models, no rental.
+        - generic:
+          - generic:
+            - strong: Finance — Synthetic Tabular Data for Fraud Models
+            - paragraph: Banks train fraud models on transaction history, but real fraud examples are rare and sharing them across teams or institutions is blocked by privacy law. Tabular GANs (like CT-GAN, same training dynamics as your WGAN-GP) generate synthetic transaction tables that preserve the joint distribution of fields without containing any real customer. Models trained on the synthetic data generalise to real data at 95%+ of the supervised ceiling.
+          - generic:
+            - strong: Creative — Marketing Asset Generation
+            - paragraph:
+              - text: "Agencies use Stable Diffusion for hero images, variant ads, and mood boards. The unit economics are brutal: a hero image that would cost $5,000 in a studio is generated in 30 seconds and iterated 200 times before the art director picks one. Business value is not the pixel quality — it is the"
+              - emphasis: iteration rate
+              - text: .
+      - generic:
+        - strong: "Why this matters for YOU:"
+        - text: "Synthetic data is the practical wedge for every regulated industry. It lets you train ML models on distributions you cannot legally share. FID (the metric you computed in Exercise 5) is the evidence auditors and regulators want to see: it says \"our synthetic distribution is close enough to the real one for the downstream model to work, without being the real one\"."
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=1]: Lesson 5.6
+      - heading [level=2]: Graph Neural Networks
+      - paragraph: Graph Feature Learning — Patterns in Connected Data
+      - paragraph: "\"What if the connections matter as much as the data itself?\""
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "66 / 104" [ref=e1397] [cursor=pointer]:
+    - /url: "#/65"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "Lesson 5.4: Real-World Applications Applications The BERT fine-tuning pipeline you ran on AG News in Exercise 4 is the same pipeline used everywhere that text has to be classified, summarised, or routed at scale. Swap the dataset, keep the architecture. Finance — Earnings Call & SEC Filing Sentiment Sell-side analysts fine-tune BERT on labelled earnings-call transcripts to score each quarter as beat / miss / guidance-cut — in the first minute after the call ends, not after a human has read it. A MAS-supervised fund house fine-tunes the same model on SGX filings to flag risk language (e.g., \"going concern\", \"material weakness\") for the credit desk. Healthcare — Clinical Note Summarisation Fine-tuned T5 and BART models at public hospitals convert 2,000-word admission notes into 200-word discharge summaries. The clinician edits the summary instead of writing it from scratch — saving 15 minutes per patient across 2M admissions a year. The self-attention mechanism is the same one you derived by hand. Customer Service — IRAS Tax Query Routing A public-sector contact centre fine-tunes BERT on historical tickets to classify incoming queries into 40+ tax-topic buckets and route them to the right specialist. Accuracy on the first 20 classes exceeds the human baseline; the remaining 20 are human-in-the-loop. That is the exact 4-class AG News fine-tune you just ran, scaled up and domain-swapped. Legal — Contract Review Assistance Singapore law firms use fine-tuned transformers to extract obligations, liabilities, and termination clauses from draft contracts. The model highlights the spans; the associate reviews a ranked list. Multi-head attention visualisations are the interpretability layer — the partner wants to see why the model flagged a clause. Why this matters for YOU: Fine-tuning a pre-trained transformer is the cheapest high-impact ML project most organisations can run. You are not training a model from scratch — you are adapting one that already knows language. Data requirements drop by 10× to 100×, training time drops from weeks to hours, and the resulting model is genuinely production-ready. This is where the biggest ROI in M5 lives. MLFP Module 5 — Terrene Open Academy"

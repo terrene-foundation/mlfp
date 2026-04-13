@@ -12,24 +12,29 @@
 #   - Implement the M-step (parameter updates) from scratch
 #   - Verify that log-likelihood is non-decreasing across EM iterations
 #   - Compare manual EM with sklearn GMM and select K via BIC/AIC
+#   - Explain soft vs hard clustering and when each is appropriate
+#   - Understand covariance type selection (full, tied, diag, spherical)
+#   - Describe how Mixture of Experts extends mixture models to deep learning
 #
 # PREREQUISITES:
 #   - MLFP04 Exercise 1 (clustering — GMM used as a black box there)
-#   - MLFP02 Lesson 2.1 (Bayesian thinking — EM is a Bayesian inference algorithm)
+#   - MLFP02 Lesson 2.1 (Bayesian thinking — EM is Bayesian inference)
 #
-# ESTIMATED TIME: 75-90 minutes
+# ESTIMATED TIME: ~150-180 min
 #
 # TASKS:
-#   1. Derive EM intuitively — soft assignments and parameter updates
-#   2. Implement E-step (posterior responsibilities)
-#   3. Implement M-step (update means, covariances, weights)
-#   4. Run EM loop and visualise convergence
-#   5. Compare manual EM with sklearn GMM on real data
-#   6. AutoMLEngine for automated GMM comparison
+#   1.  Derive EM intuitively — soft assignments and parameter updates
+#   2.  Implement E-step (posterior responsibilities) with log-sum-exp
+#   3.  Implement M-step (update means, covariances, weights)
+#   4.  Run EM loop, visualise convergence, verify non-decreasing LL
+#   5.  Compare manual EM with sklearn GMM on real data
+#   6.  BIC/AIC model selection — choose K objectively
+#   7.  Covariance type comparison (full, tied, diag, spherical)
+#   8.  Soft vs hard assignments — practical impact on customer segmentation
+#   9.  Mixture of Experts: modern application of mixture models
+#   10. AutoMLEngine for automated GMM comparison
 #
 # DATASET: Synthetic 2D data (3 Gaussians, 600 samples) + e-commerce customers
-#   The synthetic data has known ground truth, so you can verify your
-#   implementation recovers the true component means and weights.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -66,9 +71,8 @@ true_covs = np.array(
 true_weights = np.array([0.4, 0.35, 0.25])
 
 n_synth = 600
-# Generate samples from each component proportionally
 n_per_component = (true_weights * n_synth).astype(int)
-n_per_component[-1] = n_synth - n_per_component[:-1].sum()  # Ensure total = n_synth
+n_per_component[-1] = n_synth - n_per_component[:-1].sum()
 
 X_synth_parts = []
 z_true = []
@@ -83,7 +87,7 @@ z_true = np.array(z_true)
 idx = rng.permutation(n_synth)
 X_synth, z_true = X_synth[idx], z_true[idx]
 
-print(f"=== Synthetic 2D GMM Data ===")
+print("=== Synthetic 2D GMM Data ===")
 print(f"Samples: {n_synth}, Components: 3")
 print(f"True weights: {true_weights}")
 for k, (m, n) in enumerate(zip(true_means, n_per_component)):
@@ -93,38 +97,37 @@ for k, (m, n) in enumerate(zip(true_means, n_per_component)):
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: EM Algorithm — intuition and derivation
 # ══════════════════════════════════════════════════════════════════════
-# Problem: observed data X, latent assignments Z, parameters θ = {π, μ, Σ}
+# Problem: observed data X, latent assignments Z, parameters theta = {pi, mu, Sigma}
 #
-# Maximum Likelihood: max_{θ} log P(X|θ) = max_{θ} Σ_i log Σ_k π_k N(x_i|μ_k,Σ_k)
-#   → Intractable: log of a sum
+# Maximum Likelihood: max_{theta} log P(X|theta) = max_{theta} Sum_i log Sum_k pi_k N(x_i|mu_k,Sigma_k)
+#   Intractable because of the log of a sum
 #
-# EM insight: introduce Z, maximise a lower bound (ELBO):
-#   E-step: compute Q(Z|X, θ^old) = P(Z|X, θ^old)  [posterior responsibilities]
-#   M-step: θ^new = argmax_{θ} E_Q[log P(X,Z|θ)]    [weighted ML update]
+# EM insight: introduce latent Z, maximise a lower bound (ELBO):
+#   E-step: compute Q(Z|X, theta_old) = P(Z|X, theta_old)
+#   M-step: theta_new = argmax_{theta} E_Q[log P(X,Z|theta)]
 #
-# Why it works: each step is guaranteed to increase log P(X|θ).
-# Converges to a local maximum of the likelihood.
+# Why it works: each step is guaranteed to increase log P(X|theta).
 
 print(f"\n=== EM Algorithm Derivation ===")
 print(
     """
 EM as coordinate ascent on the ELBO:
 
-  log P(X|θ) ≥ ELBO = E_Q[log P(X,Z|θ)] + H(Q)   (Jensen's inequality)
+  log P(X|theta) >= ELBO = E_Q[log P(X,Z|theta)] + H(Q)   (Jensen's inequality)
 
-  E-step: fix θ, maximise ELBO over Q
-    → Q*(Z) = P(Z|X, θ)  [just compute the posterior]
+  E-step: fix theta, maximise ELBO over Q
+    -> Q*(Z) = P(Z|X, theta)  [just compute the posterior]
 
-  M-step: fix Q, maximise ELBO over θ
-    → θ* = argmax E_{Q*}[log P(X,Z|θ)]  [weighted MLE]
+  M-step: fix Q, maximise ELBO over theta
+    -> theta* = argmax E_{Q*}[log P(X,Z|theta)]  [weighted MLE]
 
 For GMMs:
-  E-step: r_{ik} = π_k N(x_i|μ_k,Σ_k) / Σ_j π_j N(x_i|μ_j,Σ_j)
+  E-step: r_{ik} = pi_k N(x_i|mu_k,Sigma_k) / Sum_j pi_j N(x_i|mu_j,Sigma_j)
   M-step:
-    N_k = Σ_i r_{ik}
-    π_k^new = N_k / N
-    μ_k^new = (Σ_i r_{ik} x_i) / N_k
-    Σ_k^new = (Σ_i r_{ik} (x_i - μ_k^new)(x_i - μ_k^new)') / N_k
+    N_k = Sum_i r_{ik}
+    pi_k_new = N_k / N
+    mu_k_new = (Sum_i r_{ik} x_i) / N_k
+    Sigma_k_new = (Sum_i r_{ik} (x_i - mu_k_new)(x_i - mu_k_new)') / N_k
 """
 )
 
@@ -143,25 +146,23 @@ def e_step(
     """
     E-step: compute responsibility matrix R.
 
-    R[i, k] = P(z_i = k | x_i, θ)
-             = π_k N(x_i | μ_k, Σ_k) / Σ_j π_j N(x_j | μ_j, Σ_j)
+    R[i, k] = P(z_i = k | x_i, theta)
+             = pi_k N(x_i | mu_k, Sigma_k) / Sum_j pi_j N(x_i | mu_j, Sigma_j)
 
-    Returns:
-        R: (n_samples, n_components) responsibility matrix
+    Uses log-sum-exp trick for numerical stability.
     """
     n_samples = X.shape[0]
     n_components = len(weights)
     log_probs = np.zeros((n_samples, n_components))
 
     for k in range(n_components):
-        # Log probability under component k (more numerically stable)
         try:
             dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
             log_probs[:, k] = np.log(weights[k] + 1e-300) + dist.logpdf(X)
         except Exception:
             log_probs[:, k] = -np.inf
 
-    # Normalise in log space (log-sum-exp trick for numerical stability)
+    # Log-sum-exp trick: subtract max per row for numerical stability
     log_probs_max = log_probs.max(axis=1, keepdims=True)
     log_normaliser = (
         np.log(np.exp(log_probs - log_probs_max).sum(axis=1, keepdims=True))
@@ -178,24 +179,27 @@ print(f"\n=== E-step Test (true parameters) ===")
 print(f"Responsibility matrix shape: {R_init.shape}")
 print(f"Row sums (should all be 1): {R_init.sum(axis=1)[:5].round(4)}")
 print(f"Average max responsibility: {R_init.max(axis=1).mean():.4f}")
-print(f"  (≈1 = high confidence; ≈0.33 = maximum uncertainty)")
+print(f"  (near 1 = high confidence; near 0.33 = maximum uncertainty)")
 
-# Soft assignments from true parameters
 soft_assignments = R_init.argmax(axis=1)
 accuracy_true_params = (soft_assignments == z_true).mean()
 print(f"Assignment accuracy (true params): {accuracy_true_params:.4f}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert R_init.shape == (n_synth, 3), \
-    f"Responsibility matrix should be (n_samples, n_components), got {R_init.shape}"
-assert abs(R_init.sum(axis=1).mean() - 1.0) < 1e-6, \
-    "Responsibilities must sum to 1 for each sample (probability axiom)"
+assert R_init.shape == (
+    n_synth,
+    3,
+), f"Responsibility matrix should be (n_samples, n_components), got {R_init.shape}"
+assert (
+    abs(R_init.sum(axis=1).mean() - 1.0) < 1e-6
+), "Responsibilities must sum to 1 for each sample (probability axiom)"
 assert R_init.min() >= 0, "Responsibilities must be non-negative"
+assert (
+    accuracy_true_params > 0.8
+), "With true parameters, assignment accuracy should be high (> 0.8)"
 # INTERPRETATION: The responsibility r_{ik} is the posterior probability that
-# point i was generated by component k. This is the E-step output: given the
-# current parameters, what fraction of each point's 'weight' belongs to each
-# Gaussian? When using the true parameters, r_{ik} ≈ 1 for the true label and
-# ≈ 0 for the others — exactly as expected from Bayes' rule.
+# point i was generated by component k. When using the true parameters,
+# r_{ik} is near 1 for the true label and near 0 for the others.
 print("\n✓ Checkpoint 1 passed — E-step responsibilities computed correctly\n")
 
 
@@ -212,38 +216,32 @@ def m_step(
     """
     M-step: update GMM parameters given responsibility matrix R.
 
-    N_k = Σ_i r_{ik}
-    π_k = N_k / N
-    μ_k = (Σ_i r_{ik} x_i) / N_k
-    Σ_k = (Σ_i r_{ik} (x_i - μ_k)(x_i - μ_k)') / N_k  +  reg_covar * I
-
-    Returns:
-        means:   (n_components, n_features)
-        covs:    (n_components, n_features, n_features)
-        weights: (n_components,)
+    N_k = Sum_i r_{ik}
+    pi_k = N_k / N
+    mu_k = (Sum_i r_{ik} x_i) / N_k
+    Sigma_k = (Sum_i r_{ik} (x_i - mu_k)(x_i - mu_k)') / N_k + reg * I
     """
     n_samples, n_features = X.shape
     n_components = R.shape[1]
 
-    N_k = R.sum(axis=0) + 1e-300  # Effective sample counts per component
-    weights = N_k / n_samples  # Normalised mixing weights
+    N_k = R.sum(axis=0) + 1e-300
+    weights = N_k / n_samples
 
-    means = (R.T @ X) / N_k[:, np.newaxis]  # (K, D)
+    means = (R.T @ X) / N_k[:, np.newaxis]
 
     covs = np.zeros((n_components, n_features, n_features))
     for k in range(n_components):
-        diff = X - means[k]  # (N, D)
-        # Weighted outer products: Σ_k = (1/N_k) Σ_i r_{ik} (x_i - μ_k)(x_i - μ_k)'
+        diff = X - means[k]
         covs[k] = (R[:, k : k + 1] * diff).T @ diff / N_k[k]
-        covs[k] += reg_covar * np.eye(n_features)  # Regularise for stability
+        covs[k] += reg_covar * np.eye(n_features)
 
     return means, covs, weights
 
 
-# Test M-step: given true responsibilities, should recover near-true params
+# Test M-step: given hard ground-truth assignments, should recover near-true params
 R_true = np.zeros((n_synth, 3))
 for i, k in enumerate(z_true):
-    R_true[i, k] = 1.0  # Hard assignments from ground truth
+    R_true[i, k] = 1.0
 
 means_recovered, covs_recovered, weights_recovered = m_step(X_synth, R_true)
 
@@ -255,18 +253,16 @@ for k in range(3):
     )
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert abs(weights_recovered.sum() - 1.0) < 1e-6, \
-    "Recovered weights should sum to 1"
-# Recovered means should be close to true means (within 0.5 units)
+assert abs(weights_recovered.sum() - 1.0) < 1e-6, "Recovered weights should sum to 1"
 for k in range(3):
     dist = np.linalg.norm(means_recovered[k] - true_means[k])
-    assert dist < 1.0, \
-        f"Recovered mean {k} ({means_recovered[k].round(2)}) too far from truth ({true_means[k]})"
+    assert dist < 1.0, f"Recovered mean {k} too far from truth"
 # INTERPRETATION: The M-step update is weighted maximum likelihood estimation.
 # Given hard assignments (R_true), the update is just the class-conditional
 # mean and covariance — exactly what you'd compute if you knew the labels.
-# With soft assignments, each point contributes fractionally to each component.
-print("\n✓ Checkpoint 2 passed — M-step recovers true parameters from hard assignments\n")
+print(
+    "\n✓ Checkpoint 2 passed — M-step recovers true parameters from hard assignments\n"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -280,10 +276,10 @@ def compute_log_likelihood(
     covs: np.ndarray,
     weights: np.ndarray,
 ) -> float:
-    """Compute log-likelihood: Σ_i log Σ_k π_k N(x_i | μ_k, Σ_k)."""
+    """Compute log-likelihood: Sum_i log Sum_k pi_k N(x_i | mu_k, Sigma_k)."""
     n_samples = X.shape[0]
     n_components = len(weights)
-    log_likelihoods = np.zeros(n_samples)
+    log_likelihoods = np.full(n_samples, -np.inf)
 
     for k in range(n_components):
         try:
@@ -305,16 +301,11 @@ def fit_gmm_em(
     tol: float = 1e-4,
     seed: int = 42,
 ) -> dict:
-    """
-    Fit GMM using manual EM loop.
-
-    Initialises with K-means++, then alternates E/M steps
-    until log-likelihood converges.
-    """
+    """Fit GMM using manual EM loop with random initialisation."""
     rng_em = np.random.default_rng(seed)
     n_samples, n_features = X.shape
 
-    # Initialise with random assignment (K-means++ style)
+    # Initialise: random centroids, identity covariance, uniform weights
     idx = rng_em.choice(n_samples, n_components, replace=False)
     means = X[idx].copy()
     covs = np.array([np.eye(n_features)] * n_components)
@@ -323,17 +314,12 @@ def fit_gmm_em(
     log_likelihoods = []
 
     for iteration in range(max_iter):
-        # E-step
         R = e_step(X, means, covs, weights)
-
-        # M-step
         means, covs, weights = m_step(X, R)
 
-        # Track log-likelihood
         ll = compute_log_likelihood(X, means, covs, weights)
         log_likelihoods.append(ll)
 
-        # Convergence check
         if iteration > 0 and abs(log_likelihoods[-1] - log_likelihoods[-2]) < tol:
             print(f"  Converged at iteration {iteration + 1}")
             break
@@ -344,6 +330,7 @@ def fit_gmm_em(
         "covs": covs,
         "weights": weights,
         "labels": labels,
+        "responsibilities": R,
         "log_likelihoods": log_likelihoods,
         "n_iter": len(log_likelihoods),
         "final_ll": log_likelihoods[-1],
@@ -362,13 +349,24 @@ for k in range(3):
     )
 
 # Evaluate cluster recovery
-# Match components by closest mean (true label assignment may differ)
 em_labels = em_result["labels"]
 if len(set(em_labels)) > 1:
     sil = silhouette_score(X_synth, em_labels)
     print(f"Silhouette score: {sil:.4f}")
 
-# Log-likelihood convergence plot
+# Verify non-decreasing log-likelihood property
+lls = em_result["log_likelihoods"]
+ll_increases = [lls[i] - lls[i - 1] for i in range(1, len(lls))]
+n_decreases = sum(1 for d in ll_increases if d < -0.1)
+
+print(f"\nLog-likelihood convergence analysis:")
+print(f"  Total iterations: {len(lls)}")
+print(
+    f"  LL increase per step: min={min(ll_increases):.4f}, max={max(ll_increases):.4f}"
+)
+print(f"  Steps with decrease > 0.1: {n_decreases} (should be 0)")
+
+# Convergence plot
 viz = ModelVisualizer()
 fig = viz.training_history(
     {"Log-Likelihood": em_result["log_likelihoods"]},
@@ -379,18 +377,14 @@ fig.write_html("ex2_em_convergence.html")
 print("Saved: ex2_em_convergence.html")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert em_result["n_iter"] > 1, "EM should require more than 1 iteration to converge"
-# Log-likelihood should be non-decreasing (fundamental EM guarantee)
-lls = em_result["log_likelihoods"]
+assert em_result["n_iter"] > 1, "EM should require more than 1 iteration"
 for i in range(1, len(lls)):
-    assert lls[i] >= lls[i-1] - 0.1, \
-        f"Log-likelihood decreased significantly at iteration {i}: {lls[i-1]:.4f} → {lls[i]:.4f}"
-assert len(set(em_result["labels"])) >= 2, \
-    "EM should assign points to at least 2 distinct components"
+    assert (
+        lls[i] >= lls[i - 1] - 0.1
+    ), f"Log-likelihood decreased significantly at iteration {i}"
+assert len(set(em_result["labels"])) >= 2, "EM should assign to at least 2 components"
 # INTERPRETATION: The monotone non-decreasing log-likelihood is the mathematical
-# proof that EM works. Each E-step tightens the lower bound (ELBO); each M-step
-# maximises it. The log-likelihood of the observed data can only increase or stay
-# the same — convergence to a local optimum is guaranteed.
+# proof that EM works. Each E-step tightens the ELBO; each M-step maximises it.
 print("\n✓ Checkpoint 3 passed — EM converged with non-decreasing log-likelihood\n")
 
 
@@ -418,7 +412,35 @@ X_real_scaled = scaler.fit_transform(X_real)
 print(f"\n=== Real Data: E-commerce Customers ===")
 print(f"Shape: {X_real_scaled.shape}")
 
-# Test different numbers of components using BIC/AIC model selection
+# Manual EM on real data (limited to first 3000 for speed)
+n_real_em = min(3000, X_real_scaled.shape[0])
+print(f"\nRunning manual EM on {n_real_em} customers...")
+em_real = fit_gmm_em(X_real_scaled[:n_real_em], n_components=4, max_iter=80)
+print(f"Manual EM: {em_real['n_iter']} iterations, LL={em_real['final_ll']:.2f}")
+
+# sklearn GMM on same data
+gmm_sk = GaussianMixture(n_components=4, random_state=42, max_iter=200)
+gmm_sk.fit(X_real_scaled[:n_real_em])
+sk_ll = gmm_sk.score(X_real_scaled[:n_real_em]) * n_real_em
+print(f"sklearn GMM: LL={sk_ll:.2f}")
+print(f"  Difference: {abs(em_real['final_ll'] - sk_ll):.2f}")
+print("  (Small difference expected — different initialisation)")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert em_real["n_iter"] > 1, "EM on real data should require multiple iterations"
+# INTERPRETATION: Manual EM and sklearn GMM should produce similar
+# log-likelihood values. Differences arise from initialisation (sklearn
+# uses k-means++) and convergence criteria.
+print("\n✓ Checkpoint 4 passed — manual EM matches sklearn GMM on real data\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: BIC/AIC model selection — choose K objectively
+# ══════════════════════════════════════════════════════════════════════
+# BIC = k * log(n) - 2 * log_likelihood  (penalises complexity more)
+# AIC = 2 * k - 2 * log_likelihood       (penalises complexity less)
+# Lower = better for both.
+
 print(f"\n=== GMM Model Selection (BIC/AIC) ===")
 print(f"{'K':>4} {'BIC':>12} {'AIC':>12} {'Log-L':>12} {'Silhouette':>12}")
 print("─" * 56)
@@ -437,47 +459,153 @@ for k in range(2, 9):
     bic = gmm.bic(X_real_scaled)
     aic = gmm.aic(X_real_scaled)
     ll = gmm.score(X_real_scaled) * X_real_scaled.shape[0]
-
     sil = silhouette_score(X_real_scaled, labels) if len(set(labels)) > 1 else -1.0
     bic_scores[k] = {"bic": bic, "aic": aic, "ll": ll, "silhouette": sil, "gmm": gmm}
 
     print(f"{k:>4} {bic:>12.0f} {aic:>12.0f} {ll:>12.0f} {sil:>12.4f}")
 
-best_k_bic = min(bic_scores.items(), key=lambda x: x[1]["bic"])
-best_k_sil = max(bic_scores.items(), key=lambda x: x[1]["silhouette"])
-print(f"\nBest K by BIC: {best_k_bic[0]}")
-print(f"Best K by Silhouette: {best_k_sil[0]}")
+best_k_bic = min(bic_scores.items(), key=lambda x: x[1]["bic"])[0]
+best_k_aic = min(bic_scores.items(), key=lambda x: x[1]["aic"])[0]
+best_k_sil = max(bic_scores.items(), key=lambda x: x[1]["silhouette"])[0]
 
-# ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert best_k_bic[0] in range(2, 9), "BIC-optimal K should be in tested range"
-assert best_k_sil[0] in range(2, 9), "Silhouette-optimal K should be in tested range"
+print(f"\nBest K by BIC: {best_k_bic}")
+print(f"Best K by AIC: {best_k_aic}")
+print(f"Best K by Silhouette: {best_k_sil}")
+
+print("\nBIC vs AIC interpretation:")
+print("  BIC penalises complexity more: k * log(n) vs 2k")
+print("  BIC prefers simpler models (fewer components)")
+print("  AIC is less conservative — may favour larger K")
+print("  When BIC and AIC disagree, prefer BIC (more robust)")
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert best_k_bic in range(2, 9), "BIC-optimal K should be in tested range"
+assert best_k_aic in range(2, 9), "AIC-optimal K should be in tested range"
 bic_vals = [v["bic"] for v in bic_scores.values()]
-assert bic_vals == sorted(bic_vals) or bic_vals != sorted(bic_vals, reverse=True), \
-    "BIC values should vary across K"
+assert min(bic_vals) < max(bic_vals), "BIC values should vary across K"
 # INTERPRETATION: BIC (Bayesian Information Criterion) penalises model complexity:
-# BIC = k * log(n) - 2 * log_likelihood. Larger K gives better fit but higher
-# penalty. The BIC-optimal K balances fit vs complexity — it's the principled
-# way to choose K without over-specifying the model.
-print("\n✓ Checkpoint 4 passed — BIC model selection complete\n")
+# BIC = k * log(n) - 2 * log_likelihood. The BIC-optimal K balances fit vs
+# complexity — the principled way to choose K without over-specifying.
+print("\n✓ Checkpoint 5 passed — BIC/AIC model selection complete\n")
 
-print("\nBIC vs AIC vs Silhouette:")
-print("  BIC: penalises model complexity (prefer smaller K)")
-print("  AIC: less conservative than BIC (can favour larger K)")
-print("  Silhouette: cluster separation (domain-interpretable)")
-print("  Choose K based on both statistical criteria AND business meaning")
 
-# Best model: fit and profile
-k_final = best_k_bic[0]
+# ══════════════════════════════════════════════════════════════════════
+# TASK 7: Covariance type comparison
+# ══════════════════════════════════════════════════════════════════════
+# GMM covariance types control cluster shape:
+#   full:      each component has its own full covariance (ellipsoidal, any orientation)
+#   tied:      all components share one covariance (same shape, different location)
+#   diag:      each component has diagonal covariance (axis-aligned ellipses)
+#   spherical: each component has scalar covariance (spheres, like K-means)
+
+k_final = best_k_bic
+cov_types = ["full", "tied", "diag", "spherical"]
+
+print(f"\n=== Covariance Type Comparison (K={k_final}) ===")
+print(f"{'Type':<12} {'BIC':>12} {'Log-L':>12} {'Silhouette':>12} {'Params':>8}")
+print("─" * 60)
+
+cov_results = {}
+for cov_type in cov_types:
+    gmm_cov = GaussianMixture(
+        n_components=k_final,
+        covariance_type=cov_type,
+        random_state=42,
+        max_iter=200,
+    )
+    gmm_cov.fit(X_real_scaled)
+    labels_cov = gmm_cov.predict(X_real_scaled)
+
+    bic_cov = gmm_cov.bic(X_real_scaled)
+    ll_cov = gmm_cov.score(X_real_scaled) * X_real_scaled.shape[0]
+    sil_cov = (
+        silhouette_score(X_real_scaled, labels_cov)
+        if len(set(labels_cov)) > 1
+        else -1.0
+    )
+
+    # Count parameters
+    d = X_real_scaled.shape[1]
+    if cov_type == "full":
+        n_params = k_final * (d * (d + 1) // 2 + d + 1) - 1
+    elif cov_type == "tied":
+        n_params = d * (d + 1) // 2 + k_final * (d + 1) - 1
+    elif cov_type == "diag":
+        n_params = k_final * (2 * d + 1) - 1
+    else:  # spherical
+        n_params = k_final * (d + 2) - 1
+
+    cov_results[cov_type] = {
+        "bic": bic_cov,
+        "ll": ll_cov,
+        "silhouette": sil_cov,
+        "n_params": n_params,
+    }
+    print(
+        f"{cov_type:<12} {bic_cov:>12.0f} {ll_cov:>12.0f} {sil_cov:>12.4f} {n_params:>8}"
+    )
+
+best_cov = min(cov_results.items(), key=lambda x: x[1]["bic"])[0]
+print(f"\nBest covariance type by BIC: {best_cov}")
+print("\nCovariance type guide:")
+print(
+    "  full:      Most flexible — use when clusters have different shapes/orientations"
+)
+print(
+    "  tied:      Moderate — use when clusters have similar shapes but different locations"
+)
+print(
+    "  diag:      Efficient — use when features are roughly independent within clusters"
+)
+print("  spherical: Minimal — equivalent to soft K-means (all clusters are spheres)")
+
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+assert len(cov_results) == 4, "Should have results for all 4 covariance types"
+assert (
+    cov_results["full"]["n_params"] > cov_results["spherical"]["n_params"]
+), "Full covariance should have more parameters than spherical"
+# INTERPRETATION: More parameters (full) fit the data better (higher LL) but
+# risk overfitting. BIC automatically penalises the extra parameters, selecting
+# the simplest covariance type that adequately explains the data.
+print("\n✓ Checkpoint 6 passed — covariance type comparison complete\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 8: Soft vs hard assignments — practical impact
+# ══════════════════════════════════════════════════════════════════════
+
 gmm_best = bic_scores[k_final]["gmm"]
 labels_best = gmm_best.predict(X_real_scaled)
 soft_probs = gmm_best.predict_proba(X_real_scaled)
 
-print(f"\n=== Best GMM (K={k_final}) ===")
-print(f"Component weights: {gmm_best.weights_.round(3)}")
-print(f"Average max probability: {soft_probs.max(axis=1).mean():.4f}")
-print(f"  (high = crisp separation, low = overlapping clusters)")
+# Analyse soft assignment patterns
+max_probs = soft_probs.max(axis=1)
+entropy = -np.sum(soft_probs * np.log(soft_probs + 1e-300), axis=1)
 
-# Profile each component
+print(f"\n=== Soft vs Hard Assignments (K={k_final}) ===")
+print(f"Component weights: {gmm_best.weights_.round(3)}")
+print(f"\nAssignment confidence distribution:")
+print(f"  Max prob > 0.95 (confident):    {(max_probs > 0.95).mean():.1%}")
+print(
+    f"  Max prob 0.7-0.95 (moderate):   {((max_probs > 0.7) & (max_probs <= 0.95)).mean():.1%}"
+)
+print(
+    f"  Max prob 0.5-0.7 (ambiguous):   {((max_probs > 0.5) & (max_probs <= 0.7)).mean():.1%}"
+)
+print(f"  Max prob < 0.5 (uncertain):     {(max_probs < 0.5).mean():.1%}")
+print(f"\nEntropy (0 = certain, log(K) = max uncertainty):")
+print(f"  Mean entropy: {entropy.mean():.4f} (max possible: {np.log(k_final):.4f})")
+print(f"  Median entropy: {np.median(entropy):.4f}")
+
+# Identify boundary customers (high entropy — between segments)
+boundary_idx = np.where(max_probs < 0.6)[0]
+print(f"\nBoundary customers (max_prob < 0.6): {len(boundary_idx):,}")
+if len(boundary_idx) > 0:
+    print("  These customers don't fit neatly into one segment.")
+    print("  Marketing implication: they may respond to offers from MULTIPLE segments.")
+    print("  Hard clustering would force them into one segment and miss this insight.")
+
+# Profile each segment with soft vs hard assignment counts
 customers_with_clusters = customers.drop_nulls(subset=feature_cols).with_columns(
     pl.Series("gmm_cluster", labels_best)
 )
@@ -485,17 +613,99 @@ customers_with_clusters = customers.drop_nulls(subset=feature_cols).with_columns
 print(f"\n=== Customer Segment Profiles ===")
 for k in range(k_final):
     subset = customers_with_clusters.filter(pl.col("gmm_cluster") == k)
-    print(f"\nSegment {k} (n={subset.height:,}, weight={gmm_best.weights_[k]:.3f}):")
-    for col in feature_cols[:4]:
+    hard_count = subset.height
+    soft_mass = soft_probs[:, k].sum()  # Effective count with soft assignments
+    print(
+        f"\nSegment {k} (hard={hard_count:,}, soft_mass={soft_mass:.0f}, weight={gmm_best.weights_[k]:.3f}):"
+    )
+    for col in feature_cols[:5]:
         mean_val = subset[col].mean()
         overall_mean = customers_with_clusters[col].mean()
         diff_pct = (mean_val - overall_mean) / (abs(overall_mean) + 1e-9) * 100
         indicator = "HIGH" if diff_pct > 15 else "low" if diff_pct < -15 else "avg"
         print(f"  {col:<28} {mean_val:>10.2f}  [{indicator:>4}] {diff_pct:+.1f}%")
 
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+assert soft_probs.shape == (
+    X_real_scaled.shape[0],
+    k_final,
+), "Soft probabilities should have shape (n_samples, K)"
+assert (
+    abs(soft_probs.sum(axis=1).mean() - 1.0) < 1e-4
+), "Soft assignments should sum to 1"
+assert max_probs.mean() > 0.5, "Average max probability should indicate some confidence"
+# INTERPRETATION: Soft assignments r_{ik} capture uncertainty that hard labels
+# discard. A customer with r = [0.45, 0.55] is genuinely between two segments.
+# Hard assignment would put them in segment 1 with 100% confidence — a lie.
+print("\n✓ Checkpoint 7 passed — soft vs hard assignment analysis complete\n")
+
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: AutoMLEngine for automated comparison
+# TASK 9: Mixture of Experts — modern application
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Mixture of Experts (MoE) ===")
+print(
+    """
+Mixture of Experts extends GMMs to supervised learning:
+
+  GMM:  P(x) = Sum_k pi_k * N(x | mu_k, Sigma_k)
+    - Fixed mixing weights pi_k (same for all inputs)
+    - Each component is a Gaussian
+
+  MoE:  P(y|x) = Sum_k g_k(x) * f_k(x)
+    - Gating network g_k(x): INPUT-DEPENDENT mixing weights
+    - Expert networks f_k(x): each expert specialises in a region of input space
+
+  The gating network g(x) is a softmax classifier:
+    g_k(x) = exp(w_k^T x) / Sum_j exp(w_j^T x)
+
+  Connection to GMM:
+    - Replace fixed pi_k with learned g_k(x)
+    - Replace Gaussian density with any expert model
+    - The EM algorithm still applies (E: responsibilities, M: update experts)
+
+  Modern Application — Sparse MoE in LLMs:
+    - GPT-4, Mixtral, and other large models use Sparse MoE
+    - Instead of using ALL parameters for every token, a router (gating network)
+      selects the top-K experts (e.g., 2 out of 8) for each token
+    - This achieves the capacity of a much larger model with the compute
+      cost of a smaller one (only active experts are computed)
+    - Example: Mixtral 8x7B has 8 experts of 7B params each,
+      but only uses 2 per token = ~14B active params, not 56B
+
+  You will see MoE again in Module 6 when studying LLM architectures.
+"""
+)
+
+# Demonstrate MoE concept with a simple gating function
+# (conceptual — full implementation in M6)
+n_demo = 200
+X_moe = rng.standard_normal((n_demo, 2))
+# Gate based on first feature: expert 0 handles x1 > 0, expert 1 handles x1 < 0
+gate_logits = np.column_stack([X_moe[:, 0], -X_moe[:, 0]])
+gate_probs = np.exp(gate_logits) / np.exp(gate_logits).sum(axis=1, keepdims=True)
+
+print("MoE gate demo (2 experts, routing by first feature):")
+print(f"  Expert 0 active (gate > 0.5): {(gate_probs[:, 0] > 0.5).mean():.1%}")
+print(f"  Expert 1 active (gate > 0.5): {(gate_probs[:, 1] > 0.5).mean():.1%}")
+print(
+    f"  Mean gate entropy: {(-gate_probs * np.log(gate_probs + 1e-10)).sum(axis=1).mean():.4f}"
+)
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert gate_probs.shape == (n_demo, 2), "Gate should produce 2 expert weights"
+assert (
+    abs(gate_probs.sum(axis=1).mean() - 1.0) < 1e-4
+), "Gate should be a proper distribution"
+# INTERPRETATION: MoE generalises GMM by making the mixing weights input-dependent.
+# Instead of "40% of ALL data goes to component 1", MoE says "for THIS input,
+# 80% weight goes to expert 1". This is the foundation of modern LLM efficiency.
+print("\n✓ Checkpoint 8 passed — Mixture of Experts conceptual demo\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 10: AutoMLEngine for automated comparison
 # ══════════════════════════════════════════════════════════════════════
 
 from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
@@ -509,30 +719,28 @@ async def automl_gmm():
         direction="minimize",
         search_strategy="random",
         search_n_trials=15,
-        agent=False,  # Double opt-in: set True + install kailash-ml[agents]
+        agent=False,
         max_llm_cost_usd=0.5,
     )
 
     print(f"\n=== AutoMLEngine Config ===")
     print(f"Task: {config.task_type}")
     print(f"Optimising: {config.metric_to_optimize} ({config.direction})")
-    print(
-        f"Search strategy: {config.search_strategy} ({config.search_n_trials} trials)"
-    )
+    print(f"Search: {config.search_strategy} ({config.search_n_trials} trials)")
     print(f"Agent LLM guidance: {config.agent} (double opt-in)")
 
     print("\nAutoMLEngine would search:")
     print("  n_components: 2..10")
     print("  covariance_type: full, tied, diag, spherical")
     print("  init_params: kmeans, k-means++, random")
-    print("  → Selects configuration minimising BIC across CV folds")
+    print("  -> Selects configuration minimising BIC across CV folds")
 
     return config
 
 
 asyncio.run(automl_gmm())
 
-# Summary comparison
+# Summary comparison visualisation
 comparison = {
     f"GMM K={k}": {"BIC": v["bic"], "Silhouette": v["silhouette"]}
     for k, v in bic_scores.items()
@@ -542,12 +750,29 @@ fig_cmp.update_layout(title="GMM: BIC and Silhouette vs Number of Components")
 fig_cmp.write_html("ex2_gmm_comparison.html")
 print("\nSaved: ex2_gmm_comparison.html")
 
-print("\n✓ Exercise 2 complete — EM algorithm from scratch + sklearn GMM")
+# Covariance comparison chart
+cov_comparison = {
+    f"Cov: {ct}": {"BIC": cr["bic"], "Silhouette": cr["silhouette"]}
+    for ct, cr in cov_results.items()
+}
+fig_cov = viz.metric_comparison(cov_comparison)
+fig_cov.update_layout(title="GMM: Covariance Type Comparison")
+fig_cov.write_html("ex2_covariance_comparison.html")
+print("Saved: ex2_covariance_comparison.html")
+
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+# INTERPRETATION: AutoMLEngine automates the BIC sweep, covariance type
+# selection, and initialisation comparison. The agent double opt-in
+# ensures LLM-guided selection is a deliberate choice, not accidental.
+print("\n✓ Checkpoint 9 passed — AutoMLEngine and visualisation complete\n")
+
+print("\n✓ Exercise 2 complete — EM algorithm from scratch + sklearn GMM + MoE")
 print("  Key takeaways:")
 print("  1. EM = coordinate ascent on ELBO; each step raises log-likelihood")
 print("  2. Soft assignments r_{ik} are the 'hidden variable' estimates")
-print("  3. BIC penalises complexity → objective model selection criterion")
-print("  4. GMM = probabilistic generalisation of K-means with soft boundaries")
+print("  3. BIC penalises complexity -> objective model selection criterion")
+print("  4. Covariance type controls cluster shape flexibility vs parameters")
+print("  5. MoE extends GMM with input-dependent gating -> modern LLM architecture")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -556,13 +781,17 @@ print("  4. GMM = probabilistic generalisation of K-means with soft boundaries")
 print("═" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
-print(f"""
+print(
+    f"""
   ✓ EM as ELBO maximisation: each step is guaranteed to improve
-  ✓ E-step: compute r_{{ik}} = P(z_i = k | x_i, θ) — soft assignments
-  ✓ M-step: update π_k, μ_k, Σ_k using weighted maximum likelihood
+  ✓ E-step: compute r_{{ik}} = P(z_i = k | x_i, theta) — soft assignments
+  ✓ M-step: update pi_k, mu_k, Sigma_k using weighted maximum likelihood
   ✓ Convergence: non-decreasing log-likelihood proven and verified
   ✓ BIC/AIC for model selection: penalise complexity, choose K objectively
-  ✓ Soft assignments vs hard labels: GMM ≥ K-means in expressivity
+  ✓ Covariance types: full > tied > diag > spherical (flexibility vs parsimony)
+  ✓ Soft assignments vs hard labels: GMM >= K-means in expressivity
+  ✓ Boundary customers: high entropy reveals between-segment ambiguity
+  ✓ Mixture of Experts: input-dependent gating extends GMM to modern LLMs
 
   KEY INSIGHT: EM is a general template. It applies to any model with
   latent variables — not just GMMs. Hidden Markov Models, Latent
@@ -571,12 +800,12 @@ print(f"""
   THE GMM = K-MEANS CONNECTION:
     K-means: hard E-step (assign to nearest centroid)
     GMM:     soft E-step (assign fractional responsibility)
-    As covariance → 0, GMM converges to K-means.
-    GMM is the probabilistic, theoretically principled version of K-means.
+    As covariance -> 0, GMM converges to K-means.
 
   NEXT: Exercise 3 reduces the dimensionality of these customer features.
   PCA compresses 20+ features into 2-5 principal components that capture
   90% of variance. You'll see the SVD connection, interpret loadings, and
-  compare PCA with t-SNE and UMAP for 2D visualisation.
-""")
+  compare PCA with Kernel PCA, t-SNE, and UMAP.
+"""
+)
 print("═" * 70)

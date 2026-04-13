@@ -27,10 +27,11 @@
   --mlfp-error: #F43F5E;        /* Rose — errors/critical */
   --mlfp-success: #10B981;      /* Emerald — success */
 
-  /* Three-layer markers */
+  /* Three-layer markers + applications */
   --mlfp-foundations: #22C55E;   /* Green — everyone follows */
   --mlfp-theory: #3B82F6;       /* Blue — mathematical depth */
   --mlfp-advanced: #8B5CF6;     /* Purple — expert insight */
+  --mlfp-applications: #F59E0B; /* Amber — real-world domain examples */
 }
 
 /* ── Base ──────────────────────────────────────────────── */
@@ -155,6 +156,10 @@
   background: var(--mlfp-advanced);
 }
 
+.marker-applications {
+  background: var(--mlfp-applications);
+}
+
 /* ── Code blocks ──────────────────────────────────────── */
 
 .reveal pre {
@@ -176,6 +181,18 @@
 
 .reveal pre code {
   max-height: 420px;
+}
+
+/* Dense code slides — use on sections with >18 lines of code */
+.reveal section.code-dense pre code {
+  font-size: 0.42em;
+  line-height: 1.35;
+  max-height: 460px;
+}
+
+.reveal section.code-dense h2 {
+  font-size: 1.3em;
+  margin-bottom: 0.2em;
 }
 
 .reveal p code, .reveal li code {
@@ -235,6 +252,11 @@
 .callout-advanced {
   background: #FAF5FF;
   border-left: 4px solid var(--mlfp-advanced);
+}
+
+.callout-applications {
+  background: #FFFBEB;
+  border-left: 4px solid var(--mlfp-applications);
 }
 
 .callout-warning {

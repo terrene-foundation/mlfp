@@ -1,0 +1,218 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: The Transfer Learning Paradigm
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Core Idea
+          - list:
+            - listitem:
+              - strong: Pre-train
+              - text: on a large general dataset (ImageNet, BookCorpus)
+            - listitem:
+              - strong: Freeze
+              - text: early layers (they learned universal features)
+            - listitem:
+              - strong: Fine-tune
+              - text: later layers + new classifier head on your specific task
+            - listitem: Works even with very small target datasets (hundreds of examples)
+        - generic:
+          - generic:
+            - strong: "Analogy:"
+            - text: Learning to drive a car after already knowing how to ride a bicycle. You do not relearn balance, steering, or traffic rules. You transfer those skills and add car-specific knowledge (gear shifting, mirrors).
+          - generic:
+            - strong: "Why it works:"
+            - text: Early layers learn low-level features (edges, textures for vision; morphology, syntax for text) that are universal. Only the last layers need task-specific adaptation.
+      - generic:
+        - img:
+          - generic: Pretrained on ImageNet (1.28M images)
+          - generic: conv1
+          - generic: conv2
+          - generic: conv3
+          - generic: conv4
+          - generic: FC 1000
+          - generic: backbone learned generic features
+          - generic: freeze + replace head
+          - generic: Fine-tuned for CIFAR-10 (50K images)
+          - generic:
+            - generic: conv1
+            - generic: frozen
+            - generic: conv2
+            - generic: frozen
+            - generic: conv3
+            - generic: frozen
+            - generic: conv4
+            - generic: frozen
+          - generic: FC 10
+          - generic: trained
+          - generic: Why it works
+          - generic: edges, textures, parts are
+          - generic: universal across image tasks
+          - generic: → reuse the backbone, train only head
+          - generic: What you save
+          - generic: 99% fewer params updated
+          - generic: 10× less training data needed
+          - generic: 5× faster convergence
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "CV Transfer Learning: ResNet Fine-Tuning"
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Strategy
+          - list:
+            - listitem: Load pre-trained ResNet (ImageNet weights)
+            - listitem: Freeze all layers except the last block
+            - listitem: Replace the final FC layer with new classifier head
+            - listitem: Fine-tune with low learning rate (1e-4 to 1e-5)
+          - generic:
+            - code: "import torchvision.models as models resnet = models.resnet50(pretrained=True) # Freeze all layers for param in resnet.parameters(): param.requires_grad = False # Replace classifier head resnet.fc = nn.Linear(2048, num_classes) # Optionally unfreeze last block for param in resnet.layer4.parameters(): param.requires_grad = True"
+        - generic:
+          - heading [level=3]: Data Augmentation for Small Datasets
+          - list:
+            - listitem: Random horizontal flip
+            - listitem: Random rotation (up to 15 degrees)
+            - listitem: Colour jitter (brightness, contrast)
+            - listitem: Random crop with resize
+          - generic:
+            - strong: "Progressive unfreezing:"
+            - text: Start fully frozen. Train head for a few epochs. Then unfreeze the last block. Then the next. This prevents catastrophic forgetting of pre-trained features.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e2451]:
+      - 'heading "NLP Transfer Learning: BERT Fine-Tuning" [level=2] [ref=e2452]'
+      - generic [ref=e2453]: Theory
+      - generic [ref=e2454]:
+        - generic [ref=e2455]:
+          - heading "HuggingFace Pipeline" [level=3] [ref=e2456]
+          - code [ref=e2458]: from transformers import ( AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer ) model_name = "bert-base-uncased" tokenizer = AutoTokenizer.from_pretrained( model_name) model = AutoModelForSequenceClassification \ .from_pretrained( model_name, num_labels=num_classes) args = TrainingArguments( learning_rate=2e-5, num_train_epochs=3, per_device_train_batch_size=16, warmup_steps=500) trainer = Trainer( model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds) trainer.train()
+        - generic [ref=e2459]:
+          - heading "Key Considerations" [level=3] [ref=e2460]
+          - list [ref=e2461]:
+            - listitem [ref=e2462]:
+              - strong [ref=e2463]: "Learning rate:"
+              - text: 2e-5 to 5e-5 (BERT paper recommendation)
+            - listitem [ref=e2464]:
+              - strong [ref=e2465]: "Epochs:"
+              - text: 2-4 (more risks overfitting on small datasets)
+            - listitem [ref=e2466]:
+              - strong [ref=e2467]: "Warmup:"
+              - text: gradual learning rate increase prevents early instability
+            - listitem [ref=e2468]:
+              - strong [ref=e2469]: "Max sequence length:"
+              - text: BERT supports up to 512 tokens
+          - generic [ref=e2470]:
+            - strong [ref=e2471]: "Adapter modules:"
+            - text: Instead of fine-tuning all parameters, add small bottleneck layers between transformer layers. Train only the adapters. Much fewer parameters to update. Connects to LoRA in M6.
+      - img "LoRA low-rank adapter" [ref=e2473]:
+        - generic [ref=e2475]: x
+        - generic [ref=e2477]: W
+        - generic [ref=e2478]: d × d
+        - generic [ref=e2479]: frozen pretrained
+        - generic [ref=e2481]: A
+        - generic [ref=e2482]: d × r
+        - generic [ref=e2484]: B
+        - generic [ref=e2485]: r × d
+        - generic [ref=e2487]: +
+        - generic [ref=e2489]: h
+        - generic [ref=e2495]: LoRA math
+        - generic [ref=e2496]: h = Wx + B(Ax)
+        - generic [ref=e2497]: rank r ≪ d
+        - generic [ref=e2498]: "trainable params:"
+        - generic [ref=e2499]: 2 · d · r
+        - generic [ref=e2500]: "vs full fine-tune:"
+        - generic [ref=e2501]: d²
+        - generic [ref=e2502]: backprop only updates A and B (green path)
+      - generic [ref=e2504]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Architecture Selection Guide
+      - generic: Foundations
+      - table:
+        - rowgroup:
+          - row:
+            - columnheader: Data Type
+            - columnheader: Best Architecture
+            - columnheader: When to Transfer
+            - columnheader: Pre-trained Source
+        - rowgroup:
+          - row:
+            - cell: Images
+            - cell: CNN / ViT
+            - cell: Always
+            - cell: ImageNet
+          - row:
+            - cell: Text
+            - cell: Transformer
+            - cell: Always
+            - cell: BERT / GPT
+          - row:
+            - cell: Sequences
+            - cell: LSTM / Transformer
+            - cell: Sometimes
+            - cell: Domain-specific
+          - row:
+            - cell: Graphs
+            - cell: GNN
+            - cell: Rarely
+            - cell: Task-specific
+          - row:
+            - cell: Tabular
+            - cell: Gradient boosting
+            - cell: Never
+            - cell: Train from scratch
+      - generic:
+        - strong: "Decision rule:"
+        - text: If a pre-trained model exists for your data type, USE IT. Transfer learning almost always outperforms training from scratch, especially on small datasets. Only tabular data (the most common in business) resists transfer — gradient boosting still wins there.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Kailash Bridge: OnnxBridge + InferenceServer"
+      - generic: Foundations
+      - generic:
+        - heading [level=3]: From Fine-Tuned Model to Production
+        - generic:
+          - generic:
+            - generic:
+              - code: "from kailash_ml import ( OnnxBridge, InferenceServer ) # Export fine-tuned model bridge = OnnxBridge() bridge.export( model=fine_tuned_resnet, input_shape=(1, 3, 224, 224), output_path=\"mask_detector.onnx\" ) # Serve predictions server = InferenceServer( model_path=\"mask_detector.onnx\" ) server.warm_cache() result = server.predict(image_tensor) print(result.label) # \"mask\" print(result.confidence) # 0.97"
+          - generic:
+            - heading [level=3]: InferenceServer API
+            - table:
+              - rowgroup:
+                - row:
+                  - columnheader: Method
+                  - columnheader: Purpose
+              - rowgroup:
+                - row:
+                  - cell:
+                    - code: predict(x)
+                  - cell: Single prediction
+                - row:
+                  - cell:
+                    - code: predict_batch(xs)
+                  - cell: Batch predictions
+                - row:
+                  - cell:
+                    - code: warm_cache()
+                  - cell: Pre-load model into memory
+            - generic:
+              - strong: "PredictionResult:"
+              - text: Returns
+              - code: .label
+              - text: ","
+              - code: .confidence
+              - text: ","
+              - code: .probabilities
+              - text: ","
+              - code: .latency_ms
+              - text: . Structured output, not raw tensors.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "79 / 104" [ref=e2505] [cursor=pointer]:
+    - /url: "#/78"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "The Transfer Learning Paradigm Foundations Core Idea Pre-train on a large general dataset (ImageNet, BookCorpus) Freeze early layers (they learned universal features) Fine-tune later layers + new classifier head on your specific task Works even with very small target datasets (hundreds of examples) Analogy: Learning to drive a car after already knowing how to ride a bicycle. You do not relearn balance, steering, or traffic rules. You transfer those skills and add car-specific knowledge (gear shifting, mirrors). Why it works: Early layers learn low-level features (edges, textures for vision; morphology, syntax for text) that are universal. Only the last layers need task-specific adaptation. Pretrained on ImageNet (1.28M images) conv1 conv2 conv3 conv4 FC 1000 backbone learned generic features freeze + replace head Fine-tuned for CIFAR-10 (50K images) conv1 frozen conv2 frozen conv3 frozen conv4 frozen FC 10 trained Why it works edges, textures, parts are universal across image tasks → reuse the backbone, train only head What you save 99% fewer params updated 10× less training data needed 5× faster convergence MLFP Module 5 — Terrene Open Academy"

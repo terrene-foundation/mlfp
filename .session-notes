@@ -1,59 +1,32 @@
-# Session Notes — 2026-04-13 (MLFP Full Course Overhaul)
+# Session Notes — 2026-04-13 (M5 deep overhaul + R9 established)
 
-### Read These Files First (in order)
+## Where we are
 
-1. `CLAUDE.md` — course identity, 6-module structure, specs/ is authoritative
-2. `specs/_index.md` — 12-file manifest; read before any spec
-3. `specs/exercise-mapping.md` — maps every exercise to its v2 lesson
-4. `workspaces/curriculum/04-validate/rt1-math-rigor.md` — math audit (1 CRITICAL fixed, 110+ formulas verified)
-5. `workspaces/curriculum/04-validate/rt2-pedagogical-flow.md` — M1:5.0, M2-M4:4.5, M5:3.0, M6:2.5
-6. `workspaces/curriculum/04-validate/rt3-student-experience.md` — beginner accessibility findings
-7. `workspaces/curriculum/04-validate/rt4-spec-compliance.md` — 84% textbook, 42% exercise coverage
-8. `workspaces/curriculum/04-validate/rt5-exercise-alignment.md` — 12 CRITICAL (4 fixed, 8 remain)
+All 6 modules expanded to 25h depth. M5 deck overhauled (KaTeX fix, 20 SVG diagrams, 8 application slides, overflow check codified). M5 ex_1 rewritten as R9 reference implementation (10 AE variants + 7 application scripts). Redline 9 ("Seeing is Believing") codified. All changes uncommitted. Next: audit remaining 47 exercises against R9, then M5 quizzes using DIS as baseline.
 
-## Accomplished
+## Read first
 
-- **48 exercises reorganized** to match v2 spec (was 80 exercises from old 10-module merge)
-- **9 net-new exercises** written (M2 ex_4/5/6, M3 ex_3, M4 ex_5/7, M5 ex_1/5/6)
-- **M5 fully rewritten with PyTorch** — all 8 exercises use nn.Module/torch.optim (was pure-Python loops)
-- **40/40 exercises pass** in fresh venv (kailash 2.8.4, torch 2.11, full ML stack)
-- **6 master deck.html** (78-100 slides each, Reveal.js 5.1.0, KaTeX, viewport correct)
-- **6 speaker-notes.md** all correct modules (M3-M6 were from wrong ASCENT modules — rewritten)
-- **6 textbook.md** chapters (18,217 lines total with full mathematical derivations)
-- **144 per-lesson HTML** files (textbook+slides+notes × 48 lessons) with SVG diagrams
-- **textbook.css** + templates created for self-study reading experience
-- **pyproject.toml** pinned with verified kailash stack + full ML deps
-- **Zero ASCENT/PCML/SMU/SSG references** in student-facing materials (verified: 0 matches)
-- **6 red-team reports** filed by specialist team (math, trainer, student, compliance, QA, naming)
+1. `specs/redlines.md` — now 9 redlines. R9 (visual intuition + real-world application) is the new standard. Read R9 fully before touching any exercise.
+2. `modules/mlfp05/solutions/ex_1.py` — the R9 reference implementation (10 AE variants, reconstruction grids, latent traversal). All other exercises must match this pattern.
+3. `modules/mlfp05/solutions/ex_1_app_*.py` — 7 standalone application scripts (fraud, medical, denoising, timeseries, generation, compression, manufacturing). This is the application script pattern for R9B.
+4. `scripts/check-deck-overflow.js` — new puppeteer-based visual overflow detector, wired into `redline-check.py`. Run before any deck change.
+5. `modules/mlfp05/deck.html` — KaTeX double-render fixed (idempotent `mlfpRenderMath`), 20 SVGs + 8 app slides integrated. Same KaTeX bug exists in M3/M6 decks (not yet fixed).
 
-## Outstanding
+## In-flight state
 
-- [ ] **7 skeletal lessons** need expansion (60-125 lines → 700+): M5 L06-08, M6 L05-08 (verified: still skeletal, agent was running but may have hit limits)
-- [ ] **RT5 remaining CRITICALs** (8 unfixed): M2 L7 DiD content divergence, M6 L7 D/T/R API conflict, M3 ex_7 mlfp02 refs in experiment names, 5 dataset ref mismatches
-- [ ] **Exercise coverage gaps** (RT4): 44 spec topics with ZERO exercise coverage. Top 5: HyperparameterSearch (M3.7), DriftMonitor (M3.8), GRPO (M6.3), A2A (M6.6), RLTrainer (M5.8)
-- [ ] **RT3 fixes**: async/await bridge in M1 L1.7, sklearn intro callout in M3 L01, M2 L01 math notation callout
-- [ ] **Module index pages** — only M1 has index.html; M2-M6 need them
-- [ ] **M6 exercises** — untested (require LLM API keys)
-- [ ] **Local/colab regeneration** — M5 rewritten exercises need new scaffolded + notebook versions
-- [ ] **Quiz restructure** — 6 quiz files still contain merged ASCENT content
+- ALL changes uncommitted — solutions (6 modules), local exercises (6 modules), colab notebooks (M5), exams (6), deck overhaul (M5), CSS (theme.css), scripts (overflow checker, redline-check), specs (redlines R9), pyproject.toml (pyright config, python 3.13, uv overrides), learner fixes (async intro M3, Bayesian intuition M2, EM hint M4 exam).
+- M5 local exercises use modern `async with tracker.run() as ctx` API. Other modules do NOT use ExperimentTracker.start_run so no migration needed there.
+- M5 ex_1 local/colab NOT yet regenerated from the new 1,919-line solution. Must strip to 30% scaffolding + regenerate colab.
+- `.vscode/settings.json` created (gitignored) pointing Pylance to `.venv`. Pyright config added to `pyproject.toml`.
 
-## Oversight — Verify Before Starting
+## Traps
 
-- [ ] `find modules/*/solutions -name "ex_*.py" | wc -l` → 48 (verified: 48)
-- [ ] `find decks/*/lessons -name "*.html" | wc -l` → 144 (verified: 144)
-- [ ] `grep -rl "ASCENT" decks/ modules/ --include="*.html" --include="*.py" | wc -l` → 0 (verified: 0)
-- [ ] All 6 speaker-notes.md have correct module titles (verified: all correct)
-- [ ] M5 exercises use PyTorch: `grep -l "import torch" modules/mlfp05/solutions/*.py | wc -l` → 8 (verified: 8)
+- `.venv/bin/python` hangs if stale `mlfp05_*.db-shm`/`.db-wal` files exist from interrupted runs. Clean with `rm -f mlfp05_*.db*` before running solutions.
+- `scripts/py_to_notebook.py` creates `modules/mlfpNN/notebooks/` dir (non-standard). Must `rm -rf` after every run — only `local/` and `colab/` are in the two-format spec.
+- KaTeX double-render bug exists in M3 and M6 decks (same root cause as M5, not yet ported). Port `mlfpRenderMath` function or lift to `modules/assets/js/`.
+- DIS reference materials at `~/Library/CloudStorage/GoogleDrive-jack@integrum.global/.shortcut-targets-by-id/.../PCML_DIS_R5_2601/` — MUST check before writing exercises or quizzes. They set the visualization quality bar.
 
-## Oversight — Verify After Completing
+## Open questions for the human
 
-- [ ] 7 skeletal lessons expanded to 700+ lines each
-- [ ] Fresh venv M1-M5: 40/40 still passing after any exercise changes
-- [ ] No new ASCENT references introduced
-- [ ] Red-team Round 2 shows convergence (fewer findings than Round 1)
-
-## Blockers
-
-- **SDK gaps**: kailash-ml missing PreprocessingPipeline, EnsembleEngine wrappers — exercises use sklearn directly
-- **M6 testing**: requires OPENAI_API_KEY and HF_TOKEN — cannot validate in CI
-- **Skeletal lessons**: expansion agent may have hit rate limits — check and restart if needed
+- R9 audit of remaining 47 exercises: parallel (all modules at once) or sequential (finish M5 first as gold standard, then M1-M4, M6)?
+- DIS-style quizzes: still needed after R9 exercise rewrite, or does the application-script pattern replace quizzes?

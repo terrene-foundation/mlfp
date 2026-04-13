@@ -1,0 +1,561 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: "Lesson 5.7: Real-World Applications"
+      - generic: Applications
+      - generic: "Exercise 7 showed transfer learning beating from-scratch ResNet on CIFAR-10 while using 10× less data. Every application below is built on that same insight: a pre-trained model is the single biggest free lunch in modern ML."
+      - generic:
+        - generic:
+          - generic:
+            - strong: Healthcare — Rare Disease Classification
+            - paragraph: A public hospital collects 500 labelled scans of a rare condition. From scratch, that is not enough data to train a CNN. Fine-tuning ImageNet-pretrained ResNet or ViT reaches clinically usable accuracy with that exact 500-example budget. This is the only way rare-disease ML exists at all — and it is the exact data-efficiency experiment you ran in Exercise 7.
+          - generic:
+            - strong: Finance — Domain-Specific Sentiment on SGX Analyst Reports
+            - paragraph: Off-the-shelf BERT sentiment trained on Yelp reviews gets the tone of a sell-side report badly wrong ("aggressive growth" is positive in finance, negative elsewhere). A few thousand labelled SGX analyst reports are enough to fine-tune BERT into a finance-specific model — the same NLP transfer pipeline from the exercise.
+        - generic:
+          - generic:
+            - strong: Manufacturing — Defect Detection with Limited Fault Images
+            - paragraph: "A new product line has no historical defect data, but you need a quality classifier in six weeks. Solution: fine-tune a pre-trained vision backbone on the ~200 defect images you can collect, augmented aggressively. Production-usable accuracy in weeks, not the six months it would take to collect \"enough\" data."
+          - generic:
+            - strong: Retail — Multimodal Product Search on Shopee / Lazada
+            - paragraph: CLIP-style models pre-trained on billions of (image, caption) pairs, fine-tuned on an e-commerce catalogue, let a user search "minimalist black dining chair" and retrieve the right SKU — without anyone having hand-tagged "minimalist" as an attribute. The pre-training captured the language-vision alignment; the fine-tune made it catalogue-aware.
+      - generic:
+        - strong: "Why this matters for YOU:"
+        - text: Transfer learning is the answer to "we don't have enough data" — which is the most common blocker on every ML project. If someone tells you the project needs a million labelled examples, ask whether a pre-trained model plus a few thousand in-domain examples would close the gap. 80% of the time it will, at 5% of the cost and 10% of the timeline.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=1]: Lesson 5.8
+      - heading [level=2]: Reinforcement Learning
+      - paragraph: Learning from Interaction — Policies Learned Through Environment Feedback
+      - paragraph: "\"What if the model learned by doing, not by watching?\""
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e1423]:
+      - heading "The RL Paradigm Shift" [level=2] [ref=e1424]
+      - generic [ref=e1425]: Foundations
+      - generic [ref=e1426]:
+        - generic [ref=e1427]:
+          - heading "All DL So Far" [level=3] [ref=e1428]
+          - list [ref=e1429]:
+            - listitem [ref=e1430]: "Static dataset: images, text, sequences, graphs"
+            - listitem [ref=e1431]: Learn patterns from examples
+            - listitem [ref=e1432]: No interaction with the world
+            - listitem [ref=e1433]: Data is given, not generated
+        - generic [ref=e1434]:
+          - heading "Reinforcement Learning" [level=3] [ref=e1435]
+          - list [ref=e1436]:
+            - listitem [ref=e1437]:
+              - text: Agent interacts with an
+              - strong [ref=e1438]: environment
+            - listitem [ref=e1439]:
+              - text: Takes
+              - strong [ref=e1440]: actions
+              - text: ", receives"
+              - strong [ref=e1441]: rewards
+            - listitem [ref=e1442]:
+              - text: Learns a
+              - strong [ref=e1443]: policy
+              - text: that maximises cumulative reward
+            - listitem [ref=e1444]: Generates its own training data through experience
+      - generic [ref=e1445]:
+        - strong [ref=e1446]: "Analogy:"
+        - text: Supervised learning is learning from a textbook. RL is learning by playing a game. Nobody tells you the right move — you try things, see what works, and develop strategy.
+      - generic [ref=e1448]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: RL Fundamentals
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Components
+          - table:
+            - rowgroup:
+              - row:
+                - columnheader: Component
+                - columnheader: Definition
+            - rowgroup:
+              - row:
+                - cell: Agent
+                - cell: The learner/decision-maker
+              - row:
+                - cell: Environment
+                - cell: Everything the agent interacts with
+              - row:
+                - cell: State (s)
+                - cell: Current situation
+              - row:
+                - cell: Action (a)
+                - cell: What the agent can do
+              - row:
+                - cell: Reward (r)
+                - cell: Scalar feedback signal
+              - row:
+                - cell:
+                  - text: Policy (
+                  - generic:
+                    - generic:
+                      - generic:
+                        - math:
+                          - generic:
+                            - generic:
+                              - generic: π
+                      - generic:
+                        - generic: π
+                  - text: )
+                - cell: Mapping from states to actions
+        - generic:
+          - heading [level=3]: The RL Loop
+          - list:
+            - listitem:
+              - text: Agent observes state
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: s
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+            - listitem:
+              - text: Agent selects action
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: a
+                            - generic: t
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: a
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+              - text: according to policy
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: π
+                  - generic:
+                    - generic: π
+            - listitem:
+              - text: Environment transitions to
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: s
+                            - generic:
+                              - generic: t
+                              - generic: +
+                              - generic: "1"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t+1
+            - listitem:
+              - text: Agent receives reward
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: r
+                            - generic:
+                              - generic: t
+                              - generic: +
+                              - generic: "1"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t+1
+            - listitem: Agent updates policy based on experience
+            - listitem: Repeat until episode ends
+          - generic:
+            - strong: "Episode:"
+            - text: A complete sequence from start to termination. The agent aims to maximise
+            - emphasis: total
+            - text: reward across the episode, not just immediate reward.
+      - generic:
+        - img:
+          - generic: Agent
+          - generic: policy π(a | s)
+          - generic: Environment
+          - generic: (world / simulator)
+          - generic: action aₜ
+          - generic: state sₜ₊₁
+          - generic: reward rₜ₊₁
+          - generic: "Goal: maximise expected return E[ Σ γᵗ rₜ ]"
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Bellman Equations
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Value Function (Expectation)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: V
+                          - generic: (
+                          - generic: s
+                          - generic: )
+                          - generic: =
+                          - generic: E
+                          - generic:
+                            - generic: "["
+                            - generic:
+                              - generic: R
+                              - generic:
+                                - generic: t
+                                - generic: +
+                                - generic: "1"
+                            - generic: +
+                            - generic: γ
+                            - generic: V
+                            - generic: (
+                            - generic:
+                              - generic: S
+                              - generic:
+                                - generic: t
+                                - generic: +
+                                - generic: "1"
+                            - generic: )
+                            - generic: ∣
+                            - generic:
+                              - generic: S
+                              - generic: t
+                            - generic: =
+                            - generic: s
+                            - generic: "]"
+                  - generic:
+                    - generic: V(s) =
+                    - generic:
+                      - text: E
+                      - generic:
+                        - text: "["
+                        - generic:
+                          - text: R
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: t+1
+                        - text: + γV(
+                        - generic:
+                          - text: S
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: t+1
+                        - text: ) ∣
+                        - generic:
+                          - text: S
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t
+                        - text: = s]
+            - generic: Expected cumulative reward from state s under current policy
+          - generic:
+            - generic: Intuition
+            - paragraph:
+              - text: The value of a state = immediate reward + discounted value of the next state.
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: γ
+                          - generic: ∈
+                          - generic: "["
+                          - generic: "0"
+                          - generic: ","
+                          - generic: "1"
+                          - generic: "]"
+                  - generic:
+                    - generic: γ ∈
+                    - generic: "[0, 1]"
+              - text: is the discount factor.
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: γ
+                          - generic: =
+                          - generic: "0"
+                  - generic:
+                    - generic: γ =
+                    - generic: "0"
+              - text: ": greedy."
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: γ
+                          - generic: =
+                          - generic: "0.99"
+                  - generic:
+                    - generic: γ =
+                    - generic: "0.99"
+              - text: ": far-sighted."
+        - generic:
+          - heading [level=3]: Action-Value Function (Optimality)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Q
+                            - generic: ∗
+                          - generic: (
+                          - generic: s
+                          - generic: ","
+                          - generic: a
+                          - generic: )
+                          - generic: =
+                          - generic: E
+                          - generic:
+                            - generic: "["
+                            - generic:
+                              - generic: R
+                              - generic:
+                                - generic: t
+                                - generic: +
+                                - generic: "1"
+                            - generic: +
+                            - generic: γ
+                            - generic:
+                              - generic:
+                                - generic: max
+                              - generic:
+                                - generic: a
+                                - generic: ′
+                            - generic:
+                              - generic: Q
+                              - generic: ∗
+                            - generic: (
+                            - generic:
+                              - generic: S
+                              - generic:
+                                - generic: t
+                                - generic: +
+                                - generic: "1"
+                            - generic: ","
+                            - generic:
+                              - generic: a
+                              - generic: ′
+                            - generic: )
+                            - generic: ∣
+                            - generic:
+                              - generic: S
+                              - generic: t
+                            - text: ⁣
+                            - generic: =
+                            - text: ⁣
+                            - generic: s
+                            - generic: ","
+                            - generic:
+                              - generic: A
+                              - generic: t
+                            - text: ⁣
+                            - generic: =
+                            - text: ⁣
+                            - generic: a
+                            - generic: "]"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: Q
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: ∗
+                      - text: (s, a) =
+                    - generic:
+                      - text: E
+                      - generic:
+                        - generic: "["
+                        - generic:
+                          - text: R
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: t+1
+                        - text: + γ
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - text: a
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic: ′
+                                - generic:
+                                  - generic: max
+                        - generic:
+                          - text: Q
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: ∗
+                        - text: (
+                        - generic:
+                          - text: S
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: t+1
+                        - text: ","
+                        - generic:
+                          - text: a
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: ′
+                        - text: ) ∣
+                        - generic:
+                          - text: S
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t
+                        - text: = s,
+                        - generic:
+                          - text: A
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t
+                        - text: = a
+                        - generic: "]"
+            - generic: Optimal expected cumulative reward for taking action a in state s
+          - generic:
+            - generic: Key Difference
+            - paragraph:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: V
+                          - generic: (
+                          - generic: s
+                          - generic: )
+                  - generic:
+                    - generic: V(s)
+              - text: evaluates states.
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: Q
+                          - generic: (
+                          - generic: s
+                          - generic: ","
+                          - generic: a
+                          - generic: )
+                  - generic:
+                    - generic: Q(s, a)
+              - text: evaluates state-action pairs.
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Q
+                            - generic: ∗
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: Q
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: ∗
+              - text: assumes the agent acts optimally from the next state onward.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "86 / 104" [ref=e1449] [cursor=pointer]:
+    - /url: "#/85"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "Exercise 5.6: Graph Neural Networks Foundations Tasks Implement GCN for graph classification on TUDataset Compare GCN vs GAT on the same task Visualise learned node embeddings (t-SNE) Examine GAT attention weights — which edges matter? Assessment Criteria GCN implemented correctly with torch_geometric GAT comparison shows attention weight distribution Node embeddings visualised and interpreted Message passing concept explained in own words MLFP Module 5 — Terrene Open Academy"

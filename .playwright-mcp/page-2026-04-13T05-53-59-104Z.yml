@@ -1,0 +1,531 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: DDPG and SAC
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: "DDPG: Deep Deterministic Policy Gradient"
+          - list:
+            - listitem:
+              - text: Off-policy actor-critic for
+              - strong: continuous actions
+            - listitem: "Deterministic policy: outputs exact action, not distribution"
+            - listitem: Uses experience replay and target networks (like DQN)
+            - listitem:
+              - strong: "Application:"
+              - text: Manufacturing control — continuous adjustments to temperature, pressure, speed
+        - generic:
+          - heading [level=3]: "SAC: Soft Actor-Critic"
+          - list:
+            - listitem: "Maximum entropy RL: maximise reward AND policy entropy"
+            - listitem:
+              - strong: "Entropy bonus:"
+              - text: encourages exploration, prevents premature convergence
+            - listitem: Automatic temperature tuning
+            - listitem:
+              - strong: "Application:"
+              - text: Dynamic pricing — must explore price sensitivity, handle uncertainty
+          - generic:
+            - strong: Why entropy?
+            - text: Maximum entropy policies are robust to perturbations. They explore diverse strategies before committing. Critical when the reward landscape is uncertain.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "A2C: Advantage Actor-Critic"
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Core Idea
+          - paragraph:
+            - text: Train actor and critic synchronously. Use the
+            - strong: advantage function
+            - text: to reduce gradient variance.
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: A
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic: t
+                          - generic: ","
+                          - generic:
+                            - generic: a
+                            - generic: t
+                          - generic: )
+                          - generic: =
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: +
+                          - generic: γ
+                          - generic: V
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic:
+                              - generic: t
+                              - generic: +
+                              - generic: "1"
+                          - generic: )
+                          - generic: −
+                          - generic: V
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic: t
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - text: A(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ","
+                      - generic:
+                        - text: a
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ) =
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: +
+                    - generic:
+                      - text: γV(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t+1
+                      - text: ) −
+                    - generic:
+                      - text: V(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: )
+            - generic: Advantage = actual return - expected baseline
+          - list:
+            - listitem: "Positive advantage: action was better than expected"
+            - listitem: "Negative advantage: action was worse than expected"
+            - listitem: Variance reduction via baseline subtraction
+        - generic:
+          - heading [level=3]: "Application: Resource Allocation"
+          - list:
+            - listitem:
+              - strong: "State:"
+              - text: current resource usage, demand forecast, budget remaining
+            - listitem:
+              - strong: "Actions:"
+              - text: allocate resources across departments
+            - listitem:
+              - strong: "Reward:"
+              - text: utilisation efficiency, SLA compliance
+          - generic:
+            - strong: "A2C vs A3C:"
+            - text: A3C (Asynchronous) runs multiple workers in parallel. A2C synchronises updates. A2C is simpler and often performs comparably due to GPU batching.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e1514]:
+      - 'heading "PPO: Proximal Policy Optimization" [level=2] [ref=e1515]'
+      - generic [ref=e1516]: Theory
+      - generic [ref=e1517]:
+        - generic [ref=e1520]:
+          - math [ref=e1522]:
+            - generic [ref=e1524]:
+              - generic [ref=e1525]:
+                - generic [ref=e1526]: L
+                - generic [ref=e1527]: CLIP
+              - generic [ref=e1528]: =
+              - generic [ref=e1529]: E
+              - generic [ref=e1530]:
+                - generic [ref=e1531]: "["
+                - generic [ref=e1532]: min
+                - generic: ⁡
+                - generic [ref=e1533]:
+                  - generic [ref=e1534]: (
+                  - generic [ref=e1535]:
+                    - generic [ref=e1536]: r
+                    - generic [ref=e1537]: t
+                  - generic [ref=e1538]: (
+                  - generic [ref=e1539]: θ
+                  - generic [ref=e1540]: )
+                  - generic [ref=e1541]:
+                    - generic [ref=e1542]: A
+                    - generic [ref=e1543]: t
+                  - generic [ref=e1544]: ","
+                  - generic [ref=e1545]: clip
+                  - generic [ref=e1546]: (
+                  - generic [ref=e1547]:
+                    - generic [ref=e1548]: r
+                    - generic [ref=e1549]: t
+                  - generic [ref=e1550]: (
+                  - generic [ref=e1551]: θ
+                  - generic [ref=e1552]: )
+                  - generic [ref=e1553]: ","
+                  - generic [ref=e1554]: "1"
+                  - generic [ref=e1555]: −
+                  - generic [ref=e1556]: ϵ
+                  - generic [ref=e1557]: ","
+                  - generic [ref=e1558]: "1"
+                  - generic [ref=e1559]: +
+                  - generic [ref=e1560]: ϵ
+                  - generic [ref=e1561]: )
+                  - generic [ref=e1562]:
+                    - generic [ref=e1563]: A
+                    - generic [ref=e1564]: t
+                  - generic [ref=e1565]: )
+                - generic [ref=e1566]: "]"
+          - generic [ref=e1567]:
+            - generic [ref=e1568]:
+              - generic [ref=e1569]:
+                - text: L
+                - generic [ref=e1576]: CLIP
+              - text: =
+            - generic [ref=e1577]:
+              - text: E
+              - generic [ref=e1578]:
+                - text: "["
+                - generic [ref=e1579]: min
+                - generic [ref=e1580]:
+                  - text: (
+                  - generic [ref=e1581]:
+                    - text: r
+                    - generic [ref=e1586]: t
+                  - text: (θ)
+                  - generic [ref=e1590]:
+                    - text: A
+                    - generic [ref=e1595]: t
+                  - text: ","
+                  - generic [ref=e1599]: clip
+                  - text: (
+                  - generic [ref=e1600]:
+                    - text: r
+                    - generic [ref=e1605]: t
+                  - text: (θ), 1 − ϵ, 1 + ϵ)
+                  - generic [ref=e1609]:
+                    - text: A
+                    - generic [ref=e1614]: t
+                  - text: )
+                - text: "]"
+        - generic [ref=e1618]: PPO clipped objective — prevents destructively large policy updates
+      - generic [ref=e1619]:
+        - generic [ref=e1620]:
+          - generic [ref=e1621]:
+            - generic [ref=e1622]: Probability Ratio
+            - paragraph [ref=e1623]:
+              - generic [ref=e1625]:
+                - math [ref=e1627]:
+                  - generic [ref=e1629]:
+                    - generic [ref=e1630]:
+                      - generic [ref=e1631]: r
+                      - generic [ref=e1632]: t
+                    - generic [ref=e1633]: (
+                    - generic [ref=e1634]: θ
+                    - generic [ref=e1635]: )
+                    - generic [ref=e1636]: =
+                    - generic [ref=e1637]:
+                      - generic [ref=e1638]:
+                        - generic [ref=e1639]:
+                          - generic [ref=e1640]: π
+                          - generic [ref=e1641]: θ
+                        - generic [ref=e1642]: (
+                        - generic [ref=e1643]:
+                          - generic [ref=e1644]: a
+                          - generic [ref=e1645]: t
+                        - generic [ref=e1646]: ∣
+                        - generic [ref=e1647]:
+                          - generic [ref=e1648]: s
+                          - generic [ref=e1649]: t
+                        - generic [ref=e1650]: )
+                      - generic [ref=e1651]:
+                        - generic [ref=e1652]:
+                          - generic [ref=e1653]: π
+                          - generic [ref=e1654]:
+                            - generic [ref=e1655]: θ
+                            - generic [ref=e1656]: old
+                        - generic [ref=e1657]: (
+                        - generic [ref=e1658]:
+                          - generic [ref=e1659]: a
+                          - generic [ref=e1660]: t
+                        - generic [ref=e1661]: ∣
+                        - generic [ref=e1662]:
+                          - generic [ref=e1663]: s
+                          - generic [ref=e1664]: t
+                        - generic [ref=e1665]: )
+                - generic [ref=e1666]:
+                  - generic [ref=e1667]:
+                    - generic [ref=e1668]:
+                      - text: r
+                      - generic [ref=e1673]: t
+                    - text: (θ) =
+                  - generic [ref=e1682]:
+                    - generic [ref=e1684]:
+                      - generic [ref=e1685]:
+                        - text: π
+                        - generic [ref=e1692]:
+                          - text: θ
+                          - generic [ref=e1698]: old
+                      - text: (
+                      - generic [ref=e1705]:
+                        - text: a
+                        - generic [ref=e1710]: t
+                      - text: ∣
+                      - generic [ref=e1714]:
+                        - text: s
+                        - generic [ref=e1719]: t
+                      - text: )
+                    - generic [ref=e1725]:
+                      - generic [ref=e1726]:
+                        - text: π
+                        - generic [ref=e1731]: θ
+                      - text: (
+                      - generic [ref=e1735]:
+                        - text: a
+                        - generic [ref=e1740]: t
+                      - text: ∣
+                      - generic [ref=e1744]:
+                        - text: s
+                        - generic [ref=e1749]: t
+                      - text: )
+              - text: — how much the policy changed. If
+              - generic [ref=e1757]:
+                - math [ref=e1759]:
+                  - generic [ref=e1761]:
+                    - generic [ref=e1762]:
+                      - generic [ref=e1763]: r
+                      - generic [ref=e1764]: t
+                    - generic [ref=e1765]: =
+                    - generic [ref=e1766]: "1"
+                - generic [ref=e1767]:
+                  - generic [ref=e1768]:
+                    - generic [ref=e1769]:
+                      - text: r
+                      - generic [ref=e1774]: t
+                    - text: =
+                  - generic [ref=e1778]: "1"
+              - text: ", no change. If"
+              - generic [ref=e1780]:
+                - math [ref=e1782]:
+                  - generic [ref=e1784]:
+                    - generic [ref=e1785]:
+                      - generic [ref=e1786]: r
+                      - generic [ref=e1787]: t
+                    - generic [ref=e1788]: =
+                    - generic [ref=e1789]: "2"
+                - generic [ref=e1790]:
+                  - generic [ref=e1791]:
+                    - generic [ref=e1792]:
+                      - text: r
+                      - generic [ref=e1797]: t
+                    - text: =
+                  - generic [ref=e1801]: "2"
+              - text: ", action is twice as likely."
+          - generic [ref=e1802]:
+            - generic [ref=e1803]: Clipping
+            - paragraph [ref=e1804]:
+              - generic [ref=e1806]:
+                - math [ref=e1808]:
+                  - generic [ref=e1810]:
+                    - generic [ref=e1811]: clip
+                    - generic [ref=e1812]: (
+                    - generic [ref=e1813]:
+                      - generic [ref=e1814]: r
+                      - generic [ref=e1815]: t
+                    - generic [ref=e1816]: ","
+                    - generic [ref=e1817]: "1"
+                    - generic [ref=e1818]: −
+                    - generic [ref=e1819]: ϵ
+                    - generic [ref=e1820]: ","
+                    - generic [ref=e1821]: "1"
+                    - generic [ref=e1822]: +
+                    - generic [ref=e1823]: ϵ
+                    - generic [ref=e1824]: )
+                - generic [ref=e1825]:
+                  - generic [ref=e1826]:
+                    - generic [ref=e1827]: clip
+                    - text: (
+                    - generic [ref=e1828]:
+                      - text: r
+                      - generic [ref=e1833]: t
+                    - text: ", 1 −"
+                  - generic [ref=e1837]: ϵ, 1 +
+                  - generic [ref=e1838]: ϵ)
+              - text: limits the ratio to
+              - generic [ref=e1840]:
+                - math [ref=e1842]:
+                  - generic [ref=e1844]:
+                    - generic [ref=e1845]: "["
+                    - generic [ref=e1846]: "1"
+                    - generic [ref=e1847]: −
+                    - generic [ref=e1848]: ϵ
+                    - generic [ref=e1849]: ","
+                    - generic [ref=e1850]: "1"
+                    - generic [ref=e1851]: +
+                    - generic [ref=e1852]: ϵ
+                    - generic [ref=e1853]: "]"
+                - generic [ref=e1854]:
+                  - generic [ref=e1855]: "[1 −"
+                  - generic [ref=e1856]: ϵ, 1 +
+                  - generic [ref=e1857]: ϵ]
+              - text: . Typically
+              - generic [ref=e1859]:
+                - math [ref=e1861]:
+                  - generic [ref=e1863]:
+                    - generic [ref=e1864]: ϵ
+                    - generic [ref=e1865]: =
+                    - generic [ref=e1866]: "0.2"
+                - generic [ref=e1867]:
+                  - generic [ref=e1868]: ϵ =
+                  - generic [ref=e1869]: "0.2"
+              - text: . This prevents the new policy from straying too far from the old one.
+        - generic [ref=e1870]:
+          - heading "Why PPO Dominates" [level=3] [ref=e1871]
+          - list [ref=e1872]:
+            - listitem [ref=e1873]:
+              - strong [ref=e1874]: "Simple:"
+              - text: no second-order optimisation (unlike TRPO)
+            - listitem [ref=e1875]:
+              - strong [ref=e1876]: "Stable:"
+              - text: clipping prevents catastrophic updates
+            - listitem [ref=e1877]:
+              - strong [ref=e1878]: "Versatile:"
+              - text: works for discrete and continuous actions
+            - listitem [ref=e1879]:
+              - strong [ref=e1880]: "Scalable:"
+              - text: easy to parallelise
+          - generic [ref=e1881]:
+            - strong [ref=e1882]: "RLHF connection:"
+            - text: PPO is the algorithm used to align LLMs with human preferences (ChatGPT, Claude). The reward model provides the signal, PPO optimises the policy. More in M6.
+      - img "PPO actor-critic architecture" [ref=e1884]:
+        - generic [ref=e1886]: state s
+        - generic [ref=e1888]: Shared
+        - generic [ref=e1889]: feature extractor
+        - generic [ref=e1891]: Actor head
+        - generic [ref=e1892]: policy πθ(a | s)
+        - generic [ref=e1894]: Critic head
+        - generic [ref=e1895]: value Vϕ(s)
+        - generic [ref=e1897]: action probs
+        - generic [ref=e1898]: "[ 0.7, 0.2, 0.1 ]"
+        - generic [ref=e1900]: expected return
+        - generic [ref=e1901]: V(s) = 12.4
+        - generic [ref=e1905]: Lᶜˡᵛᵓ = E[ min( rₜ Aₜ, clip(rₜ, 1−ε, 1+ε) Aₜ ) ] — clip stops policy from leaping
+      - generic [ref=e1907]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Custom Gymnasium Environments
+      - generic: Theory
+      - generic:
+        - generic:
+          - generic:
+            - code:
+              - text: "import gymnasium as gym from gymnasium import spaces import numpy as np class ChurnEnv(gym.Env): def __init__(self): self.action_space = spaces.Discrete(4) self.observation_space = spaces.Box( low=0, high=1, shape=(10,), dtype=np.float32) def reset("
+              - generic: self, seed=None
+              - text: "): self.state = self._get_customer() return self.state, {} def step(self, action): reward = self._compute_reward( self.state, action) self.state = self._next_state( self.state, action) done = self._is_terminal() return self.state, reward, done, \\ False, {}"
+        - generic:
+          - heading [level=3]: Environment Design Checklist
+          - list:
+            - listitem:
+              - text: Define
+              - strong: observation space
+              - text: (what the agent sees)
+            - listitem:
+              - text: Define
+              - strong: action space
+              - text: (what the agent can do)
+            - listitem:
+              - text: Implement
+              - strong: reward function
+              - text: (what we optimise for)
+            - listitem:
+              - text: Implement
+              - strong: transition dynamics
+              - text: (how actions affect state)
+            - listitem:
+              - text: Define
+              - strong: termination conditions
+              - text: (when episodes end)
+          - generic:
+            - strong: "Reward shaping matters most:"
+            - text: The reward function is the specification of the problem. Sparse rewards (only at episode end) are hard to learn from. Dense rewards (at every step) accelerate learning but can cause reward hacking.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Kailash Bridge: RLTrainer"
+      - generic: Foundations
+      - generic:
+        - heading [level=3]: RL Training with Kailash
+        - generic:
+          - generic:
+            - generic:
+              - code:
+                - text: "from kailash_ml import RLTrainer trainer = RLTrainer( algorithm=\"ppo\", env=ChurnEnv(), policy=\"MlpPolicy\", learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99, clip_range=0.2 ) # Train the agent trainer.train(total_timesteps=100_000) # Evaluate metrics = trainer.evaluate( n_episodes=100 ) print("
+                - generic: "f\"Mean reward: {metrics.mean_reward}\""
+                - text: ) print(
+                - generic: "f\"Success rate: {metrics.success_rate}\""
+                - text: )
+          - generic:
+            - heading [level=3]: Supported Algorithms
+            - table:
+              - rowgroup:
+                - row:
+                  - columnheader: Algorithm
+                  - columnheader: String
+              - rowgroup:
+                - row:
+                  - cell: Deep Q-Network
+                  - cell:
+                    - code: "\"dqn\""
+                - row:
+                  - cell: DDPG
+                  - cell:
+                    - code: "\"ddpg\""
+                - row:
+                  - cell: Soft Actor-Critic
+                  - cell:
+                    - code: "\"sac\""
+                - row:
+                  - cell: Advantage Actor-Critic
+                  - cell:
+                    - code: "\"a2c\""
+                - row:
+                  - cell: Proximal Policy Opt.
+                  - cell:
+                    - code: "\"ppo\""
+            - generic:
+              - strong: "Pattern:"
+              - text: Define environment → Choose algorithm → Train → Evaluate → Deploy. Same pattern as TrainingPipeline from M4, but for RL.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "94 / 104" [ref=e1908] [cursor=pointer]:
+    - /url: "#/93"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "DDPG and SAC Theory DDPG: Deep Deterministic Policy Gradient Off-policy actor-critic for continuous actions Deterministic policy: outputs exact action, not distribution Uses experience replay and target networks (like DQN) Application: Manufacturing control — continuous adjustments to temperature, pressure, speed SAC: Soft Actor-Critic Maximum entropy RL: maximise reward AND policy entropy Entropy bonus: encourages exploration, prevents premature convergence Automatic temperature tuning Application: Dynamic pricing — must explore price sensitivity, handle uncertainty Why entropy? Maximum entropy policies are robust to perturbations. They explore diverse strategies before committing. Critical when the reward landscape is uncertain. MLFP Module 5 — Terrene Open Academy"

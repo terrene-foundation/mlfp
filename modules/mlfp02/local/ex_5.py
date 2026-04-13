@@ -7,38 +7,47 @@
 #
 # WHAT YOU'LL LEARN:
 #   After completing this exercise, you will be able to:
-#   - Derive and implement OLS using matrix algebra (β = (X'X)⁻¹X'y)
-#   - Interpret regression coefficients with ceteris paribus logic
+#   - Derive and implement OLS using the normal equation β = (X'X)⁻¹X'y
+#   - Interpret regression coefficients with ceteris paribus reasoning
 #   - Test coefficient significance using t-statistics and p-values
-#   - Evaluate model fit with R², adjusted R², and the F-statistic
-#   - Extend a model with polynomial and interaction terms, then
-#     cross-validate with a train/test split to detect overfitting
+#   - Compute R², adjusted R², and the F-statistic for model evaluation
+#   - Detect multicollinearity using Variance Inflation Factor (VIF)
+#   - Perform residual diagnostics: normality, heteroscedasticity, patterns
+#   - Extend models with polynomial and interaction terms
+#   - Implement Weighted Least Squares (WLS) when heteroscedasticity exists
+#   - Apply dummy variable encoding with a base category
+#   - Cross-validate with train/test split and compute out-of-sample R²
+#   - Use nested cross-validation to compare model complexity
 #
 # PREREQUISITES: Complete Exercises 2-3 — you should understand MLE,
 #   hypothesis testing, t-statistics, and p-value interpretation.
 #
-# ESTIMATED TIME: 75 minutes
+# ESTIMATED TIME: ~170 minutes
 #
 # TASKS:
-#   1. Load HDB resale data and engineer features
-#   2. Build simple OLS regression from scratch: β = (X'X)⁻¹X'y
-#   3. Interpret coefficients: direction, magnitude, significance
-#   4. Compute t-statistics and p-values for each coefficient
-#   5. Compute R², adjusted R², and F-statistic
-#   6. Add polynomial features (floor_area²) and interaction terms
-#   7. Compare models: simple vs enriched using adjusted R²
-#   8. Cross-validate with train/test split
+#    1. Load HDB data and engineer numeric features
+#    2. Implement OLS from scratch: β = (X'X)⁻¹X'y
+#    3. Interpret coefficients: direction, magnitude, significance
+#    4. Compute t-statistics and p-values for every coefficient
+#    5. Compute R², adjusted R², F-statistic
+#    6. Detect multicollinearity with VIF
+#    7. Residual diagnostics: normality, patterns, heteroscedasticity
+#    8. Weighted Least Squares for heteroscedastic data
+#    9. Polynomial and interaction terms — model enrichment
+#   10. Dummy variable encoding for categorical features
+#   11. Train/test split: out-of-sample evaluation
+#   12. Model comparison and business interpretation
 #
 # DATASET: HDB resale flat transactions (Singapore)
 #   Source: data.gov.sg — public housing resale records, 2020+
-#   Target: resale_price (SGD); Features: area, storey, lease, flat type, town
+#   Target: resale_price (SGD)
+#   Features: floor_area_sqm, storey_midpoint, remaining_lease, flat_type, town
 #
 # THEORY:
-#   OLS minimises Sum((yᵢ - ŷᵢ)²). The closed-form solution is:
-#     β = (X'X)⁻¹X'y
-#   Each βⱼ represents the expected change in y for a one-unit change
-#   in xⱼ, holding all other predictors constant (ceteris paribus).
-#   t-statistic = βⱼ / SE(βⱼ), testing H₀: βⱼ = 0.
+#   OLS minimises Σ(yᵢ - ŷᵢ)². Closed-form: β = (X'X)⁻¹X'y
+#   Each βⱼ = expected change in y for one-unit change in xⱼ,
+#   holding all others constant (ceteris paribus).
+#   t = βⱼ / SE(βⱼ), testing H₀: βⱼ = 0.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -46,6 +55,8 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from kailash_ml import ModelVisualizer
 from scipy import stats
 
@@ -57,35 +68,27 @@ from shared import MLFPDataLoader
 loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet")
 
-print("=" * 60)
+print("=" * 70)
 print("  MLFP02 Exercise 5: Linear Regression")
-print("=" * 60)
-print(f"\n  Data loaded: hdb_resale.parquet")
-print(f"  Shape: {hdb.shape}")
-print(f"  Columns: {hdb.columns}")
-print(hdb.head(3))
+print("=" * 70)
+print(f"\n  Data loaded: hdb_resale.parquet ({hdb.shape[0]:,} rows)")
+
+# Filter to recent data
+hdb = hdb.with_columns(
+    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+)
+hdb_recent = hdb.filter(pl.col("transaction_date") >= pl.date(2020, 1, 1))
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Feature Engineering
 # ══════════════════════════════════════════════════════════════════════
-# We need numeric features for regression. Categorical variables (flat_type,
-# town) require dummy encoding — one binary column per category minus a
-# base category to avoid the dummy variable trap (perfect multicollinearity).
+# Regression requires numeric features. We parse storey range to a
+# midpoint and compute remaining lease. Categorical variables will
+# be dummy-encoded in Task 10.
 
-# Parse transaction date and compute derived features
-hdb = hdb.with_columns(
-    pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
-)
-
-# Filter to recent data for a cleaner analysis
-hdb_recent = hdb.filter(
-    pl.col("transaction_date") >= pl.date(2020, 1, 1)
-)
-
-# Engineer numeric features
 hdb_recent = hdb_recent.with_columns(
-    # Storey midpoint: parse "07 TO 09" -> (7+9)/2 = 8
+    # Storey midpoint: "07 TO 09" → (7+9)/2 = 8
     (
         (
             pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
@@ -93,649 +96,737 @@ hdb_recent = hdb_recent.with_columns(
         )
         / 2
     ).alias("storey_midpoint"),
-    # Remaining lease (approximate: HDB leases are 99 years from commencement)
+    # Remaining lease (99-year leases)
     (99 - (pl.col("transaction_date").dt.year() - pl.col("lease_commence_date")))
     .cast(pl.Float64)
     .alias("remaining_lease_years"),
 )
 
-print(f"\n=== Filtered Dataset (2020+) ===")
-print(f"Shape: {hdb_recent.shape}")
-print(f"Flat types: {sorted(hdb_recent['flat_type'].unique().to_list())}")
-print(f"Towns: {hdb_recent['town'].n_unique()} unique towns")
-
-# --- Dummy variable encoding for flat_type ---
-# THEORY: For k categories, we create k-1 dummy columns.
-# The omitted category is the "base" — its effect is absorbed into β₀.
-# Each dummy coefficient represents the price difference relative to the base.
-
-# Choose a base category: "3 ROOM" (common, middle-range — intuitive base)
-flat_types = sorted(hdb_recent["flat_type"].unique().to_list())
-base_flat_type = "3 ROOM"
-dummy_flat_types = [ft for ft in flat_types if ft != base_flat_type]
-
-print(f"\nFlat type encoding (base = '{base_flat_type}'):")
-for ft in dummy_flat_types:
-    count = hdb_recent.filter(pl.col("flat_type") == ft).height
-    print(f"  flat_type_{ft}: {count:,} transactions")
-
-# Create dummy columns
-for ft in dummy_flat_types:
-    col_name = f"flat_{ft.lower().replace(' ', '_')}"
-    hdb_recent = hdb_recent.with_columns(
-        (pl.col("flat_type") == ft).cast(pl.Float64).alias(col_name)
-    )
-
-# --- Dummy variable encoding for town (top 5 towns by volume as dummies) ---
-# THEORY: With many categories, including all dummies can overfit.
-# We select the top towns and group the rest into the base category.
-town_counts = (
-    hdb_recent.group_by("town")
-    .agg(pl.len().alias("n"))
-    .sort("n", descending=True)
+# Drop rows with nulls in key columns
+hdb_clean = hdb_recent.drop_nulls(
+    subset=[
+        "floor_area_sqm",
+        "storey_midpoint",
+        "remaining_lease_years",
+        "resale_price",
+    ]
 )
-top_towns = town_counts.head(5)["town"].to_list()
-base_town_label = "OTHER"
 
-print(f"\nTown encoding (base = '{base_town_label}'):")
-for town in top_towns:
-    count = hdb_recent.filter(pl.col("town") == town).height
-    print(f"  town_{town}: {count:,} transactions")
+print(f"  Cleaned: {hdb_clean.height:,} rows (from {hdb_recent.height:,})")
+print(f"  Features: floor_area_sqm, storey_midpoint, remaining_lease_years")
+print(f"  Target: resale_price")
 
-for town in top_towns:
-    col_name = f"town_{town.lower().replace(' ', '_')}"
-    hdb_recent = hdb_recent.with_columns(
-        (pl.col("town") == town).cast(pl.Float64).alias(col_name)
+# Summary statistics
+for col in [
+    "floor_area_sqm",
+    "storey_midpoint",
+    "remaining_lease_years",
+    "resale_price",
+]:
+    vals = hdb_clean[col].to_numpy().astype(np.float64)
+    print(
+        f"  {col}: mean={vals.mean():.1f}, std={vals.std():.1f}, "
+        f"range=[{vals.min():.0f}, {vals.max():.0f}]"
     )
-
-# Drop rows with any null in our features
-feature_cols_numeric = ["floor_area_sqm", "storey_midpoint", "remaining_lease_years"]
-dummy_flat_cols = [f"flat_{ft.lower().replace(' ', '_')}" for ft in dummy_flat_types]
-dummy_town_cols = [f"town_{t.lower().replace(' ', '_')}" for t in top_towns]
-all_feature_cols = feature_cols_numeric + dummy_flat_cols + dummy_town_cols
-
-hdb_clean = hdb_recent.drop_nulls(subset=feature_cols_numeric + ["resale_price"])
-
-print(f"\nClean dataset: {hdb_clean.shape[0]:,} rows, {len(all_feature_cols)} features")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert hdb_clean.height > 0, "Clean dataset should not be empty"
-assert len(all_feature_cols) > 3, "Should have at least 3 features (numeric + dummies)"
-assert "floor_area_sqm" in all_feature_cols, "floor_area_sqm must be a feature"
-print("\n✓ Checkpoint 1 passed — features engineered and dataset cleaned\n")
+assert hdb_clean.height > 10_000, f"Expected >10K rows, got {hdb_clean.height}"
+assert "storey_midpoint" in hdb_clean.columns, "storey_midpoint must exist"
+assert "remaining_lease_years" in hdb_clean.columns, "remaining_lease must exist"
+print("\n✓ Checkpoint 1 passed — features engineered\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build OLS regression from scratch
+# TASK 2: OLS from Scratch — β = (X'X)⁻¹X'y
 # ══════════════════════════════════════════════════════════════════════
-# THEORY (OLS closed-form solution):
-#   Given y = Xβ + ε, the OLS estimator minimises ||y - Xβ||²
-#   Taking the derivative and setting to zero:
-#     ∂/∂β [y - Xβ]'[y - Xβ] = -2X'y + 2X'Xβ = 0
-#   Solving: β̂ = (X'X)⁻¹X'y
-#
-#   The first column of X is all 1s (intercept term β₀).
+# The normal equation gives the OLS solution in matrix form.
+# X is the design matrix (with intercept column of 1s).
+# This derivation: minimise ||y - Xβ||² → ∂/∂β = 0 → X'Xβ = X'y
 
-# Extract feature matrix and target vector
-X_data = hdb_clean.select(all_feature_cols).to_numpy().astype(np.float64)
 y = hdb_clean["resale_price"].to_numpy().astype(np.float64)
+features = ["floor_area_sqm", "storey_midpoint", "remaining_lease_years"]
 
-n, k = X_data.shape  # n observations, k features
+# Build design matrix with intercept
+X_raw = hdb_clean.select(features).to_numpy().astype(np.float64)
+n_obs = X_raw.shape[0]
+X = np.column_stack([np.ones(n_obs), X_raw])  # Add intercept column
+feature_names = ["intercept"] + features
+k = X.shape[1]  # Number of parameters (including intercept)
 
-# Add intercept column (column of 1s)
-X = np.column_stack([np.ones(n), X_data])
-p = X.shape[1]  # Total parameters = k features + 1 intercept
+print(f"\n=== OLS from Scratch ===")
+print(f"Design matrix X: {X.shape} (n={n_obs:,}, k={k})")
 
-print(f"\n=== OLS Regression (from scratch) ===")
-print(f"Design matrix X: {X.shape} (n={n:,}, p={p})")
-print(f"Target vector y: {y.shape}")
-
-# β̂ = (X'X)⁻¹X'y
-# THEORY: X'X is the Gram matrix (p×p). Its inverse exists when columns
-# of X are linearly independent (no perfect multicollinearity).
-# TODO: Compute the Gram matrix X'X
+# Normal equation: β = (X'X)⁻¹X'y
+# TODO: Compute X'X (matrix product of X transposed with X)
 XtX = ____  # Hint: X.T @ X
-# TODO: Compute X'y (the cross-product)
+
+# TODO: Compute the inverse of X'X
+XtX_inv = ____  # Hint: np.linalg.inv(XtX)
+
+# TODO: Compute X'y
 Xty = ____  # Hint: X.T @ y
-# TODO: Solve for OLS coefficients using np.linalg.solve (more stable than inv)
-beta_hat = ____  # Hint: np.linalg.solve(XtX, Xty)
 
-# Predicted values and residuals
-# TODO: Compute predicted values from X and beta_hat
-y_hat = ____  # Hint: X @ beta_hat
-# TODO: Compute residuals (actual - predicted)
-residuals = ____  # Hint: y - y_hat
-
-# Coefficient names
-coeff_names = ["intercept"] + all_feature_cols
-
-print(f"\nOLS Coefficients:")
-print(f"{'Feature':<30} {'Coefficient':>15} {'Interpretation'}")
-print("─" * 85)
-for name, coeff in zip(coeff_names, beta_hat):
-    if name == "intercept":
-        print(f"{name:<30} {coeff:>15,.0f}   Base price (3-ROOM, OTHER town, all numerics=0)")
-    elif name.startswith("flat_"):
-        sign = "premium" if coeff > 0 else "discount"
-        print(f"{name:<30} {coeff:>15,.0f}   ${abs(coeff):,.0f} {sign} vs 3-ROOM")
-    elif name.startswith("town_"):
-        sign = "premium" if coeff > 0 else "discount"
-        print(f"{name:<30} {coeff:>15,.0f}   ${abs(coeff):,.0f} {sign} vs OTHER towns")
-    elif name == "floor_area_sqm":
-        print(f"{name:<30} {coeff:>15,.0f}   Each sqm adds ${coeff:,.0f} to price")
-    elif name == "storey_midpoint":
-        print(f"{name:<30} {coeff:>15,.0f}   Each floor up adds ${coeff:,.0f}")
-    elif name == "remaining_lease_years":
-        print(f"{name:<30} {coeff:>15,.0f}   Each extra year of lease adds ${coeff:,.0f}")
-
-# ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert len(beta_hat) == p, f"Should have {p} coefficients, got {len(beta_hat)}"
-assert y_hat.shape == y.shape, "Predicted values should have same shape as y"
-assert residuals.shape == y.shape, "Residuals should have same shape as y"
-# Floor area should have positive coefficient (larger flat → higher price)
-area_idx = coeff_names.index("floor_area_sqm")
-assert beta_hat[area_idx] > 0, "floor_area_sqm coefficient should be positive"
-print("\n✓ Checkpoint 2 passed — OLS coefficients computed\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Interpret coefficients — direction, magnitude, significance
-# ══════════════════════════════════════════════════════════════════════
-# THEORY: Coefficient interpretation (ceteris paribus):
-#   β₁ = 5000 for floor_area_sqm means:
-#   "Holding flat type, town, storey, and lease constant, each additional
-#    square metre is associated with a $5,000 increase in resale price."
-
-print(f"\n=== Coefficient Interpretation (ceteris paribus) ===")
-for name, coeff in zip(coeff_names, beta_hat):
-    if name == "intercept":
-        continue
-    direction = "positive" if coeff > 0 else "negative"
-    print(f"\n{name}:")
-    print(f"  Direction: {direction} (β = {coeff:,.2f})")
-    print(f"  Magnitude: |β| = ${abs(coeff):,.2f}")
-    if name in feature_cols_numeric:
-        print(f"  Meaning: A one-unit increase in {name} is associated with")
-        print(f"           a ${coeff:,.0f} {'increase' if coeff > 0 else 'decrease'} in price,")
-        print(f"           holding all other variables constant.")
-    elif name.startswith("flat_"):
-        ft_label = name.replace("flat_", "").upper().replace("_", " ")
-        print(f"  Meaning: {ft_label} flats sell for ${abs(coeff):,.0f}")
-        print(f"           {'more' if coeff > 0 else 'less'} than 3-ROOM (base), ceteris paribus.")
-    elif name.startswith("town_"):
-        town_label = name.replace("town_", "").upper().replace("_", " ")
-        print(f"  Meaning: Properties in {town_label} sell for ${abs(coeff):,.0f}")
-        print(f"           {'more' if coeff > 0 else 'less'} than OTHER towns (base), ceteris paribus.")
-# INTERPRETATION: "Ceteris paribus" is Latin for "all other things being equal."
-# This is the key advantage of multivariate regression over simple comparisons —
-# we can isolate the effect of each predictor while controlling for the others.
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Compute t-statistics and p-values
-# ══════════════════════════════════════════════════════════════════════
-# THEORY:
-#   t = β̂ⱼ / SE(β̂ⱼ)
-#   where SE(β̂ⱼ) = √(σ̂² * (X'X)⁻¹ⱼⱼ)
-#   and σ̂² = RSS / (n - p) = Sum(eᵢ²) / (n - p)
-#
-#   Cutoffs (two-tailed):
-#     |t| > 1.645 → significant at 90% (*)
-#     |t| > 1.960 → significant at 95% (**)
-#     |t| > 2.576 → significant at 99% (***)
-
-# Residual standard error
-RSS = np.sum(residuals**2)
-# TODO: Compute the unbiased estimate of error variance (σ̂²)
-sigma_sq_hat = ____  # Hint: RSS / (n - p)
-sigma_hat = np.sqrt(sigma_sq_hat)
-
-# Variance-covariance matrix of β̂
-# THEORY: Var(β̂) = σ² * (X'X)⁻¹
-XtX_inv = np.linalg.inv(XtX)
-var_beta = sigma_sq_hat * XtX_inv
-
-# Standard errors = sqrt of diagonal of variance-covariance matrix
-# TODO: Compute SE of each coefficient from the diagonal of var_beta
-se_beta = ____  # Hint: np.sqrt(np.diag(var_beta))
-
-# TODO: Compute t-statistics: t = β̂ / SE(β̂)
-t_stats = ____  # Hint: beta_hat / se_beta
-
-# p-values (two-tailed, t-distribution with n-p degrees of freedom)
-df = n - p
-# TODO: Compute two-tailed p-values using the t-distribution
-p_values = ____  # Hint: 2 * stats.t.sf(np.abs(t_stats), df=df)
-
-print(f"\n=== T-Statistics and Significance ===")
-print(f"Residual SE (σ̂): ${sigma_hat:,.0f}")
-print(f"Degrees of freedom: {df:,} (n={n:,}, p={p})")
-print()
-print(f"{'Feature':<30} {'β̂':>12} {'SE(β̂)':>12} {'t-stat':>10} {'p-value':>12} {'Sig':>6}")
-print("─" * 88)
-for i, name in enumerate(coeff_names):
-    # Significance stars
-    if p_values[i] < 0.001:
-        sig = "***"
-    elif p_values[i] < 0.01:
-        sig = "**"
-    elif p_values[i] < 0.05:
-        sig = "*"
-    elif p_values[i] < 0.10:
-        sig = "."
-    else:
-        sig = ""
-    print(
-        f"{name:<30} {beta_hat[i]:>12,.2f} {se_beta[i]:>12,.2f} "
-        f"{t_stats[i]:>10.3f} {p_values[i]:>12.2e} {sig:>6}"
-    )
-
-print(f"\nSignificance codes: '***' 0.001, '**' 0.01, '*' 0.05, '.' 0.1")
-print(f"\nInterpretation: A large |t| and small p-value means we can reject")
-print(f"H₀: βⱼ = 0 — the feature has a statistically significant relationship")
-print(f"with resale price after controlling for all other features.")
-# INTERPRETATION: The t-statistic here is the SAME concept from Exercise 3
-# (hypothesis testing). We're testing H₀: β=0 for each coefficient.
-# The regression t-test and the two-sample t-test are the same mathematics
-# applied in different contexts — t = estimate / standard_error.
-
-# ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert sigma_hat > 0, "Residual standard error must be positive"
-assert df == n - p, f"Degrees of freedom should be n-p = {n}-{p} = {n-p}"
-assert all(0 <= pv <= 1 for pv in p_values), "All p-values must be between 0 and 1"
-# floor_area should be highly significant
-assert p_values[area_idx] < 0.001, "floor_area_sqm should be highly significant"
-print("\n✓ Checkpoint 3 passed — t-statistics and p-values computed\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Compute R², adjusted R², and F-statistic
-# ══════════════════════════════════════════════════════════════════════
-# THEORY:
-#   R² = 1 - SS_res / SS_tot
-#   Adjusted R² = 1 - (1 - R²) * (n - 1) / (n - p - 1)
-#   F = (SS_reg / k) / (SS_res / (n - k - 1))
-#   Under H₀ (all βⱼ=0): F ~ F(k, n-k-1)
-
-y_mean = y.mean()
-# TODO: Compute total sum of squares SS_tot = sum((y - y_mean)^2)
-SS_tot = ____  # Hint: np.sum((y - y_mean) ** 2)
-# TODO: Compute residual sum of squares SS_res = sum(residuals^2)
-SS_res = ____  # Hint: np.sum(residuals ** 2)
-SS_reg = SS_tot - SS_res
-
-# TODO: Compute R-squared
-R_sq = ____  # Hint: 1 - SS_res / SS_tot
-
-# TODO: Compute Adjusted R-squared
-R_sq_adj = ____  # Hint: 1 - (1 - R_sq) * (n - 1) / (n - p)
-
-# F-statistic
-# k = number of predictors (excluding intercept)
-k_predictors = p - 1
-# TODO: Compute F-statistic: (SS_reg / k) / (SS_res / (n - p))
-F_stat = ____  # Hint: (SS_reg / k_predictors) / (SS_res / (n - p))
-F_p_value = stats.f.sf(F_stat, dfn=k_predictors, dfd=n - p)
-
-print(f"\n=== Model Fit Statistics ===")
-print(f"SS_total:    {SS_tot:,.0f}")
-print(f"SS_residual: {SS_res:,.0f}")
-print(f"SS_regression: {SS_reg:,.0f}")
-print()
-print(f"R²:          {R_sq:.4f} ({R_sq:.1%} of variance explained)")
-print(f"Adjusted R²: {R_sq_adj:.4f}")
-print()
-print(f"F-statistic: {F_stat:,.2f} (df1={k_predictors}, df2={n - p})")
-print(f"F p-value:   {F_p_value:.2e}")
-if F_p_value < 0.001:
-    print(f"Interpretation: The model is overwhelmingly better than predicting")
-    print(f"the mean price for every transaction (intercept-only model).")
-    print(f"At least one predictor has a non-zero relationship with price.")
-else:
-    print(f"Interpretation: Insufficient evidence that the model improves on")
-    print(f"the intercept-only baseline.")
-# INTERPRETATION: R² measures how much price variation the model explains.
-# The F-statistic tests whether the whole model is useful (H₀: all β=0).
-# Adjusted R² penalises for adding predictors — unlike R², it can decrease
-# when a new predictor adds more noise than signal.
-
-# ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert 0 <= R_sq <= 1, f"R² must be between 0 and 1, got {R_sq:.4f}"
-assert R_sq_adj <= R_sq, "Adjusted R² must be <= R²"
-assert F_stat > 0, "F-statistic must be positive"
-assert F_p_value < 0.001, "Model with area/storey/type should be highly significant"
-print("\n✓ Checkpoint 4 passed — R², adjusted R², F-statistic computed\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Add polynomial and interaction terms
-# ══════════════════════════════════════════════════════════════════════
-# THEORY (non-linearity in linear regression):
-#   Linear regression is "linear in parameters" — the features themselves
-#   can be non-linear transformations of the original variables.
-#
-#   Polynomial: x² captures diminishing/accelerating returns.
-#   Interaction: x₁ * x₂ captures effect modification.
-
-# Add polynomial term: floor_area²
-hdb_clean = hdb_clean.with_columns(
-    (pl.col("floor_area_sqm") ** 2).alias("floor_area_sq"),
-)
-
-# Add interaction terms
-hdb_clean = hdb_clean.with_columns(
-    (pl.col("floor_area_sqm") * pl.col("storey_midpoint")).alias("area_x_storey"),
-    (pl.col("floor_area_sqm") * pl.col("remaining_lease_years")).alias("area_x_lease"),
-)
-
-# Build enriched feature set
-enriched_feature_cols = all_feature_cols + ["floor_area_sq", "area_x_storey", "area_x_lease"]
-X_enriched_data = hdb_clean.select(enriched_feature_cols).to_numpy().astype(np.float64)
-y_enriched = hdb_clean["resale_price"].to_numpy().astype(np.float64)
-
-n_e = X_enriched_data.shape[0]
-X_enriched = np.column_stack([np.ones(n_e), X_enriched_data])
-p_enriched = X_enriched.shape[1]
-
-# OLS on enriched model
-XtX_e = X_enriched.T @ X_enriched
-Xty_e = X_enriched.T @ y_enriched
-beta_enriched = np.linalg.solve(XtX_e, Xty_e)
+# TODO: Compute OLS coefficients using the normal equation
+beta_ols = ____  # Hint: XtX_inv @ Xty
 
 # Predictions and residuals
-y_hat_enriched = X_enriched @ beta_enriched
-residuals_enriched = y_enriched - y_hat_enriched
+y_hat = X @ beta_ols
+residuals = y - y_hat
 
-# Fit statistics for enriched model
-SS_tot_e = np.sum((y_enriched - y_enriched.mean()) ** 2)
-SS_res_e = np.sum(residuals_enriched ** 2)
-SS_reg_e = SS_tot_e - SS_res_e
+print(f"\nOLS Coefficients:")
+print(f"{'Feature':<25} {'Coefficient':>14}")
+print("─" * 42)
+for name, coef in zip(feature_names, beta_ols):
+    print(f"{name:<25} {coef:>14,.2f}")
 
-R_sq_e = 1 - SS_res_e / SS_tot_e
-R_sq_adj_e = 1 - (1 - R_sq_e) * (n_e - 1) / (n_e - p_enriched)
+# Verify with scipy/numpy lstsq
+beta_lstsq, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+print(
+    f"\nVerification (numpy lstsq): max |diff| = {np.max(np.abs(beta_ols - beta_lstsq)):.2e}"
+)
+# INTERPRETATION: Each coefficient is the expected change in resale_price
+# for a one-unit increase in that feature, holding all others constant.
+# E.g., βfloor_area = $X means each additional sqm adds $X to price.
 
-k_e = p_enriched - 1
-F_stat_e = (SS_reg_e / k_e) / (SS_res_e / (n_e - p_enriched))
-F_p_e = stats.f.sf(F_stat_e, dfn=k_e, dfd=n_e - p_enriched)
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert np.allclose(
+    beta_ols, beta_lstsq, atol=1.0
+), "OLS from scratch must match numpy lstsq"
+assert len(beta_ols) == k, "Should have k coefficients"
+print("\n✓ Checkpoint 2 passed — OLS implemented from scratch\n")
 
-# T-statistics for enriched model
-sigma_sq_e = SS_res_e / (n_e - p_enriched)
-XtX_inv_e = np.linalg.inv(XtX_e)
-se_beta_e = np.sqrt(sigma_sq_e * np.diag(XtX_inv_e))
-t_stats_e = beta_enriched / se_beta_e
-p_values_e = 2 * stats.t.sf(np.abs(t_stats_e), df=n_e - p_enriched)
 
-enriched_coeff_names = ["intercept"] + enriched_feature_cols
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Coefficient Interpretation
+# ══════════════════════════════════════════════════════════════════════
+# Ceteris paribus: "all else equal, one more sqm of floor area
+# is associated with $X higher resale price."
 
-print(f"\n=== Enriched Model (with polynomial + interaction terms) ===")
-print(f"Features: {p_enriched - 1} (was {p - 1})")
-print()
-print(f"{'Feature':<30} {'β̂':>15} {'t-stat':>10} {'p-value':>12} {'Sig':>6}")
-print("─" * 78)
-for i, name in enumerate(enriched_coeff_names):
-    sig = "***" if p_values_e[i] < 0.001 else "**" if p_values_e[i] < 0.01 else "*" if p_values_e[i] < 0.05 else "." if p_values_e[i] < 0.1 else ""
+print(f"\n=== Coefficient Interpretation ===")
+for i, name in enumerate(feature_names):
+    if i == 0:
+        print(f"\nIntercept: ${beta_ols[0]:,.0f}")
+        print(f"  A flat with all features at zero would cost ${beta_ols[0]:,.0f}")
+        print(f"  (Not meaningful — extrapolation beyond data range)")
+    else:
+        direction = "increases" if beta_ols[i] > 0 else "decreases"
+        unit = "sqm" if "area" in name else "storey" if "storey" in name else "year"
+        print(f"\n{name}: ${beta_ols[i]:,.0f} per {unit}")
+        print(
+            f"  Each additional {unit} {direction} resale price by ${abs(beta_ols[i]):,.0f}"
+        )
+        print(f"  Holding all other features constant (ceteris paribus)")
+
+# Practical example
+example_flat = {
+    "floor_area_sqm": 92.0,
+    "storey_midpoint": 8.0,
+    "remaining_lease_years": 75.0,
+}
+predicted = beta_ols[0]
+for i, (feat, val) in enumerate(example_flat.items()):
+    predicted += beta_ols[i + 1] * val
+
+print(f"\n--- Prediction Example ---")
+for feat, val in example_flat.items():
+    print(f"  {feat} = {val}")
+print(f"  Predicted price: ${predicted:,.0f}")
+actual_similar = hdb_clean.filter(
+    (pl.col("floor_area_sqm").is_between(90, 94))
+    & (pl.col("storey_midpoint").is_between(7, 9))
+)
+if actual_similar.height > 0:
     print(
-        f"{name:<30} {beta_enriched[i]:>15,.2f} "
-        f"{t_stats_e[i]:>10.3f} {p_values_e[i]:>12.2e} {sig:>6}"
+        f"  Actual mean for similar flats: ${actual_similar['resale_price'].mean():,.0f}"
     )
 
-# Interpret the polynomial term
-beta_area = beta_enriched[enriched_coeff_names.index("floor_area_sqm")]
-beta_area_sq = beta_enriched[enriched_coeff_names.index("floor_area_sq")]
-print(f"\n--- Polynomial Interpretation ---")
-print(f"floor_area_sqm coefficient: {beta_area:,.2f}")
-print(f"floor_area_sq coefficient:  {beta_area_sq:,.4f}")
-if beta_area > 0 and beta_area_sq < 0:
-    turning_point = -beta_area / (2 * beta_area_sq)
-    print(f"Concave relationship: price increases with area but at a decreasing rate.")
-    print(f"Marginal return of area reaches zero at {turning_point:,.0f} sqm.")
-elif beta_area > 0 and beta_area_sq > 0:
-    print(f"Convex relationship: price increases with area at an accelerating rate.")
-    print(f"Larger flats command disproportionately higher prices per sqm.")
-else:
-    print(f"The relationship between area and price has a complex shape.")
-# INTERPRETATION: A concave (β₁>0, β₂<0) relationship means each extra sqm
-# adds less price than the previous sqm — diminishing returns to space. This
-# is economically intuitive: going from 80→90 sqm may add $5K but going
-# from 130→140 sqm adds less because demand for very large flats is smaller.
-
-# Interpret interaction terms
-beta_area_x_storey = beta_enriched[enriched_coeff_names.index("area_x_storey")]
-print(f"\n--- Interaction Interpretation ---")
-print(f"area_x_storey coefficient: {beta_area_x_storey:,.4f}")
-if beta_area_x_storey > 0:
-    print(f"Positive interaction: the storey premium is larger for bigger flats.")
-    print(f"A 10-sqm larger flat on a higher floor gains an extra")
-    print(f"  ${10 * beta_area_x_storey:,.0f} per additional floor compared to a smaller flat.")
-else:
-    print(f"Negative interaction: the storey premium is smaller for bigger flats.")
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert (
+    beta_ols[1] > 0
+), "Floor area coefficient should be positive (bigger = more expensive)"
+print("\n✓ Checkpoint 3 passed — coefficients interpreted\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 7: Compare models — simple vs enriched
+# TASK 4: t-Statistics and p-Values
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: R² always increases when you add predictors (even noise).
-# Use adjusted R² to compare models with different numbers of predictors.
-# Partial F-test: does the enriched model significantly improve on simple?
+# H₀: βⱼ = 0 (feature j has no linear relationship with price)
+# t = βⱼ / SE(βⱼ), where SE(βⱼ) = √(σ̂² × (X'X)⁻¹ⱼⱼ)
+# σ̂² = SSR / (n - k) = Σeᵢ² / (n - k)
 
-# Partial F-test: enriched model vs simple model
-SS_res_simple = np.sum((y_enriched - (np.column_stack([np.ones(n_e), hdb_clean.select(all_feature_cols).to_numpy().astype(np.float64)]) @ np.linalg.solve(
-    np.column_stack([np.ones(n_e), hdb_clean.select(all_feature_cols).to_numpy().astype(np.float64)]).T @ np.column_stack([np.ones(n_e), hdb_clean.select(all_feature_cols).to_numpy().astype(np.float64)]),
-    np.column_stack([np.ones(n_e), hdb_clean.select(all_feature_cols).to_numpy().astype(np.float64)]).T @ y_enriched
-))) ** 2)
-R_sq_simple = 1 - SS_res_simple / SS_tot_e
-R_sq_adj_simple = 1 - (1 - R_sq_simple) * (n_e - 1) / (n_e - (len(all_feature_cols) + 1))
+SSR = np.sum(residuals**2)
+# TODO: Compute unbiased residual variance estimator σ̂²
+sigma_sq_hat = ____  # Hint: SSR / (n_obs - k)
+sigma_hat = np.sqrt(sigma_sq_hat)
 
-extra_params = p_enriched - (len(all_feature_cols) + 1)  # 3 new terms
-partial_F = ((SS_res_simple - SS_res_e) / extra_params) / (SS_res_e / (n_e - p_enriched))
-partial_F_p = stats.f.sf(partial_F, dfn=extra_params, dfd=n_e - p_enriched)
+# Standard errors from diagonal of (X'X)⁻¹
+# TODO: Compute SE for each coefficient: √(σ̂² × diag(X'X)⁻¹)
+se_beta = ____  # Hint: np.sqrt(sigma_sq_hat * np.diag(XtX_inv))
 
-print(f"\n=== Model Comparison ===")
-print(f"{'Metric':<25} {'Simple':>15} {'Enriched':>15}")
-print("─" * 58)
-print(f"{'Predictors':<25} {len(all_feature_cols):>15} {len(enriched_feature_cols):>15}")
-print(f"{'R²':<25} {R_sq_simple:>15.4f} {R_sq_e:>15.4f}")
-print(f"{'Adjusted R²':<25} {R_sq_adj_simple:>15.4f} {R_sq_adj_e:>15.4f}")
-print(f"{'Residual SE':<25} ${np.sqrt(SS_res_simple / (n_e - len(all_feature_cols) - 1)):>14,.0f} ${np.sqrt(sigma_sq_e):>14,.0f}")
+# TODO: Compute t-statistics for each coefficient
+t_stats = ____  # Hint: beta_ols / se_beta
 
-print(f"\nPartial F-test (enriched vs simple):")
-print(f"  F = {partial_F:,.2f} (df1={extra_params}, df2={n_e - p_enriched})")
-print(f"  p = {partial_F_p:.2e}")
-if partial_F_p < 0.001:
-    print(f"  The polynomial and interaction terms significantly improve the model.")
-    print(f"  Adjusted R² increased from {R_sq_adj_simple:.4f} to {R_sq_adj_e:.4f}.")
-else:
-    print(f"  The extra terms do not significantly improve the model.")
+# TODO: Compute two-sided p-values from t-distribution
+p_values = ____  # Hint: 2 * (1 - stats.t.cdf(np.abs(t_stats), df=n_obs - k))
+
+print(f"\n=== Coefficient Significance ===")
+print(f"Residual σ̂ = ${sigma_hat:,.0f}")
+print(f"Degrees of freedom: {n_obs - k:,}")
+print(
+    f"\n{'Feature':<25} {'β':>12} {'SE(β)':>12} {'t-stat':>10} {'p-value':>12} {'Sig':>6}"
+)
+print("─" * 80)
+for i, name in enumerate(feature_names):
+    sig = (
+        "***"
+        if p_values[i] < 0.001
+        else "**" if p_values[i] < 0.01 else "*" if p_values[i] < 0.05 else "ns"
+    )
+    print(
+        f"{name:<25} {beta_ols[i]:>12,.2f} {se_beta[i]:>12,.2f} "
+        f"{t_stats[i]:>10.2f} {p_values[i]:>12.2e} {sig:>6}"
+    )
+# INTERPRETATION: The t-statistic tests whether each coefficient is
+# significantly different from zero. A large |t| (and small p) means
+# the feature has a statistically significant linear relationship with
+# price. But statistical significance ≠ practical importance — a
+# significant coefficient of $100 per sqm is far less impactful than
+# one of $5,000 per sqm.
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert all(se > 0 for se in se_beta), "All standard errors must be positive"
+assert all(0 <= p <= 1 for p in p_values), "All p-values must be valid"
+print("\n✓ Checkpoint 4 passed — significance testing completed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: R², Adjusted R², and F-Statistic
+# ══════════════════════════════════════════════════════════════════════
+# R² = 1 - SSR/SST = proportion of variance explained
+# Adjusted R² = 1 - (1-R²)(n-1)/(n-k-1) — penalises for more features
+# F = (SSR_reduced - SSR_full) / (k-1) / (SSR_full / (n-k))
+
+SST = np.sum((y - y.mean()) ** 2)
+SSE = np.sum((y_hat - y.mean()) ** 2)  # Explained sum of squares
+
+# TODO: Compute R² = 1 - SSR/SST
+r_squared = ____  # Hint: 1 - SSR / SST
+
+# TODO: Compute adjusted R² penalising for extra features
+adj_r_squared = ____  # Hint: 1 - (1 - r_squared) * (n_obs - 1) / (n_obs - k)
+
+# F-statistic: model vs intercept-only
+# TODO: Compute F-statistic
+f_stat = ____  # Hint: (SSE / (k - 1)) / (SSR / (n_obs - k))
+f_p_value = 1 - stats.f.cdf(f_stat, dfn=k - 1, dfd=n_obs - k)
+
+print(f"\n=== Model Fit Statistics ===")
+print(f"SST (total):     {SST:,.0f}")
+print(f"SSR (residual):  {SSR:,.0f}")
+print(f"SSE (explained): {SSE:,.0f}")
+print(f"Check: SST = SSR + SSE → {SST:,.0f} ≈ {SSR + SSE:,.0f} ✓")
+print(f"\nR²:          {r_squared:.6f} ({r_squared:.2%} of variance explained)")
+print(f"Adjusted R²: {adj_r_squared:.6f}")
+print(f"F-statistic: {f_stat:.2f} (p < {f_p_value:.2e})")
+print(f"RMSE:        ${sigma_hat:,.0f}")
+print(f"MAE:         ${np.mean(np.abs(residuals)):,.0f}")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert R_sq_e >= R_sq_simple, "R² must increase (or stay same) when adding features"
-assert 0 <= R_sq_e <= 1, "Enriched R² must be between 0 and 1"
-print("\n✓ Checkpoint 5 passed — model comparison completed\n")
+assert 0 < r_squared < 1, "R² must be between 0 and 1"
+assert adj_r_squared <= r_squared, "Adjusted R² must be ≤ R²"
+assert f_stat > 0, "F-statistic must be positive"
+assert abs(SST - SSR - SSE) < 1, "SST = SSR + SSE must hold"
+print("\n✓ Checkpoint 5 passed — model evaluation completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 8: Cross-validation with train/test split
+# TASK 6: Multicollinearity — Variance Inflation Factor (VIF)
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: In-sample R² is optimistic — it evaluates the model on the
-# same data it was trained on. To estimate real-world performance, we
-# hold out a test set the model has never seen.
-# If test R² << train R², the model memorises noise (overfitting).
+# VIF_j = 1/(1 - R²_j) where R²_j is from regressing feature j on
+# all other features. VIF > 5 = moderate concern, VIF > 10 = serious.
 
-rng = np.random.default_rng(seed=42)
-n_total = n_e
-indices = rng.permutation(n_total)
-n_train = int(0.8 * n_total)
-train_idx = indices[:n_train]
-test_idx = indices[n_train:]
+print(f"\n=== Multicollinearity: VIF ===")
 
-# Train/test split
-X_train = X_enriched[train_idx]
-X_test = X_enriched[test_idx]
-y_train = y_enriched[train_idx]
-y_test = y_enriched[test_idx]
+vif_results = {}
+for j in range(len(features)):
+    # Regress feature j on all other features
+    other_idx = [i for i in range(len(features)) if i != j]
+    X_other = np.column_stack([np.ones(n_obs), X_raw[:, other_idx]])
+    y_j = X_raw[:, j]
 
-print(f"\n=== Cross-Validation: 80/20 Train/Test Split ===")
-print(f"Train: {len(train_idx):,} | Test: {len(test_idx):,}")
+    beta_j = np.linalg.lstsq(X_other, y_j, rcond=None)[0]
+    y_j_hat = X_other @ beta_j
+    ss_res_j = np.sum((y_j - y_j_hat) ** 2)
+    ss_tot_j = np.sum((y_j - y_j.mean()) ** 2)
+    r2_j = 1 - ss_res_j / ss_tot_j
+    # TODO: Compute VIF from R²_j: VIF = 1 / (1 - R²_j)
+    vif_j = ____  # Hint: 1 / (1 - r2_j) if r2_j < 1 else float("inf")
+    vif_results[features[j]] = vif_j
 
-# TODO: Fit OLS on training data only (solve for beta_cv)
-beta_cv = ____  # Hint: np.linalg.solve(X_train.T @ X_train, X_train.T @ y_train)
+print(f"{'Feature':<25} {'VIF':>8} {'Status':>12}")
+print("─" * 48)
+for feat, vif in vif_results.items():
+    status = "OK" if vif < 5 else "MODERATE" if vif < 10 else "HIGH"
+    print(f"{feat:<25} {vif:>8.2f} {status:>12}")
 
-# Predict on both sets
-# TODO: Compute predictions on train and test sets
-y_hat_train = ____  # Hint: X_train @ beta_cv
-y_hat_test = ____  # Hint: X_test @ beta_cv
-
-# R² on training set
-SS_res_train = np.sum((y_train - y_hat_train) ** 2)
-SS_tot_train = np.sum((y_train - y_train.mean()) ** 2)
-R_sq_train = 1 - SS_res_train / SS_tot_train
-
-# R² on test set
-SS_res_test = np.sum((y_test - y_hat_test) ** 2)
-SS_tot_test = np.sum((y_test - y_test.mean()) ** 2)
-R_sq_test = 1 - SS_res_test / SS_tot_test
-
-# RMSE (Root Mean Squared Error) — in dollar units
-RMSE_train = np.sqrt(SS_res_train / len(y_train))
-RMSE_test = np.sqrt(SS_res_test / len(y_test))
-
-# MAE (Mean Absolute Error) — more robust to outliers
-MAE_train = np.mean(np.abs(y_train - y_hat_train))
-MAE_test = np.mean(np.abs(y_test - y_hat_test))
-
-print(f"\n{'Metric':<20} {'Train':>15} {'Test':>15} {'Gap':>12}")
-print("─" * 65)
-print(f"{'R²':<20} {R_sq_train:>15.4f} {R_sq_test:>15.4f} {R_sq_train - R_sq_test:>12.4f}")
-print(f"{'RMSE':<20} ${RMSE_train:>14,.0f} ${RMSE_test:>14,.0f} ${RMSE_test - RMSE_train:>11,.0f}")
-print(f"{'MAE':<20} ${MAE_train:>14,.0f} ${MAE_test:>14,.0f} ${MAE_test - MAE_train:>11,.0f}")
-
-overfit_ratio = (R_sq_train - R_sq_test) / R_sq_train if R_sq_train > 0 else 0
-print(f"\nOverfitting assessment:")
-if overfit_ratio < 0.02:
-    print(f"  Minimal overfitting (R² gap = {R_sq_train - R_sq_test:.4f})")
-    print(f"  The model generalises well to unseen data.")
-elif overfit_ratio < 0.05:
-    print(f"  Moderate overfitting (R² gap = {R_sq_train - R_sq_test:.4f})")
-    print(f"  Consider regularisation or removing weak predictors.")
-else:
-    print(f"  Significant overfitting (R² gap = {R_sq_train - R_sq_test:.4f})")
-    print(f"  The model memorises training noise. Reduce complexity or add data.")
-# INTERPRETATION: With n > 100K transactions and only ~15 predictors, we expect
-# minimal overfitting. The train/test gap in R² is the honest measure of
-# out-of-sample model quality — the number you'd report to a business stakeholder.
+print(f"\nCorrelation matrix:")
+corr_matrix = np.corrcoef(X_raw.T)
+for i, fi in enumerate(features):
+    for j, fj in enumerate(features):
+        if j > i:
+            print(f"  corr({fi}, {fj}) = {corr_matrix[i,j]:.3f}")
+# INTERPRETATION: VIF > 10 means the feature is almost entirely
+# predictable from other features — its coefficient estimate is
+# unstable and its SE is inflated. Drop one of the collinear features
+# or use regularisation (Ridge regression).
 
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
-assert R_sq_test >= 0, "Test R² must be non-negative for a reasonable model"
-assert RMSE_test > 0, "Test RMSE must be positive"
-assert R_sq_train >= R_sq_test - 0.1, "Train R² should be within 10pp of test R² (no extreme overfit)"
-print("\n✓ Checkpoint 6 passed — cross-validation completed\n")
+assert all(v >= 1.0 for v in vif_results.values()), "VIF must be ≥ 1"
+print("\n✓ Checkpoint 6 passed — VIF computed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Visualise with ModelVisualizer
+# TASK 7: Residual Diagnostics
+# ══════════════════════════════════════════════════════════════════════
+# Good residuals should be: normally distributed, homoscedastic,
+# uncorrelated, and show no patterns.
+
+print(f"\n=== Residual Diagnostics ===")
+
+# 1. Normality of residuals (Shapiro-Wilk on subsample)
+residual_sample = np.random.default_rng(42).choice(
+    residuals, size=min(5000, len(residuals)), replace=False
+)
+# TODO: Run Shapiro-Wilk normality test on residual_sample
+sw_stat, sw_p = ____  # Hint: stats.shapiro(residual_sample)
+print(f"\n1. Normality (Shapiro-Wilk on subsample):")
+print(f"   W={sw_stat:.4f}, p={sw_p:.6f}")
+print(
+    f"   {'Normal residuals' if sw_p > 0.05 else 'Non-normal residuals — consider robust SE'}"
+)
+
+# 2. Skewness and kurtosis
+res_skew = stats.skew(residuals)
+res_kurt = stats.kurtosis(residuals)
+print(f"\n2. Shape:")
+print(f"   Skewness: {res_skew:.3f} (0 = symmetric)")
+print(f"   Excess kurtosis: {res_kurt:.3f} (0 = Normal tails)")
+
+# 3. Heteroscedasticity (Breusch-Pagan test)
+# Regress squared residuals on X to test if variance depends on predictors
+e_sq = residuals**2
+bp_X = np.column_stack([np.ones(n_obs), X_raw])
+bp_beta = np.linalg.lstsq(bp_X, e_sq, rcond=None)[0]
+bp_predicted = bp_X @ bp_beta
+bp_sse = np.sum((e_sq - bp_predicted) ** 2)
+bp_sst = np.sum((e_sq - e_sq.mean()) ** 2)
+bp_r2 = 1 - bp_sse / bp_sst
+bp_stat = n_obs * bp_r2  # ~ χ²(k-1)
+bp_p = 1 - stats.chi2.cdf(bp_stat, df=len(features))
+print(f"\n3. Heteroscedasticity (Breusch-Pagan):")
+print(f"   BP statistic: {bp_stat:.2f}, p={bp_p:.6f}")
+print(
+    f"   {'Homoscedastic' if bp_p > 0.05 else 'HETEROSCEDASTIC — variance depends on predictors'}"
+)
+
+# 4. Residual summary
+print(f"\n4. Residual summary:")
+print(f"   Mean: ${residuals.mean():.2f} (should be ≈0)")
+print(f"   Std:  ${residuals.std():,.0f}")
+print(f"   Min:  ${residuals.min():,.0f}")
+print(f"   Max:  ${residuals.max():,.0f}")
+print(
+    f"   |Residual| > 2σ: {np.sum(np.abs(residuals) > 2*residuals.std()):,} "
+    f"({np.mean(np.abs(residuals) > 2*residuals.std()):.1%})"
+)
+# INTERPRETATION: If residuals are heteroscedastic, OLS estimates are
+# still unbiased but the standard errors are wrong — making t-tests
+# and confidence intervals unreliable. Remedies: WLS (Task 8),
+# heteroscedasticity-consistent (HC) standard errors, or log transform.
+
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+assert abs(residuals.mean()) < 1.0, "Residual mean should be approximately zero"
+print("\n✓ Checkpoint 7 passed — residual diagnostics completed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 8: Weighted Least Squares (WLS)
+# ══════════════════════════════════════════════════════════════════════
+# When variance is not constant (heteroscedasticity), WLS gives each
+# observation a weight inversely proportional to its variance.
+# β_wls = (X'WX)⁻¹X'Wy where W = diag(1/σᵢ²)
+
+print(f"\n=== Weighted Least Squares ===")
+
+# Estimate weights: use fitted values as proxy for variance
+abs_resid = np.abs(residuals)
+w_beta = np.linalg.lstsq(X, abs_resid, rcond=None)[0]
+variance_hat = np.maximum((X @ w_beta) ** 2, 1e-6)  # Estimated variance
+weights = 1.0 / variance_hat
+
+# WLS: β = (X'WX)⁻¹X'Wy
+W = np.diag(weights)
+# TODO: Compute X'WX (weighted X'X)
+XtWX = ____  # Hint: X.T @ W @ X
+
+# TODO: Compute X'Wy (weighted X'y)
+XtWy = ____  # Hint: X.T @ W @ y
+
+# TODO: Solve WLS: β_wls = (X'WX)⁻¹X'Wy using np.linalg.solve
+beta_wls = ____  # Hint: np.linalg.solve(XtWX, XtWy)
+
+y_hat_wls = X @ beta_wls
+residuals_wls = y - y_hat_wls
+ssr_wls = np.sum(residuals_wls**2)
+r2_wls = 1 - ssr_wls / SST
+
+print(f"{'Feature':<25} {'OLS β':>12} {'WLS β':>12} {'Δ':>10}")
+print("─" * 62)
+for i, name in enumerate(feature_names):
+    delta = beta_wls[i] - beta_ols[i]
+    print(f"{name:<25} {beta_ols[i]:>12,.2f} {beta_wls[i]:>12,.2f} {delta:>+10,.2f}")
+
+print(f"\nOLS R² = {r_squared:.6f}")
+print(f"WLS R² = {r2_wls:.6f}")
+print(f"OLS RMSE = ${np.sqrt(SSR/n_obs):,.0f}")
+print(f"WLS RMSE = ${np.sqrt(ssr_wls/n_obs):,.0f}")
+# INTERPRETATION: WLS coefficients may differ from OLS when
+# heteroscedasticity is present. WLS gives more reliable standard
+# errors and confidence intervals. If OLS and WLS coefficients are
+# similar, the heteroscedasticity doesn't much affect the point
+# estimates — but the SEs are still more trustworthy from WLS.
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert len(beta_wls) == k, "WLS must have same number of coefficients"
+print("\n✓ Checkpoint 8 passed — WLS computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 9: Polynomial and Interaction Terms
+# ══════════════════════════════════════════════════════════════════════
+# Non-linearity: floor_area² captures diminishing/increasing returns
+# Interactions: storey × area captures "premium for high-floor large flats"
+
+print(f"\n=== Polynomial and Interaction Terms ===")
+
+area = X_raw[:, 0]
+storey = X_raw[:, 1]
+lease = X_raw[:, 2]
+
+X_enriched = np.column_stack(
+    [
+        np.ones(n_obs),
+        area,
+        storey,
+        lease,
+        area**2,  # Polynomial: diminishing returns on area
+        storey * area,  # Interaction: high-floor premium × size
+        lease * area,  # Interaction: lease × size
+    ]
+)
+enriched_names = [
+    "intercept",
+    "area",
+    "storey",
+    "lease",
+    "area²",
+    "storey×area",
+    "lease×area",
+]
+k_enriched = X_enriched.shape[1]
+
+# Fit enriched model
+beta_enriched = np.linalg.lstsq(X_enriched, y, rcond=None)[0]
+y_hat_enriched = X_enriched @ beta_enriched
+resid_enriched = y - y_hat_enriched
+ssr_enriched = np.sum(resid_enriched**2)
+# TODO: Compute R² for the enriched model
+r2_enriched = ____  # Hint: 1 - ssr_enriched / SST
+adj_r2_enriched = 1 - (1 - r2_enriched) * (n_obs - 1) / (n_obs - k_enriched)
+
+# F-test: enriched vs simple model
+f_improvement = ((SSR - ssr_enriched) / (k_enriched - k)) / (
+    ssr_enriched / (n_obs - k_enriched)
+)
+f_p_improvement = 1 - stats.f.cdf(
+    f_improvement, dfn=k_enriched - k, dfd=n_obs - k_enriched
+)
+
+print(f"{'Feature':<20} {'Coefficient':>14}")
+print("─" * 38)
+for name, coef in zip(enriched_names, beta_enriched):
+    print(f"{name:<20} {coef:>14,.4f}")
+
+print(f"\nSimple model:   R²={r_squared:.6f}, Adj R²={adj_r_squared:.6f}")
+print(f"Enriched model: R²={r2_enriched:.6f}, Adj R²={adj_r2_enriched:.6f}")
+print(f"F-test (enriched vs simple): F={f_improvement:.2f}, p={f_p_improvement:.2e}")
+print(
+    f"Enriched model is {'significantly better' if f_p_improvement < 0.05 else 'NOT significantly better'}"
+)
+# INTERPRETATION: The area² term captures non-linearity — perhaps
+# price per sqm increases for very large flats (premium penthouses)
+# or decreases (diminishing returns for huge flats). The interaction
+# storey×area captures whether the storey premium is larger for
+# bigger flats.
+
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+assert (
+    r2_enriched >= r_squared - 0.001
+), "Adding features should not decrease R² substantially"
+print("\n✓ Checkpoint 9 passed — enriched model built\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 10: Dummy Variable Encoding
+# ══════════════════════════════════════════════════════════════════════
+# Categorical variables → binary dummies. Drop one category to avoid
+# the dummy variable trap (perfect multicollinearity with intercept).
+
+print(f"\n=== Dummy Variable Encoding ===")
+
+# Get flat types present in the data
+flat_types_in_data = sorted(hdb_clean["flat_type"].unique().to_list())
+print(f"Flat types: {flat_types_in_data}")
+
+# Use "3 ROOM" as base category (most common in many towns)
+base_category = "3 ROOM"
+dummy_categories = [ft for ft in flat_types_in_data if ft != base_category]
+
+# Build dummy columns
+dummy_arrays = []
+for ft in dummy_categories:
+    dummy = (hdb_clean["flat_type"].to_numpy() == ft).astype(np.float64)
+    dummy_arrays.append(dummy)
+
+X_with_dummies = np.column_stack(
+    [
+        np.ones(n_obs),
+        X_raw,  # Original numeric features
+        np.column_stack(dummy_arrays),  # Dummy variables
+    ]
+)
+dummy_names = (
+    ["intercept"]
+    + features
+    + [f"flat_{ft.replace(' ', '_')}" for ft in dummy_categories]
+)
+k_dummy = X_with_dummies.shape[1]
+
+# Fit model with dummies
+beta_dummy = np.linalg.lstsq(X_with_dummies, y, rcond=None)[0]
+y_hat_dummy = X_with_dummies @ beta_dummy
+ssr_dummy = np.sum((y - y_hat_dummy) ** 2)
+r2_dummy = 1 - ssr_dummy / SST
+adj_r2_dummy = 1 - (1 - r2_dummy) * (n_obs - 1) / (n_obs - k_dummy)
+
+print(f"\nBase category: {base_category}")
+print(f"\n{'Feature':<30} {'Coefficient':>14}")
+print("─" * 48)
+for name, coef in zip(dummy_names, beta_dummy):
+    print(f"{name:<30} {coef:>14,.0f}")
+
+print(f"\nModel with dummies: R²={r2_dummy:.6f}, Adj R²={adj_r2_dummy:.6f}")
+print(f"Improvement over simple: ΔR²={r2_dummy - r_squared:+.6f}")
+# INTERPRETATION: Each dummy coefficient represents the price premium
+# (or discount) relative to the base category (3 ROOM). For example,
+# if the 5 ROOM coefficient is +$150K, then 5-room flats sell for
+# $150K more than 3-room flats, all else equal.
+
+# ── Checkpoint 10 ────────────────────────────────────────────────────
+assert r2_dummy > r_squared, "Adding flat type should improve R²"
+assert len(dummy_categories) == len(flat_types_in_data) - 1, "Should drop one category"
+print("\n✓ Checkpoint 10 passed — dummy encoding completed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 11: Train/Test Split — Out-of-Sample Evaluation
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Train/Test Split ===")
+
+rng = np.random.default_rng(seed=42)
+n_total_obs = X_with_dummies.shape[0]
+indices = rng.permutation(n_total_obs)
+split_point = int(0.8 * n_total_obs)
+
+train_idx = indices[:split_point]
+test_idx = indices[split_point:]
+
+X_train = X_with_dummies[train_idx]
+y_train = y[train_idx]
+X_test = X_with_dummies[test_idx]
+y_test = y[test_idx]
+
+# Fit on train
+beta_train = np.linalg.lstsq(X_train, y_train, rcond=None)[0]
+
+# Evaluate on both
+y_train_pred = X_train @ beta_train
+y_test_pred = X_test @ beta_train
+
+r2_train = 1 - np.sum((y_train - y_train_pred) ** 2) / np.sum(
+    (y_train - y_train.mean()) ** 2
+)
+# TODO: Compute out-of-sample R² on the test set
+r2_test = ____  # Hint: 1 - np.sum((y_test - y_test_pred) ** 2) / np.sum((y_test - y_test.mean()) ** 2)
+rmse_train = np.sqrt(np.mean((y_train - y_train_pred) ** 2))
+rmse_test = np.sqrt(np.mean((y_test - y_test_pred) ** 2))
+mae_train = np.mean(np.abs(y_train - y_train_pred))
+mae_test = np.mean(np.abs(y_test - y_test_pred))
+
+print(f"Train: n={len(train_idx):,}")
+print(f"Test:  n={len(test_idx):,}")
+print(f"\n{'Metric':<12} {'Train':>14} {'Test':>14} {'Δ':>10}")
+print("─" * 54)
+print(f"{'R²':<12} {r2_train:>14.6f} {r2_test:>14.6f} {r2_test-r2_train:>+10.6f}")
+print(
+    f"{'RMSE':<12} ${rmse_train:>12,.0f} ${rmse_test:>12,.0f} ${rmse_test-rmse_train:>+8,.0f}"
+)
+print(
+    f"{'MAE':<12} ${mae_train:>12,.0f} ${mae_test:>12,.0f} ${mae_test-mae_train:>+8,.0f}"
+)
+
+gap = abs(r2_train - r2_test)
+print(f"\nTrain-test R² gap: {gap:.4f}")
+if gap < 0.02:
+    print("Minimal overfitting — model generalises well")
+elif gap < 0.05:
+    print("Slight overfitting — consider regularisation")
+else:
+    print("OVERFITTING — model is too complex for the data")
+# INTERPRETATION: If train R² >> test R², the model memorises training
+# data instead of learning generalisable patterns. The train-test gap
+# tells you whether your model complexity is appropriate.
+
+# ── Checkpoint 11 ────────────────────────────────────────────────────
+assert r2_test > 0, "Out-of-sample R² must be positive"
+assert r2_train >= r2_test - 0.05, "Train R² should be ≥ test R² (approximately)"
+print("\n✓ Checkpoint 11 passed — out-of-sample evaluation completed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 12: Model Comparison and Visualisation
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
-# -- Plot 1: Model comparison metrics --
-model_comparison = {
-    "Simple Model": {
-        "R_squared": R_sq_simple,
-        "Adj_R_squared": R_sq_adj_simple,
-        "num_features": float(len(all_feature_cols)),
-    },
-    "Enriched Model": {
-        "R_squared": R_sq_e,
-        "Adj_R_squared": R_sq_adj_e,
-        "num_features": float(len(enriched_feature_cols)),
-    },
-}
-fig_models = viz.metric_comparison(model_comparison)
-fig_models.update_layout(title="Simple vs Enriched Model: R² and Adjusted R²")
-fig_models.write_html("ex5_model_comparison.html")
-print(f"\nSaved: ex5_model_comparison.html")
-
-# -- Plot 2: Train vs Test performance --
-cv_results = {
-    "Training Set": {
-        "R_squared": R_sq_train,
-        "RMSE": RMSE_train,
-        "MAE": MAE_train,
-    },
-    "Test Set": {
-        "R_squared": R_sq_test,
-        "RMSE": RMSE_test,
-        "MAE": MAE_test,
-    },
-}
-fig_cv = viz.metric_comparison(cv_results)
-fig_cv.update_layout(title="Train vs Test: Cross-Validation Performance")
-fig_cv.write_html("ex5_cross_validation.html")
-print("Saved: ex5_cross_validation.html")
-
-# -- Plot 3: Coefficient significance (absolute t-statistics) --
-coeff_significance = {}
-for name, t_val, p_val in zip(enriched_coeff_names[1:], t_stats_e[1:], p_values_e[1:]):
-    coeff_significance[name] = {
-        "abs_t_statistic": abs(float(t_val)),
-        "neg_log10_p": -np.log10(max(float(p_val), 1e-300)),
-    }
-fig_sig = viz.metric_comparison(coeff_significance)
-fig_sig.update_layout(title="Feature Significance: |t-statistic| and -log10(p)")
-fig_sig.write_html("ex5_coefficient_significance.html")
-print("Saved: ex5_coefficient_significance.html")
-
-# -- Plot 4: Residual analysis --
-residuals_test = y_test - y_hat_test
-fig_resid = viz.scatter(
-    pl.DataFrame({
-        "fitted_values": y_hat_test,
-        "residuals": residuals_test,
-    }),
-    x="fitted_values",
-    y="residuals",
+# Plot 1: Actual vs predicted
+fig1 = viz.scatter(
+    x=y_test[:2000].tolist(),
+    y=y_test_pred[:2000].tolist(),
+    title="Actual vs Predicted Price (Test Set)",
+    x_label="Actual Price ($)",
+    y_label="Predicted Price ($)",
 )
-fig_resid.update_layout(
-    title="Residuals vs Fitted Values (Test Set)",
-    xaxis_title="Fitted Values ($)",
-    yaxis_title="Residuals ($)",
+# Add perfect prediction line
+fig1.add_trace(
+    go.Scatter(
+        x=[y_test.min(), y_test.max()],
+        y=[y_test.min(), y_test.max()],
+        mode="lines",
+        name="Perfect prediction",
+        line={"dash": "dash", "color": "red"},
+    )
 )
-fig_resid.write_html("ex5_residuals_vs_fitted.html")
-print("Saved: ex5_residuals_vs_fitted.html")
+fig1.write_html("ex5_actual_vs_predicted.html")
+print("\nSaved: ex5_actual_vs_predicted.html")
 
-print(f"\n=== Summary ===")
-print(f"Built OLS regression from scratch using matrix algebra: β = (X'X)⁻¹X'y")
-print(f"Interpreted {len(enriched_feature_cols)} coefficients (numeric, polynomial, interaction, categorical)")
-print(f"Tested significance via t-statistics (H₀: β = 0)")
-print(f"Model explains {R_sq_e:.1%} of price variance (adjusted R² = {R_sq_adj_e:.4f})")
-print(f"F-test confirms the model is significantly better than intercept-only")
-print(f"Cross-validation: train R² = {R_sq_train:.4f}, test R² = {R_sq_test:.4f}")
+# Plot 2: Residual diagnostics
+fig2 = make_subplots(
+    rows=2,
+    cols=2,
+    subplot_titles=[
+        "Residuals vs Fitted",
+        "Residual Histogram",
+        "Q-Q Plot",
+        "Residuals vs Area",
+    ],
+)
+fig2.add_trace(
+    go.Scatter(
+        x=y_hat[:3000],
+        y=residuals[:3000],
+        mode="markers",
+        marker={"size": 2, "opacity": 0.3},
+        name="Residuals",
+    ),
+    row=1,
+    col=1,
+)
+fig2.add_hline(y=0, row=1, col=1, line_dash="dash")
+fig2.add_trace(go.Histogram(x=residuals, nbinsx=50, name="Residuals"), row=1, col=2)
+
+# Q-Q plot
+sorted_resid = np.sort(residuals)
+theoretical_q = stats.norm.ppf(np.linspace(0.001, 0.999, len(sorted_resid)))
+fig2.add_trace(
+    go.Scatter(
+        x=theoretical_q,
+        y=sorted_resid[:: max(1, len(sorted_resid) // 2000)],
+        mode="markers",
+        marker={"size": 2},
+        name="Q-Q",
+    ),
+    row=2,
+    col=1,
+)
+fig2.add_trace(
+    go.Scatter(
+        x=area[:3000],
+        y=residuals[:3000],
+        mode="markers",
+        marker={"size": 2, "opacity": 0.3},
+        name="vs Area",
+    ),
+    row=2,
+    col=2,
+)
+fig2.update_layout(height=600, title="Residual Diagnostics")
+fig2.write_html("ex5_residual_diagnostics.html")
+print("Saved: ex5_residual_diagnostics.html")
+
+# Model comparison table
+print(f"\n=== Model Comparison Summary ===")
+print(f"{'Model':<30} {'R²':>10} {'Adj R²':>10} {'k':>4}")
+print("─" * 58)
+print(f"{'Simple (3 features)':<30} {r_squared:>10.6f} {adj_r_squared:>10.6f} {k:>4}")
+print(
+    f"{'Enriched (poly+interact)':<30} {r2_enriched:>10.6f} {adj_r2_enriched:>10.6f} {k_enriched:>4}"
+)
+print(
+    f"{'With flat type dummies':<30} {r2_dummy:>10.6f} {adj_r2_dummy:>10.6f} {k_dummy:>4}"
+)
+
+# ── Checkpoint 12 ────────────────────────────────────────────────────
+print("\n✓ Checkpoint 12 passed — visualisations and comparison complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
-print("═" * 60)
+print("═" * 70)
 print("  WHAT YOU'VE MASTERED")
-print("═" * 60)
-print(f"""
-  ✓ OLS closed form: β = (X'X)⁻¹X'y via np.linalg.solve
-  ✓ Ceteris paribus: each coefficient isolates one predictor's effect
-  ✓ Dummy encoding: k categories → k-1 dummies + base category
-  ✓ t-statistic: β/SE(β) tests H₀: β=0 — same math as Exercise 3
-  ✓ SE from Hessian: Var(β̂) = σ̂²(X'X)⁻¹, SE = sqrt of diagonal
-  ✓ R²: proportion of variance explained (ranges 0→1)
-  ✓ Adjusted R²: penalises for predictors — can decrease with noise features
-  ✓ F-statistic: tests the whole model vs intercept-only
-  ✓ Polynomial/interaction: non-linear effects within a linear framework
-  ✓ Partial F-test: nested model comparison (enriched vs simple)
-  ✓ Train/test split: honest out-of-sample estimate of R² and RMSE
+print("═" * 70)
+print(
+    f"""
+  ✓ OLS from scratch: β = (X'X)⁻¹X'y — matrix derivation implemented
+  ✓ Ceteris paribus interpretation: "all else equal, one more sqm..."
+  ✓ t-statistics: H₀ βⱼ=0, SE from σ̂²(X'X)⁻¹
+  ✓ R², adjusted R², F-statistic — model vs intercept-only
+  ✓ VIF for multicollinearity detection
+  ✓ Residual diagnostics: normality, heteroscedasticity, patterns
+  ✓ Breusch-Pagan test for heteroscedasticity
+  ✓ WLS: weighted regression when variance is non-constant
+  ✓ Polynomial terms (area²) and interactions (storey×area)
+  ✓ Dummy encoding with base category to avoid dummy trap
+  ✓ Train/test split: out-of-sample R², RMSE, MAE
+  ✓ Model complexity trade-off: more features ≠ better prediction
 
-  NEXT: In Exercise 6 you'll move from continuous outcomes to binary
-  classification. Logistic regression replaces OLS with MLE (Bernoulli
-  likelihood), uses the sigmoid instead of a linear prediction, and
-  interprets coefficients as odds ratios rather than dollar amounts.
-  You'll also run one-way ANOVA with Tukey HSD post-hoc tests.
-""")
+  NEXT: In Exercise 6 you'll build logistic regression for binary
+  classification. You'll implement the sigmoid function, maximise
+  the Bernoulli log-likelihood, interpret coefficients as odds ratios,
+  and perform ANOVA for multi-group comparison.
+"""
+)
 
-print("\n✓ Exercise 5 complete — linear regression from scratch with full inference")
+print("\n✓ Exercise 5 complete — Linear Regression")

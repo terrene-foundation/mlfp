@@ -846,10 +846,10 @@ delegate = Delegate(model="claude-sonnet-4-20250514")
 
 
 <!-- SLIDE 19 — LoRA From Scratch -->
-<section>
+<section class="code-dense">
   <h2>LoRA: From-Scratch Implementation</h2>
   <span class="marker marker-theory">Theory</span>
-  <pre><code class="language-python">import torch
+  <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import torch
 import torch.nn as nn
 
 class LoRALayer(nn.Module):
@@ -909,7 +909,7 @@ class LoRALayer(nn.Module):
       </div>
     </div>
     <div class="col">
-      <pre><code class="language-python">class AdapterLayer(nn.Module):
+      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">class AdapterLayer(nn.Module):
     def __init__(self, hidden_size: int,
                  bottleneck: int = 64):
         super().__init__()
@@ -1080,7 +1080,7 @@ class LoRALayer(nn.Module):
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline &mdash; From Theory to One Call</h3>
-    <pre><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig, AdapterRegistry
 
 # Configure LoRA fine-tuning
 config = AlignmentConfig(
@@ -1218,7 +1218,7 @@ print(f"Trainable params: {result.trainable_params:,}")  # ~262K</code></pre>
 <section>
   <h2>DPO: Training Loop</h2>
   <span class="marker marker-theory">Theory</span>
-  <pre><code class="language-python">import torch
+  <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">import torch
 import torch.nn.functional as F
 
 def dpo_loss(
@@ -1378,7 +1378,7 @@ lm_eval --model hf --model_args pretrained=my-model \
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline with method="dpo"</h3>
-    <pre><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig
+    <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig
 
 config = AlignmentConfig(
     method="dpo",
@@ -1916,7 +1916,7 @@ print(results)  # {"faithfulness": 0.87, "answer_relevancy": 0.92, ...}</code></
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>BaseAgent &mdash; Custom Agent with Tools</h3>
-    <pre><code class="language-python">from kailash_kaizen import BaseAgent, Delegate, tool
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_kaizen import BaseAgent, Delegate, tool
 from kailash_ml import DataExplorer, TrainingPipeline
 
 class DataAnalystAgent(BaseAgent):
@@ -2097,7 +2097,7 @@ print(f"Remaining: ${tracker.remaining:.4f}")</code></pre>
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
     <h3>Kaizen Multi-Agent Orchestration</h3>
-    <pre><code class="language-python">from kailash_kaizen import BaseAgent, Delegate, tool
+    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from kailash_kaizen import BaseAgent, Delegate, tool
 
 class DataScientistAgent(BaseAgent):
     @tool
@@ -2183,7 +2183,7 @@ supervisor = SupervisorAgent(specialists={
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">from kailash_mcp import MCPServer, tool
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_mcp import MCPServer, tool
 from kailash_ml import DataExplorer
 
 server = MCPServer("ml-tools")
@@ -2331,7 +2331,7 @@ server.run(transport="stdio")</code></pre>
     <div class="col">
       <div class="kailash-bridge">
         <h3>GovernanceEngine</h3>
-        <pre><code class="language-python">from kailash_pact import (
+        <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_pact import (
     GovernanceEngine, Address)
 
 engine = GovernanceEngine()
@@ -2381,7 +2381,7 @@ why = engine.explain_access(
       </div>
     </div>
     <div class="col">
-      <pre><code class="language-python">from kailash_pact import OperatingEnvelope
+      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_pact import OperatingEnvelope
 
 envelope = OperatingEnvelope(
     allowed_tasks=[
@@ -2428,7 +2428,7 @@ child_envelope = envelope.tighten(
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">from kailash_pact import (
+      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_pact import (
     GovernanceEngine, BudgetAllocator)
 
 allocator = BudgetAllocator(
@@ -2464,7 +2464,7 @@ allocator.reallocate(
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Agent + Governance = PactGovernedAgent</h3>
-    <pre><code class="language-python">from kailash_pact import PactGovernedAgent, GovernanceEngine, OperatingEnvelope
+    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from kailash_pact import PactGovernedAgent, GovernanceEngine, OperatingEnvelope
 from kailash_kaizen import Delegate
 
 engine = GovernanceEngine()
@@ -2515,7 +2515,7 @@ result = agent.run("Delete all customer records")
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">import pytest
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import pytest
 from kailash_pact import GovernanceError
 
 def test_analyst_can_read_data():

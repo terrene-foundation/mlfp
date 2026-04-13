@@ -1,0 +1,431 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=1]: Lesson 5.6
+      - heading [level=2]: Graph Neural Networks
+      - paragraph: Graph Feature Learning — Patterns in Connected Data
+      - paragraph: "\"What if the connections matter as much as the data itself?\""
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Graph Data: Nodes, Edges, Adjacency"
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Components
+          - list:
+            - listitem:
+              - strong: "Nodes (V):"
+              - text: entities (people, atoms, papers)
+            - listitem:
+              - strong: "Edges (E):"
+              - text: relationships (friendships, bonds, citations)
+            - listitem:
+              - strong: "Adjacency matrix (A):"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: A
+                            - generic:
+                              - generic: i
+                              - generic: j
+                          - generic: =
+                          - generic: "1"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: A
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: ij
+                      - text: =
+                    - generic: "1"
+              - text: if edge between i and j
+            - listitem:
+              - strong: "Node features (X):"
+              - text: attributes of each node
+        - generic:
+          - heading [level=3]: Applications
+          - table:
+            - rowgroup:
+              - row:
+                - columnheader: Domain
+                - columnheader: Nodes
+                - columnheader: Edges
+            - rowgroup:
+              - row:
+                - cell: Social
+                - cell: Users
+                - cell: Friendships
+              - row:
+                - cell: Chemistry
+                - cell: Atoms
+                - cell: Bonds
+              - row:
+                - cell: Academic
+                - cell: Papers
+                - cell: Citations
+              - row:
+                - cell: Logistics
+                - cell: Locations
+                - cell: Routes
+          - generic:
+            - strong: Why not CNN/RNN?
+            - text: Graphs have variable size, no fixed ordering, irregular connectivity. Standard architectures cannot handle this.
+      - generic:
+        - img:
+          - generic: CNN — regular grid
+          - generic: every node has 4 (or 8) fixed neighbours
+          - generic: GNN — irregular graph
+          - generic:
+            - generic: "1"
+            - generic: "4"
+            - generic: "3"
+            - generic: "2"
+            - generic: "4"
+            - generic: "2"
+          - generic: each node has different number of neighbours (degree shown)
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e3]:
+      - 'heading "GCN: Graph Convolutional Networks" [level=2] [ref=e4]'
+      - generic [ref=e5]: Theory
+      - generic [ref=e6]:
+        - generic [ref=e9]:
+          - math [ref=e11]:
+            - generic [ref=e13]:
+              - generic [ref=e14]:
+                - generic [ref=e15]: H
+                - generic [ref=e16]:
+                  - generic [ref=e17]: (
+                  - generic [ref=e18]: l
+                  - generic [ref=e19]: +
+                  - generic [ref=e20]: "1"
+                  - generic [ref=e21]: )
+              - generic [ref=e22]: =
+              - generic [ref=e23]: σ
+              - text: ⁣
+              - generic [ref=e24]:
+                - generic [ref=e25]: (
+                - generic [ref=e26]:
+                  - generic [ref=e27]:
+                    - generic [ref=e28]: D
+                    - generic [ref=e29]: ~
+                  - generic [ref=e30]:
+                    - generic [ref=e31]: −
+                    - generic [ref=e32]: "1"
+                    - generic [ref=e33]: /
+                    - generic [ref=e34]: "2"
+                - generic [ref=e35]:
+                  - generic [ref=e36]: A
+                  - generic [ref=e37]: ~
+                - generic [ref=e38]:
+                  - generic [ref=e39]:
+                    - generic [ref=e40]: D
+                    - generic [ref=e41]: ~
+                  - generic [ref=e42]:
+                    - generic [ref=e43]: −
+                    - generic [ref=e44]: "1"
+                    - generic [ref=e45]: /
+                    - generic [ref=e46]: "2"
+                - generic [ref=e47]:
+                  - generic [ref=e48]: H
+                  - generic [ref=e49]:
+                    - generic [ref=e50]: (
+                    - generic [ref=e51]: l
+                    - generic [ref=e52]: )
+                - generic [ref=e53]:
+                  - generic [ref=e54]: W
+                  - generic [ref=e55]:
+                    - generic [ref=e56]: (
+                    - generic [ref=e57]: l
+                    - generic [ref=e58]: )
+                - generic [ref=e59]: )
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - generic [ref=e62]:
+                - text: H
+                - generic [ref=e68]: (l+1)
+              - text: =
+            - generic [ref=e69]:
+              - text: σ
+              - generic [ref=e70]:
+                - generic [ref=e71]: (
+                - generic [ref=e72]:
+                  - generic [ref=e76]:
+                    - generic [ref=e77]: D
+                    - text: ~
+                  - generic [ref=e83]: −1/2
+                - generic [ref=e87]:
+                  - generic [ref=e88]: A
+                  - text: ~
+                - generic [ref=e89]:
+                  - generic [ref=e93]:
+                    - generic [ref=e94]: D
+                    - text: ~
+                  - generic [ref=e100]: −1/2
+                - generic [ref=e101]:
+                  - text: H
+                  - generic [ref=e107]: (l)
+                - generic [ref=e108]:
+                  - text: W
+                  - generic [ref=e114]: (l)
+                - generic [ref=e115]: )
+        - generic [ref=e116]:
+          - text: where
+          - generic [ref=e118]:
+            - math [ref=e120]:
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - generic [ref=e124]: A
+                  - generic [ref=e125]: ~
+                - generic [ref=e126]: =
+                - generic [ref=e127]: A
+                - generic [ref=e128]: +
+                - generic [ref=e129]: I
+            - generic [ref=e130]:
+              - generic [ref=e131]:
+                - generic [ref=e135]:
+                  - generic [ref=e136]: A
+                  - text: ~
+                - text: =
+              - generic [ref=e137]: A +
+              - generic [ref=e138]: I
+          - text: (add self-loops) and
+          - generic [ref=e140]:
+            - math [ref=e142]:
+              - generic [ref=e144]:
+                - generic [ref=e145]:
+                  - generic [ref=e146]:
+                    - generic [ref=e147]: D
+                    - generic [ref=e148]: ~
+                  - generic [ref=e149]:
+                    - generic [ref=e150]: i
+                    - generic [ref=e151]: i
+                - generic [ref=e152]: =
+                - generic [ref=e153]:
+                  - generic [ref=e154]: ∑
+                  - generic [ref=e155]: j
+                - generic [ref=e156]:
+                  - generic [ref=e157]:
+                    - generic [ref=e158]: A
+                    - generic [ref=e159]: ~
+                  - generic [ref=e160]:
+                    - generic [ref=e161]: i
+                    - generic [ref=e162]: j
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - generic [ref=e165]:
+                  - generic [ref=e169]:
+                    - generic [ref=e170]: D
+                    - text: ~
+                  - generic [ref=e176]: ii
+                - text: =
+              - generic [ref=e180]:
+                - generic [ref=e181]:
+                  - text: ∑
+                  - generic [ref=e186]: j
+                - generic [ref=e190]:
+                  - generic [ref=e194]:
+                    - generic [ref=e195]: A
+                    - text: ~
+                  - generic [ref=e201]: ij
+      - generic [ref=e205]:
+        - generic [ref=e206]:
+          - heading "Message Passing (Intuition)" [level=3] [ref=e207]
+          - list [ref=e208]:
+            - listitem [ref=e209]:
+              - strong [ref=e210]: "Aggregate:"
+              - text: each node collects features from its neighbours
+            - listitem [ref=e211]:
+              - strong [ref=e212]: "Transform:"
+              - text: apply learnable weight matrix
+              - generic [ref=e214]:
+                - math [ref=e216]:
+                  - generic [ref=e219]:
+                    - generic [ref=e220]: W
+                    - generic [ref=e221]:
+                      - generic [ref=e222]: (
+                      - generic [ref=e223]: l
+                      - generic [ref=e224]: )
+                - generic [ref=e227]:
+                  - text: W
+                  - generic [ref=e233]: (l)
+            - listitem [ref=e234]:
+              - strong [ref=e235]: "Activate:"
+              - text: nonlinear activation (ReLU)
+            - listitem [ref=e236]: Repeat for L layers — each layer expands the receptive field
+        - generic [ref=e237]:
+          - generic [ref=e238]:
+            - strong [ref=e239]: "Normalisation:"
+            - generic [ref=e241]:
+              - math [ref=e243]:
+                - generic [ref=e245]:
+                  - generic [ref=e246]:
+                    - generic [ref=e247]:
+                      - generic [ref=e248]: D
+                      - generic [ref=e249]: ~
+                    - generic [ref=e250]:
+                      - generic [ref=e251]: −
+                      - generic [ref=e252]: "1"
+                      - generic [ref=e253]: /
+                      - generic [ref=e254]: "2"
+                  - generic [ref=e255]:
+                    - generic [ref=e256]: A
+                    - generic [ref=e257]: ~
+                  - generic [ref=e258]:
+                    - generic [ref=e259]:
+                      - generic [ref=e260]: D
+                      - generic [ref=e261]: ~
+                    - generic [ref=e262]:
+                      - generic [ref=e263]: −
+                      - generic [ref=e264]: "1"
+                      - generic [ref=e265]: /
+                      - generic [ref=e266]: "2"
+              - generic [ref=e268]:
+                - generic [ref=e269]:
+                  - generic [ref=e273]:
+                    - generic [ref=e274]: D
+                    - text: ~
+                  - generic [ref=e280]: −1/2
+                - generic [ref=e284]:
+                  - generic [ref=e285]: A
+                  - text: ~
+                - generic [ref=e286]:
+                  - generic [ref=e290]:
+                    - generic [ref=e291]: D
+                    - text: ~
+                  - generic [ref=e297]: −1/2
+            - text: is the symmetric normalisation. It prevents nodes with many neighbours from dominating. Equivalent to averaging neighbour features, weighted by degree.
+          - generic [ref=e298]:
+            - strong [ref=e299]: "Analogy:"
+            - text: Each person updates their opinion by averaging their neighbours' opinions. After a few rounds, everyone's opinion reflects their local community.
+      - generic [ref=e301]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "GCN: Message Passing in One Picture"
+      - generic: Foundations
+      - generic:
+        - img:
+          - generic:
+            - generic: v₁
+            - generic: v₂
+            - generic: v₃
+            - generic: v₄
+          - generic: v
+          - generic: "hᵛ ← σ( W · AGG({hᵘ : u ∈ N(v)}) )"
+          - generic: center node updates from messages of its neighbours
+      - paragraph: Green arrows are messages flowing into the centre node. After the update, the centre node's hidden state encodes its 1-hop neighbourhood. Stack L layers and it encodes the L-hop neighbourhood.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: GraphSAGE and GAT
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: GraphSAGE
+          - list:
+            - listitem:
+              - strong: Sample
+              - text: a fixed number of neighbours (not all)
+            - listitem:
+              - strong: Aggregate
+              - text: sampled neighbour features (mean, LSTM, pool)
+            - listitem:
+              - strong: "Inductive:"
+              - text: works on unseen nodes (GCN requires full graph)
+          - generic:
+            - strong: "Advantage:"
+            - text: Scales to large graphs. GCN needs the full adjacency matrix in memory. GraphSAGE samples, so it can handle million-node graphs.
+        - generic:
+          - heading [level=3]: GAT (Graph Attention Networks)
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: e
+                            - generic:
+                              - generic: i
+                              - generic: j
+                          - generic: =
+                          - generic: LeakyReLU
+                          - generic: (
+                          - generic:
+                            - generic: a
+                            - generic: ⊤
+                          - generic: "["
+                          - generic: W
+                          - generic:
+                            - generic: h
+                            - generic: i
+                          - generic: ∥
+                          - generic: W
+                          - generic:
+                            - generic: h
+                            - generic: j
+                          - generic: "]"
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: e
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: ij
+                      - text: =
+                    - generic:
+                      - generic: LeakyReLU
+                      - text: (
+                      - generic:
+                        - text: a
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: ⊤
+                      - text: "[W"
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: i
+                      - text: ∥W
+                      - generic:
+                        - text: h
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: j
+                      - text: "])"
+            - generic: Attention coefficient for edge (i, j)
+          - list:
+            - listitem: Not all neighbours are equally important
+            - listitem: Learn attention weights per edge
+            - listitem: Connects to multi-head attention from 5.4
+            - listitem: "Interpretable: attention weights show important connections"
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "70 / 105" [ref=e306] [cursor=pointer]:
+    - /url: "#/69"
+  - complementary:
+    - button "previous slide" [ref=e307] [cursor=pointer]
+    - button "next slide" [ref=e309] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e313]: "GCN: Graph Convolutional Networks Theory H ( l + 1 ) = σ ⁣ ( D ~ − 1 / 2 A ~ D ~ − 1 / 2 H ( l ) W ( l ) ) where A ~ = A + I (add self-loops) and D ~ i i = ∑ j A ~ i j Message Passing (Intuition) Aggregate: each node collects features from its neighbours Transform: apply learnable weight matrix W ( l ) Activate: nonlinear activation (ReLU) Repeat for L layers — each layer expands the receptive field Normalisation: D ~ − 1 / 2 A ~ D ~ − 1 / 2 is the symmetric normalisation. It prevents nodes with many neighbours from dominating. Equivalent to averaging neighbour features, weighted by degree. Analogy: Each person updates their opinion by averaging their neighbours' opinions. After a few rounds, everyone's opinion reflects their local community. MLFP Module 5 — Terrene Open Academy"

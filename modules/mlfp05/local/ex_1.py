@@ -2,855 +2,794 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP05 — Exercise 1: Autoencoders
+# MLFP05 — Exercise 1: Autoencoders (Vanilla, Denoising, VAE, Convolutional)
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
 #   After completing this exercise, you will be able to:
-#   - Implement a vanilla autoencoder with full backpropagation from scratch
-#   - Explain the difference between undercomplete, denoising, and variational
-#     autoencoders and when to use each
-#   - Derive and implement the VAE ELBO loss (reconstruction + KL divergence)
-#   - Apply the reparameterisation trick to enable gradient flow through
-#     stochastic sampling
-#   - Generate new images by sampling from the VAE latent space
+#   - Build four autoencoder variants with torch.nn.Module: Vanilla,
+#     Denoising, Variational (VAE), and Convolutional
+#   - Train each with torch.optim.Adam on FULL Fashion-MNIST (60K images)
+#   - Explain the VAE reparameterisation trick and why it enables backprop
+#   - Sample new images from the VAE's latent Gaussian prior
+#   - Track every training run with kailash-ml's ExperimentTracker
+#     (parameters, per-epoch loss, tags)
+#   - Register the best model from each variant in the ModelRegistry
+#   - Compare reconstruction quality across latent dimensions (4, 8, 16, 32)
+#   - Visualise training curves with kailash-ml's ModelVisualizer
 #
-# PREREQUISITES:
-#   M4.8 — Neural networks, forward/backward pass, gradient descent.
-#   This exercise extends M4.8 for UNSUPERVISED learning — no labels.
+# PREREQUISITES: M4.8 (neural network basics, loss functions, optimisers).
+# ESTIMATED TIME: ~120-150 min
 #
-# ESTIMATED TIME: 60-90 minutes
+# DATASET: Fashion-MNIST — 60,000 real 28x28 grayscale clothing images
+#   across 10 classes (t-shirt, trouser, pullover, dress, coat, sandal,
+#   shirt, sneaker, bag, ankle boot). Downloaded automatically by
+#   torchvision and cached to data/mlfp05/fashion_mnist/. We use the FULL
+#   60K training set — autoencoders benefit from large datasets because
+#   they need to learn generalisable compressed representations.
 #
 # TASKS:
-#   1. Generate synthetic image-like dataset (8x8 digit patterns)
-#   2. Implement vanilla (undercomplete) autoencoder with numpy
-#   3. Implement denoising autoencoder (add noise, reconstruct clean)
-#   4. Implement variational autoencoder (VAE) with reparameterisation trick
-#   5. Implement convolutional autoencoder for 2D image data
-#   6. Compare reconstruction quality across all four variants
-#   7. Generate new samples from VAE by sampling latent space
-#   8. Visualise latent spaces for each variant
+#   1. Load full Fashion-MNIST, set up ExperimentTracker and ModelRegistry
+#   2. Build and train a Vanilla Autoencoder, log run to tracker
+#   3. Build and train a Denoising Autoencoder, log run to tracker
+#   4. Build and train a Variational Autoencoder, log run to tracker
+#   5. Build and train a Convolutional Autoencoder, log run to tracker
+#   6. Sample new images from the VAE latent prior
+#   7. Register the best model from each variant in the ModelRegistry
+#   8. Hyperparameter comparison: try latent dims 4, 8, 16, 32
+#   9. Visualise all training histories and compare
 #
-# THEORY:
-#   Autoencoder: encoder (compress) -> latent space -> decoder (reconstruct)
-#   Reconstruction loss: L = ||x - decoder(encoder(x))||^2
-#   VAE ELBO: L = E_q[log p(x|z)] - KL(q(z|x) || p(z))
-#   Reparameterisation: z = mu + sigma * epsilon, epsilon ~ N(0,1)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import math
-import random
+import asyncio
+import pickle
+from pathlib import Path
 
 import numpy as np
-import polars as pl
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+import torchvision
 
+from kailash.db import ConnectionManager
 from kailash_ml import ModelVisualizer
+from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml.engines.model_registry import ModelRegistry
 
-from shared.kailash_helpers import setup_environment
+from shared.kailash_helpers import get_device, setup_environment
 
 setup_environment()
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Generate synthetic image-like dataset
-# ══════════════════════════════════════════════════════════════════════
-
-rng = np.random.default_rng(seed=42)
+torch.manual_seed(42)
+np.random.seed(42)
+device = get_device()
+print(f"Using device: {device}")
 
 
-def make_digit_patterns(n_per_class: int = 200) -> tuple[np.ndarray, np.ndarray]:
-    """Generate 10 classes of 8x8 pixel patterns with noise."""
-    patterns = []
-    labels = []
-    templates = []
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1 — Load Fashion-MNIST (full 60K) and set up kailash-ml engines
+# ════════════════════════════════════════════════════════════════════════
+# Real autoencoders train on the full dataset. Sub-sampling weakens the
+# encoder's ability to learn general features — with only 6K images, it
+# memorises patches instead of learning structure.
 
-    # 0: horizontal bar at centre
-    t = np.zeros((8, 8))
-    t[3:5, 1:7] = 1.0
-    templates.append(t)
+REPO_ROOT = Path.cwd()
+DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "fashion_mnist"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1: vertical bar at centre
-    t = np.zeros((8, 8))
-    t[1:7, 3:5] = 1.0
-    templates.append(t)
+train_set = torchvision.datasets.FashionMNIST(
+    root=str(DATA_DIR),
+    train=True,
+    download=True,
+    transform=torchvision.transforms.ToTensor(),  # already in [0, 1]
+)
 
-    # 2: diagonal top-left to bottom-right
-    t = np.zeros((8, 8))
-    for i in range(8):
-        t[i, i] = 1.0
-        if i + 1 < 8:
-            t[i, i + 1] = 0.5
-    templates.append(t)
+# Use the FULL 60K training set. On MPS/CUDA this trains in ~2 min per
+# variant; on CPU ~8-10 min per variant.
+X_img = torch.stack(
+    [train_set[i][0] for i in range(len(train_set))]
+)  # (60000, 1, 28, 28)
+X_img = X_img.to(device).float()
+X_flat = X_img.reshape(len(X_img), -1)  # (60000, 784)
 
-    # 3: cross (horizontal + vertical bars)
-    t = np.zeros((8, 8))
-    t[3:5, 1:7] = 1.0
-    t[1:7, 3:5] = 1.0
-    templates.append(t)
+print(
+    f"Fashion-MNIST: {len(X_img)} images, shape {tuple(X_img.shape[1:])}, "
+    f"pixel range [{X_img.min():.2f}, {X_img.max():.2f}]"
+)
 
-    # 4: box outline
-    t = np.zeros((8, 8))
-    t[1, 1:7] = 1.0
-    t[6, 1:7] = 1.0
-    t[1:7, 1] = 1.0
-    t[1:7, 6] = 1.0
-    templates.append(t)
+flat_loader = DataLoader(TensorDataset(X_flat), batch_size=256, shuffle=True)
+img_loader = DataLoader(TensorDataset(X_img), batch_size=256, shuffle=True)
 
-    # 5: filled circle-like shape (diamond)
-    t = np.zeros((8, 8))
-    centre = 3.5
-    for i in range(8):
-        for j in range(8):
-            if abs(i - centre) + abs(j - centre) <= 3:
-                t[i, j] = 1.0
-    templates.append(t)
-
-    # 6: L-shape
-    t = np.zeros((8, 8))
-    t[1:7, 1:3] = 1.0
-    t[5:7, 1:6] = 1.0
-    templates.append(t)
-
-    # 7: T-shape
-    t = np.zeros((8, 8))
-    t[1:3, 1:7] = 1.0
-    t[2:7, 3:5] = 1.0
-    templates.append(t)
-
-    # 8: central dot
-    t = np.zeros((8, 8))
-    t[2:6, 2:6] = 1.0
-    templates.append(t)
-
-    # 9: frame with gap
-    t = np.zeros((8, 8))
-    t[0, :] = 1.0
-    t[7, :] = 1.0
-    t[:, 0] = 1.0
-    t[:, 7] = 1.0
-    t[0, 3:5] = 0.0
-    templates.append(t)
-
-    for label, template in enumerate(templates):
-        for _ in range(n_per_class):
-            shift_y = rng.integers(-1, 2)
-            shift_x = rng.integers(-1, 2)
-            shifted = np.roll(np.roll(template, shift_y, axis=0), shift_x, axis=1)
-            noisy = shifted + rng.normal(0, 0.1, (8, 8))
-            noisy = np.clip(noisy, 0, 1)
-            patterns.append(noisy.flatten())
-            labels.append(label)
-
-    patterns = np.array(patterns)
-    labels = np.array(labels)
-    idx = rng.permutation(len(patterns))
-    return patterns[idx], labels[idx]
+INPUT_DIM = 28 * 28
+LATENT_DIM = 16
+EPOCHS = 10
 
 
-X_all, y_all = make_digit_patterns(n_per_class=200)
-n_total = len(X_all)
-n_train = int(0.8 * n_total)
-X_train, X_test = X_all[:n_train], X_all[n_train:]
-y_train, y_test = y_all[:n_train], y_all[n_train:]
+# Set up kailash-ml engines: ExperimentTracker + ModelRegistry.
+# Both use ConnectionManager for SQLite-backed persistence.
+async def setup_engines():
+    # TODO: Create a ConnectionManager with "sqlite:///mlfp05_autoencoders.db"
+    # Hint: ConnectionManager(url), then await conn.initialize()
+    conn = ____  # Hint: ConnectionManager("sqlite:///mlfp05_autoencoders.db")
+    await conn.initialize()
 
-df_train = pl.DataFrame({
-    **{f"px_{i}": X_train[:, i].tolist() for i in range(64)},
-    "label": y_train.tolist(),
-})
+    # TODO: Create an ExperimentTracker and create an experiment called "m5_autoencoders"
+    # Hint: ExperimentTracker(conn), then tracker.create_experiment(name=..., description=...)
+    tracker = ____  # Hint: ExperimentTracker(conn)
+    exp_name = await tracker.create_experiment(
+        name=____,  # Hint: "m5_autoencoders"
+        description=____,  # Hint: "Autoencoder variants on Fashion-MNIST (60K images)"
+    )
 
-print(f"=== Synthetic 8x8 Image Dataset ===")
-print(f"Total samples: {n_total} ({n_train} train, {n_total - n_train} test)")
-print(f"Classes: 10 patterns (bar, cross, box, diamond, L, T, dot, frame, etc.)")
-print(f"Input dimension: 64 (8x8 flattened)")
-print(f"Pixel range: [{X_train.min():.2f}, {X_train.max():.2f}]")
+    try:
+        # TODO: Create a ModelRegistry using the same conn
+        # Hint: ModelRegistry(conn)
+        registry = ____
+        has_registry = True
+    except Exception as e:
+        registry = None
+        has_registry = False
+        print(f"  Note: ModelRegistry setup skipped ({e})")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# Shared neural network primitives (numpy-only)
-# ══════════════════════════════════════════════════════════════════════
-
-
-def relu(x: np.ndarray) -> np.ndarray:
-    """ReLU activation: max(0, x)."""
-    return np.maximum(0, x)
-
-
-def relu_grad(x: np.ndarray) -> np.ndarray:
-    """Gradient of ReLU: 1 where x > 0, else 0."""
-    return (x > 0).astype(np.float64)
+    return conn, tracker, exp_name, registry, has_registry
 
 
-def sigmoid(x: np.ndarray) -> np.ndarray:
-    """Sigmoid activation: 1 / (1 + exp(-x)), numerically stable."""
-    pos = x >= 0
-    z = np.zeros_like(x)
-    z[pos] = 1.0 / (1.0 + np.exp(-x[pos]))
-    exp_x = np.exp(x[~pos])
-    z[~pos] = exp_x / (1.0 + exp_x)
-    return z
+conn, tracker, exp_name, registry, has_registry = asyncio.run(setup_engines())
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────
+assert X_img.shape[0] == 60000, (
+    f"Expected full 60K Fashion-MNIST, got {X_img.shape[0]}. "
+    "Autoencoders need the full dataset to learn general features."
+)
+assert X_flat.shape == (60000, 784), "Flattened tensor should be (60000, 784)"
+assert tracker is not None, "ExperimentTracker should be initialised"
+assert exp_name is not None, "Experiment should be created"
+# INTERPRETATION: We use all 60K images because autoencoders are
+# unsupervised — every image teaches the encoder about clothing structure.
+# Sub-sampling to 6K would be like learning to draw from only 6K examples
+# instead of 60K. The ExperimentTracker will log every training run so we
+# can compare variants systematically, not by eyeballing print statements.
+print("\n--- Checkpoint 1 passed --- data loaded and engines initialised\n")
 
 
-def mse_loss(pred: np.ndarray, target: np.ndarray) -> float:
-    """Mean squared error: (1/n) * sum((pred - target)^2)."""
-    return float(np.mean((pred - target) ** 2))
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2 — Vanilla Autoencoder
+# ════════════════════════════════════════════════════════════════════════
+# encoder: 784 -> 256 -> 64 -> 16  |  decoder: 16 -> 64 -> 256 -> 784
+# Loss: MSE between reconstruction and original.
+class VanillaAE(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super().__init__()
+        # TODO: Build self.encoder as nn.Sequential:
+        #   Linear(input_dim -> 256) -> ReLU -> Linear(256 -> 64) -> ReLU -> Linear(64 -> latent_dim)
+        # Hint: nn.Sequential(nn.Linear(...), nn.ReLU(), ...)
+        self.encoder = ____
+
+        # TODO: Build self.decoder as nn.Sequential:
+        #   Linear(latent_dim -> 64) -> ReLU -> Linear(64 -> 256) -> ReLU -> Linear(256 -> input_dim) -> Sigmoid
+        # Hint: mirror the encoder, add nn.Sigmoid() at end (outputs in [0,1])
+        self.decoder = ____
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        z = self.encoder(x)
+        return self.decoder(z), z
 
 
-def he_init(fan_in: int, fan_out: int) -> np.ndarray:
-    """He (Kaiming) initialisation for ReLU layers: N(0, sqrt(2/fan_in))."""
-    return rng.normal(0, np.sqrt(2.0 / fan_in), (fan_in, fan_out))
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3 — Denoising Autoencoder (DAE)
+# ════════════════════════════════════════════════════════════════════════
+# Identical architecture, but during training we corrupt the INPUT with
+# Gaussian noise and ask the decoder to reconstruct the CLEAN original.
+class DenoisingAE(VanillaAE):
+    def add_noise(self, x: torch.Tensor, sigma: float = 0.3) -> torch.Tensor:
+        # TODO: Add Gaussian noise scaled by sigma and clamp to [0, 1]
+        # Hint: torch.clamp(x + sigma * torch.randn_like(x), 0.0, 1.0)
+        return ____
 
 
-def xavier_init(fan_in: int, fan_out: int) -> np.ndarray:
-    """Xavier (Glorot) initialisation for sigmoid/linear layers."""
-    limit = np.sqrt(6.0 / (fan_in + fan_out))
-    return rng.uniform(-limit, limit, (fan_in, fan_out))
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4 — Variational Autoencoder (VAE)
+# ════════════════════════════════════════════════════════════════════════
+# The encoder outputs two vectors: mu and log_var. The reparameterisation
+# trick: z = mu + sigma * epsilon, so gradients flow through mu/sigma.
+# Loss = reconstruction_loss + KL(q(z|x) || N(0, I))
+class VAE(nn.Module):
+    def __init__(self, input_dim: int, latent_dim: int):
+        super().__init__()
+        # Shared encoder backbone (outputs 64-dim hidden)
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 64),
+            nn.ReLU(),
+        )
+        # TODO: Define fc_mu and fc_logvar as Linear(64 -> latent_dim)
+        # Hint: nn.Linear(64, latent_dim)
+        self.fc_mu = ____
+        self.fc_logvar = ____
+
+        # TODO: Build self.decoder as nn.Sequential:
+        #   Linear(latent_dim -> 64) -> ReLU -> Linear(64 -> 256) -> ReLU -> Linear(256 -> input_dim) -> Sigmoid
+        # Hint: same structure as VanillaAE decoder
+        self.decoder = ____
+
+    def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    def reparameterise(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        # TODO: Implement reparameterisation: z = mu + exp(0.5 * logvar) * epsilon
+        # Hint: std = torch.exp(0.5 * logvar); eps = torch.randn_like(std); return mu + eps * std
+        std = ____
+        eps = ____
+        return ____
+
+    def forward(self, x: torch.Tensor):
+        mu, logvar = self.encode(x)
+        z = self.reparameterise(mu, logvar)
+        return self.decoder(z), mu, logvar
+
+    def sample(self, n: int) -> torch.Tensor:
+        # TODO: Sample n latent vectors from N(0,I) and decode them
+        # Hint: z = torch.randn(n, self.fc_mu.out_features, device=...)
+        z = ____
+        return self.decoder(z)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Vanilla (undercomplete) autoencoder
-# ══════════════════════════════════════════════════════════════════════
-# Architecture: encoder 64 -> 32 -> 8 (latent), decoder 8 -> 32 -> 64
-# The bottleneck forces compression — must learn the most important features.
-
-# TODO: Implement the VanillaAutoencoder class.
-#   - __init__: initialise encoder (W_enc1, W_enc2) and decoder (W_dec1, W_dec2) weights
-#     using he_init/xavier_init. Add matching bias vectors.
-#   - encode(x): two ReLU layers: 64->32->8, return (z, h1_pre, h1, z_pre)
-#   - decode(z): two layers 8->32->64, ReLU then sigmoid, return (x_hat, h3_pre, h3)
-#   - forward(x): call encode then decode, return (x_hat, z, cache dict)
-#   - backward(cache, lr): backprop MSE loss through all layers, update all weights in-place
-#   - get_latent(x): return only z from encode
+def vae_loss(
+    x: torch.Tensor, x_hat: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor
+) -> torch.Tensor:
+    # TODO: Compute VAE loss = reconstruction MSE + 0.1 * KL divergence
+    # Hint: recon = F.mse_loss(x_hat, x, reduction="sum") / x.size(0)
+    #        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.size(0)
+    recon = ____
+    kl = ____
+    return recon + 0.1 * kl
 
 
-class VanillaAutoencoder:
-    """2-layer encoder + 2-layer decoder trained with backpropagation.
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5 — Convolutional Autoencoder
+# ════════════════════════════════════════════════════════════════════════
+# For image data, conv layers preserve spatial locality better than flat
+# MLPs. Encoder: Conv2d -> Conv2d -> Flatten -> Linear.
+# Decoder: Linear -> Unflatten -> ConvTranspose2d -> ConvTranspose2d.
+class ConvAE(nn.Module):
+    def __init__(self, latent_dim: int = 16):
+        super().__init__()
+        # TODO: Build self.encoder as nn.Sequential:
+        #   Conv2d(1->16, k=3, stride=2, padding=1) -> ReLU ->
+        #   Conv2d(16->32, k=3, stride=2, padding=1) -> ReLU ->
+        #   Flatten -> Linear(32*7*7 -> latent_dim)
+        # Hint: nn.Conv2d(in_ch, out_ch, kernel_size, stride, padding)
+        self.encoder = ____
 
-    Forward pass:
-        h1 = relu(x @ W_enc1 + b_enc1)          # 64 -> 32
-        z  = relu(h1 @ W_enc2 + b_enc2)          # 32 -> 8 (latent)
-        h3 = relu(z @ W_dec1 + b_dec1)            # 8 -> 32
-        x_hat = sigmoid(h3 @ W_dec2 + b_dec2)     # 32 -> 64
-    Loss: MSE(x, x_hat)
-    """
+        # TODO: Build self.decoder as nn.Sequential:
+        #   Linear(latent_dim -> 32*7*7) -> ReLU ->
+        #   Unflatten(1, (32, 7, 7)) ->
+        #   ConvTranspose2d(32->16, k=3, stride=2, padding=1, output_padding=1) -> ReLU ->
+        #   ConvTranspose2d(16->1, k=3, stride=2, padding=1, output_padding=1) -> Sigmoid
+        # Hint: nn.ConvTranspose2d(..., output_padding=1) to restore exact spatial dims
+        self.decoder = ____
 
-    def __init__(self, input_dim: int = 64, hidden_dim: int = 32, latent_dim: int = 8):
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.latent_dim = latent_dim
-
-        # TODO: Initialise encoder weights
-        self.W_enc1 = ____  # Hint: he_init(input_dim, hidden_dim)
-        self.b_enc1 = ____  # Hint: np.zeros(hidden_dim)
-        self.W_enc2 = ____  # Hint: he_init(hidden_dim, latent_dim)
-        self.b_enc2 = ____  # Hint: np.zeros(latent_dim)
-
-        # TODO: Initialise decoder weights
-        self.W_dec1 = ____  # Hint: he_init(latent_dim, hidden_dim)
-        self.b_dec1 = ____  # Hint: np.zeros(hidden_dim)
-        self.W_dec2 = ____  # Hint: xavier_init(hidden_dim, input_dim)
-        self.b_dec2 = ____  # Hint: np.zeros(input_dim)
-
-    def encode(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Encode input to latent space. Returns (z, h1_pre, h1, z_pre)."""
-        # TODO: Two-layer encoder with ReLU activations
-        h1_pre = ____  # Hint: x @ self.W_enc1 + self.b_enc1
-        h1 = ____  # Hint: relu(h1_pre)
-        z_pre = ____  # Hint: h1 @ self.W_enc2 + self.b_enc2
-        z = ____  # Hint: relu(z_pre)
-        return z, h1_pre, h1, z_pre
-
-    def decode(self, z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Decode latent vector to reconstruction. Returns (x_hat, h3_pre, h3)."""
-        # TODO: Two-layer decoder — ReLU then sigmoid
-        h3_pre = ____  # Hint: z @ self.W_dec1 + self.b_dec1
-        h3 = ____  # Hint: relu(h3_pre)
-        x_hat_pre = ____  # Hint: h3 @ self.W_dec2 + self.b_dec2
-        x_hat = ____  # Hint: sigmoid(x_hat_pre)
-        return x_hat, h3_pre, h3
-
-    def forward(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, dict]:
-        """Full forward pass. Returns (x_hat, z, cache)."""
-        z, h1_pre, h1, z_pre = self.encode(x)
-        x_hat, h3_pre, h3 = self.decode(z)
-        cache = {
-            "x": x, "h1_pre": h1_pre, "h1": h1,
-            "z_pre": z_pre, "z": z,
-            "h3_pre": h3_pre, "h3": h3,
-            "x_hat": x_hat,
-        }
-        return x_hat, z, cache
-
-    def backward(self, cache: dict, lr: float = 0.001) -> float:
-        """Backpropagation through the full autoencoder. Returns loss."""
-        x = cache["x"]
-        x_hat = cache["x_hat"]
-        h3 = cache["h3"]
-        h3_pre = cache["h3_pre"]
-        z = cache["z"]
-        z_pre = cache["z_pre"]
-        h1 = cache["h1"]
-        h1_pre = cache["h1_pre"]
-        batch_size = x.shape[0]
-
-        loss = mse_loss(x_hat, x)
-
-        # TODO: Compute gradient of MSE w.r.t. x_hat, then through sigmoid
-        # d_loss/d_x_hat = 2/n * (x_hat - x), then multiply by sigmoid derivative
-        d_x_hat = ____  # Hint: (2.0 / batch_size) * (x_hat - x)
-        d_x_hat_pre = ____  # Hint: d_x_hat * x_hat * (1 - x_hat)
-
-        # TODO: Decoder layer 2 gradients
-        d_W_dec2 = ____  # Hint: h3.T @ d_x_hat_pre
-        d_b_dec2 = ____  # Hint: d_x_hat_pre.sum(axis=0)
-        d_h3 = ____  # Hint: d_x_hat_pre @ self.W_dec2.T
-
-        # TODO: Decoder layer 1 gradients (through ReLU)
-        d_h3_pre = ____  # Hint: d_h3 * relu_grad(h3_pre)
-        d_W_dec1 = ____  # Hint: z.T @ d_h3_pre
-        d_b_dec1 = ____  # Hint: d_h3_pre.sum(axis=0)
-        d_z = ____  # Hint: d_h3_pre @ self.W_dec1.T
-
-        # TODO: Encoder layer 2 gradients (through ReLU)
-        d_z_pre = ____  # Hint: d_z * relu_grad(z_pre)
-        d_W_enc2 = ____  # Hint: h1.T @ d_z_pre
-        d_b_enc2 = ____  # Hint: d_z_pre.sum(axis=0)
-        d_h1 = ____  # Hint: d_z_pre @ self.W_enc2.T
-
-        # TODO: Encoder layer 1 gradients (through ReLU)
-        d_h1_pre = ____  # Hint: d_h1 * relu_grad(h1_pre)
-        d_W_enc1 = ____  # Hint: x.T @ d_h1_pre
-        d_b_enc1 = ____  # Hint: d_h1_pre.sum(axis=0)
-
-        # TODO: Gradient descent updates for all parameters
-        self.W_dec2 -= ____  # Hint: lr * d_W_dec2
-        self.b_dec2 -= ____  # Hint: lr * d_b_dec2
-        self.W_dec1 -= ____  # Hint: lr * d_W_dec1
-        self.b_dec1 -= ____  # Hint: lr * d_b_dec1
-        self.W_enc2 -= ____  # Hint: lr * d_W_enc2
-        self.b_enc2 -= ____  # Hint: lr * d_b_enc2
-        self.W_enc1 -= ____  # Hint: lr * d_W_enc1
-        self.b_enc1 -= ____  # Hint: lr * d_b_enc1
-
-        return loss
-
-    def get_latent(self, x: np.ndarray) -> np.ndarray:
-        """Encode input and return only the latent vector."""
-        z, _, _, _ = self.encode(x)
-        return z
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        z = self.encoder(x)
+        return self.decoder(z), z
 
 
-def train_autoencoder(
-    model: VanillaAutoencoder,
-    X: np.ndarray,
-    epochs: int = 50,
-    batch_size: int = 64,
-    lr: float = 0.001,
-    label: str = "Vanilla",
+# ════════════════════════════════════════════════════════════════════════
+# Training loops with ExperimentTracker integration
+# ════════════════════════════════════════════════════════════════════════
+
+
+async def train_ae_async(
+    model: nn.Module,
+    name: str,
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
 ) -> list[float]:
-    """Mini-batch training loop for autoencoder variants."""
-    losses = []
-    n = len(X)
-    for epoch in range(epochs):
-        perm = rng.permutation(n)
-        X_shuffled = X[perm]
+    """Train a standard autoencoder (Vanilla or Conv) and log to tracker.
 
-        epoch_loss = 0.0
-        n_batches = 0
-        for start in range(0, n, batch_size):
-            batch = X_shuffled[start : start + batch_size]
-            x_hat, z, cache = model.forward(batch)
-            batch_loss = model.backward(cache, lr=lr)
-            epoch_loss += batch_loss
-            n_batches += 1
+    Uses the modern ``tracker.run(...)`` async context manager:
+      * bulk param logging via ``ctx.log_params({...})``
+      * per-epoch metric logging via ``ctx.log_metric(key, val, step=epoch)``
+      * automatic COMPLETED/FAILED state on context exit — no manual
+        ``end_run`` plumbing, no ``run_id`` threaded through every call.
+    """
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
 
-        avg_loss = epoch_loss / n_batches
-        losses.append(avg_loss)
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"  [{label}] Epoch {epoch + 1:3d}/{epochs} — loss: {avg_loss:.6f}")
+    # TODO: Open the tracker context manager and log params in bulk
+    # Hint: async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
+    #           await ctx.log_params({"model_type": name, "latent_dim": str(LATENT_DIM), ...})
+    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
+        await ctx.log_params(
+            {
+                "model_type": name,
+                "latent_dim": str(LATENT_DIM),
+                "epochs": str(epochs),
+                "lr": str(lr),
+                "dataset_size": str(len(loader.dataset)),
+                "batch_size": str(loader.batch_size),
+            }
+        )
+
+        for epoch in range(epochs):
+            batch_losses = []
+            for (xb,) in loader:
+                opt.zero_grad()
+                x_hat, _ = model(xb)
+                # TODO: Compute MSE reconstruction loss and call loss.backward()
+                # Hint: F.mse_loss(x_hat, xb)
+                loss = ____
+                loss.backward()
+                opt.step()
+                batch_losses.append(loss.item())
+            epoch_loss = float(np.mean(batch_losses))
+            losses.append(epoch_loss)
+            # TODO: Log the epoch loss metric via the ctx object
+            # Hint: await ctx.log_metric("loss", epoch_loss, step=epoch + 1)
+            await ctx.log_metric("loss", epoch_loss, step=epoch + 1)
+            print(f"  [{name}] epoch {epoch + 1}/{epochs}  loss={epoch_loss:.4f}")
+
+        await ctx.log_metric("final_loss", losses[-1])
 
     return losses
 
 
-print(f"\n=== Vanilla Autoencoder ===")
-print(f"Architecture: 64 -> 32 -> [8] -> 32 -> 64")
-print(f"Bottleneck forces compression: 64-dim input -> 8-dim latent (8:1 ratio)")
-print(f"Training with MSE loss and mini-batch SGD...\n")
-
-vanilla_ae = VanillaAutoencoder(input_dim=64, hidden_dim=32, latent_dim=8)
-vanilla_losses = train_autoencoder(vanilla_ae, X_train, epochs=50, lr=0.005, label="Vanilla")
-
-vanilla_recon, _, _ = vanilla_ae.forward(X_test)
-vanilla_mse = mse_loss(vanilla_recon, X_test)
-print(f"\nVanilla AE — Test reconstruction MSE: {vanilla_mse:.6f}")
+def train_ae(
+    model: nn.Module,
+    name: str,
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
+) -> list[float]:
+    """Sync wrapper — one asyncio.run per training call."""
+    return asyncio.run(train_ae_async(model, name, loader, epochs, lr))
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Denoising autoencoder (DAE)
-# ══════════════════════════════════════════════════════════════════════
-# THEORY: A denoising autoencoder receives CORRUPTED input x_noisy
-# but is trained to reconstruct the CLEAN input x. This forces robust
-# feature learning — the model cannot memorise pixel values.
+async def train_dae_async(
+    model: "DenoisingAE",
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
+    sigma: float = 0.3,
+) -> list[float]:
+    """Train a denoising autoencoder and log to tracker."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
 
+    async with tracker.run(experiment_name=exp_name, run_name="denoising_ae") as ctx:
+        await ctx.log_params(
+            {
+                "model_type": "DenoisingAE",
+                "latent_dim": str(LATENT_DIM),
+                "epochs": str(epochs),
+                "lr": str(lr),
+                "noise_sigma": str(sigma),
+                "dataset_size": str(len(loader.dataset)),
+            }
+        )
 
-class DenoisingAutoencoder(VanillaAutoencoder):
-    """Extends vanilla autoencoder with input corruption."""
+        for epoch in range(epochs):
+            batch_losses = []
+            for (xb,) in loader:
+                # TODO: Corrupt the input with noise using model.add_noise, then reconstruct
+                # Hint: noisy = model.add_noise(xb, sigma=sigma); x_hat, _ = model(noisy)
+                noisy = ____
+                opt.zero_grad()
+                x_hat, _ = model(noisy)
+                # Reconstruct CLEAN target (xb), not the noisy version
+                loss = F.mse_loss(x_hat, xb)
+                loss.backward()
+                opt.step()
+                batch_losses.append(loss.item())
+            epoch_loss = float(np.mean(batch_losses))
+            losses.append(epoch_loss)
+            await ctx.log_metric("loss", epoch_loss, step=epoch + 1)
+            print(f"  [DAE] epoch {epoch + 1}/{epochs}  loss={epoch_loss:.4f}")
 
-    def __init__(
-        self,
-        input_dim: int = 64,
-        hidden_dim: int = 32,
-        latent_dim: int = 8,
-        noise_std: float = 0.3,
-    ):
-        super().__init__(input_dim, hidden_dim, latent_dim)
-        self.noise_std = noise_std
+        await ctx.log_metric("final_loss", losses[-1])
 
-    def corrupt(self, x: np.ndarray) -> np.ndarray:
-        """Add Gaussian noise to input and clip to valid range."""
-        # TODO: Add Gaussian noise with self.noise_std and clip to [0, 1]
-        noise = ____  # Hint: rng.normal(0, self.noise_std, x.shape)
-        return ____  # Hint: np.clip(x + noise, 0, 1)
-
-    def forward_denoising(
-        self, x_clean: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, dict]:
-        """Forward pass with corruption: encode noisy, compare to clean."""
-        # TODO: Corrupt x_clean, then call forward with noisy input
-        x_noisy = ____  # Hint: self.corrupt(x_clean)
-        x_hat, z, cache = self.forward(x_noisy)
-        cache["x_clean"] = x_clean
-        cache["x_noisy"] = x_noisy
-        return x_hat, z, cache
-
-    def backward_denoising(self, cache: dict, lr: float = 0.001) -> float:
-        """Backprop comparing reconstruction to CLEAN input (not noisy)."""
-        x_clean = cache["x_clean"]
-        x_hat = cache["x_hat"]
-        h3 = cache["h3"]
-        h3_pre = cache["h3_pre"]
-        z = cache["z"]
-        z_pre = cache["z_pre"]
-        h1 = cache["h1"]
-        h1_pre = cache["h1_pre"]
-        x_input = cache["x"]  # noisy input used for encoding
-        batch_size = x_clean.shape[0]
-
-        loss = mse_loss(x_hat, x_clean)
-
-        # TODO: Backprop vs clean target (same chain as vanilla, different target)
-        d_x_hat = ____  # Hint: (2.0 / batch_size) * (x_hat - x_clean)
-        d_x_hat_pre = d_x_hat * x_hat * (1 - x_hat)
-
-        d_W_dec2 = h3.T @ d_x_hat_pre
-        d_b_dec2 = d_x_hat_pre.sum(axis=0)
-        d_h3 = d_x_hat_pre @ self.W_dec2.T
-
-        d_h3_pre = d_h3 * relu_grad(h3_pre)
-        d_W_dec1 = z.T @ d_h3_pre
-        d_b_dec1 = d_h3_pre.sum(axis=0)
-        d_z = d_h3_pre @ self.W_dec1.T
-
-        d_z_pre = d_z * relu_grad(z_pre)
-        d_W_enc2 = h1.T @ d_z_pre
-        d_b_enc2 = d_z_pre.sum(axis=0)
-        d_h1 = d_z_pre @ self.W_enc2.T
-
-        d_h1_pre = d_h1 * relu_grad(h1_pre)
-        d_W_enc1 = x_input.T @ d_h1_pre
-        d_b_enc1 = d_h1_pre.sum(axis=0)
-
-        self.W_dec2 -= lr * d_W_dec2
-        self.b_dec2 -= lr * d_b_dec2
-        self.W_dec1 -= lr * d_W_dec1
-        self.b_dec1 -= lr * d_b_dec1
-        self.W_enc2 -= lr * d_W_enc2
-        self.b_enc2 -= lr * d_b_enc2
-        self.W_enc1 -= lr * d_W_enc1
-        self.b_enc1 -= lr * d_b_enc1
-
-        return loss
+    return losses
 
 
 def train_dae(
-    model: DenoisingAutoencoder,
-    X: np.ndarray,
-    epochs: int = 50,
-    batch_size: int = 64,
-    lr: float = 0.001,
+    model: "DenoisingAE",
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
+    sigma: float = 0.3,
 ) -> list[float]:
-    """Train denoising autoencoder with corrupted inputs."""
-    losses = []
-    n = len(X)
-    for epoch in range(epochs):
-        perm = rng.permutation(n)
-        X_shuffled = X[perm]
+    return asyncio.run(train_dae_async(model, loader, epochs, lr, sigma))
 
-        epoch_loss = 0.0
-        n_batches = 0
-        for start in range(0, n, batch_size):
-            batch = X_shuffled[start : start + batch_size]
-            x_hat, z, cache = model.forward_denoising(batch)
-            batch_loss = model.backward_denoising(cache, lr=lr)
-            epoch_loss += batch_loss
-            n_batches += 1
 
-        avg_loss = epoch_loss / n_batches
-        losses.append(avg_loss)
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"  [DAE] Epoch {epoch + 1:3d}/{epochs} — loss: {avg_loss:.6f}")
+async def train_vae_async(
+    model: VAE,
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
+) -> list[float]:
+    """Train a variational autoencoder and log to tracker."""
+    model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    losses: list[float] = []
+    recon_losses: list[float] = []
+    kl_losses: list[float] = []
+
+    async with tracker.run(experiment_name=exp_name, run_name="variational_ae") as ctx:
+        await ctx.log_params(
+            {
+                "model_type": "VAE",
+                "latent_dim": str(LATENT_DIM),
+                "epochs": str(epochs),
+                "lr": str(lr),
+                "kl_weight": "0.1",
+                "dataset_size": str(len(loader.dataset)),
+            }
+        )
+
+        for epoch in range(epochs):
+            batch_losses = []
+            batch_recon = []
+            batch_kl = []
+            for (xb,) in loader:
+                opt.zero_grad()
+                # TODO: Forward pass returns (x_hat, mu, logvar), compute vae_loss
+                # Hint: x_hat, mu, logvar = model(xb); loss = vae_loss(xb, x_hat, mu, logvar)
+                x_hat, mu, logvar = ____
+                loss = ____
+                # Track components separately for analysis
+                recon = F.mse_loss(x_hat, xb, reduction="sum") / xb.size(0)
+                kl = (
+                    -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / xb.size(0)
+                )
+                loss.backward()
+                opt.step()
+                batch_losses.append(loss.item())
+                batch_recon.append(recon.item())
+                batch_kl.append(kl.item())
+            epoch_loss = float(np.mean(batch_losses))
+            epoch_recon = float(np.mean(batch_recon))
+            epoch_kl = float(np.mean(batch_kl))
+            losses.append(epoch_loss)
+            recon_losses.append(epoch_recon)
+            kl_losses.append(epoch_kl)
+            await ctx.log_metrics(
+                {
+                    "loss": epoch_loss,
+                    "recon_loss": epoch_recon,
+                    "kl_loss": epoch_kl,
+                },
+                step=epoch + 1,
+            )
+            print(
+                f"  [VAE] epoch {epoch + 1}/{epochs}  "
+                f"loss={epoch_loss:.4f}  recon={epoch_recon:.4f}  kl={epoch_kl:.4f}"
+            )
+
+        await ctx.log_metrics(
+            {
+                "final_loss": losses[-1],
+                "final_recon_loss": recon_losses[-1],
+                "final_kl_loss": kl_losses[-1],
+            }
+        )
 
     return losses
-
-
-print(f"\n=== Denoising Autoencoder (DAE) ===")
-print(f"Same architecture: 64 -> 32 -> [8] -> 32 -> 64")
-print(f"Input corruption: Gaussian noise (std=0.3)")
-print(f"Key insight: train on noisy input, compare against clean target\n")
-
-dae = DenoisingAutoencoder(input_dim=64, hidden_dim=32, latent_dim=8, noise_std=0.3)
-dae_losses = train_dae(dae, X_train, epochs=50, lr=0.005)
-
-dae_recon, _, _ = dae.forward(X_test)
-dae_mse = mse_loss(dae_recon, X_test)
-
-X_test_noisy = dae.corrupt(X_test)
-dae_denoised, _, _ = dae.forward(X_test_noisy)
-dae_denoise_mse = mse_loss(dae_denoised, X_test)
-noisy_mse = mse_loss(X_test_noisy, X_test)
-
-print(f"\nDAE — Clean input reconstruction MSE: {dae_mse:.6f}")
-print(f"DAE — Noisy input -> clean reconstruction MSE: {dae_denoise_mse:.6f}")
-print(f"DAE — Raw noisy vs clean MSE (no model): {noisy_mse:.6f}")
-print(f"DAE reduces noise by {(1 - dae_denoise_mse / noisy_mse) * 100:.1f}%")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Variational Autoencoder (VAE)
-# ══════════════════════════════════════════════════════════════════════
-# THEORY — ELBO:
-#   L = E_q[log p(x|z)] - KL(q(z|x) || p(z))
-#   KL divergence for N(mu, sigma^2) vs N(0,I):
-#     KL = -0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-#
-#   Reparameterisation trick: z = mu + sigma * epsilon, epsilon ~ N(0, 1)
-#   This lets gradients flow through the stochastic sampling step.
-
-# TODO: Implement the VAE class.
-#   - __init__: like VanillaAutoencoder but encoder has TWO heads: W_mu, W_logvar
-#   - encode(x): first layer 64->32 with ReLU, then two linear heads for mu and log_var
-#   - reparameterise(mu, log_var): z = mu + exp(0.5*log_var) * epsilon; save epsilon
-#   - decode(z): same 8->32->64 as vanilla
-#   - forward(x): encode -> reparameterise -> decode, return (x_hat, mu, log_var, z, cache)
-#   - loss(x, x_hat, mu, log_var): MSE + beta * KL, return (total, recon, kl)
-#   - backward(cache, lr, beta): gradient through ELBO (decoder + encoder + KL terms)
-#   - generate(n_samples): sample z ~ N(0,I) and decode
-
-
-class VAE:
-    """Variational Autoencoder with reparameterisation trick.
-
-    Encoder outputs mu and log_var (log variance) instead of a single z.
-    Architecture:
-        Encoder:  64 -> 32 -> mu(8), log_var(8)
-        Latent:   z = mu + exp(0.5 * log_var) * epsilon
-        Decoder:  8 -> 32 -> 64
-    """
-
-    def __init__(self, input_dim: int = 64, hidden_dim: int = 32, latent_dim: int = 8):
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.latent_dim = latent_dim
-
-        # Encoder: shared first layer, then split into mu and log_var
-        # TODO: Initialise W_enc1, b_enc1, W_mu, b_mu, W_logvar, b_logvar
-        self.W_enc1 = ____  # Hint: he_init(input_dim, hidden_dim)
-        self.b_enc1 = ____  # Hint: np.zeros(hidden_dim)
-        self.W_mu = ____  # Hint: xavier_init(hidden_dim, latent_dim)
-        self.b_mu = ____  # Hint: np.zeros(latent_dim)
-        self.W_logvar = ____  # Hint: xavier_init(hidden_dim, latent_dim)
-        self.b_logvar = ____  # Hint: np.zeros(latent_dim)
-
-        # Decoder
-        # TODO: Initialise W_dec1, b_dec1, W_dec2, b_dec2
-        self.W_dec1 = ____  # Hint: he_init(latent_dim, hidden_dim)
-        self.b_dec1 = ____  # Hint: np.zeros(hidden_dim)
-        self.W_dec2 = ____  # Hint: xavier_init(hidden_dim, input_dim)
-        self.b_dec2 = ____  # Hint: np.zeros(input_dim)
-
-    def encode(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Encode to mu and log_var. Returns (mu, log_var, h1_pre, h1)."""
-        # TODO: First layer with ReLU, then linear mu and log_var heads
-        h1_pre = ____  # Hint: x @ self.W_enc1 + self.b_enc1
-        h1 = ____  # Hint: relu(h1_pre)
-        mu = ____  # Hint: h1 @ self.W_mu + self.b_mu
-        log_var = ____  # Hint: h1 @ self.W_logvar + self.b_logvar
-        return mu, log_var, h1_pre, h1
-
-    def reparameterise(self, mu: np.ndarray, log_var: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Reparameterisation trick: z = mu + sigma * epsilon.
-
-        Returns (z, epsilon) — epsilon is saved for backprop.
-        """
-        # TODO: sigma = exp(0.5 * log_var), sample epsilon ~ N(0,1), compute z
-        sigma = ____  # Hint: np.exp(0.5 * log_var)
-        epsilon = ____  # Hint: rng.standard_normal(mu.shape)
-        z = ____  # Hint: mu + sigma * epsilon
-        return z, epsilon
-
-    def decode(self, z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Decode latent vector. Returns (x_hat, h3_pre, h3)."""
-        h3_pre = z @ self.W_dec1 + self.b_dec1
-        h3 = relu(h3_pre)
-        x_hat_pre = h3 @ self.W_dec2 + self.b_dec2
-        x_hat = sigmoid(x_hat_pre)
-        return x_hat, h3_pre, h3
-
-    def forward(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
-        """Full VAE forward pass. Returns (x_hat, mu, log_var, z, cache)."""
-        mu, log_var, h1_pre, h1 = self.encode(x)
-        z, epsilon = self.reparameterise(mu, log_var)
-        x_hat, h3_pre, h3 = self.decode(z)
-        cache = {
-            "x": x, "h1_pre": h1_pre, "h1": h1,
-            "mu": mu, "log_var": log_var, "epsilon": epsilon,
-            "z": z, "h3_pre": h3_pre, "h3": h3,
-            "x_hat": x_hat,
-        }
-        return x_hat, mu, log_var, z, cache
-
-    def loss(self, x: np.ndarray, x_hat: np.ndarray, mu: np.ndarray, log_var: np.ndarray) -> tuple[float, float, float]:
-        """Compute VAE loss = reconstruction + KL divergence.
-
-        Returns: (total_loss, recon_loss, kl_loss)
-        """
-        # TODO: reconstruction_loss = MSE(x_hat, x)
-        recon_loss = ____  # Hint: float(np.mean((x_hat - x) ** 2))
-
-        # TODO: KL divergence = -0.5 * sum(1 + log_var - mu^2 - exp(log_var)), averaged over batch
-        kl_per_sample = ____  # Hint: -0.5 * np.sum(1 + log_var - mu ** 2 - np.exp(log_var), axis=1)
-        kl_loss = ____  # Hint: float(np.mean(kl_per_sample))
-
-        beta = 0.0005
-        total = recon_loss + beta * kl_loss
-        return total, recon_loss, kl_loss
-
-    def backward(self, cache: dict, lr: float = 0.001, beta: float = 0.0005) -> tuple[float, float, float]:
-        """Backprop through VAE including KL divergence gradient."""
-        x = cache["x"]
-        x_hat = cache["x_hat"]
-        h3 = cache["h3"]
-        h3_pre = cache["h3_pre"]
-        z = cache["z"]
-        h1 = cache["h1"]
-        h1_pre = cache["h1_pre"]
-        mu = cache["mu"]
-        log_var = cache["log_var"]
-        epsilon = cache["epsilon"]
-        batch_size = x.shape[0]
-
-        total_loss, recon_loss, kl_loss = self.loss(x, x_hat, mu, log_var)
-
-        # Decoder gradients (reconstruction loss)
-        d_x_hat = (2.0 / batch_size) * (x_hat - x)
-        d_x_hat_pre = d_x_hat * x_hat * (1 - x_hat)
-
-        d_W_dec2 = h3.T @ d_x_hat_pre
-        d_b_dec2 = d_x_hat_pre.sum(axis=0)
-        d_h3 = d_x_hat_pre @ self.W_dec2.T
-
-        d_h3_pre = d_h3 * relu_grad(h3_pre)
-        d_W_dec1 = z.T @ d_h3_pre
-        d_b_dec1 = d_h3_pre.sum(axis=0)
-        d_z = d_h3_pre @ self.W_dec1.T
-
-        # Reparameterisation gradients
-        sigma = np.exp(0.5 * log_var)
-
-        # KL gradients (analytical)
-        d_mu_kl = mu / batch_size
-        d_logvar_kl = 0.5 * (np.exp(log_var) - 1) / batch_size
-
-        # Reconstruction gradients through reparameterisation
-        d_mu_recon = d_z
-        d_logvar_recon = d_z * epsilon * 0.5 * sigma
-
-        # TODO: Combine reconstruction and KL gradients for mu and log_var
-        d_mu = ____  # Hint: d_mu_recon + beta * d_mu_kl
-        d_log_var = ____  # Hint: d_logvar_recon + beta * d_logvar_kl
-
-        # Encoder gradients
-        d_W_mu = h1.T @ d_mu
-        d_b_mu = d_mu.sum(axis=0)
-        d_h1_from_mu = d_mu @ self.W_mu.T
-
-        d_W_logvar = h1.T @ d_log_var
-        d_b_logvar = d_log_var.sum(axis=0)
-        d_h1_from_logvar = d_log_var @ self.W_logvar.T
-
-        d_h1 = d_h1_from_mu + d_h1_from_logvar
-        d_h1_pre = d_h1 * relu_grad(h1_pre)
-        d_W_enc1 = x.T @ d_h1_pre
-        d_b_enc1 = d_h1_pre.sum(axis=0)
-
-        # Weight updates
-        self.W_dec2 -= lr * d_W_dec2
-        self.b_dec2 -= lr * d_b_dec2
-        self.W_dec1 -= lr * d_W_dec1
-        self.b_dec1 -= lr * d_b_dec1
-        self.W_mu -= lr * d_W_mu
-        self.b_mu -= lr * d_b_mu
-        self.W_logvar -= lr * d_W_logvar
-        self.b_logvar -= lr * d_b_logvar
-        self.W_enc1 -= lr * d_W_enc1
-        self.b_enc1 -= lr * d_b_enc1
-
-        return total_loss, recon_loss, kl_loss
-
-    def generate(self, n_samples: int = 10) -> np.ndarray:
-        """Generate new samples by sampling z ~ N(0, I) and decoding."""
-        # TODO: Sample from standard normal, then decode
-        z = ____  # Hint: rng.standard_normal((n_samples, self.latent_dim))
-        x_hat, _, _ = self.decode(z)
-        return x_hat
-
-    def get_latent(self, x: np.ndarray) -> np.ndarray:
-        """Encode input and return the mean of the latent distribution."""
-        mu, _, _, _ = self.encode(x)
-        return mu
 
 
 def train_vae(
     model: VAE,
-    X: np.ndarray,
-    epochs: int = 50,
-    batch_size: int = 64,
-    lr: float = 0.001,
-    beta: float = 0.0005,
-) -> tuple[list[float], list[float], list[float]]:
-    """Train VAE with ELBO loss. Returns (total_losses, recon_losses, kl_losses)."""
-    total_losses, recon_losses, kl_losses = [], [], []
-    n = len(X)
-    for epoch in range(epochs):
-        perm = rng.permutation(n)
-        X_shuffled = X[perm]
-
-        epoch_total, epoch_recon, epoch_kl = 0.0, 0.0, 0.0
-        n_batches = 0
-        for start in range(0, n, batch_size):
-            batch = X_shuffled[start : start + batch_size]
-            x_hat, mu, log_var, z, cache = model.forward(batch)
-            total, recon, kl = model.backward(cache, lr=lr, beta=beta)
-            epoch_total += total
-            epoch_recon += recon
-            epoch_kl += kl
-            n_batches += 1
-
-        avg_total = epoch_total / n_batches
-        avg_recon = epoch_recon / n_batches
-        avg_kl = epoch_kl / n_batches
-        total_losses.append(avg_total)
-        recon_losses.append(avg_recon)
-        kl_losses.append(avg_kl)
-
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(
-                f"  [VAE] Epoch {epoch + 1:3d}/{epochs} — "
-                f"total: {avg_total:.6f}, recon: {avg_recon:.6f}, KL: {avg_kl:.2f}"
-            )
-
-    return total_losses, recon_losses, kl_losses
+    loader: DataLoader,
+    epochs: int = EPOCHS,
+    lr: float = 1e-3,
+) -> list[float]:
+    return asyncio.run(train_vae_async(model, loader, epochs, lr))
 
 
-print(f"\n=== Variational Autoencoder (VAE) ===")
-print(f"Architecture: 64 -> 32 -> [mu(8), log_var(8)] -> z(8) -> 32 -> 64")
-print(f"ELBO = reconstruction_loss + beta * KL_divergence")
-print(f"Reparameterisation: z = mu + exp(0.5*log_var) * epsilon, epsilon ~ N(0,1)\n")
+# ── Train all four variants ───────────────────────────────────────────
+print("\n== Vanilla AE ==")
+vanilla_model = VanillaAE(INPUT_DIM, LATENT_DIM)
+vanilla_losses = train_ae(vanilla_model, "vanilla_ae", flat_loader, epochs=EPOCHS)
 
-vae = VAE(input_dim=64, hidden_dim=32, latent_dim=8)
-vae_total_losses, vae_recon_losses, vae_kl_losses = train_vae(
-    vae, X_train, epochs=80, lr=0.005, beta=0.0005,
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert len(vanilla_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
+assert vanilla_losses[-1] < vanilla_losses[0], "Loss should decrease during training"
+# INTERPRETATION: The vanilla autoencoder learns a compressed 16-dim
+# representation of 784-pixel images. The loss decreasing means the
+# decoder is getting better at reconstructing from only 16 numbers.
+# With 60K images, the encoder learns general clothing features (edges,
+# curves, textures) rather than memorising specific items.
+print("\n--- Checkpoint 2 passed --- vanilla AE trained\n")
+
+
+print("\n== Denoising AE ==")
+dae_model = DenoisingAE(INPUT_DIM, LATENT_DIM)
+dae_losses = train_dae(dae_model, flat_loader, epochs=EPOCHS)
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert len(dae_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
+assert dae_losses[-1] < dae_losses[0], "DAE loss should decrease"
+# INTERPRETATION: The DAE's loss will be higher than the vanilla AE's
+# because it has to reconstruct from noisy inputs. But its learned
+# features are MORE robust — the encoder cannot rely on exact pixel
+# values, so it learns structural features (shape, contour) instead.
+print("\n--- Checkpoint 3 passed --- denoising AE trained\n")
+
+
+print("\n== Variational AE ==")
+vae_model = VAE(INPUT_DIM, LATENT_DIM)
+vae_losses = train_vae(vae_model, flat_loader, epochs=EPOCHS)
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert len(vae_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
+assert vae_losses[-1] < vae_losses[0], "VAE loss should decrease"
+# INTERPRETATION: The VAE loss includes both reconstruction AND the KL
+# divergence term. The KL term pushes the latent distribution toward
+# N(0,I), which is what allows us to sample new images later. Higher
+# KL weight = more regular latent space but blurrier reconstructions.
+print("\n--- Checkpoint 4 passed --- VAE trained\n")
+
+
+print("\n== Convolutional AE ==")
+conv_model = ConvAE(LATENT_DIM)
+conv_losses = train_ae(conv_model, "conv_ae", img_loader, epochs=EPOCHS)
+
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert len(conv_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
+assert conv_losses[-1] < conv_losses[0], "ConvAE loss should decrease"
+# INTERPRETATION: The convolutional AE preserves spatial structure that
+# the flat MLPs destroy. Conv filters detect local patterns (edges,
+# textures) at each spatial location. This is why ConvAE typically
+# achieves the lowest reconstruction loss.
+print("\n--- Checkpoint 5 passed --- convolutional AE trained\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 6 — Sample new images from the VAE latent prior
+# ════════════════════════════════════════════════════════════════════════
+# The VAE's latent space is a smooth Gaussian — sample z ~ N(0,I) and
+# decode to generate new images that were never in the training set.
+vae_model.eval()
+with torch.no_grad():
+    # TODO: Sample 16 new images from the VAE by calling vae_model.sample(n=16)
+    # Hint: vae_model.sample(n=16).cpu().numpy().reshape(-1, 28, 28)
+    samples = ____
+print(
+    f"\nSampled {len(samples)} new images from VAE prior N(0, I). "
+    f"mean pixel intensity: {samples.mean():.3f}, "
+    f"range: [{samples.min():.3f}, {samples.max():.3f}]"
 )
 
-vae_recon, _, _, _, _ = vae.forward(X_test)
-vae_mse = mse_loss(vae_recon, X_test)
-print(f"\nVAE — Test reconstruction MSE: {vae_mse:.6f}")
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+assert samples.shape == (16, 28, 28), "Should sample 16 images of 28x28"
+assert 0.0 <= samples.min(), "Pixel values should be >= 0 (sigmoid output)"
+assert samples.max() <= 1.0, "Pixel values should be <= 1 (sigmoid output)"
+assert (
+    samples.mean() > 0.01
+), "Mean pixel should be > 0 — the VAE should generate visible content"
+# INTERPRETATION: These are BRAND NEW images that never existed in the
+# training data. The VAE learned the "distribution of clothing images"
+# and can now sample from it.
+print("\n--- Checkpoint 6 passed --- VAE generates new images\n")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Convolutional autoencoder (conceptual framework)
-# ══════════════════════════════════════════════════════════════════════
-# THEORY: For image data, conv layers capture spatial structure.
-# Architecture:
-#   Encoder: 8x8x1 -> conv(3x3, 4 filters) -> pool(2x2) -> flatten -> 8 (latent)
-#   Decoder: 8 (latent) -> reshape 4x4x4 -> upsample -> deconv -> 8x8x1
+# ════════════════════════════════════════════════════════════════════════
+# TASK 7 — Register the best model from each variant in the ModelRegistry
+# ════════════════════════════════════════════════════════════════════════
+# The ModelRegistry provides versioned model storage with metrics. In
+# production, this is how you track which model version is deployed.
+async def register_models():
+    """Register each trained model with its final loss in the registry."""
+    if not has_registry:
+        print("  ModelRegistry not available — skipping registration")
+        return {}
 
-print(f"\n=== Convolutional Autoencoder (ConvAE) ===")
-print(f"Architecture: 8x8 -> conv -> pool -> [8] -> upsample -> deconv -> 8x8")
-print(f"ConvAE exploits spatial locality — conv filters share weights across positions")
-print(f"This is parameter-efficient compared to fully-connected layers for images.")
-print(f"For 8x8 images: FC requires 64*32=2048 params; conv requires 4*(3*3+1)=40 params")
+    from kailash_ml.types import MetricSpec
 
-# The convolutional layers are provided as utilities — focus is on the architecture concept.
-# (Full implementation available in the solution for reference.)
+    model_versions = {}
 
+    variants = [
+        ("vanilla_ae", vanilla_model, vanilla_losses[-1]),
+        ("denoising_ae", dae_model, dae_losses[-1]),
+        ("variational_ae", vae_model, vae_losses[-1]),
+        ("conv_ae", conv_model, conv_losses[-1]),
+    ]
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Compare all variants
-# ══════════════════════════════════════════════════════════════════════
+    for name, model, final_loss in variants:
+        # TODO: Serialize model.state_dict() with pickle.dumps
+        # and register with registry.register_model(name, artifact, metrics)
+        # Hint: model_bytes = pickle.dumps(model.state_dict())
+        model_bytes = ____
+        version = await registry.register_model(
+            name=f"m5_{name}",
+            artifact=model_bytes,
+            metrics=[
+                MetricSpec(name="final_loss", value=final_loss),
+                MetricSpec(name="latent_dim", value=float(LATENT_DIM)),
+                MetricSpec(name="epochs", value=float(EPOCHS)),
+            ],
+        )
+        model_versions[name] = version
+        print(f"  Registered {name}: version={version.version}, loss={final_loss:.4f}")
 
-print(f"\n=== Reconstruction Quality Comparison ===")
-print(f"{'Variant':<25} {'Test MSE':>12}")
-print("-" * 40)
-print(f"{'Vanilla AE':<25} {vanilla_mse:>12.6f}")
-print(f"{'Denoising AE':<25} {dae_mse:>12.6f}")
-print(f"{'VAE':<25} {vae_mse:>12.6f}")
-
-print(f"\nNote: VAE typically has slightly higher MSE than vanilla AE because")
-print(f"it trades reconstruction accuracy for a regularised, continuous latent space.")
-print(f"The gain is generative capability — VAE can synthesise new images.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 7: Generate new samples from VAE
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== VAE Generation ===")
-# TODO: Generate 20 new samples from the VAE by sampling the latent space
-generated = ____  # Hint: vae.generate(n_samples=20)
-print(f"Generated {generated.shape[0]} samples, shape: {generated.shape}")
-print(f"Pixel range: [{generated.min():.3f}, {generated.max():.3f}]")
-print(f"This works because VAE regularises the latent space to ~N(0,I).")
-print(f"Vanilla and denoising AE cannot generate — their latent spaces are unconstrained.")
+    return model_versions
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 8: Visualise latent spaces
-# ══════════════════════════════════════════════════════════════════════
+model_versions = asyncio.run(register_models())
 
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+if has_registry:
+    assert len(model_versions) == 4, "Should register all 4 variants"
+    assert "vanilla_ae" in model_versions, "Vanilla AE should be registered"
+    assert "variational_ae" in model_versions, "VAE should be registered"
+# INTERPRETATION: The ModelRegistry gives you a single source of truth
+# for model artifacts. Instead of saving .pt files to random directories,
+# every model is versioned, tagged with metrics, and queryable.
+print("\n--- Checkpoint 7 passed --- models registered in ModelRegistry\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 8 — Hyperparameter comparison: latent dimensions 4, 8, 16, 32
+# ════════════════════════════════════════════════════════════════════════
+# How does the latent dimension affect reconstruction quality?
+LATENT_DIMS_TO_TRY = [4, 8, 16, 32]
+HP_EPOCHS = 8
+hp_results: dict[int, list[float]] = {}
+
+print("\n== Latent Dimension Comparison ==")
+for ldim in LATENT_DIMS_TO_TRY:
+    print(f"\n  Training with latent_dim={ldim}...")
+    # TODO: Create a VanillaAE with INPUT_DIM and ldim, move to device
+    # Hint: VanillaAE(INPUT_DIM, ldim).to(device)
+    hp_model = ____
+    opt = torch.optim.Adam(hp_model.parameters(), lr=1e-3)
+    losses: list[float] = []
+
+    run = asyncio.run(
+        tracker.start_run(
+            experiment_name=exp_name,
+            run_name=f"hp_sweep_latent_{ldim}",
+        )
+    )
+    run_id = run.id
+    asyncio.run(tracker.log_param(run_id, "model_type", "VanillaAE"))
+    asyncio.run(tracker.log_param(run_id, "latent_dim", str(ldim)))
+    asyncio.run(tracker.log_param(run_id, "epochs", str(HP_EPOCHS)))
+    asyncio.run(tracker.log_param(run_id, "sweep_type", "latent_dim"))
+
+    for epoch in range(HP_EPOCHS):
+        batch_losses = []
+        for (xb,) in flat_loader:
+            opt.zero_grad()
+            x_hat, _ = hp_model(xb)
+            loss = F.mse_loss(x_hat, xb)
+            loss.backward()
+            opt.step()
+            batch_losses.append(loss.item())
+        epoch_loss = float(np.mean(batch_losses))
+        losses.append(epoch_loss)
+        asyncio.run(tracker.log_metric(run_id, "loss", epoch_loss, step=epoch + 1))
+
+    asyncio.run(tracker.log_metric(run_id, "final_loss", losses[-1]))
+    asyncio.run(tracker.end_run(run_id))
+
+    hp_results[ldim] = losses
+    print(f"    latent_dim={ldim}: final_loss={losses[-1]:.4f}")
+
+# Print comparison table
+print("\n=== Latent Dimension Comparison ===")
+print(f"{'Latent Dim':>12} {'Final Loss':>12} {'Improvement':>14}")
+print("-" * 42)
+baseline_loss = hp_results[LATENT_DIMS_TO_TRY[0]][-1]
+for ldim in LATENT_DIMS_TO_TRY:
+    final = hp_results[ldim][-1]
+    improvement = (baseline_loss - final) / baseline_loss * 100
+    print(f"{ldim:>12} {final:>12.4f} {improvement:>13.1f}%")
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert len(hp_results) == len(
+    LATENT_DIMS_TO_TRY
+), f"Should have results for all {len(LATENT_DIMS_TO_TRY)} latent dims"
+assert (
+    hp_results[32][-1] <= hp_results[4][-1]
+), "latent_dim=32 should achieve lower or equal loss than latent_dim=4"
+# INTERPRETATION: This is the information bottleneck principle in action.
+# latent_dim=4 compresses 784 pixels down to just 4 numbers (196:1 ratio).
+# latent_dim=32 keeps more detail but may preserve noise instead of signal.
+print("\n--- Checkpoint 8 passed --- latent dimension sweep complete\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 9 — Visualise all training histories
+# ════════════════════════════════════════════════════════════════════════
 viz = ModelVisualizer()
 
-# Compare loss curves
-all_losses = {
-    "Vanilla AE": vanilla_losses,
-    "Denoising AE": dae_losses,
-    "VAE (total)": vae_total_losses,
-    "VAE (recon)": vae_recon_losses,
-}
-fig = viz.training_history(all_losses, x_label="Epoch")
-fig.update_layout(title="Autoencoder Training Loss Curves")
-fig.write_html("ex1_loss_curves.html")
-print(f"\nSaved: ex1_loss_curves.html")
+# TODO: Call viz.training_history to plot the 4 variant losses
+# Hint: viz.training_history(metrics={"Vanilla AE": vanilla_losses, ...}, x_label=..., y_label=...)
+fig_variants = viz.training_history(
+    metrics={
+        "Vanilla AE": ____,
+        "Denoising AE": ____,
+        "Variational AE": ____,
+        "Convolutional AE": ____,
+    },
+    x_label="Epoch",
+    y_label="Loss",
+)
+fig_variants.write_html("ex_1_variant_comparison.html")
+print("Variant comparison saved to ex_1_variant_comparison.html")
 
-# VAE ELBO breakdown
-vae_breakdown = {
-    "Reconstruction": vae_recon_losses,
-    "KL Divergence (scaled)": [kl * 0.0005 for kl in vae_kl_losses],
-}
-fig_elbo = viz.training_history(vae_breakdown, x_label="Epoch")
-fig_elbo.update_layout(title="VAE ELBO Components: Reconstruction vs KL")
-fig_elbo.write_html("ex1_vae_elbo.html")
-print("Saved: ex1_vae_elbo.html")
+# TODO: Call viz.training_history to plot the latent dimension sweep
+# Hint: metrics={f"latent_dim={ldim}": hp_results[ldim] for ldim in LATENT_DIMS_TO_TRY}
+fig_latent = viz.training_history(
+    metrics=____,
+    x_label="Epoch",
+    y_label="Loss",
+)
+fig_latent.write_html("ex_1_latent_dim_sweep.html")
+print("Latent dimension sweep saved to ex_1_latent_dim_sweep.html")
 
-print("\n✓ Exercise 1 complete — autoencoders: vanilla, denoising, and variational")
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+import os
+
+assert os.path.exists(
+    "ex_1_variant_comparison.html"
+), "Variant comparison HTML should be saved"
+assert os.path.exists(
+    "ex_1_latent_dim_sweep.html"
+), "Latent dim sweep HTML should be saved"
+print("\n--- Checkpoint 9 passed --- visualisations saved\n")
+
+
+# Print summary of all tracked experiments
+print("\n=== Experiment Summary ===")
+print(f"Experiment: {exp_name}")
+print(f"Variants trained: Vanilla AE, Denoising AE, VAE, Convolutional AE")
+print(f"Epochs per variant: {EPOCHS}")
+print(f"Dataset: Fashion-MNIST (60,000 images)")
+print(f"Latent dim sweep: {LATENT_DIMS_TO_TRY}")
+print(f"\nFinal losses:")
+print(f"  Vanilla AE:        {vanilla_losses[-1]:.4f}")
+print(f"  Denoising AE:      {dae_losses[-1]:.4f}")
+print(f"  Variational AE:    {vae_losses[-1]:.4f}")
+print(f"  Convolutional AE:  {conv_losses[-1]:.4f}")
+
+best_variant = min(
+    [
+        ("Vanilla AE", vanilla_losses[-1]),
+        ("Denoising AE", dae_losses[-1]),
+        ("Convolutional AE", conv_losses[-1]),
+    ],
+    key=lambda x: x[1],
+)
+print(f"\nBest reconstruction: {best_variant[0]} (loss={best_variant[1]:.4f})")
+print("  Note: VAE loss includes KL divergence so it is not directly comparable.")
+
+asyncio.run(conn.close())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print(
+    """
+What you've mastered:
+  ✓ Four autoencoder variants: Vanilla, Denoising, VAE, Convolutional
+  ✓ VAE reparameterisation trick — why z = mu + sigma*eps enables backprop
+  ✓ Generating new images by sampling from the VAE prior N(0, I)
+  ✓ ExperimentTracker for persistent, queryable experiment records
+  ✓ ModelRegistry for versioned model storage with metrics
+  ✓ ModelVisualizer for comparing training curves across architectures
+
+Next: In Exercise 2, you'll build CNNs with ResNet skip connections and
+SE attention blocks — and see how the spatial structure that ConvAE
+preserved becomes the foundation for discriminative image classifiers.
+"""
+)

@@ -156,6 +156,69 @@ class MLFPDataLoader:
             self._local_data = _repo_data_dir()
             self._cache = Path(cache_dir) if cache_dir else _local_cache_dir()
 
+    def load_raw(self, module: str, filename: str) -> Path:
+        """Return the file path without reading into memory.
+
+        Use this for image directories, audio files, or any data that torch/HF
+        loads directly rather than via polars.
+
+        Args:
+            module: Module subfolder (e.g., "mlfp05")
+            filename: File or directory name (e.g., "fashion_mnist", "cifar10")
+
+        Returns:
+            Path to the local file or directory.
+        """
+        if module not in _MODULES:
+            raise ValueError(
+                f"Unknown module '{module}'. Available: {sorted(_MODULES)}"
+            )
+
+        if self._colab:
+            path = self._root / module / filename
+        else:
+            if self._local_data:
+                local_path = self._local_data / module / filename
+                if local_path.exists():
+                    return local_path
+            path = self._cache / module / filename
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Raw data not found: {module}/{filename}. "
+                f"Run 'python scripts/fetch-real-data.py' to download."
+            )
+        return path
+
+    @staticmethod
+    def load_hf(
+        dataset_name: str,
+        split: str = "train",
+        streaming: bool = False,
+    ):
+        """Load a HuggingFace dataset directly (not via polars).
+
+        Use this for large datasets (millions of rows) or multimodal data
+        (images, audio) that don't fit into a DataFrame.
+
+        Args:
+            dataset_name: HuggingFace dataset ID (e.g., "zalando-datasets/fashion_mnist")
+            split: Dataset split ("train", "test", "validation")
+            streaming: If True, returns an IterableDataset for memory-efficient processing
+
+        Returns:
+            HuggingFace Dataset or IterableDataset object.
+        """
+        from datasets import load_dataset
+
+        logger.info(
+            "Loading HuggingFace dataset: %s (split=%s, streaming=%s)",
+            dataset_name,
+            split,
+            streaming,
+        )
+        return load_dataset(dataset_name, split=split, streaming=streaming)
+
     def load(self, module: str, filename: str) -> pl.DataFrame:
         """Load a dataset file as a polars DataFrame.
 

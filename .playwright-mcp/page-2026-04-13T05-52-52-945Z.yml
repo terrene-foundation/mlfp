@@ -1,0 +1,1044 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=1]: Lesson 5.4
+      - heading [level=2]: Transformers
+      - paragraph: Attention-Based Feature Learning — Processing Sequences in Parallel
+      - paragraph: "\"Attention is all you need.\" — Vaswani et al., 2017"
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Self-Attention: The Core Idea"
+      - generic: Foundations
+      - generic:
+        - generic:
+          - heading [level=3]: Three Projections
+          - list:
+            - listitem:
+              - strong: "Query (Q):"
+              - text: "\"What am I looking for?\""
+            - listitem:
+              - strong: "Key (K):"
+              - text: "\"What do I contain?\""
+            - listitem:
+              - strong: "Value (V):"
+              - text: "\"What information do I carry?\""
+          - paragraph: Each token projects its embedding into Q, K, and V via learned weight matrices.
+        - generic:
+          - generic:
+            - strong: "Analogy:"
+            - text: A library search. Your Query is your question. Each book has a Key (title/index). You compare your Query with all Keys to find the best matches. Then you read the Values (content) of the matching books.
+          - generic:
+            - strong: "Key difference from RNN attention:"
+            - text: In RNN attention, queries come from the decoder and keys/values from the encoder. In
+            - emphasis: self
+            - text: "-attention, Q, K, V all come from the same sequence — each token attends to every other token."
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e965]:
+      - heading "Scaled Dot-Product Attention" [level=2] [ref=e966]
+      - generic [ref=e967]: Theory
+      - generic [ref=e968]:
+        - generic [ref=e971]:
+          - math [ref=e973]:
+            - generic [ref=e975]:
+              - generic [ref=e976]: Attention
+              - generic [ref=e977]: (
+              - generic [ref=e978]: Q
+              - generic [ref=e979]: ","
+              - generic [ref=e980]: K
+              - generic [ref=e981]: ","
+              - generic [ref=e982]: V
+              - generic [ref=e983]: )
+              - generic [ref=e984]: =
+              - generic [ref=e985]: softmax
+              - text: ⁣
+              - generic [ref=e986]:
+                - generic [ref=e987]: (
+                - generic [ref=e988]:
+                  - generic [ref=e989]:
+                    - generic [ref=e990]: Q
+                    - generic [ref=e991]:
+                      - generic [ref=e992]: K
+                      - generic [ref=e993]: ⊤
+                  - generic [ref=e995]:
+                    - generic [ref=e996]: d
+                    - generic [ref=e997]: k
+                - generic [ref=e998]: )
+              - generic [ref=e999]: V
+          - generic [ref=e1000]:
+            - generic [ref=e1001]:
+              - generic [ref=e1002]: Attention
+              - text: (Q, K, V) =
+            - generic [ref=e1003]:
+              - generic [ref=e1004]: softmax
+              - generic [ref=e1005]:
+                - generic [ref=e1006]: (
+                - generic [ref=e1011]:
+                  - generic [ref=e1016]:
+                    - generic [ref=e1018]:
+                      - text: d
+                      - generic [ref=e1023]: k
+                    - img [ref=e1028]
+                  - generic [ref=e1034]:
+                    - text: Q
+                    - generic [ref=e1035]:
+                      - text: K
+                      - generic [ref=e1040]: ⊤
+                - generic [ref=e1044]: )
+              - text: V
+        - generic [ref=e1045]: The fundamental equation of modern AI
+      - generic [ref=e1046]:
+        - generic [ref=e1047]:
+          - generic [ref=e1048]:
+            - generic [ref=e1049]: "Step 1: Compute Scores"
+            - paragraph [ref=e1050]:
+              - generic [ref=e1052]:
+                - math [ref=e1054]:
+                  - generic [ref=e1056]:
+                    - generic [ref=e1057]: Q
+                    - generic [ref=e1058]:
+                      - generic [ref=e1059]: K
+                      - generic [ref=e1060]: ⊤
+                - generic [ref=e1062]:
+                  - text: Q
+                  - generic [ref=e1063]:
+                    - text: K
+                    - generic [ref=e1068]: ⊤
+              - text: — dot product between every query and every key. High dot product = high similarity.
+          - generic [ref=e1069]:
+            - generic [ref=e1070]: "Step 2: Scale"
+            - paragraph [ref=e1071]:
+              - text: Divide by
+              - generic [ref=e1073]:
+                - math [ref=e1075]:
+                  - generic [ref=e1079]:
+                    - generic [ref=e1080]: d
+                    - generic [ref=e1081]: k
+                - generic [ref=e1087]:
+                  - generic [ref=e1089]:
+                    - text: d
+                    - generic [ref=e1094]: k
+                  - img [ref=e1099]
+              - text: . Without scaling, large
+              - generic [ref=e1105]:
+                - math [ref=e1107]:
+                  - generic [ref=e1110]:
+                    - generic [ref=e1111]: d
+                    - generic [ref=e1112]: k
+                - generic [ref=e1115]:
+                  - text: d
+                  - generic [ref=e1120]: k
+              - text: produces large dot products, pushing softmax into saturation (all mass on one token).
+        - generic [ref=e1124]:
+          - generic [ref=e1125]:
+            - generic [ref=e1126]: "Step 3: Normalise"
+            - paragraph [ref=e1127]: Softmax converts scores to probabilities that sum to 1 across keys. Each query gets a probability distribution over all tokens.
+          - generic [ref=e1128]:
+            - generic [ref=e1129]: "Step 4: Weighted Sum"
+            - paragraph [ref=e1130]: Multiply attention weights by Values. Each token's output is a weighted combination of all tokens' values.
+      - img "Scaled dot-product attention" [ref=e1132]:
+        - generic [ref=e1134]: Q
+        - generic [ref=e1135]: queries
+        - generic [ref=e1137]: K
+        - generic [ref=e1138]: keys
+        - generic [ref=e1140]: V
+        - generic [ref=e1141]: values
+        - generic [ref=e1143]: scores = QKᵀ
+        - generic [ref=e1144]:
+          - generic [ref=e1146]: ".9"
+          - generic [ref=e1148]: ".5"
+          - generic [ref=e1150]: ".2"
+          - generic [ref=e1152]: ".1"
+          - generic [ref=e1154]: ".4"
+          - generic [ref=e1156]: ".8"
+          - generic [ref=e1158]: ".3"
+          - generic [ref=e1160]: ".2"
+          - generic [ref=e1162]: ".1"
+          - generic [ref=e1164]: ".4"
+          - generic [ref=e1166]: ".9"
+          - generic [ref=e1168]: ".5"
+          - generic [ref=e1170]: ".2"
+          - generic [ref=e1172]: ".1"
+          - generic [ref=e1174]: ".5"
+          - generic [ref=e1176]: ".9"
+        - generic [ref=e1178]: divide by
+        - generic [ref=e1179]: √dₖ
+        - generic [ref=e1180]: + softmax
+        - generic [ref=e1182]: attention weights
+        - generic [ref=e1183]:
+          - generic [ref=e1185]: ".6"
+          - generic [ref=e1187]: ".2"
+          - generic [ref=e1189]: ".1"
+          - generic [ref=e1191]: ".1"
+          - generic [ref=e1193]: ".2"
+          - generic [ref=e1195]: ".5"
+          - generic [ref=e1197]: ".2"
+          - generic [ref=e1199]: ".1"
+          - generic [ref=e1201]: ".1"
+          - generic [ref=e1203]: ".2"
+          - generic [ref=e1205]: ".5"
+          - generic [ref=e1207]: ".2"
+          - generic [ref=e1209]: ".1"
+          - generic [ref=e1211]: ".1"
+          - generic [ref=e1213]: ".2"
+          - generic [ref=e1215]: ".6"
+        - generic [ref=e1217]: out
+        - generic [ref=e1222]: Attention(Q, K, V) = softmax(QKᵀ / √dₖ) · V
+      - generic [ref=e1224]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]:
+        - text: Why Divide by
+        - generic:
+          - generic:
+            - generic:
+              - math:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: d
+                        - generic: k
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - text: d
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: k
+                        - generic:
+                          - img
+        - text: "?"
+      - generic: Theory
+      - generic:
+        - generic:
+          - generic:
+            - generic: The Problem
+            - paragraph:
+              - text: If
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: q
+                            - generic: i
+                          - generic: ","
+                          - generic:
+                            - generic: k
+                            - generic: j
+                          - generic: ∼
+                          - generic: "N"
+                          - generic: (
+                          - generic: "0"
+                          - generic: ","
+                          - generic: "1"
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: q
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: i
+                      - text: ","
+                      - generic:
+                        - text: k
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: j
+                      - text: ∼
+                    - generic: N(0, 1)
+              - text: ", then"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: q
+                          - generic: ⋅
+                          - generic: k
+                          - generic: =
+                          - generic:
+                            - generic: ∑
+                            - generic:
+                              - generic: i
+                              - generic: =
+                              - generic: "1"
+                            - generic:
+                              - generic: d
+                              - generic: k
+                          - generic:
+                            - generic: q
+                            - generic: i
+                          - generic:
+                            - generic: k
+                            - generic: i
+                  - generic:
+                    - generic: q ⋅
+                    - generic: k =
+                    - generic:
+                      - generic:
+                        - text: ∑
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: i=1
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - text: d
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: k
+                      - generic:
+                        - text: q
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: i
+                      - generic:
+                        - text: k
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: i
+              - text: has variance
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: k
+              - text: .
+          - generic:
+            - generic: Why It Matters
+            - paragraph:
+              - text: Large variance → extreme values → softmax saturates → gradients vanish. For
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                          - generic: =
+                          - generic: "512"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: k
+                      - text: =
+                    - generic: "512"
+              - text: ", dot products have std dev"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "512"
+                          - generic: ≈
+                          - generic: "22.6"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "512"
+                              - generic:
+                                - img
+                      - text: ≈
+                    - generic: "22.6"
+              - text: .
+          - generic:
+            - generic: The Fix
+            - paragraph:
+              - text: Dividing by
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: d
+                              - generic: k
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - text: d
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic: k
+                              - generic:
+                                - img
+              - text: normalises variance back to 1. Softmax operates in a healthy range. Gradients flow.
+        - generic:
+          - generic:
+            - strong: "Proof sketch:"
+            - text: If
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: q
+                          - generic: i
+                        - generic: ","
+                        - generic:
+                          - generic: k
+                          - generic: j
+                - generic:
+                  - generic:
+                    - generic:
+                      - text: q
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: i
+                    - text: ","
+                    - generic:
+                      - text: k
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: j
+            - text: "are i.i.d. with mean 0 and variance 1:"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: Var
+                        - generic: (
+                        - generic: q
+                        - generic: ⋅
+                        - generic: k
+                        - generic: )
+                        - generic: =
+                        - generic:
+                          - generic: ∑
+                          - generic:
+                            - generic: i
+                            - generic: =
+                            - generic: "1"
+                          - generic:
+                            - generic: d
+                            - generic: k
+                        - generic: Var
+                        - generic: (
+                        - generic:
+                          - generic: q
+                          - generic: i
+                        - generic:
+                          - generic: k
+                          - generic: i
+                        - generic: )
+                        - generic: =
+                        - generic:
+                          - generic: d
+                          - generic: k
+                - generic:
+                  - generic:
+                    - generic: Var
+                    - text: (q ⋅
+                  - generic: k) =
+                  - generic:
+                    - generic:
+                      - text: ∑
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: i=1
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - text: d
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: k
+                    - generic: Var
+                    - text: (
+                    - generic:
+                      - text: q
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: i
+                    - generic:
+                      - text: k
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: i
+                    - text: ) =
+                  - generic:
+                    - generic:
+                      - text: d
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: k
+            - text: Dividing by
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - text: d
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic: k
+                            - generic:
+                              - img
+            - text: ":"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: Var
+                        - text: ⁣
+                        - generic:
+                          - generic: (
+                          - generic:
+                            - generic:
+                              - generic: q
+                              - generic: ⋅
+                              - generic: k
+                            - generic:
+                              - generic:
+                                - generic: d
+                                - generic: k
+                          - generic: )
+                        - generic: =
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                          - generic:
+                            - generic: d
+                            - generic: k
+                        - generic: =
+                        - generic: "1"
+                - generic:
+                  - generic:
+                    - generic: Var
+                    - generic:
+                      - generic: (
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - text: d
+                                                - generic:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: k
+                                            - generic:
+                                              - img
+                                - generic:
+                                  - generic: q⋅k
+                      - generic: )
+                    - text: =
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - text: d
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: k
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - text: d
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic: k
+                    - text: =
+                  - generic: "1"
+          - generic:
+            - strong: "Interview question:"
+            - text: "\"What happens if you use"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: d
+                          - generic: k
+                - generic:
+                  - generic:
+                    - generic:
+                      - text: d
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: k
+            - text: instead of
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - text: d
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic: k
+                            - generic:
+                              - img
+            - text: "?\" Answer: variance becomes"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: "1"
+                        - generic: /
+                        - generic:
+                          - generic: d
+                          - generic: k
+                - generic:
+                  - generic:
+                    - text: 1/
+                    - generic:
+                      - text: d
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: k
+            - text: — too small, softmax becomes too uniform, attention is diluted.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Multi-Head Attention
+      - generic: Theory
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - math:
+                  - generic:
+                    - generic:
+                      - generic: MultiHead
+                      - generic: (
+                      - generic: Q
+                      - generic: ","
+                      - generic: K
+                      - generic: ","
+                      - generic: V
+                      - generic: )
+                      - generic: =
+                      - generic: Concat
+                      - generic: (
+                      - generic:
+                        - generic: head
+                        - generic: "1"
+                      - generic: ","
+                      - generic: …
+                      - generic: ","
+                      - generic:
+                        - generic: head
+                        - generic: h
+                      - generic: )
+                      - generic:
+                        - generic: W
+                        - generic: O
+              - generic:
+                - generic:
+                  - generic: MultiHead
+                  - text: (Q, K, V) =
+                - generic:
+                  - generic: Concat
+                  - text: (
+                  - generic:
+                    - generic: head
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "1"
+                  - text: ", … ,"
+                  - generic:
+                    - generic: head
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: h
+                  - text: )
+                  - generic:
+                    - text: W
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: O
+        - generic:
+          - text: where
+          - generic:
+            - generic:
+              - generic:
+                - math:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: head
+                        - generic: i
+                      - generic: =
+                      - generic: Attention
+                      - generic: (
+                      - generic: Q
+                      - generic:
+                        - generic: W
+                        - generic: i
+                        - generic: Q
+                      - generic: ","
+                      - generic: K
+                      - generic:
+                        - generic: W
+                        - generic: i
+                        - generic: K
+                      - generic: ","
+                      - generic: V
+                      - generic:
+                        - generic: W
+                        - generic: i
+                        - generic: V
+                      - generic: )
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: head
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: i
+                  - text: =
+                - generic:
+                  - generic: Attention
+                  - text: (Q
+                  - generic:
+                    - text: W
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: i
+                            - generic: Q
+                  - text: ", K"
+                  - generic:
+                    - text: W
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: i
+                            - generic: K
+                  - text: ", V"
+                  - generic:
+                    - text: W
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: i
+                            - generic: V
+                  - text: )
+      - generic:
+        - generic:
+          - heading [level=3]: Why Multiple Heads?
+          - list:
+            - listitem:
+              - text: Each head learns a
+              - strong: different type of relationship
+            - listitem: Head 1 might attend to syntactic structure
+            - listitem: Head 2 might attend to semantic similarity
+            - listitem: Head 3 might attend to positional proximity
+        - generic:
+          - heading [level=3]: Dimensions
+          - list:
+            - listitem:
+              - text: "Model dimension:"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: model
+                          - generic: =
+                          - generic: "512"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: model
+                      - text: =
+                    - generic: "512"
+            - listitem:
+              - text: "Number of heads:"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: h
+                          - generic: =
+                          - generic: "8"
+                  - generic:
+                    - generic: h =
+                    - generic: "8"
+            - listitem:
+              - text: "Per-head dimension:"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                          - generic: =
+                          - generic:
+                            - generic: d
+                            - generic: v
+                          - generic: =
+                          - generic:
+                            - generic: d
+                            - generic: model
+                          - generic: /
+                          - generic: h
+                          - generic: =
+                          - generic: "64"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: k
+                      - text: =
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: v
+                      - text: =
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic: model
+                      - text: /h =
+                    - generic: "64"
+            - listitem:
+              - text: Same total computation as single-head with
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: d
+                            - generic: k
+                          - generic: =
+                          - generic: "512"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: d
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: k
+                      - text: =
+                    - generic: "512"
+          - generic:
+            - strong: "Key insight:"
+            - text: Multi-head attention is NOT more expensive. It splits the same dimensions across heads. The concatenation +
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: W
+                          - generic: O
+                - generic:
+                  - generic:
+                    - generic:
+                      - text: W
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: O
+            - text: projection recombines them.
+      - generic:
+        - img:
+          - generic: input X
+          - generic:
+            - generic: Wᴲ¹, Wᴰ¹, Wᵛ¹
+            - generic: Wᴲ², Wᴰ², Wᵛ²
+            - generic: Wᴲ³, Wᴰ³, Wᵛ³
+            - generic: Wᴲ⁴, Wᴰ⁴, Wᵛ⁴
+          - generic:
+            - generic: head 1
+            - generic: head 2
+            - generic: head 3
+            - generic: head 4
+          - generic: concat · Wᴼ
+          - generic: multi-head output
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "46 / 104" [ref=e1225] [cursor=pointer]:
+    - /url: "#/45"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "LSTM: Output Gate and Hidden State Theory Output Gate o t = σ ( W o ⋅ [ h t − 1 , x t ] + b o ) Controls which parts of the cell state become the output. Hidden State h t = o t ⊙ tanh ⁡ ( C t ) The hidden state is a filtered, squashed version of the cell state. This is the output at time t. 5 equations, 4 gates: forget ( f t ), input ( i t ), cell update ( C t ), output ( o t ), hidden state ( h t ). Every gate takes the same inputs: [ h t − 1 , x t ] . The difference is the learned weight matrices. Parameter count: For input size d and hidden size h , an LSTM has 4 ( d ⋅ h + h ⋅ h + h ) parameters — four weight matrices, four bias vectors. MLFP Module 5 — Terrene Open Academy"

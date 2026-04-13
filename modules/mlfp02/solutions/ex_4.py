@@ -8,35 +8,44 @@
 # WHAT YOU'LL LEARN:
 #   After completing this exercise, you will be able to:
 #   - Design a complete A/B experiment with pre-registered hypotheses
-#   - Compute required sample sizes via power analysis before data collection
-#   - Simulate experiment data with a known effect to validate your pipeline
+#   - Compute required sample sizes via power analysis before collecting data
+#   - Simulate experiment data with a known effect to validate a pipeline
 #   - Detect Sample Ratio Mismatch (SRM) and understand its causes
-#   - Construct and interpret confidence intervals for treatment effects
+#   - Construct and interpret Welch-Satterthwaite confidence intervals
+#   - Implement a data collection plan (Why/What/Where/How/Frequency)
+#   - Simulate SRM to see its impact on effect estimation
+#   - Build a complete experiment analysis report from raw data
+#   - Evaluate experiment validity criteria (SUTVA, no interference)
+#   - Compute sequential sample-size calculations (adaptive experiments)
 #
-# PREREQUISITES: Complete Exercise 3 — you should understand hypothesis testing,
-#   p-values, power, and why multiple testing corrections are needed.
+# PREREQUISITES: Complete Exercise 3 — you should understand hypothesis
+#   testing, p-values, power, and multiple testing corrections.
 #
-# ESTIMATED TIME: 75 minutes
+# ESTIMATED TIME: ~170 minutes
 #
 # TASKS:
-#   1. Load experiment data and perform exploratory analysis
-#   2. Design an A/B experiment: formulate hypotheses, compute sample size
-#   3. Simulate experiment data with a known treatment effect
-#   4. Detect Sample Ratio Mismatch (SRM) using chi-squared test
-#   5. Run hypothesis test (Welch's t-test) on A/B results
-#   6. Compute confidence interval for treatment effect
-#   7. Create a data collection plan (Why/What/Where/How/Frequency)
+#    1. Load experiment data and exploratory analysis
+#    2. Design an A/B experiment: hypotheses and pre-registration
+#    3. Power analysis — compute required sample size for target MDE
+#    4. Simulate experiment with known effect (positive control)
+#    5. SRM detection on simulated and real data
+#    6. Simulating SRM: what happens when randomisation breaks
+#    7. Welch's t-test with Satterthwaite degrees of freedom
+#    8. Confidence intervals for treatment effect (Welch + bootstrap)
+#    9. Data collection plan (Why/What/Where/How/Frequency)
+#   10. Experiment validity: SUTVA, interference, novelty effects
+#   11. Adaptive sample size — sequential experiment design
+#   12. Full experiment report and business recommendation
 #
 # DATASET: Multi-arm experiment data
-#   Source: Simulated e-commerce experiment with control and multiple treatments
+#   Source: Simulated e-commerce experiment with control and treatments
 #   Key columns: experiment_group, metric_value (engagement score)
 #
 # THEORY:
-#   A/B testing is the gold standard for causal inference in business.
-#   Pre-registration: decide hypothesis, sample size, and stopping rule
-#   BEFORE collecting data to prevent p-hacking. Power analysis answers:
-#     n = (z_{α/2} + z_β)² × 2σ² / δ²
-#   SRM (Sample Ratio Mismatch): chi-squared test on observed vs expected split.
+#   Pre-registration: decide hypothesis, sample size, stopping rule
+#   BEFORE collecting data to prevent p-hacking.
+#   Power: n = (z_{α/2} + z_β)² × 2σ² / δ²
+#   SRM: χ² test on observed vs expected split.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -46,6 +55,8 @@ import math
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from kailash_ml import ModelVisualizer
 from scipy import stats
 
@@ -70,12 +81,10 @@ group_counts = experiment["experiment_group"].value_counts().sort("experiment_gr
 print(f"\n--- Group Allocation ---")
 print(group_counts)
 
-# For this exercise we focus on a classic two-arm A/B test:
-# control vs treatment_a (the largest treatment group)
+# Focus on two-arm A/B: control vs treatment_a
 ab_data = experiment.filter(
     pl.col("experiment_group").is_in(["control", "treatment_a"])
 )
-
 control = ab_data.filter(pl.col("experiment_group") == "control")
 treatment = ab_data.filter(pl.col("experiment_group") == "treatment_a")
 
@@ -83,75 +92,63 @@ n_control = control.height
 n_treatment = treatment.height
 n_total = ab_data.height
 
-print(f"\n=== Two-Arm A/B Subset ===")
-print(f"Control:   n = {n_control:,}")
-print(f"Treatment: n = {n_treatment:,}")
-print(f"Total:     n = {n_total:,}")
-print(f"Observed split: {n_control / n_total:.4f} / {n_treatment / n_total:.4f}")
-
-# Summary statistics for the primary metric
 ctrl_values = control["metric_value"].to_numpy().astype(np.float64)
 treat_values = treatment["metric_value"].to_numpy().astype(np.float64)
 
-print(f"\nControl  — mean: {ctrl_values.mean():.4f}, std: {ctrl_values.std():.4f}")
-print(f"Treatment — mean: {treat_values.mean():.4f}, std: {treat_values.std():.4f}")
+print(f"\n=== Two-Arm A/B Subset ===")
+print(
+    f"Control:   n={n_control:,}, mean={ctrl_values.mean():.4f}, std={ctrl_values.std():.4f}"
+)
+print(
+    f"Treatment: n={n_treatment:,}, mean={treat_values.mean():.4f}, std={treat_values.std():.4f}"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Design an A/B experiment — hypothesis formulation
+# TASK 1: Experiment Design — Hypothesis Formulation
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: A well-designed experiment starts with a clear hypothesis.
-#
-# The hypothesis must be:
-#   - Specific: what metric, what direction, what magnitude
-#   - Testable: can be falsified with data
-#   - Pre-registered: stated BEFORE seeing data
-#
-# Null hypothesis (H₀): Treatment has no effect on the primary metric.
-#   μ_treatment = μ_control
-# Alternative hypothesis (H₁): Treatment increases the primary metric.
-#   μ_treatment > μ_control (one-sided) or μ_treatment ≠ μ_control (two-sided)
 
 print("\n" + "=" * 70)
 print("TASK 1: Experiment Design — Hypothesis Formulation")
 print("=" * 70)
 
-print("""
+print(
+    """
 Scenario: An e-commerce platform wants to test whether a new
-recommendation algorithm (treatment_a) increases user metric_value
-(engagement score) compared to the existing algorithm (control).
+recommendation algorithm (treatment_a) increases user engagement
+(metric_value) compared to the existing algorithm (control).
 
-Hypotheses:
-  H₀: μ_treatment = μ_control  (no effect)
-  H₁: μ_treatment ≠ μ_control  (two-sided — effect in either direction)
+PRE-REGISTRATION DOCUMENT:
+═══════════════════════════
+1. Primary hypothesis:
+   H₀: μ_treatment = μ_control  (no effect on engagement)
+   H₁: μ_treatment ≠ μ_control  (two-sided)
 
-Design parameters:
-  - Significance level (α): 0.05 (5% false positive rate)
-  - Power (1-β): 0.80 (80% chance of detecting a real effect)
-  - Primary metric: metric_value (engagement score)
-  - Randomisation unit: user
-  - Allocation: equal (50/50 intended)
+2. Primary metric: metric_value (engagement score)
 
-Key design principles applied:
-  1. Randomisation — users randomly assigned to control/treatment
-  2. Equal allocation — 50/50 maximises power for a given total n
-  3. Single treatment — comparing exactly one variant at a time
-  4. Pre-registration — hypotheses and stopping rule defined upfront
-""")
+3. Design parameters:
+   - Significance level (α): 0.05 (5% false positive rate)
+   - Power (1-β): 0.80 (80% chance of detecting a real effect)
+   - Randomisation unit: user
+   - Allocation: equal (50/50)
+
+4. Stopping rule: analyse only after target n is reached.
+   No peeking (see Exercise 7 for sequential testing).
+
+5. Pre-registered corrections: Bonferroni for 3 secondary metrics.
+
+Key principles:
+  ✓ Randomisation — eliminates confounders
+  ✓ Equal allocation — maximises power for given total n
+  ✓ Pre-registration — prevents p-hacking and HARKing
+  ✓ Single primary metric — reduces multiple testing burden
+"""
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Power analysis — compute required sample size
+# TASK 2: Power Analysis — Required Sample Size
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: Power analysis tells us the minimum sample size to detect
-# a given effect size (Minimum Detectable Effect, MDE) at a given
-# significance level and power.
-#
-# For a two-sample t-test with equal allocation:
-#   n_per_group = (z_{α/2} + z_β)² × 2σ² / δ²
-#
-# Rule of thumb: MDE should be the smallest effect that is
-# practically meaningful to the business.
 
 print("\n" + "=" * 70)
 print("TASK 2: Power Analysis — Required Sample Size")
@@ -159,601 +156,591 @@ print("=" * 70)
 
 alpha = 0.05
 power_target = 0.80
-z_alpha_half = stats.norm.ppf(1 - alpha / 2)  # 1.96
-z_beta = stats.norm.ppf(power_target)          # 0.842
+z_alpha_half = stats.norm.ppf(1 - alpha / 2)
+z_beta = stats.norm.ppf(power_target)
 
-# Estimate pooled standard deviation from the control group
 sigma_pooled = ctrl_values.std(ddof=1)
 
-# Define the MDE as a percentage of the control mean
-relative_mde_pct = 2.0
-mde_absolute = ctrl_values.mean() * (relative_mde_pct / 100)
+# Compute required n for different MDE levels
+print(f"\n--- Required Sample Size by MDE ---")
+print(f"Baseline mean: {ctrl_values.mean():.4f}, σ_pooled: {sigma_pooled:.4f}")
+print(f"{'Relative MDE':>14} {'Absolute MDE':>14} {'n per group':>14} {'n total':>10}")
+print("─" * 56)
 
-# Required sample size per group
-n_required_per_group = math.ceil(
-    (z_alpha_half + z_beta) ** 2 * 2 * sigma_pooled ** 2 / mde_absolute ** 2
+n_required_results = {}
+for rel_mde_pct in [1.0, 2.0, 3.0, 5.0, 10.0]:
+    mde_abs = ctrl_values.mean() * (rel_mde_pct / 100)
+    cohens_d = mde_abs / sigma_pooled
+    n_per = math.ceil((z_alpha_half + z_beta) ** 2 * 2 * sigma_pooled**2 / mde_abs**2)
+    n_required_results[rel_mde_pct] = {"mde": mde_abs, "n_per": n_per, "d": cohens_d}
+    print(f"{rel_mde_pct:>12.1f}%  {mde_abs:>14.4f}  {n_per:>14,}  {2*n_per:>10,}")
+
+# Use 2% relative MDE as our design target
+design_mde_pct = 2.0
+mde_absolute = n_required_results[design_mde_pct]["mde"]
+n_required_per = n_required_results[design_mde_pct]["n_per"]
+cohens_d = n_required_results[design_mde_pct]["d"]
+
+print(f"\nDesign target: {design_mde_pct}% relative MDE = {mde_absolute:.4f} absolute")
+print(
+    f"Cohen's d: {cohens_d:.4f} ({'small' if cohens_d < 0.2 else 'small-medium' if cohens_d < 0.5 else 'medium'})"
 )
-n_required_total = 2 * n_required_per_group
-
-# Cohen's d (standardised effect size)
-cohens_d = mde_absolute / sigma_pooled
-
-print(f"Baseline metric (control mean): {ctrl_values.mean():.4f}")
-print(f"Pooled σ (from control): {sigma_pooled:.4f}")
-print(f"Minimum Detectable Effect (MDE): {mde_absolute:.4f} ({relative_mde_pct}% relative)")
-print(f"Cohen's d: {cohens_d:.4f}", end="")
-if cohens_d < 0.2:
-    print(" (small effect)")
-elif cohens_d < 0.5:
-    print(" (small-medium effect)")
-elif cohens_d < 0.8:
-    print(" (medium effect)")
+print(f"Required: {n_required_per:,} per group, {2*n_required_per:,} total")
+print(f"Actual: {n_total:,} ({n_total / (2*n_required_per):.1f}x required)")
+if n_total >= 2 * n_required_per:
+    print("→ ADEQUATELY POWERED")
 else:
-    print(" (large effect)")
-
-print(f"\nDesign parameters:")
-print(f"  α = {alpha} (two-sided)")
-print(f"  Power = {power_target:.0%}")
-print(f"  z_{{α/2}} = {z_alpha_half:.4f}")
-print(f"  z_β = {z_beta:.4f}")
-print(f"\nRequired sample size:")
-print(f"  Per group: {n_required_per_group:,}")
-print(f"  Total:     {n_required_total:,}")
-print(f"\nActual sample size: {n_total:,} ({n_total / n_required_total:.1f}x required)")
-# INTERPRETATION: If actual n < required n, the experiment is underpowered —
-# even if the treatment effect is real at the MDE, we may miss it. If the
-# experiment is already collected and underpowered, you must accept a larger MDE.
-
-if n_total >= n_required_total:
-    print("  --> SUFFICIENT: experiment is adequately powered")
-else:
-    print("  --> UNDERPOWERED: need more observations or accept larger MDE")
-
-# Power curve: compute power at different sample sizes
-sample_sizes = np.arange(500, n_required_per_group * 3, max(500, n_required_per_group // 20))
-power_at_n = []
-for n_i in sample_sizes:
-    se_i = sigma_pooled * np.sqrt(2 / n_i)
-    ncp_i = mde_absolute / se_i  # non-centrality parameter
-    power_i = (
-        1 - stats.norm.cdf(z_alpha_half - ncp_i)
-        + stats.norm.cdf(-z_alpha_half - ncp_i)
-    )
-    power_at_n.append(power_i)
-
-print(f"\nPower at selected sample sizes (per group):")
-for frac in [0.25, 0.5, 1.0, 1.5, 2.0]:
-    idx = np.argmin(np.abs(sample_sizes - n_required_per_group * frac))
-    print(f"  n = {sample_sizes[idx]:>8,}: power = {power_at_n[idx]:.1%}")
+    print("→ UNDERPOWERED — need more observations or accept larger MDE")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert n_required_per_group > 0, "Required sample size must be positive"
+assert n_required_per > 0, "Required sample size must be positive"
 assert cohens_d > 0, "Cohen's d must be positive"
-assert mde_absolute > 0, "MDE must be positive"
-assert len(power_at_n) == len(sample_sizes), "Should have power for each sample size"
 print("\n✓ Checkpoint 1 passed — power analysis completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Simulate experiment data with known treatment effect
+# TASK 3: Power Curve — Power vs Sample Size
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: Simulation is essential for validating your analysis pipeline.
-# By injecting a KNOWN effect, you can verify that your test correctly
-# detects it. This is a "positive control" — if you can't detect a
-# known effect, your pipeline is broken.
 
 print("\n" + "=" * 70)
-print("TASK 3: Simulate Experiment with Known Treatment Effect")
+print("TASK 3: Power Curve")
+print("=" * 70)
+
+sample_sizes = np.arange(500, n_required_per * 3, max(500, n_required_per // 20))
+power_at_n = []
+for n_i in sample_sizes:
+    se_i = sigma_pooled * np.sqrt(2 / n_i)
+    ncp_i = mde_absolute / se_i
+    power_i = (
+        1 - stats.norm.cdf(z_alpha_half - ncp_i) + stats.norm.cdf(-z_alpha_half - ncp_i)
+    )
+    power_at_n.append(power_i)
+
+print(f"Power at selected sample sizes (per group, MDE={mde_absolute:.4f}):")
+for frac in [0.25, 0.5, 1.0, 1.5, 2.0]:
+    idx = np.argmin(np.abs(sample_sizes - n_required_per * frac))
+    print(f"  n = {sample_sizes[idx]:>8,}: power = {power_at_n[idx]:.1%}")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────
+assert power_at_n[-1] > power_at_n[0], "Power should increase with n"
+print("\n✓ Checkpoint 2 passed — power curve computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Simulate Experiment with Known Treatment Effect
+# ══════════════════════════════════════════════════════════════════════
+# Positive control: inject a KNOWN effect to validate the pipeline.
+
+print("\n" + "=" * 70)
+print("TASK 4: Simulate Experiment (Positive Control)")
 print("=" * 70)
 
 rng = np.random.default_rng(seed=42)
-
-sim_n_per_group = 10_000
-true_effect = 2.0  # True treatment effect (absolute lift in metric_value)
+sim_n_per = 10_000
+true_effect = 2.0
 sim_mu_control = ctrl_values.mean()
 sim_sigma = sigma_pooled
 
-# Generate simulated data
-sim_control = rng.normal(loc=sim_mu_control, scale=sim_sigma, size=sim_n_per_group)
+sim_control = rng.normal(loc=sim_mu_control, scale=sim_sigma, size=sim_n_per)
 sim_treatment = rng.normal(
-    loc=sim_mu_control + true_effect, scale=sim_sigma, size=sim_n_per_group
+    loc=sim_mu_control + true_effect, scale=sim_sigma, size=sim_n_per
 )
 
-# Build a polars DataFrame for the simulated experiment
-sim_df = pl.DataFrame({
-    "user_id": [f"SIM-{i:06d}" for i in range(2 * sim_n_per_group)],
-    "group": ["control"] * sim_n_per_group + ["treatment"] * sim_n_per_group,
-    "metric_value": np.concatenate([sim_control, sim_treatment]).tolist(),
-})
+print(f"True control mean:   {sim_mu_control:.4f}")
+print(f"True treatment mean: {sim_mu_control + true_effect:.4f}")
+print(f"True effect (δ):     {true_effect:.4f}")
+print(f"n per group:         {sim_n_per:,}")
+print(f"\nRealized:")
+print(f"  Control mean:   {sim_control.mean():.4f}")
+print(f"  Treatment mean: {sim_treatment.mean():.4f}")
+print(
+    f"  Observed diff:  {sim_treatment.mean() - sim_control.mean():.4f} (true: {true_effect})"
+)
 
-print(f"Simulated experiment:")
-print(f"  True control mean:   {sim_mu_control:.4f}")
-print(f"  True treatment mean: {sim_mu_control + true_effect:.4f}")
-print(f"  True effect (δ):     {true_effect:.4f}")
-print(f"  σ:                   {sim_sigma:.4f}")
-print(f"  n per group:         {sim_n_per_group:,}")
-print(f"  Total:               {2 * sim_n_per_group:,}")
-
-# Quick sanity check
-sim_ctrl_mean = sim_control.mean()
-sim_treat_mean = sim_treatment.mean()
-print(f"\nRealized values:")
-print(f"  Control mean:   {sim_ctrl_mean:.4f}")
-print(f"  Treatment mean: {sim_treat_mean:.4f}")
-print(f"  Observed diff:  {sim_treat_mean - sim_ctrl_mean:.4f} (true: {true_effect:.4f})")
-# INTERPRETATION: The realized difference should be close to the true effect.
-# With n=10,000 per group, sampling variation is tiny. This simulation is our
-# "positive control" — if the test below doesn't detect this effect, the
-# pipeline has a bug.
-
-# ── Checkpoint 2 ─────────────────────────────────────────────────────
-assert len(sim_control) == sim_n_per_group, "Simulated control group size mismatch"
-assert len(sim_treatment) == sim_n_per_group, "Simulated treatment group size mismatch"
-assert abs(sim_treat_mean - sim_ctrl_mean - true_effect) < 3.0, \
-    f"Simulated effect should be within 3.0 of {true_effect}, got {sim_treat_mean - sim_ctrl_mean:.4f}"
-print("\n✓ Checkpoint 2 passed — simulation matches expected parameters\n")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Detect SRM (Sample Ratio Mismatch) using chi-squared test
-# ══════════════════════════════════════════════════════════════════════
-# THEORY: SRM is the single most important sanity check in A/B testing.
-# The χ² goodness-of-fit test compares observed counts to expected:
-#   χ² = Σ (O_i - E_i)² / E_i
-# Rule of thumb: p < 0.01 → SRM detected, investigate before proceeding
-
-print("\n" + "=" * 70)
-print("TASK 4: Sample Ratio Mismatch (SRM) Detection")
-print("=" * 70)
-
-# ---- SRM on simulated data (should pass — we designed 50/50) ----
-print("\n--- SRM Check on Simulated Data (designed 50/50) ---")
-sim_obs = np.array([sim_n_per_group, sim_n_per_group])
-sim_exp = np.array([sim_n_per_group, sim_n_per_group])
-sim_chi2, sim_srm_p = stats.chisquare(sim_obs, f_exp=sim_exp)
-
-print(f"Observed: control={sim_obs[0]:,}, treatment={sim_obs[1]:,}")
-print(f"Expected: control={sim_exp[0]:,}, treatment={sim_exp[1]:,}")
-print(f"χ² = {sim_chi2:.4f}, p = {sim_srm_p:.6f}")
-print(f"Result: {'SRM DETECTED' if sim_srm_p < 0.01 else 'No SRM (as expected)'}")
-
-# ---- SRM on real data (likely fails — unequal allocation observed) ----
-print("\n--- SRM Check on Real Data (intended 50/50) ---")
-real_obs = np.array([n_control, n_treatment])
-real_exp_per_group = n_total / 2
-real_expected = np.array([real_exp_per_group, real_exp_per_group])
-
-chi2_stat, srm_p_value = stats.chisquare(real_obs, f_exp=real_expected)
-
-print(f"Observed: control={n_control:,}, treatment={n_treatment:,}")
-print(f"Expected: control={real_exp_per_group:,.0f}, treatment={real_exp_per_group:,.0f}")
-print(f"Observed ratio: {n_control / n_total:.4f} / {n_treatment / n_total:.4f}")
-print(f"χ² = {chi2_stat:.4f}")
-print(f"p-value = {srm_p_value:.2e}")
-
-if srm_p_value < 0.01:
-    print("\nSRM DETECTED — the observed split deviates significantly from 50/50.")
-    print("Possible causes to investigate:")
-    print("  1. Bot filtering that removed more control/treatment users")
-    print("  2. Technical issues causing differential drop-off")
-    print("  3. Randomisation bug in the assignment mechanism")
-    print("  4. Population filter applied post-randomisation")
-    print("\nProceeding with analysis, but results should be treated with caution.")
-else:
-    print("\nNo SRM detected — sample split is consistent with 50/50 design.")
+# Run the t-test on simulated data
+sim_t, sim_p = stats.ttest_ind(sim_treatment, sim_control, equal_var=False)
+print(f"  t-statistic: {sim_t:.4f}, p-value: {sim_p:.2e}")
+print(
+    f"  {'DETECTED' if sim_p < alpha else 'MISSED'} (positive control should be detected)"
+)
+# INTERPRETATION: If the test fails to detect a known true effect of 2.0
+# with n=10,000 per group, there is a bug in the analysis pipeline.
+# This is the experiment design equivalent of a unit test.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert sim_chi2 == 0.0, "Simulated equal groups should give χ²=0"
-assert 0 <= srm_p_value <= 1, "SRM p-value must be a valid probability"
-print("\n✓ Checkpoint 3 passed — SRM detection completed\n")
+assert sim_p < alpha, "Positive control must be detected"
+assert (
+    abs(sim_treatment.mean() - sim_control.mean() - true_effect) < 3.0
+), "Realized effect should be within 3.0 of true"
+print("\n✓ Checkpoint 3 passed — positive control validated\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Hypothesis test — Welch's t-test on A/B results
+# TASK 5: SRM Detection — Simulated and Real Data
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: Welch's t-test is preferred over Student's t-test because it
-# does not assume equal variances between groups.
 
 print("\n" + "=" * 70)
-print("TASK 5: Hypothesis Test — Welch's t-test")
+print("TASK 5: Sample Ratio Mismatch Detection")
 print("=" * 70)
 
-# ---- Test on simulated data (known effect = 2.0) ----
-print("\n--- Simulated Data (true effect = 2.0) ---")
-sim_t_stat, sim_p_value = stats.ttest_ind(
-    sim_treatment, sim_control, equal_var=False, alternative="two-sided"
+# SRM on simulated data (designed 50/50 — should pass)
+sim_obs = np.array([sim_n_per, sim_n_per])
+sim_exp = np.array([sim_n_per, sim_n_per])
+sim_chi2, sim_srm_p = stats.chisquare(sim_obs, f_exp=sim_exp)
+print(f"\n--- Simulated (designed 50/50) ---")
+print(f"χ²={sim_chi2:.4f}, p={sim_srm_p:.6f} → {'SRM' if sim_srm_p < 0.01 else 'OK'}")
+
+# SRM on real data
+real_obs = np.array([n_control, n_treatment])
+real_exp = np.array([n_total / 2, n_total / 2])
+chi2_stat, srm_p = stats.chisquare(real_obs, f_exp=real_exp)
+print(f"\n--- Real Data (intended 50/50) ---")
+print(
+    f"Observed: {n_control:,} / {n_treatment:,} ({n_control/n_total:.4f}/{n_treatment/n_total:.4f})"
 )
-
-print(f"Control mean:   {sim_control.mean():.4f}")
-print(f"Treatment mean: {sim_treatment.mean():.4f}")
-print(f"Observed diff:  {sim_treatment.mean() - sim_control.mean():.4f}")
-print(f"t-statistic:    {sim_t_stat:.4f}")
-print(f"p-value:        {sim_p_value:.2e}")
-print(f"Result: {'SIGNIFICANT' if sim_p_value < alpha else 'NOT significant'} at α={alpha}")
-if sim_p_value < alpha:
-    print("  --> Correctly detected the known treatment effect (true positive)")
-
-# ---- Test on real data ----
-print("\n--- Real Experiment Data ---")
-real_t_stat, real_p_value = stats.ttest_ind(
-    treat_values, ctrl_values, equal_var=False, alternative="two-sided"
-)
-
-observed_diff = treat_values.mean() - ctrl_values.mean()
-relative_lift = observed_diff / ctrl_values.mean() * 100
-
-print(f"Control mean:   {ctrl_values.mean():.4f}")
-print(f"Treatment mean: {treat_values.mean():.4f}")
-print(f"Absolute diff:  {observed_diff:+.4f}")
-print(f"Relative lift:  {relative_lift:+.2f}%")
-print(f"t-statistic:    {real_t_stat:.4f}")
-print(f"p-value:        {real_p_value:.6f}")
-print(f"Result: {'SIGNIFICANT' if real_p_value < alpha else 'NOT significant'} at α={alpha}")
-# INTERPRETATION: Significance tells you whether the effect is real;
-# Cohen's d tells you whether it's meaningful. A highly significant but
-# tiny effect may not justify the cost of deploying the new feature.
-
-# Cohen's d for effect size interpretation
-pooled_std_real = np.sqrt(
-    (ctrl_values.var(ddof=1) + treat_values.var(ddof=1)) / 2
-)
-cohens_d_real = observed_diff / pooled_std_real
-print(f"Cohen's d: {cohens_d_real:.4f}", end="")
-if abs(cohens_d_real) < 0.2:
-    print(" (negligible/small)")
-elif abs(cohens_d_real) < 0.5:
-    print(" (small-medium)")
-elif abs(cohens_d_real) < 0.8:
-    print(" (medium)")
+print(f"χ²={chi2_stat:.4f}, p={srm_p:.2e}")
+if srm_p < 0.01:
+    print("SRM DETECTED — investigate:")
+    print("  1. Bot filtering differential")
+    print("  2. Technical redirect issues")
+    print("  3. Randomisation bug")
+    print("  4. Post-randomisation population filter")
 else:
-    print(" (large)")
+    print("No SRM detected — split is consistent with design")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert sim_p_value < alpha, "Positive control (known effect=2.0) must be detected as significant"
-assert 0 <= real_p_value <= 1, "Real data p-value must be a valid probability"
-print("\n✓ Checkpoint 4 passed — hypothesis tests completed\n")
+assert sim_chi2 == 0.0, "Simulated equal groups should give χ²=0"
+assert 0 <= srm_p <= 1, "SRM p-value must be valid"
+print("\n✓ Checkpoint 4 passed — SRM detection completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Confidence interval for treatment effect
+# TASK 6: Simulating SRM — Impact on Effect Estimation
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: A CI is more informative than a p-value — it tells you HOW BIG
-# the effect likely is. The Welch-Satterthwaite degrees of freedom:
-#   df = (s₁²/n₁ + s₂²/n₂)² / [(s₁²/n₁)² / (n₁-1) + (s₂²/n₂)² / (n₂-1)]
+# What happens when SRM is present? We simulate experiments where
+# high-value users are more likely to end up in treatment.
 
 print("\n" + "=" * 70)
-print("TASK 6: Confidence Interval for Treatment Effect")
+print("TASK 6: Simulating SRM — Impact on Estimation")
 print("=" * 70)
 
-# ---- CI for simulated data ----
-print("\n--- Simulated Data ---")
-sim_se_diff = np.sqrt(
-    sim_control.var(ddof=1) / len(sim_control)
-    + sim_treatment.var(ddof=1) / len(sim_treatment)
+n_srm_sim = 1000
+srm_biases = []
+no_srm_biases = []
+true_lift = 1.0  # True treatment effect
+
+for _ in range(n_srm_sim):
+    # No SRM: random 50/50 allocation
+    users = rng.normal(50, 10, size=2000)  # User "quality" scores
+    assigned = rng.choice([0, 1], size=2000)  # 50/50 random
+    ctrl_outcome = users[assigned == 0] + rng.normal(0, 5, size=(assigned == 0).sum())
+    treat_outcome = (
+        users[assigned == 1] + true_lift + rng.normal(0, 5, size=(assigned == 1).sum())
+    )
+    no_srm_biases.append((treat_outcome.mean() - ctrl_outcome.mean()) - true_lift)
+
+    # WITH SRM: high-value users 60% likely to end up in treatment
+    assign_prob = np.where(users > 55, 0.6, 0.4)  # Biased allocation
+    assigned_srm = (rng.random(size=2000) < assign_prob).astype(int)
+    ctrl_out_srm = users[assigned_srm == 0] + rng.normal(
+        0, 5, size=(assigned_srm == 0).sum()
+    )
+    treat_out_srm = (
+        users[assigned_srm == 1]
+        + true_lift
+        + rng.normal(0, 5, size=(assigned_srm == 1).sum())
+    )
+    srm_biases.append((treat_out_srm.mean() - ctrl_out_srm.mean()) - true_lift)
+
+print(f"True treatment effect: {true_lift}")
+print(f"\nNo SRM:")
+print(f"  Mean estimation bias: {np.mean(no_srm_biases):+.4f}")
+print(f"  Std of bias: {np.std(no_srm_biases):.4f}")
+print(f"\nWith SRM (high-value → treatment):")
+print(f"  Mean estimation bias: {np.mean(srm_biases):+.4f}")
+print(f"  Std of bias: {np.std(srm_biases):.4f}")
+print(
+    f"\nSRM adds a POSITIVE bias of ~{np.mean(srm_biases) - np.mean(no_srm_biases):+.2f}"
 )
+print(f"because high-value users inflate treatment outcomes.")
+# INTERPRETATION: SRM doesn't just break the sample split — it
+# introduces SYSTEMATIC BIAS in treatment effect estimates. When
+# high-value users are more likely to end up in treatment, the
+# estimated lift is inflated. This is why SRM detection is the
+# first sanity check, not an optional nicety.
 
-# Welch-Satterthwaite degrees of freedom
-sim_s1_sq_n1 = sim_control.var(ddof=1) / len(sim_control)
-sim_s2_sq_n2 = sim_treatment.var(ddof=1) / len(sim_treatment)
-sim_df_ws = (sim_s1_sq_n1 + sim_s2_sq_n2) ** 2 / (
-    sim_s1_sq_n1 ** 2 / (len(sim_control) - 1)
-    + sim_s2_sq_n2 ** 2 / (len(sim_treatment) - 1)
-)
+# ── Checkpoint 5 ─────────────────────────────────────────────────────
+assert abs(np.mean(no_srm_biases)) < 0.5, "No-SRM bias should be near zero"
+assert abs(np.mean(srm_biases)) > abs(
+    np.mean(no_srm_biases)
+), "SRM should introduce larger bias"
+print("\n✓ Checkpoint 5 passed — SRM impact on estimation demonstrated\n")
 
-sim_t_crit = stats.t.ppf(1 - alpha / 2, df=sim_df_ws)
-sim_diff = sim_treatment.mean() - sim_control.mean()
-sim_ci_lower = sim_diff - sim_t_crit * sim_se_diff
-sim_ci_upper = sim_diff + sim_t_crit * sim_se_diff
 
-print(f"Observed difference: {sim_diff:.4f}")
-print(f"Standard error: {sim_se_diff:.4f}")
-print(f"Degrees of freedom (Welch-Satterthwaite): {sim_df_ws:.1f}")
-print(f"95% CI: [{sim_ci_lower:.4f}, {sim_ci_upper:.4f}]")
-print(f"True effect (δ={true_effect}): {'WITHIN CI' if sim_ci_lower <= true_effect <= sim_ci_upper else 'OUTSIDE CI'}")
-# INTERPRETATION: For a 95% CI, we expect 95% of such intervals constructed
-# from repeated experiments to contain the true effect. The CI here should
-# contain the known true effect of 2.0 in approximately 95% of simulations.
+# ══════════════════════════════════════════════════════════════════════
+# TASK 7: Welch's t-test with Satterthwaite Degrees of Freedom
+# ══════════════════════════════════════════════════════════════════════
 
-# ---- CI for real data ----
-print("\n--- Real Experiment Data ---")
-real_se_diff = np.sqrt(
-    ctrl_values.var(ddof=1) / n_control
-    + treat_values.var(ddof=1) / n_treatment
-)
+print("\n" + "=" * 70)
+print("TASK 7: Welch's t-test")
+print("=" * 70)
 
-# Welch-Satterthwaite degrees of freedom
+# On simulated data (known effect)
+print("\n--- Simulated Data (true effect=2.0) ---")
+sim_t_stat, sim_p_val = stats.ttest_ind(sim_treatment, sim_control, equal_var=False)
+print(f"t={sim_t_stat:.4f}, p={sim_p_val:.2e}")
+print(f"{'SIGNIFICANT' if sim_p_val < alpha else 'NOT sig'} at α={alpha}")
+
+# On real data
+print("\n--- Real Data ---")
+real_t_stat, real_p_val = stats.ttest_ind(treat_values, ctrl_values, equal_var=False)
+obs_diff = treat_values.mean() - ctrl_values.mean()
+rel_lift = obs_diff / ctrl_values.mean() * 100
+
+# Welch-Satterthwaite degrees of freedom (manual computation)
 s1_sq_n1 = ctrl_values.var(ddof=1) / n_control
 s2_sq_n2 = treat_values.var(ddof=1) / n_treatment
 df_ws = (s1_sq_n1 + s2_sq_n2) ** 2 / (
-    s1_sq_n1 ** 2 / (n_control - 1) + s2_sq_n2 ** 2 / (n_treatment - 1)
+    s1_sq_n1**2 / (n_control - 1) + s2_sq_n2**2 / (n_treatment - 1)
 )
 
-t_crit = stats.t.ppf(1 - alpha / 2, df=df_ws)
-ci_lower = observed_diff - t_crit * real_se_diff
-ci_upper = observed_diff + t_crit * real_se_diff
+print(f"Control:   {ctrl_values.mean():.4f} ± {ctrl_values.std():.4f}")
+print(f"Treatment: {treat_values.mean():.4f} ± {treat_values.std():.4f}")
+print(f"Diff: {obs_diff:+.4f} ({rel_lift:+.2f}% relative)")
+print(f"t-statistic: {real_t_stat:.4f}")
+print(f"Welch-Satterthwaite df: {df_ws:.1f}")
+print(f"p-value: {real_p_val:.6f}")
+print(f"{'SIGNIFICANT' if real_p_val < alpha else 'NOT significant'} at α={alpha}")
 
-print(f"Observed difference: {observed_diff:+.4f}")
-print(f"Standard error: {real_se_diff:.4f}")
-print(f"Degrees of freedom (Welch-Satterthwaite): {df_ws:.1f}")
-print(f"95% CI: [{ci_lower:.4f}, {ci_upper:.4f}]")
+# Cohen's d
+pooled_std_real = np.sqrt((ctrl_values.var(ddof=1) + treat_values.var(ddof=1)) / 2)
+cohens_d_real = obs_diff / pooled_std_real
+print(
+    f"Cohen's d: {cohens_d_real:.4f} ({'small' if abs(cohens_d_real) < 0.2 else 'medium' if abs(cohens_d_real) < 0.5 else 'large'})"
+)
 
-if ci_lower > 0:
-    print("CI entirely above zero — treatment has a POSITIVE effect")
-elif ci_upper < 0:
-    print("CI entirely below zero — treatment has a NEGATIVE effect")
-else:
-    print("CI spans zero — effect is not statistically distinguishable from zero")
-
-# Practical significance: is the CI within the MDE range?
-print(f"\nMDE (from power analysis): {mde_absolute:.4f}")
-if abs(observed_diff) >= mde_absolute:
-    print("Observed effect exceeds MDE — practically significant")
-else:
-    print("Observed effect is below MDE — may not be practically meaningful")
-
-# ---- Visualise all intervals ----
-viz = ModelVisualizer()
-
-interval_data = {
-    "Simulated (true=2.0)": {
-        "lower_bound": sim_ci_lower,
-        "upper_bound": sim_ci_upper,
-        "point_estimate": sim_diff,
-        "width": sim_ci_upper - sim_ci_lower,
-    },
-    "Real Data": {
-        "lower_bound": ci_lower,
-        "upper_bound": ci_upper,
-        "point_estimate": observed_diff,
-        "width": ci_upper - ci_lower,
-    },
-}
-fig_intervals = viz.metric_comparison(interval_data)
-fig_intervals.update_layout(title="95% Confidence Intervals for Treatment Effect")
-fig_intervals.write_html("ex4_confidence_intervals.html")
-print("\nSaved: ex4_confidence_intervals.html")
-
-# Power curve visualisation
-power_metrics = {"Power": power_at_n}
-fig_power = viz.training_history(power_metrics, x_label="Sample Size per Group")
-fig_power.update_layout(title=f"Power Curve (MDE = {mde_absolute:.2f}, α = {alpha})")
-fig_power.write_html("ex4_power_curve.html")
-print("Saved: ex4_power_curve.html")
-
-# ── Checkpoint 5 ─────────────────────────────────────────────────────
-assert sim_ci_lower < sim_ci_upper, "CI lower must be below upper"
-assert ci_lower < ci_upper, "Real data CI lower must be below upper"
-if sim_ci_lower <= true_effect <= sim_ci_upper:
-    print(f"  True effect {true_effect} is within simulated 95% CI [{sim_ci_lower:.4f}, {sim_ci_upper:.4f}] ✓")
-else:
-    print(f"  Note: True effect {true_effect} fell outside simulated CI [{sim_ci_lower:.4f}, {sim_ci_upper:.4f}]")
-    print(f"  This happens ~5% of the time with a 95% CI — that's the definition of 95% coverage!")
-print("\n✓ Checkpoint 5 passed — confidence intervals validated\n")
+# ── Checkpoint 6 ─────────────────────────────────────────────────────
+assert sim_p_val < alpha, "Positive control must be detected"
+assert 0 <= real_p_val <= 1, "Real p-value must be valid"
+print("\n✓ Checkpoint 6 passed — Welch's t-test completed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 7: Data Collection Plan (Why / What / Where / How / Frequency)
+# TASK 8: Confidence Intervals — Welch + Bootstrap
 # ══════════════════════════════════════════════════════════════════════
-# THEORY: A data collection framework ensures you collect the RIGHT data
-# from the RIGHT sources at the RIGHT frequency BEFORE running the experiment.
 
 print("\n" + "=" * 70)
-print("TASK 7: Data Collection Plan")
+print("TASK 8: Confidence Intervals for Treatment Effect")
 print("=" * 70)
 
-# Build the plan as structured data for display
+# Welch CI
+real_se = np.sqrt(s1_sq_n1 + s2_sq_n2)
+t_crit = stats.t.ppf(1 - alpha / 2, df=df_ws)
+welch_ci = (obs_diff - t_crit * real_se, obs_diff + t_crit * real_se)
+
+# Bootstrap CI
+n_boot = 10_000
+boot_diffs = np.array(
+    [
+        rng.choice(treat_values, size=n_treatment, replace=True).mean()
+        - rng.choice(ctrl_values, size=n_control, replace=True).mean()
+        for _ in range(n_boot)
+    ]
+)
+boot_ci = tuple(np.percentile(boot_diffs, [2.5, 97.5]))
+
+# Normal approximation CI
+normal_ci = (obs_diff - 1.96 * real_se, obs_diff + 1.96 * real_se)
+
+print(f"Observed difference: {obs_diff:+.4f}")
+print(f"{'Method':<20} {'Lower':>12} {'Upper':>12} {'Width':>10}")
+print("─" * 56)
+print(
+    f"{'Welch t-CI':<20} {welch_ci[0]:>12.4f} {welch_ci[1]:>12.4f} {welch_ci[1]-welch_ci[0]:>10.4f}"
+)
+print(
+    f"{'Normal CI':<20} {normal_ci[0]:>12.4f} {normal_ci[1]:>12.4f} {normal_ci[1]-normal_ci[0]:>10.4f}"
+)
+print(
+    f"{'Bootstrap CI':<20} {boot_ci[0]:>12.4f} {boot_ci[1]:>12.4f} {boot_ci[1]-boot_ci[0]:>10.4f}"
+)
+
+if welch_ci[0] > 0:
+    print("\nCI entirely above zero — POSITIVE treatment effect")
+elif welch_ci[1] < 0:
+    print("\nCI entirely below zero — NEGATIVE treatment effect")
+else:
+    print("\nCI spans zero — effect not distinguishable from zero")
+# INTERPRETATION: The CI tells you HOW BIG the effect likely is —
+# far more informative than a binary p-value. A CI of [0.01, 0.03]
+# means the effect is real but tiny. A CI of [-2, 5] means we have
+# no idea whether the effect is positive or negative.
+
+# ── Checkpoint 7 ─────────────────────────────────────────────────────
+assert welch_ci[0] < welch_ci[1], "CI lower must be below upper"
+assert boot_ci[0] < boot_ci[1], "Bootstrap CI must be valid"
+print("\n✓ Checkpoint 7 passed — confidence intervals computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 9: Data Collection Plan (Why/What/Where/How/Frequency)
+# ══════════════════════════════════════════════════════════════════════
+
+print("\n" + "=" * 70)
+print("TASK 9: Data Collection Plan")
+print("=" * 70)
+
 plan = {
     "WHY (Hypotheses & Value)": {
-        "Primary hypothesis": (
-            "New recommendation algorithm increases user engagement "
-            "(metric_value) by >= 2% relative lift"
-        ),
-        "Secondary hypothesis": (
-            "Revenue per user increases without degrading "
-            "user experience (session duration, bounce rate)"
-        ),
-        "Business value": (
-            "A 2% lift in engagement correlates with ~$X00K annual "
-            "revenue uplift based on historical engagement-to-revenue models"
-        ),
-        "Performance measures": (
-            "metric_value (primary), revenue (secondary), "
-            "session_duration and bounce_rate (guardrail)"
-        ),
+        "Primary hypothesis": "New algorithm increases engagement by ≥ 2%",
+        "Secondary hypotheses": "Revenue impact, conversion impact",
+        "Business value": "1% engagement lift ≈ $200K annual revenue increase",
+        "Success criteria": "p < 0.05 AND Cohen's d > 0.1 AND CI excludes zero",
     },
     "WHAT (Data Requirements)": {
-        "Ideal wish list": (
-            "Per-user per-session: metric_value, revenue, pages_viewed, "
-            "session_duration, bounce_flag, device, country, user_segment, "
-            "pre_experiment_metric (for CUPED), timestamp"
-        ),
-        "Minimum viable": (
-            "Per-user: metric_value, experiment_group, timestamp"
-        ),
-        "Budget constraint": (
-            f"Need >= {n_required_total:,} total observations "
-            f"({n_required_per_group:,} per group) for 80% power"
-        ),
-        "Time constraint": (
-            f"At current traffic of ~{n_total:,} users per experiment window, "
-            f"need ~{max(1, math.ceil(n_required_total / n_total))} experiment "
-            f"cycle(s) to reach required sample size"
-        ),
+        "Primary metric": "metric_value (engagement score, 0-100)",
+        "Secondary metrics": "revenue, conversion, pages_viewed",
+        "Covariates": "signup_date, device_type, country, prior_activity",
+        "Guardrail metrics": "page_load_time, error_rate, support_tickets",
+        "Minimum rows": f"{2 * n_required_per:,} (from power analysis)",
     },
     "WHERE (Data Sources)": {
-        "Internal — Application DB": (
-            "User profiles, segment assignments, platform (mobile/desktop/tablet)"
-        ),
-        "Internal — Event stream": (
-            "Clickstream events, page views, session starts/ends, "
-            "recommendation impressions and clicks"
-        ),
-        "Internal — Transaction DB": (
-            "Revenue, order value, purchase timestamps"
-        ),
-        "Internal — Experiment platform": (
-            "Group assignment, assignment timestamp, feature flags"
-        ),
-        "External — data.gov.sg": (
-            "Public holidays, economic indicators (control for macro effects)"
-        ),
+        "Internal": "Event pipeline (Kafka → BigQuery), user_features table",
+        "External": "None required for this experiment",
+        "Schema": "user_id, timestamp, experiment_group, metric_value, revenue",
     },
-    "HOW (Collection Methods)": {
-        "At start — review": (
-            "Audit existing data pipelines for completeness and freshness. "
-            "Check for known data quality issues (duplicates, missing values)."
-        ),
-        "At start — discover": (
-            "Profile pre-experiment data to estimate baseline metric "
-            "distribution (mean, variance) for power analysis."
-        ),
-        "At start — validate": (
-            "Run A/A test (both groups see control) for 1 week to validate "
-            "the randomisation mechanism before launching the A/B test."
-        ),
-        "Continuous — automated": (
-            "Real-time event ingestion via streaming pipeline. "
-            "Daily SRM checks as automated alerts. "
-            "Pre-computed CUPED covariates from 30-day pre-period."
-        ),
-        "Continuous — human": (
-            "Weekly review of data quality dashboards. "
-            "Escalation protocol for SRM alerts. "
-            "Mid-experiment review at 50% of target sample size."
-        ),
+    "HOW (Collection Method)": {
+        "Assignment": "Server-side random hash on user_id (deterministic)",
+        "Logging": "Event-sourced: every impression, click, purchase logged",
+        "Quality": "Dedup on (user_id, session_id), validate schema on ingest",
+        "Privacy": "PII stripped at collection; analysis on anonymised IDs",
     },
-    "FREQUENCY (Collection & Analysis Cadence)": {
-        "Collection frequency": "Per-event (real-time streaming)",
-        "Analysis frequency": (
-            "Daily monitoring dashboard (sample size, SRM, metric trends). "
-            "DO NOT run significance tests daily — peeking inflates Type I error."
-        ),
-        "Duration": (
-            f"Run until {n_required_total:,} observations collected OR "
-            f"maximum 4 weeks (whichever comes first). "
-            f"Include >= 1 full business cycle (7 days) to average out "
-            f"day-of-week effects."
-        ),
-        "Stopping rule": (
-            "Pre-registered: analyse ONCE at target sample size. "
-            "If sequential monitoring is needed, use always-valid p-values "
-            "(see Exercise 7 — CUPED and variance reduction)."
-        ),
+    "FREQUENCY (Timing)": {
+        "Collection frequency": "Real-time events, hourly batch aggregation",
+        "Analysis frequency": "Weekly interim report (no peeking at p-values)",
+        "Duration": f"~{2*n_required_per // 5000} days at 5,000 users/day",
+        "Stopping rule": "Analyse after target n reached; no early stopping",
     },
 }
 
-# Display the plan in formatted output
 for section, items in plan.items():
-    print(f"\n{'─' * 70}")
-    print(f"  {section}")
-    print(f"{'─' * 70}")
+    print(f"\n{section}")
+    print("─" * 50)
     for key, value in items.items():
-        # Wrap long lines for readability
-        print(f"\n  {key}:")
-        # Split into lines of ~60 chars
-        words = value.split()
-        line = "    "
-        for word in words:
-            if len(line) + len(word) + 1 > 72:
-                print(line)
-                line = "    " + word
-            else:
-                line = line + " " + word if line.strip() else "    " + word
-        if line.strip():
-            print(line)
+        print(f"  {key}: {value}")
+
+# ── Checkpoint 8 ─────────────────────────────────────────────────────
+assert len(plan) == 5, "Plan must cover all 5 sections"
+print("\n✓ Checkpoint 8 passed — data collection plan created\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Common Pitfalls Summary
+# TASK 10: Experiment Validity — SUTVA and Interference
 # ══════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
-print("Common A/B Testing Pitfalls")
+print("TASK 10: Experiment Validity Criteria")
 print("=" * 70)
 
-pitfalls = [
-    (
-        "Overlapping treatments",
-        "User in both experiment A and experiment B simultaneously. "
-        "Interaction effects make individual treatment effects uninterpretable. "
-        "Mitigation: mutual exclusion layers in the experiment platform.",
-    ),
-    (
-        "Prior treatment influence",
-        "User saw treatment in a previous experiment, creating carryover effects. "
-        "Mitigation: enforce washout periods between related experiments.",
-    ),
-    (
-        "Temporal biases",
-        "Starting the experiment on a Monday and ending on a Wednesday captures "
-        "weekday behaviour but misses weekends. "
-        "Mitigation: run for full weeks (multiples of 7 days).",
-    ),
-    (
-        "Peeking (repeated significance testing)",
-        "Checking p-values daily and stopping when significant inflates Type I "
-        "error far above the nominal alpha. With 10 peeks at alpha=0.05, the "
-        "effective false positive rate rises to ~14%. "
-        "Mitigation: pre-register a fixed sample size, or use sequential testing.",
-    ),
-    (
-        "Simpson's paradox in segments",
-        "Overall effect looks positive, but within every segment the effect is "
-        "negative (or vice versa). Caused by unbalanced segment sizes. "
-        "Mitigation: check treatment effects within each segment.",
-    ),
-    (
-        "SRM ignored",
-        "Proceeding with analysis despite a detected SRM. A broken randomisation "
-        "invalidates all causal claims regardless of how significant the p-value is. "
-        "Mitigation: always check SRM first; halt analysis if detected.",
-    ),
-]
+print(
+    """
+SUTVA (Stable Unit Treatment Value Assumption):
+  Each user's outcome depends ONLY on their own treatment assignment,
+  not on other users' assignments.
 
-for i, (name, description) in enumerate(pitfalls, 1):
-    print(f"\n  {i}. {name}")
-    words = description.split()
-    line = "     "
-    for word in words:
-        if len(line) + len(word) + 1 > 72:
-            print(line)
-            line = "     " + word
-        else:
-            line = line + " " + word if line.strip() else "     " + word
-    if line.strip():
-        print(line)
+Violations of SUTVA:
+  1. Network effects — if treated users share recommendations with
+     control users via social features, control is "contaminated"
+  2. Marketplace effects — if treatment changes supply/demand dynamics,
+     control users are affected by shifted prices
+  3. Shared resources — if treatment uses more server capacity,
+     control experiences slower page loads
+
+Checks for this experiment:
+"""
+)
+
+# Check 1: Variance ratio (should be ~1 if no interference)
+var_ratio = treat_values.var() / ctrl_values.var()
+print(f"  1. Variance ratio (treatment/control): {var_ratio:.3f}")
+print(f"     Expected ~1.0 if no differential interference")
+print(f"     Status: {'OK' if 0.8 < var_ratio < 1.2 else 'INVESTIGATE'}")
+
+# Check 2: Distribution shape similarity (KS test)
+ks_stat, ks_p = stats.ks_2samp(ctrl_values, treat_values)
+print(f"\n  2. KS test for distribution similarity: D={ks_stat:.4f}, p={ks_p:.6f}")
+print(f"     A small p-value suggests distributions differ beyond just location shift")
+
+# Check 3: Novelty effect — compare early vs late treatment outcomes
+n_half = n_treatment // 2
+early_treat = treat_values[:n_half]
+late_treat = treat_values[n_half:]
+novelty_t, novelty_p = stats.ttest_ind(early_treat, late_treat, equal_var=False)
+print(
+    f"\n  3. Novelty check (early vs late treatment): t={novelty_t:.4f}, p={novelty_p:.4f}"
+)
+if novelty_p < 0.05:
+    print(
+        f"     WARNING: early/late treatment outcomes differ — possible novelty effect"
+    )
+else:
+    print(f"     OK: no evidence of novelty or fatigue effect")
+# INTERPRETATION: SUTVA is rarely perfectly satisfied. The question is
+# whether violations are large enough to meaningfully bias results.
+# Document known violations and their likely direction of bias.
+
+# ── Checkpoint 9 ─────────────────────────────────────────────────────
+assert var_ratio > 0, "Variance ratio must be positive"
+assert 0 <= ks_p <= 1, "KS p-value must be valid"
+print("\n✓ Checkpoint 9 passed — validity criteria assessed\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Final Summary
+# TASK 11: Adaptive Sample Size — Sequential Design
 # ══════════════════════════════════════════════════════════════════════
+# Sometimes we don't know the variance before the experiment starts.
+# Adaptive design: start with a pilot, estimate variance, then compute
+# the remaining sample size needed.
 
 print("\n" + "=" * 70)
-print("Summary")
+print("TASK 11: Adaptive Sample Size Calculation")
 print("=" * 70)
-print(f"""
-Experiment Design:
-  - Two-arm A/B test (control vs treatment_a)
-  - H₀: μ_treatment = μ_control
-  - α = {alpha}, Power = {power_target:.0%}
 
-Power Analysis:
-  - MDE: {mde_absolute:.4f} ({relative_mde_pct}% relative lift)
-  - Required n: {n_required_total:,} total ({n_required_per_group:,} per group)
-  - Actual n: {n_total:,} ({'adequate' if n_total >= n_required_total else 'underpowered'})
+# Simulate a pilot phase
+pilot_n = 500
+pilot_ctrl = rng.choice(ctrl_values, size=pilot_n, replace=True)
+pilot_treat = rng.choice(treat_values, size=pilot_n, replace=True)
 
-SRM Check:
-  - Simulated (50/50): χ² = {sim_chi2:.4f}, p = {sim_srm_p:.4f} (no SRM)
-  - Real data: χ² = {chi2_stat:.4f}, p = {srm_p_value:.2e} ({'SRM detected' if srm_p_value < 0.01 else 'no SRM'})
+pilot_sigma = np.sqrt((pilot_ctrl.var(ddof=1) + pilot_treat.var(ddof=1)) / 2)
+pilot_diff = pilot_treat.mean() - pilot_ctrl.mean()
 
-Hypothesis Test (Welch's t-test):
-  - Simulated: t = {sim_t_stat:.4f}, p = {sim_p_value:.2e} ({'sig' if sim_p_value < alpha else 'ns'})
-  - Real data: t = {real_t_stat:.4f}, p = {real_p_value:.6f} ({'sig' if real_p_value < alpha else 'ns'})
-  - Real effect: {observed_diff:+.4f} ({relative_lift:+.2f}%), Cohen's d = {cohens_d_real:.4f}
+# Re-compute required n based on pilot estimate
+target_mde = mde_absolute
+n_adaptive = math.ceil(
+    (z_alpha_half + z_beta) ** 2 * 2 * pilot_sigma**2 / target_mde**2
+)
 
-Confidence Interval (real data):
-  - 95% CI: [{ci_lower:.4f}, {ci_upper:.4f}]
-""")
+print(f"Pilot phase: n={pilot_n} per group")
+print(f"Pilot σ estimate: {pilot_sigma:.4f} (true σ ≈ {sigma_pooled:.4f})")
+print(f"Pilot observed diff: {pilot_diff:+.4f}")
+print(f"\nAdaptive required n per group: {n_adaptive:,}")
+print(f"Original required n per group: {n_required_per:,}")
+print(f"Ratio: {n_adaptive / n_required_per:.2f}x")
+print(f"Remaining needed: {max(0, n_adaptive - pilot_n):,} per group")
+
+# Multi-stage adaptive: how estimate improves with pilot size
+print(f"\n--- Pilot Size vs Required n Stability ---")
+for pilot_size in [100, 250, 500, 1000]:
+    sigs = []
+    for _ in range(100):
+        pc = rng.choice(ctrl_values, size=pilot_size, replace=True)
+        pt = rng.choice(treat_values, size=pilot_size, replace=True)
+        s = np.sqrt((pc.var(ddof=1) + pt.var(ddof=1)) / 2)
+        sigs.append(s)
+    mean_sig = np.mean(sigs)
+    std_sig = np.std(sigs)
+    n_req = math.ceil((z_alpha_half + z_beta) ** 2 * 2 * mean_sig**2 / target_mde**2)
+    print(
+        f"  Pilot n={pilot_size:>4}: σ̂={mean_sig:.4f} ± {std_sig:.4f}, "
+        f"required n={n_req:,}"
+    )
+# INTERPRETATION: With a small pilot (n=100), the variance estimate is
+# noisy, leading to uncertain sample size calculations. A pilot of
+# ~500 gives a stable estimate. Adaptive design avoids both
+# underpowered experiments (σ underestimated) and waste (σ overestimated).
+
+# ── Checkpoint 10 ────────────────────────────────────────────────────
+assert n_adaptive > 0, "Adaptive sample size must be positive"
+print("\n✓ Checkpoint 10 passed — adaptive design completed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 12: Full Experiment Report and Visualisation
+# ══════════════════════════════════════════════════════════════════════
+
+viz = ModelVisualizer()
+
+# Plot 1: Power curve
+fig1 = go.Figure()
+fig1.add_trace(go.Scatter(x=sample_sizes.tolist(), y=power_at_n, name="Power"))
+fig1.add_hline(y=0.8, line_dash="dash", annotation_text="80% target")
+fig1.add_vline(
+    x=n_required_per, line_dash="dot", annotation_text=f"Required n={n_required_per:,}"
+)
+fig1.update_layout(
+    title=f"Power Curve (MDE={mde_absolute:.2f}, α={alpha})",
+    xaxis_title="Sample Size per Group",
+    yaxis_title="Power",
+)
+fig1.write_html("ex4_power_curve.html")
+print("\nSaved: ex4_power_curve.html")
+
+# Plot 2: SRM simulation
+fig2 = make_subplots(
+    rows=1, cols=2, subplot_titles=["No SRM (unbiased)", "With SRM (biased)"]
+)
+fig2.add_trace(go.Histogram(x=no_srm_biases, nbinsx=40, name="No SRM"), row=1, col=1)
+fig2.add_trace(go.Histogram(x=srm_biases, nbinsx=40, name="SRM"), row=1, col=2)
+fig2.update_layout(title="SRM Impact on Treatment Effect Estimation Bias", height=350)
+fig2.write_html("ex4_srm_simulation.html")
+print("Saved: ex4_srm_simulation.html")
+
+# Plot 3: CI comparison
+fig3 = go.Figure()
+methods = ["Welch t-CI", "Normal CI", "Bootstrap CI"]
+lowers = [welch_ci[0], normal_ci[0], boot_ci[0]]
+uppers = [welch_ci[1], normal_ci[1], boot_ci[1]]
+for i, (method, lo, hi) in enumerate(zip(methods, lowers, uppers)):
+    fig3.add_trace(
+        go.Scatter(
+            x=[lo, obs_diff, hi],
+            y=[method] * 3,
+            mode="markers+lines",
+            name=method,
+            marker={"size": [8, 12, 8]},
+        )
+    )
+fig3.add_vline(x=0, line_dash="dot", line_color="red")
+fig3.update_layout(
+    title="95% Confidence Intervals for Treatment Effect",
+    xaxis_title="Treatment Effect",
+)
+fig3.write_html("ex4_confidence_intervals.html")
+print("Saved: ex4_confidence_intervals.html")
+
+# ── Checkpoint 11 ────────────────────────────────────────────────────
+print("\n✓ Checkpoint 11 passed — visualisations saved\n")
+
+# Final business report
+print(f"\n{'='*70}")
+print(f"EXPERIMENT REPORT")
+print(f"{'='*70}")
+print(
+    f"""
+Experiment: Recommendation Algorithm A/B Test
+Duration: designed for {2*n_required_per:,} total users
+Actual: {n_total:,} users
+
+SRM Check: p={srm_p:.4f} → {'PASS' if srm_p > 0.01 else 'FAIL — results may be biased'}
+
+Primary Metric (metric_value — engagement score):
+  Control:   {ctrl_values.mean():.4f} ± {ctrl_values.std():.4f}
+  Treatment: {treat_values.mean():.4f} ± {treat_values.std():.4f}
+  Lift: {obs_diff:+.4f} ({rel_lift:+.2f}% relative)
+  p-value: {real_p_val:.6f}
+  Cohen's d: {cohens_d_real:.4f}
+  95% CI: [{welch_ci[0]:.4f}, {welch_ci[1]:.4f}]
+
+Decision: {"SHIP — statistically significant positive effect" if real_p_val < alpha and obs_diff > 0
+           else "HOLD — more data needed" if real_p_val > alpha and abs(obs_diff) > mde_absolute * 0.5
+           else "NO SHIP — no meaningful effect detected"}
+
+Validity: Variance ratio {var_ratio:.2f}, no novelty effect detected.
+"""
+)
+
+# ── Checkpoint 12 ────────────────────────────────────────────────────
+print("✓ Checkpoint 12 passed — experiment report complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -762,20 +749,26 @@ Confidence Interval (real data):
 print("═" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
-print("""
-  ✓ Pre-registration: hypotheses and stopping rules defined before data
-  ✓ Power analysis: n = (z_{α/2} + z_β)² × 2σ² / δ² for t-test
-  ✓ Cohen's d: standardised effect size (small=0.2, medium=0.5, large=0.8)
-  ✓ Positive control: simulate known effect to validate the pipeline
-  ✓ SRM: χ² detects broken randomisation; simulated 50/50 should give χ²=0
-  ✓ Welch's t-test: does not assume equal variances (preferred over Student's)
-  ✓ Welch-Satterthwaite df: accounts for unequal variances in the CI
-  ✓ Data collection plan: Why/What/Where/How/Frequency framework
+print(
+    """
+  ✓ Pre-registration: hypotheses, metrics, stopping rules BEFORE data
+  ✓ Power analysis: required n = f(α, power, MDE, σ)
+  ✓ Positive control: simulate known effect to validate pipeline
+  ✓ SRM detection: χ² test + understanding its causes
+  ✓ SRM impact: biased allocation → biased treatment effect estimates
+  ✓ Welch's t-test: robust to unequal variances
+  ✓ Welch-Satterthwaite df: more accurate than pooled df
+  ✓ Multiple CI methods: Welch, Normal, Bootstrap
+  ✓ Data collection plan: Why/What/Where/How/Frequency
+  ✓ SUTVA and validity: interference, novelty, variance checks
+  ✓ Adaptive design: pilot → estimate σ → compute remaining n
+  ✓ Complete experiment report with business recommendation
 
-  NEXT: In Exercise 5 you'll build OLS linear regression from scratch
-  using matrix algebra (β = (X'X)⁻¹X'y), interpret coefficients with
-  ceteris paribus logic, compute t-statistics and R², add polynomial
-  and interaction terms, and cross-validate with a train/test split.
-""")
+  NEXT: In Exercise 5 you'll build linear regression from scratch.
+  You'll derive OLS using matrix algebra, test coefficient significance
+  with t-statistics, detect multicollinearity, and run residual
+  diagnostics — all on HDB price prediction data.
+"""
+)
 
-print("Exercise 4 complete — A/B testing and experiment design")
+print("\n✓ Exercise 4 complete — A/B Testing and Experiment Design")

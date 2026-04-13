@@ -1,0 +1,704 @@
+- application [ref=e2]:
+  - generic:
+    - generic:
+      - heading [level=2]: Policy Gradient Methods
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Value-Based vs Policy-Based
+          - table:
+            - rowgroup:
+              - row:
+                - columnheader: Property
+                - columnheader: DQN (Value)
+                - columnheader: Policy Gradient
+            - rowgroup:
+              - row:
+                - cell: Learns
+                - cell: Q-values
+                - cell: Policy directly
+              - row:
+                - cell: Actions
+                - cell: Discrete only
+                - cell: Discrete or continuous
+              - row:
+                - cell: Policy
+                - cell: Derived (argmax Q)
+                - cell: Parametrised directly
+              - row:
+                - cell: Exploration
+                - cell: Epsilon-greedy
+                - cell: Stochastic policy
+        - generic:
+          - heading [level=3]: Actor-Critic Architecture
+          - list:
+            - listitem:
+              - strong: "Actor:"
+              - text: the policy network
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: π
+                            - generic: θ
+                          - generic: (
+                          - generic: a
+                          - generic: ∣
+                          - generic: s
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: π
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: θ
+                      - text: (a∣s)
+            - listitem:
+              - strong: "Critic:"
+              - text: the value network
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: V
+                            - generic: ϕ
+                          - generic: (
+                          - generic: s
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: V
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: ϕ
+                      - text: (s)
+            - listitem: Actor proposes actions. Critic evaluates them.
+            - listitem: Reduces variance compared to pure policy gradient.
+          - generic:
+            - strong: "Advantage:"
+            - generic:
+              - generic:
+                - generic:
+                  - math:
+                    - generic:
+                      - generic:
+                        - generic: A
+                        - generic: (
+                        - generic: s
+                        - generic: ","
+                        - generic: a
+                        - generic: )
+                        - generic: =
+                        - generic: Q
+                        - generic: (
+                        - generic: s
+                        - generic: ","
+                        - generic: a
+                        - generic: )
+                        - generic: −
+                        - generic: V
+                        - generic: (
+                        - generic: s
+                        - generic: )
+                - generic:
+                  - generic: A(s, a) =
+                  - generic: Q(s, a) −
+                  - generic: V(s)
+            - text: . How much better is action a than the average? This centres the gradient estimate and reduces variance.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: Five Algorithms, Five Applications
+      - generic: Foundations
+      - table:
+        - rowgroup:
+          - row:
+            - columnheader: Algorithm
+            - columnheader: Type
+            - columnheader: Actions
+            - columnheader: Business Application
+        - rowgroup:
+          - row:
+            - cell: DQN
+            - cell: Value-based
+            - cell: Discrete
+            - cell: Customer churn prevention
+          - row:
+            - cell: DDPG
+            - cell: Actor-Critic
+            - cell: Continuous
+            - cell: Manufacturing control
+          - row:
+            - cell: SAC
+            - cell: Actor-Critic + Entropy
+            - cell: Continuous
+            - cell: Dynamic pricing
+          - row:
+            - cell: A2C
+            - cell: Actor-Critic
+            - cell: Both
+            - cell: Resource allocation
+          - row:
+            - cell: PPO
+            - cell: Actor-Critic (clipped)
+            - cell: Both
+            - cell: Supply chain optimisation
+      - generic:
+        - strong: "Practical rule:"
+        - text: Start with PPO. It is the most stable and works for both discrete and continuous actions. Move to SAC if you need better exploration. Use DQN only for simple discrete problems.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic [ref=e1485]:
+      - heading "DDPG and SAC" [level=2] [ref=e1486]
+      - generic [ref=e1487]: Theory
+      - generic [ref=e1488]:
+        - generic [ref=e1489]:
+          - 'heading "DDPG: Deep Deterministic Policy Gradient" [level=3] [ref=e1490]'
+          - list [ref=e1491]:
+            - listitem [ref=e1492]:
+              - text: Off-policy actor-critic for
+              - strong [ref=e1493]: continuous actions
+            - listitem [ref=e1494]: "Deterministic policy: outputs exact action, not distribution"
+            - listitem [ref=e1495]: Uses experience replay and target networks (like DQN)
+            - listitem [ref=e1496]:
+              - strong [ref=e1497]: "Application:"
+              - text: Manufacturing control — continuous adjustments to temperature, pressure, speed
+        - generic [ref=e1498]:
+          - 'heading "SAC: Soft Actor-Critic" [level=3] [ref=e1499]'
+          - list [ref=e1500]:
+            - listitem [ref=e1501]: "Maximum entropy RL: maximise reward AND policy entropy"
+            - listitem [ref=e1502]:
+              - strong [ref=e1503]: "Entropy bonus:"
+              - text: encourages exploration, prevents premature convergence
+            - listitem [ref=e1504]: Automatic temperature tuning
+            - listitem [ref=e1505]:
+              - strong [ref=e1506]: "Application:"
+              - text: Dynamic pricing — must explore price sensitivity, handle uncertainty
+          - generic [ref=e1507]:
+            - strong [ref=e1508]: Why entropy?
+            - text: Maximum entropy policies are robust to perturbations. They explore diverse strategies before committing. Critical when the reward landscape is uncertain.
+      - generic [ref=e1510]: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "A2C: Advantage Actor-Critic"
+      - generic: Theory
+      - generic:
+        - generic:
+          - heading [level=3]: Core Idea
+          - paragraph:
+            - text: Train actor and critic synchronously. Use the
+            - strong: advantage function
+            - text: to reduce gradient variance.
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: A
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic: t
+                          - generic: ","
+                          - generic:
+                            - generic: a
+                            - generic: t
+                          - generic: )
+                          - generic: =
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: +
+                          - generic: γ
+                          - generic: V
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic:
+                              - generic: t
+                              - generic: +
+                              - generic: "1"
+                          - generic: )
+                          - generic: −
+                          - generic: V
+                          - generic: (
+                          - generic:
+                            - generic: s
+                            - generic: t
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - text: A(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ","
+                      - generic:
+                        - text: a
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ) =
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: +
+                    - generic:
+                      - text: γV(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic: t+1
+                      - text: ) −
+                    - generic:
+                      - text: V(
+                      - generic:
+                        - text: s
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: )
+            - generic: Advantage = actual return - expected baseline
+          - list:
+            - listitem: "Positive advantage: action was better than expected"
+            - listitem: "Negative advantage: action was worse than expected"
+            - listitem: Variance reduction via baseline subtraction
+        - generic:
+          - heading [level=3]: "Application: Resource Allocation"
+          - list:
+            - listitem:
+              - strong: "State:"
+              - text: current resource usage, demand forecast, budget remaining
+            - listitem:
+              - strong: "Actions:"
+              - text: allocate resources across departments
+            - listitem:
+              - strong: "Reward:"
+              - text: utilisation efficiency, SLA compliance
+          - generic:
+            - strong: "A2C vs A3C:"
+            - text: A3C (Asynchronous) runs multiple workers in parallel. A2C synchronises updates. A2C is simpler and often performs comparably due to GPU batching.
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "PPO: Proximal Policy Optimization"
+      - generic: Theory
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - math:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: L
+                        - generic: CLIP
+                      - generic: =
+                      - generic: E
+                      - generic:
+                        - generic: "["
+                        - generic: min
+                        - generic:
+                          - generic: (
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: (
+                          - generic: θ
+                          - generic: )
+                          - generic:
+                            - generic: A
+                            - generic: t
+                          - generic: ","
+                          - generic: clip
+                          - generic: (
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: (
+                          - generic: θ
+                          - generic: )
+                          - generic: ","
+                          - generic: "1"
+                          - generic: −
+                          - generic: ϵ
+                          - generic: ","
+                          - generic: "1"
+                          - generic: +
+                          - generic: ϵ
+                          - generic: )
+                          - generic:
+                            - generic: A
+                            - generic: t
+                          - generic: )
+                        - generic: "]"
+              - generic:
+                - generic:
+                  - generic:
+                    - text: L
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: CLIP
+                  - text: =
+                - generic:
+                  - text: E
+                  - generic:
+                    - text: "["
+                    - generic: min
+                    - generic:
+                      - text: (
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: (θ)
+                      - generic:
+                        - text: A
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ","
+                      - generic: clip
+                      - text: (
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: (θ), 1 − ϵ, 1 + ϵ)
+                      - generic:
+                        - text: A
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: )
+                    - text: "]"
+        - generic: PPO clipped objective — prevents destructively large policy updates
+      - generic:
+        - generic:
+          - generic:
+            - generic: Probability Ratio
+            - paragraph:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: (
+                          - generic: θ
+                          - generic: )
+                          - generic: =
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: π
+                                - generic: θ
+                              - generic: (
+                              - generic:
+                                - generic: a
+                                - generic: t
+                              - generic: ∣
+                              - generic:
+                                - generic: s
+                                - generic: t
+                              - generic: )
+                            - generic:
+                              - generic:
+                                - generic: π
+                                - generic:
+                                  - generic: θ
+                                  - generic: old
+                              - generic: (
+                              - generic:
+                                - generic: a
+                                - generic: t
+                              - generic: ∣
+                              - generic:
+                                - generic: s
+                                - generic: t
+                              - generic: )
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: (θ) =
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - text: π
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic:
+                                                    - text: θ
+                                                    - generic:
+                                                      - generic:
+                                                        - generic:
+                                                          - generic:
+                                                            - generic:
+                                                              - generic: old
+                                    - text: (
+                                    - generic:
+                                      - text: a
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: t
+                                    - text: ∣
+                                    - generic:
+                                      - text: s
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: t
+                                    - text: )
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - text: π
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: θ
+                                    - text: (
+                                    - generic:
+                                      - text: a
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: t
+                                    - text: ∣
+                                    - generic:
+                                      - text: s
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic: t
+                                    - text: )
+              - text: — how much the policy changed. If
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: =
+                          - generic: "1"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic: "1"
+              - text: ", no change. If"
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: =
+                          - generic: "2"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: =
+                    - generic: "2"
+              - text: ", action is twice as likely."
+          - generic:
+            - generic: Clipping
+            - paragraph:
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: clip
+                          - generic: (
+                          - generic:
+                            - generic: r
+                            - generic: t
+                          - generic: ","
+                          - generic: "1"
+                          - generic: −
+                          - generic: ϵ
+                          - generic: ","
+                          - generic: "1"
+                          - generic: +
+                          - generic: ϵ
+                          - generic: )
+                  - generic:
+                    - generic:
+                      - generic: clip
+                      - text: (
+                      - generic:
+                        - text: r
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: t
+                      - text: ", 1 −"
+                    - generic: ϵ, 1 +
+                    - generic: ϵ)
+              - text: limits the ratio to
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: "["
+                          - generic: "1"
+                          - generic: −
+                          - generic: ϵ
+                          - generic: ","
+                          - generic: "1"
+                          - generic: +
+                          - generic: ϵ
+                          - generic: "]"
+                  - generic:
+                    - generic: "[1 −"
+                    - generic: ϵ, 1 +
+                    - generic: ϵ]
+              - text: . Typically
+              - generic:
+                - generic:
+                  - generic:
+                    - math:
+                      - generic:
+                        - generic:
+                          - generic: ϵ
+                          - generic: =
+                          - generic: "0.2"
+                  - generic:
+                    - generic: ϵ =
+                    - generic: "0.2"
+              - text: . This prevents the new policy from straying too far from the old one.
+        - generic:
+          - heading [level=3]: Why PPO Dominates
+          - list:
+            - listitem:
+              - strong: "Simple:"
+              - text: no second-order optimisation (unlike TRPO)
+            - listitem:
+              - strong: "Stable:"
+              - text: clipping prevents catastrophic updates
+            - listitem:
+              - strong: "Versatile:"
+              - text: works for discrete and continuous actions
+            - listitem:
+              - strong: "Scalable:"
+              - text: easy to parallelise
+          - generic:
+            - strong: "RLHF connection:"
+            - text: PPO is the algorithm used to align LLMs with human preferences (ChatGPT, Claude). The reward model provides the signal, PPO optimises the policy. More in M6.
+      - generic:
+        - img:
+          - generic: state s
+          - generic: Shared
+          - generic: feature extractor
+          - generic: Actor head
+          - generic: policy πθ(a | s)
+          - generic: Critic head
+          - generic: value Vϕ(s)
+          - generic: action probs
+          - generic: "[ 0.7, 0.2, 0.1 ]"
+          - generic: expected return
+          - generic: V(s) = 12.4
+          - generic: Lᶜˡᵛᵓ = E[ min( rₜ Aₜ, clip(rₜ, 1−ε, 1+ε) Aₜ ) ] — clip stops policy from leaping
+      - generic:
+        - generic: MLFP Module 5 — Terrene Open Academy
+  - link "92 / 104" [ref=e1511] [cursor=pointer]:
+    - /url: "#/91"
+  - complementary:
+    - button "previous slide" [ref=e141] [cursor=pointer]
+    - button "next slide" [ref=e16] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e19]: "Lesson 5.8: Real-World Applications Applications Unlike every other lesson in M5, here the exercise environments are the applications. You are not looking at an analogy — you are coding the same decision problems real operations teams face, with the same reward structure and the same state/action space. Telecom — ChurnPrevention (DQN) Singtel's retention team picks a discount tier (do nothing / small / medium / large) each month per customer. Reward = retained revenue − discount cost. The DQN you train in Exercise 8 learns to save its big discounts for customers about to churn, not those who would stay anyway. A rules engine hands out discounts uniformly; the RL policy targets them. Retail — DynamicPricing (SAC) Lazada / Shopee price roughly 100M SKUs in real time across demand shocks, competitor moves, and inventory levels. SAC handles the continuous action space (price can be any value in a range) and the uncertainty (demand is noisy). Same continuous-action problem as in your custom env, just at warehouse scale. Asset Management — PortfolioRebalancing (PPO) A quant fund rebalances weights across N assets under transaction cost and risk constraints. The PPO clipped objective prevents wild reweighting between steps — exactly what regulators and risk desks require. Same clipped-surrogate trick you coded. Logistics — SupplyChainInventory (PPO) A Singapore FMCG distributor decides daily replenishment quantities for each of 3,000 SKUs across 40 retail partners. Reward = service level − holding cost − stockout penalty. The RL policy beats rolling safety-stock formulas because it learns which SKUs genuinely co-move and which do not. Cloud Ops — ResourceAllocation (A2C) A cloud platform allocates CPU / memory / I/O quotas across tenants under SLA constraints. A2C's advantage baseline reduces variance in the policy-gradient update — critical because allocation decisions are high-stakes and the reward signal is noisy. This is how modern schedulers are increasingly being replaced by learned policies. Bridge to M6 — RLHF for LLM Alignment The PPO you wrote for CartPole is the same algorithm that aligns ChatGPT, Claude, and Gemini to human preferences. Reward = human preference model score; action = next token. Exercise 8 is literally the training loop of modern LLM alignment, minus the reward model. Why this matters for YOU: RL is the right tool for repeated operational decisions under feedback — pricing, inventory, resource allocation, retention. The ROI is in the compounding: a small edge per decision times millions of decisions is material. Most importantly, RL is also how modern LLMs are trained to be useful at all, which is why Module 6 picks up exactly where this lesson stops. MLFP Module 5 — Terrene Open Academy"

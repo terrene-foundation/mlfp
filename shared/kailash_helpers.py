@@ -40,6 +40,17 @@ def get_connection_manager(db_url: str | None = None):
     return ConnectionManager(url)
 
 
+def get_device() -> "torch.device":
+    """Get the best available compute device: MPS (Mac) > CUDA > CPU."""
+    import torch
+
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
 def get_llm_model() -> str:
     """Get the configured LLM model name from environment."""
     setup_environment()

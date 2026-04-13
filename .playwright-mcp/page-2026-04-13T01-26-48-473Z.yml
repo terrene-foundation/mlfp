@@ -1,0 +1,94 @@
+- application [ref=e2]:
+  - generic:
+    - generic [ref=e3]:
+      - heading "Module 1" [level=1] [ref=e4]
+      - heading "Data Pipelines and Visualisation" [level=2] [ref=e5]
+      - paragraph [ref=e6]: MLFP — ML Foundations for Professionals — Terrene Open Academy
+      - paragraph [ref=e7]: "\"Can you trust a number you didn't explore yourself?\""
+      - generic [ref=e9]: MLFP Module 1 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: What You Will Learn
+      - generic:
+        - generic:
+          - heading [level=3]: By the End of This Module
+          - list:
+            - listitem:
+              - strong: Write Python
+              - text: from scratch — variables, functions, loops, conditionals
+            - listitem:
+              - strong: Load and explore data
+              - text: with Polars (not pandas, not Excel)
+            - listitem:
+              - strong: Filter, join, and aggregate
+              - text: millions of rows in seconds
+            - listitem:
+              - strong: Visualise patterns
+              - text: with Plotly and ModelVisualizer
+            - listitem:
+              - strong: Profile data automatically
+              - text: with DataExplorer
+            - listitem:
+              - strong: Build end-to-end pipelines
+              - text: with PreprocessingPipeline
+        - generic:
+          - heading [level=3]: Three Depth Layers
+          - generic:
+            - strong: FOUNDATIONS
+            - text: — Everyone follows. No maths, no jargon.
+          - generic:
+            - strong: THEORY
+            - text: — The maths behind the intuition. Follow if you can.
+          - generic:
+            - strong: ADVANCED
+            - text: — Cutting-edge insights for experts.
+      - generic:
+        - generic: MLFP Module 1 — Terrene Open Academy
+    - generic:
+      - heading [level=2]: "Your Journey: 8 Lessons"
+      - table:
+        - rowgroup:
+          - row:
+            - columnheader: "#"
+            - columnheader: Lesson
+            - columnheader: You Will Be Able To...
+        - rowgroup:
+          - row:
+            - cell: "1.1"
+            - cell: Your First Data Exploration
+            - cell: Load a CSV and inspect shape, columns, statistics
+          - row:
+            - cell: "1.2"
+            - cell: Filtering and Transforming Data
+            - cell: Slice data by any condition, create computed columns
+          - row:
+            - cell: "1.3"
+            - cell: Functions and Aggregation
+            - cell: Write reusable code, compute group statistics
+          - row:
+            - cell: "1.4"
+            - cell: Joins and Multi-Table Data
+            - cell: Combine datasets (HDB + MRT + schools)
+          - row:
+            - cell: "1.5"
+            - cell: Window Functions and Trends
+            - cell: Compute rolling averages and year-on-year changes
+          - row:
+            - cell: "1.6"
+            - cell: Data Visualisation
+            - cell: Build interactive charts with Plotly / ModelVisualizer
+          - row:
+            - cell: "1.7"
+            - cell: Automated Data Profiling
+            - cell: Profile an entire dataset in one call with DataExplorer
+          - row:
+            - cell: "1.8"
+            - cell: Data Pipelines and End-to-End Project
+            - cell: "Build a full EDA pipeline: load, profile, clean, visualise"
+      - generic:
+        - generic: MLFP Module 1 — Terrene Open Academy
+  - link "1" [ref=e14] [cursor=pointer]:
+    - /url: "#/"
+  - complementary:
+    - button "next slide" [ref=e15] [cursor=pointer]
+  - text: Speaker notes
+  - generic [ref=e18]: Module 1 Data Pipelines and Visualisation MLFP — ML Foundations for Professionals — Terrene Open Academy "Can you trust a number you didn't explore yourself?" MLFP Module 1 — Terrene Open Academy

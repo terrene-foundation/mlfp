@@ -2079,7 +2079,7 @@ viz.roc_curve(pipeline)</code></pre>
 </section>
 
 <!-- SLIDE 61: 2.7 Kailash Bridge -->
-<section>
+<section class="code-dense">
   <h2>Kailash Bridge: CUPED and Causal Inference</h2>
   <div class="kailash-bridge">
     <h3>ExperimentTracker &mdash; CUPED and DiD Analysis</h3>
@@ -2089,7 +2089,7 @@ viz.roc_curve(pipeline)</code></pre>
       <div><strong>Engine:</strong> ExperimentTracker applies CUPED adjustment and runs DiD analysis automatically</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_ml import ExperimentTracker
 
 tracker = ExperimentTracker()
 
@@ -2307,7 +2307,7 @@ features = store.get_features(
 <section>
   <h2>Capstone Workflow: Putting It All Together</h2>
   <span class="marker marker-theory">THEORY</span>
-  <pre><code class="language-python">from kailash_ml import (
+  <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from kailash_ml import (
     DataExplorer, FeatureEngineer, FeatureStore,
     TrainingPipeline, ModelVisualizer, ExperimentTracker
 )
@@ -2919,7 +2919,7 @@ viz.coefficient_plot(pipeline)</code></pre>
       </ol>
     </div>
     <div class="col">
-      <pre><code class="language-python">import polars as pl
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import polars as pl
 import numpy as np
 
 # Compute theta (regression coefficient)

@@ -28,10 +28,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 from kaizen import InputField, OutputField, Signature
-from kaizen.core import BaseAgent
+from kaizen.core.base_agent import BaseAgent
 
 from shared.mlfp06.ex_5 import (
     MODEL,
@@ -66,12 +67,12 @@ print("✓ Checkpoint 1 passed — summary ready to feed agent\n")
 # parsing is fragile and breaks the moment the LLM rephrases.
 #
 # BaseAgent + Signature fixes this by declaring the OUTPUT SHAPE up
-# front.  The agent returns a typed object:
+# front.  The agent returns a typed dict:
 #
-#   result = await agent.run(...)
-#   result.key_findings      # list[str] — validated, never None
-#   result.confidence        # float 0.0-1.0 — validated range
-#   result.recommended_approach  # str
+#   result = await agent.run_async(...)
+#   result["key_findings"]         # list[str] — validated, never None
+#   result["confidence"]           # float 0.0-1.0 — validated range
+#   result["recommended_approach"] # str
 #
 # No JSON parsing.  No "the LLM forgot to include the findings field."
 # The signature is enforced — the LLM MUST produce the declared shape
@@ -126,17 +127,39 @@ print("✓ Checkpoint 2 passed — DataAnalysisSignature declared\n")
 # ════════════════════════════════════════════════════════════════════════
 
 
-class DataAnalysisAgent(BaseAgent):
-    """Structured data analysis agent using the typed Signature."""
+@dataclass
+class DataAnalysisConfig:
+    """Domain config — BaseAgent auto-converts to BaseAgentConfig.
 
-    signature = DataAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0  # budget from technique 2 applies here too
+    The dataclass holds the LLM wiring (provider, model, temperature) and
+    the safety budget in ONE place — the canonical kaizen 2.7.3 pattern
+    replaces the old `model = ...` / `max_llm_cost_usd = ...` class-level
+    attributes, which kaizen silently ignored (see 04 critic notes).
+    """
+
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL  # resolved from .env in shared/mlfp06/ex_5.py
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0  # replaces legacy max_llm_cost_usd
+
+
+class DataAnalysisAgent(BaseAgent):
+    """Structured data analysis agent using the typed Signature.
+
+    The Signature is passed as an INSTANCE to super().__init__ — NOT as a
+    class-level attribute. Class-level `signature = DataAnalysisSignature`
+    is silently ignored by BaseAgent and falls back to DefaultSignature,
+    which is why the old code produced generic output instead of typed
+    fields. The instance pattern is the canonical fix.
+    """
+
+    def __init__(self, config: DataAnalysisConfig):
+        super().__init__(config=config, signature=DataAnalysisSignature())
 
 
 async def run_structured_agent():
-    agent = DataAnalysisAgent()
-    result = await agent.run(
+    agent = DataAnalysisAgent(DataAnalysisConfig())
+    result = await agent.run_async(
         dataset_summary=summary_text,
         analysis_question=(
             "What patterns distinguish comparison questions from bridge "
@@ -150,10 +173,10 @@ structured_result = asyncio.run(run_structured_agent())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert structured_result is not None, "Task 3: agent should return a result"
-assert hasattr(structured_result, "key_findings"), "Result needs key_findings"
-assert hasattr(structured_result, "confidence"), "Result needs confidence"
-assert len(structured_result.key_findings) > 0, "Should have at least one finding"
-assert 0 <= structured_result.confidence <= 1, "Confidence must be in [0, 1]"
+assert "key_findings" in structured_result, "Result needs key_findings"
+assert "confidence" in structured_result, "Result needs confidence"
+assert len(structured_result["key_findings"]) > 0, "Should have at least one finding"
+assert 0 <= structured_result["confidence"] <= 1, "Confidence must be in [0, 1]"
 print("✓ Checkpoint 3 passed — structured result validated\n")
 
 
@@ -164,22 +187,22 @@ print("✓ Checkpoint 3 passed — structured result validated\n")
 print("=" * 70)
 print("  Structured Analysis Output")
 print("=" * 70)
-print(f"Key findings ({len(structured_result.key_findings)}):")
-for i, f in enumerate(structured_result.key_findings, 1):
+print(f"Key findings ({len(structured_result["key_findings"])}):")
+for i, f in enumerate(structured_result["key_findings"], 1):
     print(f"  {i}. {f}")
-print(f"\nRecommended approach: {structured_result.recommended_approach}")
-print(f"\nData quality issues:  {structured_result.data_quality_issues}")
+print(f"\nRecommended approach: {structured_result["recommended_approach"]}")
+print(f"\nData quality issues:  {structured_result["data_quality_issues"]}")
 print(f"\nNext steps:")
-for i, s in enumerate(structured_result.next_steps, 1):
+for i, s in enumerate(structured_result["next_steps"], 1):
     print(f"  {i}. {s}")
-print(f"\nConfidence: {structured_result.confidence:.2f}")
+print(f"\nConfidence: {structured_result["confidence"]:.2f}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
-assert isinstance(structured_result.key_findings, list)
-assert isinstance(structured_result.recommended_approach, str)
-assert isinstance(structured_result.data_quality_issues, list)
-assert isinstance(structured_result.next_steps, list)
-assert isinstance(structured_result.confidence, float)
+assert isinstance(structured_result["key_findings"], list)
+assert isinstance(structured_result["recommended_approach"], str)
+assert isinstance(structured_result["data_quality_issues"], list)
+assert isinstance(structured_result["next_steps"], list)
+assert isinstance(structured_result["confidence"], float)
 print("\n✓ Checkpoint 4 passed — every field matches its declared type\n")
 
 # INTERPRETATION: Compare this to the ReActAgent output from technique 1.
@@ -205,7 +228,7 @@ fields = [
 ]
 completeness = []
 for f in fields:
-    val = getattr(structured_result, f)
+    val = structured_result.get(f)
     if isinstance(val, list):
         completeness.append(min(len(val) / 3.0, 1.0))  # 3+ items = full
     elif isinstance(val, str):
@@ -251,12 +274,12 @@ print(f"\n  Saved: {fname}")
 # WITH DataAnalysisAgent (Signature):
 #   for unit in business_units:
 #       summary = build_unit_summary(unit)
-#       result = await agent.run(
+#       result = await agent.run_async(
 #           dataset_summary=summary,
 #           analysis_question=f"What drives attrition in {unit.name}?",
 #       )
-#       dashboard.add_row(unit, result.key_findings, result.confidence,
-#                        result.recommended_approach)
+#       dashboard.add_row(unit, result["key_findings"], result["confidence"],
+#                        result["recommended_approach"])
 #
 # The typed fields go STRAIGHT into the dashboard.  No parsing.  No
 # "the LLM phrased it differently this month."  Every brief has the
@@ -300,7 +323,7 @@ print(
   [x] Validated types, ranges, and non-empty lists
   [x] Chose BaseAgent vs ReActAgent based on output shape
 
-  KEY INSIGHT: result.confidence = {structured_result.confidence:.2f}.
+  KEY INSIGHT: result.confidence = {structured_result["confidence"]:.2f}.
   That float exists because we asked for it in the Signature.  The
   LLM had no choice but to produce it.  This is the power of the
   contract: the model serves the pipeline, not the other way around.

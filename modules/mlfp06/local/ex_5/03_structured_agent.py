@@ -27,9 +27,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from dataclasses import dataclass
 
 from kaizen import InputField, OutputField, Signature
-from kaizen.core import BaseAgent
+from kaizen.core.base_agent import BaseAgent
 
 from shared.mlfp06.ex_5 import MODEL, data_summary, load_hotpotqa, make_tools
 
@@ -101,22 +103,35 @@ print("✓ Checkpoint 2 passed — DataAnalysisSignature declared\n")
 # ════════════════════════════════════════════════════════════════════════
 
 
+# The canonical kaizen 2.7.3 pattern: dataclass config + instance
+# signature. The OLD pattern (class-level `signature = XxxSignature`)
+# is a silent bug — BaseAgent ignores class-level attrs and falls back
+# to DefaultSignature. Pass the signature as an INSTANCE in super().
+@dataclass
+class DataAnalysisConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    # TODO: Set budget_limit_usd = 1.0 (replaces legacy max_llm_cost_usd)
+    budget_limit_usd: float = ____
+
+
 class DataAnalysisAgent(BaseAgent):
     """Structured data analysis agent using the typed Signature."""
 
-    # TODO: Set signature = DataAnalysisSignature
-    signature = ____
-    # TODO: Set model = MODEL
-    model = ____
-    # TODO: Set max_llm_cost_usd = 1.0
-    max_llm_cost_usd = ____
+    def __init__(self, config: DataAnalysisConfig):
+        # TODO: Call super().__init__(config=config,
+        #       signature=DataAnalysisSignature()) — the signature is
+        #       passed as an INSTANCE, not a class.
+        super().__init__(____)
 
 
 async def run_structured_agent():
-    agent = DataAnalysisAgent()
-    # TODO: Await agent.run with:
+    agent = DataAnalysisAgent(DataAnalysisConfig())
+    # TODO: Await agent.run_async with:
     #   dataset_summary=summary_text
     #   analysis_question="What patterns distinguish comparison questions from bridge questions in this dataset?"
+    # Note: the entry point is .run_async(...), NOT .run(...).
     result = ____
     return result
 
@@ -125,10 +140,10 @@ structured_result = asyncio.run(run_structured_agent())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert structured_result is not None, "Task 3: agent should return a result"
-assert hasattr(structured_result, "key_findings")
-assert hasattr(structured_result, "confidence")
-assert len(structured_result.key_findings) > 0
-assert 0 <= structured_result.confidence <= 1
+assert "key_findings" in structured_result
+assert "confidence" in structured_result
+assert len(structured_result["key_findings"]) > 0
+assert 0 <= structured_result["confidence"] <= 1
 print("✓ Checkpoint 3 passed — structured result validated\n")
 
 
@@ -139,22 +154,22 @@ print("✓ Checkpoint 3 passed — structured result validated\n")
 print("=" * 70)
 print("  Structured Analysis Output")
 print("=" * 70)
-print(f"Key findings ({len(structured_result.key_findings)}):")
-for i, f in enumerate(structured_result.key_findings, 1):
+print(f"Key findings ({len(structured_result['key_findings'])}):")
+for i, f in enumerate(structured_result["key_findings"], 1):
     print(f"  {i}. {f}")
-print(f"\nRecommended approach: {structured_result.recommended_approach}")
-print(f"\nData quality issues:  {structured_result.data_quality_issues}")
+print(f"\nRecommended approach: {structured_result['recommended_approach']}")
+print(f"\nData quality issues:  {structured_result['data_quality_issues']}")
 print(f"\nNext steps:")
-for i, s in enumerate(structured_result.next_steps, 1):
+for i, s in enumerate(structured_result["next_steps"], 1):
     print(f"  {i}. {s}")
-print(f"\nConfidence: {structured_result.confidence:.2f}")
+print(f"\nConfidence: {structured_result['confidence']:.2f}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
-assert isinstance(structured_result.key_findings, list)
-assert isinstance(structured_result.recommended_approach, str)
-assert isinstance(structured_result.data_quality_issues, list)
-assert isinstance(structured_result.next_steps, list)
-assert isinstance(structured_result.confidence, float)
+assert isinstance(structured_result["key_findings"], list)
+assert isinstance(structured_result["recommended_approach"], str)
+assert isinstance(structured_result["data_quality_issues"], list)
+assert isinstance(structured_result["next_steps"], list)
+assert isinstance(structured_result["confidence"], float)
 print("\n✓ Checkpoint 4 passed — every field matches its declared type\n")
 
 

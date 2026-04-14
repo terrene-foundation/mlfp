@@ -27,11 +27,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 
 from kaizen import InputField, OutputField, Signature
-from kaizen.core import BaseAgent
+from kaizen.core.base_agent import BaseAgent
 
 from shared.mlfp06.ex_5 import (
     MODEL,
@@ -127,28 +129,61 @@ class RefinedAnalysisSignature(Signature):
     confidence: float = OutputField(description="Confidence after revision (0-1)")
 
 
+# Domain configs — dataclass pattern (kaizen 2.7.3).  Each agent type
+# owns its budget so the critic loop can meter each step independently.
+
+
+@dataclass
+class DataAnalysisConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL  # resolved from .env
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
+@dataclass
+class CriticConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
+@dataclass
+class RefinedAnalysisConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
 class DataAnalysisAgent(BaseAgent):
-    signature = DataAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
+    def __init__(self, config: DataAnalysisConfig):
+        super().__init__(config=config, signature=DataAnalysisSignature())
 
 
 class CriticAgent(BaseAgent):
-    signature = CriticSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
+    def __init__(self, config: CriticConfig):
+        super().__init__(config=config, signature=CriticSignature())
 
 
 class RefinedAnalysisAgent(BaseAgent):
-    signature = RefinedAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
+    def __init__(self, config: RefinedAnalysisConfig):
+        super().__init__(config=config, signature=RefinedAnalysisSignature())
 
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert DataAnalysisAgent.signature is DataAnalysisSignature
-assert CriticAgent.signature is CriticSignature
-assert RefinedAnalysisAgent.signature is RefinedAnalysisSignature
+# The class-level `signature = XxxSignature` pattern is a SILENT bug in
+# kaizen 2.7.3 — BaseAgent ignores class-level attrs and falls back to
+# DefaultSignature.  We check that each agent's INSTANCE signature is
+# an instance of its declared Signature subclass, which is the only
+# observable proof that the canonical pattern is wired correctly.
+_analyst_probe = DataAnalysisAgent(DataAnalysisConfig())
+_critic_probe = CriticAgent(CriticConfig())
+_refiner_probe = RefinedAnalysisAgent(RefinedAnalysisConfig())
+assert isinstance(_analyst_probe.signature, DataAnalysisSignature)
+assert isinstance(_critic_probe.signature, CriticSignature)
+assert isinstance(_refiner_probe.signature, RefinedAnalysisSignature)
 print("✓ Checkpoint 2 passed — 3 signatures + 3 agents declared\n")
 
 
@@ -161,38 +196,38 @@ QUESTION = "What makes multi-hop QA harder than single-hop QA?"
 
 async def iterative_refinement():
     print("Step 1: initial analysis...")
-    analyst = DataAnalysisAgent()
-    initial = await analyst.run(
+    analyst = DataAnalysisAgent(DataAnalysisConfig())
+    initial = await analyst.run_async(
         dataset_summary=summary_text,
         analysis_question=QUESTION,
     )
     initial_text = (
-        f"Findings: {initial.key_findings}\n"
-        f"Approach: {initial.recommended_approach}\n"
-        f"Next steps: {initial.next_steps}"
+        f"Findings: {initial['key_findings']}\n"
+        f"Approach: {initial['recommended_approach']}\n"
+        f"Next steps: {initial['next_steps']}"
     )
-    print(f"  Initial confidence: {initial.confidence:.2f}")
-    print(f"  Findings: {initial.key_findings[:2]}")
+    print(f"  Initial confidence: {initial['confidence']:.2f}")
+    print(f"  Findings: {initial['key_findings'][:2]}")
 
     print("\nStep 2: critic reviews...")
-    critic = CriticAgent()
-    critique = await critic.run(
+    critic = CriticAgent(CriticConfig())
+    critique = await critic.run_async(
         original_analysis=initial_text,
         analysis_question=QUESTION,
     )
-    print(f"  Quality score: {critique.quality_score:.2f}")
-    print(f"  Should revise: {critique.should_revise}")
-    print(f"  Weaknesses:    {critique.weaknesses[:2]}")
+    print(f"  Quality score: {critique['quality_score']:.2f}")
+    print(f"  Should revise: {critique['should_revise']}")
+    print(f"  Weaknesses:    {critique['weaknesses'][:2]}")
 
-    if critique.should_revise:
+    if critique["should_revise"]:
         print("\nStep 3: refining based on critic feedback...")
-        refiner = RefinedAnalysisAgent()
-        refined = await refiner.run(
+        refiner = RefinedAnalysisAgent(RefinedAnalysisConfig())
+        refined = await refiner.run_async(
             dataset_summary=summary_text,
             analysis_question=QUESTION,
-            critic_feedback=str(critique.suggestions),
+            critic_feedback=str(critique["suggestions"]),
         )
-        print(f"  Refined confidence: {refined.confidence:.2f}")
+        print(f"  Refined confidence: {refined['confidence']:.2f}")
         return initial, critique, refined
 
     print("\nStep 3: critic approves — no revision needed.")
@@ -204,9 +239,9 @@ initial, critique, refined = asyncio.run(iterative_refinement())
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert initial is not None, "Task 3: initial analysis required"
 assert critique is not None, "Task 3: critic output required"
-assert hasattr(critique, "should_revise")
-assert hasattr(critique, "quality_score")
-assert 0 <= critique.quality_score <= 1
+assert "should_revise" in critique
+assert "quality_score" in critique
+assert 0 <= critique["quality_score"] <= 1
 print("\n✓ Checkpoint 3 passed — refinement loop executed\n")
 
 
@@ -218,28 +253,28 @@ print("=" * 70)
 print("  Refinement Delta")
 print("=" * 70)
 
-print(f"\nINITIAL confidence:  {initial.confidence:.2f}")
-print(f"Critic quality:      {critique.quality_score:.2f}")
-print(f"Critic decision:     {'REVISE' if critique.should_revise else 'APPROVE'}")
+print(f"\nINITIAL confidence:  {initial['confidence']:.2f}")
+print(f"Critic quality:      {critique['quality_score']:.2f}")
+print(f"Critic decision:     {'REVISE' if critique['should_revise'] else 'APPROVE'}")
 if refined is not None:
-    print(f"REFINED confidence:  {refined.confidence:.2f}")
-    delta = refined.confidence - initial.confidence
+    print(f"REFINED confidence:  {refined['confidence']:.2f}")
+    delta = refined["confidence"] - initial["confidence"]
     direction = "↑" if delta >= 0 else "↓"
     print(f"Confidence delta:    {direction} {abs(delta):.2f}")
-    print(f"\nMethodology note: {refined.methodology_note[:200]}...")
-    print(f"\nImproved findings ({len(refined.improved_findings)}):")
-    for i, f in enumerate(refined.improved_findings[:5], 1):
+    print(f"\nMethodology note: {refined['methodology_note'][:200]}...")
+    print(f"\nImproved findings ({len(refined['improved_findings'])}):")
+    for i, f in enumerate(refined["improved_findings"][:5], 1):
         print(f"  {i}. {f}")
 else:
     print("(No refinement — critic approved the initial analysis.)")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
-assert isinstance(critique.strengths, list)
-assert isinstance(critique.weaknesses, list)
-assert isinstance(critique.suggestions, list)
+assert isinstance(critique["strengths"], list)
+assert isinstance(critique["weaknesses"], list)
+assert isinstance(critique["suggestions"], list)
 if refined is not None:
-    assert isinstance(refined.improved_findings, list)
-    assert 0 <= refined.confidence <= 1
+    assert isinstance(refined["improved_findings"], list)
+    assert 0 <= refined["confidence"] <= 1
 print("\n✓ Checkpoint 4 passed — refinement delta visualised\n")
 
 # INTERPRETATION: The critic's quality_score is the first gate.  If the
@@ -308,9 +343,9 @@ print(
 
 stages = ["Initial\nAnalysis", "Critic\nScore", "Refined\nAnalysis"]
 scores = [
-    initial.confidence,
-    critique.quality_score,
-    refined.confidence if refined is not None else initial.confidence,
+    initial["confidence"],
+    critique["quality_score"],
+    refined["confidence"] if refined is not None else initial["confidence"],
 ]
 colors = ["#90CAF9", "#FFE082", "#A5D6A7"]
 

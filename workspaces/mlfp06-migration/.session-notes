@@ -1,0 +1,29 @@
+# Session Notes — 2026-04-14
+
+## Where we are
+
+M6 migration scoping complete. 9-shard plan ready, all 6 pedagogical decisions approved ("all defaults, go"). Zero shards executed. Next session's first action is Shard 0 (pre-flight: revert 5 partial edits, create `pyrightconfig.json`, verify `scripts/py_to_notebook.py`).
+
+## Read first
+
+1. `workspaces/mlfp06-migration/README.md` — workspace entry + resume instructions
+2. `workspaces/mlfp06-migration/scoping.md` — drift inventory, specialist findings, bug bombs
+3. `workspaces/mlfp06-migration/api-cheatsheet.md` — old→new API mapping (copy-paste during every edit)
+4. `workspaces/mlfp06-migration/shard-plan.md` — Shard 0 is next; per-shard feedback loops
+5. `workspaces/mlfp06-migration/decisions.md` — 6 approved decisions, do not re-litigate
+6. `workspaces/mlfp06-migration/reference/ex_7_04_runtime_audit.py` — Shard 5 template (not standalone: depends on `make_fake_executor` that Shard 3 adds)
+
+## In-flight state
+
+- 5 M6 solution files have half-applied import renames (`kailash_pact`→`pact`, `kailash_nexus`→`nexus`) but still call old APIs. `git checkout` them in Shard 0 — exact list in `README.md` § "In-Progress / Partial".
+- `pyproject.toml` + `uv.lock` carry valid pin bumps (`kailash>=2.8.5`, `kailash-dataflow>=2.0.7`, `kailash-mcp>=0.2.3`). DO NOT REVERT — M1-M5 verified byte-compiling, they land with the migration.
+- `.claude/` sync artifacts updated to kailash-coc-claude-py template 3.4.8. Marker at `.claude/.coc-sync-marker`.
+
+## Traps
+
+- `class XxxAgent(BaseAgent): signature = XxxSig` is a SILENT BUG — BaseAgent ignores class-level attrs, falls back to `DefaultSignature`. Pass signature as INSTANCE via `super().__init__(config=QAConfig(), signature=XxxSignature())`. See `api-cheatsheet.md` § Kaizen BaseAgent Pattern.
+- `await agent.run(question=...)` raises `TypeError` — `.run()` is sync and returns a dict. Use `await agent.run_async(...)` + `result["answer"]` (dict-indexed, not attribute access).
+- `GovernanceEngine.compile_org(path)` no longer exists as an instance method. Use module-level `pact.load_org_yaml()` + `GovernanceEngine(loaded.org_definition)` + `CompiledOrgAdapter` wrapper (Shard 3 adds the adapter to `shared/mlfp06/ex_7.py`).
+- ORG_YAML schema change: the MLFP06 `organization:/departments:/delegations:/operating_envelopes:` legacy schema will NOT load in pact 0.8.1. Rewrite to modern `org:/departments[]/teams[]/agents[]/envelopes[]/workspaces[]` — Shard 3 for ex_7 YAML, Shard 6 for ex_8 YAML.
+- Do NOT edit any M6 file without reading `scoping.md` + `api-cheatsheet.md` first — Pyright diagnostics will surface drift symptoms, and local fixes will drift from the shard plan.
+- The pact-specialist's reference impl at `reference/ex_7_04_runtime_audit.py` uses `make_fake_executor` which doesn't exist in `shared/mlfp06/ex_7.py` yet — that's normal, Shard 3 adds it before Shard 5 consumes it.

@@ -120,6 +120,9 @@ select = ["E", "F", "I", "W"]
 testpaths = ["tests"]
 
 [tool.pyright]
+# Mirrors pyrightconfig.json for tools (Pylance, some CLI paths) that read
+# pyproject.toml's [tool.pyright] directly. Keep both in sync.
+#
 # Tell Pyright/Pylance to use the project .venv so kailash, kailash_ml, etc.
 # resolve correctly. Without this, VSCode's Pylance falls back to system
 # Python and shows spurious "Import could not be resolved" errors on every
@@ -135,11 +138,16 @@ exclude = [
     "**/node_modules",
     "**/.test_venv",
     "**/.data_cache",
+    "modules/mlfp06/local",
 ]
 # Course material is teaching code, not production SDK — relax the strictness
 # so harmless polars/torch type-narrowing warnings don't drown the real signal.
+# Student ____ placeholders in local/ files are the main reason for the
+# reportUndefinedVariable and assignment/call/argument suppressions.
 reportMissingImports = "warning"
-reportArgumentType = "warning"
-reportCallIssue = "warning"
 reportGeneralTypeIssues = "warning"
-reportOptionalMemberAccess = "warning"
+reportAssignmentType = "none"
+reportCallIssue = "none"
+reportArgumentType = "none"
+reportOptionalMemberAccess = "none"
+reportUndefinedVariable = "none"

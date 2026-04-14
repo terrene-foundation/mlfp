@@ -167,7 +167,7 @@ engine = GovernanceEngine(
 # N6 conformance is a test-time validation, not runtime
 ```
 
-## Related Files
+## Related Modules
 
 - `kailash.trust.pact.engine` -- GovernanceEngine with all N1-N5 wiring
 - `kailash.trust.pact.knowledge` -- FilterDecision, KnowledgeFilter protocol, KnowledgeQuery

@@ -211,6 +211,6 @@ decision = can_access(
 - `pact-governance-engine.md` -- engine.check_access() wraps can_access()
 - `pact-envelopes.md` -- confidentiality_clearance in envelope config
 - `pact-dtr-addressing.md` -- containment checks use address prefix matching
-- Module: `kailash.trust.pact.access`
-- Module: `kailash.trust.pact.clearance`
-- Module: `kailash.trust.pact.knowledge`
+- Source: `kailash.trust.pact.access`
+- Source: `kailash.trust.pact.clearance`
+- Source: `kailash.trust.pact.knowledge`

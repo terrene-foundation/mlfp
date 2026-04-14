@@ -271,5 +271,5 @@ valid = signed.verify(public_key=base64_ed25519_public_key)
 
 - `pact-governance-engine.md` -- engine.compute_envelope(), engine.set_role_envelope()
 - `pact-access-enforcement.md` -- confidentiality_clearance used in access checks
-- Module: `kailash.trust.pact.envelopes` (including `SignedEnvelope`)
-- Module: `kailash.trust.pact.config`
+- Source: `kailash.trust.pact.envelopes` (including `SignedEnvelope`)
+- Source: `kailash.trust.pact.config`

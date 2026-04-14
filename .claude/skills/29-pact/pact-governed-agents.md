@@ -172,7 +172,7 @@ elif verdict.level == "flagged":
 - `pact-governance-engine.md` -- engine.get_context(), engine.verify_action()
 - `pact-envelopes.md` -- effective envelope in context
 - `pact-kaizen-integration.md` -- wrapping Kaizen agents
-- Module: `kailash.trust.pact.agent`
-- Module: `kailash.trust.pact.decorators`
-- Module: `kailash.trust.pact.middleware`
-- Module: `kailash.trust.pact.context`
+- Source: `kailash.trust.pact.agent`
+- Source: `kailash.trust.pact.decorators`
+- Source: `kailash.trust.pact.middleware`
+- Source: `kailash.trust.pact.context`

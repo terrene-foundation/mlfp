@@ -354,3 +354,16 @@ print(f"\n  Model discrimination (AUC): {roc_auc:.4f}")
 #     wealth products vary by customer segment and market conditions.
 #   - The model does not account for seasonal effects (Chinese New
 #     Year, cooling measures) that shift the value distribution.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("""
+What you've mastered in this technique:
+  ✓ The concepts and implementation covered above
+  ✓ Visual proof of how the technique works
+  ✓ Real-world application with business impact
+
+Next: Continue to the next technique file in this exercise...
+""")

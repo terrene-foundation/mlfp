@@ -327,3 +327,16 @@ print(f"    Annual saving:       S${savings:,.0f}")
 #     threshold should be recalibrated quarterly.
 #   - This is a binary model. Multi-class severity tiers (normal /
 #     watch / flag / block) would give finer-grained control.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("""
+What you've mastered in this technique:
+  ✓ The concepts and implementation covered above
+  ✓ Visual proof of how the technique works
+  ✓ Real-world application with business impact
+
+Next: Continue to the next technique file in this exercise...
+""")

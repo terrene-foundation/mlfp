@@ -301,3 +301,16 @@ print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
 #   - The binary target (above/below median) is a simplification. Real
 #     valuations need dollar-level precision for mortgage lending.
 #   - Retraining needed quarterly as the median shifts with market.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("""
+What you've mastered in this technique:
+  ✓ The concepts and implementation covered above
+  ✓ Visual proof of how the technique works
+  ✓ Real-world application with business impact
+
+Next: Continue to the next technique file in this exercise...
+""")

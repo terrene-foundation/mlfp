@@ -504,6 +504,7 @@ async def _capstone_execute_node(_spec: Any, inputs: dict[str, Any]) -> dict[str
     (missing key, rate limit, network error) we fall back to a
     deterministic offline stub so the teaching narrative runs end-to-end.
     """
+    del _spec  # interface-required positional, not consumed
     agent = _get_shared_agent()
     objective = (
         inputs.get("objective")

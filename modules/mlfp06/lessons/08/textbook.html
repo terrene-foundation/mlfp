@@ -399,8 +399,9 @@
   <div class="step">
     <span class="step-label">Step 1 — Build the platform.</span>
     <p>Create a Nexus application, configure auth and middleware.</p>
-    <pre><code class="language-python">from kailash_nexus import Nexus
-from kailash_pact import GovernanceEngine, PactGovernedAgent, Address
+    <pre><code class="language-python">from nexus import Nexus
+from pact import GovernanceEngine, load_org_yaml
+from kaizen_agents import GovernedSupervisor
 from kailash_ml import TrainingPipeline, DriftMonitor, ModelRegistry
 
 # Create platform
@@ -416,31 +417,35 @@ app.add_middleware("cors", origins=["https://dashboard.internal.sg"])</code></pr
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Load the governed agent.</span>
+    <span class="step-label">Step 2 — Load the governed supervisor.</span>
     <p>
-      Retrieve the governed agent from Lesson 6.7. This wraps a Kaizen
-      multi-agent pipeline (DataScientist, FeatureEngineer, ModelSelector,
-      ReportWriter) with PACT governance.
+      Retrieve the governed supervisor from Lesson 6.7. The
+      <code>GovernedSupervisor</code> drives a Kaizen multi-agent pipeline
+      (DataScientist, FeatureEngineer, ModelSelector, ReportWriter) with
+      PACT envelopes attached to every role.
     </p>
     <pre><code class="language-python"># Load the trained model
 registry = ModelRegistry()
 model = registry.load("hdb-price-predictor", version="latest")
 
-# Wrap the prediction agent with governance
-engine = GovernanceEngine()
-org = engine.compile_org({
-    "domains": ["mortgage-risk"],
-    "teams": {"mortgage-risk": ["assessment", "audit"]},
-    "roles": {"assessment": ["analyst", "manager"],
-              "audit": ["reviewer"]}
-})
+# Load the compiled org and attach envelopes (same flow as Lesson 6.7)
+loaded = load_org_yaml("org/mortgage_risk.yaml")
+engine = GovernanceEngine(loaded.org_definition)
 
-governed_agent = PactGovernedAgent(
-    agent=prediction_agent,
-    governance=engine,
-    enforcement="block",  # fail-closed
-    budget=10.00
-)</code></pre>
+# The governed supervisor — standalone, not a wrapper
+governed_supervisor = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=10.00,
+    tools=["predict_price", "fetch_comparables", "explain_prediction"],
+    data_clearance="confidential",
+)
+
+# execute_node is the callback where the real prediction agent runs
+async def executor(spec, inputs):
+    prediction = await prediction_agent.run(inputs)
+    return {"result": prediction, "cost": prediction.cost,
+            "prompt_tokens": prediction.prompt_tokens,
+            "completion_tokens": prediction.completion_tokens}</code></pre>
   </div>
 
   <div class="step">
@@ -449,8 +454,19 @@ governed_agent = PactGovernedAgent(
       Register the governed agent as a Nexus service. Add a health check
       and a drift monitoring endpoint.
     </p>
-    <pre><code class="language-python"># Prediction service — the core endpoint
-app.register_service("predict", governed_agent.run,
+    <pre><code class="language-python"># Service wrapper binds the executor to the supervisor's run loop
+async def predict_service(payload: dict) -> dict:
+    result = await governed_supervisor.run(
+        objective=f"Predict price for {payload['flat_type']} in {payload['town']}",
+        execute_node=executor,
+        context=payload,
+    )
+    return {"price": result.output["price"],
+            "budget_consumed": result.budget_consumed,
+            "audit_chain_valid": governed_supervisor.audit.verify_chain()}
+
+# Prediction service — the core endpoint
+app.register_service("predict", predict_service,
     roles=["admin", "analyst"])
 
 # Results view — read-only
@@ -533,18 +549,22 @@ Predicted price: $485,000</code></pre>
   thought, action, observation, and governance check:
 </p>
 
-<pre><code class="language-python"># Enable trace mode
-result = governed_agent.run(
-    query="Predict HDB price for Ang Mo Kio 3-room",
-    trace=True
+<pre><code class="language-python"># GovernedSupervisor captures every step in its audit trail
+result = await governed_supervisor.run(
+    objective="Predict HDB price for Ang Mo Kio 3-room",
+    execute_node=executor,
+    context={"town": "Ang Mo Kio", "flat_type": "3-room"},
 )
 
-# Inspect the reasoning chain
-for step in result.trace:
-    print(f"[{step.type}] {step.content}")
-    if step.governance_check:
-        print(f"  Governance: {step.governance_check.decision}")
-        print(f"  Reason: {step.governance_check.explanation}")</code></pre>
+# Inspect the reasoning chain via the audit trail
+for entry in governed_supervisor.audit.to_list():
+    print(f"[{entry['phase']}] {entry['action']}")
+    print(f"  Verdict: {entry['verdict']} — {entry['reason']}")
+    if entry.get("tool_name"):
+        print(f"  Tool: {entry['tool_name']}")
+
+# Verify the chain has not been tampered with
+assert governed_supervisor.audit.verify_chain()</code></pre>
 
 <div class="callout warning">
   <span class="label">Common pitfall</span>
@@ -574,12 +594,24 @@ for step in result.trace:
     assert "explore_data" in tool_names, "Agent must explore data first"
     assert tool_names.index("explore_data") < tool_names.index("train_model")
 
-def test_agent_respects_governance():
-    """Verify agent stops when budget is exhausted."""
-    low_budget_agent = PactGovernedAgent(agent=agent, budget=0.01)
-    result = low_budget_agent.run("Complex multi-step analysis")
-    assert result.stopped_reason == "budget_exhausted"
-    assert result.total_cost <= 0.01
+async def test_agent_respects_governance():
+    """Verify the supervisor stops when its budget is exhausted."""
+    from kaizen_agents import GovernedSupervisor
+    tiny = GovernedSupervisor(
+        model="gpt-4o-mini",
+        budget_usd=0.01,                 # tiny budget
+        tools=["predict_price"],
+        data_clearance="public",
+    )
+    async def expensive_executor(spec, inputs):
+        return {"result": "...", "cost": 0.02,
+                "prompt_tokens": 100, "completion_tokens": 50}
+    result = await tiny.run(
+        objective="Complex multi-step analysis",
+        execute_node=expensive_executor,
+    )
+    assert not result.success
+    assert result.budget_consumed <= 0.01 or "budget" in result.failure_reason.lower()
 
 def test_prediction_within_range():
     """Verify prediction is within plausible range for Singapore HDB."""

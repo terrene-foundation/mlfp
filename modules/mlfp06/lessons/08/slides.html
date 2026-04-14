@@ -22,12 +22,12 @@
 </svg></figure>
 <p style="font-size:.85em">Train → persist → wrap in agent → govern → deploy → monitor. One codebase.</p></section>
 
-<section><h2>Nexus: three channels, one codebase</h2><pre><code class="language-python" data-trim>from kailash_nexus import Nexus
+<section><h2>Nexus: three channels, one codebase</h2><pre><code class="language-python" data-trim>from nexus import Nexus
 
 app = Nexus("ml-platform")
 app.add_auth(provider="jwt", roles=["admin", "analyst", "viewer"])
 app.add_middleware("rate_limit", requests_per_minute=60)
-app.register_service("predict", governed_agent.run)
+app.register_service("predict", predict_service)
 app.serve(port=8000)  # API + CLI + MCP simultaneously</code></pre></section>
 
 <section><h2>RBAC authentication</h2><table style="font-size:.7em"><thead><tr><th>Role</th><th>Can do</th></tr></thead><tbody><tr><td>admin</td><td>Deploy, configure, full access</td></tr><tr><td>analyst</td><td>Query, explore, limited training</td></tr><tr><td>viewer</td><td>Read-only predictions</td></tr></tbody></table><p style="font-size:.85em">Unauthenticated requests → 401. Unauthorised role → 403. Always.</p></section>

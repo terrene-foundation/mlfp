@@ -38,9 +38,10 @@
   <strong>code</strong> — access controls that deny unauthorised access, operating
   envelopes that restrict agent behaviour, budget cascading that prevents runaway
   costs, and audit trails that prove compliance. Today you implement all four with
-  PACT: D/T/R addressing, GovernanceEngine, PactGovernedAgent, and CostTracker.
-  The result: a multi-agent system where every tool call is checked, every budget
-  is enforced, and every decision is logged.
+  PACT: D/T/R addressing, <code>GovernanceEngine</code>, <code>GovernedSupervisor</code>,
+  and the five-dimension <code>ConstraintEnvelopeConfig</code>. The result: a
+  multi-agent system where every tool call is checked, every budget is enforced,
+  and every decision is logged.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -77,7 +78,7 @@
   <!-- Phase 2: Compile -->
   <rect x="200" y="55" width="150" height="70" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
   <text x="275" y="78" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">2. Compile</text>
-  <text x="275" y="96" text-anchor="middle" font-size="10" fill="#1E293B">compile_org()</text>
+  <text x="275" y="96" text-anchor="middle" font-size="10" fill="#1E293B">load_org_yaml()</text>
   <text x="275" y="112" text-anchor="middle" font-size="10" fill="#1E293B">Resolve inheritance</text>
 
   <!-- Phase 3: Enforce -->
@@ -122,81 +123,81 @@
 <table>
   <thead><tr><th>Dimension</th><th>Meaning</th><th>Example</th></tr></thead>
   <tbody>
-    <tr><td><strong>Domain (D)</strong></td><td>Business unit or functional area</td><td><code>finance</code>, <code>operations</code>, <code>hr</code></td></tr>
-    <tr><td><strong>Team (T)</strong></td><td>Functional group within a domain</td><td><code>risk</code>, <code>compliance</code>, <code>trading</code></td></tr>
-    <tr><td><strong>Role (R)</strong></td><td>Individual capability level</td><td><code>analyst</code>, <code>manager</code>, <code>director</code></td></tr>
+    <tr><td><strong>Department (D)</strong></td><td>Top-level organisational unit</td><td><code>D1</code> = mortgage-risk</td></tr>
+    <tr><td><strong>Task (T)</strong></td><td>A task nested inside a department or team</td><td><code>T1</code> = assessment</td></tr>
+    <tr><td><strong>Role (R)</strong></td><td>The responsible role that owns a D or T leaf</td><td><code>R1</code> = the head or responsible</td></tr>
   </tbody>
 </table>
 
 <p>
-  A D/T/R address like <code>finance/risk/analyst</code> uniquely identifies what
-  access a requester should have. The GovernanceEngine compiles an organisational
-  structure from domain, team, and role definitions, then resolves access by
-  walking the hierarchy: a <code>manager</code> inherits all <code>analyst</code>
-  permissions plus any additional manager-specific grants.
+  A role address is a dash-delimited path like <code>D1-R1-T1-R1</code>. The
+  grammar rule: every <code>D</code> or <code>T</code> MUST be immediately followed
+  by exactly one <code>R</code>. The <code>GovernanceEngine</code> is constructed
+  from a loaded org YAML (<code>load_org_yaml</code>) and resolves access by
+  walking the tree: the responsible at a deeper level inherits the envelope of
+  its parent role, tightened by its own envelope.
 </p>
 
 <div class="callout foundations">
   <span class="label">Foundations</span>
   <p>
-    Think of D/T/R as a postal address for permissions. The domain is the country,
-    the team is the city, the role is the street address. When a letter (access
-    request) arrives, the system checks: does this address have a mailbox
-    (permission) for this type of mail (resource)? The address system is
-    hierarchical — a domain-level permission applies to all teams within it.
+    Think of D/T/R as a postal address for permissions. The department is the
+    street, the task is the building, the role is the apartment. When a request
+    arrives, the system checks whether that address has the mailbox (envelope)
+    for this type of mail (action). The grammar is strict: every D or T is
+    immediately followed by exactly one R.
   </p>
 </div>
 
 <h3>Operating Envelopes</h3>
 
 <p>
-  An operating envelope defines the boundaries within which an agent can operate.
-  If D/T/R addressing answers "who can access what", envelopes answer "what can
-  this agent do, even with access". Two types:
+  An operating envelope defines the boundaries within which a role can operate.
+  If D/T/R addressing answers "who is asking", envelopes answer "what may they do".
+  A modern <code>ConstraintEnvelopeConfig</code> has five canonical dimensions,
+  plus a confidentiality clearance and a delegation-depth cap:
 </p>
 
-<div class="compare-grid">
-  <div class="col">
-    <h4>Task Envelopes</h4>
-    <p>
-      Restrict the agent to specific task types. A data analysis agent may read
-      data and compute statistics, but it cannot write to the database or send
-      emails. The task envelope is the list of permitted actions.
-    </p>
-    <pre><code class="language-python">task_envelope = {
-    "allowed_tools": [
-        "explore_data",
-        "compute_statistics",
-        "generate_report"
-    ],
-    "blocked_tools": [
-        "write_database",
-        "send_email",
-        "deploy_model"
-    ]
-}</code></pre>
-  </div>
-  <div class="col">
-    <h4>Role Envelopes</h4>
-    <p>
-      Restrict based on the agent's organisational role. An analyst agent gets a
-      smaller budget, fewer tool options, and read-only data access. A manager
-      agent gets a larger budget and write access.
-    </p>
-    <pre><code class="language-python">role_envelopes = {
-    "analyst": {
-        "max_cost": 5.00,
-        "data_access": "read",
-        "model_access": "predict"
-    },
-    "manager": {
-        "max_cost": 50.00,
-        "data_access": "read_write",
-        "model_access": "predict_deploy"
-    }
-}</code></pre>
-  </div>
-</div>
+<pre><code class="language-python">from pact import (
+    ConstraintEnvelopeConfig,
+    FinancialConstraintConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+    ConfidentialityLevel,
+)
+
+analyst_envelope = ConstraintEnvelopeConfig(
+    id="analyst_envelope",
+    description="Mortgage-risk analyst",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=5.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["explore_data", "compute_statistics", "generate_report"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=2,
+)
+
+manager_envelope = ConstraintEnvelopeConfig(
+    id="manager_envelope",
+    description="Mortgage-risk manager",
+    confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,
+    financial=FinancialConstraintConfig(max_spend_usd=50.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=[
+            "explore_data", "compute_statistics", "train_model",
+            "deploy_model", "manage_budget",
+        ],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=3,
+)</code></pre>
 
 <h3>Monotonic Tightening</h3>
 
@@ -248,7 +249,7 @@
 
   <text x="360" y="210" text-anchor="middle" font-size="10" fill="#64748B">Each nested envelope is a strict subset of its parent. Violations are rejected at compile time.</text>
 </svg>
-<figcaption>Envelopes are nested. Each child envelope is strictly contained within its parent. Attempting to loosen raises a GovernanceViolation.</figcaption>
+<figcaption>Envelopes are nested. Each child envelope is strictly contained within its parent. Attempting to loosen raises <code>MonotonicTighteningError</code> from <code>RoleEnvelope.validate_tightening</code>.</figcaption>
 </figure>
 
 <h3>Enforcement Modes</h3>
@@ -334,14 +335,17 @@
 <div class="callout kailash">
   <span class="label">Kailash Engine</span>
   <p>
-    <code>kailash-pact</code> provides: <code>GovernanceEngine</code> for
-    compiling organisational structures and checking access,
-    <code>Address(domain, team, role)</code> for D/T/R addressing,
-    <code>PactGovernedAgent</code> for wrapping any Kaizen agent with
-    governance enforcement, <code>CostTracker</code> for budget allocation
-    and cascading, and <code>ClearanceManager</code> for graduated access
-    based on trust levels. Together they transform governance from policy
-    documents into executable, testable code.
+    <code>pact</code> provides: <code>GovernanceEngine</code> for compiling
+    organisational structures and checking access via
+    <code>engine.verify_action(role_address, action, context)</code>;
+    <code>Address.parse("D1-R1-T1-R1")</code> for D/T/R addressing;
+    <code>ConstraintEnvelopeConfig</code> with five canonical dimensions
+    (Financial, Operational, Temporal, Data Access, Communication) for
+    operating envelopes; and <code>RoleEnvelope.validate_tightening</code>
+    for structural monotonic-tightening enforcement.
+    <code>GovernedSupervisor</code> (from <code>kaizen_agents</code>) is the
+    pact-governed agent entry point. Together they transform governance from
+    policy documents into executable, testable code.
   </p>
 </div>
 
@@ -351,24 +355,24 @@
 
   <rect x="20" y="50" width="150" height="60" rx="8" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
   <text x="95" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#3B82F6">GovernanceEngine</text>
-  <text x="95" y="90" text-anchor="middle" font-size="9" fill="#64748B">compile_org, can_access</text>
+  <text x="95" y="90" text-anchor="middle" font-size="9" fill="#64748B">load_org_yaml, verify_action</text>
 
   <rect x="200" y="50" width="130" height="60" rx="8" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
   <text x="265" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">Address</text>
-  <text x="265" y="90" text-anchor="middle" font-size="9" fill="#64748B">D/T/R identity</text>
+  <text x="265" y="90" text-anchor="middle" font-size="9" fill="#64748B">D1-R1-T1-R1 grammar</text>
 
   <rect x="360" y="50" width="150" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-  <text x="435" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">PactGovernedAgent</text>
-  <text x="435" y="90" text-anchor="middle" font-size="9" fill="#64748B">Agent wrapper</text>
+  <text x="435" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">GovernedSupervisor</text>
+  <text x="435" y="90" text-anchor="middle" font-size="9" fill="#64748B">Agent entry point</text>
 
   <rect x="540" y="50" width="150" height="60" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
-  <text x="615" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#EF4444">CostTracker</text>
-  <text x="615" y="90" text-anchor="middle" font-size="9" fill="#64748B">Budget cascade</text>
+  <text x="615" y="72" text-anchor="middle" font-weight="700" font-size="11" fill="#EF4444">FinancialConstraint</text>
+  <text x="615" y="90" text-anchor="middle" font-size="9" fill="#64748B">max_spend_usd cap</text>
 
   <!-- Clearance -->
   <rect x="250" y="135" width="220" height="50" rx="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
-  <text x="360" y="157" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">ClearanceManager</text>
-  <text x="360" y="173" text-anchor="middle" font-size="9" fill="#64748B">Graduated trust levels</text>
+  <text x="360" y="157" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">ConfidentialityLevel</text>
+  <text x="360" y="173" text-anchor="middle" font-size="9" fill="#64748B">Graduated data clearance</text>
 
   <!-- Connection lines -->
   <line x1="170" y1="80" x2="200" y2="80" stroke="#475569" stroke-width="1"/>
@@ -376,7 +380,7 @@
   <line x1="510" y1="80" x2="540" y2="80" stroke="#475569" stroke-width="1"/>
   <line x1="360" y1="115" x2="360" y2="130" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4 3"/>
 </svg>
-<figcaption>PACT's five components work together. GovernanceEngine compiles rules, Address identifies requesters, PactGovernedAgent enforces at runtime, CostTracker manages budgets, ClearanceManager handles graduated access.</figcaption>
+<figcaption>PACT's five components work together. <code>GovernanceEngine</code> compiles the org from YAML, <code>Address.parse</code> identifies requesters, <code>GovernedSupervisor</code> enforces at runtime via <code>ConstraintEnvelopeConfig</code>, the financial dimension manages budgets, and the confidentiality clearance handles graduated access.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -393,147 +397,239 @@
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Define the organisational structure.</span>
-    <pre><code class="language-python">from kailash_pact import GovernanceEngine, Address, CostTracker
+    <span class="step-label">Step 1 — Declare the org in YAML and load it.</span>
+    <p>
+      Modern PACT loads the organisation from a YAML file. The grammar is strict:
+      every <code>D</code> (department) or <code>T</code> (task) is immediately
+      followed by exactly one <code>R</code> (responsible role). Addresses are
+      dash-delimited, e.g. <code>D1-R1-T1-R1</code>.
+    </p>
+    <pre><code class="language-yaml"># org/mortgage_risk.yaml
+org_id: mortgage_risk_assessment
+departments:
+  - id: D1
+    name: mortgage-risk
+    head: { id: R1, name: risk-supervisor }
+    tasks:
+      - id: T1
+        name: assessment
+        responsible: { id: R1, name: data-scientist }
+      - id: T2
+        name: selection
+        responsible: { id: R1, name: model-selector }
+      - id: T3
+        name: reporting
+        responsible: { id: R1, name: report-writer }</code></pre>
+    <pre><code class="language-python">from pact import GovernanceEngine, load_org_yaml
 
-engine = GovernanceEngine()
+loaded = load_org_yaml("org/mortgage_risk.yaml")
+engine = GovernanceEngine(loaded.org_definition)
 
-# Define the D/T/R hierarchy
-org = engine.compile_org({
-    "domains": ["mortgage-risk"],
-    "teams": {
-        "mortgage-risk": ["assessment", "audit"]
-    },
-    "roles": {
-        "assessment": ["analyst", "senior-analyst", "manager"],
-        "audit": ["reviewer", "compliance-officer"]
-    },
-    "permissions": {
-        "analyst": ["read_data", "run_predictions"],
-        "senior-analyst": ["read_data", "run_predictions", "train_model"],
-        "manager": ["read_data", "run_predictions", "train_model",
-                     "deploy_model", "manage_budget"],
-        "reviewer": ["read_data", "read_audit_log"],
-        "compliance-officer": ["read_data", "read_audit_log",
-                                "export_audit_report"]
-    }
-})</code></pre>
+compiled = engine.get_org()
+# compiled.nodes keys are the dash-delimited addresses
+print(list(compiled.nodes.keys()))
+# → ['D1-R1', 'D1-R1-T1-R1', 'D1-R1-T2-R1', 'D1-R1-T3-R1']</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Define operating envelopes for each agent.</span>
-    <pre><code class="language-python"># Supervisor envelope: full control within domain
-supervisor_envelope = {
-    "allowed_tools": ["delegate", "allocate_budget", "aggregate_results"],
-    "max_cost": 10.00,
-    "enforcement": "block"
-}
-
-# DataScientist envelope: data exploration only
-data_scientist_envelope = {
-    "allowed_tools": ["explore_data", "compute_statistics",
-                       "feature_engineering"],
-    "blocked_tools": ["train_model", "deploy_model"],
-    "max_cost": 3.00,
-    "data_access": "read"
-}
-
-# ModelSelector envelope: model training, no deployment
-model_selector_envelope = {
-    "allowed_tools": ["train_model", "evaluate_model",
-                       "hyperparameter_search"],
-    "blocked_tools": ["deploy_model"],
-    "max_cost": 4.00
-}
-
-# ReportWriter envelope: read-only, reporting tools only
-report_writer_envelope = {
-    "allowed_tools": ["generate_report", "format_output"],
-    "max_cost": 3.00,
-    "data_access": "read"
-}</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 3 — Set up budget cascading.</span>
-    <pre><code class="language-python">tracker = CostTracker(total_budget=10.00)
-
-# Allocate to children — sum must not exceed total
-tracker.allocate("data_scientist", 3.00)
-tracker.allocate("model_selector", 4.00)
-tracker.allocate("report_writer", 3.00)
-
-# Verify constraint
-assert tracker.remaining() >= 0  # no overallocation
-print(f"Total allocated: ${tracker.total_allocated():.2f}")
-print(f"Remaining reserve: ${tracker.remaining():.2f}")</code></pre>
-  </div>
-
-  <div class="step">
-    <span class="step-label">Step 4 — Wrap agents with governance.</span>
-    <pre><code class="language-python">from kailash_pact import PactGovernedAgent
-
-# Each agent gets its envelope and budget
-governed_data_scientist = PactGovernedAgent(
-    agent=data_scientist_agent,
-    governance=engine,
-    address=Address("mortgage-risk", "assessment", "analyst"),
-    envelope=data_scientist_envelope,
-    cost_tracker=tracker.child("data_scientist")
+    <span class="step-label">Step 2 — Define operating envelopes for each role.</span>
+    <p>
+      Envelopes are <code>ConstraintEnvelopeConfig</code> instances with the five
+      canonical dimensions (financial, operational, temporal, data access,
+      communication) plus a confidentiality clearance and a delegation-depth cap.
+      The financial dimension is where per-role budgets live — there is no
+      separate <code>CostTracker</code> object anymore.
+    </p>
+    <pre><code class="language-python">from pact import (
+    RoleEnvelope, ConstraintEnvelopeConfig,
+    FinancialConstraintConfig, OperationalConstraintConfig,
+    TemporalConstraintConfig, DataAccessConstraintConfig,
+    CommunicationConstraintConfig, ConfidentialityLevel,
 )
 
-governed_model_selector = PactGovernedAgent(
-    agent=model_selector_agent,
-    governance=engine,
-    address=Address("mortgage-risk", "assessment", "senior-analyst"),
-    envelope=model_selector_envelope,
-    cost_tracker=tracker.child("model_selector")
+# Supervisor envelope — full co-ordination surface, $10 total budget
+supervisor_env = ConstraintEnvelopeConfig(
+    id="supervisor_env",
+    description="Mortgage-risk supervisor",
+    confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,
+    financial=FinancialConstraintConfig(max_spend_usd=10.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["delegate", "allocate_budget", "aggregate_results"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=3,
 )
 
-governed_report_writer = PactGovernedAgent(
-    agent=report_writer_agent,
-    governance=engine,
-    address=Address("mortgage-risk", "assessment", "analyst"),
-    envelope=report_writer_envelope,
-    cost_tracker=tracker.child("report_writer")
+# DataScientist envelope — exploration only, $3 share
+data_scientist_env = ConstraintEnvelopeConfig(
+    id="data_scientist_env",
+    description="Data exploration specialist",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=3.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["explore_data", "compute_statistics", "feature_engineering"],
+        denied_actions=["train_model", "deploy_model"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=0,
+)
+
+# ModelSelector envelope — training, no deploy, $4 share
+model_selector_env = ConstraintEnvelopeConfig(
+    id="model_selector_env",
+    description="Model-selection specialist",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=4.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["train_model", "evaluate_model", "hyperparameter_search"],
+        denied_actions=["deploy_model"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=0,
+)
+
+# ReportWriter envelope — read-only reporting, $3 share
+report_writer_env = ConstraintEnvelopeConfig(
+    id="report_writer_env",
+    description="Report-writing specialist",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=3.00),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["generate_report", "format_output"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=0,
 )</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 5 — Test access controls.</span>
-    <pre><code class="language-python"># Verify access: analyst can read data
-addr = Address("mortgage-risk", "assessment", "analyst")
-assert engine.can_access(addr, "read_data")
-print(engine.explain_access(addr, "read_data"))
-# → "Granted: role 'analyst' has permission 'read_data'"
+    <span class="step-label">Step 3 — Attach envelopes to roles and verify the budget sum.</span>
+    <p>
+      Budget cascading in the modern API is a property of the envelope tree:
+      the parent holds the total, children hold shares, and
+      <code>validate_tightening</code> catches any child that tries to exceed
+      its parent's cap. You still check the sum manually — the framework won't
+      silently reject over-allocation, it will just refuse to run the offending
+      delegation at verify time.
+    </p>
+    <pre><code class="language-python"># Attach each envelope to its D/T/R address
+engine.set_role_envelope(RoleEnvelope(
+    id="supervisor_role_env",
+    defining_role_address="D1-R1",
+    target_role_address="D1-R1",
+    envelope=supervisor_env,
+))
 
-# Verify denial: analyst cannot deploy models
-assert not engine.can_access(addr, "deploy_model")
-print(engine.explain_access(addr, "deploy_model"))
-# → "Denied: role 'analyst' lacks permission 'deploy_model'.
-#    Required role: 'manager'"
+for task_id, env in [("T1", data_scientist_env),
+                     ("T2", model_selector_env),
+                     ("T3", report_writer_env)]:
+    engine.set_role_envelope(RoleEnvelope(
+        id=f"{env.id}_role",
+        defining_role_address="D1-R1",
+        target_role_address=f"D1-R1-{task_id}-R1",
+        envelope=env,
+    ))
 
-# Verify envelope enforcement
-try:
-    governed_data_scientist.call_tool("deploy_model", {})
-except GovernanceViolation as e:
-    print(f"Blocked: {e}")
-# → "Blocked: tool 'deploy_model' not in allowed_tools for envelope"</code></pre>
+# Verify the child budgets don't exceed the parent
+child_total = sum(env.financial.max_spend_usd
+                  for env in [data_scientist_env, model_selector_env, report_writer_env])
+assert child_total <= supervisor_env.financial.max_spend_usd, "over-allocation"
+print(f"Total allocated to children: ${child_total:.2f}")
+print(f"Supervisor reserve: ${supervisor_env.financial.max_spend_usd - child_total:.2f}")</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 6 — Generate audit trail.</span>
-    <pre><code class="language-python"># Retrieve audit log
-audit_log = engine.get_audit_trail()
-for entry in audit_log:
-    print(f"[{entry.timestamp}] {entry.address} → {entry.resource}: "
-          f"{entry.decision} ({entry.reason})")
+    <span class="step-label">Step 4 — Construct the GovernedSupervisor.</span>
+    <p>
+      <code>GovernedSupervisor</code> replaces the legacy
+      <code>PactGovernedAgent</code> wrapper. It is not a wrapper — it is a
+      standalone planning supervisor that accepts a model, budget, tool list,
+      and clearance string, and runs a two-layer protocol where your
+      <code>execute_node</code> callback performs the actual LLM work.
+    </p>
+    <pre><code class="language-python">from kaizen_agents import GovernedSupervisor
+
+governed_supervisor = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=10.00,
+    tools=["delegate", "allocate_budget", "aggregate_results"],
+    data_clearance="confidential",  # canonical: public/restricted/confidential/secret/top_secret
+)
+
+# execute_node is YOUR callback — runs the LLM (or an offline stub for tests)
+async def executor(spec, inputs):
+    """Dispatch to the right specialist given the planned step."""
+    if spec.role == "data-scientist":
+        return await run_data_scientist(inputs)
+    if spec.role == "model-selector":
+        return await run_model_selector(inputs)
+    return await run_report_writer(inputs)
+
+result = await governed_supervisor.run(
+    objective="Assess default risk for HDB flat portfolio",
+    execute_node=executor,
+)
+# result.success         → bool
+# result.budget_consumed → float
+# result.audit_trail     → list[dict] (every plan, call, and verdict)</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — Test access controls with <code>verify_action</code>.</span>
+    <pre><code class="language-python"># Verify access: data scientist can explore data
+verdict = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="explore_data",
+    context={"cost": 0.10, "data_classification": "restricted"},
+)
+assert verdict.allowed
+print(f"{verdict.level}: {verdict.reason}")
+# → "allowed: action 'explore_data' in envelope.operational.allowed_actions"
+
+# Verify denial: data scientist cannot deploy models
+verdict = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="deploy_model",
+    context={},
+)
+assert not verdict.allowed
+print(f"{verdict.level}: {verdict.reason}")
+# → "blocked: action 'deploy_model' in envelope.operational.denied_actions"
+
+# Fail-closed: unknown role address denies immediately (Step 1 of the 5-step algorithm)
+verdict = engine.verify_action(
+    role_address="D99-R99-T99-R99",
+    action="any_action",
+    context={},
+)
+assert not verdict.allowed
+assert verdict.level == "blocked"</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6 — Read the tamper-evident audit trail.</span>
+    <pre><code class="language-python"># Audit trail lives on the supervisor, not the engine
+trail = governed_supervisor.audit.to_list()
+for entry in trail:
+    print(f"[{entry['timestamp']}] {entry['role_address']} → {entry['action']}: "
+          f"{entry['verdict']} ({entry['reason']})")
 
 # Output:
-# [2026-04-13T10:01:02] mortgage-risk/assessment/analyst → read_data:
-#     GRANTED (role 'analyst' has permission 'read_data')
-# [2026-04-13T10:01:03] mortgage-risk/assessment/analyst → deploy_model:
-#     DENIED (role 'analyst' lacks permission 'deploy_model')</code></pre>
+# [2026-04-13T10:01:02] D1-R1-T1-R1 → explore_data:
+#     allowed (action in envelope.operational.allowed_actions)
+# [2026-04-13T10:01:03] D1-R1-T1-R1 → deploy_model:
+#     blocked (action in envelope.operational.denied_actions)
+
+# NEW in 0.8.1: hash-chain tamper-evidence
+assert governed_supervisor.audit.verify_chain(), "audit trail has been tampered with"</code></pre>
   </div>
 
   <p>
@@ -547,35 +643,77 @@ for entry in audit_log:
 <h2>Clearance Levels</h2>
 
 <p>
-  PACT's <code>ClearanceManager</code> adds graduated access based on trust
-  levels. Rather than binary allow/deny, clearance levels enable progressive
-  trust: a new agent starts at level 1 (read-only, low budget) and earns
-  higher clearance through demonstrated reliability.
+  PACT's confidentiality clearance adds graduated access based on data
+  sensitivity. Rather than binary allow/deny, clearance levels enable
+  progressive trust: a new role starts with a <code>PUBLIC</code> envelope
+  (read-only, low budget) and earns higher clearance through demonstrated
+  reliability. Each envelope carries a
+  <code>confidentiality_clearance</code> field of type
+  <code>ConfidentialityLevel</code>.
 </p>
 
 <table>
   <thead><tr><th>Level</th><th>Name</th><th>Access</th><th>Typical budget</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>Observer</td><td>Read-only data access</td><td>$1</td></tr>
-    <tr><td>2</td><td>Contributor</td><td>Read + compute (statistics, predictions)</td><td>$5</td></tr>
-    <tr><td>3</td><td>Practitioner</td><td>Read + compute + train models</td><td>$20</td></tr>
-    <tr><td>4</td><td>Authority</td><td>Full access including deploy</td><td>$50</td></tr>
+    <tr><td>1</td><td>PUBLIC</td><td>Read-only data access</td><td>$1</td></tr>
+    <tr><td>2</td><td>RESTRICTED</td><td>Read + compute (statistics, predictions)</td><td>$5</td></tr>
+    <tr><td>3</td><td>CONFIDENTIAL</td><td>Read + compute + train models</td><td>$20</td></tr>
+    <tr><td>4</td><td>SECRET</td><td>Full access including deploy</td><td>$50</td></tr>
   </tbody>
 </table>
 
-<pre><code class="language-python">from kailash_pact import ClearanceManager
+<p>
+  Promotion in the modern API is not a separate object — it is an
+  <em>envelope replacement</em> on the role. The supervisor
+  (<code>defining_role_address</code>) issues a new <code>RoleEnvelope</code>
+  at a higher clearance, and the framework enforces monotonic tightening
+  structurally: a child envelope may never exceed the parent envelope on
+  any dimension.
+</p>
 
-clearance = ClearanceManager()
+<pre><code class="language-python">from pact import (
+    RoleEnvelope, ConstraintEnvelopeConfig, FinancialConstraintConfig,
+    OperationalConstraintConfig, TemporalConstraintConfig,
+    DataAccessConstraintConfig, CommunicationConstraintConfig,
+    ConfidentialityLevel,
+)
 
-# New agent starts at level 1
-clearance.set_level("new_agent", level=1)
+def build_envelope(level: ConfidentialityLevel, budget_usd: float,
+                    actions: list[str]) -> ConstraintEnvelopeConfig:
+    return ConstraintEnvelopeConfig(
+        id=f"env_{level.name.lower()}",
+        description=f"{level.name} clearance",
+        confidentiality_clearance=level,
+        financial=FinancialConstraintConfig(max_spend_usd=budget_usd),
+        operational=OperationalConstraintConfig(allowed_actions=actions),
+        temporal=TemporalConstraintConfig(),
+        data_access=DataAccessConstraintConfig(),
+        communication=CommunicationConstraintConfig(),
+        max_delegation_depth=0,
+    )
 
-# After 100 successful operations with no violations
-clearance.promote("new_agent", to_level=2,
-    reason="100 successful ops, 0 violations")
+# New role starts at PUBLIC (Level 1)
+initial = build_envelope(ConfidentialityLevel.PUBLIC, 1.00, ["read_data"])
+engine.set_role_envelope(RoleEnvelope(
+    id="new_role_env_v1",
+    defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1",
+    envelope=initial,
+))
 
-# Cannot skip levels
-clearance.promote("new_agent", to_level=4)  # raises: max +1 per promotion</code></pre>
+# After 100 successful operations with no violations, promote to RESTRICTED
+promoted = build_envelope(
+    ConfidentialityLevel.RESTRICTED, 5.00,
+    ["read_data", "compute_statistics", "run_predictions"],
+)
+engine.set_role_envelope(RoleEnvelope(
+    id="new_role_env_v2",
+    defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1",
+    envelope=promoted,
+))
+# The supervisor is the defining role, so this replacement is authorised.
+# If an unauthorised role tried to promote, verify_action would deny.</code></pre>
 
 <div class="callout advanced">
   <span class="label">Advanced</span>
@@ -600,50 +738,89 @@ clearance.promote("new_agent", to_level=4)  # raises: max +1 per promotion</code
 </p>
 
 <pre><code class="language-python">import pytest
-from kailash_pact import GovernanceViolation
+from pact import (
+    RoleEnvelope, ConstraintEnvelopeConfig, FinancialConstraintConfig,
+    OperationalConstraintConfig, TemporalConstraintConfig,
+    DataAccessConstraintConfig, CommunicationConstraintConfig,
+    ConfidentialityLevel, MonotonicTighteningError,
+)
 
 # Pattern 1: Verify access denial
-def test_analyst_cannot_deploy():
-    addr = Address("mortgage-risk", "assessment", "analyst")
-    assert not engine.can_access(addr, "deploy_model")
+def test_data_scientist_cannot_deploy():
+    verdict = engine.verify_action(
+        role_address="D1-R1-T1-R1",
+        action="deploy_model",
+        context={},
+    )
+    assert not verdict.allowed
+    assert verdict.level == "blocked"
 
-# Pattern 2: Verify envelope enforcement
-def test_tool_blocked_by_envelope():
-    with pytest.raises(GovernanceViolation):
-        governed_data_scientist.call_tool("deploy_model", {})
+# Pattern 2: Verify fail-closed on unknown roles
+def test_unknown_role_is_denied():
+    verdict = engine.verify_action(
+        role_address="D99-R99",         # does not exist in compiled org
+        action="read_data",
+        context={},
+    )
+    assert not verdict.allowed
+    assert verdict.level == "blocked"
 
-# Pattern 3: Verify monotonic tightening
-def test_cannot_loosen_envelope():
-    agent = PactGovernedAgent(agent=base_agent, envelope={"max_cost": 5.00})
-    agent.tighten_envelope(max_cost=3.00)  # OK
-    with pytest.raises(GovernanceViolation):
-        agent.loosen_envelope(max_cost=10.00)  # BLOCKED
+# Pattern 3: Verify monotonic tightening — child cannot exceed parent
+def test_child_envelope_cannot_loosen_parent():
+    parent = ConstraintEnvelopeConfig(
+        id="parent", description="",
+        confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+        financial=FinancialConstraintConfig(max_spend_usd=5.00),
+        operational=OperationalConstraintConfig(allowed_actions=["read"]),
+        temporal=TemporalConstraintConfig(),
+        data_access=DataAccessConstraintConfig(),
+        communication=CommunicationConstraintConfig(),
+        max_delegation_depth=1,
+    )
+    child = ConstraintEnvelopeConfig(
+        id="child", description="",
+        confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,  # ← tries to escalate
+        financial=FinancialConstraintConfig(max_spend_usd=10.00),     # ← exceeds parent
+        operational=OperationalConstraintConfig(allowed_actions=["read"]),
+        temporal=TemporalConstraintConfig(),
+        data_access=DataAccessConstraintConfig(),
+        communication=CommunicationConstraintConfig(),
+        max_delegation_depth=1,
+    )
+    with pytest.raises(MonotonicTighteningError):
+        RoleEnvelope.validate_tightening(parent, child)
 
-# Pattern 4: Verify budget exhaustion
-def test_budget_stops_agent():
-    tracker = CostTracker(total_budget=0.01)  # tiny budget
-    agent = PactGovernedAgent(agent=base_agent, cost_tracker=tracker)
-    result = agent.run("Complex analysis")
-    assert result.stopped_reason == "budget_exhausted"
-    assert tracker.total_spent() <= 0.01
+# Pattern 4: Verify budget exhaustion stops the supervisor
+async def test_budget_stops_supervisor():
+    from kaizen_agents import GovernedSupervisor
+    tiny = GovernedSupervisor(
+        model="gpt-4o-mini",
+        budget_usd=0.01,                 # tiny budget
+        tools=["answer_question"],
+        data_clearance="public",
+    )
+    async def expensive_executor(spec, inputs):
+        return {"result": "...", "cost": 0.02,  # exceeds $0.01
+                "prompt_tokens": 100, "completion_tokens": 50}
+    result = await tiny.run(objective="analyse portfolio",
+                             execute_node=expensive_executor)
+    assert not result.success
+    assert result.budget_consumed <= 0.01 or "budget" in result.failure_reason.lower()
 
-# Pattern 5: Verify audit trail completeness
-def test_all_checks_logged():
-    engine.clear_audit_trail()
-    addr = Address("mortgage-risk", "assessment", "analyst")
-    engine.can_access(addr, "read_data")
-    engine.can_access(addr, "deploy_model")
-    trail = engine.get_audit_trail()
-    assert len(trail) == 2
-    assert trail[0].decision == "GRANTED"
-    assert trail[1].decision == "DENIED"</code></pre>
+# Pattern 5: Verify tamper-evident audit chain
+def test_audit_chain_is_valid(governed_supervisor):
+    # Run some operations that populate the trail
+    trail = governed_supervisor.audit.to_list()
+    assert len(trail) >= 1
+    assert governed_supervisor.audit.verify_chain(), "audit chain is broken"</code></pre>
 
 <div class="callout warning">
   <span class="label">Critical principle</span>
   <p>
     Governance tests are <em>negative tests</em>. They test what does NOT happen.
-    Every <code>assert not</code> and every <code>pytest.raises(GovernanceViolation)</code>
-    is a guardrail that prevents the system from doing something dangerous.
+    Every <code>assert not verdict.allowed</code> and every
+    <code>pytest.raises(MonotonicTighteningError)</code> is a guardrail that
+    prevents the system from doing something dangerous.
     If these tests fail, it means your governance has a hole. Treat governance
     test failures as critical — they are security vulnerabilities.
   </p>
@@ -744,9 +921,10 @@ def test_all_checks_logged():
 
 <p class="xref">
   <strong>M6.5</strong> introduced Kaizen agents with tool use and cost budgets.
-  Those cost budgets are the foundation of the CostTracker you used today.
-  <strong>M6.6</strong> built multi-agent systems — the supervisor-worker pattern
-  maps directly to PACT's D/T/R hierarchy and budget cascading.
+  Those cost budgets are the foundation of the financial dimension of the
+  envelopes you used today. <strong>M6.6</strong> built multi-agent systems —
+  the supervisor-worker pattern maps directly to PACT's D/T/R hierarchy and
+  per-role envelope budgets.
   <strong>M6.8 (Capstone)</strong> integrates PACT governance with Nexus deployment
   — every API/CLI/MCP request passes through the governance layer before reaching
   the agent. The operating envelopes you defined today become deployment-level

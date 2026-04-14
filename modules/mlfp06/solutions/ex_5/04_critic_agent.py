@@ -28,10 +28,18 @@ from __future__ import annotations
 
 import asyncio
 
+import matplotlib.pyplot as plt
+
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent
 
-from shared.mlfp06.ex_5 import MODEL, data_summary, load_hotpotqa, make_tools
+from shared.mlfp06.ex_5 import (
+    MODEL,
+    OUTPUT_DIR,
+    data_summary,
+    load_hotpotqa,
+    make_tools,
+)
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Data + summary
@@ -292,6 +300,40 @@ print(
   pattern is boring to read and devastating to deploy.
 """
 )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Quality improvement: initial vs refined
+# ════════════════════════════════════════════════════════════════════════
+
+stages = ["Initial\nAnalysis", "Critic\nScore", "Refined\nAnalysis"]
+scores = [
+    initial.confidence,
+    critique.quality_score,
+    refined.confidence if refined is not None else initial.confidence,
+]
+colors = ["#90CAF9", "#FFE082", "#A5D6A7"]
+
+fig, ax = plt.subplots(figsize=(6, 4))
+bars = ax.bar(stages, scores, color=colors, edgecolor="#333", linewidth=0.8)
+for bar, score in zip(bars, scores):
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        bar.get_height() + 0.02,
+        f"{score:.2f}",
+        ha="center",
+        va="bottom",
+        fontweight="bold",
+    )
+ax.set_ylim(0, 1.15)
+ax.set_ylabel("Confidence / Quality Score")
+ax.set_title("Critic Loop: Quality Improvement Across Stages")
+ax.axhline(y=0.8, color="green", linestyle="--", alpha=0.5, label="Quality threshold")
+ax.legend()
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "04_critic_improvement.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '04_critic_improvement.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════

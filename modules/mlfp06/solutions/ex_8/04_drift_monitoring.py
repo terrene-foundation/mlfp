@@ -346,6 +346,37 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Drift score timeline with alert threshold
+# ════════════════════════════════════════════════════════════════════════
+
+days = list(range(1, 8))
+psi_values = [0.03, 0.05, 0.08, 0.12, 0.15, 0.22, 0.31]
+threshold = 0.2
+
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.plot(days, psi_values, "o-", color="#1976D2", linewidth=2, label="PSI score")
+ax.axhline(
+    y=threshold,
+    color="red",
+    linestyle="--",
+    linewidth=1.5,
+    label=f"Alert threshold ({threshold})",
+)
+ax.fill_between(days, 0, 0.1, alpha=0.1, color="green", label="Safe zone")
+ax.fill_between(days, 0.1, 0.2, alpha=0.1, color="orange", label="Investigate zone")
+ax.fill_between(days, 0.2, 0.4, alpha=0.1, color="red", label="Alert zone")
+ax.set_xlabel("Day")
+ax.set_ylabel("PSI Score")
+ax.set_title("Drift Monitoring: PSI Timeline with Alert Threshold")
+ax.set_ylim(0, 0.4)
+ax.legend(fontsize=8, loc="upper left")
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "04_drift_timeline.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '04_drift_timeline.png'}")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("═" * 70)

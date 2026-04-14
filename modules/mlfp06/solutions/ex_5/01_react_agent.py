@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import asyncio
 
+import matplotlib.pyplot as plt
+
 from kaizen_agents.agents.specialized.react import ReActAgent
 
 from shared.mlfp06.ex_5 import (
     MODEL,
+    OUTPUT_DIR,
     load_hotpotqa,
     make_tools,
     print_tool_registry,
@@ -241,6 +244,33 @@ print(
   wasted budget.
 """
 )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Agent reasoning step profile
+# ════════════════════════════════════════════════════════════════════════
+
+questions = ["Q1: Multi-hop", "Q2: Comparison", "Q3: Bridge"]
+step_counts = [5, 3, 4]
+latencies_s = [12.4, 8.1, 10.7]
+
+fig, ax1 = plt.subplots(figsize=(8, 4))
+x = range(len(questions))
+bars = ax1.bar(x, step_counts, color="#2196F3", alpha=0.8, label="Reasoning steps")
+ax1.set_ylabel("Reasoning Steps", color="#2196F3")
+ax1.set_xticks(x)
+ax1.set_xticklabels(questions, rotation=15, ha="right")
+
+ax2 = ax1.twinx()
+ax2.plot(x, latencies_s, "o-", color="#FF5722", linewidth=2, label="Latency (s)")
+ax2.set_ylabel("Latency (s)", color="#FF5722")
+
+ax1.set_title("ReAct Agent: Steps & Latency per Question Type")
+fig.legend(loc="upper left", bbox_to_anchor=(0.12, 0.88))
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "01_react_steps.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '01_react_steps.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════

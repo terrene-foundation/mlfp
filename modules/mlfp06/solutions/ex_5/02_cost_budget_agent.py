@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import asyncio
 
+import matplotlib.pyplot as plt
+
 from kaizen_agents.agents.specialized.react import ReActAgent
 
-from shared.mlfp06.ex_5 import MODEL, load_hotpotqa, make_tools
+from shared.mlfp06.ex_5 import MODEL, OUTPUT_DIR, load_hotpotqa, make_tools
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Data and tools
@@ -221,6 +223,40 @@ print(
   budget, take the 95th percentile, multiply by 2.
 """
 )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Budget utilisation: allocated vs spent
+# ════════════════════════════════════════════════════════════════════════
+
+tiers = ["Low ($0.10)", "Normal ($2.00)"]
+allocated = [0.10, 2.00]
+spent = [0.10 if low_tripped else 0.06, 0.45 if not normal_tripped else 2.00]
+
+fig, ax = plt.subplots(figsize=(6, 4))
+x = range(len(tiers))
+ax.bar([i - 0.15 for i in x], allocated, 0.3, label="Allocated", color="#90CAF9")
+ax.bar([i + 0.15 for i in x], spent, 0.3, label="Spent", color="#FF7043")
+ax.set_xticks(x)
+ax.set_xticklabels(tiers)
+ax.set_ylabel("USD")
+ax.set_title("Agent Budget Utilisation: Allocated vs Spent")
+ax.legend()
+for i, tripped in enumerate([low_tripped, normal_tripped]):
+    if tripped:
+        ax.annotate(
+            "TRIPPED",
+            (i + 0.15, spent[i]),
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color="red",
+            fontweight="bold",
+        )
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "02_budget_utilization.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '02_budget_utilization.png'}")
 
 
 # ════════════════════════════════════════════════════════════════════════

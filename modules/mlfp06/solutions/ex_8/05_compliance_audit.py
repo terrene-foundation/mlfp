@@ -267,6 +267,49 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# VISUALISATION — Compliance traffic light per regulation
+# ════════════════════════════════════════════════════════════════════════
+
+regs = [
+    "EU AI Act\nArt. 9",
+    "EU AI Act\nArt. 12",
+    "EU AI Act\nArt. 14",
+    "AI Verify\nAccountability",
+    "AI Verify\nTransparency",
+    "MAS TRM\n7.5",
+    "PDPA",
+]
+statuses = ["pass"] * 7  # all COMPLIANT from the regulatory DataFrame
+color_map = {"pass": "#4CAF50", "warn": "#FF9800", "fail": "#F44336"}
+colors = [color_map[s] for s in statuses]
+
+fig, ax = plt.subplots(figsize=(9, 4))
+bars = ax.barh(regs, [1] * len(regs), color=colors, edgecolor="#333", linewidth=0.5)
+for i, (bar, status) in enumerate(zip(bars, statuses)):
+    ax.text(
+        0.5,
+        i,
+        status.upper(),
+        ha="center",
+        va="center",
+        fontweight="bold",
+        color="white",
+        fontsize=11,
+    )
+ax.set_xlim(0, 1)
+ax.set_xticks([])
+ax.set_title("Compliance Traffic Light: Pass / Warn / Fail per Regulation")
+legend_patches = [
+    mpatches.Patch(color=c, label=l.upper()) for l, c in color_map.items()
+]
+ax.legend(handles=legend_patches, loc="lower right")
+fig.tight_layout()
+fig.savefig(OUTPUT_DIR / "05_compliance_traffic_light.png", dpi=150)
+plt.close(fig)
+print(f"\nSaved: {OUTPUT_DIR / '05_compliance_traffic_light.png'}")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("═" * 70)

@@ -65,6 +65,7 @@ dependencies = [
     "gdown>=5.0",
     # Environment
     "python-dotenv>=1.0",
+    "onnxscript>=0.6.2",
 ]
 
 [project.optional-dependencies]

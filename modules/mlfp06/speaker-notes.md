@@ -59,7 +59,7 @@ This is the final module of MLFP. By the end of today, students will have built,
 - Mention kailash-mcp briefly — it is the MCP server library we will use in 6.6.
 - "Every exercise uses at least one of these. By the end of 6.8, you will have used all of them in a single deployed system."
 - "If beginners look confused": "Think of these as specialised tools. Kaizen is the one you will touch most often today."
-- "If experts look bored": "AdapterRegistry, OperatingEnvelope, and PactGovernedAgent are the three classes most experts have not seen before."
+- "If experts look bored": "AdapterRegistry, ConstraintEnvelopeConfig, and GovernedSupervisor are the three classes most experts have not seen before."
 **Transition**: "Before we dive in, let us locate ourselves in the MLFP journey."
 
 ---
@@ -683,7 +683,7 @@ This is the final module of MLFP. By the end of today, students will have built,
 **Talking points**:
 
 - The problem: "A confused agent can make hundreds of LLM calls before realising it is stuck. At $0.003 per call, 500 calls equals $1.50 per request. A production system with 10K daily users equals $15,000/day."
-- LLMCostTracker: budget is set, agent stops gracefully when exhausted, returns partial results, logs the reason.
+- `max_llm_cost_usd` on the agent: budget is set at construction, the agent stops gracefully when exhausted, returns partial results, and logs the reason (in Kaizen 2.7 the budget lives on the agent itself — there is no separate `LLMCostTracker` class).
 - "Non-negotiable in production: every agent must have a cost budget. No exceptions. An unbounded agent is a financial liability."
 - "If beginners look confused": "It is like giving a contractor a budget. They can spend up to that amount, then they stop and report what they accomplished."
 - "If experts look bored": "The interesting engineering is graceful degradation. A well-designed agent that hits its budget should return its best partial answer, not an error."
@@ -852,7 +852,7 @@ This is the final module of MLFP. By the end of today, students will have built,
 **Talking points**:
 
 - How it works: parent agent has a total budget, allocates portions to children, children cannot exceed their allocation, parent can reclaim and reallocate remaining budget dynamically.
-- Walk through the BudgetAllocator code. allocate by name, reclaim when finished, reallocate to another agent.
+- Walk through the envelope code. Budget cascading lives in the `financial` dimension of each role's `ConstraintEnvelopeConfig`: the supervisor has `max_spend_usd=10.00`, each child role has a smaller cap, and `RoleEnvelope.validate_tightening` enforces that children cannot loosen the parent.
 - "Budget cascading prevents any single agent from consuming the entire budget. The dynamic reallocation pattern is important: if one agent finishes under budget, the surplus can be redirected to another that needs more."
 - "If beginners look confused": "It is like a project manager splitting a budget across team members, then reallocating surplus from under-spenders to over-runners."
 - "If experts look bored": "The interesting question is whether budgets should be hierarchical or flat. PACT uses hierarchical because it matches D/T/R structure."
@@ -860,16 +860,16 @@ This is the final module of MLFP. By the end of today, students will have built,
 
 ---
 
-## Slide 61: PactGovernedAgent — Governance Built In
+## Slide 61: GovernedSupervisor — Governance Built In
 
 **Time**: ~3 min
 **Talking points**:
 
-- Walk through the code. PactGovernedAgent combines: an address (D/T/R), a delegate (LLM), a governance engine (D/T/R rules), an envelope (what it can do).
-- "The governance check happens before every action. Nothing gets past the envelope."
-- Show the blocked action at the bottom: "Delete all customer records" raises a GovernanceError because the task is not in allowed_tasks.
-- "If beginners look confused": "You wrap the agent. Every action the agent tries to take is checked against the rules first. If it is not allowed, it is blocked."
-- "If experts look bored": "The interesting design is that governance is compositional. You can wrap any Kaizen agent in PactGovernedAgent — the governance is orthogonal to the agent logic."
+- Walk through the code. GovernedSupervisor combines: a role address (D/T/R), a model + tools, an envelope (five constraint dimensions + clearance), and a budget. The supervisor plans the task; a caller-supplied `execute_node` callback runs the real LLM.
+- "The governance check happens before every step. Nothing gets past the envelope."
+- To show the blocked path, call `engine.verify_action` on an action outside the envelope (e.g. `delete_all_records`) and read `verdict.reason` — it is denied at the policy layer before any tool runs.
+- "If beginners look confused": "You construct the supervisor with the envelope. Every action it tries to take is checked against the rules first. If it is not allowed, it is blocked."
+- "If experts look bored": "The interesting design is that the two-layer run contract separates planning from execution. The same governed supervisor can drive a real LLM in production and an offline stub in tests — the envelope enforcement is identical."
 **Transition**: "And you must test this, or it does not exist."
 
 ---

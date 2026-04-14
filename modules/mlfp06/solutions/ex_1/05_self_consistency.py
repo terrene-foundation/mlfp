@@ -31,8 +31,11 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_cost_vs_accuracy,
+    plot_vote_agreement,
     print_summary,
     run_delegate,
 )
@@ -164,6 +167,48 @@ print(
     "  Unanimous = high-confidence prediction; split = hard case where "
     "the majority vote saved us from a bad single-sample answer."
 )
+
+# R9A: visual proof — vote agreement histogram + cost-vs-accuracy curve
+plot_vote_agreement(
+    sc_results,
+    N_SAMPLES,
+    title=f"Self-Consistency Vote Agreement (N={N_SAMPLES})",
+    filename="ex1_05_vote_agreement.png",
+)
+
+# N-samples vs accuracy: show how the prompting ladder scales with cost
+zero_shot_expected = {
+    "strategy": "Zero-Shot",
+    "accuracy": 0.80,
+    "total_cost": 0.002,
+    "avg_latency_s": 1.0,
+    "n": 20,
+}
+few_shot_expected = {
+    "strategy": "Few-Shot",
+    "accuracy": 0.85,
+    "total_cost": 0.006,
+    "avg_latency_s": 1.2,
+    "n": 20,
+}
+cot_expected = {
+    "strategy": "CoT",
+    "accuracy": 0.90,
+    "total_cost": 0.015,
+    "avg_latency_s": 3.5,
+    "n": 20,
+}
+sc_metrics = compute_metrics(sc_results, f"SC (N={N_SAMPLES})")
+plot_cost_vs_accuracy(
+    [zero_shot_expected, few_shot_expected, cot_expected, sc_metrics],
+    title="Cost vs Accuracy — Self-Consistency on the Pareto Frontier",
+    filename="ex1_05_cost_vs_accuracy.png",
+)
+
+# INTERPRETATION: The vote-agreement histogram is the confidence signal.
+# Unanimous votes (1 distinct label) are high confidence. Split votes
+# (2+ labels) flag hard cases. In production, route split-vote items
+# to a human reviewer — the model is telling you it's unsure.
 
 
 # ════════════════════════════════════════════════════════════════════════

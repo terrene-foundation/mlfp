@@ -208,6 +208,95 @@ full_path = OUTPUT_DIR / "05_full_pipeline.html"
 fig_full.write_html(full_path)
 print(f"[viz] Full pipeline: {full_path}")
 
+# ── (C) Dropout effect: side-by-side final val loss comparison ────────
+import plotly.graph_objects as go
+
+variant_names = list(variant_val_histories.keys())
+variant_final = [variant_val_histories[v][-1] for v in variant_names]
+variant_initial = [variant_val_histories[v][0] for v in variant_names]
+colors = ["#FECB52", "#636EFA", "#00CC96", "#AB63FA"]
+
+fig_dropout = go.Figure()
+fig_dropout.add_trace(
+    go.Bar(
+        x=variant_names,
+        y=variant_initial,
+        name="Epoch 1 Val Loss",
+        marker_color=[c + "88" for c in colors],
+        text=[f"{v:.4f}" for v in variant_initial],
+        textposition="outside",
+    )
+)
+fig_dropout.add_trace(
+    go.Bar(
+        x=variant_names,
+        y=variant_final,
+        name="Epoch 6 Val Loss",
+        marker_color=colors,
+        text=[f"{v:.4f}" for v in variant_final],
+        textposition="outside",
+    )
+)
+fig_dropout.update_layout(
+    title="Regularisation Effect: Initial vs Final Validation Loss",
+    xaxis_title="Variant",
+    yaxis_title="Validation BCE Loss",
+    barmode="group",
+)
+dropout_path = OUTPUT_DIR / "05_dropout_comparison.html"
+fig_dropout.write_html(str(dropout_path))
+print(f"[viz] Dropout comparison: {dropout_path}")
+
+# ── (D) Train vs val loss with early stopping marker ─────────────────
+epochs_run = list(range(1, len(history["train_loss"]) + 1))
+fig_es = go.Figure()
+fig_es.add_trace(
+    go.Scatter(
+        x=epochs_run,
+        y=history["train_loss"],
+        mode="lines+markers",
+        name="Train Loss",
+        marker_color="#636EFA",
+    )
+)
+fig_es.add_trace(
+    go.Scatter(
+        x=epochs_run,
+        y=history["val_loss"],
+        mode="lines+markers",
+        name="Val Loss",
+        marker_color="#EF553B",
+    )
+)
+if stopped_epoch < n_epochs:
+    fig_es.add_vline(
+        x=stopped_epoch,
+        line_dash="dash",
+        line_color="green",
+        annotation_text=f"Early Stop (epoch {stopped_epoch})",
+        annotation_position="top left",
+    )
+# Mark the best val loss epoch
+best_val_epoch = int(np.argmin(history["val_loss"])) + 1
+best_val_loss = min(history["val_loss"])
+fig_es.add_trace(
+    go.Scatter(
+        x=[best_val_epoch],
+        y=[best_val_loss],
+        mode="markers",
+        marker=dict(size=14, color="green", symbol="star"),
+        name=f"Best Val (epoch {best_val_epoch})",
+    )
+)
+fig_es.update_layout(
+    title="Training vs Validation Loss with Early Stopping",
+    xaxis_title="Epoch",
+    yaxis_title="BCE Loss",
+)
+es_path = OUTPUT_DIR / "05_early_stopping.html"
+fig_es.write_html(str(es_path))
+print(f"[viz] Early stopping: {es_path}")
+
 # INTERPRETATION: The gradient-norm line is the one to watch. Every time
 # it spikes above 1.0 the clipper fires and the step is rescaled. Without
 # clipping, those spikes would land as bad updates and you'd see the

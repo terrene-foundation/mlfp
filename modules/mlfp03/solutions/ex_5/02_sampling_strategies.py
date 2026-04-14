@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import lightgbm as lgb
 import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
 from imblearn.over_sampling import SMOTE
@@ -171,6 +172,74 @@ print("    (cost-sensitive changes the LOSS, not the data — no fake rows)")
 metrics_df = pl.DataFrame(rows)
 metrics_df.write_parquet(OUTPUT_DIR / "sampling_metrics.parquet")
 print(f"\n  Saved: {OUTPUT_DIR / 'sampling_metrics.parquet'}")
+
+# ── Visual: Precision-Recall comparison across strategies ────────────────
+strategy_names = [r["strategy"] for r in rows]
+fig = go.Figure()
+fig.add_trace(
+    go.Bar(
+        x=strategy_names,
+        y=[r["auc_pr"] for r in rows],
+        name="AUC-PR",
+        marker_color="#6366f1",
+    )
+)
+fig.add_trace(
+    go.Bar(
+        x=strategy_names,
+        y=[r["brier"] for r in rows],
+        name="Brier score",
+        marker_color="#f43f5e",
+    )
+)
+fig.update_layout(
+    title="Sampling Strategy Comparison: AUC-PR vs Brier (lower Brier = better calibration)",
+    barmode="group",
+    yaxis_title="Score",
+    height=450,
+    legend=dict(orientation="h", y=-0.2),
+)
+viz_path = OUTPUT_DIR / "ex5_02_sampling_comparison.html"
+fig.write_html(str(viz_path))
+print(f"  Saved: {viz_path}")
+
+# ── Visual: SMOTE vs Original data distribution ─────────────────────────
+fig2 = go.Figure()
+fig2.add_trace(
+    go.Scatter(
+        x=X_train[:500, 0],
+        y=X_train[:500, 1],
+        mode="markers",
+        marker=dict(
+            color=y_train[:500].astype(float), colorscale="RdBu", size=4, opacity=0.5
+        ),
+        name="Original",
+    )
+)
+fig2.add_trace(
+    go.Scatter(
+        x=X_smote[-500:, 0],
+        y=X_smote[-500:, 1],
+        mode="markers",
+        marker=dict(
+            color=y_smote[-500:].astype(float),
+            colorscale="Sunset",
+            size=4,
+            opacity=0.5,
+            symbol="diamond",
+        ),
+        name="SMOTE synthetic",
+    )
+)
+fig2.update_layout(
+    title="SMOTE vs Original: Feature-space scatter (first two features)",
+    xaxis_title="Feature 0",
+    yaxis_title="Feature 1",
+    height=450,
+)
+viz_path2 = OUTPUT_DIR / "ex5_02_smote_scatter.html"
+fig2.write_html(str(viz_path2))
+print(f"  Saved: {viz_path2}")
 
 # INTERPRETATION: Look at the Brier column. Cost-sensitive usually keeps
 # Brier close to the baseline; SMOTE frequently makes Brier WORSE even

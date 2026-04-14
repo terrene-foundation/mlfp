@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+import matplotlib.pyplot as plt
 from kaizen.orchestration.pipeline import Pipeline
 
 from shared.mlfp06.ex_6 import (
@@ -205,6 +206,66 @@ trace_path.write_text(
     f"Router configured with 3 specialists.\n"
 )
 print(f"\nTrace written to: {trace_path}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Parallel vs sequential latency + routing distribution
+# ════════════════════════════════════════════════════════════════════════
+# Two panels: (1) bar chart proving parallel < sequential, with the
+# theoretical model annotated; (2) pie chart showing the routing intent
+# distribution across the three specialist types.
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+
+# Left: latency comparison
+bars = ax1.bar(
+    ["Parallel\n(~max of stages)", "Sequential\n(~sum of stages)"],
+    [par_result["latency_s"], seq_latency],
+    color=["#2ecc71", "#e74c3c"],
+    width=0.5,
+)
+speedup = seq_latency / max(par_result["latency_s"], 0.01)
+ax1.set_ylabel("Latency (seconds)")
+ax1.set_title("Parallel vs Sequential Latency", fontweight="bold")
+for bar, val in zip(bars, [par_result["latency_s"], seq_latency]):
+    ax1.text(
+        bar.get_x() + bar.get_width() / 2,
+        val + 0.1,
+        f"{val:.1f}s",
+        ha="center",
+        fontsize=11,
+        fontweight="bold",
+    )
+ax1.text(
+    0.5,
+    max(par_result["latency_s"], seq_latency) * 0.5,
+    f"{speedup:.1f}x\nspeedup",
+    ha="center",
+    fontsize=12,
+    fontweight="bold",
+    color="#2c3e50",
+    transform=ax1.get_xaxis_transform(),
+)
+
+# Right: routing intent distribution
+route_labels = ["Factual", "Semantic", "Structural"]
+route_counts = [1, 1, 1]  # one test query per type from Task 5
+colors = ["#3498db", "#2ecc71", "#e67e22"]
+ax2.pie(
+    route_counts,
+    labels=route_labels,
+    colors=colors,
+    autopct="%1.0f%%",
+    startangle=90,
+    textprops={"fontsize": 10},
+)
+ax2.set_title("Routing Distribution by Intent", fontweight="bold")
+
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex6_parallel_router_viz.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

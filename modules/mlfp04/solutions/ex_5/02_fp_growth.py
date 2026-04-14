@@ -225,6 +225,80 @@ fp_rules_df.write_csv(OUTPUT_DIR / "fp_growth_rules.csv")
 print(f"  Saved: {OUTPUT_DIR / 'fp_growth_itemsets.csv'}")
 print(f"  Saved: {OUTPUT_DIR / 'fp_growth_rules.csv'}")
 
+# ── Visualisation ─────────────────────────────────────────────────────
+import time
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# (A) Itemset frequency bar chart — top 15 by support
+top_itemsets = fp_frequent_df.sort("support", descending=True).head(15)
+fig_freq = go.Figure(
+    go.Bar(
+        x=top_itemsets["support"].to_list(),
+        y=top_itemsets["itemset"].to_list(),
+        orientation="h",
+        marker_color="#636EFA",
+        text=[f"{s:.1%}" for s in top_itemsets["support"].to_list()],
+        textposition="outside",
+    )
+)
+fig_freq.update_layout(
+    title="Top 15 Frequent Itemsets by Support (FP-Growth)",
+    xaxis_title="Support",
+    yaxis_title="Itemset",
+    yaxis=dict(autorange="reversed"),
+    margin=dict(l=200),
+)
+freq_path = OUTPUT_DIR / "02_itemset_frequency.html"
+fig_freq.write_html(str(freq_path))
+print(f"[viz] Itemset frequency: {freq_path}")
+
+# (B) Apriori vs FP-Growth speed comparison across data sizes
+sizes = [500, 1000, 1500, 2000, 2500]
+apriori_times: list[float] = []
+fp_times: list[float] = []
+for sz in sizes:
+    txns = generate_transactions(n=sz, seed=42)
+    oh_pl = transactions_to_onehot(txns)
+    oh_pd = oh_pl.to_pandas()
+
+    t0 = time.perf_counter()
+    _apriori(txns, min_support=MIN_SUPPORT)
+    apriori_times.append(time.perf_counter() - t0)
+
+    t0 = time.perf_counter()
+    mlx_fpgrowth(oh_pd, min_support=MIN_SUPPORT, use_colnames=True)
+    fp_times.append(time.perf_counter() - t0)
+
+fig_speed = go.Figure()
+fig_speed.add_trace(
+    go.Scatter(
+        x=sizes,
+        y=apriori_times,
+        mode="lines+markers",
+        name="Apriori (from scratch)",
+        marker_color="#EF553B",
+    )
+)
+fig_speed.add_trace(
+    go.Scatter(
+        x=sizes,
+        y=fp_times,
+        mode="lines+markers",
+        name="FP-Growth (mlxtend)",
+        marker_color="#00CC96",
+    )
+)
+fig_speed.update_layout(
+    title="Apriori vs FP-Growth: Runtime by Transaction Count",
+    xaxis_title="Number of Transactions",
+    yaxis_title="Time (seconds)",
+)
+speed_path = OUTPUT_DIR / "02_speed_comparison.html"
+fig_speed.write_html(str(speed_path))
+print(f"[viz] Speed comparison: {speed_path}")
+
 # INTERPRETATION: Both algorithms are level-complete — they find ALL
 # frequent itemsets at the given min_support, and the sets should agree
 # (modulo floating-point edge cases right at the threshold). The choice

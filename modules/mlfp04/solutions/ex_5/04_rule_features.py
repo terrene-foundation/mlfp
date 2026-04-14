@@ -342,6 +342,87 @@ metric_df = pl.DataFrame(metric_rows)
 metric_df.write_csv(OUTPUT_DIR / "rule_features_metrics.csv")
 print(f"\n  Saved: {OUTPUT_DIR / 'rule_features_metrics.csv'}")
 
+# ── Visualisation ─────────────────────────────────────────────────────
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# (A) Feature importance: product vs rule groups (pie + top-15 bar)
+fig_imp = make_subplots(
+    rows=1,
+    cols=2,
+    specs=[[{"type": "pie"}, {"type": "xy"}]],
+    subplot_titles=["Importance by Group", "Top 15 Features"],
+)
+fig_imp.add_trace(
+    go.Pie(
+        labels=["Product Features", "Rule Features"],
+        values=[product_importance, rule_importance],
+        marker_colors=["#636EFA", "#EF553B"],
+        textinfo="label+percent",
+    ),
+    row=1,
+    col=1,
+)
+top_names = [all_feature_names[i] for i in top_idx]
+top_vals = [float(importances[i]) for i in top_idx]
+top_colors = ["#636EFA" if idx < X_baseline.shape[1] else "#EF553B" for idx in top_idx]
+fig_imp.add_trace(
+    go.Bar(
+        x=top_vals,
+        y=top_names,
+        orientation="h",
+        marker_color=top_colors,
+        showlegend=False,
+    ),
+    row=1,
+    col=2,
+)
+fig_imp.update_layout(
+    title="Feature Importance: Product (blue) vs Rule (red) Features",
+    height=500,
+    width=1000,
+)
+fig_imp.update_yaxes(autorange="reversed", row=1, col=2)
+imp_path = OUTPUT_DIR / "04_feature_importance.html"
+fig_imp.write_html(str(imp_path))
+print(f"[viz] Feature importance: {imp_path}")
+
+# (B) Accuracy improvement: baseline vs combined across models
+model_names = list(results.keys())
+acc_vals = [results[k]["accuracy"] for k in model_names]
+auc_vals = [results[k]["auc_roc"] for k in model_names]
+fig_acc = go.Figure()
+fig_acc.add_trace(
+    go.Bar(
+        x=model_names,
+        y=acc_vals,
+        name="Accuracy",
+        marker_color="#636EFA",
+        text=[f"{v:.3f}" for v in acc_vals],
+        textposition="outside",
+    )
+)
+fig_acc.add_trace(
+    go.Bar(
+        x=model_names,
+        y=auc_vals,
+        name="AUC-ROC",
+        marker_color="#EF553B",
+        text=[f"{v:.3f}" for v in auc_vals],
+        textposition="outside",
+    )
+)
+fig_acc.update_layout(
+    title="Model Comparison: Baseline vs Rules-Only vs Combined",
+    xaxis_title="Model Variant",
+    yaxis_title="Score",
+    barmode="group",
+    yaxis_range=[0, 1.1],
+)
+acc_path = OUTPUT_DIR / "04_accuracy_comparison.html"
+fig_acc.write_html(str(acc_path))
+print(f"[viz] Accuracy comparison: {acc_path}")
+
 # INTERPRETATION: For a simple linear model, rule features typically add
 # 2-5 points of AUC because the LR cannot represent "all three breakfast
 # items present" without an explicit interaction. For a random forest,

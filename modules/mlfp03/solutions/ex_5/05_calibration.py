@@ -27,6 +27,8 @@
 from __future__ import annotations
 
 import lightgbm as lgb
+import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
 from sklearn.calibration import CalibratedClassifierCV
@@ -168,6 +170,65 @@ print_metrics_table(all_rows, "FINAL COMPARISON — all imbalance strategies")
 final_df = pl.DataFrame(all_rows)
 final_df.write_parquet(OUTPUT_DIR / "final_comparison.parquet")
 print(f"\n  Saved: {OUTPUT_DIR / 'final_comparison.parquet'}")
+
+# ── Visual: Reliability diagram (calibration curves) ─────────────────────
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=[0, 1],
+        y=[0, 1],
+        mode="lines",
+        name="Perfect calibration",
+        line=dict(dash="dash", color="#9ca3af", width=1),
+    )
+)
+for label, bins in [
+    ("Baseline", bins_baseline),
+    ("Cost-sensitive", bins_cost),
+    ("Platt", bins_platt),
+    ("Isotonic", bins_iso),
+]:
+    mean_pred = [b["mean_predicted"] for b in bins if b["count"] > 0]
+    frac_pos = [b["fraction_positives"] for b in bins if b["count"] > 0]
+    fig.add_trace(go.Scatter(x=mean_pred, y=frac_pos, mode="lines+markers", name=label))
+fig.update_layout(
+    title="Reliability Diagram: predicted probability vs observed default rate",
+    xaxis_title="Mean predicted probability",
+    yaxis_title="Fraction of positives (actual default rate)",
+    height=500,
+    legend=dict(orientation="h", y=-0.2),
+)
+viz_path = OUTPUT_DIR / "ex5_05_reliability_diagram.html"
+fig.write_html(str(viz_path))
+print(f"  Saved: {viz_path}")
+
+# ── Visual: Brier score comparison bar chart ─────────────────────────────
+fig2 = go.Figure()
+fig2.add_trace(
+    go.Bar(
+        x=[r["strategy"] for r in all_rows],
+        y=[r["brier"] for r in all_rows],
+        marker_color=[
+            (
+                "#10b981"
+                if r["brier"] == min(rr["brier"] for rr in all_rows)
+                else "#6366f1"
+            )
+            for r in all_rows
+        ],
+        text=[f"{r['brier']:.4f}" for r in all_rows],
+        textposition="outside",
+    )
+)
+fig2.update_layout(
+    title="Brier Score Comparison: lower = better calibration (green = best)",
+    xaxis_title="Strategy",
+    yaxis_title="Brier score",
+    height=450,
+)
+viz_path2 = OUTPUT_DIR / "ex5_05_brier_comparison.html"
+fig2.write_html(str(viz_path2))
+print(f"  Saved: {viz_path2}")
 
 # Pick the production-ready strategy
 best_auc_pr = max(all_rows, key=lambda r: r["auc_pr"])

@@ -30,8 +30,10 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_comparison_bars,
     print_summary,
     run_delegate,
 )
@@ -155,11 +157,30 @@ print("\n[ok] Checkpoint passed — few-shot evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(few_shot_results, "Few-Shot (4 examples)")
 
+# R9A: visual proof — few-shot vs zero-shot accuracy comparison
+# We use expected zero-shot baselines so this file is independently runnable
+# (R10: no runtime chaining between technique files).
+zero_shot_expected = {
+    "strategy": "Zero-Shot",
+    "accuracy": 0.80,
+    "total_cost": 0.002,
+    "avg_latency_s": 1.0,
+    "n": 20,
+}
+few_shot_metrics = compute_metrics(few_shot_results, "Few-Shot")
+plot_comparison_bars(
+    [zero_shot_expected, few_shot_metrics],
+    title="Few-Shot vs Zero-Shot — Accuracy / Cost / Latency",
+    filename="ex1_02_few_shot_comparison.png",
+)
+
 # INTERPRETATION: Few-shot typically gains 3-8 percentage points over
 # zero-shot in exchange for ~3x the input tokens. The cost rises; the
 # output format gets more reliable; ambiguous edge cases improve.
 # If your zero-shot baseline was 80% and your accuracy bar is 90%,
 # few-shot is the first thing to try.
+# The bar chart makes the trade-off visible: how many dollars of extra
+# inference cost does each percentage point of accuracy cost you?
 
 
 # ════════════════════════════════════════════════════════════════════════

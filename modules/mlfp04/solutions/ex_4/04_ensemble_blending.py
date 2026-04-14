@@ -27,6 +27,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
@@ -230,6 +232,81 @@ comparison = {
 }
 comparison_path = write_comparison_chart(comparison, "ex4_anomaly_comparison.html")
 print(f"Saved comparison chart: {comparison_path}")
+
+import plotly.graph_objects as go
+from sklearn.metrics import roc_curve
+
+out_dir = Path("outputs") / "ex4_anomaly"
+
+# ── (A) Ensemble score distribution: normal vs anomaly ─────────────────
+fig_edist = go.Figure()
+fig_edist.add_trace(
+    go.Histogram(
+        x=weighted_blend[y == 0],
+        name="Normal",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#636EFA",
+    )
+)
+fig_edist.add_trace(
+    go.Histogram(
+        x=weighted_blend[y == 1],
+        name="Anomaly",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#EF553B",
+    )
+)
+fig_edist.update_layout(
+    title="AUC-Weighted Ensemble Score Distribution",
+    xaxis_title="Blended Anomaly Score",
+    yaxis_title="Count",
+    barmode="overlay",
+)
+edist_path = out_dir / "04_ensemble_score_distribution.html"
+fig_edist.write_html(str(edist_path))
+print(f"[viz] Ensemble score distribution: {edist_path}")
+
+# ── (B) ROC curves overlay: all methods on one plot ───────────────────
+all_detectors = {
+    "Z-score": (z_scores, z_m),
+    "IQR": (iqr_scores, iqr_m),
+    "Isolation Forest": (iso_scores, iso_m),
+    "LOF": (lof_scores, lof_m),
+    "Equal Blend": (equal_blend, equal_m),
+    "AUC-Weighted": (weighted_blend, weighted_m),
+    "Rank Blend": (rank_blend, rank_m),
+}
+fig_roc = go.Figure()
+for det_name, (det_scores, det_m) in all_detectors.items():
+    fpr, tpr, _ = roc_curve(y, det_scores)
+    fig_roc.add_trace(
+        go.Scatter(
+            x=fpr,
+            y=tpr,
+            mode="lines",
+            name=f"{det_name} (AUC={det_m['auc_roc']:.3f})",
+        )
+    )
+fig_roc.add_trace(
+    go.Scatter(
+        x=[0, 1],
+        y=[0, 1],
+        mode="lines",
+        line=dict(dash="dash", color="grey"),
+        name="Random",
+        showlegend=False,
+    )
+)
+fig_roc.update_layout(
+    title="ROC Curves: All Detectors and Ensembles",
+    xaxis_title="False Positive Rate",
+    yaxis_title="True Positive Rate",
+)
+roc_overlay_path = out_dir / "04_roc_overlay.html"
+fig_roc.write_html(str(roc_overlay_path))
+print(f"[viz] ROC overlay: {roc_overlay_path}")
 
 # Precision at key recall levels for the AUC-weighted blend
 print("\nPrecision at key recall levels (AUC-weighted blend):")

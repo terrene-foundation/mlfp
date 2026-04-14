@@ -124,10 +124,102 @@ print("\n[ok] Checkpoint passed — LOF scored all rows\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: ROC curve
+# TASK 4 — VISUALISE: ROC curve + LOF score scatter + distance distribution
 # ════════════════════════════════════════════════════════════════════════
 roc_path = write_roc_chart(y, lof_scores, "LOF", "ex4_roc_lof.html")
 print(f"Saved ROC chart: {roc_path}")
+
+import plotly.graph_objects as go
+from pathlib import Path
+
+out_dir = Path("outputs") / "ex4_anomaly"
+out_dir.mkdir(parents=True, exist_ok=True)
+
+# ── (A) LOF scores scatter, coloured by anomaly label ──────────────────
+# Plot the first two principal features vs LOF score to show where
+# the high-LOF points cluster relative to the data.
+fig_scatter = go.Figure()
+fig_scatter.add_trace(
+    go.Scatter(
+        x=X[y == 0, 0],
+        y=X[y == 0, 1],
+        mode="markers",
+        marker=dict(
+            size=4,
+            color=lof_scores[y == 0],
+            colorscale="Blues",
+            opacity=0.5,
+        ),
+        name="Normal",
+    )
+)
+fig_scatter.add_trace(
+    go.Scatter(
+        x=X[y == 1, 0],
+        y=X[y == 1, 1],
+        mode="markers",
+        marker=dict(
+            size=7,
+            color=lof_scores[y == 1],
+            colorscale="Reds",
+            colorbar=dict(title="LOF Score", x=1.02),
+            opacity=0.9,
+        ),
+        name="Anomaly",
+    )
+)
+fig_scatter.update_layout(
+    title="LOF Scores: Feature 0 vs Feature 1 (colour = LOF score)",
+    xaxis_title="Feature 0 (standardised)",
+    yaxis_title="Feature 1 (standardised)",
+)
+scatter_path = out_dir / "03_lof_scatter.html"
+fig_scatter.write_html(str(scatter_path))
+print(f"[viz] LOF scatter: {scatter_path}")
+
+# ── (B) LOF score distribution: normal vs anomaly ─────────────────────
+fig_dist = go.Figure()
+fig_dist.add_trace(
+    go.Histogram(
+        x=lof_scores[y == 0],
+        name="Normal",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#636EFA",
+    )
+)
+fig_dist.add_trace(
+    go.Histogram(
+        x=lof_scores[y == 1],
+        name="Anomaly",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#EF553B",
+    )
+)
+median_normal = float(np.median(lof_scores[y == 0]))
+median_anomaly = float(np.median(lof_scores[y == 1]))
+fig_dist.add_vline(
+    x=median_normal,
+    line_dash="dash",
+    line_color="#636EFA",
+    annotation_text=f"Normal median={median_normal:.2f}",
+)
+fig_dist.add_vline(
+    x=median_anomaly,
+    line_dash="dash",
+    line_color="#EF553B",
+    annotation_text=f"Anomaly median={median_anomaly:.2f}",
+)
+fig_dist.update_layout(
+    title="LOF Score Distribution: Normal vs Anomaly",
+    xaxis_title="LOF Score (higher = more anomalous)",
+    yaxis_title="Count",
+    barmode="overlay",
+)
+dist_path = out_dir / "03_lof_score_distribution.html"
+fig_dist.write_html(str(dist_path))
+print(f"[viz] LOF score distribution: {dist_path}")
 
 print("\nLOF vs Isolation Forest on this dataset:")
 print("  LOF catches anomalies that live inside a cluster they don't")

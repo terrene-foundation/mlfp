@@ -29,7 +29,11 @@ import math
 import re
 from collections import Counter
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 from shared.mlfp06.ex_4 import (
+    OUTPUT_DIR,
     load_rag_corpus,
     plot_score_distribution,
     split_corpus,
@@ -198,6 +202,53 @@ plot_score_distribution(
     xlabel="BM25 score",
     filename="ex4_03_bm25_score_dist.png",
 )
+
+# R9A: term frequency heatmap — shows which query terms contribute to
+# the BM25 score of the top-5 documents. Reveals WHY a document ranks
+# high (exact term overlap) and which terms are "wasted" (zero TF).
+query_tokens = list(set(re.findall(r"\w+", test_query.lower())))[:10]
+top_docs = bm25_results[:5]
+tf_matrix = np.zeros((len(top_docs), len(query_tokens)))
+for i, doc in enumerate(top_docs):
+    doc_idx = doc["doc_idx"]
+    for j, term in enumerate(query_tokens):
+        tf_matrix[i, j] = bm25.tf[doc_idx].get(term, 0)
+
+fig, ax = plt.subplots(figsize=(10, 4))
+im = ax.imshow(tf_matrix, cmap="YlOrRd", aspect="auto")
+ax.set_xticks(range(len(query_tokens)))
+ax.set_xticklabels(query_tokens, rotation=45, ha="right", fontsize=9)
+ax.set_yticks(range(len(top_docs)))
+ax.set_yticklabels([f"Doc {d['doc_idx']}" for d in top_docs], fontsize=9)
+ax.set_title(
+    "Term Frequency Heatmap — Query Terms in Top-5 BM25 Docs",
+    fontsize=13,
+    fontweight="bold",
+)
+ax.set_xlabel("Query term")
+ax.set_ylabel("Top-k document")
+for i in range(len(top_docs)):
+    for j in range(len(query_tokens)):
+        ax.text(
+            j,
+            i,
+            f"{int(tf_matrix[i, j])}",
+            ha="center",
+            va="center",
+            fontsize=8,
+            color="white" if tf_matrix[i, j] > tf_matrix.max() / 2 else "black",
+        )
+fig.colorbar(im, ax=ax, label="Term frequency")
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex4_03_bm25_tf_heatmap.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"  Saved: {fname}")
+
+# INTERPRETATION: The heatmap shows exactly which words drive each
+# document's ranking. A document that matches all query terms is a
+# strong hit; one that matches a single rare term may still rank high
+# because BM25's IDF weighting amplifies rare terms.
 
 
 # ════════════════════════════════════════════════════════════════════════

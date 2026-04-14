@@ -31,10 +31,12 @@ from __future__ import annotations
 import asyncio
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.feature_selection import chi2, mutual_info_classif
 from sklearn.preprocessing import MinMaxScaler
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
     build_full_feature_frame,
     load_icu_tables,
     log_selection_run,
@@ -131,6 +133,81 @@ print(f"  Chi-squared top-20:  {len(chi2_top20)} features")
 print(f"  Intersection:        {len(filter_consensus)} features")
 for f in filter_consensus:
     print(f"    - {f}")
+
+# --- Mutual information + chi-squared bar charts (top 15) ---
+top_n = 15
+mi_names = [name for name, _ in mi_ranking[:top_n]]
+mi_vals = [score for _, score in mi_ranking[:top_n]]
+chi2_names = [name for name, _ in chi2_ranking[:top_n]]
+chi2_vals = [score for _, score in chi2_ranking[:top_n]]
+
+fig_mi = go.Figure(
+    go.Bar(x=mi_vals[::-1], y=mi_names[::-1], orientation="h", marker_color="#2563eb")
+)
+fig_mi.update_layout(
+    title="Mutual Information Scores — Top 15 Features",
+    xaxis_title="MI Score",
+    yaxis_title="Feature",
+    height=500,
+    margin=dict(l=200),
+)
+mi_path = OUTPUT_DIR / "ex1_02_mi_scores.html"
+fig_mi.write_html(str(mi_path))
+
+fig_chi2 = go.Figure(
+    go.Bar(
+        x=chi2_vals[::-1], y=chi2_names[::-1], orientation="h", marker_color="#dc2626"
+    )
+)
+fig_chi2.update_layout(
+    title="Chi-Squared Scores — Top 15 Features",
+    xaxis_title="Chi2 Score",
+    yaxis_title="Feature",
+    height=500,
+    margin=dict(l=200),
+)
+chi2_path = OUTPUT_DIR / "ex1_02_chi2_scores.html"
+fig_chi2.write_html(str(chi2_path))
+
+# --- Selected vs dropped features comparison ---
+mi_top20 = {name for name, _ in mi_ranking[:20]}
+chi2_top20 = {name for name, _ in chi2_ranking[:20]}
+consensus_features = sorted(mi_top20 & chi2_top20)
+only_mi = sorted(mi_top20 - chi2_top20)
+only_chi2 = sorted(chi2_top20 - mi_top20)
+
+fig_venn = go.Figure()
+categories = (
+    ["Both"] * len(consensus_features)
+    + ["MI only"] * len(only_mi)
+    + ["Chi2 only"] * len(only_chi2)
+)
+feat_names = consensus_features + only_mi + only_chi2
+fig_venn.add_trace(
+    go.Bar(
+        y=feat_names,
+        x=[1] * len(feat_names),
+        orientation="h",
+        marker_color=[
+            "#10b981" if c == "Both" else "#2563eb" if c == "MI only" else "#dc2626"
+            for c in categories
+        ],
+        text=categories,
+        textposition="inside",
+    )
+)
+fig_venn.update_layout(
+    title="Filter Consensus: MI vs Chi-Squared Top-20 Overlap",
+    xaxis=dict(showticklabels=False),
+    height=max(400, 25 * len(feat_names)),
+    margin=dict(l=200),
+    showlegend=False,
+)
+venn_path = OUTPUT_DIR / "ex1_02_filter_consensus.html"
+fig_venn.write_html(str(venn_path))
+print(f"\n  Saved: {mi_path}")
+print(f"  Saved: {chi2_path}")
+print(f"  Saved: {venn_path}")
 
 # Persist the rankings so downstream technique files can re-use them
 save_ranking_csv(mi_ranking, "filter_mi_ranking.csv", score_col="mi_score")

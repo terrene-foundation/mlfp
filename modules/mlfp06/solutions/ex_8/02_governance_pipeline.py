@@ -26,6 +26,7 @@
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import polars as pl
 
 from kailash_pact import GovernanceEngine, PactGovernedAgent
@@ -175,6 +176,67 @@ print(envelope_table)
 # privilege escalation between tiers: no governed agent can expand
 # its own envelope. A higher tier is the only path to more capability,
 # and that tier has its own audit log.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Governance tier comparison chart
+# ════════════════════════════════════════════════════════════════════════
+# Grouped bar chart comparing the three governance tiers across budget,
+# clearance level, and tool count. Makes the monotonic escalation
+# visible at a glance.
+
+tiers = ["qa", "admin", "audit"]
+budgets = [1.0, 10.0, 50.0]
+clearance_numeric = [1, 2, 3]  # internal=1, confidential=2, restricted=3
+tool_counts = [2, 5, 5]
+
+fig, ax = plt.subplots(figsize=(9, 5))
+x = range(len(tiers))
+width = 0.25
+
+# Normalise to 0-1 for visual comparison
+max_budget = max(budgets)
+bars1 = ax.bar(
+    [i - width for i in x],
+    [b / max_budget for b in budgets],
+    width,
+    label="Budget (normalised)",
+    color="#3498db",
+)
+bars2 = ax.bar(
+    x,
+    [c / 3.0 for c in clearance_numeric],
+    width,
+    label="Clearance level",
+    color="#e67e22",
+)
+bars3 = ax.bar(
+    [i + width for i in x],
+    [t / max(tool_counts) for t in tool_counts],
+    width,
+    label="Tool count (normalised)",
+    color="#2ecc71",
+)
+
+ax.set_xticks(list(x))
+ax.set_xticklabels(tiers, fontsize=11)
+ax.set_ylabel("Normalised value (0-1)")
+ax.set_title("Governance Tier Comparison — Monotonic Escalation", fontweight="bold")
+ax.legend(fontsize=9)
+ax.set_ylim(0, 1.2)
+
+# Annotate raw values
+for i, (b, c, t) in enumerate(zip(budgets, ["int", "conf", "restr"], tool_counts)):
+    ax.text(i - width, budgets[i] / max_budget + 0.03, f"${b}", ha="center", fontsize=8)
+    ax.text(i, clearance_numeric[i] / 3.0 + 0.03, c, ha="center", fontsize=8)
+    ax.text(i + width, t / max(tool_counts) + 0.03, f"{t}", ha="center", fontsize=8)
+
+ax.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_governance_tiers.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -30,8 +30,11 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_comparison_bars,
+    plot_cost_vs_accuracy,
     print_summary,
     run_delegate,
 )
@@ -145,11 +148,45 @@ print("\n[ok] Checkpoint passed — CoT evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(cot_results, "Chain-of-Thought")
 
+# R9A: visual proof — CoT vs zero-shot/few-shot accuracy + cost-vs-accuracy scatter
+# Expected baselines (R10: independently runnable, no cross-file imports)
+zero_shot_expected = {
+    "strategy": "Zero-Shot",
+    "accuracy": 0.80,
+    "total_cost": 0.002,
+    "avg_latency_s": 1.0,
+    "n": 20,
+}
+few_shot_expected = {
+    "strategy": "Few-Shot",
+    "accuracy": 0.85,
+    "total_cost": 0.006,
+    "avg_latency_s": 1.2,
+    "n": 20,
+}
+cot_metrics = compute_metrics(cot_results, "CoT")
+all_methods = [zero_shot_expected, few_shot_expected, cot_metrics]
+
+plot_comparison_bars(
+    all_methods,
+    title="CoT vs Prior Methods — Accuracy / Cost / Latency",
+    filename="ex1_03_cot_comparison.png",
+)
+
+plot_cost_vs_accuracy(
+    all_methods,
+    title="Cost vs Accuracy — Prompting Ladder So Far",
+    filename="ex1_03_cost_vs_accuracy.png",
+)
+
 # INTERPRETATION: CoT is the first technique that noticeably slows things
 # down. The reasoning trace is AUDITABLE — you can read WHY the model
 # chose a label, which matters for regulated industries (healthcare,
 # finance, legal). For simple tasks, the cost is hard to justify; for
 # ambiguous/high-stakes tasks, the auditability alone is worth it.
+# The scatter plot shows the cost-accuracy Pareto frontier — each method
+# buys accuracy with more tokens. The slope of the line tells you the
+# marginal cost of each accuracy point.
 
 
 # ════════════════════════════════════════════════════════════════════════

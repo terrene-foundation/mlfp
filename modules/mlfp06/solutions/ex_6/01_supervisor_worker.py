@@ -29,6 +29,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import matplotlib.pyplot as plt
+
 from shared.mlfp06.ex_6 import (
     OUTPUT_DIR,
     build_specialists,
@@ -180,6 +182,46 @@ assert sv_result["answer"], "Task 3: should produce a unified answer"
 assert 0 <= sv_result["confidence"] <= 1, "Confidence should be in [0, 1]"
 assert sv_result["factual_claims"], "Factual specialist should contribute claims"
 print("\n✓ Checkpoint 3 passed — supervisor-worker pattern complete\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Agent contribution and latency breakdown
+# ════════════════════════════════════════════════════════════════════════
+# Visual proof that the supervisor-worker pattern distributes work across
+# specialists. The bar chart shows each specialist's contribution count
+# and the overall latency, giving students a concrete sense of the
+# fan-out / fan-in trade-off.
+
+agents = ["Factual", "Semantic", "Structural", "Supervisor"]
+contributions = [
+    len(sv_result["factual_claims"]),
+    len(sv_result["themes"]),
+    len(sv_result["entities"]),
+    len(sv_result["reasoning"]),
+]
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+
+# Left: agent contribution counts
+colors = ["#3498db", "#2ecc71", "#e67e22", "#9b59b6"]
+ax1.bar(agents, contributions, color=colors)
+ax1.set_ylabel("Items contributed")
+ax1.set_title("Specialist Contributions (Fan-Out)", fontweight="bold")
+for i, c in enumerate(contributions):
+    ax1.text(i, c + 0.1, str(c), ha="center", fontsize=10)
+
+# Right: latency pie (supervisor-worker is serial here; shows time split)
+total = sv_result["latency_s"]
+ax2.barh(["Total latency"], [total], color="#34495e", height=0.4)
+ax2.set_xlabel("Seconds")
+ax2.set_title("End-to-End Latency", fontweight="bold")
+ax2.text(total + 0.1, 0, f"{total:.1f}s", va="center", fontsize=11)
+
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex6_supervisor_worker_viz.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

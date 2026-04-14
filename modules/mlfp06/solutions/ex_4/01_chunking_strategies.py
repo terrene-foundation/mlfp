@@ -32,7 +32,10 @@ import re
 
 import polars as pl
 
+import matplotlib.pyplot as plt
+
 from shared.mlfp06.ex_4 import (
+    OUTPUT_DIR,
     load_rag_corpus,
     plot_chunking_comparison,
     split_corpus,
@@ -205,6 +208,37 @@ plot_chunking_comparison(
     title="Chunking Strategy Comparison — Sample Document",
     filename="ex4_01_chunking_comparison.png",
 )
+
+# R9A: chunk size distribution histogram per strategy — shows the SPREAD
+# of chunk lengths, not just the average. Wide spread = unpredictable
+# embedding quality; tight spread = consistent retrieval granularity.
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+fig.suptitle("Chunk Size Distribution per Strategy", fontsize=13, fontweight="bold")
+colors = ["steelblue", "darkorange", "seagreen", "mediumpurple"]
+for ax, (name, chunks), color in zip(axes.flat, strategies.items(), colors):
+    lengths = [len(c) for c in chunks]
+    ax.hist(lengths, bins=15, color=color, edgecolor="white", alpha=0.85)
+    ax.set_title(name)
+    ax.set_xlabel("Chunk length (chars)")
+    ax.set_ylabel("Count")
+    ax.axvline(
+        sum(lengths) / len(lengths) if lengths else 0,
+        color="crimson",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"mean={sum(lengths) / len(lengths):.0f}" if lengths else "",
+    )
+    ax.legend(fontsize=8)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex4_01_chunk_size_distributions.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"  Saved: {fname}")
+
+# INTERPRETATION: Fixed chunking produces a tight cluster near the target
+# size. Paragraph chunking has the widest spread — some paragraphs are
+# 50 chars, others 2000. This matters for retrieval: very short chunks
+# embed poorly (too little context), very long chunks dilute the signal.
 
 
 # ════════════════════════════════════════════════════════════════════════

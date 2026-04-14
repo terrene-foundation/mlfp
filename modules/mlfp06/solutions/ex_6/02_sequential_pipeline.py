@@ -29,6 +29,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import matplotlib.pyplot as plt
+
 from shared.mlfp06.ex_6 import (
     InterpretationAgent,
     OUTPUT_DIR,
@@ -173,6 +175,52 @@ print(f"\nTrace written to: {trace_path}")
 assert result["answer"], "Task 3: should produce a final answer"
 assert len(result["stages"]) == 3, "Should log 3 stages"
 print("\n✓ Checkpoint 3 passed — sequential pipeline complete\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Pipeline stage timing waterfall chart
+# ════════════════════════════════════════════════════════════════════════
+# Visual proof of the sequential latency model: total = sum of stages.
+# The waterfall shows each stage starting where the previous one ended,
+# making the dependency chain and its latency cost visually obvious.
+
+stage_names = [name for name, _ in result["stages"]]
+stage_times = [dt for _, dt in result["stages"]]
+cumulative = [sum(stage_times[:i]) for i in range(len(stage_times))]
+
+fig, ax = plt.subplots(figsize=(9, 4))
+colors = ["#3498db", "#2ecc71", "#e67e22"]
+for i, (start, dur, name) in enumerate(zip(cumulative, stage_times, stage_names)):
+    ax.barh(
+        0,
+        dur,
+        left=start,
+        height=0.5,
+        color=colors[i],
+        edgecolor="white",
+        label=f"{name} ({dur:.1f}s)",
+    )
+    ax.text(
+        start + dur / 2,
+        0,
+        f"{dur:.1f}s",
+        ha="center",
+        va="center",
+        fontsize=10,
+        fontweight="bold",
+        color="white",
+    )
+
+ax.set_yticks([])
+ax.set_xlabel("Time (seconds)")
+ax.set_title("Sequential Pipeline — Stage Timing Waterfall", fontweight="bold")
+ax.legend(loc="upper right", fontsize=9)
+ax.set_xlim(0, result["latency_s"] * 1.15)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex6_sequential_waterfall.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

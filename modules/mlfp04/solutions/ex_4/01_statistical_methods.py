@@ -25,6 +25,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 from scipy.stats import skew
 
@@ -147,7 +149,84 @@ print("\n[ok] Checkpoint passed — Z-score and IQR detectors scored\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE
 # ════════════════════════════════════════════════════════════════════════
-print("Interpretation:")
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# ── (A) Z-score distribution with threshold lines ──────────────────────
+fig_z = go.Figure()
+fig_z.add_trace(
+    go.Histogram(
+        x=z_scores[y == 0],
+        name="Normal",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#636EFA",
+    )
+)
+fig_z.add_trace(
+    go.Histogram(
+        x=z_scores[y == 1],
+        name="Anomaly",
+        opacity=0.7,
+        nbinsx=60,
+        marker_color="#EF553B",
+    )
+)
+for thresh in [2.0, 3.0]:
+    fig_z.add_vline(
+        x=thresh,
+        line_dash="dash",
+        line_color="black",
+        annotation_text=f"|z|={thresh}",
+        annotation_position="top right",
+    )
+fig_z.update_layout(
+    title="Z-Score Distribution: Normal vs Anomaly",
+    xaxis_title="Max |Z-score| Across Features",
+    yaxis_title="Count",
+    barmode="overlay",
+)
+z_path = Path("outputs") / "ex4_anomaly" / "01_zscore_distribution.html"
+z_path.parent.mkdir(parents=True, exist_ok=True)
+fig_z.write_html(str(z_path))
+print(f"[viz] Z-score distribution: {z_path}")
+
+# ── (B) IQR box plots per feature (first 6 features) ──────────────────
+n_show = min(6, X.shape[1])
+fig_box = make_subplots(
+    rows=1, cols=n_show, subplot_titles=[f"Feature {i}" for i in range(n_show)]
+)
+for i in range(n_show):
+    fig_box.add_trace(
+        go.Box(
+            y=X[y == 0, i], name="Normal", marker_color="#636EFA", showlegend=(i == 0)
+        ),
+        row=1,
+        col=i + 1,
+    )
+    fig_box.add_trace(
+        go.Box(
+            y=X[y == 1, i], name="Anomaly", marker_color="#EF553B", showlegend=(i == 0)
+        ),
+        row=1,
+        col=i + 1,
+    )
+    fig_box.add_hline(
+        y=float(upper_bound[i]), line_dash="dot", line_color="orange", row=1, col=i + 1
+    )
+    fig_box.add_hline(
+        y=float(lower_bound[i]), line_dash="dot", line_color="orange", row=1, col=i + 1
+    )
+fig_box.update_layout(
+    title="IQR Box Plots per Feature (orange = 1.5*IQR bounds)",
+    height=400,
+    width=250 * n_show,
+)
+box_path = Path("outputs") / "ex4_anomaly" / "01_iqr_boxplots.html"
+fig_box.write_html(str(box_path))
+print(f"[viz] IQR box plots: {box_path}")
+
+print("\nInterpretation:")
 print("  Z-score finds rows that are extreme on at least ONE feature.")
 print("  IQR counts HOW MANY features are extreme — rewards multi-dim outliers.")
 print("  For rare-event detection (<2% anomaly rate), AUC-PR is the honest")

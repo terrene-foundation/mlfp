@@ -27,9 +27,11 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from dotenv import load_dotenv
 
 from shared.mlfp03.ex_6 import (
+    OUTPUT_DIR,
     build_shap_explainer,
     print_section,
 )
@@ -173,6 +175,35 @@ for name, sv, fv in sorted(
 )[:8]:
     direction = "^risk" if sv > 0 else "v risk"
     print(f"  {name:<30} value={fv:>8.2f}  SHAP={sv:+.4f} ({direction})")
+
+# ── Visual: LIME / SHAP bar chart for highest-risk applicant ─────────────
+sample_shap_hr = shap_vals[high_risk_idx]
+shap_sorted_hr = sorted(
+    zip(feature_names, sample_shap_hr),
+    key=lambda t: abs(t[1]),
+    reverse=True,
+)[:10]
+fig = go.Figure()
+fig.add_trace(
+    go.Bar(
+        y=[n for n, _ in reversed(shap_sorted_hr)],
+        x=[v for _, v in reversed(shap_sorted_hr)],
+        orientation="h",
+        marker_color=[
+            "#ef4444" if v > 0 else "#3b82f6" for _, v in reversed(shap_sorted_hr)
+        ],
+        name="SHAP value",
+    )
+)
+fig.update_layout(
+    title=f"SHAP Waterfall — Highest-Risk Applicant (P(default)={y_proba[high_risk_idx]:.4f})",
+    xaxis_title="SHAP value (red = increases risk, blue = decreases risk)",
+    yaxis_title="Feature",
+    height=max(400, len(shap_sorted_hr) * 35),
+)
+viz_path = OUTPUT_DIR / "ex6_03_lime_shap_high_risk.html"
+fig.write_html(str(viz_path))
+print(f"\n  Saved: {viz_path}")
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert (

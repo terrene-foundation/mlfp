@@ -1,5 +1,12 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
+#
+# Note: kailash-ml's RLTrainer is planned but not yet released. This exercise
+# implements DQN from scratch as an interim approach. Once RLTrainer ships,
+# this exercise should be updated to wrap the from-scratch implementation
+# with the Kailash engine for the actual training loop, keeping the manual
+# implementation for theory/pedagogy.
+#
 """
 # ════════════════════════════════════════════════════════════════════════
 # MLFP05 — Exercise 8.1: Deep Q-Network (DQN) from Scratch

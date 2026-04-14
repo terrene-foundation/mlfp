@@ -32,8 +32,10 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_accuracy_bars,
     print_summary,
     run_delegate,
 )
@@ -132,15 +134,27 @@ print("\n[ok] Checkpoint passed — zero-shot evaluation complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE — headline metrics
+# TASK 4 — VISUALISE — headline metrics + per-category accuracy chart
 # ════════════════════════════════════════════════════════════════════════
 print_summary(zero_shot_results, "Zero-Shot")
+
+# R9A: visual proof — per-category accuracy bar chart
+plot_accuracy_bars(
+    zero_shot_results,
+    CATEGORIES,
+    title="Zero-Shot Accuracy by Category (SST-2)",
+    filename="ex1_01_zero_shot_accuracy.png",
+)
 
 # INTERPRETATION: Zero-shot gives you a baseline with zero engineering
 # effort. If the number here is "good enough" for your use case, STOP —
 # every technique below this one costs more tokens, more latency, and
 # more prompt-engineering effort. Only move up the ladder when zero-shot
 # fails your accuracy bar.
+# The bar chart reveals whether errors are SYMMETRIC (equal miss rate on
+# both categories) or SKEWED (e.g. the model defaults to "positive" on
+# ambiguous inputs). Skewed errors signal that zero-shot's prior from
+# pre-training is biased — few-shot examples (Exercise 1.2) can fix it.
 
 
 # ════════════════════════════════════════════════════════════════════════

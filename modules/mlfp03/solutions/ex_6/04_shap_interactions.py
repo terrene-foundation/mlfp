@@ -27,9 +27,11 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from dotenv import load_dotenv
 
 from shared.mlfp03.ex_6 import (
+    OUTPUT_DIR,
     build_shap_explainer,
     print_section,
 )
@@ -128,6 +130,37 @@ nonlinear_share = total_interaction / (total_main + total_interaction)
 print(f"\nMain-effect mass:     {total_main:.4f}")
 print(f"Interaction mass:     {total_interaction:.4f}")
 print(f"Non-linear share:     {nonlinear_share:.1%}")
+
+# ── Visual: SHAP interaction heatmap (top 10 features) ──────────────────
+top_n = min(10, n_features)
+top_feat_names = [name for name, _ in main_effects_ranked[:top_n]]
+top_feat_idxs = [feature_names.index(n) for n in top_feat_names]
+interaction_matrix = np.zeros((top_n, top_n))
+for i_local, i_global in enumerate(top_feat_idxs):
+    for j_local, j_global in enumerate(top_feat_idxs):
+        interaction_matrix[i_local, j_local] = float(
+            np.abs(shap_interaction[:, i_global, j_global]).mean()
+        )
+
+fig = go.Figure(
+    data=go.Heatmap(
+        z=interaction_matrix,
+        x=top_feat_names,
+        y=top_feat_names,
+        colorscale="Viridis",
+        text=np.round(interaction_matrix, 4),
+        texttemplate="%{text:.4f}",
+        showscale=True,
+    )
+)
+fig.update_layout(
+    title=f"SHAP Interaction Heatmap (top {top_n} features, diagonal = main effects)",
+    height=550,
+    width=650,
+)
+viz_path = OUTPUT_DIR / "ex6_04_shap_interaction_heatmap.html"
+fig.write_html(str(viz_path))
+print(f"\n  Saved: {viz_path}")
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert len(interaction_strengths) > 0, "Task 4: interaction list must be non-empty"

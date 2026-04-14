@@ -27,6 +27,7 @@
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import polars as pl
 
 from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
@@ -154,6 +155,54 @@ print(catalogue)
 # teams use for rollback. If a new adapter ships broken, they pick the
 # previous row in this table and redeploy. Without the registry, this
 # roll-back is a filesystem archaeology dig.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Adapter parameter count comparison
+# ════════════════════════════════════════════════════════════════════════
+# Visual proof of the parameter efficiency story: SFT/DPO adapters train
+# only a fraction of the base model's parameters. The bar chart makes
+# the magnitude difference viscerally obvious.
+
+adapter_names = catalogue["name"].to_list()
+# Simulated parameter counts (LoRA adapters are ~0.1-2% of base)
+base_params = 7_000_000_000  # 7B base
+adapter_params = {
+    "imdb_sentiment_sft_v1": 4_200_000,
+    "ultrafeedback_dpo_v1": 4_200_000,
+    "sg_domain_slerp_merge_v1": 8_400_000,
+}
+param_counts = [adapter_params.get(n, 4_200_000) for n in adapter_names]
+
+fig, ax = plt.subplots(figsize=(9, 4))
+colors = ["#3498db", "#2ecc71", "#e67e22"][: len(adapter_names)]
+bars = ax.bar(adapter_names, param_counts, color=colors)
+ax.axhline(
+    base_params,
+    color="#e74c3c",
+    linestyle="--",
+    linewidth=2,
+    label=f"Base model: {base_params / 1e9:.0f}B params",
+)
+ax.set_ylabel("Trainable parameters")
+ax.set_title("Adapter Parameter Count vs Base Model", fontweight="bold")
+ax.set_yscale("log")
+for bar, count in zip(bars, param_counts):
+    pct = count / base_params * 100
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        count * 1.5,
+        f"{count / 1e6:.1f}M\n({pct:.2f}%)",
+        ha="center",
+        fontsize=9,
+    )
+ax.legend(fontsize=9)
+ax.grid(axis="y", alpha=0.3, which="both")
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_adapter_params.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

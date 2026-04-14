@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import polars as pl
 from dotenv import load_dotenv
 
@@ -181,3 +182,215 @@ def print_summary(results: list[dict], name: str) -> None:
 def build_comparison_df(all_metrics: list[dict[str, Any]]) -> pl.DataFrame:
     """Turn a list of compute_metrics() dicts into a polars DataFrame."""
     return pl.DataFrame(all_metrics)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PLOT HELPERS — matplotlib visualisations for prompt-engineering results
+# ════════════════════════════════════════════════════════════════════════
+
+
+def plot_accuracy_bars(
+    results: list[dict],
+    categories: list[str],
+    title: str,
+    filename: str,
+) -> None:
+    """Per-category accuracy bar chart from a results list."""
+    cat_correct: dict[str, int] = {c: 0 for c in categories}
+    cat_total: dict[str, int] = {c: 0 for c in categories}
+    for r in results:
+        true = r["true"]
+        if true in cat_total:
+            cat_total[true] += 1
+            if r["correct"]:
+                cat_correct[true] += 1
+    names = list(cat_total.keys())
+    accs = [cat_correct[c] / max(cat_total[c], 1) for c in names]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    bars = ax.bar(names, accs, color=["steelblue", "darkorange"], edgecolor="white")
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Accuracy")
+    ax.set_title(title, fontsize=13, fontweight="bold")
+    for bar, acc in zip(bars, accs):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            acc + 0.02,
+            f"{acc:.0%}",
+            ha="center",
+            va="bottom",
+            fontsize=11,
+        )
+    plt.tight_layout()
+    fname = OUTPUT_DIR / filename
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")
+
+
+def plot_comparison_bars(
+    metrics_list: list[dict[str, Any]],
+    title: str,
+    filename: str,
+) -> None:
+    """Grouped bar chart comparing accuracy, cost, and latency across strategies."""
+    names = [m["strategy"] for m in metrics_list]
+    accs = [m["accuracy"] for m in metrics_list]
+    costs = [m["total_cost"] for m in metrics_list]
+    latencies = [m["avg_latency_s"] for m in metrics_list]
+
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+
+    colors = [
+        "steelblue",
+        "darkorange",
+        "seagreen",
+        "mediumpurple",
+        "crimson",
+        "goldenrod",
+    ][: len(names)]
+
+    axes[0].bar(names, accs, color=colors, edgecolor="white")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_ylim(0, 1.05)
+    axes[0].set_title("Accuracy")
+    axes[0].tick_params(axis="x", rotation=30)
+    for i, v in enumerate(accs):
+        axes[0].text(i, v + 0.02, f"{v:.0%}", ha="center", fontsize=9)
+
+    axes[1].bar(names, costs, color=colors, edgecolor="white")
+    axes[1].set_ylabel("Total cost (USD)")
+    axes[1].set_title("Cost")
+    axes[1].tick_params(axis="x", rotation=30)
+
+    axes[2].bar(names, latencies, color=colors, edgecolor="white")
+    axes[2].set_ylabel("Avg latency (s)")
+    axes[2].set_title("Latency")
+    axes[2].tick_params(axis="x", rotation=30)
+
+    plt.tight_layout()
+    fname = OUTPUT_DIR / filename
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")
+
+
+def plot_cost_vs_accuracy(
+    metrics_list: list[dict[str, Any]],
+    title: str,
+    filename: str,
+) -> None:
+    """Scatter plot of cost vs accuracy across strategies."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    colors = [
+        "steelblue",
+        "darkorange",
+        "seagreen",
+        "mediumpurple",
+        "crimson",
+        "goldenrod",
+    ]
+    for i, m in enumerate(metrics_list):
+        ax.scatter(
+            m["total_cost"],
+            m["accuracy"],
+            s=120,
+            color=colors[i % len(colors)],
+            zorder=3,
+            edgecolor="white",
+            linewidth=1.5,
+        )
+        ax.annotate(
+            m["strategy"],
+            (m["total_cost"], m["accuracy"]),
+            textcoords="offset points",
+            xytext=(8, 4),
+            fontsize=9,
+        )
+    ax.set_xlabel("Total cost (USD)")
+    ax.set_ylabel("Accuracy")
+    ax.set_ylim(0, 1.05)
+    ax.set_title(title, fontsize=13, fontweight="bold")
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    fname = OUTPUT_DIR / filename
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")
+
+
+def plot_vote_agreement(
+    results: list[dict],
+    n_samples: int,
+    title: str,
+    filename: str,
+) -> None:
+    """Histogram of vote-agreement counts for self-consistency results."""
+    agreement_counts = [len(set(r["votes"])) for r in results]
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.hist(
+        agreement_counts,
+        bins=range(1, n_samples + 2),
+        color="steelblue",
+        edgecolor="white",
+        align="left",
+        rwidth=0.7,
+    )
+    ax.set_xlabel("Distinct labels in votes")
+    ax.set_ylabel("Number of samples")
+    ax.set_title(title, fontsize=13, fontweight="bold")
+    ax.set_xticks(range(1, n_samples + 1))
+    plt.tight_layout()
+    fname = OUTPUT_DIR / filename
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")
+
+
+def plot_extraction_accuracy(
+    results: list,
+    field_names: list[str],
+    title: str,
+    filename: str,
+) -> None:
+    """Bar chart of extraction completeness per output field."""
+    field_fill = {}
+    n = len(results)
+    for field in field_names:
+        filled = sum(
+            1
+            for r in results
+            if hasattr(r, field)
+            and getattr(r, field) is not None
+            and (
+                not isinstance(getattr(r, field), (list, str))
+                or len(getattr(r, field)) > 0
+            )
+        )
+        field_fill[field] = filled / max(n, 1)
+    names = list(field_fill.keys())
+    rates = list(field_fill.values())
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    colors = [
+        "seagreen" if r >= 0.9 else "darkorange" if r >= 0.5 else "crimson"
+        for r in rates
+    ]
+    bars = ax.barh(names, rates, color=colors, edgecolor="white")
+    ax.set_xlim(0, 1.05)
+    ax.set_xlabel("Extraction rate")
+    ax.set_title(title, fontsize=13, fontweight="bold")
+    for bar, rate in zip(bars, rates):
+        ax.text(
+            rate + 0.02,
+            bar.get_y() + bar.get_height() / 2,
+            f"{rate:.0%}",
+            va="center",
+            fontsize=10,
+        )
+    plt.tight_layout()
+    fname = OUTPUT_DIR / filename
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")

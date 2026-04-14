@@ -147,6 +147,25 @@ plot_score_distribution(
     filename="ex4_02_dense_score_dist.png",
 )
 
+# R9A: query-based score distribution — shows how sharply the retriever
+# separates relevant from irrelevant chunks for a REAL eval question.
+query_all_scores = dense_store.search(
+    run_async(generate_embedding(test_query, make_delegate(budget_usd=0.5))),
+    top_k=len(chunk_subset),
+)
+query_score_values = [r["score"] for r in query_all_scores]
+plot_score_distribution(
+    query_score_values,
+    title=f"Dense Retrieval — Query Score Distribution",
+    xlabel="Cosine similarity to eval query",
+    filename="ex4_02_dense_query_dist.png",
+)
+
+# INTERPRETATION: A sharp distribution (few high scores, long tail of
+# low scores) means the retriever discriminates well — the top-k chunks
+# are clearly more relevant than the rest. A flat distribution means
+# everything looks equally similar and the top-k is nearly random.
+
 
 # ════════════════════════════════════════════════════════════════════════
 # APPLY — Singapore polyclinic FAQ bot

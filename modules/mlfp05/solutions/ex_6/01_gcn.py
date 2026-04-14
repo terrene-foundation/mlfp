@@ -216,17 +216,29 @@ print("=" * 70)
 gcn.eval()
 with torch.no_grad():
     gcn_emb = gcn.embed(X, A_norm).cpu().numpy()
+    gcn_preds = gcn(X, A_norm).argmax(dim=-1).cpu().numpy()
 
-# Plot 1: 2-D PCA of node embeddings coloured by class
+# Plot 1: 2-D PCA of node embeddings coloured by TRUE class
 coords = plot_node_embeddings(
     embeddings=gcn_emb,
     labels=y_np,
     n_classes=n_classes,
-    title=f"GCN Node Embeddings — {dataset_name}",
+    title=f"GCN Node Embeddings (True Labels) — {dataset_name}",
     filename="gcn_node_embeddings.png",
 )
 
-# Plot 2: Graph structure overlaid on embedding space
+# Plot 2: 2-D PCA of node embeddings coloured by PREDICTED class
+# This reveals where the model is confident vs confused — misclassified
+# nodes appear as "wrong-coloured" points amid a cluster of another class.
+plot_node_embeddings(
+    embeddings=gcn_emb,
+    labels=gcn_preds,
+    n_classes=n_classes,
+    title=f"GCN Node Embeddings (Predicted Labels) — {dataset_name}",
+    filename="gcn_node_embeddings_predicted.png",
+)
+
+# Plot 3: Graph structure overlaid on embedding space
 plot_graph_with_embeddings(
     A_np=graph_data["A_np"],
     embeddings_2d=coords,
@@ -236,18 +248,20 @@ plot_graph_with_embeddings(
     filename="gcn_graph_embeddings.png",
 )
 
-# Plot 3: Training curves
-plot_training_curves(
-    metrics_dict={"GCN train loss": gcn_losses},
-    title="GCN Training Loss",
-    y_label="Cross-Entropy Loss",
-    filename="gcn_loss_curve.html",
-)
+# Plot 4: Training accuracy curve
 plot_training_curves(
     metrics_dict={"GCN val accuracy": gcn_val, "GCN test accuracy": gcn_test},
     title="GCN Accuracy",
     y_label="Accuracy",
     filename="gcn_accuracy_curves.html",
+)
+
+# Plot 5: Training loss curve
+plot_training_curves(
+    metrics_dict={"GCN train loss": gcn_losses},
+    title="GCN Training Loss",
+    y_label="Cross-Entropy Loss",
+    filename="gcn_loss_curve.html",
 )
 
 # ── Visualise Checkpoint ────────────────────────────────────────────
@@ -256,10 +270,13 @@ assert gcn_emb.shape == (
     HIDDEN_DIM,
 ), f"Embedding shape should be ({N}, {HIDDEN_DIM})"
 # INTERPRETATION: Good GCN embeddings show clear class separation in the
-# 2-D projection. Nodes of the same class cluster because the GCN
-# aggregated features from their citation neighbourhoods — papers in the
-# same field cite similar papers and share vocabulary, so their
-# aggregated representations converge.
+# 2-D projection. Comparing the true-label and predicted-label scatter
+# plots reveals where the model is confident (colours match) and where
+# it struggles (misclassified nodes appear as wrong-coloured dots within
+# a cluster). Nodes of the same class cluster because the GCN aggregated
+# features from their citation neighbourhoods — papers in the same field
+# cite similar papers and share vocabulary, so their aggregated
+# representations converge.
 print("\n--- Visualise checkpoint passed --- GCN embeddings plotted\n")
 
 

@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 from kailash_mcp import MCPServer, MCPTool
 
 from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
@@ -226,6 +227,41 @@ print(f"\nTrace written to: {trace_path}")
 assert mcp_server is not None
 assert len(mcp_tools) == 3
 print("\n✓ Checkpoint 4 passed — MCP server ready\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Tool call frequency bar chart
+# ════════════════════════════════════════════════════════════════════════
+# In production, an MCP server logs every tool invocation. This chart
+# simulates what that dashboard looks like — showing which tools are
+# most frequently called. Skewed distributions reveal over-reliance
+# on a single tool (risk) or unused tools (dead code).
+
+tool_names = [t.name for t in mcp_tools]
+# Simulated production call counts (realistic distribution: search >> stats)
+simulated_calls = [45, 120, 15]
+
+fig, ax = plt.subplots(figsize=(8, 4))
+colors = ["#3498db", "#2ecc71", "#e67e22"]
+bars = ax.bar(tool_names, simulated_calls, color=colors)
+ax.set_ylabel("Invocations (simulated 24h)")
+ax.set_title("MCP Tool Call Frequency — Production Dashboard", fontweight="bold")
+for bar, count in zip(bars, simulated_calls):
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        count + 2,
+        str(count),
+        ha="center",
+        fontsize=11,
+        fontweight="bold",
+    )
+ax.set_ylim(0, max(simulated_calls) * 1.15)
+ax.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex6_mcp_tool_frequency.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

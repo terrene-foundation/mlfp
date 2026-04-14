@@ -24,9 +24,16 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
 
 from shared.mlfp06.ex_7 import CLEARANCE_LEVELS, compile_governance
+
+OUTPUT_DIR = Path("outputs") / "ex7_governance"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Compile once so this technique file is runnable in isolation
 engine, org = compile_governance()
@@ -174,6 +181,49 @@ for level_name, level in sorted(CLEARANCE_LEVELS.items(), key=lambda x: -x[1]):
 # ── Checkpoint 3 ────────────────────────────────────────────────────────
 assert not is_tighter, "Task 3: the attempt should be rejected"
 print("\n[x] Checkpoint 3 passed — privilege escalation caught\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Envelope dimension radar chart
+# ════════════════════════════════════════════════════════════════════════
+# Each agent's operating envelope spans five dimensions. The radar chart
+# shows at a glance how "wide" each agent's authority is — a public
+# customer agent has a tiny footprint, while the risk assessor has
+# broad reach. This is the visual proof of least-privilege.
+
+dimensions = ["Clearance", "Budget", "Tools", "Role\nScope", "Data\nAccess"]
+
+# Normalise each dimension to 0-1 for the radar
+agent_data = {
+    "data_analyst": [1 / 3, 20 / 200, 3 / 6, 0.4, 0.33],
+    "model_trainer": [2 / 3, 100 / 200, 3 / 6, 0.6, 0.66],
+    "risk_assessor": [3 / 3, 200 / 200, 4 / 6, 0.8, 1.0],
+    "customer_agent": [0 / 3, 5 / 200, 2 / 6, 0.3, 0.1],
+}
+
+angles = np.linspace(0, 2 * np.pi, len(dimensions), endpoint=False).tolist()
+angles += angles[:1]
+
+fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
+colors_radar = ["#3498db", "#2ecc71", "#e74c3c", "#9b59b6"]
+
+for (agent_name, values), color in zip(agent_data.items(), colors_radar):
+    vals = values + values[:1]
+    ax.plot(angles, vals, "o-", linewidth=2, label=agent_name, color=color)
+    ax.fill(angles, vals, alpha=0.1, color=color)
+
+ax.set_xticks(angles[:-1])
+ax.set_xticklabels(dimensions, fontsize=9)
+ax.set_ylim(0, 1.1)
+ax.set_title(
+    "Operating Envelope Radar — Per-Agent Dimensions", fontweight="bold", pad=20
+)
+ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=8)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex7_envelope_radar.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -29,10 +29,12 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 from dotenv import load_dotenv
 from sklearn.metrics import f1_score, roc_auc_score
 
 from shared.mlfp03.ex_6 import (
+    OUTPUT_DIR,
     build_shap_explainer,
     print_section,
     rank_features_by_mean_abs_shap,
@@ -158,6 +160,31 @@ if only_shap:
     print(f"SHAP-only top-10: {only_shap}")
 if only_perm:
     print(f"Permutation-only top-10: {only_perm}")
+
+# ── Visual: Permutation importance bar chart with std error bars ─────────
+top_n = min(15, len(perm_ranking))
+top_feats = perm_ranking[:top_n]
+fig = go.Figure()
+fig.add_trace(
+    go.Bar(
+        y=[name for name, _ in reversed(top_feats)],
+        x=[vals["mean"] for _, vals in reversed(top_feats)],
+        error_x=dict(
+            type="data", array=[vals["std"] for _, vals in reversed(top_feats)]
+        ),
+        orientation="h",
+        marker_color="#6366f1",
+    )
+)
+fig.update_layout(
+    title=f"Permutation Importance: Top {top_n} Features (mean +/- std, {5} repeats)",
+    xaxis_title="Importance (AUC-ROC drop when shuffled)",
+    yaxis_title="Feature",
+    height=max(400, top_n * 28),
+)
+viz_path = OUTPUT_DIR / "ex6_02_permutation_importance.html"
+fig.write_html(str(viz_path))
+print(f"\n  Saved: {viz_path}")
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert len(perm_imp) == len(feature_names), "Task 4: all features must be permuted"

@@ -28,10 +28,14 @@ from __future__ import annotations
 
 import asyncio
 
+import numpy as np
+import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
+from sklearn.model_selection import cross_val_score
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
     build_full_feature_frame,
     load_icu_tables,
     log_selection_run,
@@ -126,6 +130,62 @@ for name, rank in rfe_ranking[:20]:
 
 print(f"\n  Total RFE-selected features: {len(rfe_selected)}")
 print(f"  Selected: {rfe_selected}")
+
+# --- RFE elimination curve: accuracy vs number of features ---
+n_features_range = [5, 8, 10, 12, 15, 18, 20, 25]
+n_features_range = [n for n in n_features_range if n <= len(feature_cols)]
+elim_scores = []
+for n_feat in n_features_range:
+    rfe_curve = RFE(
+        estimator=RandomForestClassifier(
+            n_estimators=50, max_depth=5, random_state=42, n_jobs=-1
+        ),
+        n_features_to_select=n_feat,
+        step=5,
+    )
+    rfe_curve.fit(X_sel, y_binary)
+    X_reduced = X_sel[:, rfe_curve.support_]
+    cv_acc = cross_val_score(
+        RandomForestClassifier(
+            n_estimators=50, max_depth=5, random_state=42, n_jobs=-1
+        ),
+        X_reduced,
+        y_binary,
+        cv=3,
+        scoring="accuracy",
+    ).mean()
+    elim_scores.append(cv_acc)
+    print(f"  n_features={n_feat:<3}  CV accuracy={cv_acc:.4f}")
+
+fig_rfe = go.Figure()
+fig_rfe.add_trace(
+    go.Scatter(
+        x=n_features_range,
+        y=elim_scores,
+        mode="lines+markers",
+        marker=dict(size=10, color="#2563eb"),
+        line=dict(width=3),
+        name="CV Accuracy",
+    )
+)
+best_idx = int(np.argmax(elim_scores))
+fig_rfe.add_annotation(
+    x=n_features_range[best_idx],
+    y=elim_scores[best_idx],
+    text=f"Best: {n_features_range[best_idx]} features",
+    showarrow=True,
+    arrowhead=2,
+)
+fig_rfe.update_layout(
+    title="RFE Elimination Curve — Accuracy vs Number of Features",
+    xaxis_title="Number of Features Selected",
+    yaxis_title="3-Fold CV Accuracy",
+    height=450,
+)
+rfe_path = OUTPUT_DIR / "ex1_03_rfe_elimination_curve.html"
+fig_rfe.write_html(str(rfe_path))
+print(f"\n  Saved: {rfe_path}")
+
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert rfe_ranking[0][1] == 1, "Task 4: top-ranked features should have rank=1"

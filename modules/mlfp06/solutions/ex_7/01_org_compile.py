@@ -26,6 +26,9 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import polars as pl
 
 from shared.mlfp06.ex_7 import (
@@ -34,6 +37,9 @@ from shared.mlfp06.ex_7 import (
     load_adversarial_prompts,
     write_org_yaml,
 )
+
+OUTPUT_DIR = Path("outputs") / "ex7_governance"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — D/T/R Accountability Grammar
@@ -183,6 +189,95 @@ dtr_chains = pl.DataFrame(
     }
 )
 print(dtr_chains)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — D/T/R Org Chart (Delegator-to-Agent hierarchy)
+# ════════════════════════════════════════════════════════════════════════
+# Visual proof that every agent traces back to a named human Delegator.
+# The tree structure makes accountability chains visually obvious — no
+# agent floats without a human root.
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 7)
+ax.axis("off")
+ax.set_title(
+    "D/T/R Organisation Chart — SG FinTech AI Division", fontweight="bold", fontsize=13
+)
+
+# Delegator positions (top row)
+delegators = {
+    "chief_ml_officer": (2, 6),
+    "chief_risk_officer": (5, 6),
+    "vp_customer": (8, 6),
+}
+# Agent positions (bottom row), keyed by delegator
+agents_map = {
+    "chief_ml_officer": [
+        ("data_analyst", 0.5, 3.5),
+        ("model_trainer", 2, 3.5),
+        ("model_deployer", 3.5, 3.5),
+    ],
+    "chief_risk_officer": [("risk_assessor", 4.5, 3.5), ("bias_checker", 5.5, 3.5)],
+    "vp_customer": [("customer_agent", 8, 3.5)],
+}
+
+for delegator, (dx, dy) in delegators.items():
+    ax.text(
+        dx,
+        dy,
+        delegator.replace("_", "\n"),
+        ha="center",
+        va="center",
+        fontsize=8,
+        fontweight="bold",
+        bbox=dict(
+            boxstyle="round,pad=0.4", facecolor="#3498db", edgecolor="white", alpha=0.9
+        ),
+        color="white",
+    )
+    for agent_name, ax_, ay in agents_map[delegator]:
+        ax.text(
+            ax_,
+            ay,
+            agent_name.replace("_", "\n"),
+            ha="center",
+            va="center",
+            fontsize=7,
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="#2ecc71",
+                edgecolor="white",
+                alpha=0.8,
+            ),
+            color="white",
+        )
+        ax.annotate(
+            "",
+            xy=(ax_, ay + 0.8),
+            xytext=(dx, dy - 0.8),
+            arrowprops=dict(arrowstyle="->", color="#7f8c8d", lw=1.5),
+        )
+
+# Legend
+ax.text(1, 1.5, "D = Delegator (human)", fontsize=9, color="#3498db", fontweight="bold")
+ax.text(
+    1, 0.8, "R = Responsible (agent)", fontsize=9, color="#2ecc71", fontweight="bold"
+)
+ax.text(
+    5,
+    1.5,
+    f"Agents: {org.n_agents}  |  Delegations: {org.n_delegations}",
+    fontsize=10,
+    color="#2c3e50",
+)
+
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex7_dtr_org_chart.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

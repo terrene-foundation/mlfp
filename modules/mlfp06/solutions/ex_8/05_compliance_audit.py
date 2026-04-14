@@ -26,6 +26,8 @@
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import polars as pl
 
 from kailash_pact import GovernanceEngine, PactGovernedAgent

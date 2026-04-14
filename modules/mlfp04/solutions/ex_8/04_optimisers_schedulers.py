@@ -179,6 +179,83 @@ sched_path = OUTPUT_DIR / "04_schedule_curves.html"
 fig_sched.write_html(sched_path)
 print(f"[viz] Schedule trajectory: {sched_path}")
 
+# ── (C) Learning rate schedule curve (standalone) ─────────────────────
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+fig_lr = go.Figure()
+epochs_lr = list(range(1, total_epochs + 1))
+fig_lr.add_trace(
+    go.Scatter(
+        x=epochs_lr,
+        y=schedule_history["lr"],
+        mode="lines+markers",
+        name="Learning Rate",
+        marker_color="#00CC96",
+        line=dict(width=3),
+    )
+)
+fig_lr.add_vrect(
+    x0=0.5,
+    x1=warmup_epochs + 0.5,
+    fillcolor="rgba(255, 165, 0, 0.15)",
+    line_width=0,
+    annotation_text="Warmup",
+    annotation_position="top left",
+)
+fig_lr.add_vrect(
+    x0=warmup_epochs + 0.5,
+    x1=total_epochs + 0.5,
+    fillcolor="rgba(99, 110, 250, 0.08)",
+    line_width=0,
+    annotation_text="Cosine Decay",
+    annotation_position="top right",
+)
+fig_lr.update_layout(
+    title="Learning Rate Schedule: Linear Warmup + Cosine Annealing",
+    xaxis_title="Epoch",
+    yaxis_title="Learning Rate",
+    yaxis_tickformat=".1e",
+)
+lr_path = OUTPUT_DIR / "04_lr_schedule.html"
+fig_lr.write_html(str(lr_path))
+print(f"[viz] LR schedule: {lr_path}")
+
+# ── (D) Optimizer comparison: final loss bar chart ────────────────────
+opt_names = list(optimiser_histories.keys())
+final_losses = [optimiser_histories[n][-1] for n in opt_names]
+initial_losses = [optimiser_histories[n][0] for n in opt_names]
+fig_bar = go.Figure()
+fig_bar.add_trace(
+    go.Bar(
+        x=opt_names,
+        y=initial_losses,
+        name="Epoch 1 Loss",
+        marker_color="#FECB52",
+        text=[f"{v:.4f}" for v in initial_losses],
+        textposition="outside",
+    )
+)
+fig_bar.add_trace(
+    go.Bar(
+        x=opt_names,
+        y=final_losses,
+        name="Epoch 5 Loss",
+        marker_color="#636EFA",
+        text=[f"{v:.4f}" for v in final_losses],
+        textposition="outside",
+    )
+)
+fig_bar.update_layout(
+    title="Optimizer Comparison: Initial vs Final Loss (5 epochs)",
+    xaxis_title="Optimizer",
+    yaxis_title="Training Loss (BCE)",
+    barmode="group",
+)
+bar_path = OUTPUT_DIR / "04_optimiser_bar.html"
+fig_bar.write_html(str(bar_path))
+print(f"[viz] Optimiser bar chart: {bar_path}")
+
 # INTERPRETATION: Adam and AdamW converge within the first two epochs
 # while pure SGD is still ramping. Momentum closes most of the gap.
 # The schedule plot shows LR climbing linearly for two epochs, peaking,

@@ -29,10 +29,12 @@ from __future__ import annotations
 import asyncio
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
     build_full_feature_frame,
     load_icu_tables,
     log_selection_run,
@@ -153,6 +155,36 @@ for c_val in C_VALUES:
     nz = lasso_results[c_val]["n_nonzero"]
     bar = "#" * int(nz / max(1, len(feature_cols)) * 40)
     print(f"  C={c_val:>7.3f}  {nz:>4}/{len(feature_cols):<4}  {bar}")
+
+# --- Lasso coefficient path: regularisation strength vs coefficients ---
+# Show how each feature's coefficient evolves as C increases (weaker
+# regularisation). Features that survive low C are the strongest.
+top_features = [name for name, _ in lasso_importance[:10]]
+top_indices = [feature_cols.index(f) for f in top_features if f in feature_cols]
+
+fig_path = go.Figure()
+for idx in top_indices:
+    coef_path = [float(lasso_results[c]["coefs"][idx]) for c in C_VALUES]
+    fig_path.add_trace(
+        go.Scatter(
+            x=[np.log10(c) for c in C_VALUES],
+            y=coef_path,
+            mode="lines+markers",
+            name=feature_cols[idx],
+        )
+    )
+fig_path.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+fig_path.update_layout(
+    title="Lasso Coefficient Path — Top 10 Features vs log10(C)",
+    xaxis_title="log10(C)  (left = stronger regularisation)",
+    yaxis_title="Coefficient value",
+    height=500,
+    legend=dict(font=dict(size=9)),
+)
+path_viz = OUTPUT_DIR / "ex1_04_lasso_coefficient_path.html"
+fig_path.write_html(str(path_viz))
+print(f"\n  Saved: {path_viz}")
+
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert (

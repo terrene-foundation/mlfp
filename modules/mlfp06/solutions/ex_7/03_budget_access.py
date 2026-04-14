@@ -26,10 +26,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
+import matplotlib.pyplot as plt
 import polars as pl
 
 from shared.mlfp06.ex_7 import BudgetTracker, compile_governance
+
+OUTPUT_DIR = Path("outputs") / "ex7_governance"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 engine, org = compile_governance()
 print("\n--- GovernanceEngine compiled ---\n")
@@ -200,6 +205,75 @@ print(f"\n[x] Checkpoint 4 passed — {len(access_results)} access tests execute
 if deny_cases:
     print(f"    ({len(deny_cases)} mismatches — investigate PACT rules)")
 print()
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Budget cascade bar chart + access decision heatmap
+# ════════════════════════════════════════════════════════════════════════
+# Two panels: (1) stacked bars showing allocated vs consumed budget per
+# agent — the remaining gap is visual headroom; (2) heatmap of access
+# decisions showing allow (green) and deny (red) across agents/actions.
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+# Left: budget cascade
+agents_budget = summary["agent"].to_list()
+allocated = summary["allocated"].to_list()
+consumed = summary["consumed"].to_list()
+remaining = summary["remaining"].to_list()
+x = range(len(agents_budget))
+
+ax1.bar(x, consumed, color="#e74c3c", label="Consumed", width=0.5)
+ax1.bar(
+    x,
+    remaining,
+    bottom=consumed,
+    color="#2ecc71",
+    label="Remaining",
+    width=0.5,
+    alpha=0.7,
+)
+ax1.set_xticks(list(x))
+ax1.set_xticklabels([a.replace("_", "\n") for a in agents_budget], fontsize=8)
+ax1.set_ylabel("USD")
+ax1.set_title("Budget Cascade — Spend vs Allocation", fontweight="bold")
+ax1.legend(fontsize=8)
+for i, (c, a) in enumerate(zip(consumed, allocated)):
+    ax1.text(i, a + 1, f"${a:.0f}", ha="center", fontsize=8, color="#2c3e50")
+
+# Right: access decision matrix heatmap
+unique_agents = sorted(set(r["agent"] for r in access_results))
+unique_actions = sorted(set(r["action"] for r in access_results))
+matrix = []
+for agent in unique_agents:
+    row = []
+    for action in unique_actions:
+        match = [
+            r for r in access_results if r["agent"] == agent and r["action"] == action
+        ]
+        if match:
+            row.append(1 if match[0]["match"] else 0)
+        else:
+            row.append(0.5)  # not tested
+    matrix.append(row)
+
+from matplotlib.colors import ListedColormap
+
+cmap = ListedColormap(["#e74c3c", "#bdc3c7", "#2ecc71"])
+im = ax2.imshow(matrix, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+ax2.set_xticks(range(len(unique_actions)))
+ax2.set_xticklabels(
+    [a.replace("_", "\n") for a in unique_actions], fontsize=7, rotation=45, ha="right"
+)
+ax2.set_yticks(range(len(unique_agents)))
+ax2.set_yticklabels([a.replace("_", "\n") for a in unique_agents], fontsize=8)
+ax2.set_title("Access Decision Matrix", fontweight="bold")
+
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex7_budget_access_viz.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

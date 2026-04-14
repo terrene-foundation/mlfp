@@ -32,6 +32,8 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from shared.mlfp02.ex_5 import (
     NUMERIC_FEATURES,
@@ -181,6 +183,100 @@ path = save_actual_vs_predicted(
     filename="03_wls_actual_vs_predicted.html",
 )
 print(f"Saved: {path}")
+
+# --- Residual variance: OLS vs WLS (before/after weighting) ---
+sample = min(3000, n_obs)
+fig_var = make_subplots(
+    rows=1,
+    cols=2,
+    subplot_titles=[
+        "OLS Residuals vs Fitted",
+        "WLS Residuals vs Fitted",
+    ],
+)
+fig_var.add_trace(
+    go.Scatter(
+        x=y_hat[:sample].tolist(),
+        y=residuals[:sample].tolist(),
+        mode="markers",
+        marker={"size": 2, "opacity": 0.3, "color": "steelblue"},
+        name="OLS",
+    ),
+    row=1,
+    col=1,
+)
+fig_var.add_trace(
+    go.Scatter(
+        x=y_hat_wls[:sample].tolist(),
+        y=residuals_wls[:sample].tolist(),
+        mode="markers",
+        marker={"size": 2, "opacity": 0.3, "color": "#D97706"},
+        name="WLS",
+    ),
+    row=1,
+    col=2,
+)
+fig_var.add_hline(y=0, line_dash="dash", line_color="red", row=1, col=1)
+fig_var.add_hline(y=0, line_dash="dash", line_color="red", row=1, col=2)
+fig_var.update_layout(
+    title="Residual Spread: OLS vs WLS — Does Weighting Reduce the Fan Shape?",
+    height=400,
+    width=900,
+    showlegend=False,
+)
+fig_var.update_xaxes(title_text="Predicted ($)", row=1, col=1)
+fig_var.update_xaxes(title_text="Predicted ($)", row=1, col=2)
+fig_var.update_yaxes(title_text="Residual ($)", row=1, col=1)
+fig_var.update_yaxes(title_text="Residual ($)", row=1, col=2)
+path_var = OUTPUT_DIR / "03_wls_residual_comparison.html"
+fig_var.write_html(str(path_var))
+print(f"Saved: {path_var}")
+
+# --- Predicted-vs-actual comparison: OLS vs WLS side by side ---
+fig_cmp = make_subplots(
+    rows=1,
+    cols=2,
+    subplot_titles=[
+        f"OLS (R-sq={r_squared:.4f})",
+        f"WLS (R-sq={r2_wls:.4f})",
+    ],
+)
+lo, hi = float(y.min()), float(y.max())
+for col_idx, (pred, label) in enumerate([(y_hat, "OLS"), (y_hat_wls, "WLS")], start=1):
+    fig_cmp.add_trace(
+        go.Scatter(
+            x=y[:sample].tolist(),
+            y=pred[:sample].tolist(),
+            mode="markers",
+            marker={"size": 2, "opacity": 0.3},
+            name=label,
+        ),
+        row=1,
+        col=col_idx,
+    )
+    fig_cmp.add_trace(
+        go.Scatter(
+            x=[lo, hi],
+            y=[lo, hi],
+            mode="lines",
+            line={"dash": "dash", "color": "red"},
+            showlegend=False,
+        ),
+        row=1,
+        col=col_idx,
+    )
+fig_cmp.update_layout(
+    title="Actual vs Predicted: OLS vs WLS — How Does Weighting Change Predictions?",
+    height=400,
+    width=900,
+)
+fig_cmp.update_xaxes(title_text="Actual ($)", row=1, col=1)
+fig_cmp.update_xaxes(title_text="Actual ($)", row=1, col=2)
+fig_cmp.update_yaxes(title_text="Predicted ($)", row=1, col=1)
+fig_cmp.update_yaxes(title_text="Predicted ($)", row=1, col=2)
+path_cmp = OUTPUT_DIR / "03_wls_ols_comparison.html"
+fig_cmp.write_html(str(path_cmp))
+print(f"Saved: {path_cmp}")
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import time
 
+import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
 
 from kailash_ml import DriftMonitor

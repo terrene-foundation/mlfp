@@ -29,9 +29,12 @@ import math
 import re
 from collections import Counter
 
+import matplotlib.pyplot as plt
+
 from shared.mlfp06.ex_4 import (
     DenseVectorStore,
     EMBED_DIM,
+    OUTPUT_DIR,
     embed_many,
     generate_embedding,
     load_rag_corpus,
@@ -227,6 +230,73 @@ plot_strategy_comparison(
     title="Top-k Score Distributions — Dense vs BM25 vs Hybrid",
     filename="ex4_04_hybrid_comparison.png",
 )
+
+# R9A: rank comparison — how the same chunks rank across dense, sparse,
+# and fused retrievers. Shows where the strategies agree (robust signal)
+# and disagree (each catches different content).
+fig, ax = plt.subplots(figsize=(10, 5))
+top_k = min(5, len(results["fused"]))
+chunk_labels = [f"...{r['text'][:40]}..." for r in results["fused"][:top_k]]
+
+# Build rank lookup for dense and sparse
+dense_text_rank = {r["text"]: i + 1 for i, r in enumerate(results["dense"])}
+sparse_text_rank = {r["text"]: i + 1 for i, r in enumerate(results["sparse"])}
+fused_text_rank = {r["text"]: i + 1 for i, r in enumerate(results["fused"])}
+
+x = range(top_k)
+width = 0.25
+dense_ranks = [
+    dense_text_rank.get(results["fused"][i]["text"], top_k + 1) for i in range(top_k)
+]
+sparse_ranks = [
+    sparse_text_rank.get(results["fused"][i]["text"], top_k + 1) for i in range(top_k)
+]
+fused_ranks = [
+    fused_text_rank.get(results["fused"][i]["text"], top_k + 1) for i in range(top_k)
+]
+
+ax.barh(
+    [i - width for i in x],
+    dense_ranks,
+    height=width,
+    label="Dense",
+    color="steelblue",
+    edgecolor="white",
+)
+ax.barh(
+    list(x),
+    sparse_ranks,
+    height=width,
+    label="BM25",
+    color="darkorange",
+    edgecolor="white",
+)
+ax.barh(
+    [i + width for i in x],
+    fused_ranks,
+    height=width,
+    label="Hybrid (RRF)",
+    color="seagreen",
+    edgecolor="white",
+)
+ax.set_yticks(list(x))
+ax.set_yticklabels(chunk_labels, fontsize=8)
+ax.set_xlabel("Rank (lower = better)")
+ax.set_title(
+    "Rank Comparison — Same Chunks Across 3 Strategies", fontsize=13, fontweight="bold"
+)
+ax.legend(loc="lower right")
+ax.invert_xaxis()
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex4_04_rank_comparison.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"  Saved: {fname}")
+
+# INTERPRETATION: When dense and sparse agree on rank, the chunk is a
+# strong match. When they disagree, RRF mediates — a chunk ranked #1 by
+# BM25 but #8 by dense still appears in the fused top-5 because exact
+# keyword matches carry weight even when the embedding distance is far.
 
 
 # ════════════════════════════════════════════════════════════════════════

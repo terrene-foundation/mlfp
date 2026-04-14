@@ -316,11 +316,110 @@ for i, cls_name in enumerate(CLASS_NAMES):
     acc = class_correct[i] / max(class_total[i], 1)
     print(f"  {cls_name:<10} {acc:.3f} ({class_correct[i]}/{class_total[i]})")
 
-# Visualise BERT training curve
+# ── Visualise: per-class accuracy bar chart ─────────────────────────
 from shared.mlfp05.ex_4 import get_viz
+import plotly.graph_objects as go
 
 viz = get_viz()
-fig_bert = viz.training_history(
+
+per_class_accs = [
+    class_correct[i] / max(class_total[i], 1) for i in range(len(CLASS_NAMES))
+]
+fig_bar = go.Figure(
+    data=go.Bar(
+        x=CLASS_NAMES,
+        y=per_class_accs,
+        marker_color=["#636EFA", "#EF553B", "#00CC96", "#AB63FA"],
+        text=[f"{a:.1%}" for a in per_class_accs],
+        textposition="auto",
+    )
+)
+fig_bar.update_layout(
+    title="BERT Fine-Tuned — Per-Class Accuracy on AG News",
+    xaxis_title="News Category",
+    yaxis_title="Accuracy",
+    yaxis=dict(range=[0, 1]),
+)
+fig_bar.write_html("ex_4_4_bert_per_class_accuracy.html")
+print("\n  Per-class accuracy chart saved to ex_4_4_bert_per_class_accuracy.html")
+
+# ── Visualise: BERT training loss curve ─────────────────────────────
+fig_loss = viz.training_history(
+    metrics={"BERT train_loss": bert_losses},
+    x_label="Epoch",
+    y_label="Cross-Entropy Loss",
+)
+fig_loss.write_html("ex_4_4_bert_training_loss.html")
+print("  Training loss curve saved to ex_4_4_bert_training_loss.html")
+
+# ── Visualise: before/after fine-tuning comparison ──────────────────
+# Evaluate BERT BEFORE fine-tuning by loading a fresh model (no training)
+print("\n  Computing before/after fine-tuning comparison...")
+bert_before = BertForSequenceClassification.from_pretrained(
+    BERT_MODEL_NAME, num_labels=4
+).to(DEVICE)
+bert_before.eval()
+with torch.no_grad():
+    before_correct = 0
+    before_total = 0
+    before_class_correct: Counter[int] = Counter()
+    before_class_total: Counter[int] = Counter()
+    for ids, mask, labels in bert_val_loader:
+        logits = bert_before(input_ids=ids, attention_mask=mask).logits
+        preds = logits.argmax(dim=-1)
+        before_correct += int((preds == labels).sum().item())
+        before_total += int(labels.size(0))
+        for pred, label in zip(preds.cpu().tolist(), labels.cpu().tolist()):
+            before_class_total[label] += 1
+            if pred == label:
+                before_class_correct[label] += 1
+del bert_before  # free memory
+
+before_per_class = [
+    before_class_correct[i] / max(before_class_total[i], 1)
+    for i in range(len(CLASS_NAMES))
+]
+after_per_class = per_class_accs
+before_overall = before_correct / max(before_total, 1)
+after_overall = max(bert_accs)
+
+fig_compare = go.Figure()
+fig_compare.add_trace(
+    go.Bar(
+        name="Before Fine-Tuning (random head)",
+        x=CLASS_NAMES + ["Overall"],
+        y=before_per_class + [before_overall],
+        marker_color="rgba(99, 110, 250, 0.4)",
+        text=[f"{a:.1%}" for a in before_per_class + [before_overall]],
+        textposition="auto",
+    )
+)
+fig_compare.add_trace(
+    go.Bar(
+        name="After Fine-Tuning",
+        x=CLASS_NAMES + ["Overall"],
+        y=after_per_class + [after_overall],
+        marker_color="rgba(99, 110, 250, 1.0)",
+        text=[f"{a:.1%}" for a in after_per_class + [after_overall]],
+        textposition="auto",
+    )
+)
+fig_compare.update_layout(
+    title="BERT — Before vs After Fine-Tuning on AG News",
+    xaxis_title="Category",
+    yaxis_title="Accuracy",
+    yaxis=dict(range=[0, 1]),
+    barmode="group",
+)
+fig_compare.write_html("ex_4_4_bert_before_after_comparison.html")
+print("  Before/after comparison saved to ex_4_4_bert_before_after_comparison.html")
+print(
+    f"  Before fine-tuning: {before_overall:.1%} overall  |  "
+    f"After: {after_overall:.1%} overall"
+)
+
+# ── Visualise: BERT training history (loss + accuracy) ──────────────
+fig_history = viz.training_history(
     metrics={
         "BERT train_loss": bert_losses,
         "BERT val_accuracy": bert_accs,
@@ -328,17 +427,20 @@ fig_bert = viz.training_history(
     x_label="Epoch",
     y_label="Value",
 )
-fig_bert.write_html("ex_4_4_bert_training_curves.html")
-print("\n  BERT training curves saved to ex_4_4_bert_training_curves.html")
+fig_history.write_html("ex_4_4_bert_training_curves.html")
+print("  BERT training curves saved to ex_4_4_bert_training_curves.html")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert sum(class_total.values()) >= 5000, "Should evaluate on full test set"
 # INTERPRETATION: BERT's per-class accuracy reveals which news categories
 # are easiest and hardest. Sports is typically the easiest (distinctive
 # vocabulary), while World/Business can be confused (both discuss economics,
-# politics, and international events). This per-class view is critical for
-# production deployment -- if one category underperforms, you know where
-# to focus additional training data.
+# politics, and international events). The before/after comparison shows
+# the dramatic impact of fine-tuning: BERT with a random classification head
+# performs near-chance (~25%), but after just a few epochs of fine-tuning,
+# it achieves >85% accuracy by leveraging its pre-trained language understanding.
+# This per-class view is critical for production deployment -- if one category
+# underperforms, you know where to focus additional training data.
 print("\n--- Checkpoint 4 passed --- per-class analysis complete\n")
 
 

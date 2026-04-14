@@ -27,9 +27,12 @@
 """
 from __future__ import annotations
 
+import plotly.express as px
+import plotly.graph_objects as go
 import polars as pl
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
     build_full_feature_frame,
     load_icu_tables,
 )
@@ -171,6 +174,44 @@ if "shock_index" in features.columns:
     for row in buckets.iter_rows(named=True):
         bar = "#" * min(40, int(row["n"] / 5))
         print(f"    {row['bucket']:<24} {row['n']:>5}  {bar}")
+
+# --- Correlation heatmap of engineered features ---
+corr_cols = [c for c in interaction_cols if c in features.columns]
+corr_cols += [
+    c for c in features.columns if c.endswith("_mean") and c not in corr_cols
+][:8]
+corr_df = features.select([pl.col(c).cast(pl.Float64) for c in corr_cols]).to_pandas()
+corr_matrix = corr_df.corr()
+fig_heat = px.imshow(
+    corr_matrix,
+    text_auto=".2f",
+    color_continuous_scale="RdBu_r",
+    zmin=-1,
+    zmax=1,
+    title="Correlation Heatmap — Engineered Clinical Features",
+)
+fig_heat.update_layout(width=800, height=700)
+heat_path = OUTPUT_DIR / "ex1_01_correlation_heatmap.html"
+fig_heat.write_html(str(heat_path))
+print(f"\n  Saved: {heat_path}")
+
+# --- Feature distribution histograms ---
+hist_cols = [c for c in interaction_cols if c in features.columns][:4]
+fig_hist = go.Figure()
+for col in hist_cols:
+    vals = features[col].drop_nulls().to_list()
+    fig_hist.add_trace(go.Histogram(x=vals, name=col, opacity=0.6, nbinsx=40))
+fig_hist.update_layout(
+    title="Distribution of Clinical Interaction Features",
+    xaxis_title="Value",
+    yaxis_title="Count",
+    barmode="overlay",
+    height=450,
+)
+hist_path = OUTPUT_DIR / "ex1_01_feature_distributions.html"
+fig_hist.write_html(str(hist_path))
+print(f"  Saved: {hist_path}")
+
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert "shock_index" in features.columns, "Task 4: shock_index missing"

@@ -29,11 +29,13 @@ from __future__ import annotations
 import asyncio
 import os
 
+import matplotlib.pyplot as plt
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent
 
 from shared.mlfp06.ex_5 import (
     MODEL,
+    OUTPUT_DIR,
     data_summary,
     load_hotpotqa,
     make_tools,
@@ -185,6 +187,52 @@ print("\n✓ Checkpoint 4 passed — every field matches its declared type\n")
 # directly into a dashboard, a report pipeline, or a downstream agent
 # with zero parsing.  The confidence field alone lets you build a
 # "route to human review if confidence < 0.7" branch trivially.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Field coverage heatmap for structured output
+# ════════════════════════════════════════════════════════════════════════
+# Visual proof that every Signature field was populated. A missing field
+# in production breaks downstream pipelines — this heatmap is the
+# at-a-glance QA check that every slot in the contract was filled.
+
+fields = [
+    "key_findings",
+    "recommended_approach",
+    "data_quality_issues",
+    "next_steps",
+    "confidence",
+]
+completeness = []
+for f in fields:
+    val = getattr(structured_result, f)
+    if isinstance(val, list):
+        completeness.append(min(len(val) / 3.0, 1.0))  # 3+ items = full
+    elif isinstance(val, str):
+        completeness.append(1.0 if len(val) > 10 else 0.5)
+    elif isinstance(val, float):
+        completeness.append(val)  # confidence is already 0-1
+    else:
+        completeness.append(0.0)
+
+fig, ax = plt.subplots(figsize=(8, 3))
+ax.barh(
+    fields,
+    completeness,
+    color=["#2ecc71" if c >= 0.7 else "#e74c3c" for c in completeness],
+)
+ax.set_xlim(0, 1.1)
+ax.set_xlabel("Completeness (0 = empty, 1 = fully populated)")
+ax.set_title("Structured Agent — Field Coverage Heatmap", fontweight="bold")
+for i, c in enumerate(completeness):
+    ax.text(c + 0.02, i, f"{c:.0%}", va="center", fontsize=9)
+ax.axvline(0.7, color="gray", linestyle="--", alpha=0.5, label="Threshold (70%)")
+ax.legend(loc="lower right")
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex5_structured_field_coverage.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
 
 
 # ════════════════════════════════════════════════════════════════════════

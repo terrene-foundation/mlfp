@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
 
@@ -175,6 +176,91 @@ print(
 
 sweep_df.write_parquet(OUTPUT_DIR / "threshold_sweep.parquet")
 print(f"\n  Saved: {OUTPUT_DIR / 'threshold_sweep.parquet'}")
+
+# ── Visual: Threshold vs metrics curve ───────────────────────────────────
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=[r["threshold"] for r in sweep_rows],
+        y=[r["total_cost_usd"] for r in sweep_rows],
+        mode="lines",
+        name="Total cost ($)",
+        line=dict(color="#ef4444", width=3),
+    )
+)
+fig.add_vline(
+    x=best_t, line_dash="dash", line_color="#10b981", annotation_text=f"t*={best_t:.3f}"
+)
+fig.add_vline(
+    x=0.5, line_dash="dot", line_color="#6b7280", annotation_text="t=0.5 (default)"
+)
+fig.update_layout(
+    title="Threshold vs Total Cost: the U-shaped curve (lower = better)",
+    xaxis_title="Decision threshold",
+    yaxis_title="Total cost ($)",
+    height=450,
+)
+viz_path = OUTPUT_DIR / "ex5_04_threshold_cost_curve.html"
+fig.write_html(str(viz_path))
+print(f"  Saved: {viz_path}")
+
+# ── Visual: Precision-Recall vs threshold ────────────────────────────────
+fig2 = go.Figure()
+fig2.add_trace(
+    go.Scatter(
+        x=[r["threshold"] for r in sweep_rows],
+        y=[r["precision"] for r in sweep_rows],
+        mode="lines",
+        name="Precision",
+        line=dict(color="#6366f1", width=2),
+    )
+)
+fig2.add_trace(
+    go.Scatter(
+        x=[r["threshold"] for r in sweep_rows],
+        y=[r["recall"] for r in sweep_rows],
+        mode="lines",
+        name="Recall",
+        line=dict(color="#f59e0b", width=2),
+    )
+)
+fig2.add_vline(
+    x=best_t, line_dash="dash", line_color="#10b981", annotation_text=f"t*={best_t:.3f}"
+)
+fig2.update_layout(
+    title="Precision and Recall vs Threshold (credit default)",
+    xaxis_title="Decision threshold",
+    yaxis_title="Score",
+    height=450,
+    legend=dict(orientation="h", y=-0.2),
+)
+viz_path2 = OUTPUT_DIR / "ex5_04_threshold_pr_curve.html"
+fig2.write_html(str(viz_path2))
+print(f"  Saved: {viz_path2}")
+
+# ── Visual: Cost matrix heatmap ──────────────────────────────────────────
+cost_matrix = np.array([[0, DEFAULT_COSTS.fp], [DEFAULT_COSTS.fn, 0]])
+fig3 = go.Figure(
+    data=go.Heatmap(
+        z=cost_matrix,
+        x=["Predicted Negative", "Predicted Positive"],
+        y=["Actual Negative", "Actual Positive"],
+        text=[
+            [f"TN: $0", f"FP: ${DEFAULT_COSTS.fp:,.0f}"],
+            [f"FN: ${DEFAULT_COSTS.fn:,.0f}", f"TP: $0"],
+        ],
+        texttemplate="%{text}",
+        colorscale="Reds",
+        showscale=True,
+    )
+)
+fig3.update_layout(
+    title="Cost Matrix: Asymmetric penalties (FN >> FP)",
+    height=400,
+)
+viz_path3 = OUTPUT_DIR / "ex5_04_cost_matrix_heatmap.html"
+fig3.write_html(str(viz_path3))
+print(f"  Saved: {viz_path3}")
 
 # Per-strategy metric table at the optimised threshold
 row = metrics_row("Cost-sens @ t*", y_test, y_proba, threshold=best_t)

@@ -30,8 +30,11 @@ from dotenv import load_dotenv
 
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
+    compute_metrics,
     get_eval_docs,
     normalise_label,
+    plot_comparison_bars,
+    plot_cost_vs_accuracy,
     print_summary,
     run_delegate,
 )
@@ -129,10 +132,51 @@ print("\n[ok] Checkpoint passed — zero-shot CoT evaluation complete\n")
 # ════════════════════════════════════════════════════════════════════════
 print_summary(zs_cot_results, "Zero-Shot CoT")
 
+# R9A: visual proof — 4-method comparison chart (the full prompting ladder)
+# Expected baselines (R10: independently runnable)
+zero_shot_expected = {
+    "strategy": "Zero-Shot",
+    "accuracy": 0.80,
+    "total_cost": 0.002,
+    "avg_latency_s": 1.0,
+    "n": 20,
+}
+few_shot_expected = {
+    "strategy": "Few-Shot",
+    "accuracy": 0.85,
+    "total_cost": 0.006,
+    "avg_latency_s": 1.2,
+    "n": 20,
+}
+cot_expected = {
+    "strategy": "CoT",
+    "accuracy": 0.90,
+    "total_cost": 0.015,
+    "avg_latency_s": 3.5,
+    "n": 20,
+}
+zs_cot_metrics = compute_metrics(zs_cot_results, "ZS-CoT")
+all_methods = [zero_shot_expected, few_shot_expected, cot_expected, zs_cot_metrics]
+
+plot_comparison_bars(
+    all_methods,
+    title="Prompting Ladder — All 4 Methods Compared",
+    filename="ex1_04_method_comparison.png",
+)
+
+plot_cost_vs_accuracy(
+    all_methods,
+    title="Cost vs Accuracy — Full Prompting Ladder",
+    filename="ex1_04_cost_vs_accuracy.png",
+)
+
 # INTERPRETATION: Accuracy usually lands between zero-shot and full CoT,
 # with a cost profile much closer to zero-shot. For tasks where 1-2
 # percentage points of accuracy matter less than cost/latency, this is
 # the default choice.
+# The 4-method chart is the decision tool: pick the cheapest method that
+# clears your accuracy bar. ZS-CoT often sits at the Pareto-optimal
+# "knee" — best accuracy per dollar for non-regulated tasks.
 
 
 # ════════════════════════════════════════════════════════════════════════

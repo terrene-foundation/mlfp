@@ -26,6 +26,8 @@
 """
 from __future__ import annotations
 
+import numpy as np
+import matplotlib.pyplot as plt
 import polars as pl
 
 from kailash_nexus import Nexus
@@ -204,6 +206,39 @@ middleware_stack = pl.DataFrame(
 middleware_stack.write_parquet(OUTPUT_DIR / "middleware_stack.parquet")
 print("\nMiddleware stack order:")
 print(middleware_stack)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Latency distribution histogram per channel
+# ════════════════════════════════════════════════════════════════════════
+# In multi-channel deployment, each channel has a different latency
+# profile: API adds network overhead, CLI is local, MCP adds protocol
+# framing. This histogram shows the expected distribution, giving
+# operators a baseline for alerting thresholds.
+
+rng = np.random.default_rng(42)
+api_latencies = rng.lognormal(mean=5.5, sigma=0.4, size=200)
+cli_latencies = rng.lognormal(mean=4.8, sigma=0.3, size=200)
+mcp_latencies = rng.lognormal(mean=5.2, sigma=0.5, size=200)
+
+fig, ax = plt.subplots(figsize=(9, 4))
+ax.hist(api_latencies, bins=30, alpha=0.6, color="#e74c3c", label="API (HTTP)")
+ax.hist(cli_latencies, bins=30, alpha=0.6, color="#3498db", label="CLI (local)")
+ax.hist(mcp_latencies, bins=30, alpha=0.6, color="#2ecc71", label="MCP (protocol)")
+ax.set_xlabel("Latency (ms)")
+ax.set_ylabel("Frequency")
+ax.set_title("Per-Channel Latency Distribution (Simulated)", fontweight="bold")
+ax.legend(fontsize=9)
+ax.axvline(np.median(api_latencies), color="#e74c3c", linestyle="--", alpha=0.5)
+ax.axvline(np.median(cli_latencies), color="#3498db", linestyle="--", alpha=0.5)
+ax.axvline(np.median(mcp_latencies), color="#2ecc71", linestyle="--", alpha=0.5)
+ax.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_channel_latency.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
+
 
 # SCENARIO: Singapore GovTech ships an internal policy assistant used
 # by ~15,000 public servants across MOH, MOE, MOF and other ministries.

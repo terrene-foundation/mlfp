@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from scipy import stats
 
 from shared.mlfp02.ex_5 import (
@@ -339,6 +341,95 @@ path = save_actual_vs_predicted(
     filename="04_test_actual_vs_predicted.html",
 )
 print(f"Saved: {path}")
+
+# --- Polynomial fit curve: price vs floor area with linear + quadratic ---
+area_sorted_idx = np.argsort(area)
+area_sorted = area[area_sorted_idx]
+# Linear prediction (area only): intercept + beta_area * area
+y_linear = beta_ols[0] + beta_ols[1] * area_sorted
+# Enriched prediction for area dimension (storey=median, lease=median)
+med_storey = float(np.median(storey))
+med_lease = float(np.median(lease))
+y_poly = (
+    beta_enriched[0]
+    + beta_enriched[1] * area_sorted
+    + beta_enriched[2] * med_storey
+    + beta_enriched[3] * med_lease
+    + beta_enriched[4] * area_sorted**2
+    + beta_enriched[5] * med_storey * area_sorted
+    + beta_enriched[6] * med_lease * area_sorted
+)
+
+sample = min(3000, n_obs)
+fig_poly = go.Figure()
+fig_poly.add_trace(
+    go.Scatter(
+        x=area[:sample].tolist(),
+        y=y[:sample].tolist(),
+        mode="markers",
+        marker={"size": 2, "opacity": 0.2, "color": "#94A3B8"},
+        name="Data",
+    )
+)
+fig_poly.add_trace(
+    go.Scatter(
+        x=area_sorted.tolist(),
+        y=y_linear.tolist(),
+        mode="lines",
+        line={"color": "#2563EB", "width": 2},
+        name="Linear",
+    )
+)
+fig_poly.add_trace(
+    go.Scatter(
+        x=area_sorted.tolist(),
+        y=y_poly.tolist(),
+        mode="lines",
+        line={"color": "#DC2626", "width": 2, "dash": "dash"},
+        name="Polynomial + Interactions",
+    )
+)
+fig_poly.update_layout(
+    title="Price vs Floor Area — Does a Curve Fit Better Than a Line?",
+    xaxis_title="Floor Area (sqm)",
+    yaxis_title="Predicted Price (SGD)",
+    height=450,
+)
+path_poly = OUTPUT_DIR / "04_polynomial_fit_curves.html"
+fig_poly.write_html(str(path_poly))
+print(f"Saved: {path_poly}")
+
+# --- Train/test comparison bar chart: R-squared, RMSE, MAE ---
+metrics = ["R-squared", "RMSE ($K)", "MAE ($K)"]
+train_vals = [r2_train, rmse_train / 1000, mae_train / 1000]
+test_vals = [r2_test, rmse_test / 1000, mae_test / 1000]
+
+fig_tt = go.Figure()
+fig_tt.add_trace(
+    go.Bar(
+        x=metrics,
+        y=train_vals,
+        name="Train",
+        marker_color="#2563EB",
+    )
+)
+fig_tt.add_trace(
+    go.Bar(
+        x=metrics,
+        y=test_vals,
+        name="Test",
+        marker_color="#DC2626",
+    )
+)
+fig_tt.update_layout(
+    title="Train vs Test Performance — Is the Model Overfitting?",
+    yaxis_title="Value",
+    barmode="group",
+    height=400,
+)
+path_tt = OUTPUT_DIR / "04_train_test_comparison.html"
+fig_tt.write_html(str(path_tt))
+print(f"Saved: {path_tt}")
 
 
 # ════════════════════════════════════════════════════════════════════════

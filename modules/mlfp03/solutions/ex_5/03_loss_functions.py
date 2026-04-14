@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import lightgbm as lgb
+import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
 
@@ -128,6 +130,65 @@ print(
 # Persist for later files
 pl.DataFrame(metric_rows).write_parquet(OUTPUT_DIR / "focal_sweep_metrics.parquet")
 print(f"\n  Saved: {OUTPUT_DIR / 'focal_sweep_metrics.parquet'}")
+
+# ── Visual: Focal loss alpha sweep — AUC-PR and Brier vs alpha ──────────
+alphas = [r["alpha"] for r in metric_rows]
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=alphas,
+        y=[r["auc_pr"] for r in metric_rows],
+        mode="lines+markers",
+        name="AUC-PR",
+        marker=dict(size=10),
+        line=dict(color="#6366f1", width=3),
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=alphas,
+        y=[r["brier"] for r in metric_rows],
+        mode="lines+markers",
+        name="Brier score",
+        marker=dict(size=10),
+        line=dict(color="#f43f5e", width=3),
+        yaxis="y2",
+    )
+)
+fig.update_layout(
+    title="Focal Loss Alpha Sweep: ranking (AUC-PR) vs calibration (Brier)",
+    xaxis_title="Alpha multiplier",
+    yaxis=dict(title="AUC-PR (higher = better ranking)"),
+    yaxis2=dict(
+        title="Brier (lower = better calibration)",
+        overlaying="y",
+        side="right",
+    ),
+    height=450,
+    legend=dict(orientation="h", y=-0.2),
+)
+viz_path = OUTPUT_DIR / "ex5_03_focal_alpha_sweep.html"
+fig.write_html(str(viz_path))
+print(f"  Saved: {viz_path}")
+
+# ── Visual: Focal loss curve for different gamma values ─────────────────
+p_t = np.linspace(0.01, 0.99, 200)
+fig2 = go.Figure()
+for gamma in [0, 0.5, 1, 2, 5]:
+    fl = -((1 - p_t) ** gamma) * np.log(p_t)
+    fig2.add_trace(
+        go.Scatter(x=p_t, y=fl, mode="lines", name=f"gamma={gamma}", line=dict(width=2))
+    )
+fig2.update_layout(
+    title="Focal Loss Curve: FL(p_t) = -(1-p_t)^gamma * log(p_t)",
+    xaxis_title="p_t (model confidence for correct class)",
+    yaxis_title="Focal loss",
+    height=450,
+    legend=dict(orientation="h", y=-0.2),
+)
+viz_path2 = OUTPUT_DIR / "ex5_03_focal_loss_curves.html"
+fig2.write_html(str(viz_path2))
+print(f"  Saved: {viz_path2}")
 
 # INTERPRETATION: Usually AUC-PR peaks at a DIFFERENT alpha from Brier.
 # AUC-PR rewards ranking quality; Brier rewards calibration. The two

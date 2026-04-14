@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from kaizen import InputField, OutputField, Signature
 from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
 
-from shared.mlfp06.ex_1 import MODEL, get_eval_docs
+from shared.mlfp06.ex_1 import MODEL, get_eval_docs, plot_extraction_accuracy
 
 load_dotenv()
 
@@ -135,7 +135,7 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE — typed field access
+# TASK 4 — VISUALISE — typed field access + extraction accuracy chart
 # ════════════════════════════════════════════════════════════════════════
 # Note the difference: `result.sentiment` — an attribute, type-checked by
 # the editor, validated by Kaizen. No string matching, no JSON parsing,
@@ -145,10 +145,22 @@ tones = [r.tone for r in signature_results]
 print(f"\n  Avg confidence across {len(signature_results)} reviews: {avg_conf:.2f}")
 print(f"  Tone distribution: {tones}")
 
+# R9A: visual proof — extraction accuracy per output field type
+plot_extraction_accuracy(
+    signature_results,
+    field_names=["sentiment", "confidence", "key_phrases", "targets", "tone"],
+    title="Structured Output — Extraction Rate per Field",
+    filename="ex1_06_extraction_accuracy.png",
+)
+
 # INTERPRETATION: The Signature output is directly usable by downstream
 # code. No parsing layer, no format drift, no silent data loss. When
 # the LLM misbehaves, Kaizen raises a typed error — the failure is LOUD
 # and FIXABLE, not silent and corrupting.
+# The bar chart shows which field types the LLM handles reliably (single
+# strings like sentiment/tone) vs which it struggles with (lists like
+# key_phrases/targets). Fields below 90% extraction rate need tighter
+# OutputField descriptions or Kaizen retry configuration.
 
 
 # ════════════════════════════════════════════════════════════════════════

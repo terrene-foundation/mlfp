@@ -33,9 +33,13 @@ import math
 import re
 from collections import Counter
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 from shared.mlfp06.ex_4 import (
     DenseVectorStore,
     EMBED_DIM,
+    OUTPUT_DIR,
     delegate_text,
     embed_many,
     generate_embedding,
@@ -374,6 +378,102 @@ plot_ragas_metrics(
     title="RAGAS Evaluation — Full Pipeline (hybrid -> rerank -> generate)",
     filename="ex4_05_ragas_metrics.png",
 )
+
+# R9A: RAGAS radar chart — shows the "shape" of RAG quality at a glance.
+# A perfect system is a full diamond; a hallucinating system has high
+# answer_relevance but low faithfulness (top-left dip).
+labels = list(avg_ragas.keys())
+values = [avg_ragas[l] for l in labels]
+angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
+values_closed = values + [values[0]]
+angles_closed = angles + [angles[0]]
+
+fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+ax.plot(angles_closed, values_closed, "o-", linewidth=2, color="steelblue")
+ax.fill(angles_closed, values_closed, alpha=0.25, color="steelblue")
+ax.set_xticks(angles)
+ax.set_xticklabels([l.replace("_", "\n") for l in labels], fontsize=9)
+ax.set_ylim(0, 1)
+ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+ax.set_yticklabels(["0.25", "0.50", "0.75", "1.00"], fontsize=8)
+ax.set_title(
+    "RAGAS Radar — Pipeline Quality Shape",
+    fontsize=13,
+    fontweight="bold",
+    pad=20,
+)
+# Draw the 0.70 target ring
+target_ring = [0.70] * (len(angles) + 1)
+ax.plot(
+    angles_closed,
+    target_ring,
+    "--",
+    color="grey",
+    alpha=0.5,
+    linewidth=1,
+    label="target=0.70",
+)
+ax.legend(loc="lower right", bbox_to_anchor=(1.15, -0.05), fontsize=8)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex4_05_ragas_radar.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.show()
+print(f"  Saved: {fname}")
+
+# R9A: retrieval precision at k — how many of the top-k reranked chunks
+# were actually relevant (judged by context_relevance > 0.5)?
+# This approximates precision@k for the full pipeline.
+fig, ax = plt.subplots(figsize=(7, 4))
+k_values = list(range(1, len(pipeline_results[0].get("context", "").split("---")) + 1))
+# Use reranked chunk count per query as a proxy
+precisions = []
+for result in pipeline_results:
+    chunks = [c.strip() for c in result["context"].split("---") if c.strip()]
+    cumulative = []
+    for k in range(1, len(chunks) + 1):
+        # Heuristic: chunks that appear in the answer are "relevant"
+        relevant = sum(
+            1
+            for c in chunks[:k]
+            if any(word in result["answer"].lower() for word in c.lower().split()[:3])
+        )
+        cumulative.append(relevant / k)
+    precisions.append(cumulative)
+
+if precisions:
+    max_k = max(len(p) for p in precisions)
+    avg_precision = []
+    for k in range(max_k):
+        vals = [p[k] for p in precisions if k < len(p)]
+        avg_precision.append(sum(vals) / len(vals) if vals else 0)
+    ax.plot(
+        range(1, max_k + 1),
+        avg_precision,
+        "o-",
+        color="steelblue",
+        linewidth=2,
+        markersize=6,
+    )
+    ax.set_xlabel("k (number of retrieved chunks)")
+    ax.set_ylabel("Precision@k (approx)")
+    ax.set_title(
+        "Retrieval Precision@k — Reranked Pipeline", fontsize=13, fontweight="bold"
+    )
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    fname = OUTPUT_DIR / "ex4_05_precision_at_k.png"
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved: {fname}")
+
+# INTERPRETATION: The radar chart reveals your pipeline's "personality":
+# - Balanced diamond = solid RAG system
+# - Low faithfulness + high relevance = hallucination (the model answers
+#   the right question but invents facts)
+# - Low context_recall = your corpus doesn't contain the answer
+# The precision@k curve shows reranking value: if precision drops sharply
+# after k=1, the reranker is concentrating relevance at the top.
 
 
 # ════════════════════════════════════════════════════════════════════════

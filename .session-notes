@@ -1,76 +1,60 @@
-# Session Notes — 2026-04-14 (M5 + M6 R10 complete, infrastructure solid)
+# Session Notes — 2026-04-14 (M3-M6 R10 complete, M1-M2 pending)
 
 ## Where we are
 
-M5 AND M6 fully restructured to R10 directories. Student repo live at `pcml-run26/pcml-run26-2601` (GitHub Classroom template). 16 student repos forked to `pcml-run26` org. Source repo and student repo both pushed.
+M3, M4, M5, M6 fully R10-converted (solutions + local + colab + shared modules). Student repo synced. M1-M2 still monolithic — M2 conversion attempted but hit rate limits.
 
-## R10 status
+## R10 conversion status
 
-| Module | Status | Exercises | Technique files |
-|--------|--------|-----------|-----------------|
-| M1 | monolithic | 8 | 8 (mostly single-technique, may not need R10) |
-| M2 | monolithic | 8 | 8 |
-| M3 | monolithic | 8 | 8 |
-| M4 | monolithic | 8 | 8 |
-| M5 | **R10 ✓** | 8 | 42 technique files + 8 shared |
-| M6 | **R10 ✓** | 8 | 39 technique files + 8 shared |
-
-## Infrastructure
-
-- `shared/mlfp05/ex_N.py` + `shared/mlfp06/ex_N.py` — installable helpers via `uv sync`
-- `scripts/build-student-repo.sh --sync` — incremental rsync to student repo
-- `scripts/py_to_notebook.py` — now R10-aware (handles `local/ex_N/` directories)
-- `downstream.yaml` — tracks `pcml-run26/pcml-run26-2601`
-- Exercise directories: `modules/mlfp0N/{solutions,local,colab}/ex_N/NN_technique.py`
+| Module | Status | Technique files | Shared modules |
+|--------|--------|-----------------|----------------|
+| M1 | **monolithic** | 8 single files | none |
+| M2 | **monolithic** | 8 single files | partial (shared/mlfp02/ created but mostly empty) |
+| M3 | **R10 done** | 40 files (5+5+6+4+5+5+5+5) | 8 modules in shared/mlfp03/ |
+| M4 | **R10 done** | 37 files (5+4+5+4+4+5+5+5) | 8 modules in shared/mlfp04/ |
+| M5 | **R10 done** | 42 files | 8 modules in shared/mlfp05/ |
+| M6 | **R10 done** | 39 files | 8 modules in shared/mlfp06/ |
 
 ## Repos
 
-| Repo | Purpose |
-|------|---------|
-| `terrene-foundation/mlfp` | Source (instructor + curriculum) |
-| `pcml-run26/pcml-run26-2601` | Student template (GitHub Classroom) |
-| `pcml-run26/pcml-run-26-{username}` | Student forks (16 students) |
+| Repo | URL | Status |
+|------|-----|--------|
+| Source | `terrene-foundation/mlfp` | pushed through M4 commit |
+| Student template | `pcml-run26/pcml-run26-2601` | synced through M4 |
+| Student repos | `pcml-run26/pcml-run-26-{username}` | 16 repos, 5 synced, 10 have conflicts |
 
-## Student repo sync status
+## Read first
 
-After the M6 push:
-- 5 student repos: "not behind upstream" (already synced from earlier runs)
-- 10 student repos: merge conflicts (students had made commits)
-- 1 repo: validation failed (esperie test)
+1. `specs/redlines.md` — 10 redlines (R10 = exercise directories)
+2. `STUDENT-REPO.md` — student/instructor boundary
+3. `downstream.yaml` — downstream repos + sync workflow
+4. `.claude/rules/exercise-standards.md` — R10 section added
+5. `.claude/agents/education/exercise-designer.md` — updated for R10
 
-Students with conflicts need to manually: `git remote add upstream ...; git fetch upstream; git merge upstream/main`
+## What was done across sessions (2026-04-13 + 2026-04-14)
+
+1. **Redline 10** codified in specs/redlines.md
+2. **M5 R10**: 8 exercises → 42 technique files (autoencoders, CNNs, RNNs, transformers, GANs, GNNs, transfer learning, RL)
+3. **M6 R10**: 8 exercises → 39 technique files (prompting, SFT, DPO, RAG, agents, orchestration, governance, deployment)
+4. **M3 R10**: 8 exercises → 40 technique files (features, regularisation, ML zoo, boosting, imbalance, interpretability, workflows, production)
+5. **M4 R10**: 8 exercises → 37 technique files (clustering, GMM, dim reduction, anomaly, association, NLP, recommenders, neural nets)
+6. **Student repo**: pcml-run26/pcml-run26-2601 (GitHub Classroom template, no LFS, 18MB custom data)
+7. **Shared package**: shared/mlfp{03,04,05,06}/ex_N.py — installable via `uv sync`
+8. **Infrastructure**: build-student-repo.sh --sync, downstream.yaml, exercise-designer agent, exercise-standards R10 section
 
 ## Still pending
 
-- **M1-M4 R10 conversion** — M1-M2 are mostly single-technique (progressive tasks, not separate techniques) so may stay as single files. M3-M4 are multi-technique and should be R10-ized.
-- **Missing PDFs** — textbooks (M1-M4, M6), notes (all modules), deck (M6)
-- **M5/M6 runtime testing** — stripped exercises not yet verified to run correctly when completed
-- **exercise-standards.md** — ✓ R10 section added
-- **Student repo conflict resolution** — 10 repos need manual merge
+- **M2 R10 conversion** — 8 exercises, all multi-technique (probability, MLE, A/B testing, experimental design, linear/logistic regression, causal inference, feature stores). Hit rate limits. Resume next session.
+- **M1 R10 assessment** — M1 exercises are progressive Python/Polars basics. May be single-technique arcs that don't need directories. Review exercise structures before converting.
+- **Missing PDFs** — textbooks (M1-M4, M6), notes (all), deck (M6)
+- **Runtime testing** — stripped exercises haven't been verified end-to-end
+- **Student repo conflicts** — 10 repos need manual merge (students had existing commits)
 
 ## Traps
 
-- `shared` package installable via `pyproject.toml` — `from shared.mlfp06.ex_1 import ...` works from any cwd after `uv sync`
-- GitHub template repos cannot have LFS — standard datasets (MNIST, CIFAR, etc.) gitignored
-- Student exercises use `from shared.mlfpNN.ex_N import` — no local `_shared.py` or `helpers.py`
-- `py_to_notebook.py` now handles R10 directories: `python scripts/py_to_notebook.py modules/mlfp06/local/ex_1/`
-- `scripts/build-student-repo.sh --sync` for incremental updates
-- Pre-existing Pyright diagnostics for `kailash_ml`, `kailash_align` etc. are expected (they resolve at runtime via uv sync, Pyright just can't find them in its static analysis)
-
-## Recent commits (source)
-
-- `f7f9960` M6 R10 conversion (all 8 exercises)
-- `adc5708` M5 shared extraction + R10 refactor
-- `11e8953` downstream.yaml → pcml-run26 org
-- `f838834` cleanup (screenshots moved to outputs/)
-- `d94b91f` downstream infrastructure + readings/
-- `25f49b8` remove old monolithic M5 files
-- `2998353` Redline 10 + exercise-designer + two-format rule
-
-## Next session priorities
-
-1. M3-M4 R10 conversion (multi-technique exercises)
-2. M1-M2 review (decide if R10 needed or single-file is fine)
-3. Generate missing PDFs (textbook.pdf, notes.pdf per module)
-4. Runtime test M5/M6 stripped exercises
-5. Document student upstream-sync workflow (manual merge for conflicts)
+- `shared` package: `[tool.hatch.build.targets.wheel] packages = ["shared"]` in pyproject.toml. After `uv sync`, `from shared.mlfpNN.ex_N import` works from any cwd.
+- No LFS in student repo (GitHub template repos can't have LFS). Standard datasets gitignored + auto-download.
+- `scripts/py_to_notebook.py` now handles R10 directories
+- Sync workflow: `./scripts/build-student-repo.sh --sync /tmp/pcml-run26-2601` → commit → push
+- Student mass-sync: `gh api repos/pcml-run26/$repo/merge-upstream -f branch=main` (only works for fast-forward, not conflicts)
+- shared/mlfp02/ has partial files from the rate-limited agents — clean up before restarting M2 conversion

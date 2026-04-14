@@ -2,64 +2,72 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# MLFP03 — Exercise 7.4: ModelRegistry Lifecycle (Staging → Production)
+# MLFP03 — Exercise 7.4: ModelRegistry Lifecycle via TrainingPipeline
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
+#   - Drive fit + evaluate + register as ONE TrainingPipeline.train() call
 #   - Define a ModelSignature (input schema + output contract)
-#   - Register a model with kailash-ml's ModelRegistry
-#   - Promote through `staging -> production` with an audit reason
-#   - Understand why ModelSignature is the contract InferenceServer enforces
+#   - Promote a registered model through `staging -> production` with an
+#     audit reason that is written to the registry's history table
+#   - Understand why TrainingPipeline owns the lifecycle AND registration
+#     so raw lightgbm.fit() stays out of application code
 #
 # PREREQUISITES: 03_hyperparameter_search.py
 # ESTIMATED TIME: ~35 min
 #
 # 5-PHASE R10:
 #   1. Theory     — why a registry beats "the pickle on S3"
-#   2. Build      — ModelSignature + register_model
-#   3. Train      — promote through the lifecycle with a reason
+#   2. Build      — ModelSignature + ModelSpec + EvalSpec
+#   3. Train      — TrainingPipeline.train() + promote_model
 #   4. Visualise  — inspect the registered version + signature
-#   5. Apply      — audit-grade lineage for MAS on-site inspection
+#   5. Apply      — audit-grade model lineage for MAS on-site inspection
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-import pickle
 
-import lightgbm as lgb
-
-from kailash.db import ConnectionManager
-from kailash_ml.engines.model_registry import ModelRegistry
-from kailash_ml.types import FeatureField, FeatureSchema, MetricSpec, ModelSignature
+from kailash_ml.engines.training_pipeline import (
+    EvalSpec,
+    ModelSpec,
+    TrainingPipeline,
+)
+from kailash_ml.types import ModelSignature
 
 from shared.mlfp03.ex_7 import (
-    DB_URL,
     RANDOM_SEED,
     SG_BANK_PORTFOLIO,
-    compute_classification_metrics,
+    build_training_registry,
+    credit_feature_schema,
     headline_roi_text,
-    prepare_credit_split,
+    prepare_credit_frame,
     print_metric_block,
     scale_pos_weight_for,
 )
 
 
 # ════════════════════════════════════════════════════════════════════════
-# THEORY — Why a ModelRegistry?
+# THEORY — Why TrainingPipeline + ModelRegistry together?
 # ════════════════════════════════════════════════════════════════════════
 # Every ML-outage postmortem traces to "the pickle on S3 with no
 # signature, no version, no promotion reason." The registry is the
-# antidote: typed versions, captured metrics, audit-grade transitions.
+# antidote, and TrainingPipeline is the engine that puts models INTO
+# the registry automatically: `pipeline.train()` runs fit + evaluate
+# AND calls `registry.register_model(...)` for you. All you have to do
+# is promote the result through the lifecycle.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD: train, define ModelSignature + register
+# TASK 2 — BUILD: frame, schema, signature, winning hyperparameters
 # ════════════════════════════════════════════════════════════════════════
 
-split = prepare_credit_split()
-pos_weight = scale_pos_weight_for(split.y_train)
+frame, feature_cols = prepare_credit_frame()
+input_schema = credit_feature_schema(feature_cols)
+pos_weight = scale_pos_weight_for(frame["default"].to_numpy())
 
+# The winning hyperparameters from file 03 — each technique file is
+# independently runnable, so we re-use a sane set here.
 best_params = {
     "n_estimators": 500,
     "learning_rate": 0.05,
@@ -68,30 +76,10 @@ best_params = {
     "min_child_samples": 20,
 }
 
-best_model = lgb.LGBMClassifier(
-    **best_params,
-    random_state=RANDOM_SEED,
-    verbose=-1,
-    scale_pos_weight=pos_weight,
-)
-best_model.fit(split.X_train, split.y_train)
-
-y_pred = best_model.predict(split.X_test)
-y_proba = best_model.predict_proba(split.X_test)[:, 1]
-metrics = compute_classification_metrics(split.y_test, y_pred, y_proba)
-print_metric_block("Model to register", metrics)
-
-
-# TODO: build a FeatureSchema with one FeatureField per training column
-# Hint: features=[FeatureField(name=f, dtype="float64") for f in split.feature_columns]
-input_schema = FeatureSchema(
-    name="credit_model_input",
-    features=____,
-    entity_id_column="application_id",
-)
 
 # TODO: build the ModelSignature — outputs are default_probability + default_label
 # Hint: output_columns=["default_probability", "default_label"]
+#       output_dtypes=["float64", "int64"], model_type="classifier"
 signature = ModelSignature(
     input_schema=input_schema,
     output_columns=____,
@@ -100,58 +88,87 @@ signature = ModelSignature(
 )
 
 
-async def register_and_promote() -> tuple[int, str]:
-    conn = ConnectionManager(DB_URL)
-    await conn.initialize()
-    try:
-        registry = ModelRegistry(conn)
-        artefact_bytes = pickle.dumps(best_model)
+async def register_and_promote() -> tuple[int, str, dict[str, float]]:
+    """Train via TrainingPipeline (which registers the model), then promote.
 
-        # TODO: register the model with its metrics
-        # Hint: await registry.register_model(name=..., artifact=..., metrics=[...])
-        version = await registry.register_model(
-            name="credit_default_v2",
-            artifact=artefact_bytes,
-            metrics=[
-                MetricSpec(name="auc_pr", value=metrics["auc_pr"]),
-                MetricSpec(name="auc_roc", value=metrics["auc_roc"]),
-                MetricSpec(name="f1_score", value=metrics["f1"]),
-            ],
+    TrainingPipeline handles the fit+evaluate+register cycle as one engine
+    call — no raw sklearn/LightGBM .fit() in application code. Once the
+    model is registered at STAGING, we promote it to PRODUCTION with an
+    audit-grade reason. That promotion is the lifecycle transition this
+    file teaches.
+    """
+    registry, conn = await build_training_registry()
+    try:
+        # TODO: create a TrainingPipeline bound to the registry (no feature_store)
+        # Hint: TrainingPipeline(feature_store=None, registry=registry)
+        pipeline = ____
+
+        # TODO: build a ModelSpec from best_params + pos_weight + RANDOM_SEED
+        # Hint: framework="lightgbm", model_class="lightgbm.LGBMClassifier"
+        model_spec = ModelSpec(
+            model_class=____,
+            framework=____,
+            hyperparameters={
+                **best_params,
+                "random_state": RANDOM_SEED,
+                "verbose": -1,
+                "scale_pos_weight": pos_weight,
+            },
+        )
+        eval_spec = EvalSpec(
+            metrics=["accuracy", "f1", "auc"],
+            split_strategy="holdout",
+            test_size=0.2,
         )
 
-        # TODO: promote the model from staging to production with a reason
+        # TODO: run pipeline.train — it fits, evaluates, AND registers.
+        # Hint: experiment_name="credit_default_v2"
+        result = await pipeline.train(
+            data=frame,
+            schema=input_schema,
+            model_spec=model_spec,
+            eval_spec=eval_spec,
+            experiment_name=____,
+        )
+        assert (
+            result.model_version is not None
+        ), "TrainingPipeline should register the model"
+
+        # TODO: promote the registered model from staging to production with
+        # an audit-grade reason. This is the pedagogical teaching point.
         # Hint: await registry.promote_model(name=..., version=..., target_stage="production", reason="...")
         await registry.promote_model(
             name="credit_default_v2",
-            version=version.version,
+            version=result.model_version.version,
             target_stage=____,
             reason=(
-                f"Quality gates passed: AUC-PR={metrics['auc_pr']:.4f}, "
-                f"AUC-ROC={metrics['auc_roc']:.4f}, F1={metrics['f1']:.4f}. "
+                f"Quality gates passed: AUC={result.metrics.get('auc', 0):.4f}, "
+                f"F1={result.metrics.get('f1', 0):.4f}. "
                 f"Hyperparameters optimised via kailash-ml Bayesian search."
             ),
         )
-        return version.version, "production"
+        return result.model_version.version, "production", result.metrics
     finally:
         await conn.close()
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN: run the async registration + promotion
+# TASK 3 — TRAIN: run the async training + registration + promotion
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
 print("  Registering credit_default_v2 and promoting to production")
 print("=" * 70)
 
-version_id, stage = asyncio.run(register_and_promote())
+version_id, stage, metrics = asyncio.run(register_and_promote())
+print_metric_block("Model trained + registered via TrainingPipeline", metrics)
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert version_id is not None, "Task 3: register_model must return a version"
 assert stage == "production", "Task 3: promotion should land in production"
-assert (
-    len(signature.input_schema.features) == split.feature_count
+assert len(signature.input_schema.features) == len(
+    feature_cols
 ), "Task 3: ModelSignature features must match training features"
 print(f"\n  credit_default_v2 version={version_id} stage={stage}")
 print("\n[ok] Checkpoint passed — registration + promotion complete\n")
@@ -176,10 +193,27 @@ print(f"  credit_default_v2 v{version_id} is now PRODUCTION")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: MAS On-Site Inspection Lineage
 # ════════════════════════════════════════════════════════════════════════
+# When MAS conducts an on-site inspection of a Singapore bank's credit
+# decisioning, the first question is always the same: "Show me the
+# model that declined this application, and prove that the model was
+# authorised to be in production at the time of the decision."
+#
+# With TrainingPipeline writing to a ModelRegistry, the answer is a
+# two-row JOIN:
+#   ModelArtifact.version = X
+#   RegistryTransition.model=name, version=X, to_stage=production, at=T
+#
+# The promotion reason we passed above becomes the evidence an auditor
+# replays. Without a registry, the bank spends weeks reconstructing git
+# history and Slack screenshots.
 print("\n" + "=" * 70)
 print("  APPLY: MAS On-Site Inspection Lineage")
 print("=" * 70)
 print(headline_roi_text())
+print(
+    "\n  The `Audit prep savings` line becomes DEFENSIBLE with this file."
+    "\n  The promotion reason is the evidence an auditor replays."
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -190,12 +224,19 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     f"""
+  [x] Used kailash-ml TrainingPipeline for fit + evaluate + register in ONE call
   [x] Built a ModelSignature with FeatureSchema + FeatureField
-  [x] Registered a LightGBM model in kailash-ml's ModelRegistry
-  [x] Promoted through staging -> production with an audit reason
+  [x] Promoted through staging -> production with an audit-grade reason
   [x] Tied the registry to a real MAS on-site inspection scenario
 
-  Next: 05_orchestrated_pipeline.py — one end-to-end run, fully audited.
+  KEY INSIGHT: Models don't fail because they're wrong — they fail
+  because nobody remembers which one was in production on the day of
+  the incident. TrainingPipeline + ModelRegistry is what makes
+  "which model was live on 2026-03-12" a SELECT, not a forensics project.
+
+  Next: 05_orchestrated_pipeline.py — stitch files 01-04 into one
+  run that audits itself end-to-end.
+
   Version now in production: credit_default_v2 v{version_id}
   Portfolio anchor: S${SG_BANK_PORTFOLIO['portfolio_sgd']/1e9:.0f}B
 """

@@ -25,18 +25,23 @@
 """
 from __future__ import annotations
 
-import lightgbm as lgb
+import asyncio
 
 from kailash.runtime import LocalRuntime
 from kailash.workflow.builder import WorkflowBuilder
+from kailash_ml.engines.training_pipeline import (
+    EvalSpec,
+    ModelSpec,
+    TrainingPipeline,
+)
 
 from shared.mlfp03.ex_7 import (
     RANDOM_SEED,
     SG_BANK_PORTFOLIO,
-    compute_classification_metrics,
+    build_training_registry,
+    credit_feature_schema,
     headline_roi_text,
-    load_credit_frame,
-    prepare_credit_split,
+    prepare_credit_frame,
     print_metric_block,
     scale_pos_weight_for,
 )
@@ -141,27 +146,55 @@ except Exception as exc:
     results, run_id = {}, "fallback-manual-run"
     workflow_ok = False
 
-# Hand-rolled pipeline (always runs — mirrors the workflow for teaching)
-credit = load_credit_frame()
-split = prepare_credit_split(credit)
-baseline = lgb.LGBMClassifier(
-    n_estimators=500,
-    learning_rate=0.1,
-    max_depth=6,
-    scale_pos_weight=scale_pos_weight_for(split.y_train),
-    random_state=RANDOM_SEED,
-    verbose=-1,
-)
-baseline.fit(split.X_train, split.y_train)
-y_pred = baseline.predict(split.X_test)
-y_proba = baseline.predict_proba(split.X_test)[:, 1]
-baseline_metrics = compute_classification_metrics(split.y_test, y_pred, y_proba)
+# Kailash-ML TrainingPipeline — the framework-first equivalent of the DAG.
+# This is the same pipeline as the WorkflowBuilder declaration above, but
+# driven by the kailash-ml engine. No raw sklearn/LightGBM .fit() lives in
+# application code; TrainingPipeline owns the fit+evaluate+register cycle.
+frame, feature_cols = prepare_credit_frame()
+schema = credit_feature_schema(feature_cols)
+pos_weight = scale_pos_weight_for(frame["default"].to_numpy())
+
+
+async def train_baseline() -> dict[str, float]:
+    registry, conn = await build_training_registry()
+    try:
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+        model_spec = ModelSpec(
+            model_class="lightgbm.LGBMClassifier",
+            framework="lightgbm",
+            hyperparameters={
+                "n_estimators": 500,
+                "learning_rate": 0.1,
+                "max_depth": 6,
+                "scale_pos_weight": pos_weight,
+                "random_state": RANDOM_SEED,
+                "verbose": -1,
+            },
+        )
+        eval_spec = EvalSpec(
+            metrics=["accuracy", "f1", "auc"],
+            split_strategy="holdout",
+            test_size=0.2,
+        )
+        result = await pipeline.train(
+            data=frame,
+            schema=schema,
+            model_spec=model_spec,
+            eval_spec=eval_spec,
+            experiment_name="credit_default_baseline",
+        )
+        return result.metrics
+    finally:
+        await conn.close()
+
+
+baseline_metrics = asyncio.run(train_baseline())
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert run_id is not None, "Task 3: runtime.execute must return a run_id"
-assert baseline_metrics["auc_roc"] > 0.5, "Task 3: model must beat random"
-print("\n[ok] Checkpoint passed — workflow + hand-rolled pipeline executed\n")
+assert baseline_metrics.get("auc", 0.0) > 0.5, "Task 3: model must beat random"
+print("\n[ok] Checkpoint passed — workflow + TrainingPipeline executed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -172,7 +205,9 @@ print("DAG shape:")
 print("  preprocess -> train -> evaluate -> persist")
 print(f"  workflow_ok={workflow_ok}  run_id={run_id}")
 
-print_metric_block("Baseline LightGBM (workflow hyperparameters)", baseline_metrics)
+print_metric_block(
+    "Baseline LightGBM via kailash-ml TrainingPipeline", baseline_metrics
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

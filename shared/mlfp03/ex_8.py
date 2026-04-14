@@ -65,6 +65,15 @@ def load_credit_split() -> dict[str, Any]:
     loader = MLFPDataLoader()
     credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
 
+    # Drop identifier columns before preprocessing — `customer_id` is a row
+    # key, not a feature. Leaving it in the matrix causes drift noise to
+    # dominate the top-variance feature list AND inflates AUC against the
+    # model's pattern-recognition capability on IDs. Both are data-leakage
+    # symptoms; the fix is to exclude the identifier at load time.
+    id_columns = [c for c in ("customer_id", "application_id") if c in credit.columns]
+    if id_columns:
+        credit = credit.drop(id_columns)
+
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(
         credit,

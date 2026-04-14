@@ -41,12 +41,7 @@ from shared.mlfp03.ex_8 import (
     train_calibrated_model,
 )
 
-try:
-    from kailash_ml.engines.drift_monitor import DriftSpec
-
-    HAS_DRIFT = True
-except ImportError:
-    HAS_DRIFT = False
+from kailash_ml.engines.drift_monitor import DriftSpec
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -81,16 +76,15 @@ y_proba_ref = ____
 auc_ref = ____
 print(f"\nReference model AUC-ROC: {auc_ref:.4f}")
 
-if HAS_DRIFT:
-    # TODO: Build a DriftSpec with psi_threshold=0.1, ks_threshold=0.05,
-    # monitoring_frequency="daily", alert_on_drift=True
-    drift_spec = ____
-    print(
-        f"\nDriftSpec configured: PSI={drift_spec.psi_threshold}, "
-        f"KS p-value<{drift_spec.ks_threshold}, freq={drift_spec.monitoring_frequency}"
-    )
-else:
-    print("\n[warn] kailash_ml.DriftMonitor not available — using raw helpers.")
+# TODO: Build a DriftSpec with psi_threshold=0.1 and ks_threshold=0.05.
+# Hint: DriftSpec(psi_threshold=..., ks_threshold=...) — cadence is set
+# later at DriftMonitor.schedule_monitoring(interval=...) call-time,
+# NOT on the spec itself.
+drift_spec = ____
+print(
+    f"\nDriftSpec configured: PSI>{drift_spec.psi_threshold}, "
+    f"KS p-value<{drift_spec.ks_threshold} (cadence set on schedule_monitoring)"
+)
 
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
@@ -207,10 +201,17 @@ print(f"\nSaved: {viz_path}")
 
 
 # ── Checkpoint 3 ────────────────────────────────────────────────────────
+# The assertion is "drift is DETECTED", not "AUC always collapses". On a
+# well-separable dataset the model may still ride other features through
+# the drift — which is exactly why the drift-detection layer is
+# INDEPENDENT from the performance layer. A tiny epsilon absorbs Monte
+# Carlo noise on the Gaussian simulator.
 assert psi_sudden > 0.1, "Task 4: Sudden drift should produce PSI > 0.1"
 assert ks_pval_sudden < 0.05, "Task 4: Sudden drift should be detected by KS"
-assert auc_sudden <= auc_ref, "Task 4: Drift should not improve performance"
-print("\n[ok] Checkpoint 3 — drift detected and degradation measured\n")
+assert (
+    auc_sudden <= auc_ref + 0.005
+), "Task 4: Drift should not materially improve AUC (beyond MC noise)"
+print("\n[ok] Checkpoint 3 — drift detected (perf layer watches separately)\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

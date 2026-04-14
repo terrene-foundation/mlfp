@@ -88,25 +88,30 @@ async def supervisor_worker_analysis(doc: str, question: str) -> dict:
     """Run the full fan-out / fan-in pattern for one (doc, question)."""
     t0 = time.perf_counter()
 
-    # TODO: Fan-out — call each specialist with (document=doc, question=question)
-    # Hint: await factual_agent.run(document=doc, question=question)
+    # TODO: Fan-out — call each specialist with (document=doc, question=question).
+    # Hint: BaseAgent exposes an async `run_async(**inputs)` entry point that
+    # returns a dict keyed by the Signature's OutputField names.
+    # Example: factual_result = await factual_agent.run_async(
+    #              document=doc, question=question,
+    #          )
     factual_result = ____
     semantic_result = ____
     structural_result = ____
 
-    # TODO: Fan-in — call synthesis_agent.run(...) passing:
-    #   document, question, factual_analysis, semantic_analysis, structural_analysis
-    # Format each *_analysis as a string summary of the matching specialist output.
+    # TODO: Fan-in — call synthesis_agent.run_async(...) passing:
+    #   document, question, factual_analysis, semantic_analysis, structural_analysis.
+    # Format each *_analysis as a string summary of the matching specialist output,
+    # reading specialist outputs via dict indexing — e.g. factual_result["factual_claims"].
     synthesis_result = ____
 
     elapsed = time.perf_counter() - t0
     return {
-        "answer": synthesis_result.unified_answer,
-        "confidence": synthesis_result.confidence,
-        "reasoning": synthesis_result.reasoning_chain,
-        "factual_claims": factual_result.factual_claims,
-        "themes": semantic_result.main_themes,
-        "entities": structural_result.key_entities,
+        "answer": synthesis_result["unified_answer"],
+        "confidence": synthesis_result["confidence"],
+        "reasoning": synthesis_result["reasoning_chain"],
+        "factual_claims": factual_result["factual_claims"],
+        "themes": semantic_result["main_themes"],
+        "entities": structural_result["key_entities"],
         "latency_s": elapsed,
     }
 

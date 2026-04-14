@@ -75,27 +75,30 @@ async def sequential_pipeline(doc: str, question: str) -> dict:
     t0 = time.perf_counter()
     per_stage: list[tuple[str, float]] = []
 
-    # TODO: Stage 1 — call factual_agent.run(document=doc, question=question)
+    # TODO: Stage 1 — await factual_agent.run_async(document=doc, question=question)
+    # Note: BaseAgent.run_async returns a dict; read outputs via factual["factual_claims"].
     s1_t = time.perf_counter()
     factual = ____
     per_stage.append(("factual extraction", time.perf_counter() - s1_t))
 
-    # TODO: Stage 2 — call interpreter.run(...) with factual_claims=str(factual.factual_claims),
-    #       document=doc, question=question. Stage 2 consumes stage 1's output.
+    # TODO: Stage 2 — await interpreter.run_async(...) with
+    #       factual_claims=str(factual["factual_claims"]),
+    #       document=doc, question=question. Stage 2 consumes stage 1's dict output.
     s2_t = time.perf_counter()
     interpreted = ____
     per_stage.append(("contextual interpretation", time.perf_counter() - s2_t))
 
-    # TODO: Stage 3 — call synthesis_agent.run(...) passing the interpreted
+    # TODO: Stage 3 — await synthesis_agent.run_async(...) passing the interpreted
     #       output as factual_analysis/semantic_analysis/structural_analysis.
+    #       Read interpreted fields via dict indexing — interpreted["interpreted_facts"].
     s3_t = time.perf_counter()
     final = ____
     per_stage.append(("synthesis", time.perf_counter() - s3_t))
 
     elapsed = time.perf_counter() - t0
     return {
-        "answer": final.unified_answer,
-        "confidence": final.confidence,
+        "answer": final["unified_answer"],
+        "confidence": final["confidence"],
         "stages": per_stage,
         "latency_s": elapsed,
     }

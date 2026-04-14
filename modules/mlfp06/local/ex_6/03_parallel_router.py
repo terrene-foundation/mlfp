@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from kaizen.orchestration.pipeline import Pipeline
+from kaizen_agents import Pipeline
 
 from shared.mlfp06.ex_6 import (
     OUTPUT_DIR,
@@ -52,7 +52,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
     t0 = time.perf_counter()
 
     # TODO: Build three coroutine tasks (do NOT await them yet).
-    # Hint: factual_task = factual_agent.run(document=doc, question=question)
+    # Hint: BaseAgent.run_async is a coroutine — calling it without `await`
+    # returns the coroutine object you can pass to asyncio.gather.
+    #   factual_task = factual_agent.run_async(document=doc, question=question)
     factual_task = ____
     semantic_task = ____
     structural_task = ____
@@ -60,10 +62,11 @@ async def parallel_analysis(doc: str, question: str) -> dict:
     # TODO: Await all three concurrently with asyncio.gather(...)
     factual_r, semantic_r, structural_r = ____
 
+    # run_async returns a dict — read OutputField values with dict indexing.
     return {
-        "factual_claims": factual_r.factual_claims,
-        "themes": semantic_r.main_themes,
-        "entities": structural_r.key_entities,
+        "factual_claims": factual_r["factual_claims"],
+        "themes": semantic_r["main_themes"],
+        "entities": structural_r["key_entities"],
         "latency_s": time.perf_counter() - t0,
     }
 
@@ -71,7 +74,8 @@ async def parallel_analysis(doc: str, question: str) -> dict:
 async def sequential_baseline(doc: str, question: str) -> float:
     """Same work, but one agent at a time — for latency comparison."""
     t0 = time.perf_counter()
-    # TODO: await the three specialists one at a time
+    # TODO: await the three specialists one at a time, using run_async.
+    # Hint: await factual_agent.run_async(document=doc, question=question)
     ____
     ____
     ____

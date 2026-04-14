@@ -10,12 +10,13 @@ Technique-specific orchestration logic lives in the per-technique files.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
 
 from kaizen import InputField, OutputField, Signature
-from kaizen.core import BaseAgent
+from kaizen.core.base_agent import BaseAgent
 
 from shared.kailash_helpers import setup_environment
 
@@ -161,52 +162,125 @@ class InterpretationSignature(Signature):
 # ════════════════════════════════════════════════════════════════════════
 # SPECIALIST AGENT CLASSES
 # ════════════════════════════════════════════════════════════════════════
+#
+# Canonical kaizen 2.7.3 pattern: dataclass config + instance signature
+# in super().__init__.  Class-level `signature = XxxSig` is a silent
+# bug — BaseAgent ignores class-level attrs and falls back to
+# DefaultSignature, so every "specialist" was producing generic output
+# before this migration.  See workspaces/mlfp06-migration/api-cheatsheet.md
+# for the background.
+#
+# `description` remains a class-level attribute because it's read by
+# Pipeline.router() and by the exercise's audit-trail logging — it's
+# agent metadata, not part of the LLM-wiring contract.
+
+
+@dataclass
+class FactualConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
+@dataclass
+class SemanticConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
+@dataclass
+class StructuralConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+
+@dataclass
+class SynthesisConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    # Supervisor gets a larger budget — it reasons over all specialist outputs.
+    budget_limit_usd: float = 2.0
+
+
+@dataclass
+class InterpretationConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = MODEL
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
 
 
 class FactualAgent(BaseAgent):
-    signature = FactualAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
     description = "Specialist in factual analysis: claims, evidence, verification"
+
+    def __init__(self, config: FactualConfig | None = None):
+        super().__init__(
+            config=config or FactualConfig(),
+            signature=FactualAnalysisSignature(),
+        )
 
 
 class SemanticAgent(BaseAgent):
-    signature = SemanticAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
     description = "Specialist in semantic analysis: themes, implications, context"
+
+    def __init__(self, config: SemanticConfig | None = None):
+        super().__init__(
+            config=config or SemanticConfig(),
+            signature=SemanticAnalysisSignature(),
+        )
 
 
 class StructuralAgent(BaseAgent):
-    signature = StructuralAnalysisSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
     description = (
         "Specialist in structural analysis: entities, relationships, organisation"
     )
 
+    def __init__(self, config: StructuralConfig | None = None):
+        super().__init__(
+            config=config or StructuralConfig(),
+            signature=StructuralAnalysisSignature(),
+        )
+
 
 class SynthesisAgent(BaseAgent):
-    signature = SynthesisSignature
-    model = MODEL
-    max_llm_cost_usd = 2.0
     description = (
         "Supervisor that synthesises specialist analyses into unified decisions"
     )
 
+    def __init__(self, config: SynthesisConfig | None = None):
+        super().__init__(
+            config=config or SynthesisConfig(),
+            signature=SynthesisSignature(),
+        )
+
 
 class InterpretationAgent(BaseAgent):
-    signature = InterpretationSignature
-    model = MODEL
-    max_llm_cost_usd = 1.0
     description = "Stage-2 interpreter: contextualises raw factual claims for synthesis"
+
+    def __init__(self, config: InterpretationConfig | None = None):
+        super().__init__(
+            config=config or InterpretationConfig(),
+            signature=InterpretationSignature(),
+        )
 
 
 def build_specialists() -> tuple[FactualAgent, SemanticAgent, StructuralAgent]:
-    """Return fresh instances of the three analysis specialists."""
+    """Return fresh instances of the three analysis specialists.
+
+    Uses the default Config for each specialist.  Callers that need to
+    tweak model, temperature, or budget can instantiate directly:
+
+        factual = FactualAgent(FactualConfig(budget_limit_usd=5.0))
+    """
     return FactualAgent(), SemanticAgent(), StructuralAgent()
 
 
 def build_synthesis() -> SynthesisAgent:
-    """Return a fresh synthesis (supervisor) agent."""
+    """Return a fresh synthesis (supervisor) agent with its default budget."""
     return SynthesisAgent()

@@ -112,36 +112,38 @@ async def supervisor_worker_analysis(doc: str, question: str) -> dict:
     t0 = time.perf_counter()
 
     # Fan-out: run each specialist independently
-    factual_result = await factual_agent.run(document=doc, question=question)
-    semantic_result = await semantic_agent.run(document=doc, question=question)
-    structural_result = await structural_agent.run(document=doc, question=question)
+    factual_result = await factual_agent.run_async(document=doc, question=question)
+    semantic_result = await semantic_agent.run_async(document=doc, question=question)
+    structural_result = await structural_agent.run_async(
+        document=doc, question=question
+    )
 
     # Fan-in: supervisor synthesises the three structured outputs
-    synthesis_result = await synthesis_agent.run(
+    synthesis_result = await synthesis_agent.run_async(
         document=doc,
         question=question,
         factual_analysis=(
-            f"Claims: {factual_result.factual_claims}, "
-            f"Evidence: {factual_result.evidence_quality}"
+            f"Claims: {factual_result['factual_claims']}, "
+            f"Evidence: {factual_result['evidence_quality']}"
         ),
         semantic_analysis=(
-            f"Themes: {semantic_result.main_themes}, "
-            f"Implicit: {semantic_result.implicit_info}"
+            f"Themes: {semantic_result['main_themes']}, "
+            f"Implicit: {semantic_result['implicit_info']}"
         ),
         structural_analysis=(
-            f"Structure: {structural_result.structure_type}, "
-            f"Entities: {structural_result.key_entities}"
+            f"Structure: {structural_result['structure_type']}, "
+            f"Entities: {structural_result['key_entities']}"
         ),
     )
 
     elapsed = time.perf_counter() - t0
     return {
-        "answer": synthesis_result.unified_answer,
-        "confidence": synthesis_result.confidence,
-        "reasoning": synthesis_result.reasoning_chain,
-        "factual_claims": factual_result.factual_claims,
-        "themes": semantic_result.main_themes,
-        "entities": structural_result.key_entities,
+        "answer": synthesis_result["unified_answer"],
+        "confidence": synthesis_result["confidence"],
+        "reasoning": synthesis_result["reasoning_chain"],
+        "factual_claims": factual_result["factual_claims"],
+        "themes": semantic_result["main_themes"],
+        "entities": structural_result["key_entities"],
         "latency_s": elapsed,
     }
 

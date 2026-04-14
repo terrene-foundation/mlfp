@@ -5,16 +5,17 @@
 
 ## Import Renames
 
-| Old                                                                       | New                                                                                  |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `from kailash_pact import ...`                                            | `from pact import ...`                                                               |
-| `from kailash_nexus import ...`                                           | `from nexus import ...`                                                              |
-| `from kaizen.core import BaseAgent`                                       | `from kaizen.core.base_agent import BaseAgent`                                       |
-| `from kaizen.core import Signature, InputField, OutputField`              | `from kaizen import Signature, InputField, OutputField`                              |
-| `from kaizen_agents import LLMCostTracker`                                | **REMOVED** — use `BaseAgentConfig.budget_limit_usd`                                 |
-| `from kaizen import ReActAgent`                                           | `from kaizen_agents.agents.specialized.react import ReActAgent`                      |
-| `from kaizen.protocol import A2AMessage`                                  | `from kaizen import A2ATask, A2AAgentCard` (top-level)                               |
-| `from kaizen.memory import ShortTermMemory, LongTermMemory, EntityMemory` | Use `kaizen.memory.BufferMemory` or `SharedMemoryPool` — three-tier taxonomy is gone |
+| Old                                                                       | New                                                                                       |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `from kailash_pact import ...`                                            | `from pact import ...`                                                                    |
+| `from kailash_nexus import ...`                                           | `from nexus import ...`                                                                   |
+| `from kaizen.core import BaseAgent`                                       | `from kaizen.core.base_agent import BaseAgent`                                            |
+| `from kaizen.core import Signature, InputField, OutputField`              | `from kaizen import Signature, InputField, OutputField`                                   |
+| `from kaizen_agents import LLMCostTracker`                                | **REMOVED** — use `BaseAgentConfig.budget_limit_usd`                                      |
+| `from kaizen import ReActAgent`                                           | `from kaizen_agents.agents.specialized.react import ReActAgent`                           |
+| `from kaizen.protocol import A2AMessage`                                  | `from kaizen import A2ATask, A2AAgentCard` (top-level)                                    |
+| `from kaizen.memory import ShortTermMemory, LongTermMemory, EntityMemory` | Use `kaizen.memory.BufferMemory` or `SharedMemoryPool` — three-tier taxonomy is gone      |
+| `from kaizen.orchestration.pipeline import Pipeline`                      | `from kaizen_agents import Pipeline` — moved to kaizen_agents top-level (Shard 2 finding) |
 
 ## Kaizen — BaseAgent Pattern
 

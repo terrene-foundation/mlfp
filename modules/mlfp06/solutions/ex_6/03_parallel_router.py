@@ -30,7 +30,7 @@ import asyncio
 import time
 
 import matplotlib.pyplot as plt
-from kaizen.orchestration.pipeline import Pipeline
+from kaizen_agents import Pipeline
 
 from shared.mlfp06.ex_6 import (
     OUTPUT_DIR,
@@ -88,9 +88,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
     """Launch all specialists simultaneously with asyncio.gather."""
     t0 = time.perf_counter()
 
-    factual_task = factual_agent.run(document=doc, question=question)
-    semantic_task = semantic_agent.run(document=doc, question=question)
-    structural_task = structural_agent.run(document=doc, question=question)
+    factual_task = factual_agent.run_async(document=doc, question=question)
+    semantic_task = semantic_agent.run_async(document=doc, question=question)
+    structural_task = structural_agent.run_async(document=doc, question=question)
 
     factual_r, semantic_r, structural_r = await asyncio.gather(
         factual_task, semantic_task, structural_task
@@ -98,9 +98,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
 
     elapsed = time.perf_counter() - t0
     return {
-        "factual_claims": factual_r.factual_claims,
-        "themes": semantic_r.main_themes,
-        "entities": structural_r.key_entities,
+        "factual_claims": factual_r["factual_claims"],
+        "themes": semantic_r["main_themes"],
+        "entities": structural_r["key_entities"],
         "latency_s": elapsed,
     }
 
@@ -108,9 +108,9 @@ async def parallel_analysis(doc: str, question: str) -> dict:
 async def sequential_baseline(doc: str, question: str) -> float:
     """Same work, but one agent at a time — for latency comparison."""
     t0 = time.perf_counter()
-    await factual_agent.run(document=doc, question=question)
-    await semantic_agent.run(document=doc, question=question)
-    await structural_agent.run(document=doc, question=question)
+    await factual_agent.run_async(document=doc, question=question)
+    await semantic_agent.run_async(document=doc, question=question)
+    await structural_agent.run_async(document=doc, question=question)
     return time.perf_counter() - t0
 
 

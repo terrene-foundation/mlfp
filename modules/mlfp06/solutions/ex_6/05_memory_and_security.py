@@ -267,7 +267,9 @@ print("=" * 70)
 
 async def single_agent_analysis(doc: str, question: str) -> dict:
     """Run a single Delegate on the whole task."""
-    delegate = Delegate(model=MODEL, max_llm_cost_usd=3.0)
+    # Delegate's budget parameter renamed: max_llm_cost_usd -> budget_usd
+    # in kaizen_agents 0.9.x.  See workspaces/mlfp06-migration/api-cheatsheet.md
+    delegate = Delegate(model=MODEL, budget_usd=3.0)
     t0 = time.perf_counter()
     prompt = (
         "Analyse this passage and answer the question.\n"
@@ -289,28 +291,28 @@ async def single_agent_analysis(doc: str, question: str) -> dict:
 async def supervisor_worker_analysis(doc: str, question: str) -> dict:
     """Mirror of 01_supervisor_worker.py's orchestrator."""
     t0 = time.perf_counter()
-    factual_r = await factual_agent.run(document=doc, question=question)
-    semantic_r = await semantic_agent.run(document=doc, question=question)
-    structural_r = await structural_agent.run(document=doc, question=question)
-    synthesis_r = await synthesis_agent.run(
+    factual_r = await factual_agent.run_async(document=doc, question=question)
+    semantic_r = await semantic_agent.run_async(document=doc, question=question)
+    structural_r = await structural_agent.run_async(document=doc, question=question)
+    synthesis_r = await synthesis_agent.run_async(
         document=doc,
         question=question,
         factual_analysis=(
-            f"Claims: {factual_r.factual_claims}, "
-            f"Evidence: {factual_r.evidence_quality}"
+            f"Claims: {factual_r['factual_claims']}, "
+            f"Evidence: {factual_r['evidence_quality']}"
         ),
         semantic_analysis=(
-            f"Themes: {semantic_r.main_themes}, "
-            f"Implicit: {semantic_r.implicit_info}"
+            f"Themes: {semantic_r['main_themes']}, "
+            f"Implicit: {semantic_r['implicit_info']}"
         ),
         structural_analysis=(
-            f"Structure: {structural_r.structure_type}, "
-            f"Entities: {structural_r.key_entities}"
+            f"Structure: {structural_r['structure_type']}, "
+            f"Entities: {structural_r['key_entities']}"
         ),
     )
     return {
-        "answer": synthesis_r.unified_answer,
-        "confidence": synthesis_r.confidence,
+        "answer": synthesis_r["unified_answer"],
+        "confidence": synthesis_r["confidence"],
         "latency_s": time.perf_counter() - t0,
     }
 

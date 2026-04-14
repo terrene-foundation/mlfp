@@ -114,13 +114,13 @@ async def sequential_pipeline(doc: str, question: str) -> dict:
 
     # Stage 1: Factual extraction
     s1_t = time.perf_counter()
-    factual = await factual_agent.run(document=doc, question=question)
+    factual = await factual_agent.run_async(document=doc, question=question)
     per_stage.append(("factual extraction", time.perf_counter() - s1_t))
 
     # Stage 2: Interpretation (consumes stage-1 output)
     s2_t = time.perf_counter()
-    interpreted = await interpreter.run(
-        factual_claims=str(factual.factual_claims),
+    interpreted = await interpreter.run_async(
+        factual_claims=str(factual["factual_claims"]),
         document=doc,
         question=question,
     )
@@ -128,19 +128,19 @@ async def sequential_pipeline(doc: str, question: str) -> dict:
 
     # Stage 3: Synthesis (consumes stage-2 output)
     s3_t = time.perf_counter()
-    final = await synthesis_agent.run(
+    final = await synthesis_agent.run_async(
         document=doc,
         question=question,
-        factual_analysis=str(interpreted.interpreted_facts),
-        semantic_analysis=str(interpreted.relevance_ranking),
-        structural_analysis=f"Evidence quality: {factual.evidence_quality}",
+        factual_analysis=str(interpreted["interpreted_facts"]),
+        semantic_analysis=str(interpreted["relevance_ranking"]),
+        structural_analysis=f"Evidence quality: {factual['evidence_quality']}",
     )
     per_stage.append(("synthesis", time.perf_counter() - s3_t))
 
     elapsed = time.perf_counter() - t0
     return {
-        "answer": final.unified_answer,
-        "confidence": final.confidence,
+        "answer": final["unified_answer"],
+        "confidence": final["confidence"],
         "stages": per_stage,
         "latency_s": elapsed,
     }

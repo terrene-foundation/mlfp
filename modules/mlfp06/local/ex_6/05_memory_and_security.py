@@ -160,15 +160,21 @@ print("\n✓ Checkpoint 3 passed\n")
 
 async def single_agent_analysis(doc: str, question: str) -> dict:
     """Run a single Delegate on the task."""
-    delegate = Delegate(model=MODEL, max_llm_cost_usd=3.0)
+    # Delegate's budget kwarg in kaizen_agents 0.9.x is `budget_usd`
+    # (the legacy `max_llm_cost_usd` was removed with BaseAgentConfig).
+    delegate = Delegate(model=MODEL, budget_usd=3.0)
     t0 = time.perf_counter()
     prompt = (
         "Analyse this passage and answer the question.\n\n"
         f"Passage: {doc[:2000]}\nQuestion: {question}\n\nAnswer:"
     )
     response = ""
-    # TODO: Stream events from delegate.run(prompt); concatenate event.text
-    # to response for events that have a .text attribute.
+    # TODO: Stream events from delegate.run(prompt) — it's an async generator;
+    # concatenate event.text to response for events that have a .text attribute.
+    # Hint:
+    #   async for event in delegate.run(prompt):
+    #       if hasattr(event, "text"):
+    #           response += event.text
     ____
     return {
         "answer": response.strip(),
@@ -180,12 +186,14 @@ async def supervisor_worker_analysis(doc: str, question: str) -> dict:
     """Supervisor-worker pattern (see 01_supervisor_worker.py)."""
     t0 = time.perf_counter()
     # TODO: Fan out to the three specialists and fan in to synthesis_agent.
-    # Reuse the pattern from 01_supervisor_worker.py.
+    # Reuse the pattern from 01_supervisor_worker.py — each specialist is
+    # invoked via `await agent.run_async(document=doc, question=question)`
+    # and returns a dict keyed by its Signature's OutputField names.
     ____
     synthesis_result = ____
     return {
-        "answer": synthesis_result.unified_answer,
-        "confidence": synthesis_result.confidence,
+        "answer": synthesis_result["unified_answer"],
+        "confidence": synthesis_result["confidence"],
         "latency_s": time.perf_counter() - t0,
     }
 

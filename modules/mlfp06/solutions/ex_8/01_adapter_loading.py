@@ -8,7 +8,7 @@
 # WHAT YOU'LL LEARN:
 #   - Use kailash-align's AdapterRegistry as the source of truth for
 #     model provenance and version control
-#   - Load a LoRA adapter through AlignmentPipeline (SFT + DPO merge)
+#   - Load a LoRA adapter through AlignmentServing (SFT + DPO merge)
 #   - Fall back safely when a specific adapter is unavailable
 #   - Visualise the adapter catalogue as a registry table
 #   - Apply adapter loading to a Singapore HR compliance scenario
@@ -19,7 +19,7 @@
 # TASKS:
 #   1. Load MMLU evaluation data for downstream monitoring
 #   2. Query AdapterRegistry and pick the best available adapter
-#   3. Instantiate AlignmentPipeline in inference mode
+#   3. Build an AlignmentServing stack bound to the adapter registry
 #   4. Visualise the adapter catalogue
 #   5. Apply to a Singapore HR compliance QA scenario
 #
@@ -30,7 +30,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import polars as pl
 
-from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
+from kailash_align import AdapterRegistry
+from kailash_align.serving import AlignmentServing, ServingConfig
 
 from shared.mlfp06.ex_8 import (
     OUTPUT_DIR,
@@ -111,21 +112,30 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Build the AlignmentPipeline for inference
+# TASK 3 — Build the AlignmentServing stack for deployment
 # ════════════════════════════════════════════════════════════════════════
+# kailash-align 0.3+ moved the inference / deployment path out of
+# AlignmentPipeline (which is training-only: sft, dpo, kto, orpo, grpo,
+# ppo, rloo, online_dpo, sft_then_dpo) and into AlignmentServing, which
+# handles GGUF export, Ollama, and vLLM targets. Adapter lookup still
+# comes from the AdapterRegistry; AlignmentServing consumes the registry
+# by reference so `deploy(adapter_name=...)` resolves the path at call
+# time instead of being baked into the config. This is the canonical
+# "load-for-inference" shape in the modern align stack.
 
-inference_pipeline = AlignmentPipeline(
-    AlignmentConfig(
-        method="inference",
-        adapter_path=best_adapter.get("adapter_path", ""),
-    )
+serving_config = ServingConfig(
+    target="ollama",
+    quantization="q4_k_m",
+    validate_gguf=False,  # skip GGUF validation in course smoke-test
 )
+serving = AlignmentServing(adapter_registry=registry, config=serving_config)
 
-print(f"Loaded inference pipeline with adapter: {best_adapter.get('name', 'N/A')}")
+print(f"Built AlignmentServing stack (target={serving_config.target})")
+print(f"  Resolved adapter from registry: {best_adapter.get('name', 'none')}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert inference_pipeline is not None, "Task 3: pipeline should be created"
-print("\u2713 Checkpoint 3 passed — AlignmentPipeline ready\n")
+assert serving is not None, "Task 3: serving stack should be created"
+print("\u2713 Checkpoint 3 passed — AlignmentServing ready\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -250,7 +260,7 @@ print(
     """
   [x] Queried AdapterRegistry as the catalogue of trained adapters
   [x] Chose the best available adapter with graceful fallback
-  [x] Built an AlignmentPipeline for inference (not training)
+  [x] Built an AlignmentServing stack for deployment (GGUF / Ollama / vLLM)
   [x] Snapshotted the registry to a parquet for rollback visibility
   [x] Applied adapter loading to a Singapore HR compliance scenario
 

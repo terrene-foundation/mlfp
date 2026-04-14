@@ -1,7 +1,9 @@
 # MLFP06 API Cheatsheet — Old → New
 
 **Purpose**: Copy-paste reference for every migration edit. Use this as the source of truth during shard execution.
-**Verified against**: `kailash-pact==0.8.1`, `kailash-kaizen==2.7.3`, `kailash-nexus==2.0.1`, `kaizen-agents==0.9.2`.
+**Verified against**: `kailash-pact==0.8.1`, `kailash-kaizen==2.7.4`, `kailash-nexus==2.0.3`, `kaizen-agents==0.9.2`, `kailash-align==0.3.1`.
+
+**2026-04-15 smoke test** — re-ran every ex_7 + ex_8 solution against the 2.7.4 / 2.0.3 / 0.3.1 stack. All pact / kaizen / nexus flows still canonical from the 2.7.3 / 2.0.1 migration. The only drift surfaced was `kailash_align` 0.3.x removing the `method="inference"` path entirely; see "kailash-align — Adapter Loading for Inference" section below.
 
 ## Import Renames
 
@@ -519,3 +521,61 @@ results, run_id = runtime.execute(workflow.build())   # MUST call .build()
 ```
 
 Only relevant for the Nexus fallback path in Shard 7 (if `app.register(serve_qa)` turns out to require a workflow wrapper).
+
+## kailash-align — Adapter Loading for Inference (2026-04-15 drift)
+
+### Old (kailash-align <= 0.2 — broken on 0.3.1)
+
+```python
+from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
+
+registry = AdapterRegistry()
+best = await registry.get_adapter("sg_domain_slerp_merge_v1")
+
+inference_pipeline = AlignmentPipeline(
+    AlignmentConfig(
+        method="inference",                           # REMOVED in 0.3
+        adapter_path=best.get("adapter_path", ""),    # REMOVED in 0.3
+    )
+)
+```
+
+**Failure mode**:
+
+```
+TypeError: AlignmentConfig.__init__() got an unexpected keyword argument 'adapter_path'
+ValueError: Unknown training method 'inference'. Available: [
+    'bco','cpo','dpo','grpo','kto','nash_md','online_dpo','orpo','ppo','rloo','sft','xpo','sft_then_dpo'
+]
+```
+
+`AlignmentConfig` in 0.3.x is training-only. The inference / deployment path moved to `AlignmentServing`.
+
+### New (canonical — kailash-align 0.3.1)
+
+```python
+from kailash_align import AdapterRegistry
+from kailash_align.serving import AlignmentServing, ServingConfig
+
+registry = AdapterRegistry()
+best = await registry.get_adapter("sg_domain_slerp_merge_v1")
+
+serving_config = ServingConfig(
+    target="ollama",           # or "vllm"
+    quantization="q4_k_m",
+    validate_gguf=False,       # skip GGUF validation in smoke-test contexts
+)
+serving = AlignmentServing(adapter_registry=registry, config=serving_config)
+
+# The real deploy path (not run in the course smoke-test — needs llama-cpp-python + Ollama):
+# deployment = serving.deploy(adapter_name=best["name"])
+```
+
+**Key deltas**:
+
+1. Inference pipeline is `AlignmentServing`, not `AlignmentPipeline`. `AlignmentPipeline.train()` is training-only (SFT/DPO/KTO/etc).
+2. The registry is passed to `AlignmentServing` as a constructor dependency (`adapter_registry=registry`), not baked into a config.
+3. Adapter resolution happens at `deploy(adapter_name=...)` call time — no `adapter_path` on the config.
+4. Targets are `"ollama"` / `"vllm"` (via GGUF export). Course smoke-tests only construct the stack; they do not call `.deploy()` because llama-cpp-python + Ollama aren't part of the course install.
+
+Used by `modules/mlfp06/solutions/ex_8/01_adapter_loading.py`. Migrated 2026-04-15 during the 2.7.4 / 2.0.3 / 0.3.1 smoke test.

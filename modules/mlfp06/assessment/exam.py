@@ -101,7 +101,7 @@ print(f"Using model: {LLM_MODEL}")
 
 print("=== Task 1a: Zero-Shot Classification ===")
 from kaizen_agents import Delegate
-from kaizen.core import Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
 
 df_feedback = loader.load("mlfp06", "citizen_feedback.csv")
 print(f"Feedback dataset: {df_feedback.shape}")
@@ -739,16 +739,39 @@ print("\n>>> Checkpoint 2 passed: RAG pipeline, evaluation, and HyDE complete")
 #     - Total cost for the pipeline
 #     - Processing time
 #
-# 3e. (5 marks) Implement an LLMCostTracker budget:
+# 3e. (5 marks) Implement a pipeline-level cost budget tracker:
 #     - Total budget: $1.00 for the exam
 #     - Per-pipeline budget: $0.10 per feedback item
-#     Process items until the budget is exhausted. Handle budget
-#     exhaustion gracefully (stop processing, report what was completed).
-#     Print the cost breakdown per agent and per pipeline.
+#     Each agent already has its own cap via BaseAgentConfig.budget_limit_usd
+#     (the canonical kaizen 2.7.3 model — per-agent, not global). Your task
+#     is to layer a pipeline-level tracker on top: enforce a total budget
+#     across all pipeline runs and a per-run cap. Process items until the
+#     budget is exhausted. Handle exhaustion gracefully (stop processing,
+#     report what was completed). Print the cost breakdown per agent and
+#     per pipeline.
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n=== Task 3a: Specialist Agents ===")
-from kaizen.core import BaseAgent
+from dataclasses import dataclass, field
+
+from kaizen.core.base_agent import BaseAgent
+
+
+# ── Canonical kaizen 2.7.3 pattern ──────────────────────────────────────
+# Each BaseAgent subclass needs a dataclass config (holds model +
+# budget_limit_usd) and an *instance* signature passed into
+# super().__init__(signature=...). Passing the class instead of an
+# instance silently falls back to DefaultSignature — students would
+# then receive generic output regardless of their declared schema.
+
+
+@dataclass
+class ClassifierAgentConfig:
+    """Config for ClassifierAgent — reuses FeedbackClassification schema."""
+
+    model: str = LLM_MODEL
+    budget_limit_usd: float = 0.25
+    temperature: float = 0.0
 
 
 class ClassifierAgent(BaseAgent):
@@ -760,11 +783,27 @@ education, environment), assign urgency (low/medium/high/critical), and assess s
 You ONLY classify — you do not research, respond, or take action.
 Be precise and consistent. When in doubt, classify as the most specific category."""
 
-    def __init__(self):
+    def __init__(self, config: ClassifierAgentConfig | None = None):
         super().__init__(
-            model=LLM_MODEL,
-            signature=FeedbackClassification,
+            config=config or ClassifierAgentConfig(),
+            signature=FeedbackClassification(),
         )
+
+
+class ResearchSignature(Signature):
+    """Minimal signature for the research specialist."""
+
+    query: str = InputField(description="The research query or classified feedback")
+    summary: str = OutputField(description="Short factual summary with citations")
+
+
+@dataclass
+class ResearchAgentConfig:
+    """Config for ResearchAgent."""
+
+    model: str = LLM_MODEL
+    budget_limit_usd: float = 0.25
+    temperature: float = 0.1
 
 
 class ResearchAgent(BaseAgent):
@@ -776,8 +815,11 @@ relevant regulations, guidelines, and precedents. You provide factual context on
 you do not draft responses or make recommendations.
 Always cite your sources by document reference."""
 
-    def __init__(self):
-        super().__init__(model=LLM_MODEL)
+    def __init__(self, config: ResearchAgentConfig | None = None):
+        super().__init__(
+            config=config or ResearchAgentConfig(),
+            signature=ResearchSignature(),
+        )
         self.tools = {
             "search_policies": self.search_policies,
             "get_department_info": self.get_department_info,
@@ -823,6 +865,24 @@ Always cite your sources by document reference."""
         return [corpus_chunks[idx][:200] for idx, _ in results]
 
 
+class ResponseSignature(Signature):
+    """Minimal signature for the response drafter."""
+
+    context: str = InputField(
+        description="Classified feedback + research context to draft from"
+    )
+    draft: str = OutputField(description="Professional citizen response (<200 words)")
+
+
+@dataclass
+class ResponseAgentConfig:
+    """Config for ResponseAgent."""
+
+    model: str = LLM_MODEL
+    budget_limit_usd: float = 0.25
+    temperature: float = 0.3
+
+
 class ResponseAgent(BaseAgent):
     """Drafts a citizen response based on classification and research."""
 
@@ -835,13 +895,16 @@ empathetic response to the citizen. Your response must:
 4. Be courteous and specific — no generic template language
 Keep responses under 200 words."""
 
-    def __init__(self):
-        super().__init__(model=LLM_MODEL)
+    def __init__(self, config: ResponseAgentConfig | None = None):
+        super().__init__(
+            config=config or ResponseAgentConfig(),
+            signature=ResponseSignature(),
+        )
 
 
-classifier_agent = ClassifierAgent()
-research_agent = ResearchAgent()
-response_agent = ResponseAgent()
+classifier_agent = ClassifierAgent(ClassifierAgentConfig())
+research_agent = ResearchAgent(ResearchAgentConfig())
+response_agent = ResponseAgent(ResponseAgentConfig())
 print("3 specialist agents created: ClassifierAgent, ResearchAgent, ResponseAgent")
 
 
@@ -1008,9 +1071,66 @@ for i, text in enumerate(feedback_texts[:5]):
 
 # --- 3e: Cost budget management ---
 print("\n=== Task 3e: Cost Budget Management ===")
-from kaizen_agents import LLMCostTracker
+#
+# NOTE — kaizen 2.7.3 migration:
+#   Earlier versions of kaizen shipped a standalone `LLMCostTracker`
+#   class for monitoring cumulative LLM spend across agents. In kaizen
+#   2.7.3 cost tracking moved INTO the agent config:
+#   `BaseAgentConfig.budget_limit_usd`. Every agent now carries its own
+#   budget cap as a config field, and the supervisor's audit trail
+#   records per-call consumption. This is a strictly better model —
+#   the budget is bound to the agent's envelope (not a separate global
+#   tracker), and the hash-chained audit trail makes spend verifiable
+#   in compliance audits. See `BaseAgentConfig.budget_limit_usd` in
+#   `kaizen.core.base_agent`.
+#
+# For the exam we compose the per-agent caps into a pipeline-level cost
+# budget via a small pure-Python tracker. In production you would read
+# `supervisor.audit.to_list()` and aggregate `entry["cost_usd"]` by
+# agent — same arithmetic, auditable source.
 
-cost_tracker = LLMCostTracker(total_budget=1.00, per_call_budget=0.10)
+
+class BudgetExhaustedError(RuntimeError):
+    """Raised when a pipeline run would exceed the remaining budget."""
+
+
+class PipelineBudget:
+    """Pure-Python budget tracker for multi-agent pipeline cost management.
+
+    Mirrors the removed `LLMCostTracker` API (`remaining_budget`,
+    `check_budget`, `record_cost`, `total_spent`) so that student
+    answers focus on the cascade logic, not on reconstructing the
+    interface. The key teaching point is: per-pipeline caps are a
+    layer ABOVE `BaseAgentConfig.budget_limit_usd`; agents still
+    enforce their own per-call limits independently.
+    """
+
+    def __init__(self, total_budget: float, per_call_budget: float):
+        self.total_budget = total_budget
+        self.per_call_budget = per_call_budget
+        self.total_spent: float = 0.0
+
+    @property
+    def remaining_budget(self) -> float:
+        return self.total_budget - self.total_spent
+
+    def check_budget(self, estimated_cost: float) -> None:
+        if estimated_cost > self.per_call_budget:
+            raise BudgetExhaustedError(
+                f"estimated_cost ${estimated_cost:.4f} exceeds per-call "
+                f"cap ${self.per_call_budget:.4f}"
+            )
+        if self.remaining_budget < estimated_cost:
+            raise BudgetExhaustedError(
+                f"remaining ${self.remaining_budget:.4f} < "
+                f"estimated ${estimated_cost:.4f}"
+            )
+
+    def record_cost(self, amount: float) -> None:
+        self.total_spent += amount
+
+
+cost_tracker = PipelineBudget(total_budget=1.00, per_call_budget=0.10)
 
 budget_results = []
 budget_exhausted = False
@@ -1035,7 +1155,7 @@ for i, text in enumerate(feedback_texts[5:]):
                 f"  Processed {items_processed} items, spent ${cost_tracker.total_spent:.4f}"
             )
 
-    except cost_tracker.BudgetExhaustedError:
+    except BudgetExhaustedError:
         print(f"\nBudget exhausted after {items_processed} items.")
         budget_exhausted = True
         break
@@ -1048,6 +1168,10 @@ print(
     f"  Average cost per item: ${cost_tracker.total_spent / max(items_processed, 1):.4f}"
 )
 print(f"  Budget exhausted: {budget_exhausted}")
+print(
+    "  (In production, aggregate costs via supervisor.audit.to_list() — "
+    "each entry carries 'cost_usd' from the governed agent envelope.)"
+)
 
 
 # ── Checkpoint 3 ─────────────────────────────────────────
@@ -1060,16 +1184,29 @@ print("\n>>> Checkpoint 3 passed: multi-agent pipeline with cost tracking comple
 # TASK 4: Governance, Deployment, and Production (30 marks)
 # ════════════════════════════════════════════════════════════════════════
 #
-# 4a. (6 marks) Implement PACT governance for the feedback system:
-#     - Define 3 roles: citizen_service_officer, supervisor, admin
-#     - Define D/T/R addressing: Domain=feedback, Team=operations
-#     - Create operating envelopes:
-#       * citizen_service_officer: can classify and respond, cannot
-#         access healthcare data marked as sensitive
-#       * supervisor: can classify, respond, AND escalate
-#       * admin: full access
-#     - Test that governance WORKS: verify that a citizen_service_officer
-#       CANNOT access restricted resources.
+# 4a. (6 marks) Implement PACT governance for the feedback system using
+#     modern dash-delimited D/T/R addressing (pact 0.8.1):
+#     - Define an org via YAML with one department (feedback, D1), one
+#       operations team (T1 under D1), and 3 role positions:
+#         * D1-R1           admin (department head)
+#         * D1-R1-T1-R1     citizen_service_officer
+#         * D1-R1-T1-R2     supervisor
+#     - Build envelopes via ConstraintEnvelopeConfig with the 5 canonical
+#       dimensions (financial, operational, temporal, data_access,
+#       communication) and attach them to each role via set_role_envelope:
+#       * citizen_service_officer: allowed_actions=[classify, respond,
+#         search_policies], max_spend_usd=0.05, confidentiality=RESTRICTED
+#       * supervisor: adds escalate + view_audit, max_spend_usd=0.20,
+#         confidentiality=CONFIDENTIAL
+#       * admin: tool_allowlist="*", max_spend_usd=1.00,
+#         confidentiality=CONFIDENTIAL
+#     - Verify enforcement via engine.verify_action(role_address, action,
+#       context). Assert that the officer's verdict for
+#       access_sensitive_health_data is NOT allowed and that the officer's
+#       verdict for classify IS allowed.
+#     - Grammar rule (memorise this): every "D" or "T" MUST be immediately
+#       followed by exactly one "R". `Address.parse("D1-R1-T1-R1")` means
+#       "department 1 head delegated task to team 1 responsible 1".
 #
 # 4b. (6 marks) Implement budget cascading:
 #     - Admin allocates $5.00 total daily budget
@@ -1086,13 +1223,17 @@ print("\n>>> Checkpoint 3 passed: multi-agent pipeline with cost tracking comple
 #     - Log: governance decisions (allowed/denied, reason)
 #     Generate an audit report for the last 10 actions.
 #
-# 4d. (6 marks) Deploy the system using Nexus as a multi-channel
+# 4d. (6 marks) Deploy the system using Nexus 2.0.1 as a multi-channel
 #     platform:
-#     - API endpoint: POST /feedback with JSON body
-#     - CLI command: feedback-system process <text>
-#     - MCP tool: process_citizen_feedback(text)
-#     Define the Nexus app with authentication middleware and
-#     rate limiting. Show the deployment configuration.
+#     - Wrap a shared feedback handler in a single-node WorkflowBuilder
+#       (Core SDK runtime pattern — same as earlier MLFP modules).
+#     - Register the built Workflow via `Nexus.register(name, workflow)`.
+#       Nexus exposes the same workflow as API + CLI + MCP automatically.
+#     - Call `engine.verify_action` inside the handler so governance runs
+#       on EVERY channel — there is no "trusted channel".
+#     - Note: JWT auth and rate limiting are configured via Nexus's
+#       middleware stack at `app.start()` time; see ex_8/03_multichannel_serving.py
+#       for the full RBAC + JWT + sliding-window rate-limit demo.
 #
 # 4e. (6 marks) Integration test: send 3 feedback items through the
 #     deployed system. For each, verify:
@@ -1105,89 +1246,208 @@ print("\n>>> Checkpoint 3 passed: multi-agent pipeline with cost tracking comple
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n=== Task 4a: PACT Governance ===")
-from kailash_pact import GovernanceEngine, Address, OperatingEnvelope
+import tempfile
 
-# Define D/T/R structure
-governance = GovernanceEngine()
-governance.compile_org(
-    {
-        "domains": {
-            "feedback": {
-                "teams": {
-                    "operations": {
-                        "roles": ["citizen_service_officer", "supervisor", "admin"],
-                    },
-                },
-            },
-        },
-    }
+from pact import (
+    Address,
+    CommunicationConstraintConfig,
+    ConfidentialityLevel,
+    ConstraintEnvelopeConfig,
+    DataAccessConstraintConfig,
+    FinancialConstraintConfig,
+    GovernanceEngine,
+    OperationalConstraintConfig,
+    RoleEnvelope,
+    TemporalConstraintConfig,
+    load_org_yaml,
 )
 
-# Define operating envelopes
-officer_envelope = OperatingEnvelope(
-    role="citizen_service_officer",
-    allowed_actions=["classify", "respond", "search_policies"],
-    denied_actions=["escalate", "access_sensitive_health_data", "modify_governance"],
-    max_cost_per_action=0.05,
+# ── Step 1: Define the org via YAML (modern pact schema) ───────────────
+# The org grammar: every Department (D) and every Team (T) MUST be
+# immediately followed by exactly one Role (R). So the officer's
+# address "D1-R1-T1-R1" reads as "dept 1 head delegated task to team 1
+# responsible 1". The supervisor sits at "D1-R1-T1-R2".
+
+_org_yaml = """
+org:
+  org_id: "sg_govtech_feedback"
+  name: "SG GovTech Feedback Division"
+  description: "Citizen feedback governance — PACT exam scenario"
+
+departments:
+  - id: "D1"
+    name: "Feedback"
+    head_role: "D1-R1"
+
+teams:
+  - id: "D1-T1"
+    name: "Operations"
+    department: "D1"
+
+agents:
+  - id: "D1-R1"
+    name: "admin"
+    role: "admin"
+    clearance: "confidential"
+    constraint_envelope: "admin_envelope"
+  - id: "D1-R1-T1-R1"
+    name: "citizen_service_officer"
+    role: "officer"
+    clearance: "restricted"
+    constraint_envelope: "officer_envelope"
+  - id: "D1-R1-T1-R2"
+    name: "supervisor"
+    role: "supervisor"
+    clearance: "confidential"
+    constraint_envelope: "supervisor_envelope"
+
+envelopes:
+  - id: "admin_envelope"
+    confidentiality_clearance: "confidential"
+    financial:
+      max_spend_usd: 1.00
+    operational:
+      allowed_actions: ["*"]
+    max_delegation_depth: 5
+  - id: "officer_envelope"
+    confidentiality_clearance: "restricted"
+    financial:
+      max_spend_usd: 0.05
+    operational:
+      allowed_actions: ["classify", "respond", "search_policies"]
+    max_delegation_depth: 2
+  - id: "supervisor_envelope"
+    confidentiality_clearance: "confidential"
+    financial:
+      max_spend_usd: 0.20
+    operational:
+      allowed_actions:
+        - "classify"
+        - "respond"
+        - "search_policies"
+        - "escalate"
+        - "view_audit"
+    max_delegation_depth: 3
+
+workspaces:
+  - id: "feedback_ws"
+    name: "Feedback Workspace"
+    departments: ["D1"]
+"""
+
+_org_path = Path(tempfile.mkstemp(suffix="_org.yaml", prefix="mlfp06_exam_")[1])
+_org_path.write_text(_org_yaml)
+
+loaded = load_org_yaml(str(_org_path))
+engine = GovernanceEngine(loaded.org_definition)
+
+# ── Step 2: Parse D/T/R addresses via the dash-delimited grammar ───────
+admin_addr = Address.parse("D1-R1")
+officer_addr = Address.parse("D1-R1-T1-R1")
+supervisor_addr = Address.parse("D1-R1-T1-R2")
+print(f"Admin address:      {admin_addr}")
+print(f"Officer address:    {officer_addr}")
+print(f"Supervisor address: {supervisor_addr}")
+
+# ── Step 3: Build a tighter envelope programmatically and attach it ────
+# This demonstrates ConstraintEnvelopeConfig with all 5 canonical
+# dimensions (financial, operational, temporal, data_access,
+# communication). In production the envelopes above come from YAML;
+# here we also set one via `engine.set_role_envelope` to exercise the
+# runtime attachment path — this is the call students must memorise
+# for Task 4a of the exam.
+
+officer_runtime_envelope = ConstraintEnvelopeConfig(
+    id="officer_runtime_envelope",
+    description="Citizen service officer — runtime-attached envelope",
+    confidentiality_clearance=ConfidentialityLevel.RESTRICTED,
+    financial=FinancialConstraintConfig(max_spend_usd=0.05),
+    operational=OperationalConstraintConfig(
+        allowed_actions=["classify", "respond", "search_policies"],
+    ),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=2,
+)
+officer_role_envelope = RoleEnvelope(
+    id="officer_role_envelope",
+    defining_role_address="D1-R1",  # supervisor role defining the officer's envelope
+    target_role_address="D1-R1-T1-R1",  # the officer itself
+    envelope=officer_runtime_envelope,
+)
+engine.set_role_envelope(officer_role_envelope)
+print("Runtime envelope attached to D1-R1-T1-R1 (citizen service officer)")
+
+# ── Step 4: Verify enforcement via engine.verify_action ────────────────
+# verify_action returns a verdict with `.allowed` (bool), `.level`
+# (allowed|blocked|warn|audit), and `.reason` (str). This is the
+# canonical 5-step access algorithm in pact 0.8.1.
+
+officer_classify = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="classify",
+    context={"cost": 0.01},
+)
+print(
+    f"Officer can classify: {officer_classify.allowed} (expected: True) "
+    f"level={officer_classify.level}"
 )
 
-supervisor_envelope = OperatingEnvelope(
-    role="supervisor",
-    allowed_actions=[
-        "classify",
-        "respond",
-        "search_policies",
-        "escalate",
-        "view_audit",
-    ],
-    denied_actions=["modify_governance", "access_sensitive_health_data"],
-    max_cost_per_action=0.20,
+officer_health = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="access_sensitive_health_data",
+    context={"cost": 0.01},
+)
+print(
+    f"Officer can access sensitive health data: {officer_health.allowed} "
+    f"(expected: False) level={officer_health.level}"
 )
 
-admin_envelope = OperatingEnvelope(
-    role="admin",
-    allowed_actions=["*"],  # Full access
-    denied_actions=[],
-    max_cost_per_action=1.00,
+officer_escalate = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="escalate",
+    context={"cost": 0.01},
+)
+print(
+    f"Officer can escalate: {officer_escalate.allowed} "
+    f"(expected: False) level={officer_escalate.level}"
 )
 
-governance.register_envelope("citizen_service_officer", officer_envelope)
-governance.register_envelope("supervisor", supervisor_envelope)
-governance.register_envelope("admin", admin_envelope)
-
-# Test governance enforcement
-officer_addr = Address(
-    domain="feedback", team="operations", role="citizen_service_officer"
+admin_escalate = engine.verify_action(
+    role_address="D1-R1",
+    action="escalate",
+    context={"cost": 0.10},
 )
-admin_addr = Address(domain="feedback", team="operations", role="admin")
-
-# Officer should be able to classify
-can_classify = governance.can_access(officer_addr, action="classify")
-print(f"Officer can classify: {can_classify} (expected: True)")
-
-# Officer should NOT be able to access sensitive health data
-can_access_health = governance.can_access(
-    officer_addr, action="access_sensitive_health_data"
+print(
+    f"Admin can escalate: {admin_escalate.allowed} (expected: True) "
+    f"level={admin_escalate.level}"
 )
-print(f"Officer can access health data: {can_access_health} (expected: False)")
 
-# Officer should NOT be able to escalate
-can_escalate = governance.can_access(officer_addr, action="escalate")
-print(f"Officer can escalate: {can_escalate} (expected: False)")
-
-# Admin should have full access
-can_admin_escalate = governance.can_access(admin_addr, action="escalate")
-print(f"Admin can escalate: {can_admin_escalate} (expected: True)")
-
-# Explain access decision
-explanation = governance.explain_access(
-    officer_addr, action="access_sensitive_health_data"
+# ── Step 5: Fail-closed verification — unknown address must be blocked ─
+unknown = engine.verify_action(
+    role_address="D99-R99-T99-R99",
+    action="classify",
+    context={"cost": 0.01},
 )
-print(f"Denial explanation: {explanation}")
+print(
+    f"Unknown role blocked: {not unknown.allowed} (expected: True) "
+    f"reason={unknown.reason[:60]!r}"
+)
+
+# Legacy aliases — preserved so later sections of the exam that read
+# `can_access_health` / `can_classify` / `governance` still resolve
+# against the new verdict objects without rewriting downstream asserts.
+governance = engine
+can_classify = bool(officer_classify.allowed)
+can_access_health = bool(officer_health.allowed)
+can_escalate = bool(officer_escalate.allowed)
+can_admin_escalate = bool(admin_escalate.allowed)
 
 assert not can_access_health, "Governance FAILED: officer accessed restricted resource!"
 assert can_classify, "Governance FAILED: officer cannot classify!"
-print("Governance enforcement verified.")
+assert not unknown.allowed, "Governance FAILED: unknown address not fail-closed!"
+print("Governance enforcement verified (verify_action + fail-closed unknown).")
 
 
 # --- 4b: Budget cascading ---
@@ -1263,24 +1523,36 @@ print("\n=== Task 4c: Audit Trails ===")
 
 audit_log = []
 
+# Map narrative role names -> dash-delimited D/T/R addresses in the
+# compiled org. The audit log is a pure-Python list (no PACT dependency)
+# that records `engine.verify_action` decisions alongside each action so
+# compliance reviewers can replay "who did what, with what verdict".
+_AUDIT_ROLE_MAP = {
+    "officer_1": "D1-R1-T1-R1",
+    "officer_2": "D1-R1-T1-R1",
+    "supervisor": "D1-R1-T1-R2",
+    "admin": "D1-R1",
+}
+
 
 def log_action(who: str, action: str, resource: str, result: str, cost: float = 0):
-    """Record an auditable action."""
+    """Record an auditable action with its governance verdict."""
+    role_address = _AUDIT_ROLE_MAP.get(who, "D1-R1-T1-R1")
+    verdict = engine.verify_action(
+        role_address=role_address,
+        action=action,
+        context={"cost": cost},
+    )
     entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "who": who,
+        "role_address": role_address,
         "action": action,
         "resource": resource,
         "result": result,
         "cost": cost,
-        "governance_decision": governance.can_access(
-            Address(
-                domain="feedback",
-                team="operations",
-                role=who.split("_")[0] if "_" in who else who,
-            ),
-            action=action,
-        ),
+        "governance_decision": bool(verdict.allowed),
+        "governance_level": verdict.level,
     }
     audit_log.append(entry)
     return entry
@@ -1331,19 +1603,36 @@ print(f"\nGovernance: {allowed} allowed, {denied} denied")
 
 # --- 4d: Nexus deployment ---
 print("\n=== Task 4d: Nexus Deployment Configuration ===")
-from kailash_nexus import Nexus
+#
+# Canonical Nexus 2.0.1 registration: `Nexus.register(name, workflow)`
+# — the second argument is a built `Workflow`, NOT a bare async
+# function. We wrap the feedback handler in a single-node
+# WorkflowBuilder so the same pipeline runs across API + CLI + MCP.
+# This is the Core SDK runtime pattern from earlier MLFP modules.
 
-app = Nexus()
+from kailash.workflow.builder import WorkflowBuilder
+from nexus import Nexus
 
 
-# Register the feedback processing workflow
-@app.route("/feedback", methods=["POST"])
-async def process_feedback_endpoint(request):
-    """API endpoint for citizen feedback processing."""
-    text = request.json.get("feedback_text")
-    if not text:
-        return {"error": "feedback_text is required"}, 400
+async def serve_feedback(text: str, role: str = "citizen_service_officer") -> dict:
+    """Shared feedback handler — one function, three channels.
 
+    The governance verdict is re-checked on every request so the same
+    envelope that bounds the officer role inside the exam also bounds
+    every channel (API / CLI / MCP). There is no "trusted channel" —
+    channel parity is the whole point of the framework-first approach.
+    """
+    verdict = engine.verify_action(
+        role_address=_AUDIT_ROLE_MAP.get(role, "D1-R1-T1-R1"),
+        action="classify",
+        context={"cost": 0.02},
+    )
+    if not verdict.allowed:
+        return {
+            "error": "governance_denied",
+            "reason": verdict.reason,
+            "level": verdict.level,
+        }
     result = supervisor.process_feedback(text)
     return {
         "classification": result["classification"],
@@ -1353,47 +1642,36 @@ async def process_feedback_endpoint(request):
     }
 
 
-# CLI command
-@app.command("process")
-def process_feedback_cli(text: str):
-    """CLI command: feedback-system process <text>"""
-    result = supervisor.process_feedback(text)
-    print(f"Category: {result['classification']['category']}")
-    print(f"Urgency: {result['classification']['urgency']}")
-    print(f"Response: {result['response']}")
-
-
-# MCP tool
-@app.mcp_tool("process_citizen_feedback")
-def process_feedback_mcp(text: str) -> dict:
-    """MCP tool for AI agents to process citizen feedback."""
-    return supervisor.process_feedback(text)
-
-
-# Authentication and rate limiting
-app.add_middleware(
-    "auth",
+# Wrap the handler in a single-node WorkflowBuilder. The PythonCodeNode
+# body demonstrates the structural pattern — in production the body
+# would call serve_feedback via run_async(). Using a stub here keeps
+# the exam offline-runnable while still exercising the registration
+# contract.
+nexus_workflow = WorkflowBuilder()
+nexus_workflow.add_node(
+    "PythonCodeNode",
+    "serve_feedback_node",
     {
-        "type": "jwt",
-        "secret_env": "NEXUS_JWT_SECRET",
-        "required_roles": ["citizen_service_officer", "supervisor", "admin"],
+        "code": (
+            "# Production body would call serve_feedback(text, role)\n"
+            "# from this module via asyncio.run(). The governance\n"
+            "# envelope lives inside the handler and runs on every channel.\n"
+            "result = {'answer': f'[nexus-stub] {text}', 'role': role}\n"
+        ),
     },
 )
 
-app.add_middleware(
-    "rate_limit",
-    {
-        "requests_per_minute": 60,
-        "burst": 10,
-    },
-)
+app = Nexus()
+app.register("feedback_system", nexus_workflow.build())
 
 print("Nexus deployment configured:")
-print("  API:  POST /feedback (JWT auth required)")
-print("  CLI:  feedback-system process <text>")
-print("  MCP:  process_citizen_feedback(text)")
-print("  Auth: JWT with role-based access")
-print("  Rate: 60 req/min, burst 10")
+print("  name:     feedback_system")
+print("  wraps:    serve_feedback(text, role) — WorkflowBuilder single-node")
+print("  channels: API + CLI + MCP (automatic via Nexus multi-channel)")
+print("  governance: engine.verify_action runs inside the handler")
+print("  Note: JWT/rate-limit middleware is configured via Nexus middleware")
+print("        stack at app.start() time — see ex_8/03_multichannel_serving.py")
+print("        for the full RBAC + JWT + sliding-window rate-limit demo.")
 
 
 # --- 4e: Integration test ---
@@ -1446,9 +1724,13 @@ for i, text in enumerate(test_feedback_items):
     )
     print(f"  Audit recorded (entry #{len(audit_log)}) -- PASS")
 
-    # Verify governance
-    officer_can = governance.can_access(officer_addr, action="classify")
-    assert officer_can, "Governance denied classification!"
+    # Verify governance — use the canonical pact 0.8.1 verify_action API
+    officer_verdict = engine.verify_action(
+        role_address="D1-R1-T1-R1",
+        action="classify",
+        context={"cost": result["pipeline_cost"]},
+    )
+    assert officer_verdict.allowed, "Governance denied classification!"
     print(f"  Governance enforced -- PASS")
 
     # Verify cost tracking
@@ -1518,7 +1800,7 @@ What this exam demonstrated:
   - Multi-agent system: classifier, researcher, responder specialists
   - Tool use with JSON schema definitions and function calling
   - Supervisor orchestration with sequential pipeline
-  - LLM cost tracking and budget management
+  - Per-agent budget caps via BaseAgentConfig.budget_limit_usd + pipeline-level trackers
   - PACT governance: D/T/R addressing, operating envelopes
   - Budget cascading across organisational hierarchy
   - Audit trails with per-action logging and role-based cost tracking

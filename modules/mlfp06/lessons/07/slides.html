@@ -7,43 +7,57 @@
 
 <section><h2>Governance is code, not committee</h2><ul><li>Access controls that DENY unauthorised access.</li><li>Operating envelopes that RESTRICT agent behaviour.</li><li>Budget cascading that PREVENTS runaway costs.</li><li>Audit trails that PROVE compliance.</li></ul><div class="callout-slide foundations"><strong>🟢 Foundations:</strong> the code IS the governance. If it is not in code, it does not exist.</div></section>
 
-<section><h2>PACT D/T/R addressing</h2><pre><code class="language-python" data-trim>from kailash_pact import GovernanceEngine, Address
+<section><h2>PACT D/T/R addressing</h2><pre><code class="language-python" data-trim>from pact import GovernanceEngine, load_org_yaml, Address
 
-engine = GovernanceEngine()
-org = engine.compile_org({
-    "domains": ["finance", "operations"],
-    "teams": {"finance": ["risk", "compliance"]},
-    "roles": {"risk": ["analyst", "manager"]}
-})
+loaded = load_org_yaml("finance_org.yaml")
+engine = GovernanceEngine(loaded.org_definition)
 
-addr = Address(domain="finance", team="risk", role="analyst")
-allowed = engine.can_access(addr, resource="customer_data")
-reason = engine.explain_access(addr, resource="customer_data")</code></pre></section>
+# Role address grammar: every D or T is followed by exactly one R
+addr = Address.parse("D1-R1-T1-R1")
+verdict = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="read_customer_data",
+    context={"data_classification": "confidential"},
+)
+# verdict.allowed, verdict.reason, verdict.level</code></pre></section>
 
 <section><h2>Operating envelopes</h2><figure style="text-align:center"><svg viewBox="0 0 600 180" xmlns="http://www.w3.org/2000/svg"><rect x="40" y="20" width="520" height="140" rx="8" fill="#FEE2E2" stroke="#EF4444" stroke-dasharray="4 3"/><text x="300" y="45" text-anchor="middle" font-size="11" fill="#EF4444">Outer boundary (never crossed)</text><rect x="100" y="55" width="400" height="90" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="300" y="80" text-anchor="middle" font-size="11" fill="#F59E0B">Role envelope</text><rect x="170" y="80" width="260" height="50" rx="4" fill="#DCFCE7" stroke="#22C55E"/><text x="300" y="108" text-anchor="middle" font-size="11" fill="#22C55E">Task envelope</text><text x="300" y="165" text-anchor="middle" font-size="10" fill="#64748B">Monotonically tightening: can only get stricter, never looser</text></svg></figure></section>
 
 <section><h2>Budget cascading</h2><figure style="text-align:center"><svg viewBox="0 0 500 180" xmlns="http://www.w3.org/2000/svg"><rect x="160" y="10" width="180" height="45" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="250" y="38" text-anchor="middle" font-weight="600" font-size="11" fill="#92400E">Supervisor: $10</text><rect x="20" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="90" y="114" text-anchor="middle" font-size="10">DataSci: $3</text><rect x="180" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="250" y="114" text-anchor="middle" font-size="10">ModelSel: $4</text><rect x="340" y="90" width="140" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="410" y="114" text-anchor="middle" font-size="10">Report: $3</text><line x1="200" y1="55" x2="90" y2="90" stroke="#475569" stroke-width="1"/><line x1="250" y1="55" x2="250" y2="90" stroke="#475569" stroke-width="1"/><line x1="300" y1="55" x2="410" y2="90" stroke="#475569" stroke-width="1"/><text x="250" y="155" text-anchor="middle" font-size="10" fill="#64748B">Child exhausts budget → stops gracefully. Parent total never exceeds $10.</text></svg></figure></section>
 
-<section><h2>PactGovernedAgent</h2><pre><code class="language-python" data-trim>from kailash_pact import PactGovernedAgent
+<section><h2>GovernedSupervisor</h2><pre><code class="language-python" data-trim>from kaizen_agents import GovernedSupervisor
 
-governed = PactGovernedAgent(
-    agent=my_agent,
-    governance=engine,
-    address=addr,
-    enforcement="block",  # deny on violation
-    cost_budget=5.00
+governed = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=5.00,
+    tools=["analyse_customer_data"],
+    data_clearance="restricted",
 )
-result = governed.run("Analyse customer data")</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> every tool call passes through can_access(). Enforcement: warn, block, or audit.</div></section>
 
-<section><h2>Governance testing</h2><pre><code class="language-python" data-trim>
+async def executor(spec, inputs):
+    return {"result": "...", "cost": 0.01,
+            "prompt_tokens": 100, "completion_tokens": 50}
+
+result = await governed.run(
+    objective="Analyse customer data", execute_node=executor,
+)
+# result.success, result.budget_consumed, result.audit_trail</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> every step passes through verify_action. Verdict levels: allowed, blocked, warn, audit. Audit trail is hash-chained and tamper-evident via <code>governed.audit.verify_chain()</code>.</div></section>
+
+<section><h2>Governance testing</h2><pre><code class="language-python" data-trim>from pact import RoleEnvelope, MonotonicTighteningError
+
 def test_denied_access_stays_denied():
-    addr = Address(domain="finance", team="risk", role="analyst")
-    assert not engine.can_access(addr, resource="model_deployment")
+    verdict = engine.verify_action(
+        role_address="D1-R1-T1-R1",   # analyst
+        action="model_deployment",
+        context={"data_classification": "restricted"},
+    )
+    assert not verdict.allowed
 
 def test_envelope_only_tightens():
-    agent.tighten_envelope(max_cost=5.00)
-    with pytest.raises(GovernanceViolation):
-        agent.loosen_envelope(max_cost=10.00)</code></pre><div class="callout-slide warning"><strong>⚠ Key principle:</strong> test what does NOT happen. Governance tests verify denied access stays denied.</div></section>
+    # Loosening a child envelope raises structurally:
+    with pytest.raises(MonotonicTighteningError):
+        RoleEnvelope.validate_tightening(
+            parent_envelope, loosened_child_envelope)</code></pre><div class="callout-slide warning"><strong>⚠ Key principle:</strong> test what does NOT happen. Governance tests verify denied access stays denied.</div></section>
 
 <section><h2>Common mistakes</h2><ol style="font-size:.85em"><li><strong>Fail-open</strong> — if governance check fails, DENY. Never default to allow.</li><li><strong>Testing only happy paths</strong> — test denied access, not just allowed access.</li><li><strong>No audit trail</strong> — compliance needs proof. Log every access decision.</li></ol></section>
 

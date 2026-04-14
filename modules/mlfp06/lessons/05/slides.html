@@ -25,15 +25,15 @@
 
 <section><h2>Agent design framework</h2><ol style="font-size:.85em"><li><strong>Goal:</strong> what is the agent supposed to achieve?</li><li><strong>Thought process:</strong> what reasoning steps?</li><li><strong>Specialist:</strong> be sharp — "data analysis researcher" not "researcher".</li><li><strong>Tools:</strong> versatile, fault-tolerant, with caching.</li></ol></section>
 
-<section><h2>Kaizen agents</h2><pre><code class="language-python" data-trim>from kailash_kaizen import ReActAgent, Delegate
+<section><h2>Kaizen agents</h2><pre><code class="language-python" data-trim>import os
+from kaizen_agents.agents.specialized.react import ReActAgent
 
 agent = ReActAgent(
-    name="DataAnalyst",
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
     tools=[explore_tool, train_tool, viz_tool],
-    delegate=Delegate(model="claude-sonnet"),
-    cost_budget=5.00  # USD limit
+    max_llm_cost_usd=5.00,   # hard USD cap
 )
-result = agent.run("Analyse HDB data and recommend a model")</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> LLMCostTracker enforces budget. Agent stops gracefully when budget runs out.</div></section>
+result = await agent.run("Analyse HDB data and recommend a model")</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> <code>max_llm_cost_usd</code> lives on the agent. The agent stops gracefully when the budget runs out — no separate tracker class in Kaizen 2.7.</div></section>
 
 <section><h2>Tool design principles</h2><ul style="font-size:.85em"><li><strong>3–5 tools max</strong> — more tools confuse the agent.</li><li><strong>Clear descriptions</strong> — the LLM reads them to choose.</li><li><strong>Error handling</strong> — tools should return errors, not crash.</li><li><strong>Caching</strong> — avoid re-computing expensive operations.</li></ul></section>
 

@@ -324,7 +324,8 @@ for idx_p, (name, post) in enumerate(posteriors.items()):
         row=row,
         col=col,
     )
-    fig4.add_vline(x=0, line_dash="dot", line_color="red", row=row, col=col)
+    # Plotly's add_vline stub types row/col as str, but int indices work at runtime.
+    fig4.add_vline(x=0, line_dash="dot", line_color="red", row=row, col=col)  # type: ignore[arg-type]
 
 fig4.update_layout(title="Bayesian Posterior Densities for Coefficients", height=600)
 fig4.write_html(str(OUTPUT_DIR / "04_bayesian_posteriors.html"))

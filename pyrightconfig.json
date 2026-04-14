@@ -1,0 +1,28 @@
+{
+  "include": ["modules", "shared", "scripts"],
+  "exclude": [
+    "**/__pycache__",
+    "**/.ipynb_checkpoints",
+    "**/node_modules",
+    ".venv",
+    "workspaces"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "executionEnvironments": [
+    {
+      "root": "modules/mlfp06",
+      "reportAssignmentType": "none",
+      "reportCallIssue": "none",
+      "reportArgumentType": "none"
+    },
+    {
+      "root": "shared/mlfp06",
+      "reportAssignmentType": "none",
+      "reportCallIssue": "none",
+      "reportArgumentType": "none"
+    }
+  ]
+}

@@ -91,7 +91,7 @@ print("[x] Checkpoint 2 passed\n")
 # ════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("TASK 3: GovernanceEngine.compile_org()")
+print("TASK 3: Construct GovernanceEngine from org YAML")
 print("=" * 70)
 
 # TODO: Compile the YAML. Use compile_governance(org_yaml_path).
@@ -149,7 +149,7 @@ print("=" * 70)
 print(
     """
   [x] Wrote a D/T/R organisation definition in YAML
-  [x] Compiled it with GovernanceEngine.compile_org()
+  [x] Compiled it with compile_governance() -> GovernanceEngine(load_org_yaml)
   [x] Visualised the delegation chains
   [x] Mapped the grammar to a MAS TRM audit scenario
 

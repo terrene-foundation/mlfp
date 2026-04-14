@@ -115,7 +115,7 @@ print("[x] Checkpoint 2 passed — org YAML written\n")
 # ════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("TASK 3: GovernanceEngine.compile_org()")
+print("TASK 3: Construct GovernanceEngine from org YAML")
 print("=" * 70)
 
 engine, org = compile_governance(org_yaml_path)
@@ -298,7 +298,7 @@ print(f"\n  Saved: {fname}")
 # Without compiled D/T/R governance, the bank's answer is "well, the
 # ML team wrote the agents, so... them, I guess?" — which fails the
 # audit because no specific human is accountable for any specific
-# action. With GovernanceEngine.compile_org() running on boot, every
+# action. With compile_governance() (load_org_yaml + GovernanceEngine) running on boot, every
 # agent action carries a delegation chain. The auditor's question is
 # answered by a 1-line query against the audit trail.
 #
@@ -328,7 +328,7 @@ print("=" * 70)
 print(
     """
   [x] Wrote a D/T/R organisation definition in YAML
-  [x] Compiled it with GovernanceEngine.compile_org()
+  [x] Compiled it with compile_governance() -> GovernanceEngine(load_org_yaml)
   [x] Understood what compilation validates (and what it doesn't)
   [x] Mapped the grammar to a Singapore retail bank audit scenario
 

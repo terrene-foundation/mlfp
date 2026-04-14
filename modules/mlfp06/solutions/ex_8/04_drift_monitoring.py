@@ -16,7 +16,7 @@
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
-#   1. Rebuild the governed agent stack
+#   1. Rebuild the governed agent stack via build_capstone_stack(engine)
 #   2. Configure DriftMonitor with MMLU as the reference distribution
 #   3. Debug a single governed call (input -> output -> governance trace)
 #   4. Run the automated test harness (5 tests)
@@ -26,18 +26,18 @@
 """
 from __future__ import annotations
 
+import os
 import time
 
 import matplotlib.pyplot as plt
-import numpy as np
 import polars as pl
-
+from kailash.db.connection import ConnectionManager
 from kailash_ml import DriftMonitor
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from pact import GovernanceEngine, load_org_yaml
 
 from shared.mlfp06.ex_8 import (
-    CapstoneQAAgent,
     OUTPUT_DIR,
+    build_capstone_stack,
     handle_qa,
     load_mmlu_eval,
     run_async,
@@ -69,53 +69,17 @@ from shared.mlfp06.ex_8 import (
 
 eval_data = load_mmlu_eval(n_rows=100)
 
-governance_engine = GovernanceEngine()
+org_path = write_org_yaml()
+loaded = load_org_yaml(org_path)
+governance_engine = GovernanceEngine(loaded.org_definition)
+agents_by_role, tiers = build_capstone_stack(governance_engine)
 
-
-async def _init_engine() -> None:
-    governance_engine.compile_org(write_org_yaml())
-
-
-run_async(_init_engine())
-
-base_qa = CapstoneQAAgent()
-governed_qa = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="responder",
-    max_budget_usd=1.0,
-    allowed_tools=["generate_answer", "search_context"],
-    clearance_level="internal",
-)
-governed_admin = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="operator",
-    max_budget_usd=10.0,
-    allowed_tools=[
-        "generate_answer",
-        "search_context",
-        "update_model",
-        "view_metrics",
-        "monitor_drift",
-    ],
-    clearance_level="confidential",
-)
-governed_audit = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="auditor",
-    max_budget_usd=50.0,
-    allowed_tools=[
-        "generate_answer",
-        "search_context",
-        "view_metrics",
-        "access_audit_log",
-        "generate_report",
-    ],
-    clearance_level="restricted",
-)
-agents_by_role = {"qa": governed_qa, "admin": governed_admin, "audit": governed_audit}
+print("Governed stack rebuilt:")
+for tier in tiers:
+    print(
+        f"  {tier.role:6s} -> budget=${tier.budget_usd:>5.1f}  "
+        f"clearance={tier.clearance}"
+    )
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert len(agents_by_role) == 3, "Task 1: governed stack should rebuild"
@@ -127,25 +91,64 @@ print("\u2713 Checkpoint 1 passed — governed stack rebuilt\n")
 # ════════════════════════════════════════════════════════════════════════
 
 
+# kailash-ml's DriftMonitor persists reference distributions and drift
+# reports through a `ConnectionManager`. We back it with a local SQLite
+# file so this exercise runs offline without Postgres. The DB URL matches
+# the repo-local data cache used elsewhere in MLFP06.
+_DRIFT_DB_PATH = os.path.abspath("data/mlfp06/ex8_drift.db")
+os.makedirs(os.path.dirname(_DRIFT_DB_PATH), exist_ok=True)
+# Clear main DB + any stale WAL/SHM side files from a previous run so
+# SQLite starts with a clean journal. Leftover .db-wal / .db-shm files
+# can surface as "disk I/O error" on re-run.
+for _sfx in ("", "-wal", "-shm"):
+    _p = _DRIFT_DB_PATH + _sfx
+    if os.path.exists(_p):
+        os.remove(_p)
+
+# The reference distribution is a numeric feature the PSI calculator can
+# bin. We use question length (characters) as a stable proxy for the
+# MMLU instruction distribution — it is numeric, stable, and correlates
+# with subject-area complexity.
+reference_df = eval_data.with_columns(
+    pl.col("instruction").str.len_chars().cast(pl.Float64).alias("question_length")
+).select(["question_length"])
+
+
 async def setup_drift_monitoring() -> tuple[DriftMonitor, object]:
-    monitor = DriftMonitor(
-        model_name="capstone_qa_model",
-        reference_data=eval_data.select("instruction"),
-        features=["instruction"],
-        alert_threshold_psi=0.2,
+    conn = ConnectionManager(f"sqlite:///{_DRIFT_DB_PATH}")
+    await conn.initialize()
+    monitor = DriftMonitor(conn, psi_threshold=0.2)
+
+    # Store the reference distribution keyed by model name.
+    await monitor.set_reference_data(
+        "capstone_qa_model", reference_df, ["question_length"]
     )
-    prod_data = eval_data.select("instruction").head(50)
-    report = await monitor.check_drift(production_data=prod_data)
+
+    # Production sample — first 50 rows with their question lengths.
+    production_df = reference_df.head(50)
+    report = await monitor.check_drift("capstone_qa_model", production_df)
+
+    psi = report.feature_results[0].psi if report.feature_results else 0.0
     print("DriftMonitor report:")
-    print(f"  Model:              capstone_qa_model")
-    print(f"  Reference samples:  {eval_data.height}")
-    print(f"  Production samples: {prod_data.height}")
-    print(f"  Drift detected:     {report.drift_detected}")
-    print(f"  PSI:                {report.psi:.4f}")
+    print("  Model:              capstone_qa_model")
+    print(f"  Reference samples:  {reference_df.height}")
+    print(f"  Production samples: {production_df.height}")
+    print(f"  Drift detected:     {report.overall_drift_detected}")
+    print(f"  Overall severity:   {report.overall_severity}")
+    print(f"  PSI (question_len): {psi:.4f}")
     print(
         "  Status:             "
-        + ("ALERT — retrain needed" if report.drift_detected else "OK — no drift")
+        + (
+            "ALERT — retrain needed"
+            if report.overall_drift_detected
+            else "OK — no drift"
+        )
     )
+    # Close the SQLite pool inside the loop so the finalizer does not
+    # fire against a closed event loop on interpreter shutdown — this
+    # was hanging the script for ~minutes at exit before the explicit
+    # close was added.
+    await conn.close()
     return monitor, report
 
 
@@ -168,9 +171,9 @@ async def debug_agent_call() -> dict:
 
     print("\n  INPUT TRACE:")
     print(f"    Question:  {question[:100]}...")
-    print(f"    Role:      qa (governed_qa)")
-    print(f"    Budget:    $1.00")
-    print(f"    Clearance: internal")
+    print("    Role:      qa (governed_qa)")
+    print("    Budget:    $1.00")
+    print("    Clearance: public")
 
     t0 = time.time()
     result = await handle_qa(question, role="qa", agents_by_role=agents_by_role)
@@ -196,6 +199,8 @@ debug_result = run_async(debug_agent_call())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert debug_result is not None, "Task 3: debug call should return a result"
+assert "role" in debug_result, "Task 3: result dict shape must be preserved"
+assert debug_result["governed"] is True
 print("\u2713 Checkpoint 3 passed — debug trace produced\n")
 
 
@@ -293,6 +298,9 @@ print("\u2713 Checkpoint 4 passed — automated test harness complete\n")
 # TASK 5 — Visualise and Apply: Shopee-scale fraud detection
 # ════════════════════════════════════════════════════════════════════════
 
+current_psi = (
+    drift_report.feature_results[0].psi if drift_report.feature_results else 0.0
+)
 psi_dashboard = pl.DataFrame(
     {
         "Zone": ["Safe", "Investigate", "Alert"],
@@ -302,11 +310,7 @@ psi_dashboard = pl.DataFrame(
             "Root-cause within 24h",
             "Rollback or retrain",
         ],
-        "Current": [
-            drift_report.psi,
-            drift_report.psi,
-            drift_report.psi,
-        ],
+        "Current": [current_psi, current_psi, current_psi],
     }
 )
 psi_dashboard.write_parquet(OUTPUT_DIR / "psi_dashboard.parquet")

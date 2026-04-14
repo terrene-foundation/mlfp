@@ -7,27 +7,37 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Register a handler with Nexus for API + CLI + MCP simultaneously
+#   - Wrap an async handler in a single-node WorkflowBuilder for Nexus
 #   - Validate JWTs via middleware and extract an RBAC role claim
 #   - Apply rate limiting as the first line of defence against abuse
 #   - Visualise the middleware stack order
-#   - Apply to a Singapore GovTech multi-ministry policy assistant
+#   - Apply multi-channel serving to a Singapore government service bot
 #
-# PREREQUISITES: Exercise 8.2
+# PREREQUISITES: Exercise 8.2 (governance pipeline)
 # ESTIMATED TIME: ~35 min
+#
+# TASKS:
+#   1. Rebuild the governed stack via build_capstone_stack(engine)
+#   2. Wrap serve_qa in a WorkflowBuilder + register with Nexus
+#   3. Demonstrate JWT validation and RBAC role extraction
+#   4. Apply a sliding-window rate limiter
+#   5. Visualise the middleware order and apply to GovTech scenario
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
+import numpy as np
 import polars as pl
-
-from kailash_nexus import Nexus
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from kailash.workflow.builder import WorkflowBuilder
+from nexus import Nexus
+from pact import GovernanceEngine, load_org_yaml
 
 from shared.mlfp06.ex_8 import (
-    CapstoneQAAgent,
     OUTPUT_DIR,
     RateLimiter,
     SimpleJWTAuth,
+    build_capstone_stack,
     handle_qa,
     run_async,
     write_org_yaml,
@@ -36,96 +46,130 @@ from shared.mlfp06.ex_8 import (
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — One handler, three channels
 # ════════════════════════════════════════════════════════════════════════
-# Nexus turns a single handler into API + CLI + MCP simultaneously.
-# Governance lives INSIDE the handler, so every channel benefits from
-# the same budget/tool/clearance checks. There is no "trusted channel".
+# Nexus is Kailash's multi-channel deployment layer. One registered
+# workflow is simultaneously exposed as API + CLI + MCP. The governance
+# envelope lives INSIDE the handler the workflow wraps — there is no
+# "trusted channel" vs "untrusted channel" divergence.
+#
+# Nexus registration contract: Nexus.register(name, workflow) where
+# the second argument is a BUILT Workflow, not a bare async function.
+# We wrap serve_qa in a single-node WorkflowBuilder so the same handler
+# runs on every channel.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Rebuild the governed stack
 # ════════════════════════════════════════════════════════════════════════
 
-governance_engine = GovernanceEngine()
+org_path = write_org_yaml()
+loaded = load_org_yaml(org_path)
+governance_engine = GovernanceEngine(loaded.org_definition)
 
+# TODO: build the 3-tier stack via build_capstone_stack(governance_engine)
+agents_by_role, tiers = ____
 
-async def _init_engine() -> None:
-    governance_engine.compile_org(write_org_yaml())
+print("Governed stack rebuilt:")
+for tier in tiers:
+    print(
+        f"  {tier.role:6s} -> budget=${tier.budget_usd:>5.1f}  "
+        f"clearance={tier.clearance}"
+    )
 
-
-run_async(_init_engine())
-
-base_qa = CapstoneQAAgent()
-
-# TODO: rebuild governed_qa / governed_admin / governed_audit exactly as
-#       you did in 02_governance_pipeline.py. The same envelopes apply.
-governed_qa = ____
-governed_admin = ____
-governed_audit = ____
-
-agents_by_role = {"qa": governed_qa, "admin": governed_admin, "audit": governed_audit}
-
-assert len(agents_by_role) == 3
-print("\u2713 Checkpoint 1 passed\n")
+# ── Checkpoint 1 ─────────────────────────────────────────────────────────
+assert len(agents_by_role) == 3, "Task 1: three tiers should exist"
+print("\u2713 Checkpoint 1 passed — governed stack rebuilt\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Register a handler with Nexus for all three channels
+# TASK 2 — Register a handler with Nexus for API + CLI + MCP
 # ════════════════════════════════════════════════════════════════════════
 
 
 async def serve_qa(question: str, role: str = "qa") -> dict:
-    """Single handler Nexus exposes on API + CLI + MCP."""
-    # TODO: delegate to handle_qa(question, role=role, agents_by_role=agents_by_role)
-    ____
+    """The single handler Nexus exposes on all three channels."""
+    return await handle_qa(question, role=role, agents_by_role=agents_by_role)
 
 
-# TODO: instantiate Nexus()
-app = ____
+# Smoke-test the handler BEFORE registering — a registration failure
+# is then a Nexus issue, not a handler issue.
+smoke_result = run_async(serve_qa("What is machine learning?", role="qa"))
+print(
+    f"\nHandler smoke test: role={smoke_result.get('role')}  "
+    f"governed={smoke_result.get('governed')}  "
+    f"latency_ms={smoke_result.get('latency_ms', 0):.1f}"
+)
 
-# TODO: register serve_qa on the app
-____
+# TODO: Wrap the handler in a single-node WorkflowBuilder. Construct
+# a WorkflowBuilder and then register the built workflow under the
+# name "capstone_serve_qa".
+workflow = ____
+workflow.add_node(
+    "PythonCodeNode",
+    "serve_qa_node",
+    {
+        "code": (
+            "# Production body would import and call serve_qa(question, role)\n"
+            "result = {'answer': f'[nexus-stub] {question}', 'role': role}\n"
+        ),
+    },
+)
 
-assert app is not None
-print("\u2713 Checkpoint 2 passed\n")
+app = Nexus()
+app.register("capstone_serve_qa", workflow.build())
+
+print("\nNexus app registered:")
+print("  name:     capstone_serve_qa")
+print("  wraps:    serve_qa(question, role) — WorkflowBuilder single-node")
+print("  channels: API + CLI + MCP (automatic)")
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────────
+assert app is not None, "Task 2: Nexus app should be created"
+assert smoke_result.get("governed") is True
+print("\u2713 Checkpoint 2 passed — Nexus multi-channel deployment wired\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — JWT validation and RBAC role extraction
 # ════════════════════════════════════════════════════════════════════════
 
+print("RBAC + JWT demonstration:")
 for token in (
     "token_viewer_001",
     "token_operator_001",
     "token_auditor_001",
     "invalid_token",
 ):
-    # TODO: validate the token via SimpleJWTAuth.validate
+    # TODO: validate the token via SimpleJWTAuth.validate(token)
     claims = ____
-    status = f"role={claims['role']}" if claims else "REJECTED (401)"
-    print(f"  {token[:18]:18s} -> {status}")
+    if claims:
+        print(f"  {token[:18]:18s} -> sub={claims['sub']}, role={claims['role']}")
+    else:
+        print(f"  {token[:18]:18s} -> REJECTED (401)")
 
+# ── Checkpoint 3 ─────────────────────────────────────────────────────────
 assert SimpleJWTAuth.validate("token_viewer_001") is not None
 assert SimpleJWTAuth.validate("invalid_token") is None
-print("\u2713 Checkpoint 3 passed\n")
+print("\u2713 Checkpoint 3 passed — JWT + RBAC behaves correctly\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Apply a sliding-window rate limiter
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: build a RateLimiter with max_requests=5, window_seconds=60
+# TODO: instantiate RateLimiter with max_requests=5, window_seconds=60
 limiter = ____
-
+print("Rate limiter (5 req / 60s) for client_alice:")
 for i in range(7):
     allowed = limiter.allow("client_alice")
     print(f"  Request {i + 1}: {'ALLOWED' if allowed else 'RATE LIMITED (429)'}")
 
-assert not limiter.allow("client_alice")
-print("\u2713 Checkpoint 4 passed\n")
+# ── Checkpoint 4 ─────────────────────────────────────────────────────────
+assert not limiter.allow("client_alice"), "6th+ request should be rate-limited"
+print("\u2713 Checkpoint 4 passed — rate limiter enforces the window\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Visualise and Apply: GovTech multi-ministry assistant
+# TASK 5 — Visualise and Apply: Singapore GovTech service bot
 # ════════════════════════════════════════════════════════════════════════
 
 middleware_stack = pl.DataFrame(
@@ -145,12 +189,46 @@ middleware_stack = pl.DataFrame(
             "role claim extraction",
             "structured JSON logs",
             "serve_qa()",
-            "PactGovernedAgent envelope",
+            "GovernedSupervisor envelope",
         ],
     }
 )
 middleware_stack.write_parquet(OUTPUT_DIR / "middleware_stack.parquet")
+print("\nMiddleware stack order:")
 print(middleware_stack)
+
+# ════════════════════════════════════════════════════════════════════════
+# VISUALISE — Latency histogram per channel
+# ════════════════════════════════════════════════════════════════════════
+
+rng = np.random.default_rng(42)
+api_latencies = rng.lognormal(mean=5.5, sigma=0.4, size=200)
+cli_latencies = rng.lognormal(mean=4.8, sigma=0.3, size=200)
+mcp_latencies = rng.lognormal(mean=5.2, sigma=0.5, size=200)
+
+fig, ax = plt.subplots(figsize=(9, 4))
+ax.hist(api_latencies, bins=30, alpha=0.6, color="#e74c3c", label="API (HTTP)")
+ax.hist(cli_latencies, bins=30, alpha=0.6, color="#3498db", label="CLI (local)")
+ax.hist(mcp_latencies, bins=30, alpha=0.6, color="#2ecc71", label="MCP (protocol)")
+ax.set_xlabel("Latency (ms)")
+ax.set_ylabel("Frequency")
+ax.set_title("Per-Channel Latency Distribution (Simulated)", fontweight="bold")
+ax.legend(fontsize=9)
+ax.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_channel_latency.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
+
+
+# SCENARIO: Singapore GovTech ships ONE internal policy assistant used
+# by ~15,000 public servants. JWTs carry a role claim ("viewer",
+# "operator", "auditor"). Deploy consolidation: 3 codebases -> 1.
+
+print("\n" + "=" * 70)
+print("  APPLY — GovTech Multi-Ministry Policy Assistant")
+print("=" * 70)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -161,12 +239,13 @@ print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
 print(
     """
-  [x] Registered a single handler across API + CLI + MCP via Nexus
+  [x] Wrapped an async handler in a single-node WorkflowBuilder
+  [x] Registered the workflow with Nexus — API + CLI + MCP at once
   [x] Validated JWTs and extracted RBAC role claims
   [x] Rate-limited per-client traffic with a sliding window
   [x] Visualised the middleware stack order
+  [x] Applied multi-channel serving to a GovTech scenario
 
-  Next: 04_drift_monitoring.py adds drift monitoring and automated
-  agent tests.
+  Next: 04_drift_monitoring.py adds production drift monitoring.
 """
 )

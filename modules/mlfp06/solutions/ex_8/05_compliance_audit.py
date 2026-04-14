@@ -6,7 +6,8 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Extract audit trails from a PactGovernedAgent for all three tiers
+#   - Extract audit trails from a GovernedSupervisor for all three tiers
+#   - Verify the hash-chained audit trail for tamper-evidence
 #   - Summarise governance activity into regulator-ready sections
 #   - Map technical controls to EU AI Act, AI Verify, MAS TRM, PDPA
 #   - Visualise the full platform scorecard
@@ -16,25 +17,25 @@
 # ESTIMATED TIME: ~25 min
 #
 # TASKS:
-#   1. Rebuild the governed stack and drive a few sample queries
-#   2. Extract the per-tier audit trails
+#   1. Rebuild the governed stack and drive sample queries
+#   2. Extract the per-tier audit trails via ``supervisor.audit.to_list()``
+#      and verify tamper-evidence via ``supervisor.audit.verify_chain()``
 #   3. Build the section-by-section compliance report
-#   4. Visualise the regulatory mapping table
+#   4. Visualise the 6-regulation regulatory mapping table
 #   5. Apply the report to a MAS Section 27 production order
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import polars as pl
-
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from pact import GovernanceEngine, load_org_yaml
 
 from shared.mlfp06.ex_8 import (
-    CapstoneQAAgent,
     OUTPUT_DIR,
+    build_capstone_stack,
     handle_qa,
     load_mmlu_eval,
     run_async,
@@ -44,14 +45,19 @@ from shared.mlfp06.ex_8 import (
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — Compliance as a read-out, not a rewrite
 # ════════════════════════════════════════════════════════════════════════
-# If governance is wired correctly, a compliance audit is NOT a
-# scramble — it is a SELECT statement against the audit trail. The
-# trick is that the audit trail has to exist BEFORE the regulator
-# asks. Every capstone tier (qa, admin, audit) has been running with
-# ``require_audit_trail: true`` since Exercise 8.2; now we read it out
-# and map it to the frameworks that the Singapore regulator cares
-# about: EU AI Act (cross-border), AI Verify (local toolkit),
-# MAS TRM (technology risk), PDPA (personal data).
+# If governance is wired correctly, a compliance audit is NOT a scramble
+# — it is a SELECT statement against the audit trail. The trick is that
+# the audit trail has to EXIST before the regulator asks. Every capstone
+# tier (qa, admin, audit) has been running on a GovernedSupervisor since
+# Exercise 8.2, and each supervisor's ``audit`` attribute records every
+# run into a hash-chained list. Two reads give a regulator everything:
+#
+#   supervisor.audit.to_list()        → the entries themselves
+#   supervisor.audit.verify_chain()   → structural tamper-evidence
+#
+# We map the trail to the frameworks the Singapore regulator cares
+# about: EU AI Act (cross-border), AI Verify (local toolkit), MAS TRM
+# (technology risk), and PDPA (personal data).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -60,60 +66,33 @@ from shared.mlfp06.ex_8 import (
 
 eval_data = load_mmlu_eval(n_rows=100)
 
-governance_engine = GovernanceEngine()
+org_path = write_org_yaml()
+loaded = load_org_yaml(org_path)
+governance_engine = GovernanceEngine(loaded.org_definition)
+agents_by_role, tiers = build_capstone_stack(governance_engine)
 
-
-async def _init_engine() -> None:
-    governance_engine.compile_org(write_org_yaml())
-
-
-run_async(_init_engine())
-
-base_qa = CapstoneQAAgent()
-governed_qa = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="responder",
-    max_budget_usd=1.0,
-    allowed_tools=["generate_answer", "search_context"],
-    clearance_level="internal",
-)
-governed_admin = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="operator",
-    max_budget_usd=10.0,
-    allowed_tools=[
-        "generate_answer",
-        "search_context",
-        "update_model",
-        "view_metrics",
-        "monitor_drift",
-    ],
-    clearance_level="confidential",
-)
-governed_audit = PactGovernedAgent(
-    agent=base_qa,
-    governance_engine=governance_engine,
-    role="auditor",
-    max_budget_usd=50.0,
-    allowed_tools=[
-        "generate_answer",
-        "search_context",
-        "view_metrics",
-        "access_audit_log",
-        "generate_report",
-    ],
-    clearance_level="restricted",
-)
-agents_by_role = {"qa": governed_qa, "admin": governed_admin, "audit": governed_audit}
+print("Governed stack rebuilt:")
+for tier in tiers:
+    print(
+        f"  {tier.role:6s} -> budget=${tier.budget_usd:>5.1f}  "
+        f"clearance={tier.clearance}"
+    )
 
 
 async def drive_sample_traffic() -> None:
+    """Drive a small burst through every tier so each audit log has content."""
     for q in eval_data["instruction"].to_list()[:3]:
         await handle_qa(q, role="qa", agents_by_role=agents_by_role)
-    await handle_qa("Show metrics", role="admin", agents_by_role=agents_by_role)
-    await handle_qa("Generate report", role="audit", agents_by_role=agents_by_role)
+    await handle_qa(
+        "Show model performance metrics",
+        role="admin",
+        agents_by_role=agents_by_role,
+    )
+    await handle_qa(
+        "Generate quarterly compliance report",
+        role="audit",
+        agents_by_role=agents_by_role,
+    )
 
 
 run_async(drive_sample_traffic())
@@ -124,21 +103,33 @@ print("\u2713 Checkpoint 1 passed — stack rebuilt and sample traffic driven\n"
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Extract per-tier audit trails
+# TASK 2 — Extract per-tier audit trails + verify tamper-evidence
 # ════════════════════════════════════════════════════════════════════════
+#
+# ``GovernedSupervisor.audit`` is the read-only view of a hash-chained
+# audit list. Each entry references the prior entry by hash — silently
+# editing any entry invalidates the whole chain. ``verify_chain()``
+# returns True only if the chain has not been tampered with.
 
-qa_audit = governed_qa.get_audit_trail()
-admin_audit = governed_admin.get_audit_trail()
-audit_audit = governed_audit.get_audit_trail()
+qa_audit = agents_by_role["qa"].audit.to_list()
+admin_audit = agents_by_role["admin"].audit.to_list()
+audit_audit = agents_by_role["audit"].audit.to_list()
 
-print("Audit trail entry counts:")
-print(f"  qa:    {len(qa_audit)}")
-print(f"  admin: {len(admin_audit)}")
-print(f"  audit: {len(audit_audit)}")
+qa_chain_valid = agents_by_role["qa"].audit.verify_chain()
+admin_chain_valid = agents_by_role["admin"].audit.verify_chain()
+audit_chain_valid = agents_by_role["audit"].audit.verify_chain()
+
+print("Audit trail entry counts + tamper-evidence:")
+print(f"  qa:    {len(qa_audit):>3} entries  " f"chain_valid={qa_chain_valid}")
+print(f"  admin: {len(admin_audit):>3} entries  " f"chain_valid={admin_chain_valid}")
+print(f"  audit: {len(audit_audit):>3} entries  " f"chain_valid={audit_chain_valid}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert qa_audit is not None, "Task 2: qa audit trail should be accessible"
-print("\u2713 Checkpoint 2 passed — audit trails extracted\n")
+assert qa_chain_valid, "Task 2: qa audit chain should verify"
+assert admin_chain_valid, "Task 2: admin audit chain should verify"
+assert audit_chain_valid, "Task 2: audit-tier audit chain should verify"
+print("\u2713 Checkpoint 2 passed — audit trails extracted and verified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -147,26 +138,33 @@ print("\u2713 Checkpoint 2 passed — audit trails extracted\n")
 
 
 def generate_compliance_report() -> None:
+    """Produce a regulator-facing read-out of the governance plane."""
     print("\n" + "=" * 60)
     print("  COMPLIANCE AUDIT REPORT")
     print("  System: MLFP Capstone Governed ML Platform")
-    print("  Generated: 2026-04-13")
+    print("  Generated: 2026-04-14")
     print("=" * 60)
 
     print("\n1. AGENT ACTIVITY SUMMARY")
     print(f"   QA agent actions:    {len(qa_audit)}")
     print(f"   Admin agent actions: {len(admin_audit)}")
     print(f"   Audit agent actions: {len(audit_audit)}")
-    qa_allowed = sum(1 for e in qa_audit if e.get("status") == "allowed")
-    qa_blocked = sum(1 for e in qa_audit if e.get("status") == "blocked")
-    print(f"   QA allowed/blocked:  {qa_allowed}/{qa_blocked}")
+    # Count successful vs blocked runs based on the `success` field
+    # GovernedSupervisor writes into each audit entry.
+    qa_ok = sum(1 for e in qa_audit if e.get("success") is True)
+    qa_blocked = sum(1 for e in qa_audit if e.get("success") is False)
+    print(f"   QA success/failed:   {qa_ok}/{qa_blocked}")
 
     print("\n2. GOVERNANCE ENFORCEMENT")
     print("   D/T/R chains:         3 active delegations")
     print("   Budget enforcement:   ACTIVE (per-agent limits)")
     print("   Tool restrictions:    ACTIVE (whitelist per role)")
     print("   Clearance validation: ACTIVE (4-level hierarchy)")
-    print("   Audit trail:          COMPLETE (all decisions logged)")
+    print("   Audit trail:          HASH-CHAINED (tamper-evident)")
+    print(
+        "   Chain verified:       "
+        f"qa={qa_chain_valid}  admin={admin_chain_valid}  audit={audit_chain_valid}"
+    )
     print("   Fail mode:            CLOSED (deny by default)")
 
     print("\n3. AUTHENTICATION & ACCESS CONTROL")
@@ -184,7 +182,7 @@ def generate_compliance_report() -> None:
 
     print("\n5. DEPLOYMENT ARCHITECTURE")
     print("   Channels:     API + CLI + MCP (via Nexus)")
-    print("   Governance:   PactGovernedAgent on ALL channels")
+    print("   Governance:   GovernedSupervisor on ALL channels")
     print("   Sessions:     persistent state across channels")
     print("   Cost control: per-agent budget cascading")
     print("   Monitoring:   DriftMonitor + structured logging")
@@ -199,6 +197,9 @@ print("\n\u2713 Checkpoint 3 passed — compliance report sections rendered\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise the regulatory mapping
 # ════════════════════════════════════════════════════════════════════════
+#
+# Six regulations, six technical controls, one hash-chained audit trail
+# underneath all of them. The mapping is what a regulator will read.
 
 regulatory = pl.DataFrame(
     {
@@ -207,43 +208,47 @@ regulatory = pl.DataFrame(
             "EU AI Act Art. 12 — Record-keeping",
             "EU AI Act Art. 14 — Human Oversight",
             "Singapore AI Verify — Accountability",
-            "Singapore AI Verify — Transparency",
             "MAS TRM 7.5 — Audit Trail",
             "PDPA — Personal Data Protection",
         ],
         "Technical control": [
             "Operating envelopes per agent; budget limits; tool restrictions",
-            "Immutable audit trail; every decision logged with timestamps",
+            "Hash-chained audit trail; every decision logged with timestamps",
             "D/T/R chains; every agent action traces to human Delegator",
             "D/T/R accountability grammar; role-based clearance levels",
-            "Reasoning chains logged; confidence scores reported",
-            "Full audit log: action, resource, decision, reason, timestamp",
-            "PII masking in global envelope; clearance-gated data access",
+            "audit.verify_chain() + audit.to_list() for full tamper-evident trail",
+            "PII masking in clearance gate; data_clearance on every tier",
         ],
-        "Status": ["COMPLIANT"] * 7,
+        "Status": ["COMPLIANT"] * 6,
     }
 )
 regulatory.write_parquet(OUTPUT_DIR / "regulatory_mapping.parquet")
 print("\n6. REGULATORY COMPLIANCE MAPPING")
 print(regulatory)
 
+# ── Checkpoint 4 ─────────────────────────────────────────────────────────
+assert regulatory.height == 6, "Task 4: regulatory mapping must have 6 rows"
+assert (regulatory["Status"] == "COMPLIANT").all()
+print("\n\u2713 Checkpoint 4 passed — regulatory mapping built\n")
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: MAS Section 27 Production Order
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: A MAS investigation team issues a Section 27 production
-# order requesting every model-produced recommendation that reached
-# a specific retail customer over a 90-day window. The audit tier
-# holds the data clearance required to pull this. The qa and admin
-# tiers do NOT — they physically cannot fulfil the order, which is
-# the correct answer for least-privilege.
+# order requesting every model-produced recommendation that reached a
+# specific retail customer over a 90-day window. The audit tier holds
+# the data clearance required to pull this. The qa and admin tiers do
+# NOT — they physically cannot fulfil the order, which is the correct
+# answer for least-privilege.
 #
 # BUSINESS IMPACT: A Section 27 order with no usable audit trail
-# triggers either a license suspension (~S$10M/month of lost
-# revenue for a mid-tier bank) or a "best-efforts reconstruction"
-# that costs ~S$500,000 in external forensic consulting and still
-# does not satisfy the regulator. With the governed platform, the
-# same order is answered in hours via a single audit-tier query.
+# triggers either a license suspension (~S$10M/month of lost revenue
+# for a mid-tier bank) or a "best-efforts reconstruction" that costs
+# ~S$500,000 in external forensic consulting and still does not satisfy
+# the regulator. With the governed platform, the same order is answered
+# in hours via a single audit-tier query on
+# ``supervisor.audit.to_list()``.
 
 print("\n" + "=" * 70)
 print("  APPLY — MAS Section 27 Production Order")
@@ -252,7 +257,7 @@ print(
     """
   Order:    All model outputs to retail customer X, 90-day window.
   Source:   audit tier (clearance=restricted, access_audit_log=yes).
-  Response: One query against PactGovernedAgent.get_audit_trail().
+  Response: One query against supervisor.audit.to_list() + verify_chain().
   SLA:      hours, not months.
 
   Without this audit trail:
@@ -266,20 +271,34 @@ print(
 )
 
 
+# ── Checkpoint 5 ─────────────────────────────────────────────────────────
+assert audit_chain_valid, "Task 5: audit-tier chain must verify for MAS evidence"
+print("\u2713 Checkpoint 5 passed — audit-tier evidence ready for regulator\n")
+
+
 # ════════════════════════════════════════════════════════════════════════
 # VISUALISATION — Compliance traffic light per regulation
 # ════════════════════════════════════════════════════════════════════════
+# Every regulation gets a traffic-light row. Green = compliant, amber =
+# warn, red = fail. Our system is green on all six because the audit
+# trail exists, the chain verifies, and every tier's envelope is
+# enforced. If a tier's chain were to fail verification, that row would
+# turn red automatically.
 
 regs = [
     "EU AI Act\nArt. 9",
     "EU AI Act\nArt. 12",
     "EU AI Act\nArt. 14",
     "AI Verify\nAccountability",
-    "AI Verify\nTransparency",
     "MAS TRM\n7.5",
     "PDPA",
 ]
-statuses = ["pass"] * 7  # all COMPLIANT from the regulatory DataFrame
+
+# Traffic-light status per row — derived from the actual chain
+# verification booleans so any tamper surfaces visually, not just in
+# the printed report.
+all_chains_valid = qa_chain_valid and admin_chain_valid and audit_chain_valid
+statuses = ["pass" if all_chains_valid else "fail"] * len(regs)
 color_map = {"pass": "#4CAF50", "warn": "#FF9800", "fail": "#F44336"}
 colors = [color_map[s] for s in statuses]
 
@@ -298,7 +317,7 @@ for i, (bar, status) in enumerate(zip(bars, statuses)):
     )
 ax.set_xlim(0, 1)
 ax.set_xticks([])
-ax.set_title("Compliance Traffic Light: Pass / Warn / Fail per Regulation")
+ax.set_title("Compliance Traffic Light — Derived From audit.verify_chain()")
 legend_patches = [
     mpatches.Patch(color=c, label=l.upper()) for l, c in color_map.items()
 ]
@@ -317,16 +336,19 @@ print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
 print(
     """
-  [x] Extracted per-tier audit trails from PactGovernedAgent
+  [x] Extracted per-tier audit trails from GovernedSupervisor
+  [x] Verified hash-chained tamper-evidence via audit.verify_chain()
   [x] Built a section-by-section compliance report
   [x] Mapped technical controls to EU AI Act, AI Verify, MAS TRM, PDPA
-  [x] Visualised the regulatory scorecard
+  [x] Visualised the regulatory scorecard driven by real chain verification
   [x] Applied the audit report to a MAS Section 27 scenario
 
-  KEY INSIGHT: The compliance report is a read-out of the same audit
-  trail the governance engine has been writing since Exercise 8.2.
-  There is no parallel "compliance pipeline" — governance IS the
-  compliance pipeline. That is the whole point of framework-first.
+  KEY INSIGHT: The compliance report is a read-out of the same
+  hash-chained audit trail the governance engine has been writing
+  since Exercise 8.2. There is no parallel "compliance pipeline" —
+  governance IS the compliance pipeline. The traffic-light chart is
+  derived from ``audit.verify_chain()``, not hand-coded booleans, so
+  tamper-evidence surfaces visually by construction.
 
   COURSE CAPSTONE COMPLETE. You have now built the full stack:
     adapter -> govern -> serve -> monitor -> audit

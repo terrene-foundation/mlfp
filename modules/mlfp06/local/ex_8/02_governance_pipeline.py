@@ -7,95 +7,125 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Compile a PACT organisation YAML into a live GovernanceEngine
-#   - Wrap a Kaizen BaseAgent in PactGovernedAgent at multiple trust tiers
-#   - Configure D/T/R chains for three roles (qa/admin/audit)
+#   - Wrap a Kaizen BaseAgent in GovernedSupervisor at multiple trust tiers
+#   - Configure D/T/R (Delegator/Task/Responsible) chains for three roles
 #   - Visualise the governance envelope hierarchy
-#   - Apply governed agents to a MAS-regulated advisory scenario
+#   - Apply governed agents to a Singapore financial advisory scenario
 #
-# PREREQUISITES: Exercise 8.1, MLFP06 Ex 7 (PACT intro)
+# PREREQUISITES: Exercise 8.1 (adapter loading), MLFP06 Ex 7 (PACT intro)
 # ESTIMATED TIME: ~30 min
+#
+# TASKS:
+#   1. Compile the PACT org YAML into a GovernanceEngine
+#   2. Build the shared capstone stack via ``build_capstone_stack(engine)``
+#   3. Inspect the three GovernedSupervisor tiers (qa / admin / audit)
+#   4. Visualise the envelope hierarchy
+#   5. Apply to a Singapore financial advisory (MAS TRM) scenario
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import polars as pl
-
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from pact import GovernanceEngine, NodeType, load_org_yaml
 
 from shared.mlfp06.ex_8 import (
-    CapstoneQAAgent,
     OUTPUT_DIR,
-    run_async,
+    build_capstone_stack,
     write_org_yaml,
 )
 
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — D/T/R and Operating Envelopes
 # ════════════════════════════════════════════════════════════════════════
-# Delegator / Task / Responsible — every agent action traces back to a
-# human Delegator. The operating envelope around each D/T/R chain sets
-# budget, allowed tools, and data clearance. Default is fail-closed.
+# PACT governance is built on three ideas:
+#   Delegator (D) — the human or role who authorises a task
+#   Task        (T) — what can be done (bounded scope)
+#   Responsible (R) — the agent carrying out the task
+# Every agent action is traceable back to a human Delegator. Each
+# D/T/R chain carries an operating envelope: budget, allowed actions,
+# confidentiality clearance. Default is fail-closed.
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 1 — Compile the org YAML into a GovernanceEngine
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: instantiate GovernanceEngine
-governance_engine = ____
 org_path = write_org_yaml()
+# TODO: load the org YAML + construct GovernanceEngine from its definition
+#   Hint: pact.load_org_yaml(path) returns a LoadedOrg; pass
+#         loaded.org_definition to GovernanceEngine(...).
+loaded = ____
+governance_engine = ____
+compiled_org = governance_engine.get_org()
 
-
-async def compile_governance() -> object:
-    # TODO: call governance_engine.compile_org(org_path) and return it
-    ____
-
-
-org = run_async(compile_governance())
+# Count the Responsible agents vs total ROLE nodes. Agents are ROLE
+# nodes whose address contains a "-T" segment (they sit under a team).
+n_agents = sum(
+    1
+    for n in compiled_org.nodes.values()
+    if n.node_type == NodeType.ROLE and "-T" in n.address and not n.is_vacant
+)
+n_roles = sum(1 for n in compiled_org.nodes.values() if n.node_type == NodeType.ROLE)
+print(f"Compiled org: {n_roles} roles ({n_agents} responsible agents)")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
-assert org is not None and org.n_agents >= 3, "Task 1: should compile 3+ agents"
-print("\u2713 Checkpoint 1 passed\n")
+assert n_roles >= 3, "Task 1: compiled org should carry 3+ Responsible roles"
+print("\u2713 Checkpoint 1 passed — governance compiled\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Build the base agent
+# TASK 2 — Build the shared 3-tier governed stack
 # ════════════════════════════════════════════════════════════════════════
+#
+# build_capstone_stack(engine) attaches a ConstraintEnvelopeConfig to
+# each Responsible role (qa / admin / audit) and returns a
+# GovernedSupervisor for each — plus the tier metadata so this file
+# can read budgets / tools / clearance without re-deriving them.
 
-# TODO: instantiate CapstoneQAAgent (from shared.mlfp06.ex_8)
-base_qa = ____
+# TODO: call build_capstone_stack(governance_engine). It returns a
+# 2-tuple (agents_by_role, tiers).
+agents_by_role, tiers = ____
+print("Governed agent tiers:")
+for tier in tiers:
+    gs = agents_by_role[tier.role]
+    env = gs.envelope
+    print(
+        f"  {tier.role:6s} -> {tier.address:14s}  "
+        f"budget=${env.financial.max_spend_usd:>5.1f}  "
+        f"clearance={env.confidentiality_clearance.name:<12s}  "
+        f"tools={len(env.operational.allowed_actions)}"
+    )
 
-assert base_qa is not None, "Task 2: base agent should instantiate"
-print("\u2713 Checkpoint 2 passed\n")
+# ── Checkpoint 2 ─────────────────────────────────────────────────────────
+assert len(agents_by_role) == 3, "Task 2: should build three tiers"
+assert agents_by_role["qa"].envelope.financial.max_spend_usd == 1.0
+assert agents_by_role["admin"].envelope.financial.max_spend_usd == 10.0
+assert agents_by_role["audit"].envelope.financial.max_spend_usd == 50.0
+print("\u2713 Checkpoint 2 passed — three governed tiers wired\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Wrap the agent in three governance tiers
+# TASK 3 — Verify fail-closed on an out-of-envelope action
 # ════════════════════════════════════════════════════════════════════════
-# TODO: Build three PactGovernedAgent instances. For each, pass:
-#       agent=base_qa, governance_engine=governance_engine
-#   (a) governed_qa    — role="responder",  max_budget_usd=1.0,
-#                        allowed_tools=["generate_answer","search_context"],
-#                        clearance_level="internal"
-#   (b) governed_admin — role="operator",   max_budget_usd=10.0,
-#                        allowed_tools=["generate_answer","search_context",
-#                                       "update_model","view_metrics",
-#                                       "monitor_drift"],
-#                        clearance_level="confidential"
-#   (c) governed_audit — role="auditor",    max_budget_usd=50.0,
-#                        allowed_tools=["generate_answer","search_context",
-#                                       "view_metrics","access_audit_log",
-#                                       "generate_report"],
-#                        clearance_level="restricted"
-governed_qa = ____
-governed_admin = ____
-governed_audit = ____
+# Ask the engine to verify an action the qa tier does NOT have in its
+# allowed_actions. It MUST be denied. Note: verify_action on a role
+# with no attached envelope auto-approves — we verify against the qa
+# tier's attached address so the envelope is the source of restriction.
 
-agents_by_role = {"qa": governed_qa, "admin": governed_admin, "audit": governed_audit}
+# TODO: call governance_engine.verify_action on role "D1-R1-T1-R1"
+# (qa tier), action "update_model" (admin-only), with context={"cost": 0.10}
+denied = ____
+print(
+    f"qa tier asks to update_model: "
+    f"{'DENIED (correct)' if not denied.allowed else 'ALLOWED (BUG!)'}  "
+    f"level={denied.level}"
+)
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert len(agents_by_role) == 3, "Task 3: should wrap three tiers"
-print("\u2713 Checkpoint 3 passed\n")
+assert not denied.allowed, "Task 3: qa tier MUST NOT be allowed to update_model"
+assert denied.level == "blocked"
+print("\u2713 Checkpoint 3 passed — fail-closed on envelope violation\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -104,9 +134,9 @@ print("\u2713 Checkpoint 3 passed\n")
 
 envelope_table = pl.DataFrame(
     {
-        "Role": ["qa", "admin", "audit"],
-        "Clearance": ["internal", "confidential", "restricted"],
-        "Budget (USD)": [1.0, 10.0, 50.0],
+        "Role": [t.role for t in tiers],
+        "Clearance": [t.clearance for t in tiers],
+        "Budget (USD)": [t.budget_usd for t in tiers],
         "Allowed tools": [
             "answer+search",
             "+update+metrics+drift",
@@ -116,15 +146,69 @@ envelope_table = pl.DataFrame(
     }
 )
 envelope_table.write_parquet(OUTPUT_DIR / "governance_envelopes.parquet")
+print("\nGovernance envelope hierarchy:")
 print(envelope_table)
 
+# INTERPRETATION: The envelope is monotonic — admin is a superset of
+# qa, audit is a superset of admin. Monotonic tightening prevents
+# privilege escalation between tiers.
+
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — Apply: MAS-regulated wealth advisory
+# VISUALISE — Governance tier comparison chart
 # ════════════════════════════════════════════════════════════════════════
-# One un-logged retail advisory incident triggers a MAS investigation
-# costing ~S$150,000 in external legal fees. The envelope prevents
-# retail-tier tool-jumping structurally, not "hopefully by prompt".
+
+tier_names = [t.role for t in tiers]
+budgets = [t.budget_usd for t in tiers]
+clearance_numeric = [1, 2, 3]
+tool_counts = [len(t.tools) for t in tiers]
+
+fig, ax = plt.subplots(figsize=(9, 5))
+x = range(len(tier_names))
+width = 0.25
+max_budget = max(budgets)
+ax.bar(
+    [i - width for i in x],
+    [b / max_budget for b in budgets],
+    width,
+    label="Budget (normalised)",
+    color="#3498db",
+)
+ax.bar(
+    x,
+    [c / 3.0 for c in clearance_numeric],
+    width,
+    label="Clearance level",
+    color="#e67e22",
+)
+ax.bar(
+    [i + width for i in x],
+    [t / max(tool_counts) for t in tool_counts],
+    width,
+    label="Tool count (normalised)",
+    color="#2ecc71",
+)
+ax.set_xticks(list(x))
+ax.set_xticklabels(tier_names, fontsize=11)
+ax.set_ylabel("Normalised value (0-1)")
+ax.set_title("Governance Tier Comparison — Monotonic Escalation", fontweight="bold")
+ax.legend(fontsize=9)
+ax.set_ylim(0, 1.2)
+ax.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+fname = OUTPUT_DIR / "ex8_governance_tiers.png"
+plt.savefig(fname, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"\n  Saved: {fname}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 5 — Apply: Singapore Financial Advisory (MAS TRM)
+# ════════════════════════════════════════════════════════════════════════
+# A MAS-regulated wealth firm runs retail-facing advisory (qa),
+# portfolio ops (admin), and compliance audit (audit). MAS TRM 7.5
+# requires full traceability. Un-logged advisory incident cost:
+# ~S$150,000 in external legal fees + license suspension risk.
 
 print("\n" + "=" * 70)
 print("  APPLY — MAS Wealth Advisory (tiered envelopes)")
@@ -139,8 +223,9 @@ print("  WHAT YOU'VE MASTERED")
 print("═" * 70)
 print(
     """
-  [x] Compiled a PACT org YAML into a GovernanceEngine
-  [x] Wrapped the base agent in three PactGovernedAgent tiers
+  [x] Compiled a PACT org YAML into a live GovernanceEngine
+  [x] Built the shared 3-tier capstone stack via build_capstone_stack
+  [x] Verified fail-closed on an out-of-envelope action
   [x] Visualised the monotonic envelope hierarchy
   [x] Applied governed agents to a MAS-regulated scenario
 

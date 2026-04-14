@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from kailash_ml import ModelVisualizer
 from scipy import stats
 
@@ -171,7 +172,10 @@ print("\n--- Checkpoint 2 passed --- multimodal failure demonstrated\n")
 print(f"\n=== MLE Failure Case 3: Misspecified Likelihood ===")
 
 rng_t = np.random.default_rng(seed=77)
-shock_data = rng_t.standard_t(df=3, size=100) * 2.0 + 2.5
+# df=4 Student-t with scale=1.2 produces Singapore-realistic quarterly GDP
+# growth (centred at 2.5%, heavy tails without pathological outliers that
+# would inflate the sample std and contaminate the Normal fit).
+shock_data = rng_t.standard_t(df=4, size=500) * 1.2 + 2.5
 
 # Fit Normal MLE
 normal_mle_mu = shock_data.mean()
@@ -219,10 +223,12 @@ print("\n--- Checkpoint 3 passed --- misspecification and tail risk demonstrated
 
 viz = ModelVisualizer()
 
+bimodal_df = pl.DataFrame({"gdp_growth_pct": bimodal_data})
 fig = viz.histogram(
-    bimodal_data,
+    bimodal_df,
+    column="gdp_growth_pct",
+    bins=40,
     title="Bimodal GDP Growth (Pre-COVID + COVID Shock)",
-    x_label="GDP Growth (%)",
 )
 fig.add_vline(x=bimodal_mle_mu, line_dash="dash", annotation_text="MLE mean")
 save_figure(fig, "ex2_04_bimodal_failure.html")

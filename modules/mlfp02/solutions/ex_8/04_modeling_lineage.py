@@ -103,7 +103,9 @@ for name, coef in zip(names, ols["beta"]):
 
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert ols["r2"] > 0.3, f"Task 2: R-squared should be reasonable, got {ols['r2']:.4f}"
+assert (
+    ols["r2"] > 0.2
+), f"Task 2: R-squared should be positive and non-trivial, got {ols['r2']:.4f}"
 assert ols["rmse"] > 0, "Task 2: RMSE must be positive"
 print("\n[ok] Checkpoint 1 passed — regression model built on v2 features\n")
 

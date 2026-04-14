@@ -255,7 +255,9 @@ print(f"MAE:                ${np.mean(np.abs(fit['residuals'])):,.0f}")
 assert 0 < fit["R2"] < 1, "R-squared must be between 0 and 1"
 assert fit["adj_R2"] <= fit["R2"], "Adjusted R-squared must be <= R-squared"
 assert fit["f_stat"] > 0, "F-statistic must be positive"
-assert abs(fit["SST"] - fit["SSR"] - fit["SSE"]) < 1, "SST = SSR + SSE must hold"
+assert (
+    abs(fit["SST"] - fit["SSR"] - fit["SSE"]) < 1e-6 * fit["SST"]
+), "SST = SSR + SSE must hold (within floating-point tolerance)"
 print("\n--- Checkpoint 5 passed --- model evaluation completed\n")
 
 

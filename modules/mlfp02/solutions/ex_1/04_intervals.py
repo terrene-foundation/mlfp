@@ -98,6 +98,13 @@ true_sigma = mle.mle_std
 n_simulations = 1000
 sample_size = 100  # Small sample to show variation
 
+# For the coverage simulation we use a weak (uninformative) prior so the
+# Bayesian credible interval is comparable to the frequentist CI. An
+# informative prior biased away from true_mu would deliberately undercover
+# — that effect is explored separately in Task 5 (flat-type regularisation).
+sim_prior_mu = true_mu
+sim_prior_sigma = 10 * true_sigma  # ~1.35M SGD — effectively flat
+
 freq_covers = 0
 bayes_covers = 0
 freq_widths = []
@@ -118,8 +125,11 @@ for _ in range(n_simulations):
         freq_covers += 1
     freq_widths.append(freq_upper - freq_lower)
 
-    # Bayesian 95% credible interval (Normal-Normal with canonical prior)
-    post_sim = normal_normal_posterior(sample, mu_0, sigma_0, sample.std(ddof=0))
+    # Bayesian 95% credible interval (Normal-Normal with weak prior so
+    # the credible interval is comparable to the frequentist CI)
+    post_sim = normal_normal_posterior(
+        sample, sim_prior_mu, sim_prior_sigma, sample.std(ddof=0)
+    )
     bayes_lower, bayes_upper = post_sim.credible_interval(0.95)
     if bayes_lower <= true_mu <= bayes_upper:
         bayes_covers += 1

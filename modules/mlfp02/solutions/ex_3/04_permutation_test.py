@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from plotly.subplots import make_subplots
 from scipy import stats
 
@@ -222,10 +223,12 @@ from kailash_ml import ModelVisualizer
 viz = ModelVisualizer()
 
 # Conversion permutation null
+conv_df = pl.DataFrame({"permuted_difference": perm_conv_diffs})
 fig1 = viz.histogram(
-    perm_conv_diffs,
+    conv_df,
+    column="permuted_difference",
+    bins=50,
     title="Permutation Null: Conversion Rate Difference",
-    x_label="Permuted Difference",
 )
 fig1.add_vline(
     x=observed_conv_diff,
@@ -243,10 +246,12 @@ fig1.write_html(str(out_1))
 print(f"Saved: {out_1}")
 
 # Revenue permutation null
+rev_df = pl.DataFrame({"permuted_revenue_difference": perm_rev_diffs})
 fig2 = viz.histogram(
-    perm_rev_diffs,
+    rev_df,
+    column="permuted_revenue_difference",
+    bins=50,
     title="Permutation Null: Revenue Difference",
-    x_label="Permuted Revenue Difference ($)",
 )
 fig2.add_vline(
     x=observed_rev_diff,

@@ -346,7 +346,8 @@ print(f"Saved: {path}")
 area_sorted_idx = np.argsort(area)
 area_sorted = area[area_sorted_idx]
 # Linear prediction (area only): intercept + beta_area * area
-y_linear = beta_ols[0] + beta_ols[1] * area_sorted
+beta_baseline = fit_baseline["beta"]
+y_linear = beta_baseline[0] + beta_baseline[1] * area_sorted
 # Enriched prediction for area dimension (storey=median, lease=median)
 med_storey = float(np.median(storey))
 med_lease = float(np.median(lease))

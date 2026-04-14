@@ -32,7 +32,6 @@ import polars as pl
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from kailash_ml import FeatureEngineer
 
 from shared.mlfp02.ex_8 import (
     OUTPUT_DIR,
@@ -113,23 +112,21 @@ print(f"  Rows with market context: {n_with_market:,} ({pct_with_market:.1%})")
 print(f"  (First 6 months per town have nulls — rolling window warm-up)")
 
 # --- 2c-bis. FeatureEngineer — add temporal calendar features ---
-# FeatureEngineer from kailash-ml automates common feature transformations.
-# Here we use it to extract calendar features (month, quarter) from the
-# transaction date, complementing the hand-rolled rolling aggregates above.
-engineer = FeatureEngineer()
-features_v2 = engineer.create_temporal_features(
-    features_v2,
-    timestamp_col="transaction_date",
-    features=["month", "quarter"],
+# FeatureEngineer's temporal strategy extracts calendar components (month,
+# day-of-week, hour) from any datetime column declared in the schema.
+# Here we extract month and quarter manually (quarter is not part of the
+# built-in temporal strategy); month/dow/hour would come from engineer.generate.
+features_v2 = features_v2.with_columns(
+    pl.col("transaction_date").dt.month().alias("transaction_date_month"),
+    pl.col("transaction_date").dt.quarter().alias("transaction_date_quarter"),
 )
-print(f"\n  FeatureEngineer added temporal features: month, quarter")
-print(f"  Columns after FeatureEngineer: {features_v2.shape[1]}")
+print("\n  FeatureEngineer-equivalent temporal features: month, quarter")
+print(f"  Columns after temporal extraction: {features_v2.shape[1]}")
 
-# INTERPRETATION: FeatureEngineer handles the mechanical part of feature
-# creation (extract month, quarter, day-of-week from timestamps). The
-# rolling market features above are domain-specific — FeatureEngineer
-# doesn't replace them, but it ensures calendar-level seasonality is
-# captured with a single call instead of manual pl.col().dt.month().
+# INTERPRETATION: Calendar features capture seasonality that rolling
+# aggregates alone miss (e.g. Q1 vs Q4 buyer behaviour). The rolling
+# market features above are domain-specific; temporal calendar features
+# are mechanical and reused across ML pipelines.
 
 # --- 2d. Show sample rolling values for a few towns ---
 sample_towns = ["ANG MO KIO", "BISHAN", "TAMPINES", "WOODLANDS"]

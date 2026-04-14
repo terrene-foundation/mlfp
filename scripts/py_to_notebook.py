@@ -218,9 +218,20 @@ def convert_asyncio_for_notebook(cells: list[dict]) -> list[dict]:
 
 
 def convert_file(py_path: Path):
-    """Convert a single .py exercise to Jupyter and Colab notebooks."""
+    """Convert a single .py exercise to Jupyter and Colab notebooks.
+
+    Supports two layouts:
+      * Flat: modules/mlfpNN/local/ex_N.py
+              -> modules/mlfpNN/colab/ex_N.ipynb
+      * R10:  modules/mlfpNN/local/ex_N/NN_technique.py
+              -> modules/mlfpNN/colab/ex_N/NN_technique.ipynb
+    """
     source = py_path.read_text()
-    module = py_path.parent.parent.name  # e.g., mlfp01
+    # Detect R10 layout: grandparent is "local" AND parent name starts with "ex_"
+    is_r10 = (
+        py_path.parent.name.startswith("ex_") and py_path.parent.parent.name == "local"
+    )
+    module = py_path.parent.parent.parent.name if is_r10 else py_path.parent.parent.name
 
     # Parse into cells
     cells = py_to_cells(source)
@@ -244,7 +255,15 @@ def convert_file(py_path: Path):
     jupyter_cells = [jupyter_setup_cell(source)] + convert_asyncio_for_notebook(cells)
     jupyter_nb = make_notebook(jupyter_cells)
 
-    notebook_dir = py_path.parent.parent / "notebooks"
+    if is_r10:
+        ex_dir_name = py_path.parent.name  # e.g. "ex_4"
+        module_root = py_path.parent.parent.parent
+        notebook_dir = module_root / "notebooks" / ex_dir_name
+        colab_dir = module_root / "colab" / ex_dir_name
+    else:
+        notebook_dir = py_path.parent.parent / "notebooks"
+        colab_dir = py_path.parent.parent / "colab"
+
     notebook_dir.mkdir(parents=True, exist_ok=True)
     notebook_path = notebook_dir / py_path.with_suffix(".ipynb").name
 
@@ -256,7 +275,6 @@ def convert_file(py_path: Path):
     colab_cells = [colab_setup_cell(source)] + convert_asyncio_for_notebook(cells)
     colab_nb = make_notebook(colab_cells)
 
-    colab_dir = py_path.parent.parent / "colab"
     colab_dir.mkdir(parents=True, exist_ok=True)
     colab_path = colab_dir / py_path.with_suffix(".ipynb").name
 
@@ -275,7 +293,15 @@ def main():
     root = Path(__file__).parent.parent / "modules"
 
     if args.file:
-        convert_file(Path(args.file))
+        target = Path(args.file)
+        if target.is_dir():
+            for py_file in sorted(target.glob("*.py")):
+                if py_file.name == "__init__.py":
+                    continue
+                print(f"Converting {py_file.name}...")
+                convert_file(py_file)
+        else:
+            convert_file(target)
     elif args.module:
         local_dir = root / args.module / "local"
         if not local_dir.exists():

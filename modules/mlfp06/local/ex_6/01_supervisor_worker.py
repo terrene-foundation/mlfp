@@ -1,0 +1,156 @@
+# Copyright 2026 Terrene Foundation
+# SPDX-License-Identifier: Apache-2.0
+"""
+# ════════════════════════════════════════════════════════════════════════
+# MLFP06 — Exercise 6.1: Supervisor-Worker Multi-Agent Pattern
+# ════════════════════════════════════════════════════════════════════════
+#
+# WHAT YOU'LL LEARN:
+#   - Build specialist agents with domain-specific Kaizen Signatures
+#   - Orchestrate the supervisor-worker (fan-out / fan-in) pattern
+#   - Fan-out: dispatch the same question to three independent specialists
+#   - Fan-in: a supervisor synthesises specialist outputs into one answer
+#   - Why decomposing analysis across specialists beats one mega-prompt
+#   - Audit trail: every specialist's contribution is structured and traceable
+#
+# PREREQUISITES: Exercise 5 (BaseAgent, Signature, ReActAgent, single-agent)
+# ESTIMATED TIME: ~35 min
+#
+# TASKS:
+#   1. Load SQuAD 2.0 multi-domain corpus
+#   2. Instantiate three specialists and a synthesis supervisor
+#   3. Build the supervisor-worker async orchestrator
+#   4. Run it against a real passage and inspect the audit trail
+#
+# ════════════════════════════════════════════════════════════════════════
+"""
+from __future__ import annotations
+
+import asyncio
+import time
+
+from shared.mlfp06.ex_6 import (
+    OUTPUT_DIR,
+    build_specialists,
+    build_synthesis,
+    load_squad_corpus,
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# THEORY — Supervisor-Worker (Fan-Out / Fan-In)
+# ════════════════════════════════════════════════════════════════════════
+# One supervisor sits above N specialist workers. The supervisor receives
+# a complex task, fans it out to specialists (each with a focused prompt
+# and a structured Signature), then fans the results back in and
+# synthesises them into a single decision.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 1 — Load the SQuAD 2.0 corpus
+# ════════════════════════════════════════════════════════════════════════
+
+# TODO: Call load_squad_corpus() from shared.mlfp06.ex_6
+passages = ____
+
+print(f"Passages: {passages.height}, unique titles: {passages['title'].n_unique()}")
+
+# ── Checkpoint 1 ─────────────────────────────────────────────────────────
+assert passages.height > 0, "Task 1: corpus should not be empty"
+assert passages["title"].n_unique() > 10, "Corpus should span many titles"
+print("✓ Checkpoint 1 passed — multi-domain corpus loaded\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 2 — Build the specialists and the synthesis supervisor
+# ════════════════════════════════════════════════════════════════════════
+
+# TODO: Use build_specialists() — returns (factual, semantic, structural)
+factual_agent, semantic_agent, structural_agent = ____
+
+# TODO: Use build_synthesis() to create the supervisor
+synthesis_agent = ____
+
+specialists = [factual_agent, semantic_agent, structural_agent]
+
+# ── Checkpoint 2 ─────────────────────────────────────────────────────────
+assert len(specialists) == 3, "Task 2: should have 3 specialists"
+assert synthesis_agent is not None, "Task 2: supervisor should exist"
+print("✓ Checkpoint 2 passed — four agents wired\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3 — Build the supervisor-worker orchestrator
+# ════════════════════════════════════════════════════════════════════════
+
+
+async def supervisor_worker_analysis(doc: str, question: str) -> dict:
+    """Run the full fan-out / fan-in pattern for one (doc, question)."""
+    t0 = time.perf_counter()
+
+    # TODO: Fan-out — call each specialist with (document=doc, question=question)
+    # Hint: await factual_agent.run(document=doc, question=question)
+    factual_result = ____
+    semantic_result = ____
+    structural_result = ____
+
+    # TODO: Fan-in — call synthesis_agent.run(...) passing:
+    #   document, question, factual_analysis, semantic_analysis, structural_analysis
+    # Format each *_analysis as a string summary of the matching specialist output.
+    synthesis_result = ____
+
+    elapsed = time.perf_counter() - t0
+    return {
+        "answer": synthesis_result.unified_answer,
+        "confidence": synthesis_result.confidence,
+        "reasoning": synthesis_result.reasoning_chain,
+        "factual_claims": factual_result.factual_claims,
+        "themes": semantic_result.main_themes,
+        "entities": structural_result.key_entities,
+        "latency_s": elapsed,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4 — Run it and inspect the audit trail
+# ════════════════════════════════════════════════════════════════════════
+
+doc = passages["text"][0]
+question = passages["question"][0]
+
+# TODO: Use asyncio.run() to execute supervisor_worker_analysis(doc, question)
+sv_result = ____
+
+# ── Checkpoint 3 ─────────────────────────────────────────────────────────
+assert sv_result["answer"], "Task 3: should produce a unified answer"
+assert 0 <= sv_result["confidence"] <= 1, "Confidence should be in [0, 1]"
+assert sv_result["factual_claims"], "Factual specialist should contribute claims"
+print("✓ Checkpoint 3 passed — supervisor-worker pattern complete\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# APPLY — Singapore scenario: insurance claims triage
+# ════════════════════════════════════════════════════════════════════════
+# At a Singapore general insurer handling ~8,000 personal-injury claims
+# per month, raising fraud detection from 88% to 95% via supervisor-worker
+# decomposition yields ~S$4.4M/month in loss prevention — and a MAS-
+# defensible audit trail per claim.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ════════════════════════════════════════════════════════════════════════
+print("=" * 70)
+print("  WHAT YOU'VE MASTERED")
+print("=" * 70)
+print(
+    """
+  [x] Specialist agents with domain-specific Signatures
+  [x] Supervisor-worker pattern: fan-out + fan-in synthesis
+  [x] Structured audit trail per specialist
+  [x] When a focused Signature beats a mega-prompt
+
+  Next: 02_sequential_pipeline.py — when specialists must build on
+  each other rather than run independently.
+"""
+)

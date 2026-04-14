@@ -101,7 +101,11 @@ print(f"Delegations:  6 D/T/R chains")
 print(f"YAML path:    {org_yaml_path}")
 
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
-assert "departments" in ORG_YAML and "delegations" in ORG_YAML
+# Modern pact schema: `envelopes:` block holds the D/T/R delegation
+# contracts; the old `delegations:` top-level list is gone. Each
+# envelope entry is one delegation from a human (`defined_by`) to an
+# agent (`target`).
+assert "departments" in ORG_YAML and "envelopes" in ORG_YAML
 assert org_yaml_path  # path was returned
 print("[x] Checkpoint 2 passed — org YAML written\n")
 

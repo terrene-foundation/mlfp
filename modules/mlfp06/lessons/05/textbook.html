@@ -63,7 +63,8 @@
   in a loop, hallucinate tool names, or present fabricated results as real.
   Today you learn the three components that make agents useful and safe:
   <strong>structured reasoning</strong> (ReAct), <strong>structured tool interfaces</strong>
-  (function calling), and <strong>cost budgets</strong> (LLMCostTracker).
+  (function calling), and <strong>cost budgets</strong> (per-agent
+  <code>budget_limit_usd</code> on the agent's config).
 </p>
 
 <figure class="diagram">
@@ -287,9 +288,9 @@
     The quadratic cost growth explains why agents stuck in loops are expensive.
     A 10-step agent costs roughly $\frac{10 \cdot 11}{2} = 55$ "step-units" of
     input tokens. A 20-step agent (just double the steps) costs $\frac{20 \cdot 21}{2} = 210$
-    step-units — nearly 4x more. This is why Kaizen's LLMCostTracker is not
-    optional. Without a hard budget, a confused agent can spend hundreds of
-    dollars in minutes.
+    step-units — nearly 4x more. This is why every Kaizen agent declares a
+    <code>budget_limit_usd</code> on its config. Without a hard budget, a
+    confused agent can spend hundreds of dollars in minutes.
   </p>
 </div>
 
@@ -433,26 +434,29 @@
   <p>
     Kaizen provides three agent types: <code>ReActAgent</code> (thought-action-observation
     loop), <code>ChainOfThoughtAgent</code> (reason then answer, no tools), and
-    <code>BaseAgent</code> (build your own loop). All agents use <code>Signature</code>
-    for typed input/output, <code>Delegate</code> for LLM communication, and
-    <code>LLMCostTracker</code> for budget enforcement. The agent framework handles
+    <code>BaseAgent</code> (build your own loop). All agents use
+    <code>Signature</code> for typed input/output, <code>Delegate</code> for
+    LLM communication, and declare <code>budget_limit_usd</code> on their
+    dataclass config to cap cumulative spend. The agent framework handles
     prompt formatting, tool dispatch, error recovery, and streaming.
   </p>
 </div>
 
 <h3>Building a ReAct agent with Kaizen</h3>
 
-<pre><code class="language-python">from kaizen import ReActAgent, Signature, InputField, OutputField
+<pre><code class="language-python">from dataclasses import dataclass
+from kaizen import Signature, InputField, OutputField
 from kaizen.tools import tool
+from kaizen_agents.agents.specialized.react import ReActAgent
 from kailash_ml import DataExplorer, TrainingPipeline, ModelVisualizer
 import polars as pl
 
 # Define typed signature
 class DataAnalysis(Signature):
     """Analyse a dataset and recommend the best model."""
-    dataset_name: str = InputField(desc="Name of the CSV file to analyse")
-    analysis_report: str = OutputField(desc="Markdown report with findings")
-    recommended_model: str = OutputField(desc="Best model and why")
+    dataset_name: str = InputField(description="Name of the CSV file to analyse")
+    analysis_report: str = OutputField(description="Markdown report with findings")
+    recommended_model: str = OutputField(description="Best model and why")
 
 # Define tools that wrap Kailash engines
 @tool
@@ -467,7 +471,7 @@ def explore_data(dataset: str) -> dict:
         "shape": str(df.shape),
         "columns": df.columns,
         "null_pct": profile.null_percentages,
-        "stats": profile.summary_stats
+        "stats": profile.summary_stats,
     }
 
 @tool
@@ -481,7 +485,7 @@ def train_model(dataset: str, target: str, algorithm: str) -> dict:
     return {
         "accuracy": result.metrics["accuracy"],
         "f1": result.metrics["f1_score"],
-        "training_time_s": result.training_time
+        "training_time_s": result.training_time,
     }
 
 @tool
@@ -491,40 +495,54 @@ def visualise_results(dataset: str, target: str) -> str:
     path = viz.feature_importance(dataset, target, save_to="results/")
     return f"Chart saved to {path}"
 
-# Create and run the agent
-agent = ReActAgent(
-    signature=DataAnalysis,
-    tools=[explore_data, train_model, visualise_results],
-    max_iterations=10,
-    model="claude-sonnet-4-20250514"
-)</code></pre>
+# Dataclass config carries the model and the hard budget cap
+@dataclass
+class AnalystConfig:
+    model: str = "gpt-4o-mini"
+    budget_limit_usd: float = 2.00
+    max_iterations: int = 10
 
-<h3>Cost budget enforcement</h3>
+# Subclass ReActAgent so the signature is bound at construction
+class AnalystAgent(ReActAgent):
+    def __init__(self, config: AnalystConfig):
+        super().__init__(
+            config=config,
+            signature=DataAnalysis(),
+            tools=[explore_data, train_model, visualise_results],
+        )
 
-<pre><code class="language-python">from kaizen import LLMCostTracker
+agent = AnalystAgent(AnalystConfig())</code></pre>
 
-# Set a hard budget — agent stops when exhausted
-tracker = LLMCostTracker(budget_usd=2.00)
+<h3>Cost budget enforcement via <code>BaseAgentConfig.budget_limit_usd</code></h3>
 
-result = agent.run(
-    dataset_name="sg_churn.csv",
-    cost_tracker=tracker
-)
+<pre><code class="language-python">from dataclasses import dataclass
+from kaizen.core.base_agent import BaseAgent
 
-print(f"Total cost: ${tracker.total_cost:.4f}")
-print(f"LLM calls: {tracker.call_count}")
-print(f"Tokens used: {tracker.total_tokens:,}")
-print(f"Budget remaining: ${tracker.remaining:.4f}")</code></pre>
+# Budget is bound to the agent's config — no separate tracker.
+@dataclass
+class AnalystConfig:
+    model: str = "gpt-4o-mini"
+    budget_limit_usd: float = 2.00   # hard cap; agent degrades gracefully when exhausted
+
+agent = AnalystAgent(AnalystConfig())
+result = await agent.run_async(dataset_name="sg_churn.csv")
+
+print(result["analysis_report"])
+print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
 
 <div class="callout theory">
   <span class="label">Theory</span>
   <p>
-    The cost tracker operates at the <code>Delegate</code> level — every LLM
-    call passes through it. When the remaining budget drops below the estimated
-    cost of one more call, the agent receives a signal to produce its final
-    answer with whatever information it has gathered so far. This is a
-    <strong>graceful degradation</strong> — the agent does not crash, it
-    summarises partial results and explains what it could not complete.
+    Budget lives on the agent's config (<code>BaseAgentConfig.budget_limit_usd</code>),
+    not a separate tracker. Every LLM call routed through the agent's run
+    loop contributes to its cumulative spend; when the remaining budget drops
+    below the estimated cost of one more call, the agent receives a signal to
+    produce its final answer with whatever information it has gathered so far.
+    This is a <strong>graceful degradation</strong> — the agent does not
+    crash, it summarises partial results and explains what it could not
+    complete. Binding the budget to the agent's config makes it part of the
+    agent's operating envelope rather than a global variable — which, as
+    Lesson 6.7 will show, is exactly what PACT governance depends on.
   </p>
 </div>
 
@@ -605,19 +623,15 @@ print(f"Budget remaining: ${tracker.remaining:.4f}")</code></pre>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2. Run the agent with cost tracking.</span>
-    <pre><code class="language-python">from kaizen import LLMCostTracker
+    <span class="step-label">Step 2. Run the agent under a budget cap.</span>
+    <pre><code class="language-python"># Budget is a field on the agent's dataclass config — no standalone tracker.
+agent = AnalystAgent(AnalystConfig(budget_limit_usd=1.00))
 
-tracker = LLMCostTracker(budget_usd=1.00)
+result = await agent.run_async(dataset_name="sg_telco_churn.csv")
 
-result = agent.run(
-    dataset_name="sg_telco_churn.csv",
-    cost_tracker=tracker
-)
-
-print(result.analysis_report)
-print(f"\nRecommended: {result.recommended_model}")
-print(f"Cost: ${tracker.total_cost:.4f} ({tracker.call_count} LLM calls)")</code></pre>
+print(result["analysis_report"])
+print(f"\nRecommended: {result['recommended_model']}")
+print(f"Budget cap: ${agent.config.budget_limit_usd:.4f}")</code></pre>
   </div>
 
   <div class="step">
@@ -706,9 +720,10 @@ print(f"Cost: ${tracker.total_cost:.4f} ({tracker.call_count} LLM calls)")</code
   <span class="label">Mistake 2: No cost budget</span>
   <p>
     An agent stuck in a reasoning loop can spend hundreds of dollars in minutes.
-    Always set a hard budget with <code>LLMCostTracker</code>. A good heuristic:
-    estimate the expected number of steps, multiply by 3x for safety, and compute
-    the token cost. For most data analysis tasks, $1-5 is sufficient.
+    Always set a hard budget via <code>budget_limit_usd</code> on the agent's
+    config. A good heuristic: estimate the expected number of steps, multiply
+    by 3x for safety, and compute the token cost. For most data analysis
+    tasks, $1-5 is sufficient.
   </p>
 </div>
 
@@ -795,8 +810,8 @@ print(f"Cost: ${tracker.total_cost:.4f} ({tracker.call_count} LLM calls)")</code
   teams — the supervisor-worker pattern delegates subtasks to specialised
   ReAct agents.
   <br>
-  <strong>6.7 Governance:</strong> PactGovernedAgent wraps any Kaizen agent with
-  access controls, operating envelopes, and audit logging.
+  <strong>6.7 Governance:</strong> <code>GovernedSupervisor</code> wraps any
+  Kaizen agent with access controls, operating envelopes, and audit logging.
   <br>
   <strong>5.8 RL:</strong> the ReAct loop is conceptually similar to an RL
   agent's interaction with an environment — state, action, reward, repeat.

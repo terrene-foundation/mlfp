@@ -234,105 +234,130 @@
 
 <h3>Supervisor-Worker</h3>
 
-<pre><code class="language-python">from kaizen import BaseAgent, ReActAgent, Signature, InputField, OutputField
+<pre><code class="language-python">from dataclasses import dataclass
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
+from kaizen_agents.agents.specialized.react import ReActAgent
 from kaizen.tools import tool
+
+# Each worker ships a dataclass config + signature + BaseAgent subclass.
+# The config carries model + budget_limit_usd; the signature is passed as
+# an instance to super().__init__(signature=...).
+
+@dataclass
+class WorkerConfig:
+    model: str = "gpt-4o-mini"
+    budget_limit_usd: float = 1.00
 
 # Worker 1: Data profiler
 class ProfileTask(Signature):
     """Profile a dataset and report quality issues."""
-    dataset: str = InputField(desc="Dataset filename")
-    profile_report: str = OutputField(desc="Data quality report")
+    dataset: str = InputField(description="Dataset filename")
+    profile_report: str = OutputField(description="Data quality report")
+    identified_target: str = OutputField(description="Best candidate target column")
 
-profiler_agent = ReActAgent(
-    signature=ProfileTask,
-    tools=[explore_data, check_nulls, check_distributions],
-    model="claude-sonnet-4-20250514"
-)
+class ProfilerAgent(ReActAgent):
+    def __init__(self, config: WorkerConfig):
+        super().__init__(
+            config=config,
+            signature=ProfileTask(),
+            tools=[explore_data, check_nulls, check_distributions],
+        )
+
+profiler_agent = ProfilerAgent(WorkerConfig())
 
 # Worker 2: Model trainer
 class TrainTask(Signature):
     """Train candidate models and return comparison."""
-    dataset: str = InputField(desc="Dataset filename")
-    target: str = InputField(desc="Target column name")
-    comparison: str = OutputField(desc="Model comparison table")
+    dataset: str = InputField(description="Dataset filename")
+    target: str = InputField(description="Target column name")
+    comparison: str = OutputField(description="Model comparison table")
 
-trainer_agent = ReActAgent(
-    signature=TrainTask,
-    tools=[train_model, evaluate_model, cross_validate],
-    model="claude-sonnet-4-20250514"
-)
+class TrainerAgent(ReActAgent):
+    def __init__(self, config: WorkerConfig):
+        super().__init__(
+            config=config,
+            signature=TrainTask(),
+            tools=[train_model, evaluate_model, cross_validate],
+        )
+
+trainer_agent = TrainerAgent(WorkerConfig())
 
 # Worker 3: Report writer
 class ReportTask(Signature):
     """Write a summary report from profiling and training results."""
-    profile_report: str = InputField(desc="From profiler agent")
-    model_comparison: str = InputField(desc="From trainer agent")
-    final_report: str = OutputField(desc="Executive summary")
+    profile_report: str = InputField(description="From profiler agent")
+    model_comparison: str = InputField(description="From trainer agent")
+    final_report: str = OutputField(description="Executive summary")
 
-report_agent = ReActAgent(
-    signature=ReportTask,
-    tools=[format_table, generate_chart],
-    model="claude-sonnet-4-20250514"
-)
+class ReportAgent(ReActAgent):
+    def __init__(self, config: WorkerConfig):
+        super().__init__(
+            config=config,
+            signature=ReportTask(),
+            tools=[format_table, generate_chart],
+        )
+
+report_agent = ReportAgent(WorkerConfig())
 
 # Supervisor orchestrates
 class SupervisorTask(Signature):
     """Coordinate data analysis pipeline."""
-    dataset: str = InputField(desc="Dataset to analyse")
-    executive_report: str = OutputField(desc="Final analysis")
+    dataset: str = InputField(description="Dataset to analyse")
+    executive_report: str = OutputField(description="Final analysis")
 
 class MLSupervisor(BaseAgent):
-    def run(self, dataset: str) -> str:
+    def __init__(self, config: WorkerConfig):
+        super().__init__(config=config, signature=SupervisorTask())
+
+    async def orchestrate(self, dataset: str) -> str:
         # Step 1: Profile
-        profile = profiler_agent.run(dataset=dataset)
+        profile = await profiler_agent.run_async(dataset=dataset)
 
         # Step 2: Train (uses profiling insights)
-        training = trainer_agent.run(
+        training = await trainer_agent.run_async(
             dataset=dataset,
-            target=profile.identified_target
+            target=profile["identified_target"],
         )
 
         # Step 3: Report (combines both)
-        report = report_agent.run(
-            profile_report=profile.profile_report,
-            model_comparison=training.comparison
+        report = await report_agent.run_async(
+            profile_report=profile["profile_report"],
+            model_comparison=training["comparison"],
         )
-        return report.final_report</code></pre>
+        return report["final_report"]</code></pre>
 
 <h3>Sequential pattern</h3>
 
-<pre><code class="language-python"># Sequential: output of each agent feeds into the next
-def sequential_pipeline(dataset: str) -> str:
+<pre><code class="language-python"># Sequential: output of each agent feeds into the next.
+# All agent calls are async and return dicts keyed by OutputField names.
+async def sequential_pipeline(dataset: str) -> str:
     """Chain agents: profile → train → report."""
-    step1 = profiler_agent.run(dataset=dataset)
-    step2 = trainer_agent.run(
+    step1 = await profiler_agent.run_async(dataset=dataset)
+    step2 = await trainer_agent.run_async(
         dataset=dataset,
-        target=step1.identified_target
+        target=step1["identified_target"],
     )
-    step3 = report_agent.run(
-        profile_report=step1.profile_report,
-        model_comparison=step2.comparison
+    step3 = await report_agent.run_async(
+        profile_report=step1["profile_report"],
+        model_comparison=step2["comparison"],
     )
-    return step3.final_report</code></pre>
+    return step3["final_report"]</code></pre>
 
 <h3>Parallel pattern</h3>
 
 <pre><code class="language-python">import asyncio
-from kaizen import LLMCostTracker
 
-async def parallel_analysis(datasets: list[str]) -> list[str]:
+# Each agent already carries its own budget_limit_usd on its config.
+# Budget cascading across workers is covered in Lesson 6.7 (PACT).
+async def parallel_analysis(datasets: list[str]) -> str:
     """Analyse multiple datasets simultaneously."""
-    tracker = LLMCostTracker(budget_usd=5.00)
-
-    tasks = [
-        profiler_agent.arun(dataset=ds, cost_tracker=tracker)
-        for ds in datasets
-    ]
+    tasks = [profiler_agent.run_async(dataset=ds) for ds in datasets]
     results = await asyncio.gather(*tasks)
 
-    # Aggregate results
+    # Aggregate results (dict access, not attribute access)
     combined = "\n\n".join(
-        f"## {ds}\n{r.profile_report}"
+        f"## {ds}\n{r['profile_report']}"
         for ds, r in zip(datasets, results)
     )
     return combined
@@ -350,10 +375,11 @@ report = asyncio.run(parallel_analysis(datasets))</code></pre>
   defines a standard message format:
 </p>
 
-<pre><code class="language-python">from kaizen.protocol import A2AMessage
+<pre><code class="language-python">from kaizen import A2ATask, A2AAgentCard
 
-# Profiler sends structured output to trainer
-message = A2AMessage(
+# Profiler sends a structured task to trainer via the A2A primitives
+# exposed at the top of the kaizen package.
+task = A2ATask(
     sender="profiler",
     receiver="trainer",
     task_id="analysis-001",
@@ -361,9 +387,16 @@ message = A2AMessage(
         "dataset": "sg_telco_churn.csv",
         "identified_target": "churned",
         "quality_issues": ["2% nulls in tenure", "class imbalance 73/27"],
-        "recommended_preprocessing": ["impute_nulls", "oversample_minority"]
+        "recommended_preprocessing": ["impute_nulls", "oversample_minority"],
     },
-    metadata={"cost_so_far": 0.12, "step": 1}
+    metadata={"cost_so_far": 0.12, "step": 1},
+)
+
+# Each receiving agent advertises its capabilities via an AgentCard
+# so the supervisor can route tasks without hardcoding a dispatch table.
+trainer_card = A2AAgentCard(
+    agent_id="trainer",
+    capabilities=["train", "cross_validate", "evaluate"],
 )</code></pre>
 
 <div class="callout advanced">
@@ -417,82 +450,82 @@ message = A2AMessage(
 
 <p>
   Without memory, every agent invocation starts from scratch. The agent does
-  not remember what it profiled five minutes ago, what the user prefers, or
-  what entities it has encountered. Three types of memory address this:
+  not remember what it profiled five minutes ago, what another worker
+  discovered about the same dataset, or which facts have already been
+  established. Kaizen exposes two memory primitives that cover the full
+  spectrum:
 </p>
 
 <table>
-  <thead><tr><th>Memory type</th><th>Scope</th><th>Persistence</th><th>Use case</th></tr></thead>
+  <thead><tr><th>Primitive</th><th>Scope</th><th>Persistence</th><th>Use case</th></tr></thead>
   <tbody>
-    <tr><td><strong>Short-term</strong></td><td>Current conversation</td><td>Session only</td><td>Track the current task's state — what tools have been called, what results observed</td></tr>
-    <tr><td><strong>Long-term</strong></td><td>Across sessions</td><td>Database-backed</td><td>Remember user preferences ("always use F1 for imbalanced data"), past analyses, project context</td></tr>
-    <tr><td><strong>Entity</strong></td><td>Structured knowledge</td><td>Database-backed</td><td>Knowledge about specific entities — "HDB resale prices: median $550K, mean $620K, last updated Q3 2025"</td></tr>
+    <tr><td><strong><code>BufferMemory</code></strong></td><td>One agent's working context</td><td>In-process (lives for the agent's lifetime)</td><td>The agent's own running transcript — thought / action / observation across the current task</td></tr>
+    <tr><td><strong><code>SharedMemoryPool</code></strong></td><td>Many agents, one workspace</td><td>Backend-pluggable (in-memory, SQLite, or a Kaizen workspace store)</td><td>Cross-agent facts — "HDB resale target column is <code>resale_price</code>"; "last profiled 2025-11-15"; "best model so far: gradient_boosting"</td></tr>
   </tbody>
 </table>
 
-<pre><code class="language-python">from kaizen.memory import ShortTermMemory, LongTermMemory, EntityMemory
+<pre><code class="language-python">from kaizen.memory import BufferMemory, SharedMemoryPool
 
-# Short-term: conversation buffer
-short_mem = ShortTermMemory(max_turns=20)
+# Per-agent scratchpad — isolated to this agent's run loop
+profiler_buffer = BufferMemory(max_turns=20)
 
-# Long-term: persistent across sessions
-long_mem = LongTermMemory(
-    backend="sqlite",
-    db_path="agent_memory.db"
+# Cross-agent workspace — facts any worker can read or write
+shared_pool = SharedMemoryPool(backend="sqlite", path="hdb_workspace.db")
+
+# Attach to agent via its config — BufferMemory is per-agent,
+# SharedMemoryPool is passed to every worker that should see it
+class AnalystConfig(WorkerConfig):
+    memory: BufferMemory | None = None
+    shared: SharedMemoryPool | None = None
+
+profiler_agent = ProfilerAgent(
+    AnalystConfig(memory=profiler_buffer, shared=shared_pool)
 )
 
-# Entity: structured knowledge store
-entity_mem = EntityMemory(
-    backend="sqlite",
-    db_path="entity_memory.db"
-)
-
-# Attach to agent
-agent = ReActAgent(
-    signature=DataAnalysis,
-    tools=[explore_data, train_model],
-    memory=[short_mem, long_mem, entity_mem]
-)
-
-# After running, entity memory stores structured facts
-entity_mem.get("hdb_resale_dataset")
+# After running, the shared pool holds structured facts for other workers
+shared_pool.get("hdb_resale_dataset")
 # → {"rows": 50000, "columns": 11, "last_profiled": "2025-11-15",
 #    "target": "resale_price", "best_model": "gradient_boosting"}</code></pre>
 
 <div class="callout theory">
   <span class="label">Theory</span>
   <p>
-    Short-term memory is the agent's "working memory" — analogous to a human
-    holding information in mind while solving a problem. Long-term memory is
-    "experience" — lessons learned that persist across sessions. Entity memory
-    is "knowledge" — structured facts about the world. Together, they give
-    the agent a form of continuity that pure ReAct (which forgets everything
-    after each run) lacks.
+    <code>BufferMemory</code> is the agent's "working memory" — the running
+    transcript of thoughts, actions, and observations for the current task.
+    <code>SharedMemoryPool</code> is the team's "shared whiteboard" — facts
+    that any worker can write or read, so the trainer does not re-profile
+    what the profiler already profiled. Earlier Kaizen releases split this
+    into three named tiers (short-term, long-term, entity), but the two-
+    primitive model is strictly more flexible: the pool's backend decides
+    persistence, and the agents decide which facts matter.
   </p>
 </div>
 
 <figure class="diagram">
 <svg viewBox="0 0 720 200" class="illustration" xmlns="http://www.w3.org/2000/svg">
-  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">Three memory types feed the agent's context</text>
+  <text x="360" y="20" text-anchor="middle" font-weight="700" font-size="14" fill="#475569">BufferMemory and SharedMemoryPool feed the agent's context</text>
 
   <!-- Agent -->
   <rect x="270" y="80" width="180" height="60" rx="10" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="360" y="110" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">ReAct Agent</text>
   <text x="360" y="128" text-anchor="middle" font-size="10" fill="#92400E">context window</text>
 
-  <!-- Short-term -->
+  <!-- BufferMemory (per-agent) -->
   <rect x="30" y="50" width="180" height="40" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
-  <text x="120" y="75" text-anchor="middle" font-size="10" fill="#1E40AF">Short-term: last 20 turns</text>
+  <text x="120" y="68" text-anchor="middle" font-size="10" fill="#1E40AF">BufferMemory</text>
+  <text x="120" y="82" text-anchor="middle" font-size="9" fill="#1E40AF">per-agent, last 20 turns</text>
   <line x1="215" y1="70" x2="265" y2="100" stroke="#3B82F6" stroke-width="1.5"/>
 
-  <!-- Long-term -->
+  <!-- SharedMemoryPool (cross-agent facts) -->
   <rect x="30" y="120" width="180" height="40" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
-  <text x="120" y="145" text-anchor="middle" font-size="10" fill="#166534">Long-term: user prefs, history</text>
+  <text x="120" y="138" text-anchor="middle" font-size="10" fill="#166534">SharedMemoryPool</text>
+  <text x="120" y="152" text-anchor="middle" font-size="9" fill="#166534">cross-agent facts + history</text>
   <line x1="215" y1="140" x2="265" y2="120" stroke="#22C55E" stroke-width="1.5"/>
 
-  <!-- Entity -->
+  <!-- System prompt / signature -->
   <rect x="510" y="50" width="180" height="40" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
-  <text x="600" y="75" text-anchor="middle" font-size="10" fill="#6D28D9">Entity: structured facts</text>
+  <text x="600" y="68" text-anchor="middle" font-size="10" fill="#6D28D9">Signature schema</text>
+  <text x="600" y="82" text-anchor="middle" font-size="9" fill="#6D28D9">inputs / outputs / instructions</text>
   <line x1="505" y1="70" x2="455" y2="100" stroke="#8B5CF6" stroke-width="1.5"/>
 
   <!-- Tools -->
@@ -500,7 +533,7 @@ entity_mem.get("hdb_resale_dataset")
   <text x="600" y="145" text-anchor="middle" font-size="10" fill="#991B1B">Tool results (current run)</text>
   <line x1="505" y1="140" x2="455" y2="120" stroke="#EF4444" stroke-width="1.5"/>
 </svg>
-<figcaption>The agent's context window is populated from four sources: short-term memory, long-term memory, entity memory, and tool results from the current run.</figcaption>
+<figcaption>The agent's context window is populated from four sources: its private <code>BufferMemory</code>, the team's <code>SharedMemoryPool</code>, its Signature (inputs + output schema), and the results of tool calls made in the current run.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -632,89 +665,111 @@ if __name__ == "__main__":
 
   <div class="step">
     <span class="step-label">Step 1. Define the three worker agents.</span>
-    <p>Each worker has a typed signature, 3-4 tools, and access to shared
-    entity memory for cross-agent knowledge:</p>
-    <pre><code class="language-python">from kaizen import ReActAgent, Signature, InputField, OutputField
-from kaizen.memory import EntityMemory
+    <p>Each worker has a dataclass config, a typed signature, 3-4 tools, and
+    a reference to the same <code>SharedMemoryPool</code> so facts flow
+    across the team:</p>
+    <pre><code class="language-python">from dataclasses import dataclass
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
+from kaizen.memory import SharedMemoryPool
+from kaizen_agents.agents.specialized.react import ReActAgent
 
-shared_entities = EntityMemory(backend="sqlite", db_path="hdb_entities.db")
+shared_pool = SharedMemoryPool(backend="sqlite", path="hdb_workspace.db")
+
+@dataclass
+class HDBWorkerConfig:
+    model: str = "gpt-4o-mini"
+    budget_limit_usd: float = 1.00
+    shared: SharedMemoryPool | None = None
 
 # Worker 1: Feature Engineer
 class FeatureTask(Signature):
     """Profile HDB data and engineer features."""
-    dataset: str = InputField()
-    feature_report: str = OutputField()
-    engineered_columns: list = OutputField()
+    dataset: str = InputField(description="Dataset filename")
+    feature_report: str = OutputField(description="Profiling + feature notes")
+    engineered_columns: list = OutputField(description="Derived columns added")
 
-feature_agent = ReActAgent(
-    signature=FeatureTask,
-    tools=[explore_data, compute_correlations, create_features],
-    memory=[shared_entities],
-    model="claude-sonnet-4-20250514"
-)
+class FeatureAgent(ReActAgent):
+    def __init__(self, config: HDBWorkerConfig):
+        super().__init__(
+            config=config,
+            signature=FeatureTask(),
+            tools=[explore_data, compute_correlations, create_features],
+        )
+
+feature_agent = FeatureAgent(HDBWorkerConfig(shared=shared_pool))
 
 # Worker 2: Model Selector
 class ModelTask(Signature):
     """Train 3 models and recommend the best."""
-    dataset: str = InputField()
-    features: list = InputField()
-    model_comparison: str = OutputField()
-    best_model: str = OutputField()
+    dataset: str = InputField(description="Dataset filename")
+    features: list = InputField(description="Engineered column names")
+    model_comparison: str = OutputField(description="Comparison table")
+    best_model: str = OutputField(description="Recommended model")
 
-model_agent = ReActAgent(
-    signature=ModelTask,
-    tools=[train_model, cross_validate, evaluate_model],
-    memory=[shared_entities],
-    model="claude-sonnet-4-20250514"
-)
+class ModelAgent(ReActAgent):
+    def __init__(self, config: HDBWorkerConfig):
+        super().__init__(
+            config=config,
+            signature=ModelTask(),
+            tools=[train_model, cross_validate, evaluate_model],
+        )
+
+model_agent = ModelAgent(HDBWorkerConfig(shared=shared_pool))
 
 # Worker 3: Report Writer
 class ReportWriteTask(Signature):
     """Synthesise findings into executive report."""
-    feature_report: str = InputField()
-    model_comparison: str = InputField()
-    executive_summary: str = OutputField()
+    feature_report: str = InputField(description="From feature agent")
+    model_comparison: str = InputField(description="From model agent")
+    executive_summary: str = OutputField(description="Final report")
 
-report_writer = ReActAgent(
-    signature=ReportWriteTask,
-    tools=[format_table, generate_chart],
-    memory=[shared_entities],
-    model="claude-sonnet-4-20250514"
-)</code></pre>
+class ReportWriterAgent(ReActAgent):
+    def __init__(self, config: HDBWorkerConfig):
+        super().__init__(
+            config=config,
+            signature=ReportWriteTask(),
+            tools=[format_table, generate_chart],
+        )
+
+report_writer = ReportWriterAgent(HDBWorkerConfig(shared=shared_pool))</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2. Build the supervisor.</span>
-    <pre><code class="language-python">from kaizen import BaseAgent, LLMCostTracker
+    <pre><code class="language-python">import asyncio
+from kaizen.core.base_agent import BaseAgent
+
+class SupervisorSignature(Signature):
+    dataset: str = InputField(description="Dataset filename")
+    executive_summary: str = OutputField(description="Combined report")
 
 class HDBAnalysisSupervisor(BaseAgent):
-    def run(self, dataset: str) -> str:
-        tracker = LLMCostTracker(budget_usd=3.00)
+    def __init__(self, config: HDBWorkerConfig):
+        super().__init__(config=config, signature=SupervisorSignature())
 
+    async def orchestrate(self, dataset: str) -> str:
         # Phase 1: Feature engineering
-        features = feature_agent.run(
-            dataset=dataset, cost_tracker=tracker
-        )
+        features = await feature_agent.run_async(dataset=dataset)
 
         # Phase 2: Model selection (uses engineered features)
-        models = model_agent.run(
+        models = await model_agent.run_async(
             dataset=dataset,
-            features=features.engineered_columns,
-            cost_tracker=tracker
+            features=features["engineered_columns"],
         )
 
         # Phase 3: Report (combines both results)
-        report = report_writer.run(
-            feature_report=features.feature_report,
-            model_comparison=models.model_comparison,
-            cost_tracker=tracker
+        report = await report_writer.run_async(
+            feature_report=features["feature_report"],
+            model_comparison=models["model_comparison"],
         )
 
-        print(f"Total cost: ${tracker.total_cost:.4f}")
-        return report.executive_summary
+        # Per-agent budgets cap the total. Cascaded budgets live in PACT (6.7).
+        print(f"Budget caps (per worker): ${feature_agent.config.budget_limit_usd:.2f}")
+        return report["executive_summary"]
 
-supervisor = HDBAnalysisSupervisor()
-result = supervisor.run(dataset="hdb_resale.csv")</code></pre>
+supervisor = HDBAnalysisSupervisor(HDBWorkerConfig(shared=shared_pool))
+result = asyncio.run(supervisor.orchestrate(dataset="hdb_resale.csv"))</code></pre>
   </div>
 
   <div class="step">
@@ -852,8 +907,9 @@ result = supervisor.run(dataset="hdb_resale.csv")</code></pre>
   <strong>6.5 AI Agents:</strong> the single-agent ReAct pattern that each
   worker implements.
   <br>
-  <strong>6.7 Governance:</strong> PactGovernedAgent adds operating envelopes
-  and budget cascading to the multi-agent patterns built here.
+  <strong>6.7 Governance:</strong> <code>GovernedSupervisor</code> adds
+  operating envelopes and budget cascading to the multi-agent patterns built
+  here.
   <br>
   <strong>6.8 Capstone:</strong> the multi-agent pipeline from today gets
   deployed via Nexus (API + CLI + MCP simultaneously) with full governance.

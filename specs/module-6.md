@@ -3,6 +3,7 @@
 **Description**: Build LLM applications, fine-tune models, deploy governed agents. All engineering, all code. Following R5 Deck 6B (10 fine-tuning techniques, agentic design) — adapted from CrewAI to Kaizen.
 
 **Module Learning Objectives**: By the end of M6, students can:
+
 - Use LLMs effectively with prompt engineering and structured output
 - Fine-tune LLMs using LoRA and adapter layers (from scratch implementation)
 - Survey all 10+ fine-tuning techniques and know when to use each
@@ -13,7 +14,7 @@
 - Implement AI governance with PACT (access controls, operating envelopes)
 - Deploy full production platforms with Nexus
 
-**Kailash Engines**: Kaizen (Delegate, BaseAgent, Signature, agents), kailash-align (AlignmentPipeline, AdapterRegistry), kailash-pact (GovernanceEngine, PactGovernedAgent), kailash-nexus (Nexus, auth, middleware), kailash-mcp
+**Kailash Engines**: Kaizen (Delegate, BaseAgent, Signature, agents), kaizen-agents (GovernedSupervisor, ReActAgent, Pipeline), kailash-align (AlignmentPipeline, AdapterRegistry), pact (GovernanceEngine, RoleEnvelope, Address), nexus (Nexus, auth, middleware), kailash-mcp
 
 ---
 
@@ -23,6 +24,7 @@
 **Spectrum Position**: Semantic feature learning — language models as feature extractors at scale
 
 **Topics**:
+
 - **LLM Foundation** (from Deck 6B):
   - Transformer architecture recap (from M5.4)
   - Pre-training: next token prediction (GPT), masked language modelling (BERT)
@@ -44,6 +46,7 @@
 - **Inference considerations** (brief): KV-cache, speculative decoding, continuous batching (from completeness audit)
 
 **Learning Objectives**: Students can:
+
 - Explain how LLMs are pre-trained and aligned
 - Apply 5+ prompt engineering techniques effectively
 - Use Kaizen Delegate for structured LLM output with cost tracking
@@ -63,6 +66,7 @@
 **Spectrum Position**: Customising language models — making them domain-specific
 
 **Topics**:
+
 - **LoRA (Deep Dive)** (from Deck 6B + PCML6-11):
   - Theory: reduce weight updates to low-rank matrices A x B
   - Pre-trained weights remain frozen, new weights stored separately
@@ -99,6 +103,7 @@
 - **kailash-align**: AlignmentPipeline, AlignmentConfig, AdapterRegistry
 
 **Learning Objectives**: Students can:
+
 - Implement LoRA from scratch (understand the mathematics)
 - Implement adapter layers from scratch
 - Compare LoRA vs adapters across 4 dimensions
@@ -119,10 +124,11 @@
 **Spectrum Position**: Aligning models with human preferences — engineering the training signal
 
 **Topics**:
+
 - **RLHF overview**: reward model + PPO. Why it's complex (reward model training, PPO instability).
 - **DPO (Direct Preference Optimization)**:
   - Derive from RLHF: bypass the reward model entirely
-  - Bradley-Terry preference model: P(y_w > y_l | x) = sigma(beta * (log pi(y_w|x) - log pi_ref(y_w|x)) - beta * (log pi(y_l|x) - log pi_ref(y_l|x)))
+  - Bradley-Terry preference model: P(y*w > y_l | x) = sigma(beta * (log pi(y*w|x) - log pi_ref(y_w|x)) - beta * (log pi(y_l|x) - log pi_ref(y_l|x)))
   - Implementation: training loop with preference pairs (chosen, rejected)
   - Hyperparameter beta controls deviation from reference policy
 - **GRPO (Group Relative Policy Optimization)** (new, from completeness audit):
@@ -143,10 +149,12 @@
 - **kailash-align**: AlignmentPipeline (method="dpo"), evaluator
 
 **Key Formulas**:
+
 - DPO loss: L_DPO = -E[log sigma(beta * log(pi(y_w|x)/pi_ref(y_w|x)) - beta * log(pi(y_l|x)/pi_ref(y_l|x)))]
 - GRPO: advantage estimated relative to group mean reward
 
 **Learning Objectives**: Students can:
+
 - Derive DPO from the RLHF objective
 - Implement DPO training with preference pairs
 - Explain GRPO and when to prefer it over DPO
@@ -167,6 +175,7 @@
 **Spectrum Position**: Knowledge-augmented generation — grounding LLMs in facts
 
 **Topics**:
+
 - RAG concept: Retrieval-Augmented Generation. External knowledge injected into LLM context.
 - **Chunking strategies**: fixed size, sentence, paragraph, semantic. Overlap. Chunk size tradeoffs.
 - **Retrieval**:
@@ -182,6 +191,7 @@
 **Key Concepts**: Chunking, dense/sparse retrieval, hybrid retrieval, RAGAS evaluation, HyDE
 
 **Learning Objectives**: Students can:
+
 - Build a complete RAG pipeline from documents to answers
 - Compare dense, sparse, and hybrid retrieval approaches
 - Evaluate RAG quality using RAGAS metrics
@@ -201,13 +211,14 @@
 **Spectrum Position**: Autonomous ML — agents that reason and act
 
 **Topics**:
+
 - **Agent concept**: reason about a task, take actions, observe results, iterate
 - **ReAct** (Reasoning + Acting): thought → action → observation loop
 - **Chain-of-Thought agents**: step-by-step reasoning before acting
 - **Tool use**:
   - Custom tools wrapping Kailash engines (DataExplorer, TrainingPipeline as agent tools)
   - Tool selection: agent decides which tool to use
-  - Cost budget safety: LLMCostTracker prevents runaway spending
+  - Cost budget safety: per-agent `BaseAgentConfig.budget_limit_usd` caps cumulative spend
 - **Function calling protocol** (from completeness audit):
   - Structured tool schemas (JSON schema definitions)
   - tool_choice parameter: auto, required, specific function
@@ -224,6 +235,7 @@
 - **Kaizen agents**: ReActAgent, ChainOfThoughtAgent, custom agents with BaseAgent
 
 **Learning Objectives**: Students can:
+
 - Build ReAct agents with custom tools
 - Implement function calling with structured schemas
 - Apply cost budgets to prevent runaway LLM spending
@@ -243,6 +255,7 @@
 **Spectrum Position**: Agent coordination — multiple specialists working together
 
 **Topics**:
+
 - **Multi-agent patterns**:
   - Supervisor-worker: one agent delegates to specialists
   - Sequential: output of one agent feeds into next
@@ -261,6 +274,7 @@
 - **Agent design (from Deck 6B)**: architectural considerations (modularity, load balancing, dynamic agent creation), security (prevent data leakage between agents)
 
 **Learning Objectives**: Students can:
+
 - Implement supervisor-worker, sequential, and parallel multi-agent patterns
 - Build an MCP server that exposes ML tools
 - Configure agent memory (short-term, long-term, entity)
@@ -280,28 +294,59 @@
 **Spectrum Position**: Governed AI — engineering safety and accountability into systems
 
 **Topics**:
+
 - **PACT framework** (engineering focus):
-  - D/T/R addressing: Domain/Team/Role structure for access control
-  - GovernanceEngine: `compile_org()` to create governance structure
-  - `Address`: identify who is requesting access
-  - `can_access()`, `explain_access()`: check and explain access decisions
-  - Operating envelopes: define boundaries for what agents can do
-    - Task envelopes: restrict agent to specific task types
-    - Role envelopes: restrict based on role in organisation
-    - Monotonic tightening: envelopes can only get stricter, never looser
-  - Enforcement modes: warn, block, audit
-  - Fail-closed: if governance check fails, deny access (not fail-open)
-- **CostTracker**: budget allocation and cascading
-  - Budget cascading: parent agent allocates budget to children
-  - What happens when budget runs out: agent stops gracefully
-- **PactGovernedAgent**: agent wrapper that enforces governance
-- **Audit trails**: log every access decision for compliance
-- **Clearance levels**: graduated access based on trust level
-- **Governance testing**: test that governance WORKS (denied access stays denied)
+  - D/T/R addressing: Domain/Team/Role as a positional grammar — every
+    Department or Team is immediately followed by exactly one Role.
+    Students parse addresses with `Address.parse("D1-R1-T1-R1")`.
+  - GovernanceEngine construction: `load_org_yaml("org.yaml")` to load the
+    org definition, then `GovernanceEngine(loaded.org_definition)` to
+    build the compiled, thread-safe engine.
+  - Access verification: `engine.verify_action(role_address, action, context)`
+    returns a `GovernanceVerdict` with `.allowed`, `.level`, and `.reason`.
+    This is the single decision method — no `check_access` / `can_access` /
+    `explain_access` split.
+  - Operating envelopes: `RoleEnvelope` wraps a `ConstraintEnvelopeConfig`
+    that pins all 5 constraint dimensions (Financial, Operational,
+    Temporal, Data Access, Communication). Envelopes are attached to
+    roles via `engine.set_role_envelope(RoleEnvelope(...))`.
+    - Monotonic tightening: child envelopes can only be equal or more
+      restrictive. The framework enforces this structurally via
+      `RoleEnvelope.validate_tightening()` — privilege escalation is
+      caught at configuration time, not runtime.
+  - Fail-closed: if any step of the 5-step access enforcement algorithm
+    cannot find a permitting path, `verify_action` returns
+    `verdict.level == "blocked"`.
+- **Budget caps and cascading**:
+  - Per-agent cap: `BaseAgentConfig.budget_limit_usd` bounds a single
+    agent's cumulative spend — budget is a config field on the agent,
+    not a separate tracker object.
+  - Envelope cascade: `FinancialConstraintConfig.max_spend_usd` on a
+    parent role bounds the total a supervisor can delegate to its
+    children; monotonic tightening guarantees children never exceed it.
+  - When the budget is exhausted: the agent degrades gracefully —
+    produces a partial answer and logs the overspend attempt.
+- **GovernedSupervisor**: the canonical agent wrapper that enforces
+  governance at run time. Takes the three knobs `budget_usd`, `tools`,
+  and `data_clearance`, and exposes `.envelope`, `.audit.to_list()`,
+  and `.audit.verify_chain()` for inspection. Wraps any Kaizen
+  `BaseAgent` so that the agent's logic is governance-orthogonal.
+- **Audit trails**: `GovernedSupervisor.audit` is a hash-chained append-
+  only log. `verify_chain()` returns `True` iff no entry has been
+  tampered with — the tamper-evidence is structural, not procedural.
+- **Clearance levels**: graduated confidentiality access. The course
+  teaches a 4-level hierarchy (`public < internal < confidential <
+restricted`) that maps onto the canonical 5-level
+  `ConfidentialityLevel` enum via `kaizen_agents._CLEARANCE_MAP`.
+- **Governance testing**: test that governance WORKS — negative tests
+  that verify `engine.verify_action("D99-R99-T99-R99", ...)` returns
+  `.allowed == False` (unknown role), and positive tests that verify
+  legitimate role addresses are permitted.
 
 **Design Note**: This is ENGINEERING. Students implement access controls, test them, and verify they work. No philosophical discussion of AI ethics frameworks. The code IS the governance.
 
 **Learning Objectives**: Students can:
+
 - Implement PACT governance with D/T/R addressing
 - Define and enforce operating envelopes for agents
 - Implement budget cascading across agent hierarchies
@@ -322,6 +367,7 @@
 **Spectrum Position**: Integration — ship a complete governed AI system
 
 **Topics**:
+
 - **Nexus deployment**: multi-channel (API + CLI + MCP simultaneously)
   - One codebase, three interfaces
   - Auth: RBAC (Role-Based Access Control), JWT tokens
@@ -343,6 +389,7 @@
 **Scaffolding**: ~40% (capstone tests integration, not from-scratch). Students connect existing components, not build everything from zero.
 
 **Learning Objectives**: Students can:
+
 - Deploy a complete AI system with Nexus (API + CLI + MCP)
 - Implement authentication and authorization
 - Integrate all Kailash packages into a production pipeline

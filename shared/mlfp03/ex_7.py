@@ -31,6 +31,7 @@ from sklearn.metrics import (
 
 from kailash_ml import PreprocessingPipeline
 from kailash_ml.interop import to_sklearn_input
+from kailash_ml.types import FeatureField, FeatureSchema
 
 from shared import MLFPDataLoader
 from shared.kailash_helpers import setup_environment
@@ -128,6 +129,65 @@ def prepare_credit_split(
         test_size=X_test.shape[0],
         feature_count=X_train.shape[1],
     )
+
+
+def prepare_credit_frame(
+    credit: pl.DataFrame | None = None, *, seed: int = RANDOM_SEED
+) -> tuple[pl.DataFrame, list[str]]:
+    """Return a preprocessed polars DataFrame suitable for TrainingPipeline.
+
+    Adds a deterministic ``application_id`` column so a ``FeatureSchema`` can
+    declare an ``entity_id_column`` — required by kailash-ml's TrainingPipeline.
+
+    Returns
+    -------
+    (frame, feature_columns)
+        ``frame`` contains all feature columns + ``default`` (target) +
+        ``application_id`` (entity). ``feature_columns`` excludes both.
+    """
+    if credit is None:
+        credit = load_credit_frame()
+
+    pipeline = PreprocessingPipeline()
+    result = pipeline.setup(
+        credit,
+        target=TARGET_COLUMN,
+        seed=seed,
+        normalize=False,
+        categorical_encoding="ordinal",
+    )
+
+    combined = pl.concat([result.train_data, result.test_data])
+    combined = combined.with_columns(
+        pl.int_range(0, combined.height, dtype=pl.Int64).alias("application_id")
+    )
+    feature_columns = [
+        c for c in combined.columns if c not in (TARGET_COLUMN, "application_id")
+    ]
+    return combined, feature_columns
+
+
+def credit_feature_schema(feature_columns: list[str]) -> FeatureSchema:
+    """Build a FeatureSchema matching ``prepare_credit_frame`` output."""
+    return FeatureSchema(
+        name="credit_model_input",
+        features=[FeatureField(name=f, dtype="float64") for f in feature_columns],
+        entity_id_column="application_id",
+    )
+
+
+async def build_training_registry(db_url: str | None = None):
+    """Create + initialise a kailash-ml ModelRegistry for TrainingPipeline.
+
+    Returns ``(registry, connection_manager)``. Caller owns ``connection_manager.close()``.
+    """
+    from kailash.db import ConnectionManager
+    from kailash_ml.engines.model_registry import ModelRegistry
+
+    conn = ConnectionManager(db_url or DB_URL)
+    await conn.initialize()
+    registry = ModelRegistry(conn)
+    return registry, conn
 
 
 def scale_pos_weight_for(y: np.ndarray) -> float:

@@ -131,7 +131,10 @@ Let's think step by step:
 Free-form text is unreliable for production systems — the output format varies between calls. Kaizen provides structured output through Signatures:
 
 ```python
-from kailash_kaizen import Delegate, Signature, InputField, OutputField
+import os
+from dataclasses import dataclass
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
 
 class SentimentSignature(Signature):
     """Classify the sentiment of a product review."""
@@ -139,13 +142,24 @@ class SentimentSignature(Signature):
     sentiment: str = OutputField(description="One of: positive, negative, neutral")
     confidence: float = OutputField(description="Confidence score 0-1")
 
-delegate = Delegate(model="claude-3-haiku")
-result = delegate.run(SentimentSignature, review="Best laksa in Katong!")
-print(result.sentiment)    # "positive"
-print(result.confidence)   # 0.95
+@dataclass
+class SentimentConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+class SentimentAgent(BaseAgent):
+    def __init__(self, config: SentimentConfig):
+        super().__init__(config=config, signature=SentimentSignature())
+
+agent = SentimentAgent(SentimentConfig())
+result = await agent.run_async(review="Best laksa in Katong!")
+print(result["sentiment"])    # "positive"
+print(result["confidence"])   # 0.95
 ```
 
-The Signature defines the input and output schema. The Delegate handles the LLM call, streaming, cost tracking, and structured parsing. This is type-safe — you get Python objects, not strings.
+The Signature defines the input and output schema. The BaseAgent handles the LLM call, streaming, budget enforcement, and structured parsing. This is type-safe — you get a typed dict keyed by OutputField names, not an unparsed string.
 
 ### ADVANCED: Inference considerations
 
@@ -168,21 +182,30 @@ At $T = 1$ (default), the distribution is as trained. At $T < 1$, the distributi
 ## The Kailash Engine: Kaizen Delegate
 
 ```python
-from kailash_kaizen import Delegate, LLMCostTracker
+import os
+from kaizen_agents import Delegate
 
-tracker = LLMCostTracker(budget_usd=1.00)
-delegate = Delegate(model="claude-3-haiku", cost_tracker=tracker)
+delegate = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    budget_usd=1.00,   # hard cost cap; Delegate halts when exhausted
+    signature=SentimentSignature,
+)
 
 # Track costs across multiple calls
 for review in reviews:
-    result = delegate.run(SentimentSignature, review=review)
-    print(f"Cost so far: ${tracker.total_cost:.4f}")
+    result = delegate.run_sync(f"Classify this review: {review}")
+    print(f"Result: {result}")
 ```
+
+The budget lives on the `Delegate` itself — there is no separate `LLMCostTracker` class in Kaizen 2.7. The agent stops gracefully when the budget is exhausted.
 
 ## Worked Example: Prompt Engineering Comparison
 
 ```python
-from kailash_kaizen import Delegate, Signature, InputField, OutputField
+import os
+from dataclasses import dataclass
+from kaizen import Signature, InputField, OutputField
+from kaizen.core.base_agent import BaseAgent
 
 class MathSolver(Signature):
     """Solve a math word problem step by step."""
@@ -190,7 +213,18 @@ class MathSolver(Signature):
     reasoning: str = OutputField(description="Step-by-step reasoning")
     answer: float = OutputField(description="Numerical answer")
 
-delegate = Delegate(model="claude-3-haiku")
+@dataclass
+class MathSolverConfig:
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
+    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    temperature: float = 0.2
+    budget_limit_usd: float = 1.0
+
+class MathSolverAgent(BaseAgent):
+    def __init__(self, config: MathSolverConfig):
+        super().__init__(config=config, signature=MathSolver())
+
+agent = MathSolverAgent(MathSolverConfig())
 
 problems = [
     "A Singapore HDB flat costs S$485,000. The buyer pays 25% down and finances the rest at 2.6% annual interest over 25 years. What is the monthly payment on the loan?",
@@ -200,13 +234,13 @@ problems = [
 # Zero-shot vs CoT comparison
 for problem in problems:
     # Zero-shot
-    result_zero = delegate.run(MathSolver, problem=problem)
-    print(f"Zero-shot: {result_zero.answer}")
+    result_zero = await agent.run_async(problem=problem)
+    print(f"Zero-shot: {result_zero['answer']}")
 
     # CoT (add reasoning instruction)
-    result_cot = delegate.run(MathSolver, problem=f"Think step by step. {problem}")
-    print(f"CoT: {result_cot.answer}")
-    print(f"Reasoning: {result_cot.reasoning}")
+    result_cot = await agent.run_async(problem=f"Think step by step. {problem}")
+    print(f"CoT: {result_cot['answer']}")
+    print(f"Reasoning: {result_cot['reasoning']}")
 ```
 
 ## Try It Yourself
@@ -215,10 +249,14 @@ for problem in problems:
 
 **Solution:**
 ```python
-from kailash_kaizen import LLMCostTracker
+import os
+from kaizen_agents import Delegate
 
-tracker = LLMCostTracker(budget_usd=5.00)
-delegate = Delegate(model="claude-3-haiku", cost_tracker=tracker)
+delegate = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    budget_usd=5.00,
+    signature=MathSolver,
+)
 
 techniques = {
     "zero_shot": lambda p: p,
@@ -229,10 +267,10 @@ techniques = {
 for name, transform in techniques.items():
     correct = 0
     for problem, expected in test_problems:
-        result = delegate.run(MathSolver, problem=transform(problem))
-        if abs(result.answer - expected) < 0.01:
+        result = delegate.run_sync(transform(problem))
+        if abs(float(result.get("answer", 0)) - expected) < 0.01:
             correct += 1
-    print(f"{name}: {correct}/{len(test_problems)} correct, cost=${tracker.total_cost:.4f}")
+    print(f"{name}: {correct}/{len(test_problems)} correct")
 ```
 
 **Drill 2.** Implement self-consistency: sample 5 CoT responses (temperature=0.7) and take the majority-vote answer. Does self-consistency improve accuracy over single-sample CoT?
@@ -244,9 +282,8 @@ from collections import Counter
 def self_consistency(delegate, problem, n_samples=5):
     answers = []
     for _ in range(n_samples):
-        result = delegate.run(MathSolver, problem=f"Think step by step.\n{problem}",
-                              temperature=0.7)
-        answers.append(round(result.answer, 2))
+        result = delegate.run_sync(f"Think step by step.\n{problem}")
+        answers.append(round(float(result.get("answer", 0)), 2))
     most_common = Counter(answers).most_common(1)[0][0]
     return most_common
 ```
@@ -266,13 +303,20 @@ class HeadlineClassifier(Signature):
 
 **Solution:**
 ```python
-tracker = LLMCostTracker(budget_usd=0.50)
-delegate = Delegate(model="claude-3-haiku", cost_tracker=tracker)
+import os
+from kaizen_agents import Delegate
+
+delegate = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    budget_usd=0.50,
+    signature=HeadlineClassifier,
+)
 for headline in headlines[:100]:
     try:
-        result = delegate.run(HeadlineClassifier, headline=headline)
-    except BudgetExhaustedError:
-        print(f"Budget exhausted after {tracker.total_calls} calls")
+        result = delegate.run_sync(f"Classify this headline: {headline}")
+    except Exception as exc:
+        # Delegate raises when the budget is exhausted
+        print(f"Budget exhausted or call failed: {exc}")
         break
 ```
 
@@ -835,17 +879,20 @@ The LLM selects the appropriate tool and fills in the parameters based on the us
 
 ### FOUNDATIONS: Cost budget safety
 
-Agents can enter infinite loops or make expensive API calls. The `LLMCostTracker` enforces a hard budget:
+Agents can enter infinite loops or make expensive API calls. Kaizen 2.7 moved the cost cap onto the agent itself — there is no separate `LLMCostTracker` class. `ReActAgent` accepts `max_llm_cost_usd` as a constructor argument and halts gracefully when the budget is exhausted:
 
 ```python
-from kailash_kaizen import ReActAgent, LLMCostTracker
+import os
+from kaizen_agents.agents.specialized.react import ReActAgent
 
-tracker = LLMCostTracker(budget_usd=2.00)
 agent = ReActAgent(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
     tools=[data_explorer_tool, training_tool, viz_tool],
-    cost_tracker=tracker,
+    max_llm_cost_usd=2.00,
 )
-result = agent.run("Analyse the HDB dataset and build a price prediction model")
+result = await agent.run(
+    "Analyse the HDB dataset and build a price prediction model"
+)
 ```
 
 ### FOUNDATIONS: Agent design framework
@@ -860,25 +907,29 @@ From the deck: when designing an agent, ask four questions:
 ## Worked Example: Data Analysis Agent with ReAct
 
 ```python
-from kailash_kaizen import ReActAgent, Tool
+import os
+from kaizen_agents.agents.specialized.react import ReActAgent
 from kailash_ml import DataExplorer, TrainingPipeline, ModelVisualizer
 
-@Tool(description="Profile a dataset and return summary statistics")
 def profile_data(dataset_name: str) -> str:
+    """Profile a dataset and return summary statistics."""
     df = loader.load("mlfp06", dataset_name)
     explorer = DataExplorer()
     profile = explorer.profile(df)
     return str(profile.summary)
 
-@Tool(description="Train a model on the dataset")
 def train_model(dataset_name: str, target: str, model_type: str = "xgboost") -> str:
+    """Train a model on the dataset."""
     df = loader.load("mlfp06", dataset_name)
     pipeline = TrainingPipeline(model_type=model_type)
     result = pipeline.train(df, target=target)
     return f"Accuracy: {result.metrics['accuracy']:.3f}"
 
-agent = ReActAgent(tools=[profile_data, train_model])
-result = agent.run("Analyse sg_hdb_prices.csv and predict resale_price")
+agent = ReActAgent(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    tools=[profile_data, train_model],
+)
+result = await agent.run("Analyse sg_hdb_prices.csv and predict resale_price")
 ```
 
 ## Try It Yourself
@@ -955,29 +1006,36 @@ server.run(transport="stdio")
 ## Worked Example: Multi-Agent ML Pipeline
 
 ```python
-from kailash_kaizen import BaseAgent, Delegate
+import os
+from kaizen_agents import Delegate, Pipeline
 
-class DataScientistAgent(BaseAgent):
-    """Explores data and identifies modelling opportunities."""
-    tools = [profile_data, visualise_data]
+# Each specialist is a Delegate bound to a tool set and a budget.
+data_scientist = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    tools=[profile_data, visualise_data],
+    budget_usd=2.00,
+)
+feature_engineer = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    tools=[create_features, validate_features],
+    budget_usd=2.00,
+)
+model_selector = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    tools=[train_model, evaluate_model],
+    budget_usd=3.00,
+)
+report_writer = Delegate(
+    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+    tools=[generate_report],
+    budget_usd=1.00,
+)
 
-class FeatureEngineerAgent(BaseAgent):
-    """Engineers features from raw data."""
-    tools = [create_features, validate_features]
-
-class ModelSelectorAgent(BaseAgent):
-    """Selects and trains the best model."""
-    tools = [train_model, evaluate_model]
-
-class ReportWriterAgent(BaseAgent):
-    """Writes a human-readable report."""
-    tools = [generate_report]
-
-# Sequential orchestration
-data_analysis = DataScientistAgent().run("Analyse sg_hdb_prices.csv")
-features = FeatureEngineerAgent().run(f"Engineer features based on: {data_analysis}")
-model = ModelSelectorAgent().run(f"Train model with features: {features}")
-report = ReportWriterAgent().run(f"Write report for: {model}")
+# Sequential orchestration — output of each specialist feeds the next.
+data_analysis = data_scientist.run_sync("Analyse sg_hdb_prices.csv")
+features = feature_engineer.run_sync(f"Engineer features based on: {data_analysis}")
+model = model_selector.run_sync(f"Train model with features: {features}")
+report = report_writer.run_sync(f"Write report for: {model}")
 ```
 
 ## Try It Yourself
@@ -1015,114 +1073,191 @@ An ungoverned AI agent is a liability. It can access data it should not see, spe
 
 PACT structures access control using a three-part address:
 
-- **D (Domain):** the area of knowledge or operation (e.g., "finance", "healthcare", "ml-ops").
-- **T (Team):** the organisational unit (e.g., "data-science", "compliance", "engineering").
-- **R (Role):** the specific role within the team (e.g., "analyst", "auditor", "admin").
+- **D (Department):** the organisational unit (e.g., "ml-engineering", "compliance").
+- **T (Team):** a team nested inside a department.
+- **R (Role):** the specific role that owns the task at the leaf.
 
-Access decisions are made by checking whether the requester's D/T/R address has permission for the requested resource.
+An address is a dash-delimited path like `D1-R1-T1-R1`. Every `D` or `T` MUST be immediately followed by exactly one `R`. Access decisions are made by checking whether the requester's role address has permission for the requested action.
 
 ```python
-from kailash_pact import GovernanceEngine, Address
+from pact import GovernanceEngine, load_org_yaml, Address
 
-engine = GovernanceEngine()
-org = engine.compile_org({
-    "domains": ["finance", "marketing"],
-    "teams": ["data-science", "compliance"],
-    "roles": ["analyst", "auditor", "admin"],
-})
+loaded = load_org_yaml("/path/to/org.yaml")      # parse the org definition
+engine = GovernanceEngine(loaded.org_definition) # compile it into a governance engine
 
-requester = Address(domain="finance", team="data-science", role="analyst")
-can_access = engine.can_access(requester, resource="customer_data")
-explanation = engine.explain_access(requester, resource="customer_data")
+# A role address identifies one role at one position in the tree.
+addr = Address.parse("D1-R1-T1-R1")              # dept 1 head's task 1 responsible
+
+verdict = engine.verify_action(
+    role_address="D1-R1-T1-R1",
+    action="read_customer_data",
+    context={"cost": 0.10, "data_classification": "confidential"},
+)
+# verdict.allowed  → bool
+# verdict.level    → "allowed" | "blocked" | "warn" | "audit"
+# verdict.reason   → human-readable explanation
 ```
+
+Note that in modern pact, the org is defined in a YAML file (`load_org_yaml`) and the governance engine is constructed from the parsed definition. There is no `engine.compile_org({...})` that takes an inline Python dict — the YAML schema is the canonical input because it includes departments, teams, agents, envelopes, workspaces, bridges, and knowledge-sharing pairs all in one place.
 
 ### FOUNDATIONS: Operating envelopes
 
-An operating envelope defines the boundaries of what an agent can do:
+A `ConstraintEnvelopeConfig` (the modern pact envelope) defines the boundaries of what a role can do across **five canonical dimensions**: Financial, Operational, Temporal, Data Access, and Communication. Plus a `confidentiality_clearance` level and a `max_delegation_depth` cap.
 
-- **Task envelope:** restricts the agent to specific task types (e.g., "data analysis only, no model deployment").
-- **Role envelope:** restricts based on organisational role (e.g., "read-only for analysts, read-write for engineers").
-- **Monotonic tightening:** envelopes can only get stricter, never looser. An agent cannot grant itself additional permissions.
+- **Operational constraints:** restrict the allowed action surface (e.g., `allowed_actions=["classify", "respond"]`).
+- **Financial constraints:** cap spend (e.g., `max_spend_usd=5.00`).
+- **Confidentiality clearance:** the canonical ladder is `PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET`. An envelope may only be granted at or below the parent's clearance.
+- **Monotonic tightening:** envelopes can only get stricter, never looser, as you descend the delegation tree. The framework catches a violation structurally via `RoleEnvelope.validate_tightening(parent, child)` — no need for hand-written integer comparisons.
 
 ### FOUNDATIONS: Budget cascading
 
-Parent agents allocate budgets to child agents:
+Parent agents allocate budgets to children through the envelope's financial dimension. In modern PACT, budget lives in `FinancialConstraintConfig(max_spend_usd=...)` on the child's `ConstraintEnvelopeConfig`, and monotonic tightening guarantees the child's cap is strictly less than or equal to the parent's.
 
 ```python
-from kailash_kaizen import LLMCostTracker
+from pact import (
+    ConstraintEnvelopeConfig, FinancialConstraintConfig,
+    OperationalConstraintConfig, TemporalConstraintConfig,
+    DataAccessConstraintConfig, CommunicationConstraintConfig,
+    ConfidentialityLevel,
+)
 
-parent_tracker = LLMCostTracker(budget_usd=10.00)
-child_1_tracker = parent_tracker.allocate(budget_usd=3.00)
-child_2_tracker = parent_tracker.allocate(budget_usd=3.00)
-# Parent retains $4.00 for its own use
-# When child_1 exhausts $3.00, it stops — does not consume parent's remaining budget
+parent_envelope = ConstraintEnvelopeConfig(
+    id="parent_envelope",
+    description="Supervisor — $10 total budget",
+    confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,
+    financial=FinancialConstraintConfig(max_spend_usd=10.00),
+    operational=OperationalConstraintConfig(allowed_actions=["analyse", "delegate"]),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=3,
+)
+child_envelope = ConstraintEnvelopeConfig(
+    id="child_envelope",
+    description="Worker — $3 delegated budget",
+    confidentiality_clearance=ConfidentialityLevel.CONFIDENTIAL,
+    financial=FinancialConstraintConfig(max_spend_usd=3.00),  # ≤ parent
+    operational=OperationalConstraintConfig(allowed_actions=["analyse"]),
+    temporal=TemporalConstraintConfig(),
+    data_access=DataAccessConstraintConfig(),
+    communication=CommunicationConstraintConfig(),
+    max_delegation_depth=2,
+)
+# When the child exhausts $3.00 it halts; the parent's remaining $7.00
+# is not touched. Monotonic tightening is enforced by the framework:
+# a child envelope cannot widen the cap, the action surface, or the
+# clearance beyond its parent.
 ```
 
 ### FOUNDATIONS: Governance testing
 
-Test that governance works — denied access must stay denied:
+Test that governance works — denied access must stay denied. In modern pact you use `engine.verify_action` to request a verdict, and `RoleEnvelope.validate_tightening` to assert that a child envelope cannot loosen its parent:
 
 ```python
+from pact import RoleEnvelope, MonotonicTighteningError
+
 def test_analyst_cannot_delete():
-    analyst = Address(domain="finance", team="data-science", role="analyst")
-    assert not engine.can_access(analyst, resource="customer_data", action="delete")
+    verdict = engine.verify_action(
+        role_address="D1-R1-T1-R1",   # analyst role
+        action="delete_customer_data",
+        context={"data_classification": "confidential"},
+    )
+    assert not verdict.allowed
 
 def test_admin_can_delete():
-    admin = Address(domain="finance", team="data-science", role="admin")
-    assert engine.can_access(admin, resource="customer_data", action="delete")
+    verdict = engine.verify_action(
+        role_address="D1-R1",          # department head (admin)
+        action="delete_customer_data",
+        context={"data_classification": "confidential"},
+    )
+    assert verdict.allowed
 
 def test_envelope_cannot_loosen():
-    agent = PactGovernedAgent(envelope={"tasks": ["analysis"]})
-    with pytest.raises(EnvelopeViolation):
-        agent.envelope.add_task("deployment")  # monotonic tightening
+    # Parent envelope allows {"analysis"}; child tries to add "deployment".
+    with pytest.raises(MonotonicTighteningError):
+        RoleEnvelope.validate_tightening(parent_envelope, loosened_child_envelope)
 ```
 
-### FOUNDATIONS: PactGovernedAgent
+### FOUNDATIONS: GovernedSupervisor
+
+The pact governance layer exposes its agent entry point as `GovernedSupervisor` from `kaizen_agents` — a two-layer construct where the supervisor plans the task and a caller-supplied `execute_node` callback runs the actual LLM (or an offline stub). The envelope (budget, action surface, clearance) is attached to the supervisor at construction and enforced on every step.
 
 ```python
-from kailash_pact import PactGovernedAgent
+from kaizen_agents import GovernedSupervisor
 
-agent = PactGovernedAgent(
-    address=Address(domain="finance", team="data-science", role="analyst"),
-    envelope={"tasks": ["analysis", "reporting"], "max_cost_usd": 5.00},
-    enforcement="block",  # or "warn" or "audit"
+governed = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=5.00,
+    tools=["answer_question", "search_faq"],
+    data_clearance="restricted",   # canonical ladder: public, restricted,
+                                   # confidential, secret, top_secret
 )
-# The agent cannot invoke tools outside its envelope
-# All access decisions are logged for audit
+
+async def executor(spec, inputs):
+    # Your real LLM call (or offline stub) lives here.
+    return {"result": "...", "cost": 0.01,
+            "prompt_tokens": 100, "completion_tokens": 50}
+
+result = await governed.run(objective="Answer the user", execute_node=executor)
+# result.success          → bool
+# result.budget_consumed  → float
+# result.audit_trail      → list[dict]
+
+# Hash-chain tamper-evidence is built in:
+assert governed.audit.verify_chain()
+# Envelope introspection — the five constraint dimensions are live
+# attributes on the supervisor:
+print(governed.envelope.financial.max_spend_usd)
+print(governed.envelope.operational.allowed_actions)
+print(governed.envelope.confidentiality_clearance.name)
 ```
+
+The course teaches a four-level clearance ladder — `public < internal < confidential < restricted` — where "restricted" is the maximum. That maps onto pact's canonical five-level ladder (`PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET`) with `"restricted"` (course) matching `RESTRICTED` (pact) and `"internal"` being a historical alias at the same level.
 
 ## Worked Example: Governed Multi-Agent System
 
 ```python
-from kailash_pact import GovernanceEngine, PactGovernedAgent, Address
+from pact import GovernanceEngine, load_org_yaml
+from kaizen_agents import GovernedSupervisor
 
-engine = GovernanceEngine()
-org = engine.compile_org({
-    "domains": ["retail"],
-    "teams": ["analytics", "operations"],
-    "roles": ["analyst", "manager", "admin"],
-})
+# 1. Compile the org from its YAML definition
+loaded = load_org_yaml("retail_org.yaml")
+engine = GovernanceEngine(loaded.org_definition)
 
-# Analyst agent: can profile and visualise, cannot train or deploy
-analyst_agent = PactGovernedAgent(
-    address=Address(domain="retail", team="analytics", role="analyst"),
-    envelope={"tasks": ["profile", "visualise"]},
-    cost_budget=2.00,
+# 2. Build two governed supervisors with different envelopes.
+#    The analyst can profile and visualise only; the manager can
+#    additionally train models. Budgets and data_clearance are
+#    monotonically tightened from the org's global envelope.
+analyst_agent = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=2.00,
+    tools=["profile", "visualise"],
+    data_clearance="restricted",
+)
+manager_agent = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=5.00,
+    tools=["profile", "visualise", "train"],
+    data_clearance="restricted",
 )
 
-# Manager agent: can also train models
-manager_agent = PactGovernedAgent(
-    address=Address(domain="retail", team="analytics", role="manager"),
-    envelope={"tasks": ["profile", "visualise", "train"]},
-    cost_budget=5.00,
+# 3. Ask the governance engine for a verdict BEFORE running the agent.
+analyst_verdict = engine.verify_action(
+    role_address="D1-R1-T1-R1",   # analyst role in the retail org
+    action="train",
+    context={"data_classification": "restricted"},
 )
+manager_verdict = engine.verify_action(
+    role_address="D1-R1",          # manager role
+    action="train",
+    context={"data_classification": "restricted"},
+)
+assert not analyst_verdict.allowed      # blocked
+assert manager_verdict.allowed           # allowed
 
-# Test governance
-assert not analyst_agent.can_perform("train")   # blocked
-assert manager_agent.can_perform("train")        # allowed
-
-# Audit trail
-print(engine.audit_log())  # all access decisions logged
+# 4. Each supervisor's own audit trail is a hash-chained list
+print(analyst_agent.audit.to_list())
+assert analyst_agent.audit.verify_chain()
 ```
 
 ## Try It Yourself
@@ -1174,35 +1309,47 @@ Nexus deploys a single codebase to three interfaces simultaneously:
 - **MCP:** Model Context Protocol for AI agent access.
 
 ```python
-from kailash_nexus import Nexus
+from nexus import Nexus
+from kailash.workflow.builder import WorkflowBuilder
 
-app = Nexus("ml-platform")
+# 1. Describe the workload as a Kailash workflow (built once, reused
+#    across channels). Nexus requires a *built* Workflow — registering
+#    a bare async function is not supported.
+predict_wf = WorkflowBuilder()
+predict_wf.add_node(
+    "PythonCodeNode",
+    "predict",
+    {"code": "result = model.predict(parameters['data'])"},
+)
 
-@app.route("/predict")
-async def predict(request):
-    return model.predict(request.data)
-
-@app.cli_command("predict")
-async def predict_cli(data_path: str):
-    df = pl.read_csv(data_path)
-    return model.predict(df)
-
-app.expose_mcp()  # automatically expose routes as MCP tools
-app.run(port=8000)
+# 2. Register the built workflow. Nexus exposes it as API + CLI + MCP
+#    automatically — same handler, three channels.
+app = Nexus()
+app.register("predict", predict_wf.build())
+# app.start()   # omitted in the tutorial; uncomment to serve on :8000
 ```
 
 ### FOUNDATIONS: Authentication and authorisation
 
+Nexus owns **authentication** (who are you?). PACT owns **authorisation** (what may you do?). The canonical pattern is to attach Nexus's JWT/session middleware to identify the caller, then call `engine.verify_action(role_address, action, context)` inside the workflow node to decide whether the authenticated caller can perform the requested action.
+
 ```python
-from kailash_nexus import auth
+from nexus import Nexus
 
-@app.route("/predict", auth=auth.require_role("analyst"))
-async def predict(request):
-    return model.predict(request.data)
+app = Nexus()                         # JWT middleware configured in the
+                                       # project's nexus settings
+app.register("predict", predict_wf.build())
+app.register("deploy", deploy_wf.build())
 
-@app.route("/deploy", auth=auth.require_role("admin"))
-async def deploy(request):
-    registry.promote(request.model_id, stage="production")
+# Inside the PythonCodeNode body (pseudo-code):
+#   caller_role = parameters["auth"]["role_address"]   # from Nexus middleware
+#   verdict = engine.verify_action(
+#       role_address=caller_role,
+#       action="deploy",
+#       context={"data_classification": "restricted"},
+#   )
+#   if not verdict.allowed:
+#       raise PermissionError(verdict.reason)
 ```
 
 ### FOUNDATIONS: Full platform integration
@@ -1231,50 +1378,68 @@ for step in result.trace:
 ## Worked Example: Deploying the M6 System
 
 ```python
-from kailash_nexus import Nexus
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from nexus import Nexus
+from pact import GovernanceEngine, load_org_yaml
+from kaizen_agents import GovernedSupervisor
+from kailash.workflow.builder import WorkflowBuilder
 from kailash_ml import DriftMonitor, ModelRegistry
 
 # 1. Load the trained model
 registry = ModelRegistry()
 model = registry.load("hdb_predictor", stage="production")
 
-# 2. Set up governance
-engine = GovernanceEngine()
-governed_agent = PactGovernedAgent(
-    address=Address(domain="property", team="analytics", role="analyst"),
-    envelope={"tasks": ["predict", "explain"]},
-    cost_budget=5.00,
+# 2. Set up governance from the org definition
+loaded = load_org_yaml("hdb_org.yaml")
+engine = GovernanceEngine(loaded.org_definition)
+
+governed_agent = GovernedSupervisor(
+    model="gpt-4o-mini",
+    budget_usd=5.00,
+    tools=["predict", "explain"],
+    data_clearance="restricted",
 )
 
 # 3. Set up drift monitoring
 monitor = DriftMonitor(reference_data=training_data)
 
-# 4. Deploy with Nexus
-app = Nexus("hdb-predictor")
+# 4. Describe the predict workload as a workflow. The governance check,
+#    the model call, and the drift check all live inside the node so the
+#    single workflow is uniformly enforced on every channel.
+predict_wf = WorkflowBuilder()
+predict_wf.add_node(
+    "PythonCodeNode",
+    "predict",
+    {
+        "code": """
+verdict = engine.verify_action(
+    role_address=parameters['auth']['role_address'],
+    action='predict',
+    context={'data_classification': 'restricted'},
+)
+if not verdict.allowed:
+    raise PermissionError(verdict.reason)
 
-@app.route("/predict", auth=auth.require_role("analyst"))
-async def predict(request):
-    # Check governance
-    if not governed_agent.can_perform("predict"):
-        return {"error": "Access denied"}, 403
+prediction = model.predict(parameters['data'])
+drift_report = monitor.check(parameters['data'])
+if drift_report.psi > 0.25:
+    print(f'WARNING: Major drift detected (PSI={drift_report.psi:.3f})')
+result = {'prediction': prediction, 'drift_status': drift_report.status}
+"""
+    },
+)
 
-    # Make prediction
-    prediction = model.predict(request.data)
+health_wf = WorkflowBuilder()
+health_wf.add_node(
+    "PythonCodeNode",
+    "health",
+    {"code": "result = {'status': 'healthy', 'model_version': model.version}"},
+)
 
-    # Monitor for drift
-    drift_report = monitor.check(request.data)
-    if drift_report.psi > 0.25:
-        print(f"WARNING: Major drift detected (PSI={drift_report.psi:.3f})")
-
-    return {"prediction": prediction, "drift_status": drift_report.status}
-
-@app.route("/health")
-async def health():
-    return {"status": "healthy", "model_version": model.version}
-
-app.expose_mcp()
-app.run(port=8000)
+# 5. Deploy with Nexus. One registration, three channels (API + CLI + MCP).
+app = Nexus()
+app.register("predict", predict_wf.build())
+app.register("health", health_wf.build())
+# app.start()   # serve on the configured port
 ```
 
 ## Try It Yourself
@@ -1409,7 +1574,7 @@ The programme is complete. The learning continues.
 
 **PACT.** Policy, Access, Controls, Trust. Kailash's governance framework for AI systems.
 
-**PactGovernedAgent.** An agent wrapper that enforces PACT governance rules.
+**GovernedSupervisor.** A two-layer agent from `kaizen_agents` that plans the task while a caller-supplied `execute_node` callback runs the LLM. The envelope (budget, action surface, clearance) is attached at construction and enforced on every step. This is the modern pact-governed agent entry point.
 
 **Preference alignment.** Training a model to prefer outputs that humans prefer, using methods like DPO or RLHF.
 

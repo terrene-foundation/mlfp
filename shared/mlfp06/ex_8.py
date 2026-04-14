@@ -491,12 +491,14 @@ def _get_shared_agent() -> CapstoneQAAgent:
     return _shared_qa_agent
 
 
-async def _capstone_execute_node(spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
+async def _capstone_execute_node(_spec: Any, inputs: dict[str, Any]) -> dict[str, Any]:
     """Executor callback for GovernedSupervisor.run().
 
     Runs the shared `CapstoneQAAgent` on the question carried in
-    ``inputs`` (or ``spec`` if the supervisor passes it there). Returns
-    the four-key dict GovernedSupervisor expects.
+    ``inputs``. The ``_spec`` positional is required by the
+    ``GovernedSupervisor.run(execute_node=...)`` interface but is not
+    consumed here — the supervisor passes the question in ``inputs``.
+    Returns the four-key dict GovernedSupervisor expects.
 
     Live mode uses ``agent.run_async(question=...)``; on any exception
     (missing key, rate limit, network error) we fall back to a

@@ -6,9 +6,11 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Cascade budget from parent agents to children
+#   - Cascade budget from parent agents to children using
+#     `TeachingBudgetTracker`
 #   - Detect overspend attempts BEFORE they reach the LLM
-#   - Exercise GovernanceEngine.check_access() for allow and deny paths
+#   - Exercise `engine.verify_action(role_address, action, context)`
+#     across allow AND deny paths — the canonical PACT decision call
 #   - Understand why test coverage MUST include the deny path
 #
 # PREREQUISITES: 02_envelopes.py
@@ -18,20 +20,29 @@
 #   1. Allocate & consume budget across a 3-agent hierarchy
 #   2. Attempt an overspend and verify it is denied
 #   3. Visualise spend vs. allocation
-#   4. Exercise access control across 10 allow+deny cases
+#   4. Exercise engine.verify_action() across 10 allow+deny cases
 #   5. Apply — MAS TRM budget and cost controls
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
+from pact import (
+    CommunicationConstraintConfig,
+    ConfidentialityLevel,
+    ConstraintEnvelopeConfig,
+    DataAccessConstraintConfig,
+    FinancialConstraintConfig,
+    OperationalConstraintConfig,
+    RoleEnvelope,
+    TemporalConstraintConfig,
+)
 
-from shared.mlfp06.ex_7 import BudgetTracker, compile_governance
+from shared.mlfp06.ex_7 import TeachingBudgetTracker, compile_governance
 
 OUTPUT_DIR = Path("outputs") / "ex7_governance"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,7 +79,7 @@ print("=" * 70)
 print("TASK 1: Build Budget Hierarchy")
 print("=" * 70)
 
-tracker = BudgetTracker(total_budget=500.0)
+tracker = TeachingBudgetTracker(total_budget=500.0)
 tracker.allocate("data_analyst", 20.0)
 tracker.allocate("model_trainer", 100.0)
 tracker.allocate("model_deployer", 50.0)
@@ -131,80 +142,255 @@ print()
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Exercise check_access() Across Allow + Deny Cases
+# TASK 4 — Exercise engine.verify_action() Across Allow + Deny Cases
 # ════════════════════════════════════════════════════════════════════════
 #
 # A governance system that has only been tested on the allow path is
 # a system that has not been tested at all. Every access-control test
 # suite MUST include both allow and deny cases, because the failure
 # mode you care about is "deny silently became allow after refactor".
+#
+# Modern PACT exposes a single decision entry point:
+#   engine.verify_action(role_address, action, context)
+# It returns a `GovernanceVerdict` carrying `.allowed`, `.level`, and
+# `.reason`. The role address is the dash-delimited D/T/R grammar.
 
 print("=" * 70)
-print("TASK 4: Access Control Decisions (Allow + Deny)")
+print("TASK 4: Access Control via engine.verify_action() (Allow + Deny)")
 print("=" * 70)
 
+# Address map (Shard 3 convention — dash-delimited D/T/R positions).
+# Department heads: "D<n>-R<n>" (2 segments).
+# Agents (Responsibles): "D<n>-R<n>-T<n>-R<n>" (4 segments).
+AGENT_ADDRESSES: dict[str, str] = {
+    "data_analyst": "D1-R1-T1-R1",
+    "model_trainer": "D1-R1-T2-R1",
+    "model_deployer": "D1-R1-T3-R1",
+    "risk_assessor": "D2-R1-T1-R1",
+    "bias_checker": "D2-R1-T2-R1",
+    "customer_agent": "D3-R1-T1-R1",
+}
+DELEGATOR_ADDRESSES: dict[str, str] = {
+    "chief_ml_officer": "D1-R1",
+    "chief_risk_officer": "D2-R1",
+    "vp_customer": "D3-R1",
+}
+ROLE_TO_DELEGATOR: dict[str, str] = {
+    "data_analyst": "chief_ml_officer",
+    "model_trainer": "chief_ml_officer",
+    "model_deployer": "chief_ml_officer",
+    "risk_assessor": "chief_risk_officer",
+    "bias_checker": "chief_risk_officer",
+    "customer_agent": "vp_customer",
+}
 
-async def test_access_control():
-    test_cases = [
-        # (agent, resource, action, expected_allowed, reason)
-        ("model_trainer", "training_data", "read", True, "Within envelope"),
-        ("model_trainer", "production_model", "deploy", False, "deploy not in tools"),
-        ("customer_agent", "customer_faq", "search_faq", True, "Within envelope"),
-        ("customer_agent", "training_data", "read_data", False, "Clearance too low"),
-        ("risk_assessor", "model_audit_log", "audit_model", True, "Within envelope"),
-        (
-            "risk_assessor",
-            "production_model",
-            "deploy_model",
-            False,
-            "deploy not in tools",
+
+def _envelope(
+    envelope_id: str,
+    clearance: ConfidentialityLevel,
+    max_spend_usd: float,
+    allowed_actions: list[str],
+) -> ConstraintEnvelopeConfig:
+    """Minimal 5-dimension envelope for the access-table probe.
+
+    The financial and operational dimensions are the ones Task 4
+    actually exercises; the other three are populated with permissive
+    defaults so every envelope is structurally complete.
+    """
+    return ConstraintEnvelopeConfig(
+        id=envelope_id,
+        description=envelope_id,
+        confidentiality_clearance=clearance,
+        financial=FinancialConstraintConfig(max_spend_usd=max_spend_usd),
+        operational=OperationalConstraintConfig(
+            allowed_actions=allowed_actions,
+            blocked_actions=[],
         ),
-        ("model_deployer", "production_model", "deploy_model", True, "Within envelope"),
-        ("data_analyst", "restricted_data", "read", False, "Clearance too low"),
+        temporal=TemporalConstraintConfig(blackout_periods=[]),
+        data_access=DataAccessConstraintConfig(
+            read_paths=["/*"],
+            write_paths=[],
+            blocked_data_types=[],
+        ),
+        communication=CommunicationConstraintConfig(allowed_channels=["internal"]),
+        max_delegation_depth=3,
+    )
+
+
+envelopes_by_role: dict[str, ConstraintEnvelopeConfig] = {
+    "data_analyst": _envelope(
+        "data_analyst_envelope",
+        ConfidentialityLevel.RESTRICTED,
+        20.0,
+        ["read", "read_data", "summarise_data", "generate_report"],
+    ),
+    "model_trainer": _envelope(
+        "model_trainer_envelope",
+        ConfidentialityLevel.RESTRICTED,
+        100.0,
+        ["read", "read_data", "train_model", "evaluate_model"],
+    ),
+    "model_deployer": _envelope(
+        "model_deployer_envelope",
+        ConfidentialityLevel.RESTRICTED,
+        50.0,
+        ["deploy_model", "monitor_model", "rollback_model"],
+    ),
+    "risk_assessor": _envelope(
+        "risk_assessor_envelope",
+        ConfidentialityLevel.RESTRICTED,
+        200.0,
+        [
+            "read",
+            "read_data",
+            "audit_model",
+            "generate_report",
+            "access_audit_log",
+        ],
+    ),
+    "bias_checker": _envelope(
+        "bias_checker_envelope",
+        ConfidentialityLevel.RESTRICTED,
+        75.0,
+        ["read_data", "audit_model", "run_fairness_check"],
+    ),
+    "customer_agent": _envelope(
+        "customer_agent_envelope",
+        ConfidentialityLevel.PUBLIC,
+        5.0,
+        ["answer_question", "search_faq"],
+    ),
+}
+
+# Attach each envelope to its role so verify_action() enforces it.
+for role_id, env in envelopes_by_role.items():
+    role_env = RoleEnvelope(
+        id=f"{role_id}_role_envelope",
+        defining_role_address=DELEGATOR_ADDRESSES[ROLE_TO_DELEGATOR[role_id]],
+        target_role_address=AGENT_ADDRESSES[role_id],
+        envelope=env,
+    )
+    engine.set_role_envelope(role_env)
+
+
+def test_access_control() -> list[dict]:
+    # (role_id, action, context, expected_allowed, reason)
+    test_cases: list[tuple[str, str, dict, bool, str]] = [
+        ("model_trainer", "read_data", {"cost": 0.10}, True, "Within envelope"),
         (
-            "bias_checker",
-            "model_fairness",
-            "run_fairness_check",
+            "model_trainer",
+            "deploy_model",
+            {"cost": 0.10},
+            False,
+            "deploy_model not in allowed_actions",
+        ),
+        (
+            "customer_agent",
+            "search_faq",
+            {"cost": 0.01},
             True,
             "Within envelope",
         ),
-        ("customer_agent", "internal_data", "read_data", False, "public < internal"),
+        (
+            "customer_agent",
+            "read_data",
+            {"cost": 0.10},
+            False,
+            "read_data not in allowed_actions",
+        ),
+        (
+            "risk_assessor",
+            "audit_model",
+            {"cost": 0.50},
+            True,
+            "Within envelope",
+        ),
+        (
+            "risk_assessor",
+            "deploy_model",
+            {"cost": 0.10},
+            False,
+            "deploy_model not in allowed_actions",
+        ),
+        (
+            "model_deployer",
+            "deploy_model",
+            {"cost": 0.10},
+            True,
+            "Within envelope",
+        ),
+        (
+            "data_analyst",
+            "read_data",
+            {"cost": 500.0},  # cost > $20 financial cap
+            False,
+            "Budget exceeded ($500 > $20)",
+        ),
+        (
+            "bias_checker",
+            "run_fairness_check",
+            {"cost": 0.25},
+            True,
+            "Within envelope",
+        ),
+        (
+            "customer_agent",
+            "answer_question",
+            {"cost": 100.0},  # cost > $5 financial cap
+            False,
+            "Budget exceeded ($100 > $5)",
+        ),
     ]
 
-    results = []
-    print(f"  {'Agent':<16} {'Action':<20} {'Expected':<9} {'Actual':<9}")
+    results: list[dict] = []
+    print(f"  {'Agent':<16} {'Action':<22} {'Expected':<9} {'Actual':<9}")
     print("  " + "-" * 60)
 
-    for agent_id, resource, action, expected, reason in test_cases:
-        decision = engine.check_access(
-            agent_id=agent_id,
-            resource=resource,
+    for role_id, action, context, expected, _hint in test_cases:
+        address = AGENT_ADDRESSES[role_id]
+        verdict = engine.verify_action(
+            role_address=address,
             action=action,
+            context=context,
         )
-        actual = decision.allowed
+        actual = verdict.allowed
         match = actual == expected
         status = "[ok]" if match else "[FAIL]"
-        results.append({"agent": agent_id, "action": action, "match": match})
+        results.append(
+            {
+                "agent": role_id,
+                "action": action,
+                "expected": expected,
+                "actual": actual,
+                "match": match,
+                "reason": verdict.reason,
+            }
+        )
         print(
-            f"  {status} {agent_id:<14} {action:<18} "
+            f"  {status} {role_id:<14} {action:<20} "
             f"{'ALLOW' if expected else 'DENY':<7} "
             f"{'ALLOW' if actual else 'DENY':<7}"
         )
         if not actual:
-            print(f"      reason: {decision.reason}")
+            print(f"      reason: {verdict.reason[:80]}")
 
     return results
 
 
-access_results = asyncio.run(test_access_control())
+access_results = test_access_control()
 
 # ── Checkpoint 4 ────────────────────────────────────────────────────────
 assert len(access_results) >= 10, "Task 4: should test at least 10 cases"
-deny_cases = [r for r in access_results if not r.get("match", True)]
-print(f"\n[x] Checkpoint 4 passed — {len(access_results)} access tests executed")
-if deny_cases:
-    print(f"    ({len(deny_cases)} mismatches — investigate PACT rules)")
-print()
+mismatches = [r for r in access_results if not r["match"]]
+assert not mismatches, (
+    f"Task 4: {len(mismatches)} verdicts did not match expectation — "
+    f"{[r['action'] for r in mismatches]}"
+)
+deny_count = sum(1 for r in access_results if not r["expected"])
+print(
+    f"\n[x] Checkpoint 4 passed — {len(access_results)} verdicts "
+    f"({deny_count} deny-path)\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -287,11 +473,11 @@ print(f"\n  Saved: {fname}")
 # raised by an engineer.
 #
 # Without cascading budgets, the cap lives in a config file that a
-# developer can edit. With PACT-compiled envelopes, the cap lives in
-# the governance graph, which is validated at boot AND at every
-# access decision. A PR that attempts to raise the cap is visible in
-# version control, reviewable, and blocked by CI if monotonic
-# tightening is violated.
+# developer can edit. With PACT-compiled envelopes + verify_action,
+# the cap lives in the governance graph, which is validated at boot
+# AND at every access decision. A PR that attempts to raise the cap
+# is visible in version control, reviewable, and blocked by CI if
+# monotonic tightening is violated.
 #
 # BUSINESS IMPACT: A single runaway agent incident — say, 24 hours
 # of compounding LLM calls against a loan queue — can produce a
@@ -315,16 +501,16 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Cascaded budget across a 3-agent hierarchy
+  [x] Cascaded budget across a 3-agent hierarchy via TeachingBudgetTracker
   [x] Demonstrated a rejected overspend attempt
-  [x] Ran 10 check_access() tests covering both allow and deny
+  [x] Ran 10 engine.verify_action() tests covering allow AND deny paths
   [x] Visualised the spend bars to see remaining headroom
   [x] Mapped budget envelopes to MAS TRM cost controls
 
   KEY INSIGHT: You have not tested a governance system until you
   have tested the denials. "Happy path works" is not evidence.
 
-  Next: 04_runtime_audit.py wires PactGovernedAgent into a live
+  Next: 04_runtime_audit.py wires GovernedSupervisor into a live
   LLM workflow and tests it against real adversarial prompts.
 """
 )

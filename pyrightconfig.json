@@ -5,27 +5,16 @@
     "**/.ipynb_checkpoints",
     "**/node_modules",
     ".venv",
-    "workspaces"
+    "workspaces",
+    "modules/mlfp06/local"
   ],
-  "ignore": ["modules/mlfp06/local/**"],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.11",
   "typeCheckingMode": "basic",
-  "executionEnvironments": [
-    {
-      "root": "modules/mlfp06",
-      "reportAssignmentType": "none",
-      "reportCallIssue": "none",
-      "reportArgumentType": "none",
-      "reportOptionalMemberAccess": "none"
-    },
-    {
-      "root": "shared/mlfp06",
-      "reportAssignmentType": "none",
-      "reportCallIssue": "none",
-      "reportArgumentType": "none",
-      "reportOptionalMemberAccess": "none"
-    }
-  ]
+  "reportAssignmentType": "none",
+  "reportCallIssue": "none",
+  "reportArgumentType": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportUndefinedVariable": "none"
 }

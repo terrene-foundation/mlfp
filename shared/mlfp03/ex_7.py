@@ -54,8 +54,14 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # DataFlow persistence URL. SQLite is hermetic — every student gets a fresh
 # DB file per run. In production we would read this from the environment.
+#
+# NOTE: The modern dataflow sqlite adapter interprets `sqlite:///relative`
+# as an absolute `/relative` path (breaking old sqlite URL conventions).
+# We therefore resolve to an absolute path and use the `sqlite:////abs`
+# four-slash form so the behaviour is identical on every working dir.
+_DB_ABS_PATH = (OUTPUT_DIR / "mlfp03_models.db").resolve()
 DB_URL: str = os.environ.get(
-    "MLFP03_EX7_DB_URL", f"sqlite:///{(OUTPUT_DIR / 'mlfp03_models.db').as_posix()}"
+    "MLFP03_EX7_DB_URL", f"sqlite:///{_DB_ABS_PATH.as_posix()}"
 )
 
 

@@ -31,7 +31,7 @@ import json
 
 import lightgbm as lgb
 
-from kailash.dataflow import DataFlow, field
+from dataflow import DataFlow
 
 from shared.mlfp03.ex_7 import (
     DB_URL,
@@ -72,32 +72,38 @@ db = DataFlow(DB_URL)
 
 @db.model
 class ModelEvaluation:
-    """Stores evaluation metrics for every trained model version."""
+    """Stores evaluation metrics for every trained model version.
 
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    dataset: str = field()
-    accuracy: float = field()
-    f1_score: float = field()
-    auc_roc: float = field()
-    auc_pr: float = field()
-    log_loss_val: float = field()
-    train_size: int = field()
-    test_size: int = field()
-    feature_count: int = field()
-    hyperparameters: str = field(default="{}")
+    Note: the modern ``@db.model`` decorator auto-generates the primary
+    key (named ``id``) — no explicit ``field(primary_key=True)``
+    declaration is required. Plain class annotations ARE the schema.
+    Defaults (e.g. ``hyperparameters: str = "{}"``) are respected.
+    """
+
+    id: int
+    model_name: str
+    dataset: str
+    accuracy: float
+    f1_score: float
+    auc_roc: float
+    auc_pr: float
+    log_loss_val: float
+    train_size: int
+    test_size: int
+    feature_count: int
+    hyperparameters: str = "{}"
 
 
 @db.model
 class ModelArtifact:
     """Stores the artefact pointer + lifecycle stage for each model."""
 
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    version: int = field()
-    artifact_path: str = field()
-    is_production: bool = field(default=False)
-    created_by: str = field(default="mlfp03_ex7")
+    id: int
+    model_name: str
+    version: int
+    artifact_path: str
+    is_production: bool = False
+    created_by: str = "mlfp03_ex7"
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -158,14 +164,18 @@ eval_record, artifact_record = asyncio.run(persist_evaluation())
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
+# Modern db.express.create returns {<fields...>, "rows_affected": 1}
+# — it does NOT echo the auto-generated primary key in the response
+# payload. The authoritative contract is `rows_affected == 1`. The auto
+# id is visible when we list the table below.
 assert (
-    eval_record is not None and "id" in eval_record
-), "Task 3: DataFlow should return an evaluation row with an auto-assigned id"
+    eval_record is not None and eval_record.get("rows_affected") == 1
+), "Task 3: DataFlow should insert exactly one evaluation row"
 assert (
-    artifact_record is not None and "id" in artifact_record
-), "Task 3: DataFlow should return an artefact row with an auto-assigned id"
-print(f"\n  ModelEvaluation.id = {eval_record['id']}")
-print(f"  ModelArtifact.id   = {artifact_record['id']}")
+    artifact_record is not None and artifact_record.get("rows_affected") == 1
+), "Task 3: DataFlow should insert exactly one artefact row"
+print(f"\n  ModelEvaluation row written: {eval_record.get('model_name')}")
+print(f"  ModelArtifact   row written: {artifact_record.get('model_name')}")
 print("\n[ok] Checkpoint passed — DataFlow persistence verified\n")
 
 

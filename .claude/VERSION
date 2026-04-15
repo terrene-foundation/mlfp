@@ -5,9 +5,10 @@
   "upstream": {
     "template": "kailash-coc-claude-py",
     "template_repo": "terrene-foundation/kailash-coc-claude-py",
-    "template_version": "3.4.9",
+    "template_version": "3.5.1",
+    "template_repo": "pcml-run26/kailash-coc-claude-py",
     "build_version": "2.8.6",
-    "synced_at": "2026-04-14T16:00:52Z",
+    "synced_at": "2026-04-15T05:45:00Z",
     "sdk_packages": {
       "kailash": "2.8.6",
       "kailash-dataflow": "2.0.8",

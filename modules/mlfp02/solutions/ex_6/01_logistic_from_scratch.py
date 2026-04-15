@@ -21,6 +21,29 @@
 #   3. Train — MLE optimisation + sklearn comparison
 #   4. Visualise — sigmoid shape + coefficient agreement
 #   5. Apply — HDB valuation: classifying above-median transactions
+#
+# ─── FRAMEWORK-FIRST EXEMPTION ──────────────────────────────────────────
+# This exercise uses raw sklearn.linear_model.LogisticRegression ONCE, as
+# a correctness oracle for the from-scratch MLE implementation. This is a
+# documented exemption to the framework-first rule, for three reasons:
+#
+# 1. The pedagogical beat is "build the optimiser by hand, then check
+#    it agrees with a trusted reference." Replacing the reference with
+#    kailash-ml's TrainingPipeline would compare one abstraction against
+#    another abstraction — both wrap the same L-BFGS-B solver, so the
+#    agreement would be tautological and the lesson would collapse.
+#
+# 2. M2 is "Statistical Mastery" — logistic regression is taught here
+#    as an inference tool (coefficients, odds ratios, likelihood), NOT
+#    as a production classifier. Students meet TrainingPipeline for the
+#    first time in M3 ex_7/01, where the engine is the correct primitive.
+#
+# 3. sklearn.metrics (accuracy_score, confusion_matrix, roc_curve, etc.)
+#    used later in this exercise are stateless utility functions, not
+#    framework bypasses — kailash-ml consumes them internally.
+#
+# Forward pointer: See modules/mlfp03/solutions/ex_7/01 for the first
+# canonical use of TrainingPipeline.
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -29,8 +52,8 @@ import numpy as np
 import polars as pl
 import plotly.graph_objects as go
 from scipy.optimize import minimize
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+from sklearn.linear_model import LogisticRegression  # exemption: correctness oracle only
+from sklearn.metrics import accuracy_score  # exemption: stateless utility
 
 from shared.mlfp02.ex_6 import (
     FEATURE_COLS,

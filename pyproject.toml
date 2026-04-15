@@ -48,6 +48,9 @@ dependencies = [
     "catboost>=1.2",
     "imbalanced-learn>=0.12",
     "shap>=0.45",
+    # Bayesian hyperparameter search — kailash-ml lazily imports optuna
+    # for HyperparameterSearch(strategy='bayesian') used in M3 ex_7/03
+    "optuna>=3.6",
     # Deep learning — required by M5 (autoencoders, CNN, RNN, transformer, GAN, GNN, RL)
     "torch>=2.2",
     "torchvision>=0.17",

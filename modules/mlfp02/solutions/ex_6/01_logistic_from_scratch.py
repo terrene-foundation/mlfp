@@ -52,7 +52,9 @@ import numpy as np
 import polars as pl
 import plotly.graph_objects as go
 from scipy.optimize import minimize
-from sklearn.linear_model import LogisticRegression  # exemption: correctness oracle only
+from sklearn.linear_model import (
+    LogisticRegression,
+)  # exemption: correctness oracle only
 from sklearn.metrics import accuracy_score  # exemption: stateless utility
 
 from shared.mlfp02.ex_6 import (
@@ -187,14 +189,19 @@ print(f"\nAccuracy (from scratch): {acc_scratch:.4f} ({acc_scratch:.1%})")
 # Compare with sklearn
 X_scaled = X[:, 1:]  # drop intercept — sklearn adds its own
 sklearn_model = LogisticRegression(
-    penalty=None,
+    penalty=None,  # type: ignore[arg-type]  # sklearn stub types penalty as str; None is valid at runtime
     max_iter=1000,
     solver="lbfgs",
     tol=1e-8,
 )
 sklearn_model.fit(X_scaled, y)
 
-beta_sklearn = np.concatenate([[sklearn_model.intercept_[0]], sklearn_model.coef_[0]])
+beta_sklearn = np.concatenate(
+    [
+        np.asarray(sklearn_model.intercept_).ravel(),
+        np.asarray(sklearn_model.coef_).ravel(),
+    ]
+)
 
 print(f"\n=== Comparison: Scratch vs sklearn ===")
 print(f"{'Feature':<20} {'Scratch':>14} {'sklearn':>14} {'|Δ|':>10}")
@@ -329,11 +336,13 @@ print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
-print("""
+print(
+    """
 What you've mastered in this technique:
   ✓ The concepts and implementation covered above
   ✓ Visual proof of how the technique works
   ✓ Real-world application with business impact
 
 Next: Continue to the next technique file in this exercise...
-""")
+"""
+)

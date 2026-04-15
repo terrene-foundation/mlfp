@@ -182,7 +182,7 @@ print(f"\nAccuracy (from scratch): {acc_scratch:.4f} ({acc_scratch:.1%})")
 # Compare with sklearn
 X_scaled = X[:, 1:]  # drop intercept — sklearn adds its own
 sklearn_model = LogisticRegression(
-    penalty=None,
+    penalty=None,  # type: ignore[arg-type]  # sklearn stub types penalty as str; None is valid at runtime
     max_iter=1000,
     solver="lbfgs",
     tol=1e-8,
@@ -191,7 +191,12 @@ sklearn_model = LogisticRegression(
 # Hint: sklearn_model.fit(X_scaled, y)
 ____
 
-beta_sklearn = np.concatenate([[sklearn_model.intercept_[0]], sklearn_model.coef_[0]])
+beta_sklearn = np.concatenate(
+    [
+        np.asarray(sklearn_model.intercept_).ravel(),
+        np.asarray(sklearn_model.coef_).ravel(),
+    ]
+)
 
 print(f"\n=== Comparison: Scratch vs sklearn ===")
 print(f"{'Feature':<20} {'Scratch':>14} {'sklearn':>14} {'|diff|':>10}")

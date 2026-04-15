@@ -264,3 +264,58 @@ print(
   Next: 03_budget_access.py combines budget cascading with access control.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: Governance (audit chain, envelope breach scan, verdict
+# distribution, budget consumption). Secondary: Agent Trace.
+if False:  # scaffold — requires a PACT GovernanceEngine or governed supervisor
+    obs = LLMObservatory(governance=None, run_id="ex_7_governance_run")
+    # obs.governance.verify_chain(audit_df)
+    # obs.governance.budget_consumption()
+    # obs.governance.negative_drills([...])  # envelope breach attempts
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [✓] Governance (HEALTHY): audit chain intact (0 breaks), 128
+#       actions recorded, 2 blocks + 1 escalate, budget at 34% of cap.
+#   [!] Governance (WARNING on negative drills): 4/5 drills blocked,
+#       1 drill succeeded ("approaching cap on financial envelope").
+#       Fix: tighten budget envelope from $50 -> $20 per run.
+#   [✓] Agent      (HEALTHY): 12 TAOD steps, no stuck loops.
+#   [?] Output / Retrieval / Alignment / Attention (n/a)
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [GOVERNANCE LENS] Audit chain intact = every action's hash chains
+#     into the next (Merkle-style). A broken chain means a row was
+#     inserted / modified out-of-band — the flight recorder's integrity
+#     is compromised. 2 blocks + 1 escalate on 128 actions is healthy
+#     enforcement pressure. The negative-drill WARN is the important
+#     one: we threw 5 attacks at the envelope, one succeeded because
+#     the financial cap was loose.
+#     >> Prescription: the drill that succeeded tells you which envelope
+#        dimension to tighten. Don't just lower the cap — add a
+#        derivative rule ("halt if cost doubles within 10s").
+#  [AGENT LENS] Clean trace under governance confirms the envelope
+#     didn't block legitimate work (no escalations on normal actions).
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

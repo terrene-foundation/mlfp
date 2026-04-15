@@ -358,6 +358,956 @@
 </section>
 
 
+<!-- ═══════════════════════════════════════════════════════════
+     LLM OBSERVATORY — SIX LENSES (Slides 6A-6O)
+     The successor to M5's Doctor's Bag — threads through all 8 M6 lessons
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 6A: LLM Observatory Title -->
+<section class="title-slide">
+  <h1>The LLM Observatory</h1>
+  <h2 style="border: none;">Six Lenses</h2>
+  <p class="subtitle">What separates amateur prompt-play from production LLM engineering</p>
+  <p class="provocation">"M5 gave you a Doctor's Bag for deep networks. M6 needs an Observatory, because a generation is not a loss value."</p>
+  <div class="highlight-box" style="margin-top: 18px; font-size: 0.85em; text-align: left;">
+    <strong>Turn to your neighbour (2 min):</strong> name a time you deployed an LLM and something weird happened &mdash; and how you figured out what. <em style="color: #64748B;">(Self-study: jot it in your notebook.)</em>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min (45 sec story + 2 min pair share).<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;In 2024 a major bank shipped a chatbot that cheerfully invented refund policies for three weeks before anyone noticed &mdash; the unit tests were green the whole time. A 10-line faithfulness check would have caught it on day one. That is what we are preventing today.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why do most ML engineers stop instrumenting the moment they switch from training to prompting?&rdquo; &rarr; expected wrong answer: &ldquo;because the model is a black box&rdquo; &rarr; right answer: &ldquo;because re-prompting feels faster than instrumenting &mdash; until the clock hits hour six and production is still hallucinating.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the pair share; keep the 45-second story &mdash; it is the emotional anchor for the whole section.<br/>
+    <strong>Transition</strong>: &ldquo;You just named symptoms. Now let me give you the six lenses to diagnose them.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6B: The Six Lenses Overview -->
+<section>
+  <h2>The Six Lenses</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 700 300" style="max-width: 98%; max-height: 490px;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Lens 1: Output -->
+      <g transform="translate(20, 20)">
+        <circle cx="50" cy="45" r="40" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
+        <circle cx="50" cy="45" r="22" fill="none" stroke="#0D9488" stroke-width="2"/>
+        <circle cx="50" cy="45" r="8" fill="#0D9488"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#0D9488" text-anchor="middle">Output</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">coherent?</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">faithful?</text>
+      </g>
+      <!-- Lens 2: Attention -->
+      <g transform="translate(135, 20)">
+        <circle cx="50" cy="45" r="40" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2.5"/>
+        <path d="M 30 45 Q 50 20 70 45 Q 50 70 30 45 Z" fill="none" stroke="#4F46E5" stroke-width="2"/>
+        <circle cx="50" cy="45" r="5" fill="#4F46E5"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#4F46E5" text-anchor="middle">Attention</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">what does it</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">attend to?</text>
+      </g>
+      <!-- Lens 3: Retrieval -->
+      <g transform="translate(250, 20)">
+        <circle cx="50" cy="45" r="40" fill="#F0FDF4" stroke="#22C55E" stroke-width="2.5"/>
+        <rect x="32" y="32" width="14" height="18" rx="1.5" fill="none" stroke="#22C55E" stroke-width="1.8"/>
+        <rect x="48" y="28" width="14" height="22" rx="1.5" fill="#22C55E" opacity="0.4" stroke="#22C55E" stroke-width="1.8"/>
+        <rect x="64" y="34" width="14" height="16" rx="1.5" fill="none" stroke="#22C55E" stroke-width="1.8"/>
+        <path d="M 50 58 L 50 68" stroke="#22C55E" stroke-width="2"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#22C55E" text-anchor="middle">Retrieval</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">right chunks</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">fetched?</text>
+      </g>
+      <!-- Lens 4: Agent Trace -->
+      <g transform="translate(365, 20)">
+        <circle cx="50" cy="45" r="40" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
+        <circle cx="38" cy="38" r="4" fill="#3B82F6"/>
+        <circle cx="55" cy="32" r="4" fill="#3B82F6"/>
+        <circle cx="65" cy="50" r="4" fill="#3B82F6"/>
+        <circle cx="48" cy="58" r="4" fill="#3B82F6"/>
+        <path d="M 38 38 L 55 32 L 65 50 L 48 58" stroke="#3B82F6" stroke-width="1.5" fill="none"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#3B82F6" text-anchor="middle">Agent Trace</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">what did the</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">agent do?</text>
+      </g>
+      <!-- Lens 5: Alignment -->
+      <g transform="translate(480, 20)">
+        <circle cx="50" cy="45" r="40" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2.5"/>
+        <path d="M 30 50 L 40 40 L 50 48 L 62 30 L 72 38" stroke="#8B5CF6" stroke-width="2.2" fill="none"/>
+        <circle cx="72" cy="38" r="3.5" fill="#8B5CF6"/>
+        <line x1="30" y1="62" x2="72" y2="62" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="2,2"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#8B5CF6" text-anchor="middle">Alignment</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">aligned with</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">our intent?</text>
+      </g>
+      <!-- Lens 6: Governance -->
+      <g transform="translate(595, 20)">
+        <circle cx="50" cy="45" r="40" fill="#FEF2F2" stroke="#F43F5E" stroke-width="2.5"/>
+        <path d="M 50 25 L 68 34 L 68 50 Q 68 62 50 68 Q 32 62 32 50 L 32 34 Z" fill="none" stroke="#F43F5E" stroke-width="2"/>
+        <path d="M 42 46 L 48 52 L 58 40" stroke="#F43F5E" stroke-width="2" fill="none"/>
+        <text x="50" y="108" font-size="12" font-weight="700" fill="#F43F5E" text-anchor="middle">Governance</text>
+        <text x="50" y="124" font-size="9" fill="#334155" text-anchor="middle">within</text>
+        <text x="50" y="136" font-size="9" fill="#334155" text-anchor="middle">policy?</text>
+      </g>
+      <!-- DIAGNOSE / EVALUATE / GOVERN split bars -->
+      <rect x="20" y="160" width="345" height="22" rx="4" fill="#0D9488" opacity="0.12"/>
+      <text x="192" y="176" font-size="11" font-weight="700" fill="#0D9488" text-anchor="middle">DIAGNOSE &mdash; what is happening?</text>
+      <rect x="370" y="160" width="225" height="22" rx="4" fill="#8B5CF6" opacity="0.15"/>
+      <text x="483" y="176" font-size="11" font-weight="700" fill="#6D28D9" text-anchor="middle">EVALUATE &mdash; training signal?</text>
+      <rect x="600" y="160" width="80" height="22" rx="4" fill="#F43F5E" opacity="0.22"/>
+      <text x="640" y="176" font-size="11" font-weight="700" fill="#BE123C" text-anchor="middle">GOVERN</text>
+      <!-- Bottom summary bar -->
+      <rect x="20" y="205" width="660" height="70" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="350" y="226" font-size="12" font-weight="700" fill="#0F172A" text-anchor="middle">Each lens answers one question.</text>
+      <text x="350" y="246" font-size="10" fill="#334155" text-anchor="middle">First four diagnose the running system. Fifth evaluates the training signal.</text>
+      <text x="350" y="262" font-size="10" fill="#334155" text-anchor="middle">Sixth is the organisational contract &mdash; did the system stay inside its envelope?</text>
+    </svg>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Six questions, one per lens. You carry all six into every M6 exercise from here.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If the chatbot returns a plausible but wrong answer, which lens am I reading first?&rdquo; &rarr; expected wrong answer: &ldquo;Attention &mdash; check the heads&rdquo; &rarr; right answer: &ldquo;Output lens &mdash; faithfulness against retrieved context. Attention comes later, only if Output does not settle it.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skim five of the six icons, spend time on the diagnose/evaluate/govern split &mdash; that is the mental model.<br/>
+    <strong>Transition</strong>: &ldquo;Lens by lens now. First the Output lens &mdash; M5's stethoscope, evolved for generations.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6C: Lens 1 — Output (intro) -->
+<section>
+  <h2>Lens 1: Output &mdash; The Stethoscope, Evolved</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">Asks: is the generation coherent, factual, on-task?</h3>
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>Bounded tasks</strong>: perplexity, ROUGE, BLEU, BERTScore</li>
+        <li><strong>Open-ended</strong>: LLM-as-judge (bias-mitigated &mdash; swap positions, normalise length)</li>
+        <li><strong>Hallucination</strong>: self-consistency (sample n, measure agreement) + retrieval grounding</li>
+        <li><strong>Refusal calibration</strong>: refuse harmful prompts, do NOT over-refuse benign ones</li>
+      </ul>
+      <div class="callout callout-theory" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>Why this lens first?</strong> 80% of production LLM failures surface here. If Output is clean, you rarely need to open the Attention lens.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 320 260" style="max-width: 100%; max-height: 320px;" xmlns="http://www.w3.org/2000/svg">
+          <!-- Output quality panels -->
+          <rect x="10" y="10" width="140" height="110" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+          <text x="80" y="28" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">Faithful</text>
+          <text x="80" y="50" font-size="9" fill="#334155" text-anchor="middle">prompt: "refund policy?"</text>
+          <text x="80" y="68" font-size="9" fill="#334155" text-anchor="middle">answer cites retrieved</text>
+          <text x="80" y="80" font-size="9" fill="#334155" text-anchor="middle">policy verbatim</text>
+          <text x="80" y="104" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">&rarr; ship</text>
+          <rect x="170" y="10" width="140" height="110" rx="6" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
+          <text x="240" y="28" font-size="11" font-weight="700" fill="#BE123C" text-anchor="middle">Hallucinated</text>
+          <text x="240" y="50" font-size="9" fill="#334155" text-anchor="middle">prompt: "refund policy?"</text>
+          <text x="240" y="68" font-size="9" fill="#334155" text-anchor="middle">answer invents a</text>
+          <text x="240" y="80" font-size="9" fill="#334155" text-anchor="middle">30-day window</text>
+          <text x="240" y="104" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">&rarr; raise faithfulness</text>
+          <!-- Metric table -->
+          <rect x="10" y="140" width="300" height="110" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+          <text x="160" y="160" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">Metrics to run</text>
+          <text x="20" y="182" font-size="10" fill="#334155">perplexity</text>
+          <text x="300" y="182" font-size="10" fill="#64748B" text-anchor="end">bounded tasks</text>
+          <text x="20" y="200" font-size="10" fill="#334155">faithfulness</text>
+          <text x="300" y="200" font-size="10" fill="#64748B" text-anchor="end">RAG grounding</text>
+          <text x="20" y="218" font-size="10" fill="#334155">LLM-as-judge</text>
+          <text x="300" y="218" font-size="10" fill="#64748B" text-anchor="end">open-ended</text>
+          <text x="20" y="236" font-size="10" fill="#334155">refusal rate / over-refusal</text>
+          <text x="300" y="236" font-size="10" fill="#64748B" text-anchor="end">safety calibration</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;A fluent wrong answer looks identical to a fluent right answer. That is why we measure.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why not just eyeball a sample of 20 outputs and ship?&rdquo; &rarr; expected wrong answer: &ldquo;not enough coverage&rdquo; &rarr; right answer: &ldquo;human eyeballing is biased toward fluency &mdash; judge-models plus faithfulness scoring catch the confident-but-wrong class that humans rate as good.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip the refusal calibration row; hallucination vs faithful is the headline.<br/>
+    <strong>Transition</strong>: &ldquo;Here is what that looks like in one screen of code.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6D: Lens 1 — Output (code) -->
+<section>
+  <h2>Lens 1: Output &mdash; Code</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p class="small muted" style="margin-top: 0;">Routes through DeepEval + a Kaizen Delegate judge. No raw <code>openai.chat.completions.create</code>.</p>
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory()  # lazy init, no network call here
+
+# ── Faithfulness against retrieved context ───────────────────
+df = obs.output.faithfulness(
+    response="Refunds within 14 days, no exceptions.",
+    context=["Refund policy: 30-day window for unused items."],
+)
+# df columns: claim, supported, support_source, grounding_score
+
+# ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
+verdict = obs.output.llm_as_judge(
+    prompt="Summarise the Q3 earnings call in 3 bullets.",
+    response=draft_answer,
+    criteria="coherence, factual_accuracy, completeness",
+)
+# verdict.score in [0, 1], verdict.rationale is a short string
+
+# ── Hallucination via self-consistency ───────────────────────
+result = obs.output.self_consistency(
+    prompt="What is the SGX listing rule for board independence?",
+    n=5,
+)
+# result.agreement_rate, result.flagged_as_hallucination
+
+# ── Refusal calibration ──────────────────────────────────────
+obs.output.refusal_rate(harmful_prompts)        # should be high
+obs.output.over_refusal(benign_prompts)         # should be near zero
+
+obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
+</code></pre>
+  <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
+    <strong>Budget note:</strong> each judge call costs money. The observatory caps spend at <strong>~$2 per student per module run</strong> via small eval sets and result caching.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;One object, four method calls, one dashboard. You never hand-roll a judge.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why do we swap positions and normalise lengths inside the judge?&rdquo; &rarr; expected wrong answer: &ldquo;fairness&rdquo; &rarr; right answer: &ldquo;because unmitigated LLM judges preferring the LONGER answer by default; verbosity bias inflates apparent win rates by 15-25 points.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip self-consistency; faithfulness + judge is the core pair.<br/>
+    <strong>Transition</strong>: &ldquo;Output tells you the surface. Lens 2 tells you what is happening inside the model.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6E: Lens 2 — Attention (intro) -->
+<section>
+  <h2>Lens 2: Attention &mdash; The X-Ray</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">Asks: what does the model attend to, internally?</h3>
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>Attention heatmaps</strong> &mdash; token-to-token weights per head</li>
+        <li><strong>Logit lens</strong> &mdash; read the model's prediction at every layer (nostalgebraist / Neel Nanda)</li>
+        <li><strong>Sparse autoencoders</strong> &mdash; load Gemma Scope features, read what each latent fires on</li>
+        <li><strong>Circuits</strong> &mdash; the minimal subgraph that produces a token (activation patching)</li>
+      </ul>
+      <div class="callout callout-advanced" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>Mech interp in 2026:</strong> we read <em>features</em>, not neurons. The course default for SAE work is <strong>Gemma-2-2B</strong> &mdash; Gemma Scope is the best-covered pre-trained SAE suite available.
+      </div>
+      <p class="small muted" style="margin-top: 6px;">API-only models (GPT, Claude, Gemini) cannot be X-rayed. The lens reports "not applicable" and falls back to Output + Agent Trace.</p>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 260" style="max-width: 100%; max-height: 320px;" xmlns="http://www.w3.org/2000/svg">
+          <!-- Attention heatmap example: 6x6 grid, prompt "The cat sat on the mat" -->
+          <text x="170" y="16" font-size="11" font-weight="700" fill="#4F46E5" text-anchor="middle">Attention heatmap &mdash; layer 8, head 3</text>
+          <g transform="translate(80, 30)">
+            <!-- row labels (queries) -->
+            <text x="-8" y="20" font-size="9" fill="#334155" text-anchor="end">The</text>
+            <text x="-8" y="40" font-size="9" fill="#334155" text-anchor="end">cat</text>
+            <text x="-8" y="60" font-size="9" fill="#334155" text-anchor="end">sat</text>
+            <text x="-8" y="80" font-size="9" fill="#334155" text-anchor="end">on</text>
+            <text x="-8" y="100" font-size="9" fill="#334155" text-anchor="end">the</text>
+            <text x="-8" y="120" font-size="9" fill="#334155" text-anchor="end">mat</text>
+            <!-- col labels (keys) -->
+            <text x="15" y="-4" font-size="9" fill="#334155" text-anchor="middle">The</text>
+            <text x="40" y="-4" font-size="9" fill="#334155" text-anchor="middle">cat</text>
+            <text x="65" y="-4" font-size="9" fill="#334155" text-anchor="middle">sat</text>
+            <text x="90" y="-4" font-size="9" fill="#334155" text-anchor="middle">on</text>
+            <text x="115" y="-4" font-size="9" fill="#334155" text-anchor="middle">the</text>
+            <text x="140" y="-4" font-size="9" fill="#334155" text-anchor="middle">mat</text>
+            <!-- 6x6 heatmap cells — causal mask, strong diagonal + a few cross-token links -->
+            <rect x="3" y="10" width="22" height="20" fill="#4F46E5" opacity="0.85"/>
+            <rect x="28" y="10" width="22" height="20" fill="#4F46E5" opacity="0.12"/>
+            <rect x="3" y="30" width="22" height="20" fill="#4F46E5" opacity="0.35"/>
+            <rect x="28" y="30" width="22" height="20" fill="#4F46E5" opacity="0.82"/>
+            <rect x="3" y="50" width="22" height="20" fill="#4F46E5" opacity="0.15"/>
+            <rect x="28" y="50" width="22" height="20" fill="#4F46E5" opacity="0.62"/>
+            <rect x="53" y="50" width="22" height="20" fill="#4F46E5" opacity="0.78"/>
+            <rect x="3" y="70" width="22" height="20" fill="#4F46E5" opacity="0.10"/>
+            <rect x="28" y="70" width="22" height="20" fill="#4F46E5" opacity="0.22"/>
+            <rect x="53" y="70" width="22" height="20" fill="#4F46E5" opacity="0.45"/>
+            <rect x="78" y="70" width="22" height="20" fill="#4F46E5" opacity="0.80"/>
+            <rect x="3" y="90" width="22" height="20" fill="#4F46E5" opacity="0.30"/>
+            <rect x="28" y="90" width="22" height="20" fill="#4F46E5" opacity="0.12"/>
+            <rect x="53" y="90" width="22" height="20" fill="#4F46E5" opacity="0.18"/>
+            <rect x="78" y="90" width="22" height="20" fill="#4F46E5" opacity="0.50"/>
+            <rect x="103" y="90" width="22" height="20" fill="#4F46E5" opacity="0.82"/>
+            <rect x="3" y="110" width="22" height="20" fill="#4F46E5" opacity="0.12"/>
+            <rect x="28" y="110" width="22" height="20" fill="#4F46E5" opacity="0.78"/>
+            <rect x="53" y="110" width="22" height="20" fill="#4F46E5" opacity="0.32"/>
+            <rect x="78" y="110" width="22" height="20" fill="#4F46E5" opacity="0.38"/>
+            <rect x="103" y="110" width="22" height="20" fill="#4F46E5" opacity="0.20"/>
+            <rect x="128" y="110" width="22" height="20" fill="#4F46E5" opacity="0.85"/>
+          </g>
+          <text x="170" y="180" font-size="10" fill="#334155" text-anchor="middle">Read: "mat" attends strongly to "cat" and "sat"</text>
+          <text x="170" y="196" font-size="10" font-weight="600" fill="#4F46E5" text-anchor="middle">&rarr; this head tracks subject-verb binding</text>
+          <rect x="30" y="215" width="280" height="36" rx="4" fill="#EEF2FF" stroke="#4F46E5"/>
+          <text x="170" y="230" font-size="9" fill="#334155" text-anchor="middle">Complement with: logit_lens (what layer predicts?)</text>
+          <text x="170" y="244" font-size="9" fill="#334155" text-anchor="middle">and sae_features (what concept fires?)</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;If Output says 'wrong', Attention says 'why'. It is the only lens that looks through the model's skull.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why Gemma-2-2B as the default, not Llama?&rdquo; &rarr; expected wrong answer: &ldquo;smaller&rdquo; &rarr; right answer: &ldquo;Gemma Scope ships pre-trained SAEs for every layer &mdash; students read features, they do not train them. No comparable suite exists for Llama-3 at course-friendly size.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip circuits &mdash; heatmap + logit lens is enough for the intuition.<br/>
+    <strong>Transition</strong>: &ldquo;Here is the method surface in five lines.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6F: Lens 2 — Attention (code) -->
+<section>
+  <h2>Lens 2: Attention &mdash; Code</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <p class="small muted" style="margin-top: 0;">Wraps <code>transformer_lens</code> + <code>sae_lens</code>. Open-weight models only; API models report <code>not_applicable</code>.</p>
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory()
+
+# ── Attention heatmap for one head ───────────────────────────
+fig = obs.attention.attention_heatmap(
+    prompt="The cat sat on the mat.",
+    model="google/gemma-2-2b",
+    layer=8,
+    head=3,
+)
+fig.show()
+
+# ── Logit lens: what does each layer predict? ────────────────
+df = obs.attention.logit_lens(
+    prompt="The Eiffel Tower is located in the city of",
+    model="google/gemma-2-2b",
+)
+# df columns: layer, top_token, top_prob  — crystallisation point surfaces
+
+# ── Sparse autoencoder features (Gemma Scope) ────────────────
+features = obs.attention.sae_features(
+    prompt="I felt genuinely happy when the result came in.",
+    model="google/gemma-2-2b",
+    layer=12,
+    top_k=10,
+)
+# features: [(feature_id, activation, human_readable_label), ...]
+
+# ── Circuit trace: minimal subgraph for a target token ───────
+circuit = obs.attention.circuit_trace(
+    prompt="Paris is the capital of",
+    target_token=" France",
+    model="google/gemma-2-2b",
+)
+# circuit.nodes: {(layer, component): attribution_score}
+</code></pre>
+  <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 4px;">
+    <strong>Non-goal:</strong> we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an M6 skill.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four method calls cover most mech-interp questions a practitioner asks this year.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;In the logit lens output, what does it mean if 'Paris' appears strongly at layer 5 but the model outputs 'Lyon'?&rdquo; &rarr; expected wrong answer: &ldquo;bug&rdquo; &rarr; right answer: &ldquo;the knowledge is in the residual stream but a later layer overrode it &mdash; now you know exactly where to intervene.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip <code>circuit_trace</code>; it reappears in 6.2.<br/>
+    <strong>Transition</strong>: &ldquo;Lens 3 leaves the model and looks at what we fed it.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6G: Lens 3 — Retrieval (intro) -->
+<section>
+  <h2>Lens 3: Retrieval &mdash; The RAG Diagnostic</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">Asks: did we fetch the right context, and did we use it?</h3>
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>recall@k / precision@k / MRR</strong> &mdash; classical IR metrics</li>
+        <li><strong>chunk relevance</strong> &mdash; per-chunk LLM-as-judge score</li>
+        <li><strong>context utilisation</strong> &mdash; did the generator actually USE the retrieved chunks?</li>
+        <li><strong>retriever bake-off</strong> &mdash; BM25 vs dense vs hybrid vs HyDE, same queries</li>
+      </ul>
+      <div class="callout callout-theory" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>The hidden failure:</strong> retrieval can be perfect AND the answer still wrong, because the generator ignored the chunks. You need BOTH recall AND context-utilisation.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 270" style="max-width: 100%; max-height: 330px;" xmlns="http://www.w3.org/2000/svg">
+          <!-- Pipeline stages with per-stage metrics -->
+          <text x="170" y="14" font-size="11" font-weight="700" fill="#22C55E" text-anchor="middle">RAG pipeline &mdash; metrics per stage</text>
+          <!-- Query -->
+          <rect x="10" y="30" width="60" height="36" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+          <text x="40" y="52" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">Query</text>
+          <path d="M 70 48 L 90 48" stroke="#334155" stroke-width="1.5" marker-end="url(#arr3)"/>
+          <!-- Retriever -->
+          <rect x="90" y="30" width="80" height="36" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+          <text x="130" y="52" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">Retriever</text>
+          <text x="130" y="82" font-size="8" fill="#64748B" text-anchor="middle">recall@k, MRR</text>
+          <path d="M 170 48 L 190 48" stroke="#334155" stroke-width="1.5"/>
+          <!-- Ranker -->
+          <rect x="190" y="30" width="70" height="36" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+          <text x="225" y="52" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">Ranker</text>
+          <text x="225" y="82" font-size="8" fill="#64748B" text-anchor="middle">chunk relevance</text>
+          <path d="M 260 48 L 280 48" stroke="#334155" stroke-width="1.5"/>
+          <!-- Generator -->
+          <rect x="280" y="30" width="50" height="36" rx="5" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+          <text x="305" y="52" font-size="10" font-weight="700" fill="#0D9488" text-anchor="middle">Gen</text>
+          <text x="305" y="82" font-size="8" fill="#64748B" text-anchor="middle">faithfulness</text>
+          <text x="305" y="94" font-size="8" fill="#64748B" text-anchor="middle">utilisation</text>
+          <!-- Leaderboard -->
+          <rect x="20" y="120" width="300" height="140" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+          <text x="170" y="138" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Retriever leaderboard &mdash; 50 SG policy queries</text>
+          <text x="30" y="158" font-size="9" fill="#64748B">retriever</text>
+          <text x="180" y="158" font-size="9" fill="#64748B">recall@5</text>
+          <text x="250" y="158" font-size="9" fill="#64748B">faithfulness</text>
+          <text x="30" y="178" font-size="10" fill="#334155">BM25</text>
+          <text x="200" y="178" font-size="10" fill="#334155" text-anchor="end">0.71</text>
+          <text x="275" y="178" font-size="10" font-weight="700" fill="#166534" text-anchor="end">0.88</text>
+          <text x="30" y="196" font-size="10" fill="#334155">dense (bge-m3)</text>
+          <text x="200" y="196" font-size="10" fill="#334155" text-anchor="end">0.78</text>
+          <text x="275" y="196" font-size="10" fill="#334155" text-anchor="end">0.81</text>
+          <text x="30" y="214" font-size="10" fill="#334155">hybrid</text>
+          <text x="200" y="214" font-size="10" font-weight="700" fill="#166534" text-anchor="end">0.83</text>
+          <text x="275" y="214" font-size="10" fill="#BE123C" text-anchor="end">0.73</text>
+          <text x="30" y="232" font-size="10" fill="#334155">HyDE</text>
+          <text x="200" y="232" font-size="10" fill="#334155" text-anchor="end">0.80</text>
+          <text x="275" y="232" font-size="10" fill="#334155" text-anchor="end">0.84</text>
+          <text x="30" y="252" font-size="9" font-style="italic" fill="#BE123C">hybrid wins recall, loses faithfulness &mdash; more chunks, more ignored context</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Most RAG post-mortems stop at recall@5. That is why most RAG post-mortems are wrong.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Hybrid wins recall by 12 points but loses faithfulness by 15. Why?&rdquo; &rarr; expected wrong answer: &ldquo;hybrid is worse&rdquo; &rarr; right answer: &ldquo;hybrid retrieves MORE chunks &mdash; generator latches onto weaker ones and ungrounds. Classic over-retrieval pattern.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip MRR &mdash; the recall-vs-faithfulness tension is the insight.<br/>
+    <strong>Transition</strong>: &ldquo;Code surface for the retrieval lens is short and scriptable.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6H: Lens 3 — Retrieval (code) + Lens 4 intro -->
+<section>
+  <h2>Lens 3: Retrieval &mdash; Code</h2>
+  <span class="marker marker-theory">Theory</span>
+  <p class="small muted" style="margin-top: 0;">Backs onto <code>ragas</code> + <code>trulens-eval</code>. Works for any retriever that exposes <code>retrieve(query, k)</code>.</p>
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+
+obs = LLMObservatory()
+
+# ── Standard IR metrics ──────────────────────────────────────
+df = obs.retrieval.recall_at_k(
+    queries=eval_queries,
+    relevant_ids=gold_chunk_ids,
+    retriever=my_retriever,
+    k=5,
+)
+
+# ── Retriever bake-off on identical queries ──────────────────
+leaderboard = obs.retrieval.compare_retrievers(
+    retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
+    queries=eval_queries,
+    relevant_ids=gold_chunk_ids,
+    k=5,
+)
+# leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
+
+# ── Did the generator actually USE the context? ──────────────
+util = obs.retrieval.context_utilisation(
+    response=generated_answer,
+    context=retrieved_chunks,
+)
+# util.grounded_claims / util.total_claims, util.unused_chunks
+
+# ── Chunk-size sweep: find the empirical sweet spot ──────────
+sweep = obs.retrieval.chunk_size_sweep(
+    documents=policy_corpus,
+    sizes=[256, 512, 1024, 2048],
+    queries=eval_queries,
+)
+
+obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
+</code></pre>
+  <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
+    <strong>First use:</strong> Exercise 6.4 &mdash; Singapore policy RAG leaderboard across four retrievers.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. You will run it in 6.4 across four retrievers without writing a single for-loop yourself.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;What happens if <code>context_utilisation</code> is 0.3? Which number do I change?&rdquo; &rarr; expected wrong answer: &ldquo;try a bigger model&rdquo; &rarr; right answer: &ldquo;tighten the prompt to cite chunks, OR re-rank so irrelevant chunks do not crowd the context window.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip chunk-size sweep &mdash; the bake-off is the headline.<br/>
+    <strong>Transition</strong>: &ldquo;Lens 4 is the one most teams never build &mdash; until the first 3am agent incident.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6I: Lens 4 — Agent Trace -->
+<section>
+  <h2>Lens 4: Agent Trace &mdash; What Did The Agent Actually Do?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>ReAct capture</strong>: structured Thought / Action / Observation / Done events as JSONL</li>
+        <li><strong>Tool usage</strong>: per-tool call count, success rate, p50/p99 latency, cost share</li>
+        <li><strong>Loop detection</strong>: repeated (thought, action) pairs flagged as cycles</li>
+        <li><strong>Budget timeline</strong>: cumulative cost vs wall clock &mdash; where did the money go?</li>
+        <li><strong>Context utilisation</strong>: tokens consumed vs model window over time</li>
+      </ul>
+      <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>Backend:</strong> <strong>Langfuse self-hosted</strong> for production (OTEL-native, Foundation-independence compliant). Colab falls back to a <strong>Plotly-based viewer</strong> because Docker is unavailable.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 290" style="max-width: 100%; max-height: 360px;" xmlns="http://www.w3.org/2000/svg">
+          <text x="170" y="14" font-size="11" font-weight="700" fill="#3B82F6" text-anchor="middle">Annotated ReAct trace &mdash; task: "summarise Q3 filings"</text>
+          <!-- trace steps -->
+          <g transform="translate(10, 25)">
+            <rect x="0" y="0" width="320" height="26" rx="3" fill="#EFF6FF" stroke="#3B82F6"/>
+            <text x="6" y="17" font-size="10" fill="#0F172A">1. Thought: list Q3 filings</text>
+            <text x="314" y="17" font-size="9" fill="#64748B" text-anchor="end">$0.002</text>
+          </g>
+          <g transform="translate(10, 55)">
+            <rect x="0" y="0" width="320" height="26" rx="3" fill="#F0FDF4" stroke="#22C55E"/>
+            <text x="6" y="17" font-size="10" fill="#0F172A">2. Action: search("Q3 filings 2025")</text>
+            <text x="314" y="17" font-size="9" fill="#64748B" text-anchor="end">$0.004</text>
+          </g>
+          <g transform="translate(10, 85)">
+            <rect x="0" y="0" width="320" height="26" rx="3" fill="#F8FAFC" stroke="#CBD5E1"/>
+            <text x="6" y="17" font-size="10" fill="#0F172A">3. Observation: 12 results</text>
+            <text x="314" y="17" font-size="9" fill="#64748B" text-anchor="end">842ms</text>
+          </g>
+          <g transform="translate(10, 115)">
+            <rect x="0" y="0" width="320" height="26" rx="3" fill="#FEF2F2" stroke="#F43F5E"/>
+            <text x="6" y="17" font-size="10" fill="#0F172A">4. Thought: try "Q3 earnings" &mdash; narrower?</text>
+            <text x="314" y="17" font-size="9" fill="#BE123C" text-anchor="end">loop start</text>
+          </g>
+          <g transform="translate(10, 145)">
+            <rect x="0" y="0" width="320" height="26" rx="3" fill="#FEF2F2" stroke="#F43F5E"/>
+            <text x="6" y="17" font-size="10" fill="#0F172A">5-14. Action/Obs: re-search 10x</text>
+            <text x="314" y="17" font-size="9" fill="#BE123C" text-anchor="end">$0.14 burned</text>
+          </g>
+          <!-- budget timeline annotation -->
+          <rect x="10" y="188" width="320" height="90" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+          <text x="170" y="206" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Budget timeline</text>
+          <polyline points="20,260 50,255 80,250 110,244 140,240 170,234 200,220 230,208 260,210 290,214 320,215" stroke="#3B82F6" stroke-width="2" fill="none"/>
+          <line x1="140" y1="218" x2="140" y2="272" stroke="#F43F5E" stroke-width="1" stroke-dasharray="3,3"/>
+          <text x="142" y="228" font-size="8" fill="#BE123C">step 4 &mdash; loop</text>
+          <text x="20" y="275" font-size="8" fill="#64748B">0s</text>
+          <text x="320" y="275" font-size="8" fill="#64748B" text-anchor="end">18s</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Without this lens an agent failure is &lsquo;it got stuck&rsquo;. With it, failure is &lsquo;step 4 opened a loop that burned 78% of budget in 10 seconds&rsquo;. Same bug, two reports, one actionable.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does the course default to Langfuse self-hosted over LangSmith?&rdquo; &rarr; expected wrong answer: &ldquo;features&rdquo; &rarr; right answer: &ldquo;independence &mdash; LangSmith is a hosted SaaS; Langfuse self-hosted keeps the trace data inside the Foundation's stack.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip context utilisation; loop detection is the highest-value single capability.<br/>
+    <strong>Transition</strong>: &ldquo;Lens 4 reads what an agent DID. Lens 5 reads whether training TAUGHT it the right thing.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6J: Lens 4 — Agent Trace (code) -->
+<section>
+  <h2>Lens 4: Agent Trace &mdash; Code</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p class="small muted" style="margin-top: 0;">Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.</p>
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+from kaizen_agents import ReActAgent
+
+obs = LLMObservatory()
+agent = ReActAgent(tools=[search, calculator, summarise])
+
+# ── Capture a run with full trace ────────────────────────────
+with obs.agent.capture(agent, run_id="q3_summary_v1") as trace:
+    result = agent.run("Summarise Q3 filings for SGX listed banks.")
+
+# trace is a JSONL file under runs/&lt;agent&gt;/&lt;timestamp&gt;.jsonl
+
+# ── Per-tool cost / latency / success breakdown ──────────────
+usage = obs.agent.tool_usage_summary(trace)
+# Polars DataFrame: tool, calls, success_rate, p50_ms, p99_ms, cost_usd_total
+
+# ── Loop detection ───────────────────────────────────────────
+loops = obs.agent.loop_detection(trace)
+# loops: [{"start_step": 4, "length": 10, "signature": "search,observe"}]
+
+# ── Budget timeline plot ─────────────────────────────────────
+obs.agent.budget_timeline(trace).show()
+
+# ── Counterfactual replay: what if step 3 returned differently?
+replay = obs.agent.replay(
+    trace,
+    step=3,
+    modified_output="0 results",
+)
+# replay.diverged_at_step, replay.new_total_cost, replay.new_outcome
+
+# ── Optional: export to Langfuse for the UI ──────────────────
+obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
+</code></pre>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>capture</code> is a context manager &mdash; you wrap the agent run, it writes the trace. No bespoke logging.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why is <code>replay</code> valuable when the agent has already run?&rdquo; &rarr; expected wrong answer: &ldquo;for testing&rdquo; &rarr; right answer: &ldquo;because it lets you attribute blame &mdash; if swapping step 3's observation fixes the outcome, step 3 was the failure point, not the model.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip <code>replay</code>; it recurs in 6.5.<br/>
+    <strong>Transition</strong>: &ldquo;Now the lens for training: did our fine-tuning reward the right thing?&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6K: Lens 5 — Alignment (intro) -->
+<section>
+  <h2>Lens 5: Alignment &mdash; Is The Training Signal Honest?</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">Asks: has the policy drifted? Did it reward-hack?</h3>
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>KL from reference</strong> &mdash; per-prompt divergence from the frozen base policy</li>
+        <li><strong>Reward margin</strong> &mdash; DPO chosen-minus-rejected log-prob gap distribution</li>
+        <li><strong>Bias-mitigated win rate</strong> &mdash; position swap + length normalisation against base</li>
+        <li><strong>Benchmark delta</strong> &mdash; MMLU / HellaSwag / TruthfulQA before-vs-after, flags regressions</li>
+        <li><strong>Reward hacking scan</strong> &mdash; high proxy score + failed held-out rubric = red flag</li>
+      </ul>
+      <div class="callout callout-advanced" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>GRPO extension:</strong> group-relative reward variance and group-collapse detection &mdash; GRPO's failure shape is unlike PPO's.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 260" style="max-width: 100%; max-height: 320px;" xmlns="http://www.w3.org/2000/svg">
+          <text x="170" y="14" font-size="11" font-weight="700" fill="#8B5CF6" text-anchor="middle">Training curve &mdash; reward hacking signature</text>
+          <!-- axes -->
+          <line x1="30" y1="220" x2="320" y2="220" stroke="#334155" stroke-width="1"/>
+          <line x1="30" y1="40" x2="30" y2="220" stroke="#334155" stroke-width="1"/>
+          <text x="175" y="250" font-size="9" fill="#64748B" text-anchor="middle">training steps</text>
+          <text x="12" y="130" font-size="9" fill="#64748B" text-anchor="middle" transform="rotate(-90 12 130)">value</text>
+          <!-- proxy reward: climbs nicely -->
+          <polyline points="30,200 70,180 110,155 150,130 190,108 230,90 270,76 310,66" stroke="#22C55E" stroke-width="2.4" fill="none"/>
+          <text x="315" y="64" font-size="9" fill="#166534">proxy reward &uarr;</text>
+          <!-- held-out quality: climbs then drops (hacking) -->
+          <polyline points="30,190 70,170 110,148 150,135 190,142 230,160 270,185 310,205" stroke="#F43F5E" stroke-width="2.4" fill="none" stroke-dasharray="5,3"/>
+          <text x="315" y="208" font-size="9" fill="#BE123C">held-out &darr;</text>
+          <!-- KL from reference: spike -->
+          <polyline points="30,215 70,213 110,210 150,204 190,190 230,160 270,120 310,80" stroke="#4F46E5" stroke-width="2" fill="none" stroke-dasharray="2,2"/>
+          <text x="315" y="80" font-size="9" fill="#4F46E5">KL &uarr;</text>
+          <!-- divergence region shaded -->
+          <rect x="190" y="40" width="130" height="180" fill="#F43F5E" opacity="0.07"/>
+          <text x="255" y="52" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">divergence zone</text>
+          <!-- legend callout -->
+          <rect x="30" y="260" width="290" height="0" rx="4"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Reward goes up. Held-out quality goes down. KL spikes. That is the reward hacking signature &mdash; three curves tell you in one glance.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If reward climbs AND held-out climbs AND KL climbs, is that hacking?&rdquo; &rarr; expected wrong answer: &ldquo;yes, KL is high&rdquo; &rarr; right answer: &ldquo;no &mdash; that is successful alignment. KL alone is not a failure signal; it is a signal to CHECK held-out. Pattern, not single number.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip GRPO &mdash; reward margin + KL + bench delta is the core triad.<br/>
+    <strong>Transition</strong>: &ldquo;Lens 6 is organisational: policy, envelope, audit chain.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6L: Lens 6 — Governance -->
+<section>
+  <h2>Lens 6: Governance &mdash; PACT Audit</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">Asks: is the system inside its envelope, is the audit chain intact?</h3>
+      <ul style="font-size: 0.78em; margin: 4px 0;">
+        <li><strong>Envelope snapshot</strong> &mdash; Financial, Operational, Temporal, Data Access, Communication per role</li>
+        <li><strong>Budget consumption</strong> &mdash; spend, tokens, tool calls against each envelope dimension</li>
+        <li><strong>Audit chain verification</strong> &mdash; hash-linked log, tamper-evident, returns first bad index on failure</li>
+        <li><strong>D/T/R addressing</strong> &mdash; who decided, who trusted, who responded (PACT grammar)</li>
+        <li><strong>Negative verdict drill</strong> &mdash; assert the DENY set stays denied; positive regression test</li>
+      </ul>
+      <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
+        <strong>Native to Kailash:</strong> this lens has zero external dependencies. PACT is the Foundation's own governance framework &mdash; the lens inspects <code>GovernanceEngine</code>, not a third-party policy engine.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 280" style="max-width: 100%; max-height: 350px;" xmlns="http://www.w3.org/2000/svg">
+          <text x="170" y="14" font-size="11" font-weight="700" fill="#F43F5E" text-anchor="middle">Governance decision flow</text>
+          <!-- Action request -->
+          <rect x="120" y="28" width="100" height="28" rx="4" fill="#F8FAFC" stroke="#64748B"/>
+          <text x="170" y="46" font-size="10" fill="#0F172A" text-anchor="middle">Action requested</text>
+          <path d="M 170 56 L 170 72" stroke="#334155" stroke-width="1.5"/>
+          <!-- Decision diamond -->
+          <polygon points="170,72 240,110 170,148 100,110" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+          <text x="170" y="106" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">verify_action</text>
+          <text x="170" y="120" font-size="9" fill="#334155" text-anchor="middle">inside envelope?</text>
+          <!-- yes: execute + audit append -->
+          <path d="M 240 110 L 290 110 L 290 165" stroke="#22C55E" stroke-width="1.5" fill="none"/>
+          <text x="250" y="105" font-size="9" fill="#166534" font-weight="700">yes</text>
+          <rect x="240" y="165" width="100" height="28" rx="4" fill="#F0FDF4" stroke="#22C55E"/>
+          <text x="290" y="184" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">execute + audit</text>
+          <!-- no: deny + audit append -->
+          <path d="M 100 110 L 50 110 L 50 165" stroke="#F43F5E" stroke-width="1.5" fill="none"/>
+          <text x="85" y="105" font-size="9" fill="#BE123C" font-weight="700">no</text>
+          <rect x="0" y="165" width="100" height="28" rx="4" fill="#FEF2F2" stroke="#F43F5E"/>
+          <text x="50" y="184" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">deny + audit</text>
+          <!-- Both flow into hash-chained log -->
+          <path d="M 50 193 L 50 215 L 290 215 L 290 193" stroke="#334155" stroke-width="1.2" fill="none"/>
+          <rect x="60" y="220" width="220" height="40" rx="4" fill="#FEF2F2" stroke="#F43F5E"/>
+          <text x="170" y="238" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">hash-chained audit log</text>
+          <text x="170" y="252" font-size="9" fill="#334155" text-anchor="middle">verify_chain() &rarr; True | tampered_index</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Every allowed action AND every denied action appends to the same hash-linked log. A broken chain means tampering &mdash; and you can name the exact index.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why audit DENIALS, not just executions?&rdquo; &rarr; expected wrong answer: &ldquo;completeness&rdquo; &rarr; right answer: &ldquo;because the pattern of denials is how you detect an agent that is probing its envelope &mdash; systematic deny-then-retry patterns are a leading indicator of compromise or mis-aligned optimisation.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip D/T/R; envelope + chain is the headline.<br/>
+    <strong>Transition</strong>: &ldquo;Six lenses, six responsibilities. Here is the modern stack that powers each.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6M: Modern LLM Observability Stack (2026) -->
+<section>
+  <h2>Modern LLM Observability Stack (2026)</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <table style="font-size: 0.78em;">
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>Tool</th>
+        <th>Purpose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Output eval</strong></td>
+        <td>DeepEval, RAGAS</td>
+        <td>Faithfulness, hallucination, LLM-as-judge (bias-mitigated)</td>
+      </tr>
+      <tr>
+        <td><strong>Interpretability</strong></td>
+        <td>TransformerLens, nnterp, Gemma Scope SAEs</td>
+        <td>Attention heatmaps, logit lens, feature reading (read, not train)</td>
+      </tr>
+      <tr>
+        <td><strong>Retrieval eval</strong></td>
+        <td>RAGAS, TruLens</td>
+        <td>recall@k, chunk relevance, context utilisation, retriever bake-off</td>
+      </tr>
+      <tr>
+        <td><strong>Agent trace</strong></td>
+        <td>Langfuse (self-hosted), LangSmith, Phoenix</td>
+        <td>TAOD capture, OTEL spans, replay; Plotly viewer fallback for Colab</td>
+      </tr>
+      <tr>
+        <td><strong>Alignment</strong></td>
+        <td>TRL (DPO/GRPO), lm-evaluation-harness</td>
+        <td>KL, reward margin, bench deltas, reward-hacking scans</td>
+      </tr>
+      <tr>
+        <td><strong>Governance</strong></td>
+        <td>PACT (Foundation-native)</td>
+        <td>Envelope, audit chain, D/T/R addressing, negative verdict drill</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 8px;">
+    <strong>Why this stack?</strong> Every tool is open-source or Foundation-native. Langfuse self-hosted over LangSmith; DeepEval over proprietary evals. Independence is a design constraint, not a suggestion.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;You will install each of these in the exercises. None of them is a mystery SDK &mdash; they are the tools the 2026 LLM engineering profession runs on.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does the Output row list TWO tools (DeepEval AND RAGAS)?&rdquo; &rarr; expected wrong answer: &ldquo;redundancy&rdquo; &rarr; right answer: &ldquo;DeepEval excels at open-ended judge metrics; RAGAS is RAG-specific. Different specialists. The observatory composes, it does not pick winners.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip the callout; the table is the artefact.<br/>
+    <strong>Transition</strong>: &ldquo;Now for the map: which lens powers which lesson.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6N: How the Observatory Threads Through M6 -->
+<section>
+  <h2>How the Observatory Threads Through M6</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size: 0.76em;">
+    <thead>
+      <tr>
+        <th>Lesson</th>
+        <th>Topic</th>
+        <th>Primary lens</th>
+        <th>Secondary lens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>6.1</strong></td>
+        <td>Prompting &amp; structured output</td>
+        <td>Output</td>
+        <td>Attention (preview only &mdash; API models)</td>
+      </tr>
+      <tr>
+        <td><strong>6.2</strong></td>
+        <td>LoRA &amp; adapters</td>
+        <td>Alignment</td>
+        <td>Attention + Output (attribution)</td>
+      </tr>
+      <tr>
+        <td><strong>6.3</strong></td>
+        <td>DPO &amp; GRPO</td>
+        <td>Alignment</td>
+        <td>Output (bias-mitigated judging)</td>
+      </tr>
+      <tr>
+        <td><strong>6.4</strong></td>
+        <td>RAG systems</td>
+        <td>Retrieval</td>
+        <td>Output (faithfulness)</td>
+      </tr>
+      <tr>
+        <td><strong>6.5</strong></td>
+        <td>ReAct agents &amp; tool use</td>
+        <td>Agent Trace</td>
+        <td>Output (answer quality)</td>
+      </tr>
+      <tr>
+        <td><strong>6.6</strong></td>
+        <td>Multi-agent + MCP</td>
+        <td>Agent Trace</td>
+        <td>Governance (envelope breaches)</td>
+      </tr>
+      <tr>
+        <td><strong>6.7</strong></td>
+        <td>AI governance engineering</td>
+        <td>Governance</td>
+        <td>Agent Trace (deny patterns)</td>
+      </tr>
+      <tr>
+        <td><strong>6.8</strong></td>
+        <td>Capstone &mdash; production platform</td>
+        <td colspan="2"><strong>ALL SIX</strong> &mdash; full observatory dashboard</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="small muted" style="margin-top: 4px;">Every lesson's first exercise begins with: "Run the observatory. Report the relevant lens readings. Then build."</p>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;The six lenses stay the same for the next eight lessons. What changes is which lens takes the lead.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does 6.1's attention lens say 'preview only'?&rdquo; &rarr; expected wrong answer: &ldquo;too advanced&rdquo; &rarr; right answer: &ldquo;API-only models cannot be X-rayed &mdash; no weights exposed. Attention goes live in 6.2 when we load Gemma-2-2B.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skim 6.2&ndash;6.7; the headline is that the capstone uses ALL SIX.<br/>
+    <strong>Transition</strong>: &ldquo;Last slide of the section: the protocol you run before every M6 build.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 6O: Your Observatory Workflow -->
+<section>
+  <h2>Your Observatory Workflow</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">The protocol &mdash; every LLM system, every run</h3>
+      <p class="small muted" style="margin: 0 0 4px;">Five checks, then a decision.</p>
+      <ol style="font-size: 0.78em; margin: 2px 0;">
+        <li><strong>Run 10 probe prompts</strong> (smoke test, not full eval)</li>
+        <li><strong>Output lens</strong> &mdash; faithfulness &amp; judge scores on the 10</li>
+        <li><strong>Retrieval lens</strong> (if RAG) &mdash; recall@5 + context utilisation</li>
+        <li><strong>Agent Trace lens</strong> (if agentic) &mdash; loop detection + cost budget</li>
+        <li><strong>Governance lens</strong> (always, if PACT wired) &mdash; verify_chain + envelope</li>
+      </ol>
+      <p style="font-size: 0.78em; margin: 4px 0 0;"><strong>Decision:</strong> all pass &rarr; full eval. Any fails &rarr; open the relevant lens's deep-dive methods; change ONE thing; re-run.</p>
+      <div class="callout callout-foundations" style="font-size: 0.74em; margin-top: 6px;">
+        <strong>Cardinal rule:</strong> one change per iteration. Change prompt + retriever + judge model simultaneously and you cannot attribute the fix.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 320 340" style="max-width: 100%; max-height: 540px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+          <!-- Flow diagram matching M5's shape -->
+          <rect x="60" y="10" width="200" height="34" rx="17" fill="#0D9488"/>
+          <text x="160" y="32" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">1. Run 10 probe prompts</text>
+          <path d="M 160 44 L 160 58" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="58" width="200" height="34" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+          <text x="160" y="80" font-size="11" fill="#0F172A" text-anchor="middle">2. Output lens check</text>
+          <path d="M 160 92 L 160 106" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="106" width="200" height="34" rx="6" fill="#F0FDF4" stroke="#22C55E"/>
+          <text x="160" y="128" font-size="11" fill="#0F172A" text-anchor="middle">3. Retrieval check (RAG only)</text>
+          <path d="M 160 140 L 160 154" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="154" width="200" height="34" rx="6" fill="#EFF6FF" stroke="#3B82F6"/>
+          <text x="160" y="176" font-size="11" fill="#0F172A" text-anchor="middle">4. Agent Trace (if agentic)</text>
+          <path d="M 160 188 L 160 202" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="202" width="200" height="34" rx="6" fill="#FEF2F2" stroke="#F43F5E"/>
+          <text x="160" y="224" font-size="11" fill="#0F172A" text-anchor="middle">5. Governance check</text>
+          <path d="M 160 236 L 160 250" stroke="#334155" stroke-width="1.5"/>
+          <!-- Decision diamond -->
+          <polygon points="160,250 228,286 160,322 92,286" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+          <text x="160" y="290" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">all pass?</text>
+          <!-- yes branch -->
+          <path d="M 228 286 L 285 286" stroke="#22C55E" stroke-width="1.5" fill="none"/>
+          <rect x="242" y="276" width="70" height="20" rx="3" fill="#22C55E"/>
+          <text x="277" y="290" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">full eval</text>
+          <!-- no branch -->
+          <path d="M 92 286 L 30 286" stroke="#F43F5E" stroke-width="1.5" fill="none"/>
+          <rect x="5" y="276" width="75" height="20" rx="3" fill="#F43F5E"/>
+          <text x="42" y="290" font-size="9" font-weight="700" fill="#FFFFFF" text-anchor="middle">open lens</text>
+          <!-- loopback -->
+          <path d="M 42 296 Q 10 150 55 28" stroke="#F43F5E" stroke-width="1" fill="none" stroke-dasharray="3,3"/>
+          <polygon points="55,28 52,36 60,34" fill="#F43F5E"/>
+          <text x="18" y="160" font-size="8" fill="#BE123C" font-weight="700">re-run</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 5 min (3 min walk-through + 2 min sticky-note commitment).<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Five checks, one decision. Every LLM system, every iteration, for the rest of M6.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why five checks and not one omnibus eval?&rdquo; &rarr; expected wrong answer: &ldquo;thoroughness&rdquo; &rarr; right answer: &ldquo;because each lens surfaces a DIFFERENT failure shape &mdash; an omnibus number averages them, so a passing omnibus hides a governance breach behind a strong output score.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the walk-through, run ONLY the sticky-note activity. Students leave with the five-step protocol in their own handwriting.<br/>
+    <strong>Transition</strong>: &ldquo;Put your sticky note next to your laptop. Now, Lesson 6.1 &mdash; prompt engineering. First exercise: run the observatory on your first prompted system.&rdquo;
+  </aside>
+</section>
+
+
 <!-- ======================================================================
      LESSON 6.1: LLM FUNDAMENTALS, PROMPT ENGINEERING & STRUCTURED OUTPUT
      ====================================================================== -->
@@ -3707,27 +4657,85 @@ python -m vllm.entrypoints.openai.api_server \
     plugins: [RevealHighlight, RevealNotes],
   });
 
-  // Render KaTeX after Reveal initializes
-  Reveal.on('ready', () => {
-    document.querySelectorAll('.katex-display').forEach(el => {
-      katex.render(el.textContent, el, { displayMode: true, throwOnError: false });
+  // ── KaTeX rendering (idempotent, single-pass) ─────────────────
+  // Root cause of prior double-render: our authored class `katex-display`
+  // collides with the KaTeX internal class of the same name. After KaTeX
+  // renders into an element, that element contains a NESTED <span class=
+  // "katex-display">. A naive `querySelectorAll('.katex-display')` on a
+  // second pass picks up both the authored outer span AND the KaTeX-
+  // created inner span, double-rendering the inner span using its polluted
+  // textContent (which now includes invisible glyphs U+200B/U+2063/U+2009
+  // that KaTeX emits as spacing and a nested <annotation> copy of the
+  // LaTeX source). Each slidechanged event compounds the corruption and
+  // eventually wedges Chromium's layout engine during PDF export.
+  //
+  // Fix: only process authored spans that live inside `.equation-box`
+  // (displays) or `span.katex-inline` not inside an already-rendered
+  // `.katex` subtree (inlines). Capture the original LaTeX source in a
+  // data-mlfp-source attribute on first sight and always render from that
+  // stored source, never from el.textContent on a subsequent pass.
+  // Idempotence via data-mlfp-rendered.
+  // Pre-capture every authored span's source BEFORE any rendering runs.
+  // Authored spans are the ones written in the deck source — i.e. children
+  // of `.equation-box` (for displays) or inline `span.katex-inline`. We
+  // tag them with data-mlfp-authored="true" so the render loop can
+  // unambiguously distinguish authored spans from KaTeX-inserted nested
+  // spans (which KaTeX creates with the same classes).
+  function mlfpTagAuthored() {
+    document.querySelectorAll('.equation-box > span.katex-display').forEach(el => {
+      if (!el.dataset.mlfpAuthored) {
+        el.dataset.mlfpAuthored = 'true';
+        el.dataset.mlfpSource = el.textContent;
+      }
     });
-    document.querySelectorAll('.katex-inline').forEach(el => {
-      katex.render(el.textContent, el, { displayMode: false, throwOnError: false });
+    document.querySelectorAll('span.katex-inline').forEach(el => {
+      if (el.dataset.mlfpAuthored) return;
+      // Skip any that are already inside a rendered `.katex` subtree
+      // (defensive; should not happen on first tag).
+      if (el.closest('.katex')) return;
+      el.dataset.mlfpAuthored = 'true';
+      el.dataset.mlfpSource = el.textContent;
     });
-  });
+  }
 
-  // Also render on slide change (for vertical slides loaded lazily)
-  Reveal.on('slidechanged', () => {
-    document.querySelectorAll('.katex-display:not(.katex-rendered)').forEach(el => {
-      katex.render(el.textContent, el, { displayMode: true, throwOnError: false });
-      el.classList.add('katex-rendered');
+  function mlfpRenderMath() {
+    if (!window.katex) return;
+    mlfpTagAuthored();
+    document.querySelectorAll('span.katex-display[data-mlfp-authored="true"]').forEach(el => {
+      if (el.dataset.mlfpRendered === 'true') return;
+      try {
+        katex.render(el.dataset.mlfpSource, el, {
+          displayMode: true,
+          throwOnError: false,
+          strict: 'ignore',
+        });
+      } catch (e) {
+        console.warn('KaTeX display render failed:', e.message, el.dataset.mlfpSource);
+      }
+      el.dataset.mlfpRendered = 'true';
     });
-    document.querySelectorAll('.katex-inline:not(.katex-rendered)').forEach(el => {
-      katex.render(el.textContent, el, { displayMode: false, throwOnError: false });
-      el.classList.add('katex-rendered');
+    document.querySelectorAll('span.katex-inline[data-mlfp-authored="true"]').forEach(el => {
+      if (el.dataset.mlfpRendered === 'true') return;
+      try {
+        katex.render(el.dataset.mlfpSource, el, {
+          displayMode: false,
+          throwOnError: false,
+          strict: 'ignore',
+        });
+      } catch (e) {
+        console.warn('KaTeX inline render failed:', e.message, el.dataset.mlfpSource);
+      }
+      el.dataset.mlfpRendered = 'true';
     });
-  });
+  }
+
+  // Tag immediately so the authored source is captured before any Reveal
+  // event can trigger a render pass against polluted textContent.
+  mlfpTagAuthored();
+
+  Reveal.on('ready', () => mlfpRenderMath(document));
+  Reveal.on('slidechanged', () => mlfpRenderMath(document));
+  requestAnimationFrame(() => mlfpRenderMath(document));
 </script>
 </body>
 </html>

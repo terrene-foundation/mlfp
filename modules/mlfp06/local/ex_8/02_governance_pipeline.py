@@ -232,3 +232,63 @@ print(
   Next: 03_multichannel_serving.py deploys these tiers via Nexus.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: ALL SIX — the capstone wires Align + Kaizen + PACT +
+# Nexus + RAG + Agents end-to-end, so every lens should be lit.
+if False:  # scaffold — requires the full capstone stack
+    obs = LLMObservatory(run_id="ex_8_capstone_run")
+    # obs.output.evaluate(prompts=[...], responses=[...])
+    # obs.retrieval.evaluate(queries=[...], retrieved_contexts=[...], answers=[...])
+    # for run_id, trace in supervisor.all_traces.items():
+    #     obs.agent.register_trace(trace)
+    # obs.alignment.log_training_step(...)
+    # obs.governance.verify_chain(audit_df)
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+    # obs.plot_dashboard().show()  # all six panels at once
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad (CAPSTONE)
+# ════════════════════════════════════════════════════════════════
+#   [✓] Output     (HEALTHY): faithfulness 0.88, judge coherence 0.91
+#   [✓] Retrieval  (HEALTHY): recall@5 = 0.79, context util 0.72
+#   [✓] Agent      (HEALTHY): 14 TAOD steps, no stuck loops, cost $0.04
+#   [✓] Alignment  (HEALTHY): KL 0.6 nats, win-rate 0.61 vs base
+#   [!] Governance (WARNING): 1 of 8 drills escalated; budget at 71%
+#       Fix: raise escalation threshold or narrow data_access envelope.
+#   [?] Attention  (UNKNOWN): API-only judge/prod model — enable the
+#       open-weight evaluator to light up this panel.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [CAPSTONE COMPOSITE] The capstone is the first exercise where you
+#     see the full six-lens dashboard. Five lenses GREEN + one YELLOW
+#     is a realistic "ship it with a watch-item" disposition. The
+#     governance WARNING is the escalation on 1/8 drills — investigate
+#     which drill escalated before production rollout; that's exactly
+#     the kind of pre-deploy check the dashboard is designed for.
+#  [CROSS-LENS READING] Notice how each lens is answering a different
+#     question: Output says "is the answer good?"; Retrieval says "did
+#     we give it the right context?"; Agent says "did it use the right
+#     steps?"; Alignment says "is the fine-tune pulling its weight?";
+#     Governance says "did we stay inside the envelope?". A single
+#     aggregate "quality score" would hide all of this.
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

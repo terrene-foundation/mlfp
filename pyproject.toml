@@ -75,6 +75,26 @@ dependencies = [
     # Environment
     "python-dotenv>=1.0",
     "onnxscript>=0.6.2",
+    # M6 — LLM Observatory diagnostics stack
+    #
+    # Output lens (classical + LLM-as-judge metrics for generation):
+    "deepeval>=2.0",
+    "ragas>=0.2",
+    "trulens-eval>=1.0",
+    "sacrebleu>=2.4",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+    # Retrieval lens — ragas + trulens-eval reused.
+    # Attention lens (mechanistic interpretability, open-weight models only):
+    "transformer-lens>=2.0",
+    "sae-lens>=3.0",
+    # Agent trace lens (OTEL + Langfuse self-hosted):
+    "langfuse>=2.0",
+    "opentelemetry-api>=1.30",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-otlp>=1.30",
+    # Alignment lens (lm-evaluation-harness for MMLU / HellaSwag / TruthfulQA):
+    "lm-eval>=0.4",
 ]
 
 [project.optional-dependencies]

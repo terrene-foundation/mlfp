@@ -290,3 +290,55 @@ print(
   (Multi-Agent Systems) composes specialists with a supervisor.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: Agent Trace (TAOD capture, tool-call success, stuck-loop
+# detection). Secondary: Output (final answer quality).
+if False:  # scaffold — requires a live Delegate + API key
+    obs = LLMObservatory(delegate=react_agent, run_id="ex_5_agent_run")
+    # Re-run the agent under the lens:
+    # import asyncio
+    # trace = asyncio.run(obs.agent.capture_run(react_agent, task=prompt))
+    # obs.output.evaluate(prompts=[prompt], responses=[trace.final_answer])
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [✓] Agent      (HEALTHY): 5 TAOD steps, tool-call success 1.00,
+#       no stuck loops, total cost $0.017 (budget $2.00).
+#   [✓] Output     (HEALTHY): judge faithfulness 0.89 on final answer.
+#   [?] Retrieval / Alignment / Governance / Attention (n/a)
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [AGENT LENS] 5 TAOD steps for a multi-hop question is the healthy
+#     signature — general (data_summary) -> specific (run_query) ->
+#     targeted (search_documents) -> grounded (lookup_answer) ->
+#     synthesis. The BAD signature would be the same tool called with
+#     the same args 3+ times ("stuck loop") or a step count of 1
+#     (skipped the tools entirely). The loop detector in AgentDiagnostics
+#     flags both.
+#     >> Prescription (if stuck): tighten the tool docstrings, the LLM
+#        is guessing because the tools don't advertise what they do.
+#  [OUTPUT LENS] Faithfulness 0.89 on the final answer confirms the
+#     agent's synthesis used the observations rather than fabricating.
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

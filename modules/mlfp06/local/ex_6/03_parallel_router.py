@@ -157,3 +157,53 @@ print(
   agent can discover and call them.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: Agent Trace (inter-agent handoffs, tool latency).
+# Secondary: Governance (envelope verification when a supervisor is
+# governed).
+if False:  # scaffold — requires a live multi-agent setup
+    obs = LLMObservatory(run_id="ex_6_multiagent_run")
+    # for run_id, trace in supervisor.all_traces.items():
+    #     obs.agent.register_trace(trace)
+    # obs.agent.handoff_summary()  # inter-agent handoffs
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [✓] Agent      (HEALTHY): 3 workers, 7 handoffs, mean tool-call
+#       latency 840ms, no stuck loops across all runs.
+#   [?] Governance (UNKNOWN): no PACT engine attached in this lesson;
+#       attach supervisor.audit to light up this lens.
+#   [?] Output / Retrieval / Alignment / Attention (n/a)
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [AGENT LENS] 7 handoffs across 3 workers is the signature of a
+#     healthy Supervisor-Worker pattern — supervisor delegates, workers
+#     report back, supervisor synthesises. Mean latency 840ms per tool
+#     call is dominated by LLM inference, not tool execution. Watch for:
+#     (a) a worker that handoffs 0 times = it's not being used;
+#     (b) latency >5s = a tool is I/O bound and needs caching.
+#  [GOVERNANCE LENS] UNKNOWN is expected in ex_6 — governance shows up
+#     in ex_7 where the GovernedSupervisor attaches its audit trail.
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

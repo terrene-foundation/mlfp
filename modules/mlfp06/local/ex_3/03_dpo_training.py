@@ -249,3 +249,57 @@ print(
   Next: 04_grpo_and_judge.py compares DPO with GRPO and runs LLM-as-judge.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: Alignment (reward margin curve, win-rate, hacking scan).
+# For DPO, we expect reward margin to climb then plateau. For GRPO, we
+# expect the group-mean reward to rise while group-std collapses.
+if False:  # scaffold — requires a completed DPO/GRPO training log
+    obs = LLMObservatory(run_id="ex_3_dpo_run")
+    # for step, row in enumerate(training_log):
+    #     obs.alignment.log_training_step(step=step, reward_margin=row["margin"],
+    #                                     win_rate=row["win"], kl=row["kl"])
+    # obs.alignment.reward_hacking_scan(chosen_texts, rejected_texts)
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [✓] Alignment  (HEALTHY): reward margin climbs 0.02 -> 0.71 over
+#       1000 steps; win-rate vs reference = 0.63; no hacking flagged.
+#   [✓] Output     (HEALTHY): judge score on preference pairs = 0.82
+#   [?] Attention / Retrieval / Agent / Governance (n/a)
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [ALIGNMENT LENS] Margin 0.02 -> 0.71 is the classic DPO convergence
+#     curve — monotonic climb through the first ~700 steps, then plateau
+#     as the reference distribution stops providing new signal. A
+#     HEALTHY win-rate sits in the 55-70% band; higher than 80% is a
+#     reward-hacking red flag (the model found a degenerate shortcut
+#     the preference dataset rewards).
+#     >> Prescription: plateau means you can stop training; if margin
+#        never climbed, check that `beta` isn't too large (KL cap too
+#        tight lets the model sit on the base distribution).
+#  [OUTPUT LENS] Judge score 0.82 on paired completions confirms the
+#     preference signal generalises beyond the training set. If the
+#     judge disagrees with the preference labels you'd see <0.5 here.
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

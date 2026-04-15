@@ -243,3 +243,60 @@ print(
   the full fine-tuning landscape.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — six lenses before completion
+# ══════════════════════════════════════════════════════════════════
+# The LLM Observatory extends M5's Doctor's Bag for LLM/agent work.
+# Six lenses:
+#   1. Output        — is the generation coherent, factual, on-task?
+#   2. Attention     — what does the model attend to internally?
+#   3. Retrieval     — did we fetch the right context?  [RAG only]
+#   4. Agent Trace   — what did the agent actually do?  [Agent only]
+#   5. Alignment     — is it aligned with our intent?   [Fine-tune only]
+#   6. Governance    — is it within policy?            [PACT only]
+from shared.mlfp06.diagnostics import LLMObservatory
+
+# Primary lens: Alignment (KL divergence from base, reward margin).
+# Secondary: Output (judge quality on paired completions), Attention
+# (layer-wise shift in target modules for LoRA).
+if False:  # scaffold — requires trained base + adapter checkpoint
+    obs = LLMObservatory(run_id="ex_2_finetune_run")
+    # Typical alignment read:
+    # for step, metrics in enumerate(training_log):
+    #     obs.alignment.log_training_step(step=step, **metrics)
+    # obs.alignment.evaluate_pair(base_responses, adapter_responses)
+    print("\n── LLM Observatory Report ──")
+    findings = obs.report()
+
+# ══════ EXPECTED OUTPUT (synthesised reference) ══════
+# ════════════════════════════════════════════════════════════════
+#   LLM Observatory — composite Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [!] Alignment  (WARNING): KL divergence from base = 0.42 nats
+#       Fix: healthy range 0.2-1.0; this is low-end — adapter barely
+#            moved. Increase LoRA rank or learning rate.
+#   [✓] Output     (HEALTHY): judge win-rate 0.58 vs base (>0.50 = good)
+#   [✓] Attention  (HEALTHY): shift concentrated in q_proj/v_proj as
+#       expected for LoRA; no drift in frozen layers.
+#   [?] Retrieval / Agent / Governance (n/a)
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [ALIGNMENT LENS] KL 0.42 nats is the SIGNATURE of a cautiously-trained
+#     LoRA adapter — it diverged from the base distribution but not
+#     enough to break it. Above 2.0 nats signals over-fit; below 0.2
+#     signals the adapter barely learned. Our value is slightly under the
+#     0.5 floor we want for visible task lift.
+#     >> Prescription: raise lora_r from 8 -> 16 or train another epoch.
+#  [OUTPUT LENS] Win-rate 0.58 > 0.50 confirms the adapter is better
+#     than base on held-out prompts — tiny lift but statistically real.
+#  [ATTENTION LENS] Shift localised in the target modules = LoRA is
+#     doing what it's supposed to do (low-rank delta on attention
+#     projections, frozen MLP). If attention shifted everywhere you'd
+#     know you accidentally unfroze a module.
+# ════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════

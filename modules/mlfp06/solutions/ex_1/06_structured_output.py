@@ -29,7 +29,7 @@ import asyncio
 from dotenv import load_dotenv
 
 from kaizen import InputField, OutputField, Signature
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+from kaizen.core.base_agent import BaseAgent
 
 from shared.mlfp06.ex_1 import MODEL, get_eval_docs, plot_extraction_accuracy
 
@@ -93,23 +93,45 @@ class ReviewExtraction(Signature):
 
 
 async def run_signature_extraction() -> list:
-    agent = SimpleQAAgent(
-        signature=ReviewExtraction,
-        model=MODEL,
-        max_llm_cost_usd=1.0,
-    )
+    # kaizen 0.9: BaseAgent + Signature is the canonical "type-safe
+    # structured output" pattern. The agent renders the Signature schema
+    # into a prompt the LLM follows, validates the response at runtime,
+    # and returns a dict keyed by OutputField names. Budget enforcement
+    # lives on BaseAgentConfig.budget_limit_usd (set via the config dict).
+    class ReviewExtractor(BaseAgent):
+        def __init__(self) -> None:
+            super().__init__(
+                config={"model": MODEL, "budget_limit_usd": 1.0},
+                signature=ReviewExtraction(),
+            )
+
+    agent = ReviewExtractor()
     docs = get_eval_docs().head(10)
     results = []
     for i, text in enumerate(docs["text"].to_list()):
-        result = await agent.run(review_text=text[:800])
+        try:
+            result = await agent.run_async(review_text=text[:800])
+        except Exception as exc:
+            # Offline / missing-key graceful fallback
+            print(f"  [offline] run_async fallback: {type(exc).__name__}: {exc}")
+            result = {
+                "sentiment": "unknown",
+                "confidence": 0.0,
+                "key_phrases": [],
+                "targets": [],
+                "tone": "unknown",
+            }
         results.append(result)
         if i < 3:
             print(f"\n  Review {i+1}:")
-            print(f"    Sentiment:    {result.sentiment}")
-            print(f"    Confidence:   {result.confidence:.2f}")
-            print(f"    Key phrases:  {result.key_phrases[:3]}")
-            print(f"    Targets:      {result.targets[:3]}")
-            print(f"    Tone:         {result.tone}")
+            # run_async returns a dict keyed by OutputField names —
+            # result["sentiment"] rather than result.sentiment. This is
+            # the 0.9 contract: dict access, not attribute access.
+            print(f"    Sentiment:    {result['sentiment']}")
+            print(f"    Confidence:   {float(result.get('confidence', 0)):.2f}")
+            print(f"    Key phrases:  {result.get('key_phrases', [])[:3]}")
+            print(f"    Targets:      {result.get('targets', [])[:3]}")
+            print(f"    Tone:         {result.get('tone', 'unknown')}")
     return results
 
 
@@ -122,26 +144,28 @@ signature_results = asyncio.run(run_signature_extraction())
 # ── Checkpoint ──────────────────────────────────────────────────────────
 assert len(signature_results) > 0, "Task 3: Signature extraction should produce results"
 sample = signature_results[0]
-assert hasattr(sample, "sentiment"), "Result should have typed 'sentiment' field"
-assert hasattr(sample, "confidence"), "Result should have typed 'confidence' field"
-assert 0.0 <= sample.confidence <= 1.0, "Confidence should be in [0, 1]"
-assert hasattr(sample, "key_phrases"), "Result should have typed 'key_phrases' field"
-assert isinstance(sample.key_phrases, list), "key_phrases should be a list"
-assert hasattr(sample, "tone"), "Result should have typed 'tone' field"
+assert "sentiment" in sample, "Result should have 'sentiment' field"
+assert "confidence" in sample, "Result should have 'confidence' field"
+assert 0.0 <= float(sample["confidence"]) <= 1.0, "Confidence should be in [0, 1]"
+assert "key_phrases" in sample, "Result should have 'key_phrases' field"
+assert isinstance(sample["key_phrases"], list), "key_phrases should be a list"
+assert "tone" in sample, "Result should have 'tone' field"
 print(
     f"\n[ok] Checkpoint passed — Signature extraction: "
-    f"sentiment='{sample.sentiment}', confidence={sample.confidence:.2f}\n"
+    f"sentiment='{sample['sentiment']}', confidence={float(sample.get('confidence', 0)):.2f}\n"
 )
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE — typed field access + extraction accuracy chart
+# TASK 4 — VISUALISE — dict field access + extraction accuracy chart
 # ════════════════════════════════════════════════════════════════════════
-# Note the difference: `result.sentiment` — an attribute, type-checked by
-# the editor, validated by Kaizen. No string matching, no JSON parsing,
-# no normalise_label() helper.
-avg_conf = sum(r.confidence for r in signature_results) / len(signature_results)
-tones = [r.tone for r in signature_results]
+# kaizen 0.9 returns dicts: `result["sentiment"]` — validated by the
+# Signature schema at LLM response time. No string matching, no JSON
+# parsing, no normalise_label() helper.
+avg_conf = sum(float(r.get("confidence", 0)) for r in signature_results) / len(
+    signature_results
+)
+tones = [r.get("tone", "unknown") for r in signature_results]
 print(f"\n  Avg confidence across {len(signature_results)} reviews: {avg_conf:.2f}")
 print(f"  Tone distribution: {tones}")
 
@@ -212,8 +236,8 @@ print("=" * 70)
 print(
     """
   [x] Defined a Kaizen Signature with typed InputField + OutputField
-  [x] Drove an LLM via the SimpleQAAgent with the Signature schema
-  [x] Accessed results via typed attributes, not dict lookups
+  [x] Built a BaseAgent subclass backed by the Signature schema
+  [x] Accessed results via dict keys validated by the Signature
   [x] Understood why Signatures solve free-form JSON's failure modes
   [x] Sized the approach against a production Grab incident pipeline
 

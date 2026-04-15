@@ -375,14 +375,20 @@ def plot_extraction_accuracy(
     field_fill = {}
     n = len(results)
     for field in field_names:
+
+        def _get(r: object, f: str) -> object:
+            """Get field from dict or object — supports both 0.9 dicts and legacy attrs."""
+            if isinstance(r, dict):
+                return r.get(f)
+            return getattr(r, f, None)
+
         filled = sum(
             1
             for r in results
-            if hasattr(r, field)
-            and getattr(r, field) is not None
+            if _get(r, field) is not None
             and (
-                not isinstance(getattr(r, field), (list, str))
-                or len(getattr(r, field)) > 0
+                not isinstance(_get(r, field), (list, str))
+                or len(_get(r, field)) > 0  # type: ignore[arg-type]
             )
         )
         field_fill[field] = filled / max(n, 1)

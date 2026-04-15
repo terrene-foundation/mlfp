@@ -77,16 +77,17 @@ print("✓ Checkpoint 1 passed — infra ready\n")
 # TASK 2 — Build two agents with very different budgets
 # ════════════════════════════════════════════════════════════════════════
 
-low_budget_agent = ReActAgent(
-    model=MODEL,
-    tools=tools,
-    max_llm_cost_usd=0.10,  # intentionally tight
-)
-normal_agent = ReActAgent(
-    model=MODEL,
-    tools=tools,
-    max_llm_cost_usd=2.00,  # enough to complete normal tasks
-)
+# kaizen_agents 0.9: budget and tools are configured post-construction.
+# agent.config.budget_limit_usd replaces the removed max_llm_cost_usd kwarg.
+low_budget_agent = ReActAgent(model=MODEL)
+low_budget_agent.config.budget_limit_usd = 0.10  # intentionally tight
+for tool in tools:
+    low_budget_agent.available_tools.append(tool)
+
+normal_agent = ReActAgent(model=MODEL)
+normal_agent.config.budget_limit_usd = 2.00  # enough to complete normal tasks
+for tool in tools:
+    normal_agent.available_tools.append(tool)
 
 print(f"Low-budget agent:    $0.10 (will likely trip)")
 print(f"Normal-budget agent: $2.00 (should complete)")
@@ -115,7 +116,7 @@ async def run_with_budget(agent: ReActAgent, label: str) -> tuple[str, bool]:
     """Run the agent and return (output_preview, tripped_budget)."""
     print(f"--- {label} ---")
     try:
-        result = await agent.run(EXPENSIVE_TASK)
+        result = await agent.run_async(task=EXPENSIVE_TASK)
         output = str(result)[:300] if result else "No output"
         print(f"  Completed. Result preview: {output}...")
         return output, False

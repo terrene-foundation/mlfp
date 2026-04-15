@@ -91,15 +91,19 @@ print("\n✓ Checkpoint 1 passed — 4 tools registered with HotpotQA\n")
 # TASK 2 — Build the ReActAgent
 # ════════════════════════════════════════════════════════════════════════
 
-react_agent = ReActAgent(
-    model=MODEL,
-    tools=tools,
-    max_llm_cost_usd=2.0,
-)
+# kaizen_agents 0.9: ReActAgent no longer accepts `tools=` or budget
+# kwargs in the constructor. Tools are registered post-construction
+# via agent.available_tools, and budget via agent.config.budget_limit_usd.
+# This separation is intentional — tool registration and budget are
+# configuration concerns, not identity concerns.
+react_agent = ReActAgent(model=MODEL)
+react_agent.config.budget_limit_usd = 2.0
+for tool in tools:
+    react_agent.available_tools.append(tool)
 print(f"ReActAgent built:")
 print(f"  Model:   {MODEL}")
 print(f"  Tools:   {[t.__name__ for t in tools]}")
-print(f"  Budget:  $2.00 (hard stop)")
+print(f"  Budget:  ${react_agent.config.budget_limit_usd:.2f} (hard stop)")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert react_agent is not None, "Task 2: agent should be created"
@@ -127,7 +131,9 @@ Steps:
 5. Synthesise your findings into a clear report."""
 
     print(f"Task: {task[:200]}...\n")
-    result = await react_agent.run(task)
+    # kaizen_agents 0.9: ReActAgent.run() is synchronous;
+    # use run_async() for the async path.
+    result = await react_agent.run_async(task=task)
 
     if hasattr(result, "content"):
         output = result.content

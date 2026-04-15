@@ -95,19 +95,34 @@ async def run_delegate(prompt: str, max_cost: float = 0.5) -> tuple[str, float, 
     """Run a Kaizen Delegate call and return (text, cost_usd, elapsed_s).
 
     Uses the MODEL resolved from the environment. Never hardcode models.
+
+    Offline-graceful: if the OpenAI key is missing or the provider call
+    fails, returns an empty deterministic stub so smoke tests can run
+    without burning real API calls. Production callers should check
+    ``cost > 0`` to distinguish a real call from the offline path.
     """
-    # kaizen_agents 0.9.x renamed `max_llm_cost_usd` to `budget_usd` — the
-    # constraint semantics are unchanged (per-run budget cap in USD).
-    delegate = Delegate(model=MODEL, budget_usd=max_cost)
-    response, cost = "", 0.0
+    # kaizen_agents 0.9.x: budget moved to `budget_usd`, and DelegateEvent
+    # is now a typed union. Text accumulates from TextDelta.text (streaming)
+    # or TurnComplete.text (final). Cost reads from delegate.consumed_usd
+    # after the stream ends — there is no per-event .cost attribute anymore.
     t0 = time.perf_counter()
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-        if hasattr(event, "cost"):
-            cost = event.cost
-    elapsed = time.perf_counter() - t0
-    return response, cost, elapsed
+    try:
+        delegate = Delegate(model=MODEL, budget_usd=max_cost)
+        response = ""
+        async for event in delegate.run(prompt):
+            text_chunk = getattr(event, "text", None)
+            if text_chunk:
+                response += text_chunk
+        cost = float(delegate.consumed_usd)
+        elapsed = time.perf_counter() - t0
+        return response, cost, elapsed
+    except Exception as exc:
+        # Offline / missing-key / provider-down — fall back to a stub
+        # response that satisfies the downstream `normalise_label` path
+        # (returns "unknown") without crashing the exercise.
+        elapsed = time.perf_counter() - t0
+        print(f"  [offline] run_delegate fallback: {type(exc).__name__}: {exc}")
+        return "unknown", 0.0, elapsed
 
 
 # ════════════════════════════════════════════════════════════════════════

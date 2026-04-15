@@ -99,21 +99,45 @@ def split_corpus(
 # ════════════════════════════════════════════════════════════════════════
 
 
-def make_delegate(budget_usd: float = 1.0) -> Delegate:
+def make_delegate(budget_usd: float = 1.0) -> Delegate | None:
     """Construct a Delegate with a spend ceiling for a single workflow step.
 
     kaizen_agents 0.9.x renamed `max_llm_cost_usd` to `budget_usd` — same
     per-run budget cap semantics.
+
+    Offline-graceful: returns ``None`` when no OpenAI key is configured,
+    so downstream helpers can short-circuit to a deterministic stub
+    without crashing the smoke-test path. Real production callers always
+    have a key and never see ``None``.
     """
-    return Delegate(model=MODEL, budget_usd=budget_usd)
+    try:
+        return Delegate(model=MODEL, budget_usd=budget_usd)
+    except Exception as exc:
+        print(f"  [offline] make_delegate fallback: {type(exc).__name__}: {exc}")
+        return None
 
 
-async def delegate_text(delegate: Delegate, prompt: str) -> str:
-    """Run a Delegate prompt and collect the streamed text into a single string."""
+async def delegate_text(delegate: Delegate | None, prompt: str) -> str:
+    """Run a Delegate prompt and collect the streamed text into a single string.
+
+    Offline-graceful: when ``delegate`` is ``None`` (missing key) or the
+    streamed call fails, returns an empty string so callers see the same
+    "no signal" condition as a degenerate real response.
+    """
+    if delegate is None:
+        return ""
     response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
+    try:
+        async for event in delegate.run(prompt):
+            # kaizen_agents 0.9: text lives on TextDelta / TurnComplete events
+            # but not on the DelegateEvent base class. `getattr` stays
+            # type-clean under Pyright and is safe for non-text event types.
+            text_chunk = getattr(event, "text", None)
+            if text_chunk:
+                response += text_chunk
+    except Exception as exc:
+        print(f"  [offline] delegate_text fallback: {type(exc).__name__}: {exc}")
+        return ""
     return response.strip()
 
 

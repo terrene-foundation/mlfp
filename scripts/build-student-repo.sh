@@ -57,6 +57,9 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
     # colab/ — notebook files
     [ -d "$module_dir/colab" ] && rsync -a --delete "$module_dir/colab/" "$dest/colab/"
 
+    # solutions/ — reference solutions (students can consult after attempting)
+    [ -d "$module_dir/solutions" ] && rsync -a --delete --exclude='__pycache__' "$module_dir/solutions/" "$dest/solutions/"
+
     echo "  $mod: $(ls "$dest" 2>/dev/null | tr '\n' ' ')"
 done
 

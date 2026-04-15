@@ -1001,11 +1001,71 @@ for aug_name, loader in [("no_augmentation", noaug_loader), ("flip_crop", aug_lo
         val_losses=[1.0 - a for a in accs],
         show=False,
     )
-    # Hyperparameter diagnostic pattern: across HP configs, the losing
-    # configuration often shows WARNING/CRITICAL findings that explain
-    # the lower val accuracy (e.g. dead neurons from too-high LR). Use
-    # the Prescription Pad to learn WHY a config failed, not just that
-    # it did.
+    # ══════ EXPECTED OUTPUT (synthesized reference across HP configs) ══════
+    # Typical Prescription-Pad patterns observed per augmentation config:
+    # ┌──────────────────────────┬──────────────────────────────────────────┐
+    # │ Config                   │ Typical Prescription Pad finding         │
+    # ├──────────────────────────┼──────────────────────────────────────────┤
+    # │ no_augmentation          │ [!] Overfitting: train-val gap ~18%.     │
+    # │                          │     Val loss starts rising after ep 5.   │
+    # │                          │     Dead neurons: 4% (healthy).          │
+    # │                          │     Val acc: ~0.55                        │
+    # ├──────────────────────────┼──────────────────────────────────────────┤
+    # │ flip_only                │ [✓] Mildly overfitting: gap ~12%.        │
+    # │                          │     Val acc: ~0.58                        │
+    # ├──────────────────────────┼──────────────────────────────────────────┤
+    # │ flip_crop (winner)       │ [✓] All HEALTHY. Gap ~6%. Val acc: ~0.62 │
+    # ├──────────────────────────┼──────────────────────────────────────────┤
+    # │ strong_augment           │ [!] Underfitting: train loss plateau.    │
+    # │                          │     Val acc: ~0.54 (below flip_crop)     │
+    # └──────────────────────────┴──────────────────────────────────────────┘
+    #
+    # STUDENT INTERPRETATION GUIDE — reading HP diagnostics:
+    #
+    #  [STETHOSCOPE — HP SIGNATURE READING] Each HP config
+    #     produces a DIFFERENT pathology pattern. no_augmentation
+    #     shows the classic overfitting U-curve in val loss (val
+    #     rising while train falls). strong_augment shows the
+    #     opposite: underfitting (train plateau because the data
+    #     looks different every batch and the model cannot
+    #     converge on a single distribution). flip_crop hits the
+    #     sweet spot — regularisation without underfitting.
+    #     Slide 5R covers the "augmentation strength dial": from
+    #     zero (overfit) → flip_crop (optimal) → strong (underfit).
+    #     >> Prescription: If every HP config is overfitting,
+    #        increase augmentation. If every config is
+    #        underfitting, decrease augmentation. Look for the
+    #        pattern ACROSS configs, not within one config.
+    #
+    #  [X-RAY — HP-INDUCED DEAD NEURONS] A too-aggressive LR or
+    #     too-strong augmentation can spike dead-neuron fractions
+    #     15-30% above baseline. If you see WARNING findings
+    #     only in the HIGH-LR configs, the gradient updates are
+    #     saturating ReLUs into permanent death. This is a
+    #     SEPARATE diagnostic from accuracy — a config can lose
+    #     accuracy for many reasons, but high dead% narrows the
+    #     cause to optimisation dynamics.
+    #     >> Prescription: Reduce LR to 3e-4, add warmup schedule
+    #        (0 → LR over first 500 steps) to avoid the early-
+    #        training dead-ReLU spike.
+    #
+    #  [BLOOD TEST — CROSS-CONFIG COMPARISON] Gradient RMS across
+    #     HP configs should stay within 10x of each other. If
+    #     one config has RMS <1e-5 while others are ~1e-3, that
+    #     config has broken optimisation (usually LR far too
+    #     small or gradient clipping too tight).
+    #     >> Prescription: Plot min RMS per config as a bar
+    #        chart. Outliers indicate hyperparameters breaking
+    #        the backward pass.
+    #
+    #  FIVE-INSTRUMENT TAKEAWAY: HP sweeps are FIVE parallel
+    #  diagnostic experiments. The Prescription Pad tells you
+    #  WHY a config failed — accuracy numbers alone tell you
+    #  only THAT it failed. This lifts HP tuning from pure trial-
+    #  and-error to clinical reasoning. You'll apply the same
+    #  discipline to LR schedule sweeps in ex_4 transformers and
+    #  to entropy-coefficient sweeps in ex_8 RL.
+    # ═════════════════════════════════════════════════════════════════════
 
 # Print augmentation comparison
 print(f"\n  {'Augmentation':>20} {'Final Loss':>12} {'Val Acc':>10} {'Time (s)':>10}")

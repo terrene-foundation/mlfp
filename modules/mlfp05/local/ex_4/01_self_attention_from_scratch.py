@@ -464,3 +464,57 @@ print(
 """
 )
 
+# ══════════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — none for this file (inference-only derivation)
+# ══════════════════════════════════════════════════════════════════════
+# This exercise derives scaled dot-product attention in NumPy-style
+# torch operations. There is no training loop and no learned weights
+# (only untrained embeddings used to populate demo heatmaps), so the
+# five diagnostic instruments (Stethoscope / Blood Test / X-Ray /
+# Vital Signs / Prescription Pad) do not apply here.
+#
+# STUDENT INTERPRETATION GUIDE: the attention heatmap ITSELF is the
+# diagnostic output for this file. Read it the way you would read an
+# X-Ray in ex_4/02 — "which positions light up?" The demo heatmap
+# above should show a strong diagonal (each position attends to
+# itself) because Q = K = scaled identity. In ex_4/02 the trained
+# Transformer's heatmap will show OFF-DIAGONAL structure — content
+# words attending to related content words. That is the "attention
+# has learned something" signal. If the trained model's heatmap
+# stays diagonal, the attention heads have collapsed (Prescription
+# Pad row: "attention collapse — add dropout, increase d_model, or
+# reduce n_heads").
+#
+# CONNECT TO SLIDE 5.4: The slide calls attention "a soft, learned
+# version of a look-up table". The diagonal demo heatmap is the
+# "hard look-up" (each query finds exactly its matching key); the
+# trained Transformer's heatmap is the "soft, learned" version.
+# ══════════════════════════════════════════════════════════════════════
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print("  WHAT YOU'VE MASTERED — Self-Attention from Scratch")
+print("=" * 70)
+print(
+    """
+  [x] Understood WHY RNNs struggle (information bottleneck, O(n) sequential)
+  [x] Derived scaled dot-product attention step by step
+  [x] Explained the 1/sqrt(d_k) scaling factor (prevents softmax saturation)
+  [x] Visualised attention weights as an interpretable heatmap
+  [x] Applied attention-weighted representations to document similarity
+  [x] Evaluated business impact for Singapore legal industry
+
+  KEY INSIGHT:
+    Attention lets every token directly access every other token in one
+    step. No information bottleneck. No sequential processing. This is
+    the foundation that makes Transformers and BERT possible.
+
+  Next: In 02_transformer_encoder.py, you'll build multi-head attention
+  and a full Transformer encoder classifier that uses this attention
+  mechanism with multiple parallel "heads" for richer representations.
+"""
+)
+

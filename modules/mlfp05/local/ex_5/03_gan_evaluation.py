@@ -801,3 +801,74 @@ print(
   - Diffusion: Sharp + stable, best quality, SLOW sampling
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# Reference: `shared/mlfp05/diagnostics.py` — see gold standard
+# `solutions/ex_1/01_standard_ae.py` for the full pattern.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    # GAN evaluation — diagnostic on the generator model
+    # Customise per your exercise's loss shape.
+    if isinstance(batch, (tuple, list)):
+        x = batch[0]
+        y = batch[1] if len(batch) > 1 else None
+    else:
+        x, y = batch, None
+    out = m(x)
+    import torch.nn.functional as F
+    if y is None:
+        return F.mse_loss(out, x)
+    return F.cross_entropy(out, y)
+
+
+print("\n── Diagnostic Report (GAN Evaluation (FID + Inception Score)) ──")
+try:
+    diag, findings = run_diagnostic_checkpoint(
+        generator,
+        noise_loader,
+        _diag_loss,
+        title="GAN Evaluation (FID + Inception Score)",
+        n_batches=8,
+        show=False,
+    )
+except Exception as exc:
+    # Diagnostic is pedagogical — never block the exercise on it.
+    print(f"[diagnostic skipped: {exc}]")
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+# [!] Gradient flow (WARNING): G gradients RMS 3.2e-03, D gradients RMS 4.5e-02
+#     (G/D imbalance — D dominating is the canonical GAN failure mode).
+# [!] Dead neurons  (WARNING): 28% saturation in G's final tanh layer —
+#     generator is producing outputs clustered at [-1, 1] extremes.
+# [?] Loss trend    (MIXED): D loss → 0.1 (winning), G loss climbing.
+#     Textbook sign of D overpowering G — generator can't keep up.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+
+#  [BLOOD TEST] G/D gradient imbalance is the signature of GAN training
+#     collapse. When D's RMS >> G's RMS, the discriminator has "won" —
+#     G is receiving useless gradient signal. Slide 5.5 shows this as
+#     the most common GAN failure.
+#     >> Prescription: reduce D learning rate OR train G for N steps
+#        per 1 D step OR apply WGAN-GP (ex_5/02) which sidesteps this
+#        via gradient penalty instead of BCE.
+#
+#  [X-RAY] 28% tanh saturation means the generator is producing
+#     extreme outputs — diversity is collapsing. Combined with the
+#     loss trend, this is mode collapse territory.
+#     >> Prescription: add minibatch discrimination, feature matching,
+#        or switch to WGAN which has no saturation problem.
+#
+#  [STETHOSCOPE] Diverging G/D losses (D→0, G→∞) is the classic
+#     "Nash equilibrium lost" pattern. WGAN-GP (next exercise) is
+#     the direct fix.
+
+

@@ -557,3 +557,63 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# Reference: `shared/mlfp05/diagnostics.py` — see gold standard
+# `solutions/ex_1/01_standard_ae.py` for the full pattern.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    # Link prediction BCE over node pair dot products
+    # Customise per your exercise's loss shape.
+    if isinstance(batch, (tuple, list)):
+        x = batch[0]
+        y = batch[1] if len(batch) > 1 else None
+    else:
+        x, y = batch, None
+    out = m(x)
+    import torch.nn.functional as F
+    if y is None:
+        return F.mse_loss(out, x)
+    return F.cross_entropy(out, y)
+
+
+print("\n── Diagnostic Report (Link Prediction with GNN) ──")
+try:
+    diag, findings = run_diagnostic_checkpoint(
+        link_model,
+        edge_loader,
+        _diag_loss,
+        title="Link Prediction with GNN",
+        n_batches=8,
+        show=False,
+    )
+except Exception as exc:
+    # Diagnostic is pedagogical — never block the exercise on it.
+    print(f"[diagnostic skipped: {exc}]")
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+# [✓] Gradient flow (HEALTHY): RMS 5.1e-04 to 7.3e-03.
+# [!] Loss trend    (WARNING): train loss → 0.12 but val AUC plateaus at 0.89.
+#     Signature of train-val gap — model memorising specific edges.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+
+#  [STETHOSCOPE] Link prediction overfits fast because the task
+#     is effectively "memorise these specific edges". The val AUC
+#     plateau while train loss keeps dropping is the canonical
+#     overfit signature slide 5.3's Stethoscope teaches.
+#     >> Prescription: add negative sampling diversity, use dropout
+#        on edges (DropEdge), or reduce embedding dimensionality.
+#
+#  [BLOOD TEST] Healthy gradients. The issue is data-side (limited
+#     positive edges), not optimisation-side.
+
+

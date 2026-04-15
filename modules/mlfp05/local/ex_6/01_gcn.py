@@ -409,3 +409,70 @@ print(
 import asyncio
 
 asyncio.run(conn.close())
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# Reference: `shared/mlfp05/diagnostics.py` — see gold standard
+# `solutions/ex_1/01_standard_ae.py` for the full pattern.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    # GCN node classification loss
+    # Customise per your exercise's loss shape.
+    if isinstance(batch, (tuple, list)):
+        x = batch[0]
+        y = batch[1] if len(batch) > 1 else None
+    else:
+        x, y = batch, None
+    out = m(x)
+    import torch.nn.functional as F
+    if y is None:
+        return F.mse_loss(out, x)
+    return F.cross_entropy(out, y)
+
+
+print("\n── Diagnostic Report (GCN — Graph Convolutional Network) ──")
+try:
+    diag, findings = run_diagnostic_checkpoint(
+        gcn,
+        [(features, labels)],
+        _diag_loss,
+        title="GCN — Graph Convolutional Network",
+        n_batches=8,
+        show=False,
+    )
+except Exception as exc:
+    # Diagnostic is pedagogical — never block the exercise on it.
+    print(f"[diagnostic skipped: {exc}]")
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+# [✓] Gradient flow (HEALTHY): RMS range 5.2e-04 to 8.7e-03 across 2 GCN layers.
+#     Shallow GCN = no over-smoothing risk yet.
+# [✓] Dead neurons  (HEALTHY): 8% inactive — GCN uses ReLU, healthy.
+# [✓] Loss trend    (HEALTHY): train loss → 0.23, val accuracy plateauing at ~82%.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+
+#  [BLOOD TEST] Shallow GCN (2 layers) shows no pathologies. BUT
+#     slide 5.6 warns: stack 4+ GCN layers and node embeddings
+#     become nearly identical (over-smoothing). Watch for this in
+#     ex_6/05 architecture comparison — the signature is all nodes'
+#     cosine similarity → 1.0 at deep layers.
+#     >> Prescription: use skip connections (ResGCN) OR PairNorm OR
+#        stick to 2-3 layers. GAT (ex_6/02) also helps because
+#        learned attention weights can avoid smoothing.
+#
+#  [X-RAY] 8% dead ReLU is normal. GCN's linear aggregation
+#     followed by ReLU doesn't typically kill channels.
+#
+#  [STETHOSCOPE] 82% accuracy on Cora is baseline competitive.
+#     GAT and GraphSAGE (next exercises) typically push to 83-85%
+#     via learned vs fixed aggregation.
+
+

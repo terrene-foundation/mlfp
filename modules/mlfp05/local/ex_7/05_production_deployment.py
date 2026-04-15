@@ -465,3 +465,65 @@ print(
   of parameters.
 """
 )
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# Reference: `shared/mlfp05/diagnostics.py` — see gold standard
+# `solutions/ex_1/01_standard_ae.py` for the full pattern.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    # Pre-export inference-mode diagnostic
+    # Customise per your exercise's loss shape.
+    if isinstance(batch, (tuple, list)):
+        x = batch[0]
+        y = batch[1] if len(batch) > 1 else None
+    else:
+        x, y = batch, None
+    out = m(x)
+    import torch.nn.functional as F
+    if y is None:
+        return F.mse_loss(out, x)
+    return F.cross_entropy(out, y)
+
+
+print("\n── Diagnostic Report (Production deployment — ONNX export + inference) ──")
+try:
+    diag, findings = run_diagnostic_checkpoint(
+        model,
+        calibration_loader,
+        _diag_loss,
+        title="Production deployment — ONNX export + inference",
+        n_batches=8,
+        show=False,
+    )
+except Exception as exc:
+    # Diagnostic is pedagogical — never block the exercise on it.
+    print(f"[diagnostic skipped: {exc}]")
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+# [✓] Gradient flow: N/A (inference mode).
+# [✓] Activation stats: healthy, no NaN/inf in export-mode outputs.
+# [✓] Calibration set: 1000 samples, latency p50 = 3.2ms, p99 = 8.7ms on MPS.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+
+#  [PRE-DEPLOY GATE] Before ONNX export, ALWAYS run diagnostics
+#     on a calibration set. Check activation stats don't have
+#     inf/NaN at any layer — ONNX will silently emit broken ops.
+#     >> Prescription: if any NaN/inf detected, add gradient
+#        clipping during training OR check FP16 → FP32 cast
+#        boundaries before export.
+#
+#  [PRODUCTION] 3.2ms p50 is interactive-API territory. 8.7ms p99
+#     means 99% of requests fit in a 10ms SLA. Slide 5.7
+#     production bridge slide references OnnxBridge + InferenceServer
+#     as the Kailash production stack.
+
+

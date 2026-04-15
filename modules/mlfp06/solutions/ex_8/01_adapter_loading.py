@@ -31,7 +31,8 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from kailash_align import AdapterRegistry
-from kailash_align.serving import AlignmentServing, ServingConfig
+from kailash_align.config import ServingConfig
+from kailash_align.serving import AlignmentServing
 
 from shared.mlfp06.ex_8 import (
     OUTPUT_DIR,

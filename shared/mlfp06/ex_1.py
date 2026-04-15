@@ -96,7 +96,9 @@ async def run_delegate(prompt: str, max_cost: float = 0.5) -> tuple[str, float, 
 
     Uses the MODEL resolved from the environment. Never hardcode models.
     """
-    delegate = Delegate(model=MODEL, max_llm_cost_usd=max_cost)
+    # kaizen_agents 0.9.x renamed `max_llm_cost_usd` to `budget_usd` — the
+    # constraint semantics are unchanged (per-run budget cap in USD).
+    delegate = Delegate(model=MODEL, budget_usd=max_cost)
     response, cost = "", 0.0
     t0 = time.perf_counter()
     async for event in delegate.run(prompt):

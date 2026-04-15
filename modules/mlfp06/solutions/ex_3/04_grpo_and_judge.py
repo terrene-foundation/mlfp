@@ -116,7 +116,8 @@ print("=" * 70)
 
 async def llm_judge(prompt: str, response_a: str, response_b: str) -> dict:
     """Ask an LLM to pick between two responses. Returns parsed JSON verdict."""
-    delegate = Delegate(model=MODEL_NAME, max_llm_cost_usd=0.5)
+    # kaizen_agents 0.9.x: max_llm_cost_usd -> budget_usd (same semantics)
+    delegate = Delegate(model=MODEL_NAME, budget_usd=0.5)
     judge_prompt = f"""You are an impartial judge evaluating two responses to a user query.
 
 Query: {prompt[:500]}

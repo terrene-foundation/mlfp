@@ -100,8 +100,12 @@ def split_corpus(
 
 
 def make_delegate(budget_usd: float = 1.0) -> Delegate:
-    """Construct a Delegate with a spend ceiling for a single workflow step."""
-    return Delegate(model=MODEL, max_llm_cost_usd=budget_usd)
+    """Construct a Delegate with a spend ceiling for a single workflow step.
+
+    kaizen_agents 0.9.x renamed `max_llm_cost_usd` to `budget_usd` — same
+    per-run budget cap semantics.
+    """
+    return Delegate(model=MODEL, budget_usd=budget_usd)
 
 
 async def delegate_text(delegate: Delegate, prompt: str) -> str:

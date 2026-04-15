@@ -134,8 +134,12 @@ Output ONLY a JSON object:
 
     response = ""
     async for event in delegate.run(judge_prompt):
-        if hasattr(event, "text"):
-            response += event.text
+        # kaizen_agents 0.9: text lives on TextDelta / TurnComplete
+        # subclasses, not on the DelegateEvent base class. `getattr` is
+        # type-clean under Pyright and safe on non-text event types.
+        text_chunk = getattr(event, "text", None)
+        if text_chunk:
+            response += text_chunk
 
     try:
         start = response.index("{")

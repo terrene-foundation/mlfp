@@ -280,8 +280,11 @@ async def single_agent_analysis(doc: str, question: str) -> dict:
     )
     response = ""
     async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
+        # kaizen_agents 0.9: text lives on TextDelta / TurnComplete
+        # subclasses, not on the DelegateEvent base class.
+        text_chunk = getattr(event, "text", None)
+        if text_chunk:
+            response += text_chunk
     return {
         "answer": response.strip(),
         "latency_s": time.perf_counter() - t0,

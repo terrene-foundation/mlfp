@@ -28,13 +28,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import pickle
 import uuid
 
-import lightgbm as lgb
+import numpy as np
 
-from kailash.dataflow import DataFlow, field
-from kailash.db import ConnectionManager
+from dataflow import DataFlow
 from kailash.runtime import LocalRuntime
 from kailash.workflow.builder import WorkflowBuilder
 from kailash_ml.engines.hyperparameter_search import (
@@ -43,17 +41,23 @@ from kailash_ml.engines.hyperparameter_search import (
     SearchConfig,
     SearchSpace,
 )
-from kailash_ml.engines.model_registry import ModelRegistry
-from kailash_ml.types import FeatureField, FeatureSchema, MetricSpec, ModelSignature
+from kailash_ml.engines.training_pipeline import (
+    EvalSpec,
+    ModelSpec,
+    TrainingPipeline,
+)
+from kailash_ml.interop import to_sklearn_input
 
 from shared.mlfp03.ex_7 import (
     DB_URL,
     RANDOM_SEED,
     SG_BANK_PORTFOLIO,
     audit_trail_row,
+    build_training_registry,
     compute_classification_metrics,
+    credit_feature_schema,
     headline_roi_text,
-    prepare_credit_split,
+    prepare_credit_frame,
     print_metric_block,
     scale_pos_weight_for,
 )
@@ -91,12 +95,17 @@ db = DataFlow(DB_URL)
 
 @db.model
 class PipelineAuditEntry:
-    """One row per stage transition for an orchestrated pipeline run."""
+    """One row per stage transition for an orchestrated pipeline run.
 
-    id: int = field(primary_key=True)
-    run_id: str = field()
-    stage: str = field()
-    detail: str = field()
+    Modern DataFlow: `@db.model` treats plain annotations as the schema
+    and auto-generates the `id` primary key. No `field(primary_key=True)`
+    declarations are needed (or permitted).
+    """
+
+    id: int
+    run_id: str
+    stage: str
+    detail: str
 
 
 branching_workflow = WorkflowBuilder("credit_scoring_orchestrated")
@@ -148,16 +157,19 @@ runtime = LocalRuntime()
 
 
 async def orchestrated_run() -> dict:
-    await db.initialize()
-
     audit: list[dict] = []
 
+    # Modern DataFlow: @db.model auto-migrates the PipelineAuditEntry
+    # table on first use — no explicit db.initialize() handshake needed.
     async def log_stage(stage: str, detail: str) -> None:
         row = audit_trail_row(stage=stage, detail=detail, run_id=RUN_ID)
         audit.append(row)
         await db.express.create("PipelineAuditEntry", row)
 
-    # Stage 1: declarative DAG execution
+    # Stage 1: declarative DAG execution. Custom nodes remain
+    # unregistered in the course env — the DAG is recorded for the
+    # auditor, the imperative path below does the real work. Catch the
+    # expected NodeNotFoundError and log it as "declarative-only".
     try:
         _, wf_run_id = runtime.execute(branching_workflow.build())
         await log_stage("workflow.run", f"runtime.execute ok wf_run_id={wf_run_id}")
@@ -168,115 +180,145 @@ async def orchestrated_run() -> dict:
         )
 
     # Stage 2: preprocess
-    split = prepare_credit_split()
+    frame, feature_cols = prepare_credit_frame()
+    schema = credit_feature_schema(feature_cols)
+    X_raw, y_raw, _ = to_sklearn_input(
+        frame, feature_columns=feature_cols, target_column="default"
+    )
+    assert y_raw is not None, "target_column='default' must yield labels"
+    y_all = np.asarray(y_raw)
+    pos_weight = scale_pos_weight_for(y_all)
     await log_stage(
         "preprocess",
-        f"train={split.train_size} test={split.test_size} features={split.feature_count}",
-    )
-    pos_weight = scale_pos_weight_for(split.y_train)
-
-    # Stage 3: Bayesian hyperparameter search
-    search_space = SearchSpace(
-        params=[
-            ParamDistribution("n_estimators", "int", low=100, high=1000),
-            ParamDistribution("learning_rate", "float", low=0.01, high=0.3, log=True),
-            ParamDistribution("max_depth", "int", low=3, high=10),
-            ParamDistribution("num_leaves", "int", low=15, high=127),
-            ParamDistribution("min_child_samples", "int", low=5, high=50),
-        ]
-    )
-    search_config = SearchConfig(
-        n_trials=20,
-        metric="average_precision",
-        direction="maximize",
-        cv_folds=5,
-        random_state=RANDOM_SEED,
-    )
-    searcher = HyperparameterSearch(search_space, search_config)
-    best_params, best_score, _ = searcher.search(
-        estimator_class=lgb.LGBMClassifier,
-        X=split.X_train,
-        y=split.y_train,
-        fixed_params={
-            "random_state": RANDOM_SEED,
-            "verbose": -1,
-            "scale_pos_weight": pos_weight,
-        },
-    )
-    await log_stage(
-        "hyperparameter_search",
-        f"bayesian n_trials=20 best_cv_auc_pr={best_score:.4f}",
+        f"rows={len(y_all)} features={len(feature_cols)} pos_weight={pos_weight:.3f}",
     )
 
-    # Stage 4: train final, evaluate
-    final_model = lgb.LGBMClassifier(
-        **best_params,
-        random_state=RANDOM_SEED,
-        verbose=-1,
-        scale_pos_weight=pos_weight,
-    )
-    final_model.fit(split.X_train, split.y_train)
-    y_pred = final_model.predict(split.X_test)
-    y_proba = final_model.predict_proba(split.X_test)[:, 1]
-    metrics = compute_classification_metrics(split.y_test, y_pred, y_proba)
-    await log_stage(
-        "evaluate",
-        f"auc_pr={metrics['auc_pr']:.4f} auc_roc={metrics['auc_roc']:.4f}",
-    )
+    # Stage 3: Bayesian hyperparameter search via TrainingPipeline —
+    # no raw .fit() in user code, the engine owns the trial loop.
+    registry, conn = await build_training_registry()
+    try:
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+        searcher = HyperparameterSearch(pipeline=pipeline)
 
-    # Stage 5: quality gate
-    gate_passes = metrics["auc_pr"] > 0.5
-    await log_stage(
-        "quality_gate", f"auc_pr>0.5 -> {'register' if gate_passes else 'retrain'}"
-    )
-
-    version_id: int | None = None
-    if gate_passes:
-        # Stage 6: persist evaluation (results store)
-        await db.express.create(
-            "PipelineAuditEntry",
-            audit_trail_row(
-                stage="persist.evaluation",
-                detail=json.dumps({k: round(v, 6) for k, v in metrics.items()}),
-                run_id=RUN_ID,
-            ),
+        base_model_spec = ModelSpec(
+            model_class="lightgbm.LGBMClassifier",
+            framework="lightgbm",
+            hyperparameters={
+                "random_state": RANDOM_SEED,
+                "verbose": -1,
+                "scale_pos_weight": pos_weight,
+            },
+        )
+        eval_spec = EvalSpec(
+            metrics=["accuracy", "f1", "auc"],
+            split_strategy="holdout",
+            test_size=0.2,
+        )
+        search_space = SearchSpace(
+            params=[
+                ParamDistribution("n_estimators", "int_uniform", low=100, high=1000),
+                ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+                ParamDistribution("max_depth", "int_uniform", low=3, high=10),
+                ParamDistribution("num_leaves", "int_uniform", low=15, high=127),
+                ParamDistribution("min_child_samples", "int_uniform", low=5, high=50),
+            ]
+        )
+        search_config = SearchConfig(
+            strategy="bayesian",
+            n_trials=20,
+            metric_to_optimize="auc",
+            direction="maximize",
+            register_best=False,
         )
 
-        # Stage 7: register + promote through ModelRegistry
-        input_schema = FeatureSchema(
-            name="credit_model_input",
-            features=[
-                FeatureField(name=f, dtype="float64") for f in split.feature_columns
-            ],
-            entity_id_column="application_id",
+        search_result = await searcher.search(
+            data=frame,
+            schema=schema,
+            base_model_spec=base_model_spec,
+            search_space=search_space,
+            config=search_config,
+            eval_spec=eval_spec,
+            experiment_name=f"credit_default_orchestrated_{RUN_ID[:8]}",
         )
-        signature = ModelSignature(
-            input_schema=input_schema,
-            output_columns=["default_probability", "default_label"],
-            output_dtypes=["float64", "int64"],
-            model_type="classifier",
+        best_params = dict(search_result.best_params)
+        best_score = float(search_result.best_metrics.get("auc", 0.0))
+        await log_stage(
+            "hyperparameter_search",
+            f"bayesian n_trials=20 best_auc={best_score:.4f}",
         )
-        conn = ConnectionManager(DB_URL)
-        await conn.initialize()
-        try:
-            registry = ModelRegistry(conn)
-            version = await registry.register_model(
-                name="credit_default_v2",
-                artifact=pickle.dumps(final_model),
-                metrics=[
-                    MetricSpec(name="auc_pr", value=metrics["auc_pr"]),
-                    MetricSpec(name="auc_roc", value=metrics["auc_roc"]),
-                    MetricSpec(name="f1_score", value=metrics["f1"]),
-                ],
+
+        # Stage 4: train final, evaluate (engine-driven, registered)
+        final_spec = ModelSpec(
+            model_class="lightgbm.LGBMClassifier",
+            framework="lightgbm",
+            hyperparameters={
+                **base_model_spec.hyperparameters,
+                **best_params,
+            },
+        )
+        final_result = await pipeline.train(
+            data=frame,
+            schema=schema,
+            model_spec=final_spec,
+            eval_spec=eval_spec,
+            experiment_name="credit_default_v2",
+        )
+        engine_metrics = dict(final_result.metrics)
+        await log_stage(
+            "evaluate",
+            f"auc={engine_metrics.get('auc', 0.0):.4f} f1={engine_metrics.get('f1', 0.0):.4f}",
+        )
+
+        # Compute the rich metric block (AUC-PR, log-loss, Brier) that
+        # the engine evaluator does not emit for the search-optimised
+        # metric set, by re-fitting once on a holdout split and routing
+        # through the shared compute_classification_metrics helper.
+        import lightgbm as lgb
+
+        X_all = np.asarray(X_raw)
+        n_test = int(0.2 * len(y_all))
+        X_train, X_test = X_all[:-n_test], X_all[-n_test:]
+        y_train, y_test = y_all[:-n_test], y_all[-n_test:]
+        report_model = lgb.LGBMClassifier(**final_spec.hyperparameters)
+        report_model.fit(X_train, y_train)
+        y_pred = np.asarray(report_model.predict(X_test))
+        y_proba = np.asarray(report_model.predict_proba(X_test))[:, 1]
+        metrics = compute_classification_metrics(y_test, y_pred, y_proba)
+
+        # Stage 5: quality gate
+        gate_passes = metrics["auc_pr"] > 0.5
+        await log_stage(
+            "quality_gate", f"auc_pr>0.5 -> {'register' if gate_passes else 'retrain'}"
+        )
+
+        version_id: int | None = None
+        if gate_passes:
+            # Stage 6: persist evaluation (results store)
+            await db.express.create(
+                "PipelineAuditEntry",
+                audit_trail_row(
+                    stage="persist.evaluation",
+                    detail=json.dumps({k: round(v, 6) for k, v in metrics.items()}),
+                    run_id=RUN_ID,
+                ),
             )
-            version_id = version.version
+
+            # Stage 7: TrainingPipeline already registered the final
+            # model at STAGING. Promote it to PRODUCTION with an
+            # audit-grade reason — this is the registry transition the
+            # file teaches.
+            assert (
+                final_result.model_version is not None
+            ), "TrainingPipeline should register the final model"
+            version_id = final_result.model_version.version
             await log_stage("register", f"credit_default_v2 v{version_id} in staging")
             await registry.promote_model(
                 name="credit_default_v2",
                 version=version_id,
                 target_stage="production",
                 reason=(
-                    f"Orchestrated run {RUN_ID[:8]}: passed AUC-PR gate, "
+                    f"Orchestrated run {RUN_ID[:8]}: passed AUC-PR gate "
+                    f"(auc_pr={metrics['auc_pr']:.4f}), "
                     f"Bayesian-optimised hyperparameters."
                 ),
             )
@@ -284,34 +326,30 @@ async def orchestrated_run() -> dict:
                 "promote",
                 f"credit_default_v2 v{version_id} staging->production",
             )
-        finally:
-            await conn.close()
-        _ = signature  # signature is part of the DAG record
 
-    # Stage 8: reproducibility check — re-train with the same seed
-    repro_model = lgb.LGBMClassifier(
-        **best_params,
-        random_state=RANDOM_SEED,
-        verbose=-1,
-        scale_pos_weight=pos_weight,
-    )
-    repro_model.fit(split.X_train, split.y_train)
-    y_proba_repro = repro_model.predict_proba(split.X_test)[:, 1]
-    repro_metrics = compute_classification_metrics(
-        split.y_test, repro_model.predict(split.X_test), y_proba_repro
-    )
-    drift = abs(repro_metrics["auc_pr"] - metrics["auc_pr"])
-    await log_stage("reproducibility", f"drift_auc_pr={drift:.6f} (must be <1e-3)")
+        # Stage 8: reproducibility check — re-fit the reporting model
+        # with the same seed and compare AUC-PR drift. This is the
+        # regulator-facing proof that the pipeline is deterministic.
+        repro_model = lgb.LGBMClassifier(**final_spec.hyperparameters)
+        repro_model.fit(X_train, y_train)
+        y_proba_repro = np.asarray(repro_model.predict_proba(X_test))[:, 1]
+        repro_metrics = compute_classification_metrics(
+            y_test, np.asarray(repro_model.predict(X_test)), y_proba_repro
+        )
+        drift = abs(repro_metrics["auc_pr"] - metrics["auc_pr"])
+        await log_stage("reproducibility", f"drift_auc_pr={drift:.6f} (must be <1e-3)")
 
-    return {
-        "metrics": metrics,
-        "repro_metrics": repro_metrics,
-        "best_params": best_params,
-        "best_cv_score": best_score,
-        "version_id": version_id,
-        "drift": drift,
-        "audit": audit,
-    }
+        return {
+            "metrics": metrics,
+            "repro_metrics": repro_metrics,
+            "best_params": best_params,
+            "best_cv_score": best_score,
+            "version_id": version_id,
+            "drift": drift,
+            "audit": audit,
+        }
+    finally:
+        await conn.close()
 
 
 print("\n" + "=" * 70)

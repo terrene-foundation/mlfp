@@ -102,10 +102,12 @@ class PipelineAuditEntry:
     declarations are needed (or permitted).
     """
 
+    # TODO: Declare the 4 columns this audit table needs.
+    # Hint: id (int), run_id (str), stage (str), detail (str) — plain annotations.
     id: int
-    run_id: str
-    stage: str
-    detail: str
+    run_id: ____
+    stage: ____
+    detail: ____
 
 
 branching_workflow = WorkflowBuilder("credit_scoring_orchestrated")
@@ -214,20 +216,24 @@ async def orchestrated_run() -> dict:
             split_strategy="holdout",
             test_size=0.2,
         )
+        # TODO: Declare the search space — same 5 hyperparameters as ex_7/03.
+        # Hint: ParamDistribution("name", "int_uniform"|"log_uniform", low=..., high=...)
         search_space = SearchSpace(
             params=[
-                ParamDistribution("n_estimators", "int_uniform", low=100, high=1000),
-                ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
-                ParamDistribution("max_depth", "int_uniform", low=3, high=10),
-                ParamDistribution("num_leaves", "int_uniform", low=15, high=127),
-                ParamDistribution("min_child_samples", "int_uniform", low=5, high=50),
+                ParamDistribution("n_estimators", ____, low=____, high=____),
+                ParamDistribution("learning_rate", ____, low=____, high=____),
+                ParamDistribution("max_depth", ____, low=____, high=____),
+                ParamDistribution("num_leaves", ____, low=____, high=____),
+                ParamDistribution("min_child_samples", ____, low=____, high=____),
             ]
         )
+        # TODO: Configure the Bayesian search (same pattern as ex_7/03).
+        # Hint: SearchConfig(strategy=..., n_trials=..., metric_to_optimize=..., direction=...)
         search_config = SearchConfig(
-            strategy="bayesian",
-            n_trials=20,
-            metric_to_optimize="auc",
-            direction="maximize",
+            strategy=____,
+            n_trials=____,
+            metric_to_optimize=____,
+            direction=____,
             register_best=False,
         )
 
@@ -256,12 +262,14 @@ async def orchestrated_run() -> dict:
                 **best_params,
             },
         )
+        # TODO: Train the final model via pipeline.train() with the winning params.
+        # Hint: pipeline.train(data=..., schema=..., model_spec=..., eval_spec=..., experiment_name=...)
         final_result = await pipeline.train(
-            data=frame,
-            schema=schema,
-            model_spec=final_spec,
-            eval_spec=eval_spec,
-            experiment_name="credit_default_v2",
+            data=____,
+            schema=____,
+            model_spec=____,
+            eval_spec=____,
+            experiment_name=____,
         )
         engine_metrics = dict(final_result.metrics)
         await log_stage(
@@ -312,15 +320,13 @@ async def orchestrated_run() -> dict:
             ), "TrainingPipeline should register the final model"
             version_id = final_result.model_version.version
             await log_stage("register", f"credit_default_v2 v{version_id} in staging")
+            # TODO: Promote the model from staging to production with an audit reason.
+            # Hint: registry.promote_model(name=..., version=..., target_stage=..., reason=...)
             await registry.promote_model(
-                name="credit_default_v2",
-                version=version_id,
-                target_stage="production",
-                reason=(
-                    f"Orchestrated run {RUN_ID[:8]}: passed AUC-PR gate "
-                    f"(auc_pr={metrics['auc_pr']:.4f}), "
-                    f"Bayesian-optimised hyperparameters."
-                ),
+                name=____,
+                version=____,
+                target_stage=____,
+                reason=____,
             )
             await log_stage(
                 "promote",
@@ -336,7 +342,9 @@ async def orchestrated_run() -> dict:
         repro_metrics = compute_classification_metrics(
             y_test, np.asarray(repro_model.predict(X_test)), y_proba_repro
         )
-        drift = abs(repro_metrics["auc_pr"] - metrics["auc_pr"])
+        # TODO: Compute the AUC-PR drift between the original and reproduced model.
+        # Hint: abs(repro_metrics["auc_pr"] - metrics["auc_pr"])
+        drift = ____
         await log_stage("reproducibility", f"drift_auc_pr={drift:.6f} (must be <1e-3)")
 
         return {

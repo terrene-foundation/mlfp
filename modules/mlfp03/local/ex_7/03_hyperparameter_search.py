@@ -95,13 +95,19 @@ from shared.mlfp03.ex_7 import (
 # The `log=True` keyword from earlier kailash-ml releases is gone — the
 # distribution shape is encoded in the `type` string, not a kwarg.
 
+# TODO: declare the 5-dimensional search space for LightGBM hyperparameters.
+#       Each ParamDistribution takes (name, type_string, low=..., high=...).
+# Hint: use "int_uniform" for integer params (n_estimators, max_depth,
+#       num_leaves, min_child_samples) and "log_uniform" for learning_rate.
+#       Bounds: n_estimators 100–1000, learning_rate 0.01–0.3,
+#       max_depth 3–10, num_leaves 15–127, min_child_samples 5–50.
 search_space = SearchSpace(
     params=[
-        ParamDistribution("n_estimators", "int_uniform", low=100, high=1000),
-        ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
-        ParamDistribution("max_depth", "int_uniform", low=3, high=10),
-        ParamDistribution("num_leaves", "int_uniform", low=15, high=127),
-        ParamDistribution("min_child_samples", "int_uniform", low=5, high=50),
+        ParamDistribution("n_estimators", ____, low=____, high=____),
+        ParamDistribution("learning_rate", ____, low=____, high=____),
+        ParamDistribution("max_depth", ____, low=____, high=____),
+        ParamDistribution("num_leaves", ____, low=____, high=____),
+        ParamDistribution("min_child_samples", ____, low=____, high=____),
     ]
 )
 
@@ -112,11 +118,14 @@ search_space = SearchSpace(
 #     result.metrics. EvalSpec below requests "auc" so we optimise that.
 #   - register_best=False keeps the search hermetic; we register the
 #     winner explicitly in file 04 / file 05.
+# TODO: configure the Bayesian search: strategy, n_trials, metric, direction.
+# Hint: SearchConfig(strategy="bayesian", n_trials=20,
+#       metric_to_optimize="auc", direction="maximize", register_best=False)
 search_config = SearchConfig(
-    strategy="bayesian",
-    n_trials=20,
-    metric_to_optimize="auc",
-    direction="maximize",
+    strategy=____,
+    n_trials=____,
+    metric_to_optimize=____,
+    direction=____,
     register_best=False,
 )
 
@@ -155,14 +164,20 @@ async def run_bayesian_search() -> tuple[dict, float, list, dict]:
             test_size=0.2,
         )
 
+        # TODO: run the Bayesian search — pass frame, schema, base_model_spec,
+        #       search_space, config, eval_spec, and experiment_name.
+        # Hint: result = await searcher.search(data=frame, schema=schema,
+        #       base_model_spec=base_model_spec, search_space=search_space,
+        #       config=search_config, eval_spec=eval_spec,
+        #       experiment_name="credit_default_hp_search")
         result = await searcher.search(
-            data=frame,
-            schema=schema,
-            base_model_spec=base_model_spec,
-            search_space=search_space,
-            config=search_config,
-            eval_spec=eval_spec,
-            experiment_name="credit_default_hp_search",
+            data=____,
+            schema=____,
+            base_model_spec=____,
+            search_space=____,
+            config=____,
+            eval_spec=____,
+            experiment_name=____,
         )
 
         # Final model — train once more with the winning hyperparameters
@@ -176,12 +191,16 @@ async def run_bayesian_search() -> tuple[dict, float, list, dict]:
                 **result.best_params,
             },
         )
+        # TODO: train the final model with the winning hyperparameters.
+        # Hint: await pipeline.train(data=frame, schema=schema,
+        #       model_spec=final_spec, eval_spec=eval_spec,
+        #       experiment_name="credit_default_hp_search_final")
         final_train = await pipeline.train(
-            data=frame,
-            schema=schema,
-            model_spec=final_spec,
-            eval_spec=eval_spec,
-            experiment_name="credit_default_hp_search_final",
+            data=____,
+            schema=____,
+            model_spec=____,
+            eval_spec=____,
+            experiment_name=____,
         )
         return (
             dict(result.best_params),
@@ -237,7 +256,11 @@ best_model.fit(X_train, y_train)
 # runtime, so we cast at the boundary.
 y_pred = np.asarray(best_model.predict(X_test))
 y_proba = np.asarray(best_model.predict_proba(X_test))[:, 1]
-final_metrics = compute_classification_metrics(y_test, y_pred, y_proba)
+
+# TODO: compute the full classification metric block using the shared helper.
+# Hint: compute_classification_metrics(y_test, y_pred, y_proba)
+#       returns a dict with keys: accuracy, f1, auc, auc_pr, log_loss, brier
+final_metrics = ____
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────

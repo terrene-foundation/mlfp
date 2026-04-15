@@ -38,23 +38,100 @@
 <section>
   <h2>From scripts to workflows</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
-      <defs><marker id="a37s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
-      <rect x="20" y="40" width="300" height="120" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
-      <text x="170" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#F43F5E">Sequential script</text>
-      <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
-        <text x="40" y="92">load_data()</text>
-        <text x="40" y="108">preprocess()</text>
-        <text x="40" y="124">train()  # fails here?</text>
-        <text x="40" y="140">evaluate()  # never runs</text>
-      </g>
-      <rect x="400" y="40" width="300" height="120" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
-      <text x="550" y="68" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">WorkflowBuilder</text>
-      <g font-family="Inter" font-size="10" fill="#334155">
-        <text x="420" y="92">Nodes connected by edges</text>
-        <text x="420" y="108">Automatic error handling</text>
-        <text x="420" y="124">Conditional branching</text>
-        <text x="420" y="140">Retry logic, logging</text>
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="a37s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker>
+        <marker id="a37r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#F43F5E"/></marker>
+        <marker id="a37g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#22C55E"/></marker>
+      </defs>
+      <g font-family="Inter" font-size="10">
+        <!-- LEFT: Fragile linear script -->
+        <text x="155" y="18" text-anchor="middle" font-weight="700" font-size="12" fill="#F43F5E">Sequential script</text>
+
+        <!-- Steps as chain -->
+        <rect x="110" y="28" width="90" height="28" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.2"/>
+        <text x="155" y="46" text-anchor="middle" font-size="9" fill="#166534">load_data()</text>
+        <line x1="155" y1="56" x2="155" y2="66" stroke="#475569" stroke-width="1.2" marker-end="url(#a37s)"/>
+
+        <rect x="110" y="70" width="90" height="28" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.2"/>
+        <text x="155" y="88" text-anchor="middle" font-size="9" fill="#166534">preprocess()</text>
+        <line x1="155" y1="98" x2="155" y2="108" stroke="#475569" stroke-width="1.2" marker-end="url(#a37s)"/>
+
+        <rect x="110" y="112" width="90" height="28" rx="5" fill="#FEF2F2" stroke="#F43F5E" stroke-width="2"/>
+        <text x="155" y="130" text-anchor="middle" font-weight="600" font-size="9" fill="#B91C1C">train()</text>
+        <!-- Explosion icon -->
+        <text x="210" y="130" font-size="14" fill="#F43F5E">*</text>
+        <text x="232" y="126" font-size="8" fill="#B91C1C">OOM error</text>
+
+        <!-- Dead zone below -->
+        <rect x="110" y="154" width="90" height="28" rx="5" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 2"/>
+        <text x="155" y="172" text-anchor="middle" font-size="9" fill="#94A3B8">evaluate()</text>
+        <rect x="110" y="192" width="90" height="28" rx="5" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 2"/>
+        <text x="155" y="210" text-anchor="middle" font-size="9" fill="#94A3B8">register()</text>
+
+        <line x1="155" y1="140" x2="155" y2="150" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 2"/>
+        <line x1="155" y1="182" x2="155" y2="188" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 2"/>
+
+        <!-- Bracket: never runs -->
+        <line x1="88" y1="154" x2="88" y2="220" stroke="#F43F5E" stroke-width="1.5"/>
+        <line x1="88" y1="154" x2="96" y2="154" stroke="#F43F5E" stroke-width="1.5"/>
+        <line x1="88" y1="220" x2="96" y2="220" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="82" y="192" text-anchor="end" font-size="9" font-weight="600" fill="#B91C1C">never</text>
+        <text x="82" y="202" text-anchor="end" font-size="9" font-weight="600" fill="#B91C1C">runs</text>
+
+        <!-- Divider -->
+        <line x1="335" y1="14" x2="335" y2="290" stroke="#E2E8F0" stroke-width="1"/>
+
+        <!-- RIGHT: WorkflowBuilder DAG -->
+        <text x="555" y="18" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">WorkflowBuilder DAG</text>
+
+        <!-- Load node -->
+        <rect x="510" y="28" width="90" height="28" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="555" y="46" text-anchor="middle" font-size="9" fill="#166534">Load</text>
+        <line x1="555" y1="56" x2="555" y2="66" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
+
+        <!-- Preprocess node -->
+        <rect x="510" y="70" width="90" height="28" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="555" y="88" text-anchor="middle" font-size="9" fill="#166534">Preprocess</text>
+        <line x1="555" y1="98" x2="555" y2="108" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
+
+        <!-- Train node with retry arc -->
+        <rect x="510" y="112" width="90" height="28" rx="5" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+        <text x="555" y="130" text-anchor="middle" font-weight="600" font-size="9" fill="#0D9488">Train</text>
+        <!-- Retry arc -->
+        <path d="M 604 120 C 640 120, 640 136, 604 136" fill="none" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#a37s)"/>
+        <text x="650" y="132" font-size="8" fill="#B45309">retry x3</text>
+        <text x="650" y="142" font-size="7" fill="#B45309">(smaller batch)</text>
+
+        <line x1="555" y1="140" x2="555" y2="154" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
+
+        <!-- Evaluate node -->
+        <rect x="510" y="158" width="90" height="28" rx="5" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="555" y="176" text-anchor="middle" font-size="9" fill="#166534">Evaluate</text>
+
+        <!-- Conditional branch -->
+        <line x1="555" y1="186" x2="555" y2="198" stroke="#0D9488" stroke-width="1.2" marker-end="url(#a37s)"/>
+        <polygon points="555,202 575,216 555,230 535,216" fill="#FEF9C3" stroke="#EAB308" stroke-width="1.5"/>
+        <text x="555" y="220" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">AUC</text>
+        <text x="555" y="228" text-anchor="middle" font-size="7" font-weight="600" fill="#92400E">&gt;0.85?</text>
+
+        <!-- Yes branch -->
+        <line x1="575" y1="216" x2="630" y2="216" stroke="#22C55E" stroke-width="1.5"/>
+        <line x1="630" y1="216" x2="630" y2="240" stroke="#22C55E" stroke-width="1.5" marker-end="url(#a37g)"/>
+        <text x="600" y="210" font-size="8" fill="#22C55E" font-weight="600">yes</text>
+        <rect x="590" y="244" width="80" height="28" rx="5" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="630" y="262" text-anchor="middle" font-weight="600" font-size="9" fill="#166534">Register</text>
+
+        <!-- No branch -->
+        <line x1="535" y1="216" x2="480" y2="216" stroke="#F43F5E" stroke-width="1.5"/>
+        <line x1="480" y1="216" x2="480" y2="240" stroke="#F43F5E" stroke-width="1.5" marker-end="url(#a37r)"/>
+        <text x="510" y="210" font-size="8" fill="#F43F5E" font-weight="600">no</text>
+        <rect x="440" y="244" width="80" height="28" rx="5" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="480" y="262" text-anchor="middle" font-size="9" fill="#B91C1C">Log + alert</text>
+
+        <!-- Bottom summary -->
+        <rect x="370" y="282" width="350" height="18" rx="3" fill="#F0FDFA"/>
+        <text x="545" y="294" text-anchor="middle" font-size="9" fill="#0D9488">Retry on failure, branch on metrics, nothing silently lost</text>
       </g>
     </svg>
   </figure>
@@ -154,6 +231,112 @@ print(f"Best AUC: {best.score:.4f}")
 </section>
 
 <section>
+  <h2>Bayesian search focuses where it matters</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="10">
+        <!-- Panel 1: Grid Search -->
+        <rect x="10" y="6" width="236" height="250" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="128" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#F43F5E">Grid Search</text>
+
+        <!-- Axes -->
+        <line x1="40" y1="230" x2="230" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="40" y1="36" x2="40" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <text x="135" y="248" text-anchor="middle" font-size="8" fill="#64748B">learning_rate</text>
+        <text x="26" y="135" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 26 135)">max_depth</text>
+
+        <!-- Good region (shaded green ellipse) -->
+        <ellipse cx="160" cy="100" rx="40" ry="30" fill="#22C55E" opacity="0.12" stroke="#22C55E" stroke-width="1" stroke-dasharray="3 2"/>
+        <text x="160" y="140" text-anchor="middle" font-size="7" fill="#22C55E">optimum region</text>
+
+        <!-- Grid dots: evenly spaced 5x5 -->
+        <circle cx="60" cy="55" r="3.5" fill="#94A3B8"/><circle cx="100" cy="55" r="3.5" fill="#94A3B8"/>
+        <circle cx="140" cy="55" r="3.5" fill="#94A3B8"/><circle cx="180" cy="55" r="3.5" fill="#94A3B8"/>
+        <circle cx="220" cy="55" r="3.5" fill="#94A3B8"/>
+        <circle cx="60" cy="100" r="3.5" fill="#94A3B8"/><circle cx="100" cy="100" r="3.5" fill="#94A3B8"/>
+        <circle cx="140" cy="100" r="3.5" fill="#22C55E"/><circle cx="180" cy="100" r="3.5" fill="#22C55E"/>
+        <circle cx="220" cy="100" r="3.5" fill="#94A3B8"/>
+        <circle cx="60" cy="145" r="3.5" fill="#94A3B8"/><circle cx="100" cy="145" r="3.5" fill="#94A3B8"/>
+        <circle cx="140" cy="145" r="3.5" fill="#94A3B8"/><circle cx="180" cy="145" r="3.5" fill="#94A3B8"/>
+        <circle cx="220" cy="145" r="3.5" fill="#94A3B8"/>
+        <circle cx="60" cy="190" r="3.5" fill="#94A3B8"/><circle cx="100" cy="190" r="3.5" fill="#94A3B8"/>
+        <circle cx="140" cy="190" r="3.5" fill="#94A3B8"/><circle cx="180" cy="190" r="3.5" fill="#94A3B8"/>
+        <circle cx="220" cy="190" r="3.5" fill="#94A3B8"/>
+
+        <text x="128" y="218" text-anchor="middle" font-size="9" fill="#B91C1C" font-weight="600">25 evals, 23 wasted</text>
+
+        <!-- Panel 2: Random Search -->
+        <rect x="262" y="6" width="236" height="250" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="380" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">Random Search</text>
+
+        <line x1="292" y1="230" x2="482" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="292" y1="36" x2="292" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <text x="387" y="248" text-anchor="middle" font-size="8" fill="#64748B">learning_rate</text>
+        <text x="278" y="135" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 278 135)">max_depth</text>
+
+        <!-- Good region -->
+        <ellipse cx="412" cy="100" rx="40" ry="30" fill="#22C55E" opacity="0.12" stroke="#22C55E" stroke-width="1" stroke-dasharray="3 2"/>
+
+        <!-- Random dots: scattered -->
+        <circle cx="310" cy="180" r="3.5" fill="#94A3B8"/>
+        <circle cx="340" cy="60" r="3.5" fill="#94A3B8"/>
+        <circle cx="360" cy="200" r="3.5" fill="#94A3B8"/>
+        <circle cx="380" cy="140" r="3.5" fill="#94A3B8"/>
+        <circle cx="400" cy="80" r="3.5" fill="#22C55E"/>
+        <circle cx="425" cy="105" r="3.5" fill="#22C55E"/>
+        <circle cx="450" cy="50" r="3.5" fill="#94A3B8"/>
+        <circle cx="320" cy="120" r="3.5" fill="#94A3B8"/>
+        <circle cx="470" cy="170" r="3.5" fill="#94A3B8"/>
+        <circle cx="440" cy="210" r="3.5" fill="#94A3B8"/>
+        <circle cx="305" cy="80" r="3.5" fill="#94A3B8"/>
+        <circle cx="370" cy="95" r="3.5" fill="#94A3B8"/>
+        <circle cx="460" cy="110" r="3.5" fill="#94A3B8"/>
+        <circle cx="350" cy="160" r="3.5" fill="#94A3B8"/>
+        <circle cx="420" cy="190" r="3.5" fill="#94A3B8"/>
+
+        <text x="380" y="218" text-anchor="middle" font-size="9" fill="#B45309" font-weight="600">15 evals, 2 near optimum</text>
+
+        <!-- Panel 3: Bayesian Search -->
+        <rect x="514" y="6" width="236" height="250" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="632" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#0D9488">Bayesian Search</text>
+
+        <line x1="544" y1="230" x2="734" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="544" y1="36" x2="544" y2="230" stroke="#94A3B8" stroke-width="1"/>
+        <text x="639" y="248" text-anchor="middle" font-size="8" fill="#64748B">learning_rate</text>
+        <text x="530" y="135" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 530 135)">max_depth</text>
+
+        <!-- Good region (more visible) -->
+        <ellipse cx="664" cy="100" rx="40" ry="30" fill="#22C55E" opacity="0.15" stroke="#22C55E" stroke-width="1.5"/>
+
+        <!-- Bayesian dots: early exploration (grey), then concentrated (green) -->
+        <!-- Exploration phase (first 3-4 trials, spread) -->
+        <circle cx="560" cy="180" r="3" fill="#94A3B8" opacity="0.5"/>
+        <circle cx="720" cy="60" r="3" fill="#94A3B8" opacity="0.5"/>
+        <circle cx="580" cy="70" r="3" fill="#94A3B8" opacity="0.5"/>
+        <circle cx="700" cy="200" r="3" fill="#94A3B8" opacity="0.5"/>
+        <!-- Exploitation phase (concentrated near optimum) -->
+        <circle cx="650" cy="90" r="4" fill="#22C55E"/>
+        <circle cx="670" cy="105" r="4" fill="#22C55E"/>
+        <circle cx="660" cy="80" r="4" fill="#22C55E"/>
+        <circle cx="680" cy="95" r="4" fill="#22C55E"/>
+        <circle cx="645" cy="110" r="4" fill="#22C55E"/>
+        <circle cx="690" cy="85" r="4" fill="#22C55E"/>
+        <circle cx="655" cy="100" r="5" fill="#0D9488" stroke="#FFF" stroke-width="1.5"/>
+        <!-- One exploratory point far out -->
+        <circle cx="600" cy="150" r="3" fill="#F59E0B"/>
+        <text x="615" y="152" font-size="7" fill="#F59E0B">explore</text>
+
+        <text x="632" y="218" text-anchor="middle" font-size="9" fill="#0D9488" font-weight="600">15 evals, 8 near optimum</text>
+
+        <!-- Bottom summary -->
+        <rect x="10" y="264" width="740" height="18" rx="3" fill="#F0FDFA"/>
+        <text x="380" y="277" text-anchor="middle" font-size="9" fill="#0D9488">Bayesian uses a surrogate model to predict where good hyperparameters are, then samples there</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>Grid vs Random vs Bayesian</h2>
   <table style="font-size: 0.65em;">
     <thead><tr><th>Method</th><th>Evaluations</th><th>Informed?</th><th>Best for</th></tr></thead>
@@ -188,19 +371,57 @@ registry.promote("credit_scorer", version=1,
 <section>
   <h2>Model lifecycle</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 120" xmlns="http://www.w3.org/2000/svg">
-      <defs><marker id="a37l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
-      <rect x="20" y="30" width="130" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="85" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Experiment</text>
-      <line x1="150" y1="55" x2="195" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
-      <rect x="200" y="30" width="130" height="50" rx="6" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
-      <text x="265" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#92400E">Staging</text>
-      <line x1="330" y1="55" x2="375" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
-      <rect x="380" y="30" width="130" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="445" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Production</text>
-      <line x1="510" y1="55" x2="555" y2="55" stroke="#94A3B8" stroke-width="2" marker-end="url(#a37l)"/>
-      <rect x="560" y="30" width="130" height="50" rx="6" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
-      <text x="625" y="60" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Retired</text>
+    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="a37l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker>
+        <marker id="a37lb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6"/></marker>
+      </defs>
+      <g font-family="Inter" font-size="11">
+        <!-- Circle positions: top=Experiment, right=Staging, bottom=Production, left=Retired -->
+        <!-- Experiment (top) -->
+        <rect x="280" y="16" width="160" height="50" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
+        <text x="360" y="38" text-anchor="middle" font-weight="700" font-size="13" fill="#3B82F6">Experiment</text>
+        <text x="360" y="54" text-anchor="middle" font-size="9" fill="#64748B">dev, iterate, evaluate</text>
+
+        <!-- Staging (right) -->
+        <rect x="530" y="118" width="160" height="50" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2.5"/>
+        <text x="610" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#92400E">Staging</text>
+        <text x="610" y="156" text-anchor="middle" font-size="9" fill="#64748B">shadow traffic, A/B test</text>
+
+        <!-- Production (bottom) -->
+        <rect x="280" y="220" width="160" height="50" rx="8" fill="#F0FDF4" stroke="#22C55E" stroke-width="2.5"/>
+        <text x="360" y="242" text-anchor="middle" font-weight="700" font-size="13" fill="#22C55E">Production</text>
+        <text x="360" y="258" text-anchor="middle" font-size="9" fill="#64748B">serving live requests</text>
+
+        <!-- Retired (left) -->
+        <rect x="30" y="118" width="160" height="50" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2.5"/>
+        <text x="110" y="140" text-anchor="middle" font-weight="700" font-size="13" fill="#64748B">Retired</text>
+        <text x="110" y="156" text-anchor="middle" font-size="9" fill="#94A3B8">archived, not served</text>
+
+        <!-- Arrow: Experiment → Staging (top-right) -->
+        <path d="M 440 50 C 490 60, 530 90, 540 118" fill="none" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
+        <rect x="470" y="66" width="84" height="24" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+        <text x="512" y="82" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">metrics pass</text>
+
+        <!-- Arrow: Staging → Production (right-bottom) -->
+        <path d="M 600 168 C 580 196, 500 226, 440 236" fill="none" stroke="#0D9488" stroke-width="2" marker-end="url(#a37l)"/>
+        <rect x="496" y="194" width="88" height="24" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+        <text x="540" y="210" text-anchor="middle" font-size="8" font-weight="600" fill="#0D9488">team approves</text>
+
+        <!-- Arrow: Production → Retired (bottom-left) -->
+        <path d="M 280 252 C 230 260, 180 210, 170 168" fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#a37l)"/>
+        <rect x="180" y="218" width="90" height="24" rx="4" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1"/>
+        <text x="225" y="234" text-anchor="middle" font-size="8" font-weight="600" fill="#B91C1C">drift detected</text>
+
+        <!-- Arrow: Retired → Experiment (left-top) (feedback loop) -->
+        <path d="M 120 118 C 140 86, 220 46, 280 36" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#a37lb)"/>
+        <rect x="148" y="56" width="80" height="24" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1"/>
+        <text x="188" y="72" text-anchor="middle" font-size="8" font-weight="600" fill="#3B82F6">retrain cycle</text>
+
+        <!-- Center label -->
+        <text x="360" y="146" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">Each transition</text>
+        <text x="360" y="158" text-anchor="middle" font-size="10" fill="#94A3B8" font-style="italic">requires a gate</text>
+      </g>
     </svg>
   </figure>
 </section>
@@ -236,6 +457,6 @@ registry.promote("credit_scorer", version=1,
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
+<script>Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
 </body>
 </html>

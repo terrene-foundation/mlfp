@@ -222,6 +222,63 @@ town_flat_stats = (
   </div>
 </section>
 
+<!-- Slide 9b: Mean vs Median on skewed data -->
+<section>
+  <h2>Mean vs Median on skewed data</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Right-skewed histogram bars (like HDB prices) -->
+      <g fill="#E0F2F1" stroke="#0D9488" stroke-width="1">
+        <rect x="80" y="240" width="40" height="30"/>
+        <rect x="125" y="200" width="40" height="70"/>
+        <rect x="170" y="120" width="40" height="150"/>
+        <rect x="215" y="60" width="40" height="210"/>
+        <rect x="260" y="80" width="40" height="190"/>
+        <rect x="305" y="110" width="40" height="160"/>
+        <rect x="350" y="150" width="40" height="120"/>
+        <rect x="395" y="190" width="40" height="80"/>
+        <rect x="440" y="220" width="40" height="50"/>
+        <rect x="485" y="240" width="40" height="30"/>
+        <rect x="530" y="252" width="40" height="18"/>
+        <rect x="575" y="258" width="40" height="12"/>
+        <rect x="620" y="262" width="40" height="8"/>
+        <rect x="665" y="265" width="40" height="5"/>
+      </g>
+      <!-- Baseline -->
+      <line x1="70" y1="270" x2="720" y2="270" stroke="#64748B" stroke-width="1"/>
+      <!-- Axis labels -->
+      <text x="390" y="298" text-anchor="middle" font-family="Inter" font-size="12" fill="#64748B">HDB Resale Price (S$)</text>
+      <text x="100" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">200k</text>
+      <text x="305" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">450k</text>
+      <text x="530" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">700k</text>
+      <text x="700" y="310" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#94A3B8">1M+</text>
+
+      <!-- Median line -->
+      <line x1="280" y1="50" x2="280" y2="270" stroke="#F59E0B" stroke-width="2.5"/>
+      <rect x="200" y="28" width="120" height="22" rx="4" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1"/>
+      <text x="260" y="43" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F59E0B">Median S$460k</text>
+
+      <!-- Mean line -->
+      <line x1="380" y1="50" x2="380" y2="270" stroke="#0D9488" stroke-width="2.5" stroke-dasharray="6 3"/>
+      <rect x="320" y="10" width="120" height="22" rx="4" fill="#E0F2F1" stroke="#0D9488" stroke-width="1"/>
+      <text x="380" y="25" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Mean S$520k</text>
+
+      <!-- Pull arrow -->
+      <line x1="300" y1="47" x2="360" y2="28" stroke="#F43F5E" stroke-width="1.5" marker-end="url(#arr-gb2)"/>
+      <text x="470" y="42" font-family="Inter" font-size="11" fill="#F43F5E">million-dollar flats</text>
+      <text x="470" y="55" font-family="Inter" font-size="11" fill="#F43F5E">pull the mean right</text>
+
+      <!-- Long tail annotation -->
+      <path d="M 530,240 Q 600,230 680,238" fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="620" y="224" font-family="Inter" font-size="10" fill="#F43F5E">long right tail</text>
+    </svg>
+  </figure>
+  <div style="background: #FFFBEB; padding: 12px 18px; border-left: 4px solid #F59E0B; border-radius: 4px; margin-top: 0.5em;">
+    <strong>Outliers pull the mean, not the median.</strong> For skewed data like property prices,
+    the median tells you what a "typical" transaction looks like.
+  </div>
+</section>
+
 <section>
   <h2>Measure of spread: IQR</h2>
   <div style="text-align: center; margin: 1em 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
@@ -327,7 +384,7 @@ for row in district_stats.head(10).iter_rows(named=True):
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
   Reveal.initialize({
-    hash: true,
+    hash: true, slideNumber: true,
     width: 1280,
     height: 720,
     margin: 0.05,

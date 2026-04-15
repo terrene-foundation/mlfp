@@ -109,12 +109,21 @@ lo, hi = np.percentile(reps, [2.5, 97.5])
     <li><strong>Acceleration $\hat a$</strong> — does skewness change with $\theta$? (jackknife)</li>
   </ul>
   \[ \alpha_i = \Phi\!\left(\hat z_0 + \frac{\hat z_0 + z_{\alpha_i'}}{1 - \hat a(\hat z_0 + z_{\alpha_i'})}\right) \]
+</section>
+
+<section>
+  <h2>BCa in scipy</h2>
   <pre><code class="language-python" data-trim>
 from scipy.stats import bootstrap
 res = bootstrap((data,), np.median, method="BCa",
                 confidence_level=0.95, n_resamples=5000)
 print(res.confidence_interval)
   </code></pre>
+  <p style="font-size: 0.85em; margin-top: 1em;">
+    One line replaces the manual loop. Use <code>"BCa"</code> for skewed
+    statistics (median, trimmed mean, ratio). Use <code>"percentile"</code>
+    when the bootstrap distribution is approximately symmetric.
+  </p>
 </section>
 
 <section>
@@ -176,6 +185,48 @@ print(res.confidence_interval)
   <p>Solve for the smallest detectable $\delta$:</p>
   \[ \delta_{\text{MDE}} = (z_{1-\alpha/2} + z_{1-\beta}) \cdot \sigma\sqrt{2/n} \]
   <p style="font-size: 0.85em;">More data → smaller MDE. More variance → larger MDE. Stricter $\alpha$ or higher power target → larger MDE.</p>
+</section>
+
+<section>
+  <h2>Power = probability of detecting a real effect</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 740 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Axis -->
+      <line x1="40" y1="250" x2="720" y2="250" stroke="#94A3B8" stroke-width="1.5"/>
+      <text x="380" y="295" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">test statistic</text>
+      <!-- Null distribution (grey) centered at 280 -->
+      <path d="M 80,250 C 120,248 180,180 230,100 C 260,50 300,50 330,100 C 380,180 440,248 480,250"
+            fill="#E2E8F0" fill-opacity="0.5" stroke="#94A3B8" stroke-width="2"/>
+      <text x="280" y="38" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#64748B">H&#8320; (null)</text>
+      <!-- Alternative distribution (blue) centered at 480 -->
+      <path d="M 280,250 C 320,248 380,180 430,100 C 460,50 500,50 530,100 C 580,180 640,248 680,250"
+            fill="#DBEAFE" fill-opacity="0.5" stroke="#3B82F6" stroke-width="2"/>
+      <text x="480" y="38" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#3B82F6">H&#8321; (alternative)</text>
+      <!-- Critical value line -->
+      <line x1="400" y1="250" x2="400" y2="30" stroke="#1E293B" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="400" y="270" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E293B">critical value</text>
+      <!-- Type I (alpha) shading — null beyond critical value -->
+      <path d="M 400,250 C 410,230 430,200 450,175 C 470,155 480,250 480,250 Z"
+            fill="#F43F5E" opacity="0.35"/>
+      <text x="448" y="225" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#F43F5E">&#945;</text>
+      <!-- Type II (beta) shading — alternative below critical value -->
+      <path d="M 280,250 C 320,248 360,210 400,170 L 400,250 Z"
+            fill="#F59E0B" opacity="0.35"/>
+      <text x="350" y="235" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#B45309">&#946;</text>
+      <!-- Power shading — alternative beyond critical value -->
+      <path d="M 400,170 C 430,130 460,70 480,55 C 500,50 530,100 560,150 C 600,210 640,248 680,250 L 400,250 Z"
+            fill="#22C55E" opacity="0.3"/>
+      <text x="530" y="200" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#15803D">Power</text>
+      <text x="530" y="216" text-anchor="middle" font-family="Inter" font-size="10" fill="#15803D">(1 &#8722; &#946;)</text>
+      <!-- Legend -->
+      <rect x="560" y="55" width="12" height="12" fill="#F43F5E" opacity="0.5"/>
+      <text x="578" y="65" font-family="Inter" font-size="10" fill="#64748B">Type I (&#945;)</text>
+      <rect x="560" y="73" width="12" height="12" fill="#F59E0B" opacity="0.5"/>
+      <text x="578" y="83" font-family="Inter" font-size="10" fill="#64748B">Type II (&#946;)</text>
+      <rect x="560" y="91" width="12" height="12" fill="#22C55E" opacity="0.5"/>
+      <text x="578" y="101" font-family="Inter" font-size="10" fill="#64748B">Power (1&#8722;&#946;)</text>
+    </svg>
+  </figure>
 </section>
 
 <section>
@@ -263,7 +314,7 @@ print("BH-FDR:    ", bh_ok,   bh_p)
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 

@@ -125,6 +125,101 @@ standard_losses = train_variant(
     tracker, exp_name, standard_model, "standard_ae", flat_loader, standard_ae_loss
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — read the five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# The Doctor's Bag: five instruments for diagnosing a trained network.
+#   1. Stethoscope  — loss-curve shape (under/over-fit, instability)
+#   2. Blood test   — gradient flow per layer (vanishing / exploding)
+#   3. X-ray        — activation statistics & dead neurons
+#   4. Prescription — automated diagnosis + fixes
+#   5. Dashboard    — all four in one Plotly figure
+#
+# We run the diagnostic AFTER training with `run_diagnostic_checkpoint`:
+# the helper attaches hooks, replays 8 batches (no weight updates), and
+# calls `report()` to print the Prescription Pad.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    # Loader yields `(xb,)` — unpack and run the AE's own loss.
+    xb = batch[0] if isinstance(batch, (tuple, list)) else batch
+    loss, _ = standard_ae_loss(m, xb)
+    return loss
+
+
+print("\n── Diagnostic Report (Standard AE) ──")
+diag, findings = run_diagnostic_checkpoint(
+    standard_model,
+    flat_loader,
+    _diag_loss,
+    title="Standard AE (Overcomplete)",
+    n_batches=8,
+    train_losses=standard_losses,  # replay real epoch history
+    show=False,  # headless-safe; dashboard figure is still in `diag`
+)
+# The `diag` object now carries every DataFrame:
+#   diag.gradients_df()   diag.activations_df()   diag.dead_neurons_df()
+#   diag.epochs_df()      diag.batches_df()
+# `findings` is the dict returned by report() — handy for assertions.
+
+# ══════ EXPECTED OUTPUT (captured from reference run, 10 epochs, MPS) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [X] Gradient flow (CRITICAL): Vanishing gradients at
+#       'decoder.2.weight' — min RMS = 9.46e-06,
+#       min update_ratio = 1.51e-04.
+#       Fix: verify pre-norm layout, add residual connections,
+#            switch to GELU/SiLU, or use Kaiming init.
+#   [!] Dead neurons  (WARNING): 'decoder.1' (relu): 59% dead
+#       neurons. Switch to GELU/LeakyReLU or re-initialise with
+#       Kaiming.
+#   [✓] Loss trend    (HEALTHY): Loss converging
+#       (train slope -2.10e-03/epoch).
+# ════════════════════════════════════════════════════════════════
+# Final train loss: ~0.0071 after 10 epochs.
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [BLOOD TEST] Vanishing gradients at `decoder.2.weight` — the
+#     RMS of that layer's gradient is ~1e-5, three orders of
+#     magnitude below healthy. The decoder's deeper layers are
+#     barely updating. Classic signature of a vanilla ReLU stack
+#     with no normalisation and Kaiming init missing.
+#     >> Prescription: GELU activations (used from variant 3
+#        onward) or LayerNorm — both push gradients back above
+#        the 1e-5 floor.
+#
+#  [X-RAY] 59% dead neurons at `decoder.1`. More than half of
+#     that ReLU's channels emit exactly zero for every input.
+#     Those channels are wasted capacity — their weights receive
+#     no gradient and never recover. THIS is the textbook
+#     "dead-ReLU" failure mode that slide 5F warns about, and
+#     it's exactly why variants 3+ use GELU.
+#     >> Prescription: GELU/LeakyReLU. They leak a small negative
+#        slope so channels can be revived.
+#
+#  [STETHOSCOPE] Loss trend is HEALTHY — the train loss falls
+#     monotonically (slope -2.1e-3/epoch). Combined with the red
+#     flags above, this is the identity-risk signature for an
+#     overcomplete AE: loss looks great, the Blood Test and X-Ray
+#     are screaming, and the reconstruction grid below confirms
+#     the model just copied its inputs.
+#     >> Prescription: The fix is architectural, not clinical —
+#        use an UNDERCOMPLETE bottleneck (variant 2) so the model
+#        CANNOT copy even if it wanted to.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: this is the canonical "train loss
+#  looks beautiful, model is broken" pattern. Only the Blood Test
+#  and X-Ray reveal the rot. Visit dashboard below (opens in
+#  browser if show=True) to see per-layer gradient curves.
+#
+#  Note: `Loss trend` stayed HEALTHY because we only logged train
+#  loss. Exercises that also pass `val_losses=...` unlock the
+#  Stethoscope's over/underfit detection.
+# ════════════════════════════════════════════════════════════════════
+
 show_reconstruction(standard_model, X_test_flat, "Standard AE (Overcomplete)")
 
 # ── Checkpoint ──────────────────────────────────────────────────────

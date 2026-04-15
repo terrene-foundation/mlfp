@@ -69,6 +69,127 @@
 </section>
 
 <section>
+  <h2>Each tree corrects the previous ensemble's mistakes</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="gb-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+      </defs>
+      <g font-family="Inter" font-size="10">
+        <!-- Panel 1: F1 underfits -->
+        <rect x="10" y="6" width="234" height="260" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="127" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#4F46E5">Panel 1: F1 underfits</text>
+
+        <!-- Axes -->
+        <line x1="40" y1="240" x2="230" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="40" y1="40" x2="40" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <text x="135" y="256" text-anchor="middle" font-size="8" fill="#64748B">x</text>
+        <text x="30" y="140" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 30 140)">y</text>
+
+        <!-- Scatter data points (true relationship is roughly quadratic) -->
+        <circle cx="55" cy="200" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="70" cy="180" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="85" cy="150" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="100" cy="120" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="115" cy="90" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="130" cy="70" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="145" cy="60" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="160" cy="65" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="175" cy="80" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="190" cy="110" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="205" cy="150" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="220" cy="195" r="4" fill="#3B82F6" opacity="0.7"/>
+
+        <!-- F1 prediction: flat-ish line (weak learner, mean-ish) -->
+        <line x1="50" y1="140" x2="224" y2="120" stroke="#F43F5E" stroke-width="2.5"/>
+        <text x="180" y="110" font-weight="600" font-size="9" fill="#F43F5E">F1</text>
+
+        <!-- Residual lines -->
+        <line x1="55" y1="200" x2="55" y2="139" stroke="#F59E0B" stroke-width="0.8" stroke-dasharray="2 2"/>
+        <line x1="130" y1="70" x2="130" y2="129" stroke="#F59E0B" stroke-width="0.8" stroke-dasharray="2 2"/>
+        <line x1="220" y1="195" x2="220" y2="121" stroke="#F59E0B" stroke-width="0.8" stroke-dasharray="2 2"/>
+        <text x="50" y="170" font-size="7" fill="#F59E0B">residual</text>
+
+        <!-- Arrow to panel 2 -->
+        <line x1="244" y1="140" x2="260" y2="140" stroke="#475569" stroke-width="1.5" marker-end="url(#gb-a)"/>
+
+        <!-- Panel 2: Tree 2 fits residuals -->
+        <rect x="264" y="6" width="234" height="260" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="381" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">Panel 2: tree 2 fits residuals</text>
+
+        <!-- Axes -->
+        <line x1="294" y1="240" x2="484" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="294" y1="40" x2="294" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <text x="389" y="256" text-anchor="middle" font-size="8" fill="#64748B">x</text>
+        <text x="284" y="140" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 284 140)">residual</text>
+
+        <!-- Zero line (where residuals = 0) -->
+        <line x1="294" y1="140" x2="484" y2="140" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
+
+        <!-- Residual scatter (shifted toward zero relative to original) -->
+        <circle cx="309" cy="200" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="324" cy="180" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="339" cy="160" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="354" cy="130" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="369" cy="100" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="384" cy="80" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="399" cy="75" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="414" cy="85" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="429" cy="100" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="444" cy="130" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="459" cy="165" r="3.5" fill="#F59E0B" opacity="0.7"/>
+        <circle cx="474" cy="200" r="3.5" fill="#F59E0B" opacity="0.7"/>
+
+        <!-- Tree 2 fit to residuals (step function) -->
+        <path d="M 304 195 L 340 195 L 340 155 L 370 155 L 370 85 L 410 85 L 410 90 L 450 90 L 450 160 L 480 160" fill="none" stroke="#22C55E" stroke-width="2.5"/>
+        <text x="470" y="175" font-weight="600" font-size="9" fill="#22C55E">f2</text>
+
+        <!-- Arrow to panel 3 -->
+        <line x1="498" y1="140" x2="514" y2="140" stroke="#475569" stroke-width="1.5" marker-end="url(#gb-a)"/>
+
+        <!-- Panel 3: F1 + F2 combined -->
+        <rect x="518" y="6" width="234" height="260" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="635" y="24" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">Panel 3: F1 + F2 combined</text>
+
+        <!-- Axes -->
+        <line x1="548" y1="240" x2="738" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <line x1="548" y1="40" x2="548" y2="240" stroke="#94A3B8" stroke-width="1"/>
+        <text x="643" y="256" text-anchor="middle" font-size="8" fill="#64748B">x</text>
+        <text x="538" y="140" text-anchor="middle" font-size="8" fill="#64748B" transform="rotate(-90 538 140)">y</text>
+
+        <!-- Same scatter data points -->
+        <circle cx="563" cy="200" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="578" cy="180" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="593" cy="150" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="608" cy="120" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="623" cy="90" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="638" cy="70" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="653" cy="60" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="668" cy="65" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="683" cy="80" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="698" cy="110" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="713" cy="150" r="4" fill="#3B82F6" opacity="0.7"/>
+        <circle cx="728" cy="195" r="4" fill="#3B82F6" opacity="0.7"/>
+
+        <!-- Combined prediction: much closer to the data -->
+        <path d="M 558 195 L 588 175 L 608 130 L 625 95 L 640 75 L 655 65 L 668 70 L 685 85 L 700 115 L 720 160 L 733 195" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+        <text x="726" y="175" font-weight="600" font-size="9" fill="#0D9488">F1+F2</text>
+
+        <!-- Old F1 for comparison (faded) -->
+        <line x1="558" y1="140" x2="732" y2="120" stroke="#F43F5E" stroke-width="1" stroke-dasharray="3 2" opacity="0.4"/>
+        <text x="710" y="112" font-size="7" fill="#F43F5E" opacity="0.5">old F1</text>
+
+        <!-- Bottom formula bar -->
+        <rect x="10" y="280" width="742" height="26" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+        <text x="380" y="298" text-anchor="middle" font-size="11" fill="#0D9488" font-family="Inter">
+          F_m(x) = F_{m-1}(x) + eta * f_m(x)  --  each new tree reduces the gap between prediction and truth
+        </text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>The boosting recipe</h2>
   <div style="padding: 16px; background: #F8FAFC; border-radius: 8px;">
     \[ F_m(x) = F_{m-1}(x) + \eta \cdot f_m(x) \]
@@ -138,6 +259,138 @@
     <li>Up-weight the sampled low-gradient rows by $(1 - a)/b$</li>
   </ol>
   <p style="font-size: 0.82em; color: #64748B;">~3× speedup, minimal accuracy loss.</p>
+</section>
+
+<section>
+  <h2>LightGBM grows the most promising leaf first</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="10">
+        <!-- LEFT: Depth-wise (XGBoost default) -->
+        <rect x="10" y="6" width="360" height="280" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="190" y="26" text-anchor="middle" font-weight="700" font-size="12" fill="#4F46E5">Depth-wise (XGBoost default)</text>
+        <text x="190" y="40" text-anchor="middle" font-size="9" fill="#64748B">Grow all nodes at level d before going to d+1</text>
+
+        <!-- Balanced tree -->
+        <!-- Level 0 (root) -->
+        <rect x="148" y="50" width="84" height="28" rx="5" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="190" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#4338CA">age&lt;55</text>
+
+        <!-- Level 1 -->
+        <line x1="170" y1="78" x2="110" y2="96" stroke="#4F46E5" stroke-width="1.2"/>
+        <line x1="210" y1="78" x2="270" y2="96" stroke="#4F46E5" stroke-width="1.2"/>
+        <rect x="68" y="100" width="84" height="28" rx="5" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="110" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#4338CA">bp&lt;130</text>
+        <rect x="228" y="100" width="84" height="28" rx="5" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="270" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#4338CA">hr&lt;90</text>
+
+        <!-- Level 2 (all 4 splits happen) -->
+        <line x1="90" y1="128" x2="60" y2="146" stroke="#4F46E5" stroke-width="1"/>
+        <line x1="130" y1="128" x2="160" y2="146" stroke="#4F46E5" stroke-width="1"/>
+        <line x1="250" y1="128" x2="220" y2="146" stroke="#4F46E5" stroke-width="1"/>
+        <line x1="290" y1="128" x2="320" y2="146" stroke="#4F46E5" stroke-width="1"/>
+
+        <rect x="28" y="150" width="64" height="24" rx="4" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1"/>
+        <text x="60" y="166" text-anchor="middle" font-size="7" fill="#4338CA">spo2&lt;93</text>
+        <rect x="128" y="150" width="64" height="24" rx="4" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1"/>
+        <text x="160" y="166" text-anchor="middle" font-size="7" fill="#4338CA">creat&gt;1.2</text>
+        <rect x="188" y="150" width="64" height="24" rx="4" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1"/>
+        <text x="220" y="166" text-anchor="middle" font-size="7" fill="#4338CA">wbc&gt;12</text>
+        <rect x="288" y="150" width="64" height="24" rx="4" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1"/>
+        <text x="320" y="166" text-anchor="middle" font-size="7" fill="#4338CA">temp&gt;38</text>
+
+        <!-- Depth brackets -->
+        <text x="365" y="68" font-size="8" fill="#94A3B8">d=0</text>
+        <text x="365" y="118" font-size="8" fill="#94A3B8">d=1</text>
+        <text x="365" y="166" font-size="8" fill="#94A3B8">d=2</text>
+
+        <!-- Level lines -->
+        <line x1="18" y1="92" x2="358" y2="92" stroke="#4F46E5" stroke-width="0.5" stroke-dasharray="2 2" opacity="0.3"/>
+        <line x1="18" y1="142" x2="358" y2="142" stroke="#4F46E5" stroke-width="0.5" stroke-dasharray="2 2" opacity="0.3"/>
+
+        <!-- Leaf outputs (8 leaves at level 3) -->
+        <line x1="42" y1="174" x2="30" y2="188" stroke="#4F46E5" stroke-width="0.8"/>
+        <line x1="78" y1="174" x2="90" y2="188" stroke="#4F46E5" stroke-width="0.8"/>
+        <line x1="142" y1="174" x2="130" y2="188" stroke="#4F46E5" stroke-width="0.8"/>
+        <line x1="178" y1="174" x2="190" y2="188" stroke="#4F46E5" stroke-width="0.8"/>
+        <line x1="202" y1="174" x2="190" y2="188" stroke="#4F46E5" stroke-width="0"/>
+        <line x1="238" y1="174" x2="250" y2="188" stroke="#4F46E5" stroke-width="0"/>
+
+        <circle cx="30" cy="195" r="7" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/><text x="30" y="198" text-anchor="middle" font-size="6" fill="#166534">0</text>
+        <circle cx="90" cy="195" r="7" fill="#FEE2E2" stroke="#F43F5E" stroke-width="1"/><text x="90" y="198" text-anchor="middle" font-size="6" fill="#B91C1C">1</text>
+        <circle cx="130" cy="195" r="7" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/><text x="130" y="198" text-anchor="middle" font-size="6" fill="#166534">0</text>
+        <circle cx="190" cy="195" r="7" fill="#FEE2E2" stroke="#F43F5E" stroke-width="1"/><text x="190" y="198" text-anchor="middle" font-size="6" fill="#B91C1C">1</text>
+        <circle cx="220" cy="195" r="7" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/><text x="220" y="198" text-anchor="middle" font-size="6" fill="#166534">0</text>
+        <circle cx="250" cy="195" r="7" fill="#FEE2E2" stroke="#F43F5E" stroke-width="1"/><text x="250" y="198" text-anchor="middle" font-size="6" fill="#B91C1C">1</text>
+        <circle cx="308" cy="195" r="7" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/><text x="308" y="198" text-anchor="middle" font-size="6" fill="#166534">0</text>
+        <circle cx="338" cy="195" r="7" fill="#FEE2E2" stroke="#F43F5E" stroke-width="1"/><text x="338" y="198" text-anchor="middle" font-size="6" fill="#B91C1C">1</text>
+
+        <!-- Annotation -->
+        <rect x="40" y="222" width="300" height="36" rx="4" fill="#EDE9FE" stroke="#4F46E5" stroke-width="1"/>
+        <text x="190" y="238" text-anchor="middle" font-size="9" fill="#4338CA" font-weight="600">Balanced tree: max_depth is the main dial</text>
+        <text x="190" y="252" text-anchor="middle" font-size="8" fill="#4338CA">Every level is fully expanded before the next</text>
+
+        <!-- Divider -->
+        <line x1="385" y1="6" x2="385" y2="286" stroke="#E2E8F0" stroke-width="1"/>
+
+        <!-- RIGHT: Leaf-wise (LightGBM) -->
+        <rect x="395" y="6" width="360" height="280" rx="6" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="575" y="26" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">Leaf-wise (LightGBM)</text>
+        <text x="575" y="40" text-anchor="middle" font-size="9" fill="#64748B">Always split the leaf with highest gain</text>
+
+        <!-- Unbalanced tree -->
+        <!-- Root -->
+        <rect x="533" y="50" width="84" height="28" rx="5" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="575" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#166534">age&lt;55</text>
+
+        <!-- Level 1: left is a leaf, right continues -->
+        <line x1="555" y1="78" x2="475" y2="96" stroke="#22C55E" stroke-width="1.2"/>
+        <line x1="595" y1="78" x2="660" y2="96" stroke="#22C55E" stroke-width="1.2"/>
+
+        <!-- Left: just a leaf (low gain, not split further yet) -->
+        <circle cx="475" cy="110" r="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="475" y="114" text-anchor="middle" font-size="8" fill="#166534">leaf</text>
+        <text x="475" y="130" text-anchor="middle" font-size="7" fill="#94A3B8">low gain</text>
+
+        <!-- Right: splits deeper (high gain) -->
+        <rect x="618" y="100" width="84" height="28" rx="5" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="660" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#166534">bp&lt;130</text>
+
+        <line x1="640" y1="128" x2="600" y2="146" stroke="#22C55E" stroke-width="1"/>
+        <line x1="680" y1="128" x2="720" y2="146" stroke="#22C55E" stroke-width="1"/>
+
+        <!-- Right-left: another split (highest gain leaf) -->
+        <rect x="558" y="150" width="84" height="28" rx="5" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="600" y="168" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#166534">spo2&lt;93</text>
+
+        <!-- Right-right: leaf -->
+        <circle cx="720" cy="166" r="10" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="720" y="170" text-anchor="middle" font-size="8" fill="#166534">leaf</text>
+
+        <!-- Deepest split -->
+        <line x1="580" y1="178" x2="555" y2="196" stroke="#22C55E" stroke-width="1"/>
+        <line x1="620" y1="178" x2="645" y2="196" stroke="#22C55E" stroke-width="1"/>
+        <circle cx="555" cy="206" r="9" fill="#FEE2E2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="555" y="210" text-anchor="middle" font-size="7" fill="#B91C1C">1</text>
+        <circle cx="645" cy="206" r="9" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="645" y="210" text-anchor="middle" font-size="7" fill="#166534">0</text>
+
+        <!-- "Next split" highlight -->
+        <circle cx="475" cy="110" r="14" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4 2"/>
+        <text x="438" y="150" text-anchor="middle" font-size="8" fill="#F59E0B" font-weight="600">next split?</text>
+        <text x="438" y="162" text-anchor="middle" font-size="7" fill="#F59E0B">(if gain high enough)</text>
+
+        <!-- Annotation -->
+        <rect x="425" y="222" width="300" height="36" rx="4" fill="#F0FDF4" stroke="#22C55E" stroke-width="1"/>
+        <text x="575" y="238" text-anchor="middle" font-size="9" fill="#166534" font-weight="600">Unbalanced tree: num_leaves is the main dial</text>
+        <text x="575" y="252" text-anchor="middle" font-size="8" fill="#166534">Fastest error reduction, but can overfit on small data</text>
+      </g>
+
+      <!-- Bottom comparison -->
+      <rect x="10" y="294" width="742" height="18" rx="3" fill="#FEF3C7"/>
+      <text x="380" y="307" text-anchor="middle" font-size="9" fill="#92400E" font-family="Inter">Depth-wise: tune max_depth (3-10). Leaf-wise: tune num_leaves (31-256). Both use early stopping to prevent overfitting.</text>
+    </svg>
+  </figure>
 </section>
 
 <section>
@@ -230,7 +483,7 @@ print("Stopped at round", xgb_model.best_iteration)
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>

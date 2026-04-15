@@ -176,12 +176,36 @@ def jupyter_setup_cell(source: str = "") -> dict:
 def colab_setup_cell(source: str = "") -> dict:
     packages = _detect_packages(source)
     return make_code_cell(
-        "# Google Colab setup\n"
+        "# ══════════════════════════════════════════════════════════════════\n"
+        "# Google Colab setup — clones YOUR GitHub Classroom fork so that\n"
+        "# `from shared.mlfp05.diagnostics import ...` resolves correctly.\n"
+        "# ══════════════════════════════════════════════════════════════════\n"
+        "import os, sys\n"
+        "\n"
+        "# ① EDIT THIS to point at YOUR fork of the Classroom repo.\n"
+        "#    Your fork URL is at the top of your assignment page on GitHub.\n"
+        '#    Example: "https://github.com/janedoe/pcml-run26-2601-janedoe.git"\n'
+        'FORK_URL = "https://github.com/<your-github-username>/<your-fork>.git"\n'
+        'REPO_DIR = "/content/pcml-run26"\n'
+        "\n"
+        "if not os.path.exists(REPO_DIR):\n"
+        "    !git clone {FORK_URL} {REPO_DIR}\n"
+        "\n"
+        "# ② cd into the repo so relative data paths resolve\n"
+        "%cd {REPO_DIR}\n"
+        "\n"
+        "# ③ Install deps (most are pre-installed on Colab)\n"
         f"!pip install -q {packages}\n"
         "\n"
-        "# Mount Google Drive for datasets\n"
-        "from google.colab import drive\n"
-        'drive.mount("/content/drive")'
+        "# ④ Make the `shared` package importable\n"
+        "if REPO_DIR not in sys.path:\n"
+        "    sys.path.insert(0, REPO_DIR)\n"
+        "\n"
+        "# ⑤ (Optional) Mount Drive if your exercise reads from Drive\n"
+        "# from google.colab import drive\n"
+        '# drive.mount("/content/drive")\n'
+        "\n"
+        'print("✓ Colab setup complete — shared.mlfp05 is importable")'
     )
 
 

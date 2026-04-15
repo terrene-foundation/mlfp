@@ -36,23 +36,66 @@
 </section>
 
 <section>
-  <h2>Why randomisation</h2>
-  <p>
-    We can never see the counterfactual — what would have happened to the
-    treatment group <em>without</em> treatment. Random assignment is the
-    only reliable way to make the groups comparable.
+  <h2>Why randomisation works</h2>
+  <p style="font-size: 0.85em;">
+    Random assignment distributes <em>all</em> confounders -- measured and unmeasured -- roughly equally across groups.
   </p>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
-      <rect x="40" y="80" width="180" height="80" rx="10" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="130" y="115" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Population</text>
-      <text x="130" y="135" text-anchor="middle" font-family="Inter" font-size="11">1,000 users</text>
-      <line x1="220" y1="110" x2="320" y2="80" stroke="#0D9488"/>
-      <line x1="220" y1="150" x2="320" y2="180" stroke="#0D9488"/>
-      <rect x="330" y="50" width="170" height="60" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
-      <text x="415" y="85" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Control (A)</text>
-      <rect x="330" y="150" width="170" height="60" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-      <text x="415" y="185" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">Treatment (B)</text>
+    <svg viewBox="0 0 740 280" xmlns="http://www.w3.org/2000/svg">
+      <!-- Population box with mixed confounders -->
+      <rect x="20" y="30" width="180" height="220" rx="10" fill="#F8FAFC" stroke="#94A3B8" stroke-width="2"/>
+      <text x="110" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Population</text>
+      <!-- Confounder dots: circles=young, squares=old, blue=low-income, amber=high-income -->
+      <circle cx="50" cy="60" r="6" fill="#3B82F6"/><rect x="75" y="54" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="120" cy="60" r="6" fill="#F59E0B"/><rect x="147" y="54" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="50" cy="90" r="6" fill="#F59E0B"/><rect x="75" y="84" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="120" cy="90" r="6" fill="#3B82F6"/><rect x="147" y="84" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="50" cy="120" r="6" fill="#3B82F6"/><rect x="75" y="114" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="120" cy="120" r="6" fill="#F59E0B"/><rect x="147" y="114" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="50" cy="150" r="6" fill="#3B82F6"/><rect x="75" y="144" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="120" cy="150" r="6" fill="#F59E0B"/><rect x="147" y="144" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="50" cy="180" r="6" fill="#F59E0B"/><rect x="75" y="174" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="120" cy="180" r="6" fill="#3B82F6"/><rect x="147" y="174" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="50" cy="210" r="6" fill="#3B82F6"/><rect x="75" y="204" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="120" cy="210" r="6" fill="#F59E0B"/><rect x="147" y="204" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <!-- Randomise arrow -->
+      <text x="300" y="120" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Randomise</text>
+      <path d="M 210,110 L 280,75" stroke="#0D9488" stroke-width="2" fill="none" marker-end="url(#arr4)"/>
+      <path d="M 210,170 L 280,200" stroke="#0D9488" stroke-width="2" fill="none" marker-end="url(#arr4)"/>
+      <defs><marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
+      <!-- Control group -->
+      <rect x="340" y="30" width="180" height="100" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="430" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">Control</text>
+      <circle cx="370" cy="55" r="6" fill="#3B82F6"/><rect x="390" y="49" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="430" cy="55" r="6" fill="#F59E0B"/><rect x="460" y="49" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="370" cy="80" r="6" fill="#3B82F6"/><rect x="390" y="74" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="430" cy="80" r="6" fill="#F59E0B"/><rect x="460" y="74" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="370" cy="105" r="6" fill="#F59E0B"/><rect x="390" y="99" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="430" cy="105" r="6" fill="#3B82F6"/><rect x="460" y="99" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <!-- Treatment group -->
+      <rect x="340" y="150" width="180" height="100" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="430" y="142" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#B45309">Treatment</text>
+      <circle cx="370" cy="175" r="6" fill="#F59E0B"/><rect x="390" y="169" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="430" cy="175" r="6" fill="#3B82F6"/><rect x="460" y="169" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="370" cy="200" r="6" fill="#3B82F6"/><rect x="390" y="194" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="430" cy="200" r="6" fill="#F59E0B"/><rect x="460" y="194" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <circle cx="370" cy="225" r="6" fill="#F59E0B"/><rect x="390" y="219" width="12" height="12" rx="2" fill="#F59E0B"/>
+      <circle cx="430" cy="225" r="6" fill="#3B82F6"/><rect x="460" y="219" width="12" height="12" rx="2" fill="#3B82F6"/>
+      <!-- Balance annotations -->
+      <rect x="560" y="40" width="160" height="80" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="640" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#15803D">Confounders balance</text>
+      <text x="640" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">~same age mix</text>
+      <text x="640" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">~same income mix</text>
+      <text x="640" y="106" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">~same unmeasured mix</text>
+      <!-- Legend -->
+      <circle cx="570" cy="160" r="5" fill="#3B82F6"/>
+      <text x="582" y="164" font-family="Inter" font-size="9" fill="#64748B">young</text>
+      <circle cx="570" cy="178" r="5" fill="#F59E0B"/>
+      <text x="582" y="182" font-family="Inter" font-size="9" fill="#64748B">old</text>
+      <rect x="564" y="192" width="10" height="10" rx="2" fill="#3B82F6"/>
+      <text x="582" y="201" font-family="Inter" font-size="9" fill="#64748B">low income</text>
+      <rect x="564" y="210" width="10" height="10" rx="2" fill="#F59E0B"/>
+      <text x="582" y="219" font-family="Inter" font-size="9" fill="#64748B">high income</text>
     </svg>
   </figure>
 </section>
@@ -235,7 +278,7 @@ lift = k_t/n_t - k_c/n_c
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 

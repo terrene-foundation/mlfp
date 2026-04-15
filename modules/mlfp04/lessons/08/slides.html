@@ -38,27 +38,125 @@
 </section>
 
 <section>
-  <h2>The bridge from 4.7</h2>
+  <h2>MF is a special case of NN</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 680 160" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="30" width="280" height="100" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
-      <text x="160" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#92400E">Matrix Factorisation (4.7)</text>
-      <text x="30" y="80" font-size="11">R ≈ U V^T → linear embeddings</text>
-      <text x="30" y="100" font-size="11">Optimisation → feature discovery</text>
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stage 1: Pure MF -->
+      <rect x="10" y="12" width="170" height="220" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="95" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">Matrix Factorisation</text>
+      <!-- User embedding -->
+      <rect x="25" y="50" width="55" height="50" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="52" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#3B82F6">u</text>
+      <text x="52" y="82" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">user emb</text>
+      <!-- Item embedding -->
+      <rect x="100" y="50" width="55" height="50" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="127" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#22C55E">v</text>
+      <text x="127" y="82" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">item emb</text>
+      <!-- Dot product -->
+      <line x1="52" y1="100" x2="52" y2="130" stroke="#475569" stroke-width="1"/>
+      <line x1="127" y1="100" x2="127" y2="130" stroke="#475569" stroke-width="1"/>
+      <circle cx="90" cy="140" r="14" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="90" y="144" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">dot</text>
+      <line x1="52" y1="130" x2="78" y2="140" stroke="#475569" stroke-width="1"/>
+      <line x1="127" y1="130" x2="102" y2="140" stroke="#475569" stroke-width="1"/>
+      <!-- Output -->
+      <text x="90" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#1E293B">r = u^T v</text>
+      <text x="90" y="190" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Linear only.</text>
+      <text x="90" y="202" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">No non-linearity.</text>
 
-      <line x1="310" y1="80" x2="370" y2="80" stroke="#0D9488" stroke-width="3"/>
-      <polygon points="370,80 364,76 364,84" fill="#0D9488"/>
-      <text x="340" y="70" text-anchor="middle" font-size="9" fill="#0D9488">add non-linearity</text>
+      <!-- Arrow 1 -->
+      <line x1="186" y1="120" x2="206" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="206,120 200,116 200,124" fill="#0D9488"/>
+      <text x="196" y="110" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">add</text>
+      <text x="196" y="135" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">layer</text>
 
-      <rect x="380" y="30" width="280" height="100" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
-      <text x="520" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#4F46E5">Neural Network (4.8)</text>
-      <text x="390" y="80" font-size="11">ŷ = f(W₂·f(W₁·x+b₁)+b₂)</text>
-      <text x="390" y="100" font-size="11">Non-linear embeddings</text>
+      <!-- Stage 2: MF + hidden layer -->
+      <rect x="210" y="12" width="170" height="220" rx="6" fill="#FEF9C3" stroke="#EAB308"/>
+      <text x="295" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#854D0E">+ Hidden layer</text>
+      <!-- Embeddings -->
+      <rect x="225" y="50" width="50" height="35" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="250" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#3B82F6">u</text>
+      <rect x="305" y="50" width="50" height="35" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="330" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#22C55E">v</text>
+      <!-- Concat + hidden -->
+      <rect x="245" y="100" width="90" height="30" rx="4" fill="#E2E8F0" stroke="#64748B"/>
+      <text x="290" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#475569">W [u;v] + b</text>
+      <line x1="250" y1="85" x2="270" y2="100" stroke="#475569" stroke-width="1"/>
+      <line x1="330" y1="85" x2="310" y2="100" stroke="#475569" stroke-width="1"/>
+      <!-- No activation yet -->
+      <text x="290" y="147" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">linear transform</text>
+      <!-- Output -->
+      <circle cx="290" cy="165" r="12" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="290" y="169" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">r</text>
+      <line x1="290" y1="130" x2="290" y2="153" stroke="#475569" stroke-width="1"/>
+      <text x="290" y="200" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Still linear.</text>
+      <text x="290" y="212" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">Same as MF.</text>
+
+      <!-- Arrow 2 -->
+      <line x1="386" y1="120" x2="406" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="406,120 400,116 400,124" fill="#0D9488"/>
+      <text x="396" y="110" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">add</text>
+      <text x="396" y="135" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">ReLU</text>
+
+      <!-- Stage 3: + activation -->
+      <rect x="410" y="12" width="170" height="220" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+      <text x="495" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#4F46E5">+ Activation</text>
+      <!-- Embeddings -->
+      <rect x="425" y="50" width="50" height="35" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="450" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#3B82F6">u</text>
+      <rect x="505" y="50" width="50" height="35" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="530" y="72" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#22C55E">v</text>
+      <!-- Hidden + ReLU -->
+      <rect x="445" y="100" width="90" height="30" rx="4" fill="#C7D2FE" stroke="#4F46E5"/>
+      <text x="490" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#4F46E5">ReLU(W[u;v]+b)</text>
+      <line x1="450" y1="85" x2="470" y2="100" stroke="#475569" stroke-width="1"/>
+      <line x1="530" y1="85" x2="510" y2="100" stroke="#475569" stroke-width="1"/>
+      <!-- Non-linear! -->
+      <text x="490" y="147" text-anchor="middle" font-family="Inter" font-weight="600" font-size="8" fill="#4F46E5">non-linear!</text>
+      <!-- Output -->
+      <circle cx="490" cy="165" r="12" fill="#E0E7FF" stroke="#4F46E5"/>
+      <text x="490" y="169" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#4F46E5">r</text>
+      <line x1="490" y1="130" x2="490" y2="153" stroke="#475569" stroke-width="1"/>
+      <text x="490" y="200" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">Can learn non-linear</text>
+      <text x="490" y="212" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">user-item interactions.</text>
+
+      <!-- Arrow 3 -->
+      <line x1="586" y1="120" x2="606" y2="120" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="606,120 600,116 600,124" fill="#0D9488"/>
+      <text x="596" y="110" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">stack</text>
+      <text x="596" y="135" text-anchor="middle" font-family="Inter" font-size="7" fill="#0D9488">layers</text>
+
+      <!-- Stage 4: Full NN -->
+      <rect x="610" y="12" width="145" height="220" rx="6" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+      <text x="682" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#4F46E5">Full Neural Net</text>
+      <!-- Embeddings -->
+      <rect x="620" y="48" width="40" height="28" rx="3" fill="#DBEAFE" stroke="#3B82F6"/>
+      <text x="640" y="66" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6">u</text>
+      <rect x="700" y="48" width="40" height="28" rx="3" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="720" y="66" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#22C55E">v</text>
+      <!-- Multiple hidden layers -->
+      <rect x="635" y="88" width="90" height="20" rx="3" fill="#C7D2FE" stroke="#4F46E5"/>
+      <text x="680" y="101" text-anchor="middle" font-family="JetBrains Mono" font-size="6" fill="#4F46E5">ReLU(W1[u;v]+b1)</text>
+      <rect x="640" y="116" width="80" height="20" rx="3" fill="#C7D2FE" stroke="#4F46E5"/>
+      <text x="680" y="129" text-anchor="middle" font-family="JetBrains Mono" font-size="6" fill="#4F46E5">ReLU(W2·h+b2)</text>
+      <rect x="648" y="144" width="64" height="20" rx="3" fill="#C7D2FE" stroke="#4F46E5"/>
+      <text x="680" y="157" text-anchor="middle" font-family="JetBrains Mono" font-size="6" fill="#4F46E5">W3·h+b3</text>
+      <line x1="640" y1="76" x2="660" y2="88" stroke="#475569" stroke-width="0.8"/>
+      <line x1="720" y1="76" x2="700" y2="88" stroke="#475569" stroke-width="0.8"/>
+      <line x1="680" y1="108" x2="680" y2="116" stroke="#475569" stroke-width="0.8"/>
+      <line x1="680" y1="136" x2="680" y2="144" stroke="#475569" stroke-width="0.8"/>
+      <!-- Output -->
+      <circle cx="680" cy="180" r="10" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+      <text x="680" y="184" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#4F46E5">r</text>
+      <line x1="680" y1="164" x2="680" y2="170" stroke="#475569" stroke-width="0.8"/>
+      <text x="682" y="207" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">Deep non-linear</text>
+      <text x="682" y="219" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">embeddings.</text>
+
+      <!-- Bottom caption -->
+      <text x="380" y="255" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">MF is a neural network with no hidden layers and no activation function.</text>
+      <text x="380" y="270" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">Each addition (hidden layer, activation, depth) adds expressiveness.</text>
     </svg>
   </figure>
-  <div class="callout-slide theory">
-    <strong>🔵 Theory:</strong> linear regression is a NN with 0 hidden layers. Add layers → non-linear expressiveness.
-  </div>
 </section>
 
 <section>
@@ -102,6 +200,76 @@
 </section>
 
 <section>
+  <h2>One forward pass: numbers in, numbers out</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Input -->
+      <text x="55" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#22C55E">Input</text>
+      <circle cx="55" cy="100" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+      <text x="55" y="96" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#22C55E">2</text>
+      <text x="55" y="109" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">x1</text>
+      <circle cx="55" cy="200" r="22" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+      <text x="55" y="196" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#22C55E">3</text>
+      <text x="55" y="209" text-anchor="middle" font-family="Inter" font-size="7" fill="#64748B">x2</text>
+
+      <!-- Weights from input to hidden -->
+      <line x1="77" y1="92" x2="218" y2="102" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="148" y="88" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#0D9488">0.5</text>
+      <line x1="77" y1="108" x2="218" y2="198" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="130" y="168" font-family="JetBrains Mono" font-size="8" fill="#0D9488">-0.3</text>
+      <line x1="77" y1="192" x2="218" y2="108" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="165" y="138" font-family="JetBrains Mono" font-size="8" fill="#0D9488">0.2</text>
+      <line x1="77" y1="208" x2="218" y2="202" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="148" y="216" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#0D9488">0.8</text>
+
+      <!-- Hidden layer: z values -->
+      <text x="250" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#3B82F6">Hidden (z)</text>
+      <circle cx="250" cy="105" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="250" y="100" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="#3B82F6">1.6</text>
+      <text x="250" y="113" text-anchor="middle" font-family="Inter" font-size="6" fill="#64748B">2*0.5+3*0.2</text>
+      <circle cx="250" cy="200" r="22" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="250" y="195" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="#3B82F6">1.8</text>
+      <text x="250" y="208" text-anchor="middle" font-family="Inter" font-size="6" fill="#64748B">2*(-0.3)+3*0.8</text>
+
+      <!-- ReLU arrow -->
+      <line x1="275" y1="105" x2="345" y2="105" stroke="#F59E0B" stroke-width="2"/>
+      <polygon points="345,105 339,101 339,109" fill="#F59E0B"/>
+      <text x="310" y="95" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#F59E0B">ReLU</text>
+      <line x1="275" y1="200" x2="345" y2="200" stroke="#F59E0B" stroke-width="2"/>
+      <polygon points="345,200 339,196 339,204" fill="#F59E0B"/>
+      <text x="310" y="190" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#F59E0B">ReLU</text>
+
+      <!-- After ReLU: a values -->
+      <text x="380" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#8B5CF6">Activations (a)</text>
+      <circle cx="380" cy="105" r="22" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="380" y="100" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="#8B5CF6">1.6</text>
+      <text x="380" y="113" text-anchor="middle" font-family="Inter" font-size="6" fill="#64748B">max(0,1.6)</text>
+      <circle cx="380" cy="200" r="22" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="380" y="195" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="#8B5CF6">1.8</text>
+      <text x="380" y="208" text-anchor="middle" font-family="Inter" font-size="6" fill="#64748B">max(0,1.8)</text>
+
+      <!-- Weights to output -->
+      <line x1="402" y1="100" x2="518" y2="148" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="465" y="115" font-family="JetBrains Mono" font-size="8" fill="#0D9488">0.4</text>
+      <line x1="402" y1="205" x2="518" y2="155" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="465" y="192" font-family="JetBrains Mono" font-size="8" fill="#0D9488">-0.1</text>
+
+      <!-- Output node -->
+      <text x="550" y="25" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#F59E0B">Output</text>
+      <circle cx="550" cy="150" r="28" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2.5"/>
+      <text x="550" y="146" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="13" fill="#F59E0B">0.46</text>
+      <text x="550" y="162" text-anchor="middle" font-family="Inter" font-size="6" fill="#92400E">1.6*0.4+1.8*(-0.1)</text>
+
+      <!-- Computation trace at bottom -->
+      <rect x="60" y="250" width="640" height="55" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="80" y="268" font-family="JetBrains Mono" font-size="9" fill="#475569">z = [2*0.5 + 3*0.2, 2*(-0.3) + 3*0.8] = [1.6, 1.8]</text>
+      <text x="80" y="282" font-family="JetBrains Mono" font-size="9" fill="#475569">a = ReLU([1.6, 1.8]) = [1.6, 1.8]          <tspan fill="#94A3B8"># both positive, unchanged</tspan></text>
+      <text x="80" y="296" font-family="JetBrains Mono" font-size="9" fill="#475569">y = 1.6*0.4 + 1.8*(-0.1) = <tspan font-weight="700" fill="#F59E0B">0.46</tspan></text>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>Forward pass</h2>
   \[ \mathbf{z}^{(l)} = W^{(l)} \mathbf{a}^{(l-1)} + \mathbf{b}^{(l)} \quad,\quad \mathbf{a}^{(l)} = f(\mathbf{z}^{(l)}) \]
   <pre><code class="language-python" data-trim>
@@ -128,6 +296,84 @@ z3 = a2 @ W3 + b3;   y_hat = z3
 </section>
 
 <section>
+  <h2>Chain rule: multiply gradients backward through the graph</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Computation graph: Input x --> Hidden h --> Loss L -->
+      <!-- Forward pass (solid arrows, top) -->
+      <text x="380" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">Computation graph with numbers</text>
+
+      <!-- Node: Input x -->
+      <circle cx="110" cy="110" r="35" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+      <text x="110" y="104" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">x = 2.0</text>
+      <text x="110" y="120" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">input</text>
+
+      <!-- Forward arrow x-->h -->
+      <line x1="148" y1="110" x2="268" y2="110" stroke="#22C55E" stroke-width="2.5"/>
+      <polygon points="268,110 262,106 262,114" fill="#22C55E"/>
+      <text x="208" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#22C55E">w = 0.5</text>
+      <text x="208" y="132" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">h = w * x = 1.0</text>
+
+      <!-- Node: Hidden h -->
+      <circle cx="310" cy="110" r="35" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+      <text x="310" y="104" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">h = 1.0</text>
+      <text x="310" y="120" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">hidden</text>
+
+      <!-- Forward arrow h-->y_hat -->
+      <line x1="348" y1="110" x2="468" y2="110" stroke="#22C55E" stroke-width="2.5"/>
+      <polygon points="468,110 462,106 462,114" fill="#22C55E"/>
+      <text x="408" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#22C55E">v = 0.3</text>
+      <text x="408" y="132" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">y = v * h = 0.3</text>
+
+      <!-- Node: Prediction y_hat -->
+      <circle cx="510" cy="110" r="35" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="510" y="104" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#8B5CF6">y = 0.3</text>
+      <text x="510" y="120" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">prediction</text>
+
+      <!-- Forward arrow y-->L -->
+      <line x1="548" y1="110" x2="628" y2="110" stroke="#22C55E" stroke-width="2.5"/>
+      <polygon points="628,110 622,106 622,114" fill="#22C55E"/>
+      <text x="588" y="100" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">target=1.0</text>
+      <text x="588" y="132" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">L=(y-t)^2=0.49</text>
+
+      <!-- Node: Loss L -->
+      <circle cx="670" cy="110" r="35" fill="#FEE2E2" stroke="#EF4444" stroke-width="2.5"/>
+      <text x="670" y="104" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#EF4444">L = 0.49</text>
+      <text x="670" y="120" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">loss</text>
+
+      <!-- Forward label -->
+      <text x="390" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#22C55E">Forward pass --></text>
+
+      <!-- Backward pass (dashed red arrows, bottom) -->
+      <text x="390" y="175" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#EF4444">&lt;-- Backward pass (gradients)</text>
+
+      <!-- Backward arrow L-->y -->
+      <line x1="638" y1="190" x2="548" y2="190" stroke="#EF4444" stroke-width="2" stroke-dasharray="5 3"/>
+      <polygon points="548,190 554,186 554,194" fill="#EF4444"/>
+      <text x="593" y="208" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#EF4444">dL/dy = -1.4</text>
+      <text x="593" y="222" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">2(0.3 - 1.0)</text>
+
+      <!-- Backward arrow y-->h -->
+      <line x1="475" y1="190" x2="348" y2="190" stroke="#EF4444" stroke-width="2" stroke-dasharray="5 3"/>
+      <polygon points="348,190 354,186 354,194" fill="#EF4444"/>
+      <text x="412" y="208" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#EF4444">dL/dh = -0.42</text>
+      <text x="412" y="222" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">dL/dy * v = -1.4 * 0.3</text>
+
+      <!-- Backward arrow h-->w -->
+      <line x1="275" y1="190" x2="148" y2="190" stroke="#EF4444" stroke-width="2" stroke-dasharray="5 3"/>
+      <polygon points="148,190 154,186 154,194" fill="#EF4444"/>
+      <text x="212" y="208" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#EF4444">dL/dw = -0.84</text>
+      <text x="212" y="222" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">dL/dh * x = -0.42 * 2.0</text>
+
+      <!-- Chain rule summary -->
+      <rect x="80" y="248" width="600" height="50" rx="6" fill="#FEE2E2" stroke="#EF4444" stroke-width="1"/>
+      <text x="380" y="268" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#EF4444">Chain rule: dL/dw = dL/dy * dy/dh * dh/dw = (-1.4) * (0.3) * (2.0) = -0.84</text>
+      <text x="380" y="286" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Update: w_new = 0.5 - 0.1 * (-0.84) = 0.584   (learning rate = 0.1)</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>Gradient descent</h2>
   \[ W \leftarrow W - \eta \, \frac{\partial \mathcal{L}}{\partial W} \]
   <figure style="text-align: center;">
@@ -145,42 +391,77 @@ z3 = a2 @ W3 + b3;   y_hat = z3
 </section>
 
 <section>
-  <h2>Activation functions</h2>
+  <h2>Activation functions — shape gallery</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">
-      <!-- ReLU -->
-      <rect x="20" y="10" width="200" height="80" fill="#F0FDF4" stroke="#22C55E" rx="4"/>
-      <text x="120" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#22C55E">ReLU: max(0, z)</text>
-      <line x1="40" y1="70" x2="120" y2="70" stroke="#94A3B8" stroke-width="1"/>
-      <line x1="120" y1="70" x2="200" y2="30" stroke="#22C55E" stroke-width="2"/>
-      <text x="120" y="85" text-anchor="middle" font-size="9" fill="#64748B">Default hidden</text>
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shared layout: 3x2 grid, each cell 230x130 with mini-plot -->
 
-      <!-- Sigmoid -->
-      <rect x="240" y="10" width="200" height="80" fill="#EFF6FF" stroke="#3B82F6" rx="4"/>
-      <text x="340" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#3B82F6">Sigmoid: 1/(1+e^-z)</text>
-      <path d="M 260 65 Q 300 65 340 45 Q 380 25 420 25" stroke="#3B82F6" stroke-width="2" fill="none"/>
-      <text x="340" y="85" text-anchor="middle" font-size="9" fill="#64748B">Binary output</text>
+      <!-- ═══ ReLU ═══ -->
+      <rect x="10" y="10" width="235" height="135" rx="5" fill="#F0FDF4" stroke="#22C55E"/>
+      <text x="127" y="28" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#22C55E">ReLU: max(0, z)</text>
+      <!-- Axes -->
+      <line x1="40" y1="95" x2="220" y2="95" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="130" y1="38" x2="130" y2="130" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- Curve: flat at 0 for x<0, linear for x>0 -->
+      <line x1="40" y1="95" x2="130" y2="95" stroke="#22C55E" stroke-width="2.5"/>
+      <line x1="130" y1="95" x2="220" y2="45" stroke="#22C55E" stroke-width="2.5"/>
+      <!-- Dead zone label -->
+      <text x="80" y="88" text-anchor="middle" font-family="Inter" font-size="7" fill="#EF4444">dead at z&lt;0</text>
+      <text x="127" y="142" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Default hidden layer choice</text>
 
-      <!-- Softmax -->
-      <rect x="460" y="10" width="200" height="80" fill="#FEF3C7" stroke="#F59E0B" rx="4"/>
-      <text x="560" y="30" text-anchor="middle" font-weight="700" font-size="11" fill="#F59E0B">Softmax</text>
-      <text x="560" y="55" text-anchor="middle" font-size="10">e^zi / Σ e^zj</text>
-      <text x="560" y="85" text-anchor="middle" font-size="9" fill="#64748B">Multi-class output</text>
+      <!-- ═══ Sigmoid ═══ -->
+      <rect x="260" y="10" width="235" height="135" rx="5" fill="#EFF6FF" stroke="#3B82F6"/>
+      <text x="377" y="28" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#3B82F6">Sigmoid: 1/(1+e^-z)</text>
+      <line x1="290" y1="82" x2="470" y2="82" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="380" y1="38" x2="380" y2="130" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- S-curve -->
+      <path d="M 290 120 C 320 118 345 115 360 100 Q 380 75 400 62 C 415 52 440 44 470 42" stroke="#3B82F6" stroke-width="2.5" fill="none"/>
+      <!-- 0/1 labels -->
+      <text x="293" y="116" font-family="JetBrains Mono" font-size="7" fill="#94A3B8">0</text>
+      <text x="467" y="40" font-family="JetBrains Mono" font-size="7" fill="#94A3B8">1</text>
+      <text x="377" y="142" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Squashes to (0,1). Binary output.</text>
 
-      <!-- GELU -->
-      <rect x="20" y="110" width="200" height="70" fill="#F5F3FF" stroke="#8B5CF6" rx="4"/>
-      <text x="120" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#8B5CF6">GELU: z·Φ(z)</text>
-      <text x="120" y="165" text-anchor="middle" font-size="9" fill="#64748B">Transformers (M5.4)</text>
+      <!-- ═══ Tanh ═══ -->
+      <rect x="510" y="10" width="240" height="135" rx="5" fill="#FFF1F2" stroke="#F43F5E"/>
+      <text x="630" y="28" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#F43F5E">Tanh</text>
+      <line x1="540" y1="82" x2="720" y2="82" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="630" y1="38" x2="630" y2="130" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- S-curve, centered at 0 -->
+      <path d="M 540 120 C 570 118 595 112 610 95 Q 630 70 650 65 C 665 58 690 44 720 42" stroke="#F43F5E" stroke-width="2.5" fill="none"/>
+      <text x="543" y="116" font-family="JetBrains Mono" font-size="7" fill="#94A3B8">-1</text>
+      <text x="715" y="40" font-family="JetBrains Mono" font-size="7" fill="#94A3B8">+1</text>
+      <text x="630" y="142" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Zero-centred. Used in RNNs (M5.3).</text>
 
-      <!-- Tanh -->
-      <rect x="240" y="110" width="200" height="70" fill="#FFF1F2" stroke="#F43F5E" rx="4"/>
-      <text x="340" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#F43F5E">Tanh: (e^z-e^-z)/(e^z+e^-z)</text>
-      <text x="340" y="165" text-anchor="middle" font-size="9" fill="#64748B">RNNs (M5.3)</text>
+      <!-- ═══ Leaky ReLU ═══ -->
+      <rect x="10" y="160" width="235" height="135" rx="5" fill="#F0FDFA" stroke="#14B8A6"/>
+      <text x="127" y="178" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#14B8A6">Leaky ReLU: max(0.01z, z)</text>
+      <line x1="40" y1="245" x2="220" y2="245" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="130" y1="188" x2="130" y2="280" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- Small negative slope + positive slope -->
+      <line x1="40" y1="250" x2="130" y2="245" stroke="#14B8A6" stroke-width="2.5"/>
+      <line x1="130" y1="245" x2="220" y2="195" stroke="#14B8A6" stroke-width="2.5"/>
+      <text x="75" y="240" font-family="Inter" font-size="7" fill="#14B8A6">slope 0.01</text>
+      <text x="127" y="292" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Never fully dead. Fixes dying ReLU.</text>
 
-      <!-- Leaky ReLU -->
-      <rect x="460" y="110" width="200" height="70" fill="#F0FDFA" stroke="#14B8A6" rx="4"/>
-      <text x="560" y="130" text-anchor="middle" font-weight="700" font-size="11" fill="#14B8A6">Leaky ReLU: max(0.01z, z)</text>
-      <text x="560" y="165" text-anchor="middle" font-size="9" fill="#64748B">Avoids dead neurons</text>
+      <!-- ═══ GELU ═══ -->
+      <rect x="260" y="160" width="235" height="135" rx="5" fill="#F5F3FF" stroke="#8B5CF6"/>
+      <text x="377" y="178" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#8B5CF6">GELU: z * &Phi;(z)</text>
+      <line x1="290" y1="245" x2="470" y2="245" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="380" y1="188" x2="380" y2="280" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- Smooth approximation of ReLU with small negative dip -->
+      <path d="M 290 247 C 320 248 340 250 355 250 Q 370 249 380 245 C 390 240 410 220 430 205 L 470 185" stroke="#8B5CF6" stroke-width="2.5" fill="none"/>
+      <text x="345" y="265" font-family="Inter" font-size="7" fill="#8B5CF6">smooth dip</text>
+      <text x="377" y="292" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Smooth ReLU. Transformers (M5.4).</text>
+
+      <!-- ═══ Swish ═══ -->
+      <rect x="510" y="160" width="240" height="135" rx="5" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="630" y="178" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#F59E0B">Swish: z * sigmoid(z)</text>
+      <line x1="540" y1="245" x2="720" y2="245" stroke="#CBD5E1" stroke-width="0.8"/>
+      <line x1="630" y1="188" x2="630" y2="280" stroke="#CBD5E1" stroke-width="0.8"/>
+      <!-- Similar shape to GELU with slightly deeper negative dip -->
+      <path d="M 540 248 C 565 250 585 253 600 253 Q 618 252 630 245 C 645 235 665 215 685 200 L 720 182" stroke="#F59E0B" stroke-width="2.5" fill="none"/>
+      <text x="595" y="268" font-family="Inter" font-size="7" fill="#F59E0B">self-gated</text>
+      <text x="630" y="292" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Like GELU. Used in EfficientNet.</text>
     </svg>
   </figure>
 </section>
@@ -327,7 +608,7 @@ for epoch in range(500):
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>
 </html>

@@ -109,6 +109,39 @@
     .smaller { font-size: 0.65em; }
     .muted { color: #64748B; }
 
+    /* ── Light code blocks — override monokai dark bg ────────── */
+    .reveal pre code,
+    .reveal pre code.hljs {
+      background: #F8FAFC !important;
+      color: #334155 !important;
+    }
+    .reveal pre code .hljs-keyword,
+    .reveal pre code .hljs-selector-tag { color: #8250DF !important; }
+    .reveal pre code .hljs-built_in { color: #0550AE !important; }
+    .reveal pre code .hljs-type,
+    .reveal pre code .hljs-title.class_ { color: #0550AE !important; }
+    .reveal pre code .hljs-title.function_ { color: #6639BA !important; }
+    .reveal pre code .hljs-string { color: #0A3069 !important; }
+    .reveal pre code .hljs-number,
+    .reveal pre code .hljs-literal { color: #0550AE !important; }
+    .reveal pre code .hljs-comment,
+    .reveal pre code .hljs-meta { color: #6E7781 !important; }
+    .reveal pre code .hljs-variable { color: #953800 !important; }
+    .reveal pre code .hljs-attr,
+    .reveal pre code .hljs-attribute { color: #0550AE !important; }
+    .reveal pre code .hljs-params { color: #24292F !important; }
+    .reveal pre code .hljs-punctuation { color: #24292F !important; }
+    .reveal pre code .hljs-operator { color: #CF222E !important; }
+
+    /* ── Tighter equation boxes globally ──────────────────────── */
+    .equation-box {
+      padding: 8px 14px !important;
+      margin: 4px 0 !important;
+    }
+    .equation-box .katex-display {
+      margin: 0.15em 0 !important;
+    }
+
     /* ── Diagram sizing rules ─────────────────────────────────
        Diagrams default to filling available width, but when they
        share a slide with other content (columns, equation boxes,
@@ -137,6 +170,36 @@
     .diagram-container + .annotation {
       margin-top: 2px;
       font-size: 0.7em;
+    }
+
+    /* ── Real-World Applications slides ────────────────────────
+       4 callouts in a 2x2 grid + intro highlight + green takeaway
+       must fit in 720px. Compress fonts and padding. */
+    section.rwapp .highlight-box {
+      font-size: 0.78em !important;
+      padding: 8px 12px !important;
+      margin: 4px 0 !important;
+    }
+    section.rwapp .columns { margin-top: 6px !important; }
+    section.rwapp .callout-applications {
+      padding: 6px 10px !important;
+      font-size: 0.80em !important;
+      margin: 0 !important;
+    }
+    section.rwapp .callout-applications + .callout-applications {
+      margin-top: 6px !important;
+    }
+    section.rwapp .callout-applications p.small {
+      font-size: 0.85em;
+      margin: 2px 0 0 !important;
+      line-height: 1.25;
+    }
+    section.rwapp .callout-applications strong { font-size: 0.95em; }
+    section.rwapp h2 { margin-bottom: 2px !important; }
+    section.rwapp .callout-foundations {
+      font-size: 0.78em !important;
+      padding: 6px 10px !important;
+      margin-top: 6px !important;
     }
   </style>
 </head>
@@ -296,8 +359,1230 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════
+     DL DIAGNOSTICS TOOLKIT (Slides 5A-5O)
+     The Doctor's Bag — threads through all 8 M5 lessons
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- SLIDE 5A: Diagnostics Toolkit Title -->
+<section class="title-slide">
+  <h1>DL Diagnostics Toolkit</h1>
+  <h2 style="border: none;">The Doctor's Bag</h2>
+  <p class="subtitle">Five instruments you carry into every model you train</p>
+  <p class="provocation">"The architecture isn't what separates good ML engineers from great ones. The diagnostic instinct is."</p>
+  <div class="highlight-box" style="margin-top: 18px; font-size: 0.85em; text-align: left;">
+    <strong>Turn to your neighbour (2 min):</strong> name a training run that failed on you &mdash; and what you did about it. <em style="color: #64748B;">(Self-study: jot it in your notebook.)</em>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min (45 sec story + 2 min pair share).<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;In 2023, a team at a major fintech spent 6 weeks debugging a model that was 70% dead ReLU from epoch 2. Nobody checked. They blamed the architecture, the data, the library. A 10-line diagnostic would have caught it the first afternoon. This is what we&rsquo;re preventing today.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why do most ML engineers never build a diagnostic protocol?&rdquo; &rarr; expected wrong answer: &ldquo;because libraries hide it&rdquo; &rarr; right answer: &ldquo;because re-running with different hyperparameters <em>feels</em> faster than instrumenting &mdash; until the clock hits hour 6.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the pair share; keep the 45-second story &mdash; it is the emotional anchor for the whole section.<br/>
+    <strong>Transition</strong>: &ldquo;You all just named symptoms. Now let&rsquo;s give you the five instruments to diagnose them.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5B: The Five Instruments Overview -->
+<section>
+  <h2>The Five Instruments</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 700 290" style="max-width: 96%; max-height: 480px;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Instrument 1: Stethoscope / Loss -->
+      <g transform="translate(30, 30)">
+        <circle cx="60" cy="50" r="45" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
+        <path d="M 40 40 Q 40 70 60 70 Q 80 70 80 40" stroke="#0D9488" stroke-width="3" fill="none"/>
+        <circle cx="40" cy="40" r="4" fill="#0D9488"/>
+        <circle cx="80" cy="40" r="4" fill="#0D9488"/>
+        <circle cx="60" cy="78" r="6" fill="#0D9488"/>
+        <text x="60" y="128" font-size="14" font-weight="700" fill="#0D9488" text-anchor="middle">Stethoscope</text>
+        <text x="60" y="148" font-size="12" fill="#334155" text-anchor="middle">Loss curves</text>
+        <text x="60" y="168" font-size="11" fill="#64748B" text-anchor="middle">asks: "is it learning?"</text>
+      </g>
+      <!-- Instrument 2: Blood Test / Gradients -->
+      <g transform="translate(170, 30)">
+        <circle cx="60" cy="50" r="45" fill="#EEF2FF" stroke="#4F46E5" stroke-width="2.5"/>
+        <rect x="50" y="25" width="20" height="55" rx="3" fill="#4F46E5" opacity="0.15" stroke="#4F46E5" stroke-width="2"/>
+        <rect x="52" y="50" width="16" height="28" fill="#4F46E5"/>
+        <line x1="47" y1="35" x2="73" y2="35" stroke="#4F46E5" stroke-width="1" stroke-dasharray="2,2"/>
+        <text x="60" y="128" font-size="14" font-weight="700" fill="#4F46E5" text-anchor="middle">Blood Test</text>
+        <text x="60" y="148" font-size="12" fill="#334155" text-anchor="middle">Gradient flow</text>
+        <text x="60" y="168" font-size="11" fill="#64748B" text-anchor="middle">asks: "are signals flowing?"</text>
+      </g>
+      <!-- Instrument 3: X-Ray / Activations -->
+      <g transform="translate(310, 30)">
+        <circle cx="60" cy="50" r="45" fill="#F0FDF4" stroke="#22C55E" stroke-width="2.5"/>
+        <rect x="40" y="30" width="40" height="40" rx="3" fill="none" stroke="#22C55E" stroke-width="2"/>
+        <circle cx="50" cy="45" r="3" fill="#22C55E"/>
+        <circle cx="70" cy="45" r="3" fill="#22C55E"/>
+        <path d="M 47 58 Q 60 65 73 58" stroke="#22C55E" stroke-width="2" fill="none"/>
+        <text x="60" y="128" font-size="14" font-weight="700" fill="#22C55E" text-anchor="middle">X-Ray</text>
+        <text x="60" y="148" font-size="12" fill="#334155" text-anchor="middle">Activation maps</text>
+        <text x="60" y="168" font-size="11" fill="#64748B" text-anchor="middle">asks: "what did it learn?"</text>
+      </g>
+      <!-- Instrument 4: Vital Signs / Dashboard -->
+      <g transform="translate(450, 30)">
+        <circle cx="60" cy="50" r="45" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.5"/>
+        <rect x="38" y="32" width="44" height="36" rx="3" fill="none" stroke="#3B82F6" stroke-width="2"/>
+        <line x1="60" y1="32" x2="60" y2="68" stroke="#3B82F6" stroke-width="1"/>
+        <line x1="38" y1="50" x2="82" y2="50" stroke="#3B82F6" stroke-width="1"/>
+        <polyline points="40,62 48,54 54,58 58,40" stroke="#3B82F6" stroke-width="1.8" fill="none"/>
+        <polyline points="62,46 68,40 74,44 80,38" stroke="#3B82F6" stroke-width="1.8" fill="none"/>
+        <text x="60" y="128" font-size="14" font-weight="700" fill="#3B82F6" text-anchor="middle">Vital Signs</text>
+        <text x="60" y="148" font-size="12" fill="#334155" text-anchor="middle">Dashboard</text>
+        <text x="60" y="168" font-size="11" fill="#64748B" text-anchor="middle">asks: "what's the trend?"</text>
+      </g>
+      <!-- Instrument 5: Prescription / Interventions -->
+      <g transform="translate(590, 30)">
+        <circle cx="60" cy="50" r="45" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2.5"/>
+        <rect x="42" y="28" width="36" height="44" rx="3" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+        <line x1="47" y1="38" x2="73" y2="38" stroke="#F59E0B" stroke-width="1.5"/>
+        <line x1="47" y1="46" x2="73" y2="46" stroke="#F59E0B" stroke-width="1.5"/>
+        <line x1="47" y1="54" x2="68" y2="54" stroke="#F59E0B" stroke-width="1.5"/>
+        <text x="49" y="66" font-size="9" font-weight="700" fill="#F59E0B">℞</text>
+        <text x="60" y="128" font-size="14" font-weight="700" fill="#F59E0B" text-anchor="middle">Prescription</text>
+        <text x="60" y="148" font-size="12" fill="#334155" text-anchor="middle">Interventions</text>
+        <text x="60" y="168" font-size="11" fill="#64748B" text-anchor="middle">asks: "what do I change?"</text>
+      </g>
+      <!-- DIAGNOSE / TREAT divider between instruments 4 and 5 -->
+      <line x1="560" y1="15" x2="560" y2="225" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4,4"/>
+      <rect x="30" y="210" width="530" height="24" rx="4" fill="#0D9488" opacity="0.12"/>
+      <text x="295" y="227" font-size="12" font-weight="700" fill="#0D9488" text-anchor="middle">DIAGNOSE &mdash; what's wrong?</text>
+      <rect x="570" y="210" width="120" height="24" rx="4" fill="#F59E0B" opacity="0.22"/>
+      <text x="630" y="227" font-size="12" font-weight="700" fill="#B45309" text-anchor="middle">TREAT</text>
+      <!-- Connecting bar at the bottom -->
+      <rect x="30" y="248" width="670" height="32" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="365" y="269" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">
+        First four tell you what's wrong. Fifth tells you what to do about it.
+      </text>
+    </svg>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;A doctor never prescribes without examining the patient. Same contract here &mdash; four instruments of examination, one of treatment.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If loss is oscillating wildly, which instrument am I READING, and which am I about to USE?&rdquo; &rarr; expected wrong answer: &ldquo;the prescription pad&rdquo; &rarr; right answer: &ldquo;I'm reading the stethoscope (loss); only then do I open the prescription pad.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skim the five icons and spend time on the divider &mdash; the diagnose/treat split is the headline.<br/>
+    <strong>Transition</strong>: &ldquo;Before we use the first instrument, a 30-second primer on what it is listening to: the loss.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5B2: Meet DLDiagnostics -->
+<section>
+  <h2>Meet <code>DLDiagnostics</code> &mdash; Your Toolkit in One Object</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <p class="small muted" style="margin-top: 0;">Every slide in this toolkit section has a corresponding method. You never write raw hooks.</p>
+<pre style="font-size: 0.58em; line-height: 1.45"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+
+# ── Setup (one line) ─────────────────────────────────────────
+diag = (DLDiagnostics(model)
+        .track_gradients()
+        .track_activations()
+        .track_dead_neurons())
+
+# ── Training (two lines per batch) ───────────────────────────
+for batch in dataloader:
+    loss = train_step(...); loss.backward(); optimizer.step()
+    diag.record_batch(loss=loss.item(),
+                      lr=optimizer.param_groups[0]["lr"])
+diag.record_epoch(val_loss=val)
+
+# ── Diagnose (one line each) ─────────────────────────────────
+diag.plot_training_dashboard().show()   # all 5 instruments, one figure
+diag.report()                           # auto-diagnosis text
+diag.grad_cam(image, target_class)      # for CNN exercises (Lesson 5.2)
+DLDiagnostics.lr_range_test(model, dataloader)   # pre-training LR probe (covered in 5.2 / 5.7)
+</code></pre>
+  <div class="callout callout-foundations" style="margin-top: 6px; font-size: 0.80em;">
+    <strong>Why one object?</strong> Hooks, tensors, and plot logic are fiddly to get right &mdash; and wrong hooks silently break your diagnosis. <code>DLDiagnostics</code> owns the plumbing. You name what to track, call <code>record_batch</code> / <code>record_epoch</code>, and ask for plots.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Every subsequent slide in this section has a one-line call on this object. You will never write a raw forward hook in M5.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why wrap the hooks in a class instead of pasting them into each exercise?&rdquo; &rarr; expected wrong answer: &ldquo;it is cleaner&rdquo; &rarr; right answer: &ldquo;because hook ordering matters &mdash; register after optimizer init, record after backward before step. One line of mis-sequenced plumbing silently corrupts your diagnosis. The library owns the sequence.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip the <code>lr_range_test</code> classmethod mention; it recurs in 5.2.<br/>
+    <strong>Transition</strong>: &ldquo;That is the tool. Now for the first instrument it surfaces &mdash; loss curves &mdash; which means a 30-second primer on what loss actually is.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5B-prereq: What is Loss? (30-second primer) -->
+<section>
+  <h2>Prerequisite &mdash; What is Loss?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size: 0.85em;">
+        <li><strong>Loss</strong> = how wrong the model is, on average</li>
+        <li><strong>Train loss</strong> = wrongness on examples it has <em>seen</em></li>
+        <li><strong>Val loss</strong> = wrongness on examples it has <em>NOT seen</em> &mdash; the held-out exam</li>
+        <li>A student who aces homework but bombs the exam = <strong>overfitting</strong></li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top: 6px; font-size: 0.78em;">
+        <strong>Reading rule:</strong> judge the model by the <em>gap</em> between homework and exam, not homework alone.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 320 230" style="max-width: 100%; max-height: 260px;" xmlns="http://www.w3.org/2000/svg">
+          <g transform="translate(20, 20)">
+            <text x="60" y="14" font-size="11" font-weight="700" fill="#0D9488" text-anchor="middle">Homework (train)</text>
+            <rect x="15" y="130" width="25" height="40" fill="#0D9488"/>
+            <rect x="50" y="120" width="25" height="50" fill="#0D9488"/>
+            <rect x="85" y="135" width="25" height="35" fill="#0D9488"/>
+            <line x1="10" y1="170" x2="120" y2="170" stroke="#334155" stroke-width="1.2"/>
+            <text x="60" y="188" font-size="10" fill="#166534" text-anchor="middle">low wrongness</text>
+          </g>
+          <g transform="translate(180, 20)">
+            <text x="60" y="14" font-size="11" font-weight="700" fill="#F59E0B" text-anchor="middle">Exam (val)</text>
+            <rect x="15" y="50"  width="25" height="120" fill="#F59E0B"/>
+            <rect x="50" y="40"  width="25" height="130" fill="#F59E0B"/>
+            <rect x="85" y="60"  width="25" height="110" fill="#F59E0B"/>
+            <line x1="10" y1="170" x2="120" y2="170" stroke="#334155" stroke-width="1.2"/>
+            <text x="60" y="188" font-size="10" fill="#B45309" text-anchor="middle">high wrongness</text>
+          </g>
+          <text x="225" y="218" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">&uarr; overfitting: memorised, didn't learn</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 1 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Before we read curves, one sentence: loss is how wrong the model is, on average.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If train loss is 0.02 and val loss is 2.0, what is going on?&rdquo; &rarr; expected wrong answer: &ldquo;the model is great.&rdquo; &rarr; right answer: &ldquo;it memorised the homework; a 100x gap means overfitting.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the callout; the two-bar SVG does the work.<br/>
+    <strong>Transition</strong>: &ldquo;Now that loss and train/val are clear, let us read the SHAPES of the loss curves.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5C: Instrument 1 — Loss Curves -->
+<section>
+  <h2>Instrument 1: Loss Curves &mdash; The Stethoscope</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 820 290" style="max-width: 99%; max-height: 540px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shared legend (top right) -->
+      <g transform="translate(655, 8)">
+        <rect x="0" y="0" width="155" height="30" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.8"/>
+        <line x1="8" y1="11" x2="30" y2="11" stroke="#0D9488" stroke-width="2.4"/>
+        <text x="34" y="14" font-size="10" fill="#0F172A">train (teal, solid)</text>
+        <line x1="8" y1="24" x2="30" y2="24" stroke="#F59E0B" stroke-width="2.4" stroke-dasharray="4,3"/>
+        <text x="34" y="27" font-size="10" fill="#0F172A">val (orange, dashed)</text>
+      </g>
+      <!-- Panel 1: Healthy -->
+      <g transform="translate(10, 15)">
+        <rect x="0" y="0" width="155" height="140" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="78" y="16" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">Healthy</text>
+        <polyline points="10,120 30,85 55,60 85,45 115,38 148,35" stroke="#0D9488" stroke-width="2.4" fill="none"/>
+        <polyline points="10,125 30,92 55,68 85,55 115,50 148,48" stroke="#F59E0B" stroke-width="2.4" fill="none" stroke-dasharray="4,3"/>
+      </g>
+      <text x="88" y="175" font-size="10" fill="#334155" text-anchor="middle">Both drop, converge, gap stable</text>
+      <text x="88" y="190" font-size="10" font-weight="600" fill="#166534" text-anchor="middle">&rarr; continue training</text>
+      <!-- Panel 2: Overfitting -->
+      <g transform="translate(175, 15)">
+        <rect x="0" y="0" width="155" height="140" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+        <text x="78" y="16" font-size="11" font-weight="700" fill="#B45309" text-anchor="middle">Overfitting</text>
+        <polyline points="10,115 30,80 55,55 85,35 115,22 148,15" stroke="#0D9488" stroke-width="2.4" fill="none"/>
+        <polyline points="10,120 30,90 55,68 85,60 115,70 148,90" stroke="#F59E0B" stroke-width="2.4" fill="none" stroke-dasharray="4,3"/>
+      </g>
+      <text x="253" y="175" font-size="10" fill="#334155" text-anchor="middle">Train drops, val climbs back up</text>
+      <text x="253" y="190" font-size="10" font-weight="600" fill="#B45309" text-anchor="middle">&rarr; early stop / regularise</text>
+      <!-- Panel 3: Underfitting -->
+      <g transform="translate(340, 15)">
+        <rect x="0" y="0" width="155" height="140" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="78" y="16" font-size="11" font-weight="700" fill="#1D4ED8" text-anchor="middle">Underfitting</text>
+        <polyline points="10,100 30,95 55,90 85,88 115,87 148,87" stroke="#0D9488" stroke-width="2.4" fill="none"/>
+        <polyline points="10,102 30,98 55,93 85,92 115,90 148,90" stroke="#F59E0B" stroke-width="2.4" fill="none" stroke-dasharray="4,3"/>
+      </g>
+      <text x="418" y="175" font-size="10" fill="#334155" text-anchor="middle">Both plateau, loss remains high</text>
+      <text x="418" y="190" font-size="10" font-weight="600" fill="#1D4ED8" text-anchor="middle">&rarr; more capacity / train longer</text>
+      <!-- Panel 4: Unstable -->
+      <g transform="translate(505, 15)">
+        <rect x="0" y="0" width="155" height="140" rx="6" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="78" y="16" font-size="11" font-weight="700" fill="#BE123C" text-anchor="middle">Unstable</text>
+        <polyline points="10,80 22,45 34,95 46,40 58,100 70,35 82,110 94,50 106,105 118,55 130,98 148,48" stroke="#0D9488" stroke-width="2.2" fill="none"/>
+        <polyline points="10,90 22,55 34,105 46,50 58,110 70,45 82,118 94,60 106,115 118,65 130,108 148,58" stroke="#F59E0B" stroke-width="2.2" fill="none" stroke-dasharray="4,3"/>
+      </g>
+      <text x="583" y="175" font-size="10" fill="#334155" text-anchor="middle">Oscillations, spikes, divergence</text>
+      <text x="583" y="190" font-size="10" font-weight="600" fill="#BE123C" text-anchor="middle">&rarr; lower LR / clip gradients</text>
+      <!-- Panel 5: Mystery (for room to diagnose) -->
+      <g transform="translate(670, 15)">
+        <rect x="0" y="0" width="140" height="140" rx="6" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="1.5"/>
+        <text x="70" y="16" font-size="10" font-weight="700" fill="#6D28D9" text-anchor="middle">Mystery &mdash; you tell me</text>
+        <polyline points="8,118 25,85 50,58 80,40 110,26 135,16" stroke="#0D9488" stroke-width="2.4" fill="none"/>
+        <polyline points="8,122 25,92 50,70 80,60 110,58 135,78" stroke="#F59E0B" stroke-width="2.4" fill="none" stroke-dasharray="4,3"/>
+      </g>
+      <text x="740" y="172" font-size="10" fill="#334155" text-anchor="middle">name this shape</text>
+      <text x="740" y="188" font-size="8" fill="#64748B" text-anchor="middle">vote: healthy / overfit / underfit / unstable</text>
+      <text x="740" y="190" font-size="10" font-weight="600" fill="#6D28D9" text-anchor="middle">&rarr; vote before reveal</text>
+      <!-- Bottom callout -->
+      <rect x="10" y="215" width="800" height="58" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="410" y="234" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">What the stethoscope tells you:</text>
+      <text x="410" y="252" font-size="10" fill="#334155" text-anchor="middle">The SHAPE of the loss curve is the single most compressed signal about training health.</text>
+      <text x="410" y="266" font-size="10" fill="#334155" text-anchor="middle">Look at it every epoch. Name the shape. Act on the shape.</text>
+    </svg>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.1.1</strong> (autoencoder training), this afternoon.</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 5 min (3 min drill + 2 min vote).<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four shapes cover 95% of what you will see. Name the shape, then act &mdash; never the other way round.&rdquo;<br/>
+    <strong>Key question for the room</strong>: after showing the four shapes, point to the 5th Mystery panel and say &ldquo;Vote: healthy, overfitting, underfitting, or unstable?&rdquo; &rarr; expected wrong answer: &ldquo;healthy &mdash; both dropped early&rdquo; &rarr; right answer: &ldquo;late-stage overfitting &mdash; val bent up in the final third, which is the classic signature.&rdquo; Reveal after the vote.<br/>
+    <strong>If behind schedule</strong>: cut the mystery vote, leave the 5th panel visible as homework; the four canonical shapes are the must-cover content.<br/>
+    <strong>Transition</strong>: &ldquo;Now that you can name the shape, let me show you how to plot it so the shape is actually visible.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5D: Reading Loss Curves (code) -->
+<section>
+  <h2>Reading Loss Curves &mdash; In Practice</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Three habits that save hours</h3>
+      <ul style="font-size: 0.82em;">
+        <li><strong>Train + val on ONE plot</strong> &mdash; the gap is the diagnosis, not each curve alone</li>
+        <li><strong>Smooth with a moving average</strong> (window ~ 10 steps) &mdash; noisy batch loss hides the trend</li>
+        <li><strong>Log-scale the y-axis early</strong> &mdash; the first 100 steps compress 90% of the learning</li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+        <strong>Rule:</strong> If you cannot see the gap between train and val on your plot, your plot is wrong. Re-plot before you re-train.
+      </div>
+    </div>
+    <div class="col">
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">import plotly.graph_objects as go
+import numpy as np
+
+def plot_losses(train, val, smooth=10):
+    # moving average smooths per-batch noise
+    kernel = np.ones(smooth) / smooth
+    tr = np.convolve(train, kernel, mode="valid")
+    vl = np.convolve(val,   kernel, mode="valid")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=tr, name="train", line=dict(color="#0D9488")))
+    fig.add_trace(go.Scatter(y=vl, name="val",   line=dict(color="#F59E0B", dash="dash")))
+    fig.update_yaxes(type="log")  # log-scale catches early learning
+    fig.update_layout(
+        title="Loss curves (smoothed, log-y)",
+        xaxis_title="step", yaxis_title="loss",
+    )
+    return fig
+
+# Use it every single training run
+fig = plot_losses(history["train"], history["val"])
+fig.write_html("loss_curves.html")
+</code></pre>
+    </div>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.1.1</strong> (autoencoder training), this afternoon.</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Most &lsquo;my loss is not decreasing&rsquo; reports are plot problems, not model problems.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why log-y?&rdquo; &rarr; expected wrong answer: &ldquo;because it looks cleaner&rdquo; &rarr; right answer: &ldquo;the first 100 steps compress 90% of the learning &mdash; linear-y hides it behind the late-stage plateau.&rdquo;<br/>
+    <strong>If behind schedule</strong>: drop the code walkthrough, keep the three habits + the re-plot rule.<br/>
+    <strong>Transition</strong>: &ldquo;Loss is the output; next instrument looks at what is happening INSIDE the model &mdash; gradient flow.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5D-prereq: What is a Gradient? (30-second primer) -->
+<section>
+  <h2>Prerequisite &mdash; What is a Gradient?</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <div class="callout callout-foundations" style="margin-bottom: 8px; font-size: 0.78em;">
+        <strong>Analogy:</strong> imagine your model is a room with 10,000 thermostats. Each controls a tiny part of the temperature (the model's output). The <em>gradient</em> tells each thermostat which way to nudge (hotter / colder) to bring the room closer to your target temperature.
+      </div>
+      <ul style="font-size: 0.82em;">
+        <li><strong>Gradient</strong> = how much each knob (weight) in the model needs to turn to reduce error</li>
+        <li><strong>Backprop</strong> = the algorithm that computes those turn-amounts layer by layer, working <em>backward</em> from the output</li>
+        <li>Gradient &asymp; 0 for a layer &rarr; its knobs aren't turning &rarr; <strong>it isn't learning</strong></li>
+        <li>Gradient is huge &rarr; knobs spinning wildly &rarr; <strong>model destabilises</strong></li>
+      </ul>
+      <div class="callout callout-foundations" style="margin-top: 6px; font-size: 0.76em;">
+        <strong>Reading rule:</strong> the gradient at a layer is a stethoscope for that layer &mdash; it tells you whether the layer is even participating in learning.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 230" style="max-width: 100%; max-height: 480px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+          <rect x="20"  y="80" width="50" height="55" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.6"/>
+          <text x="45"  y="112" font-size="11" fill="#3730A3" text-anchor="middle" font-weight="700">L1</text>
+          <rect x="95"  y="80" width="50" height="55" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.6"/>
+          <text x="120" y="112" font-size="11" fill="#3730A3" text-anchor="middle" font-weight="700">L2</text>
+          <rect x="170" y="80" width="50" height="55" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.6"/>
+          <text x="195" y="112" font-size="11" fill="#3730A3" text-anchor="middle" font-weight="700">L3</text>
+          <rect x="245" y="80" width="60" height="55" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.6"/>
+          <text x="275" y="106" font-size="10" fill="#B45309" text-anchor="middle" font-weight="700">Output</text>
+          <text x="275" y="122" font-size="9" fill="#B45309" text-anchor="middle">= error</text>
+          <path d="M 70 100 L 95 100" stroke="#CBD5E1" stroke-width="1.4"/>
+          <path d="M 145 100 L 170 100" stroke="#CBD5E1" stroke-width="1.4"/>
+          <path d="M 220 100 L 245 100" stroke="#CBD5E1" stroke-width="1.4"/>
+          <path d="M 245 125 L 220 125" stroke="#F43F5E" stroke-width="2.4"/>
+          <polygon points="220,125 226,121 226,129" fill="#F43F5E"/>
+          <path d="M 170 125 L 145 125" stroke="#F43F5E" stroke-width="2.4"/>
+          <polygon points="145,125 151,121 151,129" fill="#F43F5E"/>
+          <path d="M 95 125 L 70 125" stroke="#F43F5E" stroke-width="2.4"/>
+          <polygon points="70,125 76,121 76,129" fill="#F43F5E"/>
+          <text x="165" y="155" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">gradient flows backward &mdash; layer by layer</text>
+          <text x="165" y="178" font-size="10" fill="#334155" text-anchor="middle">error propagates back; each L gets a &ldquo;turn this much&rdquo; signal</text>
+          <text x="165" y="210" font-size="9" fill="#64748B" text-anchor="middle">forward = predict &bull; backward = learn</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 1 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Before the blood test, one sentence: the gradient is how hard each knob needs to turn to make the model less wrong.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If layer 1 has gradient near zero and layer 6 has a healthy gradient, what is happening?&rdquo; &rarr; expected wrong answer: &ldquo;layer 1 is fine, it already learned&rdquo; &rarr; right answer: &ldquo;layer 1 is not learning at all &mdash; the signal never reached it. Vanishing gradient.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the callout; the SVG plus the four bullets do the work.<br/>
+    <strong>Transition</strong>: &ldquo;Now we can use the instrument that measures this.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5E: Instrument 2 — Gradient Flow -->
+<section>
+  <h2>Instrument 2: Gradient Flow &mdash; The Blood Test</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 700 260" style="max-width: 99%; max-height: 540px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Healthy panel -->
+      <g transform="translate(20, 20)">
+        <rect x="0" y="0" width="200" height="175" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="100" y="18" font-size="12" font-weight="700" fill="#166534" text-anchor="middle">Healthy</text>
+        <!-- bars: similar heights -->
+        <rect x="15"  y="70" width="22" height="80" fill="#22C55E"/>
+        <rect x="43"  y="60" width="22" height="90" fill="#22C55E"/>
+        <rect x="71"  y="65" width="22" height="85" fill="#22C55E"/>
+        <rect x="99"  y="55" width="22" height="95" fill="#22C55E"/>
+        <rect x="127" y="62" width="22" height="88" fill="#22C55E"/>
+        <rect x="155" y="58" width="22" height="92" fill="#22C55E"/>
+        <line x1="10" y1="150" x2="190" y2="150" stroke="#334155" stroke-width="1.5"/>
+        <text x="15"  y="168" font-size="8" fill="#334155">L1</text>
+        <text x="43"  y="168" font-size="8" fill="#334155">L2</text>
+        <text x="71"  y="168" font-size="8" fill="#334155">L3</text>
+        <text x="99"  y="168" font-size="8" fill="#334155">L4</text>
+        <text x="127" y="168" font-size="8" fill="#334155">L5</text>
+        <text x="155" y="168" font-size="8" fill="#334155">L6</text>
+      </g>
+      <text x="120" y="215" font-size="10" font-weight="600" fill="#166534" text-anchor="middle">RMS 1e-5 &ndash; 1e-2 across all layers</text>
+      <text x="120" y="232" font-size="10" fill="#334155" text-anchor="middle">signal reaches every layer</text>
+      <!-- Vanishing panel -->
+      <g transform="translate(250, 20)">
+        <rect x="0" y="0" width="200" height="175" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="100" y="18" font-size="12" font-weight="700" fill="#1D4ED8" text-anchor="middle">Vanishing</text>
+        <!-- bars: geometric decay toward input -->
+        <rect x="15"  y="148" width="22" height="2"  fill="#3B82F6"/>
+        <rect x="43"  y="145" width="22" height="5"  fill="#3B82F6"/>
+        <rect x="71"  y="138" width="22" height="12" fill="#3B82F6"/>
+        <rect x="99"  y="120" width="22" height="30" fill="#3B82F6"/>
+        <rect x="127" y="95"  width="22" height="55" fill="#3B82F6"/>
+        <rect x="155" y="55"  width="22" height="95" fill="#3B82F6"/>
+        <line x1="10" y1="150" x2="190" y2="150" stroke="#334155" stroke-width="1.5"/>
+        <text x="15"  y="168" font-size="8" fill="#334155">L1</text>
+        <text x="43"  y="168" font-size="8" fill="#334155">L2</text>
+        <text x="71"  y="168" font-size="8" fill="#334155">L3</text>
+        <text x="99"  y="168" font-size="8" fill="#334155">L4</text>
+        <text x="127" y="168" font-size="8" fill="#334155">L5</text>
+        <text x="155" y="168" font-size="8" fill="#334155">L6</text>
+      </g>
+      <text x="350" y="215" font-size="10" font-weight="600" fill="#1D4ED8" text-anchor="middle">early-layer RMS &lt; 1e-5 (or update ratio &lt; 1e-4)</text>
+      <text x="350" y="232" font-size="10" fill="#334155" text-anchor="middle">input-side layers learn nothing</text>
+      <!-- Exploding panel -->
+      <g transform="translate(480, 20)">
+        <rect x="0" y="0" width="200" height="175" rx="6" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="100" y="18" font-size="12" font-weight="700" fill="#BE123C" text-anchor="middle">Exploding</text>
+        <!-- bars: one layer huge -->
+        <rect x="15"  y="125" width="22" height="25"  fill="#F43F5E"/>
+        <rect x="43"  y="130" width="22" height="20"  fill="#F43F5E"/>
+        <rect x="71"  y="30"  width="22" height="120" fill="#F43F5E"/>
+        <rect x="99"  y="128" width="22" height="22"  fill="#F43F5E"/>
+        <rect x="127" y="122" width="22" height="28"  fill="#F43F5E"/>
+        <rect x="155" y="127" width="22" height="23"  fill="#F43F5E"/>
+        <line x1="10" y1="150" x2="190" y2="150" stroke="#334155" stroke-width="1.5"/>
+        <text x="15"  y="168" font-size="8" fill="#334155">L1</text>
+        <text x="43"  y="168" font-size="8" fill="#334155">L2</text>
+        <text x="71"  y="168" font-size="8" fill="#334155">L3</text>
+        <text x="99"  y="168" font-size="8" fill="#334155">L4</text>
+        <text x="127" y="168" font-size="8" fill="#334155">L5</text>
+        <text x="155" y="168" font-size="8" fill="#334155">L6</text>
+        <text x="82"  y="28"  font-size="9" fill="#BE123C" font-weight="700">&gt;100</text>
+      </g>
+      <text x="580" y="215" font-size="10" font-weight="600" fill="#BE123C" text-anchor="middle">one layer RMS &gt; 1e-2 or update ratio &gt; 0.1</text>
+      <text x="580" y="232" font-size="10" fill="#334155" text-anchor="middle">updates overshoot, loss diverges</text>
+    </svg>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.3</strong> (RNN vanishing-gradient detection).</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Loss tells you the patient is sick. The blood test tells you which organ is failing.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If layer 1 gradient is 1e-9 and layer 6 gradient is 1e-2, what single fix tends to help?&rdquo; &rarr; expected wrong answer: &ldquo;increase learning rate&rdquo; &rarr; right answer: &ldquo;add skip connections or swap to GELU &mdash; the issue is signal reaching early layers, not update size.&rdquo;<br/>
+    <strong>If behind schedule</strong>: collapse exploding + vanishing into one sentence each; spend the saved time on the healthy bar pattern &mdash; that is the reference students match against.<br/>
+    <strong>Transition</strong>: &ldquo;Three shapes, one instrument &mdash; now the code that measures them.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5F: Gradient Flow Code -->
+<section>
+  <h2>Gradient Flow &mdash; Code &amp; Thresholds</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+
+diag = DLDiagnostics(model).track_gradients()
+
+for batch in dataloader:
+    loss = train_step(model, batch)
+    loss.backward()
+    optimizer.step()
+    diag.record_batch(
+        loss=loss.item(),
+        lr=optimizer.param_groups[0]["lr"],
+    )
+
+diag.plot_gradient_flow().show()
+diag.report()   # auto-diagnoses vanishing / exploding
+</code></pre>
+      <details style="margin-top: 4px; font-size: 0.72em;">
+        <summary style="cursor: pointer; color: #475569;">Under the hood (5-line hook reference)</summary>
+        <pre style="font-size: 0.85em; line-height: 1.3; margin-top: 4px;"><code class="language-python">for name, p in model.named_parameters():
+    if p.grad is None: continue
+    rms = p.grad.detach().pow(2).mean().sqrt().item()
+    ratio = p.grad.norm() / (p.data.norm() + 1e-12)
+    record(name, rms=rms, update_ratio=ratio.item())
+</code></pre>
+      </details>
+    </div>
+    <div class="col">
+      <h3>Thresholds worth memorising</h3>
+      <p class="small muted" style="margin-top: 0;">Per-element RMS = &#8741;&nabla;&#8741; / &radic;numel &nbsp;&bull;&nbsp; update ratio = &#8741;&nabla;W&#8741; / &#8741;W&#8741;</p>
+      <table style="font-size: 0.72em;">
+        <thead><tr><th>Signal</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td>RMS &lt; 1e-5 &nbsp;<em>or</em>&nbsp; ratio &lt; 1e-4</td><td><strong>vanishing</strong></td></tr>
+          <tr><td>RMS 1e-5 &ndash; 1e-2</td><td>healthy</td></tr>
+          <tr><td>RMS &gt; 1e-2 &nbsp;<em>or</em>&nbsp; ratio &gt; 0.1</td><td><strong>exploding</strong></td></tr>
+          <tr><td>NaN</td><td><strong>dead</strong></td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.72em;">
+        <strong>Why not raw gradient norm?</strong> Gradient norm scales with tensor size. A 1024&times;1024 weight's grad norm can be 1000&times; larger than a 32&times;32 for the same per-element magnitude. Per-element RMS and update ratio are scale-invariant &mdash; what LLM training dashboards actually show.
+      </div>
+      <div class="callout callout-advanced" style="margin-top: 6px; font-size: 0.72em;">
+        <strong>Modern (2025):</strong> ZClip adapts the clip threshold to the running distribution of gradient norms &mdash; 2&ndash;4x fewer loss spikes on long-context LLM training than fixed <code>clip_grad_norm_(max_norm=1.0)</code>.
+      </div>
+    </div>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.3</strong> (RNN vanishing-gradient detection).</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 4 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Two numbers per layer &mdash; RMS and update ratio. Everything else is noise.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why not just track <code>grad.norm()</code>?&rdquo; &rarr; expected wrong answer: &ldquo;no good reason, norm is fine&rdquo; &rarr; right answer: &ldquo;norm scales with tensor size &mdash; a 1024x1024 weight dwarfs a 32x32 even if per-element signal is identical. RMS and update ratio are scale-invariant.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip ZClip mention; the callout stays on-screen for self-study.<br/>
+    <strong>Transition</strong>: &ldquo;Gradients tell us whether signal reaches each layer. Next instrument looks at what each layer actually PRODUCES &mdash; activations.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5G-i: Instrument 3 — Statistical X-Ray -->
+<section>
+  <h2>Instrument 3a: Statistical X-Ray <span style="font-size: 0.5em; color: #64748B; font-weight: 400;">(Activation X-Ray — part 1 of 2)</span></h2>
+  <span class="marker marker-theory">Theory</span>
+  <p class="small muted" style="margin-top: 0;">Runs inside the training loop &mdash; one number per layer, every N steps.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>What to log per layer</h3>
+      <ul style="font-size: 0.82em;">
+        <li><strong>mean</strong> &mdash; drifting toward 0 or &plusmn;&infin;?</li>
+        <li><strong>std</strong> &mdash; collapsing (dead) or exploding?</li>
+        <li><strong>dead fraction</strong> &mdash; % of units at exactly 0</li>
+        <li><strong>saturation</strong> &mdash; % at &plusmn;1 (tanh) or 0/1 (sigmoid)</li>
+      </ul>
+      <p class="small muted" style="margin-top: 4px;">One-line diagnostic: <code>(act == 0).float().mean()</code></p>
+      <div class="callout callout-theory" style="margin-top: 6px; font-size: 0.76em;">
+        <strong>Healthy pattern:</strong> mean &asymp; 0, std in [0.3, 1.0], dead% &lt; 10%. If any layer drifts, you see it within 100 steps.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 320 180" style="max-width: 100%; max-height: 380px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="0" width="320" height="180" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1"/>
+          <text x="160" y="18" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">Per-layer activation histogram</text>
+          <rect x="40"  y="130" width="18" height="25" fill="#22C55E"/>
+          <rect x="62"  y="110" width="18" height="45" fill="#22C55E"/>
+          <rect x="84"  y="80"  width="18" height="75" fill="#22C55E"/>
+          <rect x="106" y="60"  width="18" height="95" fill="#22C55E"/>
+          <rect x="128" y="55"  width="18" height="100" fill="#22C55E"/>
+          <rect x="150" y="75"  width="18" height="80" fill="#22C55E"/>
+          <rect x="172" y="105" width="18" height="50" fill="#22C55E"/>
+          <rect x="194" y="128" width="18" height="27" fill="#22C55E"/>
+          <line x1="30" y1="155" x2="220" y2="155" stroke="#334155" stroke-width="1"/>
+          <text x="125" y="170" font-size="9" fill="#334155" text-anchor="middle">activation value</text>
+          <text x="250" y="65" font-size="10" fill="#166534" font-weight="700">mean &asymp; 0.02</text>
+          <text x="250" y="82" font-size="10" fill="#166534" font-weight="700">std &nbsp; &asymp; 0.41</text>
+          <text x="250" y="99" font-size="10" fill="#166534" font-weight="700">dead% = 3</text>
+          <text x="250" y="125" font-size="9" fill="#334155">&rarr; layer is</text>
+          <text x="250" y="138" font-size="9" fill="#334155" font-weight="700">HEALTHY</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.2.1</strong> (CNN baseline health check).</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2.5 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four numbers per layer. Runs in the training loop. Costs nothing.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If mean drifts toward +5 and std stays at 0.4, what is happening?&rdquo; &rarr; expected wrong answer: &ldquo;exploding activations&rdquo; &rarr; right answer: &ldquo;mean-drift, not variance blow-up &mdash; usually a missing normalisation (BatchNorm/LayerNorm) or biased init.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut saturation bullet; mean+std+dead% are the must-have three.<br/>
+    <strong>Transition</strong>: &ldquo;Stats tell you the layer is misbehaving. The next slide tells you WHY &mdash; by looking at what drove the output.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5G-ii: Instrument 3 — Attribution X-Ray -->
+<section>
+  <h2>Instrument 3b: Attribution X-Ray <span style="font-size: 0.5em; color: #64748B; font-weight: 400;">(Activation X-Ray — part 2 of 2)</span></h2>
+  <span class="marker marker-theory">Theory</span>
+  <p class="small muted" style="margin-top: 0;">Runs at inference-time &mdash; answers &ldquo;which input drove this prediction?&rdquo;</p>
+  <div class="columns">
+    <div class="col">
+      <h3>Three methods, one question</h3>
+      <ul style="font-size: 0.82em;">
+        <li><strong>Grad-CAM</strong> (CNNs) &mdash; heatmap over the image</li>
+        <li><strong>Attention rollout</strong> (transformers) &mdash; token-to-token weight map</li>
+        <li><strong>Integrated gradients</strong> (any model, any input)</li>
+      </ul>
+      <div class="callout callout-advanced" style="margin-top: 6px; font-size: 0.76em;">
+        <strong>Healthcare &mdash; Zech et al., 2018 (<em>Nature Medicine</em>):</strong> a chest-X-ray classifier achieved 95%+ accuracy. Grad-CAM revealed it was looking at the hospital's <em>image watermark</em>, not the lung. Accuracy held on the same hospital, <em>collapsed</em> on transfer. Attribution caught a model that every other metric passed.
+      </div>
+      <div class="callout callout-applications" style="margin-top: 6px; font-size: 0.76em;">
+        <strong>Finance &mdash; the postcode proxy:</strong> a credit-risk model hits 89% AUC. SHAP/attribution reveals it uses <em>postcode</em> (a proxy for race/income) instead of the income feature you put in the brief. Legal says no, model says yes. Attribution is what forced the conversation.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 230" style="max-width: 100%; max-height: 260px;" xmlns="http://www.w3.org/2000/svg">
+          <rect x="10" y="10" width="150" height="150" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+          <text x="85" y="26" font-size="10" font-weight="700" fill="#166534" text-anchor="middle">Correct attribution</text>
+          <ellipse cx="85" cy="100" rx="55" ry="38" fill="#F1F5F9" stroke="#475569" stroke-width="1"/>
+          <circle cx="62" cy="95" r="18" fill="#F43F5E" opacity="0.55"/>
+          <circle cx="62" cy="95" r="11" fill="#F43F5E" opacity="0.85"/>
+          <text x="85" y="150" font-size="9" fill="#166534" text-anchor="middle">model looks at the lung</text>
+          <rect x="180" y="10" width="150" height="150" rx="6" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1.5"/>
+          <text x="255" y="26" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">Spurious attribution</text>
+          <ellipse cx="255" cy="100" rx="55" ry="38" fill="#F1F5F9" stroke="#475569" stroke-width="1"/>
+          <rect x="195" y="25" width="25" height="18" fill="#F59E0B" opacity="0.15" stroke="#F59E0B" stroke-width="0.6"/>
+          <text x="207" y="38" font-size="7" fill="#B45309" text-anchor="middle">HOSP-7</text>
+          <circle cx="207" cy="34" r="14" fill="#F43F5E" opacity="0.75"/>
+          <text x="255" y="150" font-size="9" fill="#BE123C" text-anchor="middle">model looks at the watermark</text>
+          <rect x="10" y="175" width="320" height="45" rx="5" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1"/>
+          <text x="170" y="193" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Same accuracy &mdash; same hospital.</text>
+          <text x="170" y="210" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">Collapses on transfer. Attribution caught it.</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.2.2</strong> (CNN Grad-CAM interpretability).</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;A model can be right for the wrong reason. Attribution is how you find out.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If a chest-X-ray classifier looks at the image watermark instead of the lung, what metric would catch it?&rdquo; &rarr; expected wrong answer: &ldquo;accuracy on the test set&rdquo; &rarr; right answer: &ldquo;none &mdash; accuracy stays high on the same hospital. Only <em>transfer</em> testing or attribution would catch it. Zech 2018 is the canonical example.&rdquo;<br/>
+    <strong>If behind schedule</strong>: keep the Zech story, cut the three-method list &mdash; students will meet Grad-CAM and attention rollout in exercises anyway.<br/>
+    <strong>Transition</strong>: &ldquo;Stats tell you the layer is alive. Attribution tells you it is looking at the right thing. Now we put it all on one screen: the dashboard.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5H: Dead Neurons -->
+<section>
+  <h2>Dead Neurons &mdash; Detect &amp; Fix</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="callout callout-foundations" style="font-size: 0.82em; margin: 4px 0 10px 0;">
+    <strong>Why dead ReLUs happen:</strong> a large negative bias shove pushes every input to a unit below 0 &rarr; ReLU outputs 0 &rarr; gradient is 0 &rarr; the unit cannot recover. Silent &mdash; loss still decreases because the live units absorb the work.
+  </div>
+  <div class="columns">
+    <div class="col">
+      <h3>Detecting</h3>
+<pre style="font-size: 0.60em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+
+diag = DLDiagnostics(model).track_dead_neurons()
+
+# run 1 warm-up epoch of training here...
+
+diag.plot_dead_neurons().show()
+# Auto-warning in diag.report():
+#   "conv3 has 67% dead neurons &mdash; consider GELU"
+</code></pre>
+      <p class="small muted" style="margin-top: 4px;">Rule of thumb: any layer &gt; 50% dead is a problem. The library flags it for you.</p>
+      <details style="margin-top: 4px; font-size: 0.72em;">
+        <summary style="cursor: pointer; color: #475569;">Under the hood (forward hooks)</summary>
+        <pre style="font-size: 0.85em; line-height: 1.3; margin-top: 4px;"><code class="language-python">def hook(_, __, out):
+    dead[name] = (out == 0).float().mean().item()
+m.register_forward_hook(hook)   # for every ReLU
+</code></pre>
+      </details>
+    </div>
+    <div class="col">
+      <h3>Fixing</h3>
+      <div class="callout callout-theory" style="font-size: 0.78em;">
+        <strong>Step 1:</strong> swap the activation.<br/>
+        <code>ReLU &rarr; GELU</code> (transformers),<br/>
+        <code>ReLU &rarr; LeakyReLU(0.01)</code> (CNNs),<br/>
+        <code>ReLU &rarr; SiLU/Swish</code> (modern).
+      </div>
+      <div class="callout callout-advanced" style="margin-top: 6px; font-size: 0.78em;">
+        <strong>Step 2:</strong> re-initialise with Kaiming.<br/>
+        <code>nn.init.kaiming_normal_(w, nonlinearity='relu')</code><br/>
+        Scales variance so ReLU's 50% zeroing does not collapse signal depth.
+      </div>
+    </div>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">First use: <strong>Exercise 5.2.1</strong> (CNN baseline health check).</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 3 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;A network can be 70% dead and still show a decreasing loss. That is the scariest failure mode in this module.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If loss is still dropping and dead-fraction is 70%, what is the fix priority order?&rdquo; &rarr; expected wrong answer: &ldquo;increase LR, the model is under-trained&rdquo; &rarr; right answer: &ldquo;swap activation FIRST (ReLU &rarr; GELU), re-initialise SECOND (Kaiming); LR change comes third if needed.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the Fixing Step 2 (Kaiming) callout; activation swap is the one-minute fix that handles most cases.<br/>
+    <strong>Transition</strong>: &ldquo;Four instruments so far. Next we put them on ONE screen &mdash; the training dashboard.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5I: Instrument 4 — Training Dashboard / Patient Chart -->
+<section>
+  <h2>Instrument 4: Training Dashboard &mdash; <em>The Patient Chart</em></h2>
+  <p class="small muted" style="margin-top: -6px;">The integration &mdash; all four previous readings on one screen.</p>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 700 310" style="max-width: 99%; max-height: 540px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 2x2 grid of mini-panels -->
+      <!-- Panel A: loss curves -->
+      <g transform="translate(20, 15)">
+        <rect x="0" y="0" width="320" height="130" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+        <text x="160" y="16" font-size="11" font-weight="700" fill="#0D9488" text-anchor="middle">Loss (train / val, log-y)</text>
+        <line x1="20" y1="115" x2="300" y2="115" stroke="#334155" stroke-width="1"/>
+        <line x1="20" y1="25" x2="20" y2="115" stroke="#334155" stroke-width="1"/>
+        <polyline points="25,100 60,80 100,60 150,45 210,38 290,35" stroke="#0D9488" stroke-width="2" fill="none"/>
+        <polyline points="25,105 60,88 100,72 150,62 210,58 290,55" stroke="#F59E0B" stroke-width="2" fill="none" stroke-dasharray="4,3"/>
+        <text x="280" y="40" font-size="8" fill="#0D9488">train</text>
+        <text x="280" y="58" font-size="8" fill="#F59E0B">val</text>
+      </g>
+      <!-- Panel B: gradient norms -->
+      <g transform="translate(360, 15)">
+        <rect x="0" y="0" width="320" height="130" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="160" y="16" font-size="11" font-weight="700" fill="#4F46E5" text-anchor="middle">Gradient norms per layer</text>
+        <rect x="30"  y="50" width="28" height="65" fill="#4F46E5" opacity="0.8"/>
+        <rect x="65"  y="45" width="28" height="70" fill="#4F46E5" opacity="0.8"/>
+        <rect x="100" y="55" width="28" height="60" fill="#4F46E5" opacity="0.8"/>
+        <rect x="135" y="40" width="28" height="75" fill="#4F46E5" opacity="0.8"/>
+        <rect x="170" y="52" width="28" height="63" fill="#4F46E5" opacity="0.8"/>
+        <rect x="205" y="48" width="28" height="67" fill="#4F46E5" opacity="0.8"/>
+        <rect x="240" y="44" width="28" height="71" fill="#4F46E5" opacity="0.8"/>
+        <line x1="20" y1="115" x2="300" y2="115" stroke="#334155" stroke-width="1"/>
+        <text x="160" y="128" font-size="8" fill="#334155" text-anchor="middle">layer index</text>
+      </g>
+      <!-- Panel C: LR schedule -->
+      <g transform="translate(20, 160)">
+        <rect x="0" y="0" width="320" height="130" rx="6" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5"/>
+        <text x="160" y="16" font-size="11" font-weight="700" fill="#B45309" text-anchor="middle">Learning-rate schedule (warmup + cosine)</text>
+        <line x1="20" y1="115" x2="300" y2="115" stroke="#334155" stroke-width="1"/>
+        <line x1="20" y1="25"  x2="20"  y2="115" stroke="#334155" stroke-width="1"/>
+        <!-- warmup ramp -->
+        <polyline points="20,110 45,40" stroke="#F59E0B" stroke-width="2.5" fill="none"/>
+        <!-- cosine decay -->
+        <path d="M 45 40 Q 165 40 295 110" stroke="#F59E0B" stroke-width="2.5" fill="none"/>
+        <text x="50" y="34" font-size="8" fill="#B45309">peak LR</text>
+        <line x1="45" y1="25" x2="45" y2="115" stroke="#B45309" stroke-width="0.5" stroke-dasharray="2,2"/>
+        <text x="45" y="128" font-size="8" fill="#334155" text-anchor="middle">warmup</text>
+      </g>
+      <!-- Panel D: weight histograms -->
+      <g transform="translate(360, 160)">
+        <rect x="0" y="0" width="320" height="130" rx="6" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="1.5"/>
+        <text x="160" y="16" font-size="11" font-weight="700" fill="#6D28D9" text-anchor="middle">Weight histograms (per layer, over time)</text>
+        <!-- ridge-plot style -->
+        <path d="M 30 105 Q 70 85 110 70 Q 150 60 190 70 Q 230 85 270 105" fill="#8B5CF6" opacity="0.25" stroke="#8B5CF6" stroke-width="1.5"/>
+        <path d="M 30 100 Q 70 75 110 58 Q 150 48 190 58 Q 230 75 270 100" fill="#8B5CF6" opacity="0.35" stroke="#8B5CF6" stroke-width="1.5" transform="translate(0,-8)"/>
+        <path d="M 30 95 Q 70 65 110 45 Q 150 35 190 45 Q 230 65 270 95" fill="#8B5CF6" opacity="0.5" stroke="#8B5CF6" stroke-width="1.5" transform="translate(0,-16)"/>
+        <line x1="20" y1="115" x2="300" y2="115" stroke="#334155" stroke-width="1"/>
+        <text x="160" y="128" font-size="8" fill="#334155" text-anchor="middle">weight value &rarr; bell over time</text>
+      </g>
+    </svg>
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">Used in <strong>every lesson</strong> of M5.</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Instruments 1 through 4 were examination. This is the patient chart &mdash; every reading on one screen.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Which of the four panels do you glance at FIRST on a troubled run?&rdquo; &rarr; expected wrong answer: &ldquo;the loss curves&rdquo; &rarr; right answer: &ldquo;gradient norms per layer &mdash; loss can hide the failure, but a layer with flat gradients cannot.&rdquo;<br/>
+    <strong>If behind schedule</strong>: drop the weight-histograms panel explanation; the loss+gradient+LR trio carries the point.<br/>
+    <strong>Transition</strong>: &ldquo;Four instruments of examination &mdash; now the treatment side: the prescription pad.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5J: Instrument 5 — Prescription Pad -->
+<section>
+  <h2>Instrument 5: The Prescription Pad</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="diagram-container" style="text-align: center;">
+    <svg viewBox="0 0 700 310" style="max-width: 95%; max-height: 380px;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Header row -->
+      <rect x="10" y="10" width="330" height="26" rx="4" fill="#0F172A"/>
+      <text x="175" y="28" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">SYMPTOM</text>
+      <rect x="350" y="10" width="340" height="26" rx="4" fill="#F59E0B"/>
+      <text x="520" y="28" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">PRESCRIPTION</text>
+      <!-- rows -->
+      <g font-size="10.5" fill="#0F172A">
+        <!-- row 1 -->
+        <rect x="10"  y="44" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="65" font-weight="600">Loss oscillating</text>
+        <rect x="350" y="44" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="60" font-weight="600" fill="#B45309">reduce LR by 3&ndash;10x</text>
+        <text x="362" y="74" fill="#334155">or add linear warmup (500&ndash;2000 steps)</text>
+        <!-- row 2 -->
+        <rect x="10"  y="82" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="103" font-weight="600">Val loss diverges while train drops</text>
+        <rect x="350" y="82" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="98" font-weight="600" fill="#B45309">add regularisation</text>
+        <text x="362" y="112" fill="#334155">dropout / weight decay / early-stop / augment</text>
+        <!-- row 3 -->
+        <rect x="10"  y="120" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="141" font-weight="600">Gradients vanishing (RMS &lt; 1e-5 or update ratio &lt; 1e-4)</text>
+        <rect x="350" y="120" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="136" font-weight="600" fill="#B45309">add skip connections / GELU</text>
+        <text x="362" y="150" fill="#334155">or reduce depth; check for Sigmoid/Tanh blocks</text>
+        <!-- row 4 -->
+        <rect x="10"  y="158" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="179" font-weight="600">Gradients exploding (RMS &gt; 1e-2 or update ratio &gt; 0.1, or NaN)</text>
+        <rect x="350" y="158" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="174" font-weight="600" fill="#B45309">clip (ZClip) / reduce LR / check init</text>
+        <text x="362" y="188" fill="#334155">Kaiming for ReLU; Xavier for Tanh</text>
+        <!-- row 5 -->
+        <rect x="10"  y="196" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="217" font-weight="600">Dead neurons &gt; 50%</text>
+        <rect x="350" y="196" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="212" font-weight="600" fill="#B45309">GELU / LeakyReLU + Kaiming init</text>
+        <text x="362" y="226" fill="#334155">swap activation THEN re-initialise weights</text>
+        <!-- row 6 -->
+        <rect x="10"  y="234" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="255" font-weight="600">Loss not decreasing at all</text>
+        <rect x="350" y="234" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="250" font-weight="600" fill="#B45309">increase capacity OR check data pipeline</text>
+        <text x="362" y="264" fill="#334155">overfit to 1 batch first; if that fails, pipeline is broken</text>
+        <!-- row 7 -->
+        <rect x="10"  y="272" width="330" height="34" rx="3" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+        <text x="22"  y="293" font-weight="600">Sudden loss spikes mid-training</text>
+        <rect x="350" y="272" width="340" height="34" rx="3" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1"/>
+        <text x="362" y="288" font-weight="600" fill="#B45309">adaptive clipping + bad-batch audit</text>
+        <text x="362" y="302" fill="#334155">log the offending batch; check for label noise / outliers</text>
+      </g>
+    </svg>
+  </div>
+  <div class="callout" style="background:#F8FAFC; border:1px solid #CBD5E1; margin-top:8px; padding:8px 12px; font-size:0.72em; line-height:1.5;">
+    <strong>Glossary (for this prescription pad):</strong><br/>
+    <strong>GELU / LeakyReLU</strong>: smoother ReLU variants that don't kill neurons. &bull;
+    <strong>Kaiming init</strong>: weight starting values that preserve signal through ReLU layers. &bull;
+    <strong>Skip connection</strong>: a shortcut wire that lets gradient bypass a layer. &bull;
+    <strong>Warmup</strong>: start with a tiny LR, ramp up over 500&ndash;2000 steps. &bull;
+    <strong>ZClip</strong>: adaptive gradient clipping that tracks the running gradient distribution.
+  </div>
+  <p class="small muted" style="text-align: right; margin: 4px 8px 0 0;">Reference <strong>throughout the module</strong>.</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 4 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Seven symptoms cover more than 90% of DL failures you will hit this module. Match symptom to prescription, THEN act.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If loss will not decrease at ALL from step 0, which prescription do you pick?&rdquo; &rarr; expected wrong answer: &ldquo;increase capacity&rdquo; &rarr; right answer: &ldquo;overfit to one batch first &mdash; if even that fails, your pipeline is broken, not your model.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut rows 6 and 7 from discussion; keep them on-screen. Rows 1&ndash;5 cover the most common failures.<br/>
+    <strong>Transition</strong>: &ldquo;That's the full toolkit. Now let me show you where each instrument shows up across M5's eight lessons.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5N: Toolkit Through M5 -->
+<section>
+  <h2>How the Toolkit Threads Through M5</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <table style="font-size: 0.78em;">
+    <thead>
+      <tr>
+        <th>Lesson</th>
+        <th>Topic</th>
+        <th>Instruments used</th>
+        <th>What you will diagnose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>5.1</strong></td>
+        <td>Autoencoders</td>
+        <td>Loss, activations</td>
+        <td>Posterior collapse in VAE (KL &rarr; 0); reconstruction-vs-KL trade-off</td>
+      </tr>
+      <tr>
+        <td><strong>5.2</strong></td>
+        <td>CNNs &amp; Vision</td>
+        <td>All five</td>
+        <td>LR range test, Grad-CAM attribution, dead ReLUs in early conv blocks</td>
+      </tr>
+      <tr>
+        <td><strong>5.3</strong></td>
+        <td>RNNs &amp; LSTMs</td>
+        <td>Gradients, dashboard</td>
+        <td>Vanishing gradients through time; BPTT stability; clipping threshold</td>
+      </tr>
+      <tr>
+        <td><strong>5.4</strong></td>
+        <td>Transformers</td>
+        <td>All five + attention maps</td>
+        <td>Warmup length, attention rollout, RMSNorm vs LayerNorm ablation</td>
+      </tr>
+      <tr>
+        <td><strong>5.5</strong></td>
+        <td>GANs &amp; Diffusion</td>
+        <td>Loss, gradients, prescription</td>
+        <td>Mode collapse, generator/discriminator balance, WGAN gradient penalty</td>
+      </tr>
+      <tr>
+        <td><strong>5.6</strong></td>
+        <td>Graph Neural Nets</td>
+        <td>Gradients, activations</td>
+        <td>Over-smoothing at depth &gt; 4 layers; dead node embeddings</td>
+      </tr>
+      <tr>
+        <td><strong>5.7</strong></td>
+        <td>Transfer Learning</td>
+        <td>Loss, gradients</td>
+        <td>Catastrophic forgetting; discriminative LRs; layer-wise unfreeze schedule</td>
+      </tr>
+      <tr>
+        <td><strong>5.8</strong></td>
+        <td>Reinforcement Learning</td>
+        <td>Dashboard (reward curves) + prescription</td>
+        <td>Reward hacking, policy entropy collapse, value-loss divergence</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="small muted" style="margin-top: 4px;">Every lesson's first exercise begins with: "Run the diagnostic protocol. Report the five instrument readings. Then train."</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 2 min.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;The five instruments stay the same for the next eight lessons. What changes is which symptom each architecture hands you.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Name one new failure mode a GAN hands you that an autoencoder never will.&rdquo; &rarr; expected wrong answer: &ldquo;vanishing gradients&rdquo; &rarr; right answer: &ldquo;mode collapse &mdash; the generator ignores half the input distribution. Same instruments (loss + gradients + prescription), different failure pattern.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip 5.5&ndash;5.8; the headline is that the TOOLKIT carries forward, not the specific failure modes.<br/>
+    <strong>Transition</strong>: &ldquo;Last slide of this section: the four-check protocol you will run before every training run for the rest of M5.&rdquo;
+  </aside>
+</section>
+
+<!-- SLIDE 5O: Your Diagnostic Workflow -->
+<section>
+  <h2>Your Diagnostic Workflow</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">The protocol &mdash; every model, every run</h3>
+      <p class="small muted" style="margin: 0 0 4px;">Four checks, then a decision.</p>
+      <ol style="font-size: 0.78em; margin: 2px 0;">
+        <li><strong>Train 1 epoch</strong> (or 500 steps) as a smoke test</li>
+        <li><strong>Check loss curves</strong> &mdash; name the shape (healthy / over / under / unstable)</li>
+        <li><strong>Check gradient flow</strong> &mdash; vanishing (RMS &lt; 1e-5) or exploding (RMS &gt; 1e-2)?</li>
+        <li><strong>Check dead neurons</strong> &mdash; any activation layer &gt; 50% dead?</li>
+      </ol>
+      <p style="font-size: 0.78em; margin: 4px 0 0;"><strong>Decision:</strong> all pass &rarr; full train. Any fails &rarr; prescription pad, apply ONE fix, repeat.</p>
+      <div class="callout callout-foundations" style="font-size: 0.74em; margin-top: 6px;">
+        <strong>Cardinal rule:</strong> change ONE thing at a time. If you change LR, activation, and init together, you cannot tell which fix worked.
+      </div>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 320 340" style="max-width: 100%; max-height: 540px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+          <!-- flow diagram — numbers match the ordered list on the left -->
+          <rect x="60" y="10"  width="200" height="36" rx="18" fill="#0D9488"/>
+          <text x="160" y="33" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">1. Train 1 epoch</text>
+          <path d="M 160 46 L 160 60" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="60" width="200" height="36" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+          <text x="160" y="83" font-size="11" fill="#0F172A" text-anchor="middle">2. Name loss shape</text>
+          <path d="M 160 96 L 160 110" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="110" width="200" height="36" rx="6" fill="#EEF2FF" stroke="#4F46E5"/>
+          <text x="160" y="133" font-size="11" fill="#0F172A" text-anchor="middle">3. Check gradient flow</text>
+          <path d="M 160 146 L 160 160" stroke="#334155" stroke-width="1.5"/>
+          <rect x="60" y="160" width="200" height="36" rx="6" fill="#F0FDF4" stroke="#22C55E"/>
+          <text x="160" y="183" font-size="11" fill="#0F172A" text-anchor="middle">4. Check dead neurons</text>
+          <path d="M 160 196 L 160 210" stroke="#334155" stroke-width="1.5"/>
+          <!-- Decision diamond -->
+          <polygon points="160,210 230,248 160,286 90,248" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+          <text x="160" y="252" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">all pass?</text>
+          <!-- yes branch -->
+          <path d="M 230 248 L 290 248 L 290 305" stroke="#22C55E" stroke-width="1.5" fill="none"/>
+          <text x="240" y="242" font-size="9" fill="#166534" font-weight="700">yes</text>
+          <rect x="230" y="305" width="85" height="20" rx="3" fill="#22C55E"/>
+          <text x="272" y="319" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">full train</text>
+          <!-- no branch: prescription pad box, then loopback back to step 1 -->
+          <path d="M 90 248 L 30 248 L 30 305" stroke="#F43F5E" stroke-width="1.5" fill="none"/>
+          <text x="52" y="242" font-size="9" fill="#BE123C" font-weight="700">no</text>
+          <rect x="5" y="305" width="110" height="20" rx="3" fill="#F43F5E"/>
+          <text x="60" y="319" font-size="9" font-weight="700" fill="#FFFFFF" text-anchor="middle">prescription pad</text>
+          <!-- loopback arrow (stays inside viewBox) -->
+          <path d="M 30 305 Q 10 170 55 28" stroke="#F43F5E" stroke-width="1" fill="none" stroke-dasharray="3,3"/>
+          <polygon points="55,28 52,36 60,34" fill="#F43F5E"/>
+          <text x="14" y="170" font-size="8" fill="#BE123C" font-weight="700">re-run</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    <strong>Time</strong>: 5 min (3 min walk-through + 2 min sticky-note commitment).<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four checks, one decision. Every model, every run, for the rest of M5.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why change only one thing at a time?&rdquo; &rarr; expected wrong answer: &ldquo;to be safe&rdquo; &rarr; right answer: &ldquo;because if you change three things and the model works, you learned nothing &mdash; you cannot attribute the fix. Information theory, not caution.&rdquo;<br/>
+    <strong>If behind schedule</strong>: cut the walk-through, run ONLY the sticky-note activity. Students leave with the protocol in their own handwriting.<br/>
+    <strong>Transition</strong>: &ldquo;Put your sticky note next to your laptop. Now, Lesson 5.1 &mdash; autoencoders. First exercise: run this protocol on your first model.&rdquo;
+  </aside>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════
      LESSON 5.1: AUTOENCODERS (Slides 6-17)
      ═══════════════════════════════════════════════════════════ -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     APPENDIX: MODERN PRACTICE NOTES (Slides 5K-5M, reference)
+     Moved out of the main Doctor's Bag narrative — optional.
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- APPENDIX TITLE SLIDE -->
+<section class="title-slide">
+  <h2>Appendix: Modern Practice Notes</h2>
+  <p class="subtitle">Tactical knowledge — reference as you build</p>
+  <p class="provocation">Modern architecture choices, the LR range test, and scaling laws. Skim now; return when you need them.</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~30 sec. These three slides break the five-instruments narrative if delivered in-flow, so they live here as reference. Point students at the appendix when they hit LR decisions in 5.2, architecture decisions in 5.4, or data-budget questions in 5.5.
+  </aside>
+</section>
+
+<!-- SLIDE 5K: Modern Architecture Choices -->
+<section>
+  <h2>Modern Architecture Choices (2026)</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <table style="font-size: 0.66em; line-height: 1.25;">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Legacy default (pre-2020)</th>
+        <th>Current best practice (2026)</th>
+        <th>Why the upgrade</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Activation</strong></td>
+        <td>ReLU</td>
+        <td>SwiGLU (transformers), GELU (general)</td>
+        <td>No dead zone; smooth gradient; +0.5&ndash;1.0 pt on Llama-class benchmarks</td>
+      </tr>
+      <tr>
+        <td><strong>Normalisation</strong></td>
+        <td>BatchNorm</td>
+        <td>RMSNorm (transformers), LayerNorm (elsewhere)</td>
+        <td>RMSNorm drops mean-subtract step: ~5&ndash;10% faster unfused, more with kernel fusion; same quality (Llama 3)</td>
+      </tr>
+      <tr>
+        <td><strong>Optimizer</strong></td>
+        <td>Adam with L2 in loss</td>
+        <td>AdamW (decoupled weight decay)</td>
+        <td>L2-in-loss interacts badly with Adam's adaptive LR; AdamW fixes it (Loshchilov 2019)</td>
+      </tr>
+      <tr>
+        <td><strong>LR schedule</strong></td>
+        <td>Step decay / ReduceLROnPlateau</td>
+        <td>Linear warmup + cosine decay</td>
+        <td>Warmup prevents early explosion; cosine gives smooth annealing without tuning steps</td>
+      </tr>
+      <tr>
+        <td><strong>Grad clipping</strong></td>
+        <td>Fixed <code>max_norm=1.0</code></td>
+        <td>ZClip (adaptive, 2025)</td>
+        <td>Adapts to the running gradient distribution; 2&ndash;4x fewer loss spikes on long runs</td>
+      </tr>
+      <tr>
+        <td><strong>Initialisation</strong></td>
+        <td>Xavier (uniform)</td>
+        <td>Kaiming for ReLU-family, Xavier for Tanh/Sigmoid</td>
+        <td>Kaiming preserves signal variance through ReLU's 50% zeroing</td>
+      </tr>
+      <tr>
+        <td><strong>Hyperparameter transfer</strong></td>
+        <td>Tune LR / init / etc. separately at every scale</td>
+        <td>&mu;P (Maximal Update Parametrization)</td>
+        <td>Tune at 100M, transfer zero-shot to 7B+ (Yang &amp; Hu, 2021)</td>
+      </tr>
+      <tr>
+        <td><strong>Precision</strong></td>
+        <td>FP32 throughout</td>
+        <td>BF16 forward + FP32 optimiser states (mixed precision)</td>
+        <td>2&ndash;4x memory / throughput; BF16 dynamic range avoids FP16 NaN issues</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout callout-advanced" style="margin-top: 4px; font-size: 0.72em; padding: 6px 10px;">
+    <strong>Rule:</strong> If you copy an architecture from a paper published before 2022, replace every row above with the 2026 column before you start training.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. This is the "what would Llama 3 / Mistral / Gemma do" slide. Every row here is supported by an ablation in a 2022&ndash;2025 paper. The pedagogical point: students often implement textbook defaults (ReLU, BatchNorm, Adam+L2) and then wonder why their models do not match modern benchmarks. The answer is this table. Flag that SwiGLU and RMSNorm are transformer-specific; for CNNs GELU and GroupNorm/LayerNorm are the comparable upgrades.
+  </aside>
+</section>
+
+<!-- SLIDE 5L: LR Range Test -->
+<section>
+  <h2>The LR Range Test (Leslie Smith, 2017)</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <p>Before you train, find your learning rate. Do NOT guess.</p>
+      <ol style="font-size: 0.80em;">
+        <li>Train for ~100&ndash;500 steps, increasing LR exponentially from 1e-8 to 10</li>
+        <li>Plot loss vs log(LR)</li>
+        <li>Find the divergence point (loss shoots up)</li>
+        <li>Pick training LR = <strong>1/3 to 1/10</strong> of the divergence LR</li>
+      </ol>
+<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+
+result = DLDiagnostics.lr_range_test(
+    model, dataloader,
+    lr_min=1e-7, lr_max=10, steps=200,
+)
+print(f"Use lr = {result['suggested_lr']:.1e}")
+#   &rarr; rule of thumb: divergence-point LR / 10
+result["figure"].show()     # the curve below
+</code></pre>
+      <p class="small muted" style="margin-top: 4px;">Three lines replace a custom scheduler. The helper handles LR ramp, divergence detection, and plotting.</p>
+    </div>
+    <div class="col">
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 340 260" style="max-width: 100%; max-height: 260px;" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="0" width="340" height="260" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+          <!-- axes -->
+          <line x1="40" y1="210" x2="320" y2="210" stroke="#334155" stroke-width="1.5"/>
+          <line x1="40" y1="30"  x2="40"  y2="210" stroke="#334155" stroke-width="1.5"/>
+          <text x="180" y="240" font-size="11" fill="#334155" text-anchor="middle">log(learning rate)</text>
+          <text x="25" y="120" font-size="11" fill="#334155" text-anchor="middle" transform="rotate(-90 25 120)">loss</text>
+          <!-- curve: flat, sweet spot, divergence -->
+          <path d="M 50 120 L 110 118 Q 160 70 220 80 L 250 180 L 300 40" stroke="#0D9488" stroke-width="2.5" fill="none"/>
+          <!-- zones -->
+          <rect x="50"  y="30" width="60" height="180" fill="#E2E8F0" opacity="0.3"/>
+          <text x="80" y="22" font-size="9" fill="#64748B" text-anchor="middle">flat (too low)</text>
+          <rect x="110" y="30" width="120" height="180" fill="#D1FAE5" opacity="0.4"/>
+          <text x="170" y="22" font-size="9" fill="#047857" text-anchor="middle" font-weight="700">optimal zone</text>
+          <rect x="230" y="30" width="90" height="180" fill="#FECACA" opacity="0.4"/>
+          <text x="275" y="22" font-size="9" fill="#B91C1C" text-anchor="middle">divergence</text>
+          <!-- markers -->
+          <circle cx="250" cy="180" r="5" fill="#F43F5E"/>
+          <text x="258" y="172" font-size="9" fill="#BE123C">div point</text>
+          <circle cx="180" cy="65" r="5" fill="#22C55E"/>
+          <text x="120" y="58" font-size="9" fill="#166534" font-weight="700">pick LR here</text>
+        </svg>
+      </div>
+      <p class="small muted" style="text-align: center;">Used by fast.ai, timm, HuggingFace Trainer.</p>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. The LR range test is the single cheapest hyperparameter decision in DL &mdash; 100 steps of training tells you the right LR for the real run. Walk through the three zones. Flat: LR too low to move weights. Sweet spot: loss drops fast. Divergence: LR too high, loss blows up. Pick 1/3 to 1/10 of the divergence point &mdash; this gives headroom. Flag: this is why Lesson 5.2 starts every CNN training with a 2-minute LR range test.
+  </aside>
+</section>
+
+<!-- SLIDE 5M: Scaling Laws -->
+<section>
+  <h2>Scaling Laws &mdash; How Much Training?</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">The compute = params &times; data triangle</h3>
+      <div class="diagram-container" style="text-align: center;">
+        <svg viewBox="0 0 420 270" style="max-width: 100%; max-height: 380px; width: 100%;" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="210,40 60,220 360,220" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+          <circle cx="210" cy="40" r="8" fill="#0D9488"/>
+          <text x="210" y="28" font-size="13" font-weight="700" fill="#0D9488" text-anchor="middle">Compute (FLOPs)</text>
+          <circle cx="60" cy="220" r="8" fill="#4F46E5"/>
+          <text x="60" y="244" font-size="13" font-weight="700" fill="#4F46E5" text-anchor="middle">Parameters (N)</text>
+          <text x="60" y="258" font-size="10" fill="#64748B" text-anchor="middle">model size</text>
+          <circle cx="360" cy="220" r="8" fill="#F59E0B"/>
+          <text x="360" y="244" font-size="13" font-weight="700" fill="#F59E0B" text-anchor="middle">Data (tokens, D)</text>
+          <text x="360" y="258" font-size="10" fill="#64748B" text-anchor="middle">training corpus</text>
+          <text x="210" y="135" font-size="11" fill="#334155" text-anchor="middle">C &asymp; 6 &times; N &times; D</text>
+          <text x="210" y="155" font-size="11" font-weight="700" fill="#334155" text-anchor="middle">Chinchilla: D &asymp; 20 &times; N</text>
+          <text x="210" y="175" font-size="10" fill="#64748B" text-anchor="middle">Llama 3 8B: 1,875 &times; N</text>
+          <text x="210" y="190" font-size="10" fill="#64748B" text-anchor="middle">Llama 3 70B: 215 &times; N</text>
+        </svg>
+      </div>
+      <p class="small muted" style="margin: 4px 0 0; text-align: center;">Read: pick any two corners; the third follows.</p>
+    </div>
+    <div class="col">
+      <h3 style="margin-bottom: 4px;">How to read it</h3>
+      <div class="callout callout-foundations" style="font-size: 0.74em; margin-top: 0;">
+        <strong>Fixed compute budget:</strong> you choose <em>how to spend</em> it &mdash; bigger model with less data, or smaller model with more data?
+      </div>
+      <div class="callout callout-advanced" style="font-size: 0.74em; margin-top: 6px;">
+        <strong>Chinchilla (20 tokens/param):</strong> balanced &mdash; the cheapest way to <em>train</em> a model to a given quality.
+      </div>
+      <div class="callout callout-theory" style="font-size: 0.74em; margin-top: 6px;">
+        <strong>Llama 3 8B (1,875 tokens/param):</strong> deliberately over-trained. <em>Why?</em> Training is one-time; inference is forever. A smaller model that hit the same quality is cheaper to <em>deploy</em>. Shrink N, overtrain D.
+      </div>
+      <div class="callout callout-foundations" style="font-size: 0.72em; margin-top: 6px;">
+        <strong>Decision rule:</strong> small + overtrained = cheaper to deploy. Big + Chinchilla-optimal = cheaper to train. Pick by where the cost lives.
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. This slide prevents a common student error: training for 5 epochs, seeing loss still decreasing, and concluding "autoencoders/transformers/RL don't work for my data." The Chinchilla rule says you need ~20 tokens per parameter MINIMUM; production models like Llama 3 train at 1,875 tokens per parameter because inference is where the real cost lives. For this course, the takeaway is: give your model enough data AND enough steps before declaring the architecture a failure.
+  </aside>
+</section>
+
 
 <!-- SLIDE 6: Lesson 5.1 Title -->
 <section class="title-slide">
@@ -485,6 +1770,73 @@
       </div>
     </div>
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 680 155" xmlns="http://www.w3.org/2000/svg" style="max-width: 92%; height: auto;" role="img" aria-label="Denoising autoencoder data flow: clean input is corrupted with noise, passed through the network, and loss is measured against the clean original">
+    <defs>
+      <marker id="dae-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
+      </marker>
+      <marker id="dae-arr-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#F43F5E"/>
+      </marker>
+    </defs>
+    <!-- Clean input grid -->
+    <rect x="10" y="40" width="56" height="56" rx="4" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+    <rect x="14" y="44" width="12" height="12" fill="#22C55E" opacity="0.8"/><rect x="28" y="44" width="12" height="12" fill="#22C55E" opacity="0.4"/>
+    <rect x="42" y="44" width="12" height="12" fill="#22C55E" opacity="0.6"/><rect x="14" y="58" width="12" height="12" fill="#22C55E" opacity="0.3"/>
+    <rect x="28" y="58" width="12" height="12" fill="#22C55E" opacity="0.9"/><rect x="42" y="58" width="12" height="12" fill="#22C55E" opacity="0.5"/>
+    <rect x="14" y="72" width="12" height="12" fill="#22C55E" opacity="0.7"/><rect x="28" y="72" width="12" height="12" fill="#22C55E" opacity="0.2"/>
+    <rect x="42" y="72" width="12" height="12" fill="#22C55E" opacity="0.8"/>
+    <text x="38" y="112" text-anchor="middle" font-family="Inter" font-size="10" fill="#22C55E" font-weight="700">x (clean)</text>
+    <!-- Add noise arrow -->
+    <line x1="70" y1="68" x2="108" y2="68" stroke="#1E293B" stroke-width="1.5" marker-end="url(#dae-arr)"/>
+    <text x="89" y="60" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">+ noise</text>
+    <!-- Noisy input grid -->
+    <rect x="112" y="40" width="56" height="56" rx="4" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5"/>
+    <rect x="116" y="44" width="12" height="12" fill="#F59E0B" opacity="0.7"/><rect x="130" y="44" width="12" height="12" fill="#F59E0B" opacity="0.2"/>
+    <rect x="144" y="44" width="12" height="12" fill="#F59E0B" opacity="0.9"/><rect x="116" y="58" width="12" height="12" fill="#F59E0B" opacity="0.5"/>
+    <rect x="130" y="58" width="12" height="12" fill="#F59E0B" opacity="0.6"/><rect x="144" y="58" width="12" height="12" fill="#F59E0B" opacity="0.3"/>
+    <rect x="116" y="72" width="12" height="12" fill="#F59E0B" opacity="0.4"/><rect x="130" y="72" width="12" height="12" fill="#F59E0B" opacity="0.8"/>
+    <rect x="144" y="72" width="12" height="12" fill="#F59E0B" opacity="0.1"/>
+    <text x="140" y="112" text-anchor="middle" font-family="Inter" font-size="10" fill="#F59E0B" font-weight="700">x&#771; (noisy)</text>
+    <!-- Arrow to encoder -->
+    <line x1="172" y1="68" x2="210" y2="68" stroke="#1E293B" stroke-width="1.5" marker-end="url(#dae-arr)"/>
+    <!-- Encoder -->
+    <path d="M214,30 L254,50 L254,86 L214,106 Z" fill="#4F46E5" rx="3"/>
+    <text x="234" y="72" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">Enc</text>
+    <!-- Bottleneck -->
+    <line x1="258" y1="68" x2="286" y2="68" stroke="#1E293B" stroke-width="1.5" marker-end="url(#dae-arr)"/>
+    <rect x="290" y="54" width="28" height="28" rx="14" fill="#8B5CF6" stroke="#8B5CF6" stroke-width="1.5"/>
+    <text x="304" y="72" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">z</text>
+    <text x="304" y="96" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">latent</text>
+    <!-- Arrow to decoder -->
+    <line x1="322" y1="68" x2="350" y2="68" stroke="#1E293B" stroke-width="1.5" marker-end="url(#dae-arr)"/>
+    <!-- Decoder -->
+    <path d="M354,50 L394,30 L394,106 L354,86 Z" fill="#0D9488" rx="3"/>
+    <text x="374" y="72" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">Dec</text>
+    <!-- Arrow to output -->
+    <line x1="398" y1="68" x2="432" y2="68" stroke="#1E293B" stroke-width="1.5" marker-end="url(#dae-arr)"/>
+    <!-- Reconstructed output grid -->
+    <rect x="436" y="40" width="56" height="56" rx="4" fill="#F0FDF4" stroke="#3B82F6" stroke-width="1.5"/>
+    <rect x="440" y="44" width="12" height="12" fill="#3B82F6" opacity="0.75"/><rect x="454" y="44" width="12" height="12" fill="#3B82F6" opacity="0.35"/>
+    <rect x="468" y="44" width="12" height="12" fill="#3B82F6" opacity="0.55"/><rect x="440" y="58" width="12" height="12" fill="#3B82F6" opacity="0.28"/>
+    <rect x="454" y="58" width="12" height="12" fill="#3B82F6" opacity="0.85"/><rect x="468" y="58" width="12" height="12" fill="#3B82F6" opacity="0.48"/>
+    <rect x="440" y="72" width="12" height="12" fill="#3B82F6" opacity="0.65"/><rect x="454" y="72" width="12" height="12" fill="#3B82F6" opacity="0.18"/>
+    <rect x="468" y="72" width="12" height="12" fill="#3B82F6" opacity="0.72"/>
+    <text x="464" y="112" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6" font-weight="700">x&#770; (output)</text>
+    <!-- Loss arrow from output back to clean input (the key insight) -->
+    <path d="M 464 40 Q 464 10 250 10 Q 38 10 38 36" fill="none" stroke="#F43F5E" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#dae-arr-rose)"/>
+    <rect x="210" y="2" width="80" height="16" rx="3" fill="#FFF1F2"/>
+    <text x="250" y="13" text-anchor="middle" font-family="Inter" font-size="10" fill="#F43F5E" font-weight="700">Loss = ||x - x&#770;||&#178;</text>
+    <text x="555" y="60" font-family="Inter" font-size="9" fill="#F43F5E" font-weight="600">
+      <tspan x="535" dy="0">Loss is against</tspan>
+      <tspan x="535" dy="12">the CLEAN original,</tspan>
+      <tspan x="535" dy="12">not the noisy input!</tspan>
+    </text>
+    <!-- Arrow from annotation to loss arc -->
+    <line x1="535" y1="68" x2="498" y2="42" stroke="#F43F5E" stroke-width="1" stroke-dasharray="3,2"/>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -517,11 +1869,44 @@
       </div>
     </div>
   </div>
+  <figure style="text-align: center; margin-top: 8px;">
+    <svg viewBox="0 0 640 180" xmlns="http://www.w3.org/2000/svg" style="max-width: 85%; height: auto;" role="img" aria-label="Vanilla AE vs VAE latent space">
+      <defs>
+        <radialGradient id="gauss1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#0D9488" stop-opacity="0.5"/><stop offset="100%" stop-color="#0D9488" stop-opacity="0.02"/></radialGradient>
+        <radialGradient id="gauss2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#4F46E5" stop-opacity="0.5"/><stop offset="100%" stop-color="#4F46E5" stop-opacity="0.02"/></radialGradient>
+        <radialGradient id="gauss3" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#F59E0B" stop-opacity="0.5"/><stop offset="100%" stop-color="#F59E0B" stop-opacity="0.02"/></radialGradient>
+      </defs>
+      <!-- Left: Vanilla AE — isolated points -->
+      <text x="150" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E293B">Vanilla AE: isolated points</text>
+      <rect x="20" y="25" width="260" height="140" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <circle cx="80" cy="70" r="5" fill="#0D9488"/><text x="80" y="60" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">3</text>
+      <circle cx="200" cy="110" r="5" fill="#4F46E5"/><text x="200" y="100" text-anchor="middle" font-family="Inter" font-size="9" fill="#4F46E5">7</text>
+      <circle cx="140" cy="140" r="5" fill="#F59E0B"/><text x="140" y="130" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B">5</text>
+      <circle cx="240" cy="60" r="5" fill="#0D9488"/><text x="240" y="50" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">3</text>
+      <circle cx="60" cy="130" r="5" fill="#4F46E5"/><text x="60" y="120" text-anchor="middle" font-family="Inter" font-size="9" fill="#4F46E5">7</text>
+      <text x="150" y="172" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">gaps between points → no valid generation</text>
+      <!-- Arrow -->
+      <text x="320" y="100" text-anchor="middle" font-family="Inter" font-weight="700" font-size="22" fill="#1E293B">→</text>
+      <!-- Right: VAE — overlapping Gaussian blobs -->
+      <text x="490" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E293B">VAE: overlapping distributions</text>
+      <rect x="360" y="25" width="260" height="140" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <ellipse cx="420" cy="80" rx="55" ry="45" fill="url(#gauss1)"/>
+      <ellipse cx="530" cy="110" rx="50" ry="40" fill="url(#gauss2)"/>
+      <ellipse cx="480" cy="130" rx="45" ry="35" fill="url(#gauss3)"/>
+      <circle cx="420" cy="80" r="4" fill="#0D9488"/><text x="420" y="72" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">3</text>
+      <circle cx="530" cy="110" r="4" fill="#4F46E5"/><text x="530" y="102" text-anchor="middle" font-family="Inter" font-size="9" fill="#4F46E5">7</text>
+      <circle cx="480" cy="130" r="4" fill="#F59E0B"/><text x="480" y="122" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B">5</text>
+      <!-- Star in overlap region = generated sample -->
+      <polygon points="470,95 472,89 478,89 474,85 475,79 470,82 465,79 466,85 462,89 468,89" fill="#F43F5E"/>
+      <text x="470" y="76" text-anchor="middle" font-family="Inter" font-size="8" font-weight="600" fill="#F43F5E">new!</text>
+      <text x="490" y="172" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">continuous space → sample anywhere → generate</text>
+    </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the conceptual breakthrough slide. VAEs are generative models: they learn a distribution, not a mapping. The probabilistic latent space is continuous and smooth, which means you can interpolate between data points and generate new ones.
+    Time: ~3 min. This is the conceptual breakthrough slide. VAEs are generative models: they learn a distribution, not a mapping. The probabilistic latent space is continuous and smooth, which means you can interpolate between data points and generate new ones. Point at the left diagram: "vanilla AE maps each digit to a precise point — if you sample between two points, you get garbage." Point at the right: "VAE maps each digit to a fuzzy cloud — the overlap regions produce valid new digits."
   </aside>
 </section>
 
@@ -590,8 +1975,8 @@
       </div>
     </div>
   </div>
-  <div class="diagram-container" style="display: flex; justify-content: center; margin: 8px 0;">
-  <svg viewBox="0 0 620 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="VAE reparameterisation trick">
+  <div class="diagram-container" style="display: flex; justify-content: center; margin: 2px 0;">
+  <svg viewBox="0 0 620 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 80%; max-height: 200px; height: auto;" role="img" aria-label="VAE reparameterisation trick">
     <defs>
       <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
@@ -784,7 +2169,7 @@
 </section>
 
 <!-- SLIDE 17A: Lesson 5.1 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.1: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -812,8 +2197,8 @@
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Any time the business says "we do not have labels for the bad cases, only the good ones", an autoencoder is the right first tool. You trade a supervised classifier (needs labelled fraud) for a reconstruction threshold (needs only normal data). In regulated industries where labelled incidents are rare and expensive, this is often the only workable approach.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> when the business says "we have only the <em>good</em> examples, not the bad ones," an autoencoder is the right first tool &mdash; trade a supervised classifier (needs labelled fraud) for a reconstruction threshold (needs only normal data).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -848,30 +2233,30 @@
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>How It Works</h3>
-      <ul>
-        <li><strong>Filter (kernel):</strong> small matrix (e.g., 3x3) that slides over the input</li>
+      <h3 style="margin-bottom:4px;">How It Works</h3>
+      <ul style="font-size:0.82em;">
+        <li><strong>Filter (kernel):</strong> small matrix (e.g., 3x3) sliding over input</li>
         <li><strong>Stride:</strong> how far the filter moves each step</li>
-        <li><strong>Padding:</strong> zeros added around the border to control output size</li>
+        <li><strong>Padding:</strong> zeros added around border to control output size</li>
         <li><strong>Feature map:</strong> the output after applying one filter</li>
       </ul>
-      <div class="callout callout-foundations" style="margin-top: 8px;">
+      <div class="callout callout-foundations" style="margin-top: 4px; padding: 6px 10px; font-size: 0.82em;">
         <strong>Analogy:</strong> A magnifying glass scanning across a photo, detecting one specific pattern at every position.
       </div>
     </div>
     <div class="col">
-      <h3>Output Size Formula</h3>
+      <h3 style="margin-bottom:4px;">Output Size Formula</h3>
       <div class="equation-box">
         <span class="katex-display">O = \frac{W - F + 2P}{S} + 1</span>
-        <div class="annotation"><span class="katex-inline">W</span> = input size, <span class="katex-inline">F</span> = filter size, <span class="katex-inline">P</span> = padding, <span class="katex-inline">S</span> = stride</div>
+        <div class="annotation"><span class="katex-inline">W</span> = input, <span class="katex-inline">F</span> = filter, <span class="katex-inline">P</span> = padding, <span class="katex-inline">S</span> = stride</div>
       </div>
-      <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Example:</strong> Input 28x28, filter 3x3, padding 1, stride 1: <span class="katex-inline">(28 - 3 + 2)/1 + 1 = 28</span>. Same spatial dimensions &mdash; this is "same" padding.
+      <div class="callout callout-theory" style="margin-top: 4px; padding: 6px 10px; font-size: 0.82em;">
+        <strong>Example:</strong> Input 28x28, filter 3x3, padding 1, stride 1: <span class="katex-inline">(28 - 3 + 2)/1 + 1 = 28</span>. Same spatial dimensions &mdash; "same" padding.
       </div>
     </div>
   </div>
-  <div class="diagram-container" style="display: flex; justify-content: center; margin: 8px 0;">
-  <svg viewBox="0 0 620 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Convolution operation">
+  <div class="diagram-container" style="display: flex; justify-content: center; margin: 4px 0;">
+  <svg viewBox="0 0 620 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 70%; height: auto; max-height: 180px;" role="img" aria-label="Convolution operation">
     <defs>
       <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
@@ -1159,7 +2544,86 @@
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. SE blocks add minimal parameters but measurable accuracy gains. The idea: not all feature channels are equally important for every input. SE learns to boost relevant channels and suppress irrelevant ones. Can be added to any CNN architecture.
+    Time: ~2 min. Introduce the three-step concept: squeeze compresses spatial information, excitation learns channel importance, recalibration applies the learned weights. Code on the right shows the full PyTorch implementation in ~15 lines.
+  </aside>
+</section>
+
+<!-- SLIDE 23b: SE Block Visual Data Flow -->
+<section>
+  <h2>SE Block: Data Flow</h2>
+  <span class="marker marker-theory">Theory</span>
+  <figure style="text-align:center; margin: 12px 0;">
+  <svg viewBox="0 0 700 135" xmlns="http://www.w3.org/2000/svg" style="max-width: 95%; height: auto;" role="img" aria-label="SE Block data flow: input tensor is squeezed via global average pooling, excited through FC layers, then used to recalibrate original feature maps">
+    <defs>
+      <marker id="se-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
+      </marker>
+    </defs>
+    <!-- Input feature maps H x W x C -->
+    <rect x="8" y="22" width="68" height="50" rx="4" fill="#EDE9FE" stroke="#8B5CF6" stroke-width="1.5"/>
+    <rect x="14" y="16" width="68" height="50" rx="4" fill="#DDD6FE" stroke="#8B5CF6" stroke-width="1.5"/>
+    <rect x="20" y="10" width="68" height="50" rx="4" fill="#C4B5FD" stroke="#8B5CF6" stroke-width="1.5"/>
+    <text x="46" y="82" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#1E293B">H&#215;W&#215;C</text>
+    <text x="46" y="95" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">input</text>
+    <!-- Arrow -->
+    <line x1="92" y1="40" x2="122" y2="40" stroke="#1E293B" stroke-width="1.5" marker-end="url(#se-arr)"/>
+    <!-- Global Average Pool (squeeze) -->
+    <rect x="126" y="18" width="72" height="44" rx="6" fill="#0D9488"/>
+    <text x="162" y="36" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">Global Avg</text>
+    <text x="162" y="48" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">Pool</text>
+    <text x="162" y="74" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488" font-weight="600">Squeeze</text>
+    <!-- Arrow + shape label -->
+    <line x1="202" y1="40" x2="232" y2="40" stroke="#1E293B" stroke-width="1.5" marker-end="url(#se-arr)"/>
+    <text x="217" y="32" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">1&#215;1&#215;C</text>
+    <!-- FC + ReLU -->
+    <rect x="236" y="18" width="56" height="44" rx="6" fill="#4F46E5"/>
+    <text x="264" y="36" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">FC</text>
+    <text x="264" y="48" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">ReLU</text>
+    <!-- Arrow + shape label -->
+    <line x1="296" y1="40" x2="320" y2="40" stroke="#1E293B" stroke-width="1.5" marker-end="url(#se-arr)"/>
+    <text x="308" y="32" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">C/r</text>
+    <!-- FC + Sigmoid -->
+    <rect x="324" y="18" width="56" height="44" rx="6" fill="#4F46E5"/>
+    <text x="352" y="36" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">FC</text>
+    <text x="352" y="48" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">Sigmoid</text>
+    <text x="308" y="74" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5" font-weight="600">Excite</text>
+    <!-- Arrow + shape label -->
+    <line x1="384" y1="40" x2="414" y2="40" stroke="#1E293B" stroke-width="1.5" marker-end="url(#se-arr)"/>
+    <text x="399" y="32" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">C weights</text>
+    <!-- Channel-wise multiply -->
+    <circle cx="434" cy="40" r="18" fill="white" stroke="#F59E0B" stroke-width="2.5"/>
+    <text x="434" y="46" text-anchor="middle" font-family="Inter" font-size="16" fill="#F59E0B" font-weight="700">&#215;</text>
+    <text x="434" y="74" text-anchor="middle" font-family="Inter" font-size="8" fill="#F59E0B" font-weight="600">Scale</text>
+    <!-- Skip connection from input to multiply -->
+    <path d="M 54 72 Q 54 120 244 120 Q 434 120 434 62" fill="none" stroke="#22C55E" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#se-arr)"/>
+    <text x="244" y="116" text-anchor="middle" font-family="Inter" font-size="8" fill="#22C55E" font-weight="600">original feature maps</text>
+    <!-- Arrow to output -->
+    <line x1="456" y1="40" x2="486" y2="40" stroke="#1E293B" stroke-width="1.5" marker-end="url(#se-arr)"/>
+    <!-- Output feature maps -->
+    <rect x="490" y="22" width="68" height="50" rx="4" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+    <rect x="496" y="16" width="68" height="50" rx="4" fill="#BBF7D0" stroke="#22C55E" stroke-width="1.5"/>
+    <rect x="502" y="10" width="68" height="50" rx="4" fill="#86EFAC" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="528" y="82" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#1E293B">H&#215;W&#215;C</text>
+    <text x="528" y="95" text-anchor="middle" font-family="Inter" font-size="8" fill="#22C55E" font-weight="600">recalibrated</text>
+    <!-- Channel importance bars -->
+    <rect x="602" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.3"/>
+    <rect x="616" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.9"/>
+    <rect x="630" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.15"/>
+    <rect x="644" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.7"/>
+    <rect x="658" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.5"/>
+    <rect x="672" y="10" width="10" height="50" rx="2" fill="#8B5CF6" opacity="0.05"/>
+    <text x="641" y="74" text-anchor="middle" font-family="Inter" font-size="8" fill="#8B5CF6" font-weight="600">learned</text>
+    <text x="641" y="84" text-anchor="middle" font-family="Inter" font-size="8" fill="#8B5CF6" font-weight="600">channel weights</text>
+  </svg>
+  </figure>
+  <div class="callout callout-foundations" style="margin-top: 12px;">
+    <strong>Reading the diagram:</strong> The input tensor (purple, H&#215;W&#215;C) is squeezed to a 1&#215;1&#215;C vector by global average pooling. Two FC layers learn per-channel importance weights (the purple bars on the right &mdash; taller = more important). The original feature maps are multiplied by these weights, boosting relevant channels and suppressing irrelevant ones.
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~2 min. Walk through the diagram left to right. Point out the skip connection (green dashed) — the original feature maps bypass the squeeze/excite pathway and are multiplied by the learned weights. The channel importance bars show that not all channels matter equally. SE adds only ~2,500 parameters for a 64-channel layer but consistently adds 0.5-1% accuracy.
   </aside>
 </section>
 
@@ -1207,20 +2671,58 @@
 <section>
   <h2>Vision Transformers (ViT) &mdash; Brief Introduction</h2>
   <span class="marker marker-advanced">Advanced</span>
-  <div class="columns">
-    <div class="col">
-      <h3>The Idea</h3>
-      <ol>
-        <li>Split image into fixed-size patches (e.g., 16x16)</li>
-        <li>Flatten each patch into a vector</li>
-        <li>Add positional embeddings</li>
-        <li>Feed through a standard transformer encoder</li>
-        <li>Classification from [CLS] token</li>
-      </ol>
-      <div class="callout callout-advanced" style="margin-top: 8px;">
-        <strong>Key result:</strong> ViT outperforms CNNs when trained on large datasets (ImageNet-21k). CNNs still win on small datasets due to inductive biases (translation invariance, locality).
-      </div>
-    </div>
+  <figure style="text-align: center; margin: 4px 0;">
+    <svg viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg" style="max-width: 95%; height: auto;" role="img" aria-label="ViT: image to patch tokens">
+      <defs><marker id="vit-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1E293B"/></marker></defs>
+      <!-- Image with 4x4 grid -->
+      <rect x="10" y="15" width="96" height="96" rx="4" fill="#E0F2FE" stroke="#0D9488" stroke-width="2"/>
+      <line x1="34" y1="15" x2="34" y2="111" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <line x1="58" y1="15" x2="58" y2="111" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <line x1="82" y1="15" x2="82" y2="111" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <line x1="10" y1="39" x2="106" y2="39" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <line x1="10" y1="63" x2="106" y2="63" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <line x1="10" y1="87" x2="106" y2="87" stroke="#0D9488" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <text x="58" y="125" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">224×224 image</text>
+      <text x="58" y="8" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">4×4 = 16 patches</text>
+      <!-- Arrow 1 -->
+      <line x1="112" y1="63" x2="140" y2="63" stroke="#1E293B" stroke-width="1.5" marker-end="url(#vit-arr)"/>
+      <text x="126" y="55" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">flatten</text>
+      <!-- Patch embeddings as vertical bars -->
+      <rect x="148" y="20" width="8" height="90" rx="2" fill="#8B5CF6" opacity="0.3"/><text x="152" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#8B5CF6">[CLS]</text>
+      <rect x="160" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.6"/>
+      <rect x="172" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.5"/>
+      <rect x="184" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.4"/>
+      <rect x="196" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.5"/>
+      <rect x="208" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.35"/>
+      <text x="210" y="125" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">...</text>
+      <rect x="220" y="20" width="8" height="90" rx="2" fill="#0D9488" opacity="0.45"/>
+      <text x="186" y="125" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">17 token vectors</text>
+      <!-- Arrow 2 -->
+      <line x1="234" y1="63" x2="258" y2="63" stroke="#1E293B" stroke-width="1.5" marker-end="url(#vit-arr)"/>
+      <text x="246" y="55" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">+ pos</text>
+      <!-- Transformer block -->
+      <rect x="265" y="25" width="120" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="325" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Transformer</text>
+      <text x="325" y="70" text-anchor="middle" font-family="Inter" font-size="9" fill="#3B82F6">Encoder ×N</text>
+      <text x="325" y="85" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">self-attention + FFN</text>
+      <!-- Arrow 3 -->
+      <line x1="390" y1="63" x2="414" y2="63" stroke="#1E293B" stroke-width="1.5" marker-end="url(#vit-arr)"/>
+      <!-- CLS output -->
+      <rect x="420" y="35" width="60" height="55" rx="6" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="1.5"/>
+      <text x="450" y="57" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#8B5CF6">[CLS]</text>
+      <text x="450" y="72" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">output</text>
+      <!-- Arrow 4 -->
+      <line x1="484" y1="63" x2="508" y2="63" stroke="#1E293B" stroke-width="1.5" marker-end="url(#vit-arr)"/>
+      <!-- MLP head -->
+      <rect x="514" y="40" width="70" height="45" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="549" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#22C55E">MLP Head</text>
+      <text x="549" y="73" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">→ class</text>
+      <!-- Arrow 5 -->
+      <line x1="588" y1="63" x2="612" y2="63" stroke="#1E293B" stroke-width="1.5" marker-end="url(#vit-arr)"/>
+      <text x="640" y="67" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">cat</text>
+    </svg>
+  </figure>
+  <div class="columns" style="margin-top: 0;">
     <div class="col">
       <h3>CNN vs ViT</h3>
       <table>
@@ -1232,6 +2734,11 @@
           <tr><td>Global context</td><td>Late layers only</td><td>Every layer</td></tr>
         </tbody>
       </table>
+    </div>
+    <div class="col">
+      <div class="callout callout-advanced" style="margin-top: 0;">
+        <strong>Key result:</strong> ViT outperforms CNNs on large datasets (ImageNet-21k). CNNs win on small datasets due to inductive biases (translation invariance, locality).
+      </div>
       <p class="small muted" style="margin-top: 8px;">Full transformer derivation in Lesson 5.4.</p>
     </div>
   </div>
@@ -1387,7 +2894,7 @@ print(result.status)  # "valid"</code></pre>
 </section>
 
 <!-- SLIDE 29A: Lesson 5.2 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.2: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -1415,8 +2922,8 @@ print(result.status)  # "valid"</code></pre>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Every production CNN you will deploy starts with the same three decisions you faced in Exercise 2 &mdash; how deep, which residual pattern, and whether attention blocks earn their compute budget. The exercise numbers transfer directly: a 2% accuracy gain from SE blocks at modest compute cost is often the difference between a model that ships and one that does not.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> every production CNN starts with three decisions from Exercise 2 &mdash; how deep, which residual pattern, and whether attention earns its compute. A 2% gain from SE blocks is often the difference between a model that ships and one that does not.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -1780,6 +3287,61 @@ print(result.status)  # "valid"</code></pre>
       <p class="small muted" style="margin-top: 8px;">This is the precursor to self-attention in Transformers (Lesson 5.4).</p>
     </div>
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 660 155" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Temporal attention: hidden states along a timeline with varying attention weights converging to a context vector">
+    <defs>
+      <marker id="attn-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/>
+      </marker>
+      <marker id="attn-arr-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/>
+      </marker>
+    </defs>
+    <!-- Timeline -->
+    <line x1="40" y1="105" x2="400" y2="105" stroke="#CBD5E1" stroke-width="1.5"/>
+    <text x="220" y="148" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">time steps</text>
+    <!-- Hidden state bars h1..h5 -->
+    <rect x="55" y="60" width="28" height="42" rx="4" fill="#0D9488" opacity="0.8"/>
+    <text x="69" y="84" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">h&#8321;</text>
+    <rect x="115" y="60" width="28" height="42" rx="4" fill="#0D9488" opacity="0.8"/>
+    <text x="129" y="84" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">h&#8322;</text>
+    <rect x="175" y="60" width="28" height="42" rx="4" fill="#0D9488" opacity="0.8"/>
+    <text x="189" y="84" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">h&#8323;</text>
+    <rect x="235" y="60" width="28" height="42" rx="4" fill="#0D9488" opacity="0.8"/>
+    <text x="249" y="84" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">h&#8324;</text>
+    <rect x="295" y="60" width="28" height="42" rx="4" fill="#0D9488" opacity="0.8"/>
+    <text x="309" y="84" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">h&#8325;</text>
+    <!-- Attention weight bars alpha1..alpha5 (varying heights) -->
+    <rect x="60" y="36" width="18" height="14" rx="2" fill="#4F46E5" opacity="0.4"/>
+    <text x="69" y="31" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">0.08</text>
+    <rect x="120" y="26" width="18" height="24" rx="2" fill="#4F46E5" opacity="0.6"/>
+    <text x="129" y="21" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">0.15</text>
+    <rect x="180" y="10" width="18" height="40" rx="2" fill="#4F46E5" opacity="0.95"/>
+    <text x="189" y="6" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5" font-weight="700">0.45</text>
+    <rect x="240" y="28" width="18" height="22" rx="2" fill="#4F46E5" opacity="0.55"/>
+    <text x="249" y="23" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">0.12</text>
+    <rect x="300" y="22" width="18" height="28" rx="2" fill="#4F46E5" opacity="0.7"/>
+    <text x="309" y="17" text-anchor="middle" font-family="Inter" font-size="8" fill="#4F46E5">0.20</text>
+    <!-- Attention label -->
+    <text x="370" y="34" font-family="Inter" font-size="9" fill="#4F46E5" font-weight="600">&#945;&#8321;..&#945;&#8325;</text>
+    <!-- Weighted sum arrows from each h to context vector c -->
+    <line x1="69" y1="60" x2="490" y2="60" stroke="#4F46E5" stroke-width="1" opacity="0.25" marker-end="url(#attn-arr)"/>
+    <line x1="129" y1="60" x2="490" y2="60" stroke="#4F46E5" stroke-width="1" opacity="0.35" marker-end="url(#attn-arr)"/>
+    <line x1="189" y1="60" x2="490" y2="60" stroke="#4F46E5" stroke-width="2.5" opacity="0.8" marker-end="url(#attn-arr)"/>
+    <line x1="249" y1="62" x2="490" y2="62" stroke="#4F46E5" stroke-width="1" opacity="0.3" marker-end="url(#attn-arr)"/>
+    <line x1="309" y1="64" x2="490" y2="64" stroke="#4F46E5" stroke-width="1.5" opacity="0.5" marker-end="url(#attn-arr)"/>
+    <!-- Context vector c -->
+    <rect x="496" y="40" width="50" height="50" rx="25" fill="#4F46E5"/>
+    <text x="521" y="70" text-anchor="middle" font-family="Inter" font-size="16" fill="white" font-weight="700">c</text>
+    <text x="521" y="104" text-anchor="middle" font-family="Inter" font-size="9" fill="#4F46E5" font-weight="600">context</text>
+    <!-- Contrast: "last h only" crossed out -->
+    <rect x="570" y="30" width="80" height="60" rx="6" fill="#FEF2F2" stroke="#F43F5E" stroke-width="1" stroke-dasharray="4,2"/>
+    <text x="610" y="48" text-anchor="middle" font-family="Inter" font-size="8" fill="#F43F5E" font-weight="600">Without attention:</text>
+    <text x="610" y="60" text-anchor="middle" font-family="Inter" font-size="8" fill="#F43F5E">only h&#8325; used</text>
+    <text x="610" y="78" text-anchor="middle" font-family="Inter" font-size="8" fill="#F43F5E">earlier info lost</text>
+    <line x1="575" y1="35" x2="645" y2="85" stroke="#F43F5E" stroke-width="1.5" opacity="0.5"/>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -1924,7 +3486,7 @@ print(result.status)  # "valid"</code></pre>
 </section>
 
 <!-- SLIDE 40A: Lesson 5.3 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.3: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -1952,8 +3514,8 @@ print(result.status)  # "valid"</code></pre>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Any time the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is rarely the raw prediction &mdash; it is the <em>lead time</em> the prediction gives you. Six hours of warning on an ICU deterioration, one week of warning on a stock-out, 30 minutes of warning on MRT overcrowding: all of them convert an emergency into a scheduled decision.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> when the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is the <em>lead time</em> &mdash; six hours on ICU deterioration, a week on stock-outs, 30 min on crowding &mdash; converting emergencies into scheduled decisions.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -2170,31 +3732,10 @@ print(result.status)  # "valid"</code></pre>
     <span class="katex-display">\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h) W^O</span>
     <div class="annotation">where <span class="katex-inline">\text{head}_i = \text{Attention}(Q W_i^Q, K W_i^K, V W_i^V)</span></div>
   </div>
-  <div class="columns" style="margin-top: 12px;">
+  <div class="columns" style="margin-top: 8px;">
     <div class="col">
-      <h3>Why Multiple Heads?</h3>
-      <ul>
-        <li>Each head learns a <strong>different type of relationship</strong></li>
-        <li>Head 1 might attend to syntactic structure</li>
-        <li>Head 2 might attend to semantic similarity</li>
-        <li>Head 3 might attend to positional proximity</li>
-      </ul>
-    </div>
-    <div class="col">
-      <h3>Dimensions</h3>
-      <ul>
-        <li>Model dimension: <span class="katex-inline">d_{\text{model}} = 512</span></li>
-        <li>Number of heads: <span class="katex-inline">h = 8</span></li>
-        <li>Per-head dimension: <span class="katex-inline">d_k = d_v = d_{\text{model}}/h = 64</span></li>
-        <li>Same total computation as single-head with <span class="katex-inline">d_k = 512</span></li>
-      </ul>
-      <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Key insight:</strong> Multi-head attention is NOT more expensive. It splits the same dimensions across heads. The concatenation + <span class="katex-inline">W^O</span> projection recombines them.
-      </div>
-    </div>
-  </div>
-  <div class="diagram-container" style="display: flex; justify-content: center; margin: 8px 0;">
-  <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" style="max-width: 85%; height: auto;" role="img" aria-label="Multi-head attention">
+  <div class="diagram-container" style="display: flex; justify-content: center; margin: 0;">
+  <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;" role="img" aria-label="Multi-head attention">
     <defs>
       <marker id="arr10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
@@ -2241,6 +3782,26 @@ print(result.status)  # "valid"</code></pre>
     <line x1="290" y1="259" x2="290" y2="270" stroke="#1E293B" stroke-width="2" marker-end="url(#arr10)"/>
   </svg>
   </div>
+    </div>
+    <div class="col">
+      <h3 style="margin: 0 0 4px;">Why multiple heads?</h3>
+      <ul style="font-size: 0.82em; margin: 0;">
+        <li>Each head learns a <strong>different relationship</strong></li>
+        <li>Head 1 &rarr; syntactic structure</li>
+        <li>Head 2 &rarr; semantic similarity</li>
+        <li>Head 3 &rarr; positional proximity</li>
+      </ul>
+      <h3 style="margin: 8px 0 4px;">Dimensions</h3>
+      <ul style="font-size: 0.82em; margin: 0;">
+        <li><span class="katex-inline">d_{\text{model}} = 512</span>, heads <span class="katex-inline">h = 8</span></li>
+        <li>Per-head <span class="katex-inline">d_k = d_v = d_{\text{model}}/h = 64</span></li>
+        <li>Same compute as single-head with <span class="katex-inline">d_k = 512</span></li>
+      </ul>
+      <div class="callout callout-theory" style="margin-top: 6px; font-size: 0.78em;">
+        <strong>Key insight:</strong> multi-head is NOT more expensive &mdash; dimensions split across heads, <span class="katex-inline">W^O</span> recombines.
+      </div>
+    </div>
+  </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -2278,6 +3839,188 @@ print(result.status)  # "valid"</code></pre>
       </div>
     </div>
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 660 150" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Positional encoding heatmap showing sinusoidal patterns: low dimensions oscillate slowly, high dimensions oscillate rapidly">
+    <defs>
+      <linearGradient id="pe-hot" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3B82F6"/><stop offset="50%" stop-color="#FCD34D"/><stop offset="100%" stop-color="#F43F5E"/>
+      </linearGradient>
+    </defs>
+    <!-- Axis labels -->
+    <text x="310" y="140" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B" font-weight="600">position (0..15)</text>
+    <text x="14" y="62" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B" font-weight="600" transform="rotate(-90, 14, 62)">dimension</text>
+    <!-- Row labels (dimensions) -->
+    <text x="38" y="24" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=0</text>
+    <text x="38" y="38" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=1</text>
+    <text x="38" y="52" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=2</text>
+    <text x="38" y="66" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=3</text>
+    <text x="38" y="80" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=4</text>
+    <text x="38" y="94" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=5</text>
+    <text x="38" y="108" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=6</text>
+    <text x="38" y="122" text-anchor="end" font-family="JetBrains Mono" font-size="8" fill="#64748B">d=7</text>
+    <!-- Column labels (positions) -->
+    <text x="55" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">0</text>
+    <text x="89" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">2</text>
+    <text x="123" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">4</text>
+    <text x="157" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">6</text>
+    <text x="191" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">8</text>
+    <text x="225" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">10</text>
+    <text x="259" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">12</text>
+    <text x="293" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#64748B">14</text>
+    <!-- Heatmap grid: d=0 sin (slow oscillation, period ~628) -->
+    <!-- sin(pos/10000^(0/8)) = sin(pos) — fast for these positions -->
+    <!-- d=0: sin(0)=0, sin(1)=.84, sin(2)=.91, sin(3)=.14, sin(4)=-.76, etc -->
+    <rect x="42" y="16" width="17" height="12" rx="1" fill="#FCD34D" opacity="1.0"/>
+    <rect x="59" y="16" width="17" height="12" rx="1" fill="#F97316" opacity="1.0"/>
+    <rect x="76" y="16" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.95"/>
+    <rect x="93" y="16" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="110" y="16" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="127" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="144" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="1.0"/>
+    <rect x="161" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.7"/>
+    <rect x="178" y="16" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="195" y="16" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="212" y="16" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.6"/>
+    <rect x="229" y="16" width="17" height="12" rx="1" fill="#F97316" opacity="0.5"/>
+    <rect x="246" y="16" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="263" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.9"/>
+    <rect x="280" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="1.0"/>
+    <rect x="297" y="16" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <!-- d=1: cos version (shifted) -->
+    <rect x="42" y="30" width="17" height="12" rx="1" fill="#F43F5E" opacity="1.0"/>
+    <rect x="59" y="30" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <rect x="76" y="30" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="93" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="110" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="1.0"/>
+    <rect x="127" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.7"/>
+    <rect x="144" y="30" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="161" y="30" width="17" height="12" rx="1" fill="#F97316" opacity="0.9"/>
+    <rect x="178" y="30" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.9"/>
+    <rect x="195" y="30" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="212" y="30" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="229" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.7"/>
+    <rect x="246" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="1.0"/>
+    <rect x="263" y="30" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="280" y="30" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="297" y="30" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <!-- d=2: slower oscillation -->
+    <rect x="42" y="44" width="17" height="12" rx="1" fill="#FCD34D" opacity="1.0"/>
+    <rect x="59" y="44" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.8"/>
+    <rect x="76" y="44" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="93" y="44" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="110" y="44" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="127" y="44" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="144" y="44" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="161" y="44" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="178" y="44" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="195" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <rect x="212" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <rect x="229" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="246" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.9"/>
+    <rect x="263" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="280" y="44" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.5"/>
+    <rect x="297" y="44" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <!-- d=3: cos of d=2 -->
+    <rect x="42" y="58" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.9"/>
+    <rect x="59" y="58" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.85"/>
+    <rect x="76" y="58" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="93" y="58" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.6"/>
+    <rect x="110" y="58" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="127" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <rect x="144" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <rect x="161" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="178" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.9"/>
+    <rect x="195" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.85"/>
+    <rect x="212" y="58" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <rect x="229" y="58" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="246" y="58" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="263" y="58" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <rect x="280" y="58" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="297" y="58" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.85"/>
+    <!-- d=4: even slower -->
+    <rect x="42" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="1.0"/>
+    <rect x="59" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.9"/>
+    <rect x="76" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.85"/>
+    <rect x="93" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.7"/>
+    <rect x="110" y="72" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="127" y="72" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <rect x="144" y="72" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="161" y="72" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="178" y="72" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="195" y="72" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="212" y="72" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="229" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="246" y="72" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="263" y="72" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <rect x="280" y="72" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.5"/>
+    <rect x="297" y="72" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <!-- d=5: cos of d=4 -->
+    <rect x="42" y="86" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.85"/>
+    <rect x="59" y="86" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="76" y="86" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.75"/>
+    <rect x="93" y="86" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="110" y="86" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <rect x="127" y="86" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.6"/>
+    <rect x="144" y="86" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="161" y="86" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="178" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <rect x="195" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.5"/>
+    <rect x="212" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.6"/>
+    <rect x="229" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.7"/>
+    <rect x="246" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.8"/>
+    <rect x="263" y="86" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.75"/>
+    <rect x="280" y="86" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="297" y="86" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <!-- d=6: very slow — mostly one color band -->
+    <rect x="42" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="1.0"/>
+    <rect x="59" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.95"/>
+    <rect x="76" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.9"/>
+    <rect x="93" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.85"/>
+    <rect x="110" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.8"/>
+    <rect x="127" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.75"/>
+    <rect x="144" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.7"/>
+    <rect x="161" y="100" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.65"/>
+    <rect x="178" y="100" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="195" y="100" width="17" height="12" rx="1" fill="#F97316" opacity="0.65"/>
+    <rect x="212" y="100" width="17" height="12" rx="1" fill="#F97316" opacity="0.7"/>
+    <rect x="229" y="100" width="17" height="12" rx="1" fill="#F97316" opacity="0.75"/>
+    <rect x="246" y="100" width="17" height="12" rx="1" fill="#F97316" opacity="0.8"/>
+    <rect x="263" y="100" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="280" y="100" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.75"/>
+    <rect x="297" y="100" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <!-- d=7: cos of d=6 — nearly flat -->
+    <rect x="42" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.85"/>
+    <rect x="59" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="76" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.8"/>
+    <rect x="93" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.75"/>
+    <rect x="110" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="127" y="114" width="17" height="12" rx="1" fill="#F43F5E" opacity="0.7"/>
+    <rect x="144" y="114" width="17" height="12" rx="1" fill="#F97316" opacity="0.65"/>
+    <rect x="161" y="114" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="178" y="114" width="17" height="12" rx="1" fill="#F97316" opacity="0.6"/>
+    <rect x="195" y="114" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.55"/>
+    <rect x="212" y="114" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="229" y="114" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.5"/>
+    <rect x="246" y="114" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.45"/>
+    <rect x="263" y="114" width="17" height="12" rx="1" fill="#FCD34D" opacity="0.4"/>
+    <rect x="280" y="114" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <rect x="297" y="114" width="17" height="12" rx="1" fill="#3B82F6" opacity="0.4"/>
+    <!-- Annotation arrows -->
+    <line x1="320" y1="24" x2="365" y2="24" stroke="#1E293B" stroke-width="1"/>
+    <text x="370" y="20" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">high dim: rapid oscillation</text>
+    <text x="370" y="30" font-family="Inter" font-size="8" fill="#64748B">(captures local position)</text>
+    <line x1="320" y1="110" x2="365" y2="110" stroke="#1E293B" stroke-width="1"/>
+    <text x="370" y="106" font-family="Inter" font-size="9" fill="#1E293B" font-weight="600">low dim: slow oscillation</text>
+    <text x="370" y="116" font-family="Inter" font-size="8" fill="#64748B">(captures global position)</text>
+    <!-- Color legend -->
+    <rect x="550" y="50" width="14" height="10" rx="2" fill="#3B82F6"/>
+    <text x="570" y="58" font-family="Inter" font-size="8" fill="#64748B">-1.0</text>
+    <rect x="550" y="64" width="14" height="10" rx="2" fill="#FCD34D"/>
+    <text x="570" y="72" font-family="Inter" font-size="8" fill="#64748B">0.0</text>
+    <rect x="550" y="78" width="14" height="10" rx="2" fill="#F43F5E"/>
+    <text x="570" y="86" font-family="Inter" font-size="8" fill="#64748B">+1.0</text>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -2357,6 +4100,84 @@ print(result.status)  # "valid"</code></pre>
   </div>
   <aside class="notes">
     Time: ~3 min. Walk through both blocks. The encoder is simpler (no masking, no cross-attention). The decoder has two types of attention: masked self-attention (autoregressive) and cross-attention (to the encoder). The residual connections + layer norm are critical for training stability.
+  </aside>
+</section>
+
+<!-- SLIDE 47b: Full Encoder-Decoder with Cross-Attention -->
+<section>
+  <h2>Encoder-Decoder: The Full Picture</h2>
+  <span class="marker marker-theory">Theory</span>
+  <figure style="text-align: center; margin: 4px 0;">
+    <svg viewBox="0 0 680 340" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Full transformer encoder-decoder architecture">
+      <defs>
+        <marker id="ed-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1E293B"/></marker>
+        <marker id="ed-arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#F43F5E"/></marker>
+      </defs>
+      <!-- ENCODER SIDE -->
+      <rect x="20" y="10" width="220" height="310" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="130" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#3B82F6">ENCODER ×N</text>
+      <rect x="60" y="42" width="140" height="24" rx="5" fill="#1E293B"/>
+      <text x="130" y="59" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Input + PE</text>
+      <line x1="130" y1="66" x2="130" y2="80" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="50" y="82" width="160" height="30" rx="5" fill="#8B5CF6"/>
+      <text x="130" y="102" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Self-Attention</text>
+      <line x1="130" y1="112" x2="130" y2="124" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="50" y="126" width="160" height="22" rx="5" fill="#22C55E"/>
+      <text x="130" y="141" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Add + LayerNorm</text>
+      <line x1="130" y1="148" x2="130" y2="160" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="50" y="162" width="160" height="30" rx="5" fill="#0D9488"/>
+      <text x="130" y="182" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Feed-Forward</text>
+      <line x1="130" y1="192" x2="130" y2="204" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="50" y="206" width="160" height="22" rx="5" fill="#22C55E"/>
+      <text x="130" y="221" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Add + LayerNorm</text>
+      <rect x="60" y="245" width="140" height="24" rx="5" fill="#3B82F6"/>
+      <text x="130" y="262" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Encoder Output</text>
+      <line x1="130" y1="228" x2="130" y2="245" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+
+      <!-- CROSS-ATTENTION ARROW from encoder output to decoder -->
+      <path d="M200 257 Q280 257 280 197" fill="none" stroke="#F43F5E" stroke-width="2.5" marker-end="url(#ed-arr-r)"/>
+      <text x="260" y="248" font-family="Inter" font-weight="700" font-size="9" fill="#F43F5E">K, V</text>
+
+      <!-- DECODER SIDE -->
+      <rect x="310" y="10" width="220" height="310" rx="10" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="420" y="30" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">DECODER ×N</text>
+      <rect x="350" y="42" width="140" height="24" rx="5" fill="#1E293B"/>
+      <text x="420" y="59" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Output + PE</text>
+      <line x1="420" y1="66" x2="420" y2="80" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="340" y="82" width="160" height="30" rx="5" fill="#92400E"/>
+      <text x="420" y="97" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Masked Self-Attention</text>
+      <text x="420" y="108" text-anchor="middle" font-family="Inter" font-size="7" fill="#FDE68A">(can't see future tokens)</text>
+      <line x1="420" y1="112" x2="420" y2="124" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="340" y="126" width="160" height="22" rx="5" fill="#22C55E"/>
+      <text x="420" y="141" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Add + LayerNorm</text>
+      <line x1="420" y1="148" x2="420" y2="162" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="340" y="164" width="160" height="30" rx="5" fill="#F43F5E"/>
+      <text x="420" y="179" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Cross-Attention</text>
+      <text x="420" y="190" text-anchor="middle" font-family="Inter" font-size="7" fill="#FFE4E6">Q=decoder, K/V=encoder</text>
+      <line x1="420" y1="194" x2="420" y2="206" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="340" y="208" width="160" height="22" rx="5" fill="#22C55E"/>
+      <text x="420" y="223" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="600">Add + LayerNorm</text>
+      <line x1="420" y1="230" x2="420" y2="242" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="340" y="244" width="160" height="26" rx="5" fill="#0D9488"/>
+      <text x="420" y="262" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Feed-Forward + LN</text>
+      <line x1="420" y1="270" x2="420" y2="285" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ed-arr)"/>
+      <rect x="350" y="287" width="140" height="24" rx="5" fill="#B45309"/>
+      <text x="420" y="304" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="600">Linear + Softmax</text>
+
+      <!-- Legend -->
+      <rect x="550" y="80" width="120" height="80" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <rect x="558" y="90" width="10" height="10" rx="2" fill="#8B5CF6"/><text x="574" y="99" font-family="Inter" font-size="8" fill="#1E293B">self-attention</text>
+      <rect x="558" y="106" width="10" height="10" rx="2" fill="#F43F5E"/><text x="574" y="115" font-family="Inter" font-size="8" fill="#1E293B">cross-attention</text>
+      <rect x="558" y="122" width="10" height="10" rx="2" fill="#22C55E"/><text x="574" y="131" font-family="Inter" font-size="8" fill="#1E293B">residual + norm</text>
+      <rect x="558" y="138" width="10" height="10" rx="2" fill="#0D9488"/><text x="574" y="147" font-family="Inter" font-size="8" fill="#1E293B">feed-forward</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.8em; text-align: center; color: #64748B;">The <span style="color: #F43F5E; font-weight: 600;">cross-attention</span> layer is the bridge: the decoder's queries ask "what in the encoder output is relevant to what I'm generating next?"</p>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. This is the full picture. Walk through left to right. Encoder processes the input sequence in parallel (no masking — all tokens see each other). Encoder output flows as K and V into the decoder's cross-attention. The decoder is autoregressive — masked self-attention prevents it from seeing future tokens. Cross-attention lets it "look back" at the encoder output. This is how translation works: encoder reads English, decoder generates French one token at a time, cross-attending to the English at each step.
   </aside>
 </section>
 
@@ -2512,7 +4333,7 @@ print(result.status)  # "valid"</code></pre>
 </section>
 
 <!-- SLIDE 52A: Lesson 5.4 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.4: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -2540,8 +4361,8 @@ print(result.status)  # "valid"</code></pre>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Fine-tuning a pre-trained transformer is the cheapest high-impact ML project most organisations can run. You are not training a model from scratch &mdash; you are adapting one that already knows language. Data requirements drop by 10&times; to 100&times;, training time drops from weeks to hours, and the resulting model is genuinely production-ready. This is where the biggest ROI in M5 lives.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> fine-tuning a pre-trained transformer is the cheapest high-impact ML project most organisations can run. Data requirements drop 10&ndash;100&times;, training drops from weeks to hours, and the model is production-ready &mdash; the biggest ROI in M5.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -2911,6 +4732,55 @@ print(result.status)  # "valid"</code></pre>
       </ul>
     </div>
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 620 145" xmlns="http://www.w3.org/2000/svg" style="max-width: 88%; height: auto;" role="img" aria-label="Mode collapse: healthy generator covers all modes vs collapsed generator produces only one mode">
+    <defs>
+      <marker id="mc-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+      </marker>
+    </defs>
+    <!-- Left panel: Healthy -->
+    <rect x="5" y="5" width="280" height="135" rx="8" fill="#F8FAFC" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="145" y="22" text-anchor="middle" font-family="Inter" font-size="11" fill="#22C55E" font-weight="700">Healthy Generator</text>
+    <!-- Target distribution outline (multimodal dashed curve) -->
+    <path d="M 30 118 Q 55 50 80 90 Q 105 118 130 55 Q 155 25 180 70 Q 205 108 230 62 Q 250 40 265 118" fill="none" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="270" y="58" font-family="Inter" font-size="7" fill="#64748B">target</text>
+    <!-- Scattered generated samples covering multiple modes -->
+    <circle cx="58" cy="88" r="3.5" fill="#22C55E" opacity="0.8"/><circle cx="72" cy="80" r="3.5" fill="#22C55E" opacity="0.7"/>
+    <circle cx="48" cy="100" r="3.5" fill="#22C55E" opacity="0.6"/><circle cx="82" cy="92" r="3.5" fill="#22C55E" opacity="0.8"/>
+    <circle cx="120" cy="60" r="3.5" fill="#22C55E" opacity="0.7"/><circle cx="140" cy="42" r="3.5" fill="#22C55E" opacity="0.8"/>
+    <circle cx="132" cy="52" r="3.5" fill="#22C55E" opacity="0.6"/><circle cx="152" cy="38" r="3.5" fill="#22C55E" opacity="0.9"/>
+    <circle cx="160" cy="50" r="3.5" fill="#22C55E" opacity="0.7"/><circle cx="170" cy="62" r="3.5" fill="#22C55E" opacity="0.6"/>
+    <circle cx="200" cy="76" r="3.5" fill="#22C55E" opacity="0.8"/><circle cx="212" cy="70" r="3.5" fill="#22C55E" opacity="0.7"/>
+    <circle cx="228" cy="64" r="3.5" fill="#22C55E" opacity="0.9"/><circle cx="240" cy="54" r="3.5" fill="#22C55E" opacity="0.7"/>
+    <circle cx="250" cy="48" r="3.5" fill="#22C55E" opacity="0.8"/><circle cx="65" cy="94" r="3.5" fill="#22C55E" opacity="0.7"/>
+    <circle cx="146" cy="46" r="3.5" fill="#22C55E" opacity="0.8"/><circle cx="218" cy="60" r="3.5" fill="#22C55E" opacity="0.6"/>
+    <text x="145" y="132" text-anchor="middle" font-family="Inter" font-size="9" fill="#22C55E" font-weight="600">diverse samples cover all modes</text>
+    <!-- Right panel: Collapsed -->
+    <rect x="315" y="5" width="280" height="135" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+    <text x="455" y="22" text-anchor="middle" font-family="Inter" font-size="11" fill="#F43F5E" font-weight="700">Mode Collapse</text>
+    <!-- Same target distribution outline -->
+    <path d="M 340 118 Q 365 50 390 90 Q 415 118 440 55 Q 465 25 490 70 Q 515 108 540 62 Q 560 40 575 118" fill="none" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="580" y="58" font-family="Inter" font-size="7" fill="#64748B">target</text>
+    <!-- All samples clustered in one mode -->
+    <circle cx="462" cy="42" r="3.5" fill="#F43F5E" opacity="0.9"/><circle cx="468" cy="38" r="3.5" fill="#F43F5E" opacity="0.8"/>
+    <circle cx="458" cy="46" r="3.5" fill="#F43F5E" opacity="0.7"/><circle cx="472" cy="44" r="3.5" fill="#F43F5E" opacity="0.9"/>
+    <circle cx="465" cy="50" r="3.5" fill="#F43F5E" opacity="0.8"/><circle cx="456" cy="40" r="3.5" fill="#F43F5E" opacity="0.7"/>
+    <circle cx="470" cy="36" r="3.5" fill="#F43F5E" opacity="0.9"/><circle cx="460" cy="34" r="3.5" fill="#F43F5E" opacity="0.6"/>
+    <circle cx="474" cy="48" r="3.5" fill="#F43F5E" opacity="0.8"/><circle cx="464" cy="30" r="3.5" fill="#F43F5E" opacity="0.7"/>
+    <circle cx="455" cy="52" r="3.5" fill="#F43F5E" opacity="0.8"/><circle cx="476" cy="40" r="3.5" fill="#F43F5E" opacity="0.9"/>
+    <circle cx="462" cy="56" r="3.5" fill="#F43F5E" opacity="0.6"/><circle cx="468" cy="54" r="3.5" fill="#F43F5E" opacity="0.7"/>
+    <circle cx="472" cy="52" r="3.5" fill="#F43F5E" opacity="0.8"/><circle cx="466" cy="32" r="3.5" fill="#F43F5E" opacity="0.9"/>
+    <circle cx="460" cy="48" r="3.5" fill="#F43F5E" opacity="0.7"/><circle cx="470" cy="58" r="3.5" fill="#F43F5E" opacity="0.6"/>
+    <!-- Circle highlighting the single mode -->
+    <ellipse cx="466" cy="44" rx="22" ry="18" fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="455" y="132" text-anchor="middle" font-family="Inter" font-size="9" fill="#F43F5E" font-weight="600">all samples in one cluster</text>
+    <!-- X marks on uncovered modes -->
+    <text x="375" y="92" text-anchor="middle" font-family="Inter" font-size="12" fill="#F43F5E" opacity="0.5">&#10007;</text>
+    <text x="505" y="74" text-anchor="middle" font-family="Inter" font-size="12" fill="#F43F5E" opacity="0.5">&#10007;</text>
+    <text x="550" y="60" text-anchor="middle" font-family="Inter" font-size="12" fill="#F43F5E" opacity="0.5">&#10007;</text>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -2980,7 +4850,7 @@ print(result.status)  # "valid"</code></pre>
 </section>
 
 <!-- SLIDE 62A: Lesson 5.5 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.5: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -3008,8 +4878,8 @@ print(result.status)  # "valid"</code></pre>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Synthetic data is the practical wedge for every regulated industry. It lets you train ML models on distributions you cannot legally share. FID (the metric you computed in Exercise 5) is the evidence auditors and regulators want to see: it says "our synthetic distribution is close enough to the real one for the downstream model to work, without being the real one".
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> synthetic data is the practical wedge for regulated industries &mdash; train models on distributions you cannot legally share. FID (Exercise 5) is the audit evidence: synthetic is close enough to real for the downstream model, without being real.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -3249,28 +5119,97 @@ print(result.status)  # "valid"</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Three Levels</h3>
-      <table>
+  <figure style="text-align:center; margin: 0;">
+  <svg viewBox="0 0 660 140" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;" role="img" aria-label="Three GNN task types: node classification with colored nodes, graph classification with a label per graph, and link prediction with a dashed edge">
+    <!-- Panel 1: Node Classification -->
+    <rect x="5" y="5" width="200" height="130" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <text x="105" y="22" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B" font-weight="700">Node Classification</text>
+    <!-- Graph edges -->
+    <line x1="55" y1="55" x2="105" y2="45" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="55" y1="55" x2="75" y2="95" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="105" y1="45" x2="155" y2="55" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="105" y1="45" x2="115" y2="90" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="75" y1="95" x2="115" y2="90" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="155" y1="55" x2="160" y2="95" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="115" y1="90" x2="160" y2="95" stroke="#CBD5E1" stroke-width="2"/>
+    <!-- Nodes colored by predicted class -->
+    <circle cx="55" cy="55" r="10" fill="#0D9488" stroke="white" stroke-width="1.5"/>
+    <circle cx="105" cy="45" r="10" fill="#4F46E5" stroke="white" stroke-width="1.5"/>
+    <circle cx="155" cy="55" r="10" fill="#0D9488" stroke="white" stroke-width="1.5"/>
+    <circle cx="75" cy="95" r="10" fill="#F43F5E" stroke="white" stroke-width="1.5"/>
+    <circle cx="115" cy="90" r="10" fill="#F43F5E" stroke="white" stroke-width="1.5"/>
+    <circle cx="160" cy="95" r="10" fill="#4F46E5" stroke="white" stroke-width="1.5"/>
+    <!-- Legend -->
+    <circle cx="30" cy="122" r="4" fill="#0D9488"/><text x="38" y="125" font-family="Inter" font-size="7" fill="#64748B">A</text>
+    <circle cx="55" cy="122" r="4" fill="#4F46E5"/><text x="63" y="125" font-family="Inter" font-size="7" fill="#64748B">B</text>
+    <circle cx="80" cy="122" r="4" fill="#F43F5E"/><text x="88" y="125" font-family="Inter" font-size="7" fill="#64748B">C</text>
+    <text x="140" y="125" font-family="Inter" font-size="8" fill="#64748B">per-node label</text>
+    <!-- Panel 2: Graph Classification -->
+    <rect x="225" y="5" width="200" height="130" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <text x="325" y="22" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B" font-weight="700">Graph Classification</text>
+    <!-- Graph edges -->
+    <line x1="280" y1="55" x2="325" y2="42" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="280" y1="55" x2="290" y2="88" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="325" y1="42" x2="365" y2="55" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="325" y1="42" x2="330" y2="82" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="290" y1="88" x2="330" y2="82" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="365" y1="55" x2="370" y2="88" stroke="#CBD5E1" stroke-width="2"/>
+    <!-- Nodes (same color - not classified individually) -->
+    <circle cx="280" cy="55" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <circle cx="325" cy="42" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <circle cx="365" cy="55" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <circle cx="290" cy="88" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <circle cx="330" cy="82" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <circle cx="370" cy="88" r="9" fill="#8B5CF6" stroke="white" stroke-width="1.5"/>
+    <!-- Bounding box + label -->
+    <rect x="262" y="30" width="128" height="72" rx="12" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5,3"/>
+    <rect x="298" y="108" width="54" height="18" rx="4" fill="#F59E0B"/>
+    <text x="325" y="121" text-anchor="middle" font-family="Inter" font-size="9" fill="white" font-weight="700">Toxic</text>
+    <text x="325" y="133" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">whole-graph label</text>
+    <!-- Panel 3: Link Prediction -->
+    <rect x="445" y="5" width="200" height="130" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <text x="545" y="22" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B" font-weight="700">Link Prediction</text>
+    <!-- Graph edges (solid = known) -->
+    <line x1="500" y1="55" x2="545" y2="42" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="500" y1="55" x2="510" y2="88" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="545" y1="42" x2="590" y2="55" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="510" y1="88" x2="555" y2="85" stroke="#CBD5E1" stroke-width="2"/>
+    <line x1="590" y1="55" x2="595" y2="88" stroke="#CBD5E1" stroke-width="2"/>
+    <!-- Predicted edge (dashed) -->
+    <line x1="555" y1="85" x2="595" y2="88" stroke="#F43F5E" stroke-width="2.5" stroke-dasharray="5,3"/>
+    <!-- Nodes -->
+    <circle cx="500" cy="55" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <circle cx="545" cy="42" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <circle cx="590" cy="55" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <circle cx="510" cy="88" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <circle cx="555" cy="85" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <circle cx="595" cy="88" r="9" fill="#3B82F6" stroke="white" stroke-width="1.5"/>
+    <!-- "?" label on predicted edge -->
+    <rect x="566" y="78" width="16" height="16" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+    <text x="574" y="90" text-anchor="middle" font-family="Inter" font-size="10" fill="#F43F5E" font-weight="700">?</text>
+    <text x="545" y="125" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">predict missing edges</text>
+  </svg>
+  </figure>
+      <table style="font-size: 0.74em; margin-top: 6px;">
         <thead><tr><th>Task</th><th>Predict</th><th>Example</th></tr></thead>
         <tbody>
-          <tr><td>Node classification</td><td>Label per node</td><td>User role in social network</td></tr>
-          <tr><td>Graph classification</td><td>Label per graph</td><td>Molecule toxicity</td></tr>
-          <tr><td>Link prediction</td><td>Edge existence</td><td>Friend recommendation</td></tr>
+          <tr><td>Node</td><td>Label per node</td><td>User role in social net</td></tr>
+          <tr><td>Graph</td><td>Label per graph</td><td>Molecule toxicity</td></tr>
+          <tr><td>Link</td><td>Edge existence</td><td>Friend recommendation</td></tr>
         </tbody>
       </table>
     </div>
     <div class="col">
-      <h3>Graph-Level Readout</h3>
-      <p>For graph classification, need to pool node embeddings into a single graph vector:</p>
-      <ul>
+      <h3 style="margin: 0 0 4px;">Graph-Level Readout</h3>
+      <p style="font-size: 0.82em; margin: 0 0 4px;">For graph classification, pool node embeddings into one graph vector:</p>
+      <ul style="font-size: 0.82em; margin: 0;">
         <li><strong>Mean pooling:</strong> average all node embeddings</li>
         <li><strong>Max pooling:</strong> element-wise max</li>
         <li><strong>Hierarchical:</strong> cluster then pool (DiffPool)</li>
       </ul>
-      <pre><code class="language-python">from torch_geometric.nn import (
+      <pre style="font-size: 0.78em; margin-top: 6px;"><code class="language-python">from torch_geometric.nn import (
     GCNConv, global_mean_pool
 )
-
 # After GCN layers:
 x = global_mean_pool(x, batch)
 # x is now graph-level embedding</code></pre>
@@ -3345,7 +5284,7 @@ x = global_mean_pool(x, batch)
 </section>
 
 <!-- SLIDE 69A: Lesson 5.6 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.6: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -3373,8 +5312,8 @@ x = global_mean_pool(x, batch)
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Most analytics treats every record as independent. Graph data breaks that assumption &mdash; the value of a node <em>comes from</em> its neighbours. If your business has relationships worth exploiting (customers who influence each other, accounts that transfer money, parts that share suppliers), GNNs are how you stop throwing that information away.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> most analytics treats records as independent. Graph data breaks that &mdash; a node's value <em>comes from</em> its neighbours. If your business has relationships worth exploiting (customers, accounts, suppliers), GNNs are how you stop discarding that signal.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -3774,7 +5713,7 @@ print(result.confidence)  # 0.97</code></pre>
 </section>
 
 <!-- SLIDE 77A: Lesson 5.7 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.7: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
@@ -3802,8 +5741,8 @@ print(result.confidence)  # 0.97</code></pre>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> Transfer learning is the answer to "we don't have enough data" &mdash; which is the most common blocker on every ML project. If someone tells you the project needs a million labelled examples, ask whether a pre-trained model plus a few thousand in-domain examples would close the gap. 80% of the time it will, at 5% of the cost and 10% of the timeline.
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
+    <strong>Why this matters for YOU:</strong> transfer learning is the answer to "we don't have enough data" &mdash; the most common ML blocker. A pre-trained model plus a few thousand in-domain examples often closes the gap at 5% of the cost and 10% of the timeline.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
@@ -4085,6 +6024,68 @@ print(result.confidence)  # 0.97</code></pre>
       </div>
     </div>
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 660 155" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="Actor-critic architecture: state feeds a shared base that branches to actor (policy) and critic (value) heads, with advantage signal training the actor">
+    <defs>
+      <marker id="ac-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
+      </marker>
+      <marker id="ac-arr-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/>
+      </marker>
+      <marker id="ac-arr-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#F43F5E"/>
+      </marker>
+    </defs>
+    <!-- State input -->
+    <rect x="10" y="55" width="60" height="36" rx="6" fill="#F8FAFC" stroke="#1E293B" stroke-width="1.5"/>
+    <text x="40" y="72" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B" font-weight="700">state s</text>
+    <text x="40" y="84" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">observation</text>
+    <!-- Arrow to shared base -->
+    <line x1="74" y1="73" x2="110" y2="73" stroke="#1E293B" stroke-width="1.5" marker-end="url(#ac-arr)"/>
+    <!-- Shared base network -->
+    <rect x="114" y="45" width="90" height="56" rx="8" fill="#8B5CF6"/>
+    <text x="159" y="70" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">Shared Base</text>
+    <text x="159" y="82" text-anchor="middle" font-family="Inter" font-size="8" fill="#DDD6FE">feature extractor</text>
+    <!-- Branch to actor (top) -->
+    <line x1="208" y1="62" x2="250" y2="36" stroke="#0D9488" stroke-width="2" marker-end="url(#ac-arr-teal)"/>
+    <!-- Branch to critic (bottom) -->
+    <line x1="208" y1="84" x2="250" y2="110" stroke="#4F46E5" stroke-width="2"/>
+    <!-- Actor head -->
+    <rect x="254" y="14" width="100" height="44" rx="8" fill="#0D9488"/>
+    <text x="304" y="33" text-anchor="middle" font-family="Inter" font-size="11" fill="white" font-weight="700">Actor Head</text>
+    <text x="304" y="47" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#99F6E4">&#960;(a|s)</text>
+    <!-- Arrow from actor to action distribution -->
+    <line x1="358" y1="36" x2="400" y2="36" stroke="#0D9488" stroke-width="1.5" marker-end="url(#ac-arr-teal)"/>
+    <!-- Action distribution output -->
+    <rect x="404" y="14" width="80" height="44" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+    <text x="444" y="30" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488" font-weight="600">action dist.</text>
+    <!-- Mini bar chart for distribution -->
+    <rect x="416" y="36" width="8" height="14" rx="1" fill="#0D9488" opacity="0.5"/>
+    <rect x="428" y="32" width="8" height="18" rx="1" fill="#0D9488" opacity="0.9"/>
+    <rect x="440" y="38" width="8" height="12" rx="1" fill="#0D9488" opacity="0.4"/>
+    <rect x="452" y="34" width="8" height="16" rx="1" fill="#0D9488" opacity="0.7"/>
+    <rect x="464" y="40" width="8" height="10" rx="1" fill="#0D9488" opacity="0.3"/>
+    <!-- Critic head -->
+    <rect x="254" y="90" width="100" height="44" rx="8" fill="#4F46E5"/>
+    <text x="304" y="109" text-anchor="middle" font-family="Inter" font-size="11" fill="white" font-weight="700">Critic Head</text>
+    <text x="304" y="123" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#C7D2FE">V(s)</text>
+    <!-- Arrow from critic to value -->
+    <line x1="358" y1="112" x2="400" y2="112" stroke="#4F46E5" stroke-width="1.5"/>
+    <!-- Value output -->
+    <rect x="404" y="96" width="80" height="32" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.5"/>
+    <text x="444" y="116" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4F46E5" font-weight="700">V(s) = 3.7</text>
+    <!-- Advantage computation -->
+    <rect x="520" y="55" width="130" height="42" rx="6" fill="#FFF7ED" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="585" y="70" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B" font-weight="700">Advantage</text>
+    <text x="585" y="84" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#92400E">A = R + &#947;V(s') - V(s)</text>
+    <!-- Arrow from value to advantage -->
+    <line x1="488" y1="112" x2="518" y2="86" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,2"/>
+    <!-- Arrow from advantage back to actor (trains the actor) -->
+    <path d="M 585 55 Q 585 6 490 6 Q 400 6 380 10" fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ac-arr-rose)"/>
+    <text x="510" y="5" font-family="Inter" font-size="8" fill="#F43F5E" font-weight="600">trains actor</text>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -4112,6 +6113,64 @@ print(result.confidence)  # 0.97</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
     <strong>Practical rule:</strong> Start with PPO. It is the most stable and works for both discrete and continuous actions. Move to SAC if you need better exploration. Use DQN only for simple discrete problems.
   </div>
+  <figure style="text-align:center; margin: 4px 0;">
+  <svg viewBox="0 0 660 140" xmlns="http://www.w3.org/2000/svg" style="max-width: 90%; height: auto;" role="img" aria-label="RL algorithm taxonomy tree: value-based (DQN) and policy-based branches, with actor-critic sub-branch containing DDPG, SAC, A2C, PPO">
+    <defs>
+      <marker id="rl-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+      </marker>
+    </defs>
+    <!-- Root: RL -->
+    <rect x="270" y="4" width="80" height="28" rx="14" fill="#1E293B"/>
+    <text x="310" y="22" text-anchor="middle" font-family="Inter" font-size="12" fill="white" font-weight="700">RL</text>
+    <!-- Branch lines from root -->
+    <line x1="290" y1="32" x2="140" y2="52" stroke="#64748B" stroke-width="1.5"/>
+    <line x1="330" y1="32" x2="470" y2="52" stroke="#64748B" stroke-width="1.5"/>
+    <!-- Value-based branch -->
+    <rect x="70" y="52" width="140" height="28" rx="6" fill="#4F46E5"/>
+    <text x="140" y="70" text-anchor="middle" font-family="Inter" font-size="11" fill="white" font-weight="700">Value-Based</text>
+    <!-- DQN leaf -->
+    <line x1="140" y1="80" x2="140" y2="100" stroke="#64748B" stroke-width="1.5"/>
+    <rect x="100" y="100" width="80" height="28" rx="6" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.5"/>
+    <text x="140" y="118" text-anchor="middle" font-family="Inter" font-size="11" fill="#4F46E5" font-weight="700">DQN</text>
+    <!-- Action space tag -->
+    <rect x="88" y="130" width="54" height="12" rx="3" fill="#DBEAFE"/>
+    <text x="115" y="139" text-anchor="middle" font-family="Inter" font-size="7" fill="#3B82F6" font-weight="600">discrete only</text>
+    <!-- Policy-based branch -->
+    <rect x="400" y="52" width="140" height="28" rx="6" fill="#0D9488"/>
+    <text x="470" y="70" text-anchor="middle" font-family="Inter" font-size="11" fill="white" font-weight="700">Policy-Based</text>
+    <!-- Actor-Critic sub-branch -->
+    <line x1="470" y1="80" x2="470" y2="90" stroke="#64748B" stroke-width="1.5"/>
+    <rect x="385" y="90" width="170" height="22" rx="5" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+    <text x="470" y="105" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488" font-weight="700">Actor-Critic</text>
+    <!-- Leaves under Actor-Critic -->
+    <line x1="410" y1="112" x2="340" y2="122" stroke="#64748B" stroke-width="1"/>
+    <line x1="440" y1="112" x2="420" y2="122" stroke="#64748B" stroke-width="1"/>
+    <line x1="500" y1="112" x2="510" y2="122" stroke="#64748B" stroke-width="1"/>
+    <line x1="530" y1="112" x2="590" y2="122" stroke="#64748B" stroke-width="1"/>
+    <!-- DDPG -->
+    <rect x="304" y="120" width="62" height="18" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+    <text x="335" y="133" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488" font-weight="700">DDPG</text>
+    <!-- SAC -->
+    <rect x="386" y="120" width="62" height="18" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+    <text x="417" y="133" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488" font-weight="700">SAC</text>
+    <!-- A2C -->
+    <rect x="476" y="120" width="62" height="18" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="1"/>
+    <text x="507" y="133" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488" font-weight="700">A2C</text>
+    <!-- PPO (highlighted as recommended) -->
+    <rect x="558" y="118" width="68" height="22" rx="5" fill="#0D9488"/>
+    <text x="592" y="133" text-anchor="middle" font-family="Inter" font-size="10" fill="white" font-weight="700">PPO</text>
+    <!-- Action space tags under leaves -->
+    <rect x="305" y="139" width="60" height="10" rx="2" fill="#FEF3C7"/>
+    <text x="335" y="147" text-anchor="middle" font-family="Inter" font-size="6" fill="#92400E" font-weight="600">continuous</text>
+    <rect x="387" y="139" width="60" height="10" rx="2" fill="#FEF3C7"/>
+    <text x="417" y="147" text-anchor="middle" font-family="Inter" font-size="6" fill="#92400E" font-weight="600">continuous</text>
+    <rect x="477" y="139" width="60" height="10" rx="2" fill="#DCFCE7"/>
+    <text x="507" y="147" text-anchor="middle" font-family="Inter" font-size="6" fill="#166534" font-weight="600">both</text>
+    <rect x="562" y="141" width="60" height="10" rx="2" fill="#DCFCE7"/>
+    <text x="592" y="149" text-anchor="middle" font-family="Inter" font-size="6" fill="#166534" font-weight="600">both</text>
+  </svg>
+  </figure>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
@@ -4225,8 +6284,8 @@ print(result.confidence)  # 0.97</code></pre>
       </div>
     </div>
   </div>
-  <div class="diagram-container" style="display: flex; justify-content: center; margin: 8px 0;">
-  <svg viewBox="0 0 620 290" xmlns="http://www.w3.org/2000/svg" style="max-width: 85%; height: auto;" role="img" aria-label="PPO actor-critic architecture">
+  <div class="diagram-container" style="display: flex; justify-content: center; margin: 2px 0;">
+  <svg viewBox="0 0 620 290" xmlns="http://www.w3.org/2000/svg" style="max-width: 75%; max-height: 190px; height: auto;" role="img" aria-label="PPO actor-critic architecture">
     <defs>
       <marker id="arr20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L10,5 L0,10 z" fill="#1E293B"/>
@@ -4478,44 +6537,44 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
 </section>
 
 <!-- SLIDE 92A: Lesson 5.8 Real-World Applications -->
-<section>
+<section class="rwapp">
   <h2>Lesson 5.8: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    Unlike every other lesson in M5, here the exercise environments <em>are</em> the applications. You are not looking at an analogy &mdash; you are coding the same decision problems real operations teams face, with the same reward structure and the same state/action space.
+    Unlike every other lesson, here the exercise environments <em>are</em> the applications &mdash; you are coding the same decision problems real operations teams face, with the same reward structure.
   </div>
-  <div class="columns" style="margin-top: 12px;">
+  <div class="columns" style="margin-top: 6px;">
     <div class="col">
       <div class="callout callout-applications">
         <strong>Telecom &mdash; ChurnPrevention (DQN)</strong>
-        <p class="small">Singtel's retention team picks a discount tier (do nothing / small / medium / large) each month per customer. Reward = retained revenue &minus; discount cost. The DQN you train in Exercise 8 learns to save its big discounts for customers about to churn, not those who would stay anyway. A rules engine hands out discounts uniformly; the RL policy targets them.</p>
+        <p class="small">Singtel-style retention picks a discount tier per customer per month. Reward = retained revenue &minus; discount cost. DQN learns to save big discounts for customers about to churn, not those who would stay anyway.</p>
       </div>
-      <div class="callout callout-applications" style="margin-top: 10px;">
+      <div class="callout callout-applications">
         <strong>Retail &mdash; DynamicPricing (SAC)</strong>
-        <p class="small">Lazada / Shopee price roughly 100M SKUs in real time across demand shocks, competitor moves, and inventory levels. SAC handles the continuous action space (price can be any value in a range) and the uncertainty (demand is noisy). Same continuous-action problem as in your custom env, just at warehouse scale.</p>
+        <p class="small">Lazada / Shopee price 100M SKUs in real time. SAC handles the continuous action (price in a range) and noisy demand &mdash; same continuous-action problem as your custom env, at warehouse scale.</p>
       </div>
-      <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Asset Management &mdash; PortfolioRebalancing (PPO)</strong>
-        <p class="small">A quant fund rebalances weights across N assets under transaction cost and risk constraints. The PPO clipped objective prevents wild reweighting between steps &mdash; exactly what regulators and risk desks require. Same clipped-surrogate trick you coded.</p>
+      <div class="callout callout-applications">
+        <strong>Asset Mgmt &mdash; PortfolioRebalancing (PPO)</strong>
+        <p class="small">A quant fund rebalances weights under transaction cost and risk. PPO's clipped objective prevents wild reweighting &mdash; exactly the clipped-surrogate trick you coded.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Logistics &mdash; SupplyChainInventory (PPO)</strong>
-        <p class="small">A Singapore FMCG distributor decides daily replenishment quantities for each of 3,000 SKUs across 40 retail partners. Reward = service level &minus; holding cost &minus; stockout penalty. The RL policy beats rolling safety-stock formulas because it learns which SKUs genuinely co-move and which do not.</p>
+        <p class="small">An FMCG distributor sets daily replenishment for 3,000 SKUs across 40 partners. Reward = service level &minus; holding cost &minus; stockout. RL beats rolling safety-stock by learning real co-movement.</p>
       </div>
-      <div class="callout callout-applications" style="margin-top: 10px;">
+      <div class="callout callout-applications">
         <strong>Cloud Ops &mdash; ResourceAllocation (A2C)</strong>
-        <p class="small">A cloud platform allocates CPU / memory / I/O quotas across tenants under SLA constraints. A2C's advantage baseline reduces variance in the policy-gradient update &mdash; critical because allocation decisions are high-stakes and the reward signal is noisy. This is how modern schedulers are increasingly being replaced by learned policies.</p>
+        <p class="small">A platform allocates CPU / memory / I/O across tenants under SLA. A2C's advantage baseline cuts policy-gradient variance &mdash; critical when reward is noisy and decisions are high-stakes.</p>
       </div>
-      <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Bridge to M6 &mdash; RLHF for LLM Alignment</strong>
-        <p class="small">The PPO you wrote for CartPole is the same algorithm that aligns ChatGPT, Claude, and Gemini to human preferences. Reward = human preference model score; action = next token. Exercise 8 is literally the training loop of modern LLM alignment, minus the reward model.</p>
+      <div class="callout callout-applications">
+        <strong>Bridge to M6 &mdash; RLHF for LLMs</strong>
+        <p class="small">The PPO you wrote for CartPole is the same algorithm that aligns ChatGPT, Claude, Gemini. Reward = human preference score; action = next token. Exercise 8 is literally the modern LLM alignment loop.</p>
       </div>
     </div>
   </div>
-  <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Why this matters for YOU:</strong> RL is the right tool for repeated operational decisions under feedback &mdash; pricing, inventory, resource allocation, retention. The ROI is in the compounding: a small edge per decision times millions of decisions is material. Most importantly, RL is also how modern LLMs are trained to be useful at all, which is why Module 6 picks up exactly where this lesson stops.
+  <div class="callout callout-foundations" style="margin-top: 6px; font-size: 0.76em;">
+    <strong>Why this matters for YOU:</strong> RL is the right tool for repeated operational decisions under feedback &mdash; pricing, inventory, allocation, retention. ROI compounds: a small edge per decision &times; millions of decisions is material. M6 picks up exactly where this stops.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>

@@ -131,6 +131,94 @@ stacked_losses = train_variant(
     stacked_ae_loss,
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments (depth stress-test)
+# ══════════════════════════════════════════════════════════════════
+# 5-layer encoder = the DEEPEST dense AE in this exercise. Vanishing
+# gradients are the primary risk at this depth without residuals.
+# This is where the Blood Test earns its keep.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    xb = batch[0] if isinstance(batch, (tuple, list)) else batch
+    loss, _ = stacked_ae_loss(m, xb)
+    return loss
+
+
+print("\n── Diagnostic Report (Stacked AE) ──")
+diag, findings = run_diagnostic_checkpoint(
+    stacked_model,
+    flat_loader,
+    _diag_loss,
+    title="Stacked AE (5-layer)",
+    n_batches=8,
+    train_losses=stacked_losses,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [X] Gradient flow (CRITICAL): Vanishing gradients at
+#       'encoder.3.weight' — min RMS = 4.2e-06, min
+#       update_ratio = 8.9e-05. (Shallow layer encoder.0 RMS
+#       ~3.1e-03 — ~750x spread across 5 layers.)
+#       Fix: Kaiming init, GELU, or add skip/residual
+#            connections between encoder blocks.
+#   [!] Dead neurons  (WARNING): 'encoder.3' (relu): 44% dead.
+#       Bottleneck ReLU saturation compounds vanishing
+#       gradients — the two failure modes feed each other.
+#   [✓] Loss trend    (HEALTHY): Loss converging
+#       (train slope -1.1e-03/epoch) — slower than shallow
+#       baseline (02) because deep layers are barely updating.
+# ════════════════════════════════════════════════════════════════
+# Final train loss: ~0.018 after 10 epochs, 5-layer encoder.
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [BLOOD TEST — VANISHING GRADIENT TEXTBOOK CASE] 750x spread
+#     in RMS across 5 layers (encoder.0: 3.1e-03 → encoder.3:
+#     4.2e-06) is the canonical deep-dense-network failure.
+#     Slide 5K walks through the math: each ReLU + Linear
+#     layer multiplies the gradient by an expectation < 1,
+#     and 5 layers gets you ~0.5^5 = ~3% of the shallow-layer
+#     magnitude. Depth without skip connections is how AlexNet
+#     barely worked and ResNet solved it.
+#     >> Prescription: Three fixes of increasing impact:
+#        (a) Kaiming He init (partial — slows the collapse)
+#        (b) GELU or SiLU (fully non-saturating on negatives)
+#        (c) Residual connections (FIXES it — gradient
+#            bypasses depth via additive skip). Applied in
+#            ex_2/02_resnet_se.py — forward reference.
+#
+#  [X-RAY] 44% dead at encoder.3 is the compounding failure:
+#     if gradient is vanishing, dead ReLUs never recover
+#     (the tiny gradient cannot re-activate them), and the
+#     remaining live ReLUs overload to compensate, pushing
+#     more of them into saturation next batch. Positive
+#     feedback loop into deeper dysfunction.
+#     >> Prescription: LeakyReLU (negative-slope leak lets
+#        small gradients revive dead channels) OR a residual
+#        block (additive skip bypasses the ReLU gate).
+#
+#  [STETHOSCOPE] Loss still DECREASES despite dysfunction —
+#     this is the trap. Final loss 0.018 looks "fine" but
+#     compare to 06_convolutional (~0.0048) at similar latent
+#     size. The loss curve lies when the architecture is
+#     pathological; only the Blood Test + X-Ray reveal that
+#     most of the model isn't learning.
+#     >> Prescription: ALWAYS read 3 instruments. The
+#        Stethoscope alone would have shipped this model.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: stacked AE is the "how NOT to go
+#  deep" cautionary tale. The fix isn't more training or more
+#  regularisation — it's ARCHITECTURAL (skip connections).
+#  This motivates ex_2 ResNet-SE and foreshadows the same
+#  pattern in ex_3 RNNs (where "skip" becomes LSTM/GRU gating).
+# ════════════════════════════════════════════════════════════════════
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — Visualise

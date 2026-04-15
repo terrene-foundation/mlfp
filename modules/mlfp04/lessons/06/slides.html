@@ -51,40 +51,89 @@
   </div>
 </section>
 
-<!-- ═══ Slide 3: The pipeline ════════════════════════════════ -->
+<!-- ═══ Slide 3: The pipeline — data-level transformation ═══ -->
 <section>
-  <h2>Text analysis pipeline</h2>
+  <h2>Text analysis pipeline — watching the data change</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="50" width="150" height="100" fill="#F8FAFC" stroke="#CBD5E1" rx="6"/>
-      <text x="95" y="75" text-anchor="middle" font-weight="600" font-size="13">Raw text</text>
-      <text x="30" y="100" font-size="10" fill="#64748B">"MRT delay again..."</text>
-      <text x="30" y="118" font-size="10" fill="#64748B">"HDB price rose 5%..."</text>
-      <text x="30" y="136" font-size="10" fill="#64748B">"Budget 2026 policy..."</text>
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stage 1: Raw text -->
+      <rect x="10" y="20" width="155" height="120" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="87" y="38" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#475569">Raw text</text>
+      <text x="20" y="58" font-family="Inter" font-size="9" fill="#1E293B">"MRT delays cause</text>
+      <text x="20" y="70" font-family="Inter" font-size="9" fill="#1E293B"> commuters to miss</text>
+      <text x="20" y="82" font-family="Inter" font-size="9" fill="#1E293B"> morning meetings"</text>
+      <rect x="18" y="92" width="140" height="1" fill="#E2E8F0"/>
+      <text x="20" y="108" font-family="Inter" font-size="8" fill="#94A3B8">1 of 5,000 articles</text>
+      <text x="20" y="120" font-family="Inter" font-size="8" fill="#94A3B8">String. No structure.</text>
 
-      <line x1="180" y1="100" x2="220" y2="100" stroke="#0D9488" stroke-width="2.5"/>
-      <polygon points="220,100 214,96 214,104" fill="#0D9488"/>
+      <!-- Arrow 1 -->
+      <line x1="172" y1="80" x2="198" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="198,80 192,76 192,84" fill="#0D9488"/>
+      <text x="185" y="70" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488">tokenise</text>
 
-      <rect x="230" y="50" width="150" height="100" fill="#F0FDFA" stroke="#0D9488" rx="6"/>
-      <text x="305" y="75" text-anchor="middle" font-weight="600" font-size="13" fill="#0D9488">Vectorise</text>
-      <text x="240" y="100" font-family="JetBrains Mono" font-size="10">TF-IDF / BERT</text>
-      <text x="240" y="118" font-family="JetBrains Mono" font-size="10">[0.1, 0.8, 0.0 ...]</text>
+      <!-- Stage 2: Tokens -->
+      <rect x="204" y="20" width="145" height="120" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="276" y="38" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">Tokens</text>
+      <g font-family="JetBrains Mono" font-size="9" fill="#0D9488">
+        <text x="214" y="58">["mrt",</text>
+        <text x="214" y="72"> "delay",</text>
+        <text x="214" y="86"> "commuter",</text>
+        <text x="214" y="100"> "miss",</text>
+        <text x="214" y="114"> "morning",</text>
+        <text x="214" y="128"> "meeting"]</text>
+      </g>
 
-      <line x1="390" y1="100" x2="430" y2="100" stroke="#0D9488" stroke-width="2.5"/>
-      <polygon points="430,100 424,96 424,104" fill="#0D9488"/>
+      <!-- Arrow 2 -->
+      <line x1="356" y1="80" x2="382" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="382,80 376,76 376,84" fill="#0D9488"/>
+      <text x="369" y="70" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488">TF-IDF</text>
 
-      <rect x="440" y="50" width="150" height="100" fill="#FEF3C7" stroke="#F59E0B" rx="6"/>
-      <text x="515" y="75" text-anchor="middle" font-weight="600" font-size="13" fill="#F59E0B">Topic model</text>
-      <text x="450" y="100" font-size="10">Topic 0: transport</text>
-      <text x="450" y="118" font-size="10">Topic 1: housing</text>
-      <text x="450" y="136" font-size="10">Topic 2: policy</text>
+      <!-- Stage 3: Sparse vector -->
+      <rect x="388" y="20" width="165" height="120" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="470" y="38" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#F59E0B">TF-IDF vector</text>
+      <!-- Sparse array visualisation -->
+      <g font-family="JetBrains Mono" font-size="8">
+        <text x="398" y="56" fill="#94A3B8">idx:</text>
+        <text x="425" y="56" fill="#64748B">42</text><text x="450" y="56" fill="#64748B">107</text>
+        <text x="480" y="56" fill="#94A3B8">...</text><text x="500" y="56" fill="#64748B">2891</text>
+        <text x="398" y="72" fill="#94A3B8">val:</text>
+        <text x="425" y="72" fill="#F59E0B" font-weight="600">0.31</text>
+        <text x="450" y="72" fill="#F59E0B" font-weight="600">0.52</text>
+        <text x="480" y="72" fill="#94A3B8">...</text>
+        <text x="500" y="72" fill="#F59E0B" font-weight="600">0.18</text>
+      </g>
+      <!-- Sparsity bar -->
+      <rect x="398" y="84" width="145" height="12" rx="2" fill="#FEF3C7" stroke="#F59E0B" stroke-width="0.5"/>
+      <rect x="410" y="86" width="3" height="8" fill="#F59E0B"/><rect x="432" y="86" width="3" height="8" fill="#F59E0B"/>
+      <rect x="490" y="86" width="3" height="8" fill="#F59E0B"/><rect x="520" y="86" width="3" height="8" fill="#F59E0B"/>
+      <text x="398" y="112" font-family="Inter" font-size="8" fill="#94A3B8">5,000 dims, ~6 nonzero</text>
+      <text x="398" y="124" font-family="Inter" font-size="8" fill="#94A3B8">Sparse. Bag-of-words.</text>
 
-      <line x1="600" y1="100" x2="640" y2="100" stroke="#0D9488" stroke-width="2.5"/>
-      <polygon points="640,100 634,96 634,104" fill="#0D9488"/>
+      <!-- Arrow 3 -->
+      <line x1="560" y1="80" x2="586" y2="80" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="586,80 580,76 580,84" fill="#0D9488"/>
+      <text x="573" y="70" text-anchor="middle" font-family="Inter" font-size="8" fill="#0D9488">NMF</text>
 
-      <rect x="650" y="60" width="50" height="80" fill="#E0E7FF" stroke="#4F46E5" rx="6"/>
-      <text x="675" y="100" text-anchor="middle" font-size="10" font-weight="600" fill="#4F46E5">Features</text>
-      <text x="675" y="120" text-anchor="middle" font-family="JetBrains Mono" font-size="8">p(t|d)</text>
+      <!-- Stage 4: Topic distribution -->
+      <rect x="592" y="20" width="160" height="120" rx="6" fill="#E0E7FF" stroke="#4F46E5"/>
+      <text x="672" y="38" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#4F46E5">Topic distribution</text>
+      <!-- Horizontal bar chart -->
+      <text x="602" y="62" font-family="Inter" font-size="9" fill="#475569">Transport</text>
+      <rect x="660" y="52" width="80" height="12" rx="2" fill="#4F46E5" opacity="0.8"/>
+      <text x="744" y="62" font-family="JetBrains Mono" font-size="8" fill="#4F46E5">0.72</text>
+
+      <text x="602" y="86" font-family="Inter" font-size="9" fill="#475569">Workplace</text>
+      <rect x="660" y="76" width="28" height="12" rx="2" fill="#4F46E5" opacity="0.5"/>
+      <text x="692" y="86" font-family="JetBrains Mono" font-size="8" fill="#4F46E5">0.21</text>
+
+      <text x="602" y="110" font-family="Inter" font-size="9" fill="#475569">Housing</text>
+      <rect x="660" y="100" width="8" height="12" rx="2" fill="#4F46E5" opacity="0.3"/>
+      <text x="672" y="110" font-family="JetBrains Mono" font-size="8" fill="#4F46E5">0.07</text>
+
+      <text x="602" y="132" font-family="Inter" font-size="8" fill="#94A3B8">Dense. 3 dims. Interpretable.</text>
+
+      <!-- Bottom annotation -->
+      <text x="380" y="170" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">String (unstructured) --> sparse vector (5,000-dim) --> dense topic vector (3-dim)</text>
     </svg>
   </figure>
 </section>
@@ -198,6 +247,134 @@
   </figure>
 </section>
 
+<!-- ═══ Slide 8b: What LDA produces ══════════════════════════ -->
+<section>
+  <h2>Documents are mixtures of topics; topics are mixtures of words</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Left: Documents as stacked proportion bars -->
+      <text x="90" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">Documents</text>
+      <text x="90" y="32" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">topic proportions per doc</text>
+
+      <!-- Doc 1: mostly transport (teal), some housing (blue) -->
+      <text x="10" y="60" font-family="Inter" font-size="9" fill="#64748B">Doc 1</text>
+      <rect x="50" y="48" width="56" height="18" rx="2" fill="#0D9488"/>
+      <rect x="106" y="48" width="18" height="18" rx="2" fill="#3B82F6"/>
+      <rect x="124" y="48" width="6" height="18" rx="2" fill="#F59E0B"/>
+
+      <!-- Doc 2: mostly housing (blue), some policy (amber) -->
+      <text x="10" y="86" font-family="Inter" font-size="9" fill="#64748B">Doc 2</text>
+      <rect x="50" y="74" width="8" height="18" rx="2" fill="#0D9488"/>
+      <rect x="58" y="74" width="52" height="18" rx="2" fill="#3B82F6"/>
+      <rect x="110" y="74" width="20" height="18" rx="2" fill="#F59E0B"/>
+
+      <!-- Doc 3: mixed transport and policy -->
+      <text x="10" y="112" font-family="Inter" font-size="9" fill="#64748B">Doc 3</text>
+      <rect x="50" y="100" width="32" height="18" rx="2" fill="#0D9488"/>
+      <rect x="82" y="100" width="10" height="18" rx="2" fill="#3B82F6"/>
+      <rect x="92" y="100" width="38" height="18" rx="2" fill="#F59E0B"/>
+
+      <!-- Doc 4: mostly policy -->
+      <text x="10" y="138" font-family="Inter" font-size="9" fill="#64748B">Doc 4</text>
+      <rect x="50" y="126" width="6" height="18" rx="2" fill="#0D9488"/>
+      <rect x="56" y="126" width="6" height="18" rx="2" fill="#3B82F6"/>
+      <rect x="62" y="126" width="68" height="18" rx="2" fill="#F59E0B"/>
+
+      <!-- Doc 5: mostly transport -->
+      <text x="10" y="164" font-family="Inter" font-size="9" fill="#64748B">Doc 5</text>
+      <rect x="50" y="152" width="60" height="18" rx="2" fill="#0D9488"/>
+      <rect x="110" y="152" width="14" height="18" rx="2" fill="#3B82F6"/>
+      <rect x="124" y="152" width="6" height="18" rx="2" fill="#F59E0B"/>
+
+      <!-- Arrows: docs --> topics -->
+      <g stroke="#94A3B8" stroke-width="1" opacity="0.5">
+        <line x1="140" y1="57" x2="270" y2="65"/>
+        <line x1="140" y1="83" x2="270" y2="140"/>
+        <line x1="140" y1="109" x2="270" y2="65"/>
+        <line x1="140" y1="109" x2="270" y2="215"/>
+        <line x1="140" y1="135" x2="270" y2="215"/>
+        <line x1="140" y1="161" x2="270" y2="65"/>
+      </g>
+
+      <!-- Center: Topics (3 topic blocks) -->
+      <text x="340" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">Topics</text>
+      <text x="340" y="32" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">learned word distributions</text>
+
+      <!-- Topic 0: Transport -->
+      <rect x="270" y="44" width="140" height="65" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+      <circle cx="285" cy="58" r="6" fill="#0D9488"/>
+      <text x="298" y="62" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Topic 0</text>
+      <text x="280" y="80" font-family="JetBrains Mono" font-size="8" fill="#475569">mrt: 0.15</text>
+      <text x="280" y="92" font-family="JetBrains Mono" font-size="8" fill="#475569">delay: 0.12</text>
+      <text x="280" y="104" font-family="JetBrains Mono" font-size="8" fill="#475569">train, commuter...</text>
+
+      <!-- Topic 1: Housing -->
+      <rect x="270" y="120" width="140" height="65" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <circle cx="285" cy="134" r="6" fill="#3B82F6"/>
+      <text x="298" y="138" font-family="Inter" font-weight="600" font-size="10" fill="#3B82F6">Topic 1</text>
+      <text x="280" y="156" font-family="JetBrains Mono" font-size="8" fill="#475569">hdb: 0.18</text>
+      <text x="280" y="168" font-family="JetBrains Mono" font-size="8" fill="#475569">flat: 0.11</text>
+      <text x="280" y="180" font-family="JetBrains Mono" font-size="8" fill="#475569">price, bto...</text>
+
+      <!-- Topic 2: Policy -->
+      <rect x="270" y="196" width="140" height="65" rx="6" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5"/>
+      <circle cx="285" cy="210" r="6" fill="#F59E0B"/>
+      <text x="298" y="214" font-family="Inter" font-weight="600" font-size="10" fill="#F59E0B">Topic 2</text>
+      <text x="280" y="232" font-family="JetBrains Mono" font-size="8" fill="#475569">budget: 0.14</text>
+      <text x="280" y="244" font-family="JetBrains Mono" font-size="8" fill="#475569">tax: 0.10</text>
+      <text x="280" y="256" font-family="JetBrains Mono" font-size="8" fill="#475569">policy, gst...</text>
+
+      <!-- Arrows: topics --> word clouds -->
+      <g stroke="#94A3B8" stroke-width="1" opacity="0.5">
+        <line x1="410" y1="76" x2="470" y2="68"/>
+        <line x1="410" y1="152" x2="470" y2="152"/>
+        <line x1="410" y1="228" x2="470" y2="240"/>
+      </g>
+
+      <!-- Right: Word clouds (simplified as word groups) -->
+      <text x="600" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#475569">Top words per topic</text>
+      <text x="600" y="32" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">sized by probability</text>
+
+      <!-- Topic 0 words -->
+      <rect x="470" y="44" width="280" height="65" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="530" y="68" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488">MRT</text>
+      <text x="590" y="65" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">delay</text>
+      <text x="650" y="68" font-family="Inter" font-size="11" fill="#0D9488">train</text>
+      <text x="700" y="65" font-family="Inter" font-size="10" fill="#0D9488">line</text>
+      <text x="505" y="90" font-family="Inter" font-size="9" fill="#0D9488">commuter</text>
+      <text x="575" y="92" font-family="Inter" font-size="8" fill="#0D9488">station</text>
+      <text x="640" y="90" font-family="Inter" font-size="10" fill="#0D9488">bus</text>
+      <text x="690" y="92" font-family="Inter" font-size="7" fill="#0D9488">signal</text>
+
+      <!-- Topic 1 words -->
+      <rect x="470" y="120" width="280" height="65" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="520" y="146" font-family="Inter" font-weight="700" font-size="16" fill="#3B82F6">HDB</text>
+      <text x="585" y="143" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">flat</text>
+      <text x="630" y="146" font-family="Inter" font-size="11" fill="#3B82F6">price</text>
+      <text x="690" y="143" font-family="Inter" font-size="10" fill="#3B82F6">BTO</text>
+      <text x="505" y="168" font-family="Inter" font-size="9" fill="#3B82F6">resale</text>
+      <text x="565" y="170" font-family="Inter" font-size="8" fill="#3B82F6">million</text>
+      <text x="630" y="168" font-family="Inter" font-size="10" fill="#3B82F6">room</text>
+      <text x="690" y="170" font-family="Inter" font-size="7" fill="#3B82F6">lease</text>
+
+      <!-- Topic 2 words -->
+      <rect x="470" y="196" width="280" height="65" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="520" y="222" font-family="Inter" font-weight="700" font-size="16" fill="#F59E0B">Budget</text>
+      <text x="600" y="219" font-family="Inter" font-weight="600" font-size="13" fill="#F59E0B">tax</text>
+      <text x="645" y="222" font-family="Inter" font-size="11" fill="#F59E0B">GST</text>
+      <text x="695" y="219" font-family="Inter" font-size="10" fill="#F59E0B">govt</text>
+      <text x="505" y="246" font-family="Inter" font-size="9" fill="#F59E0B">policy</text>
+      <text x="565" y="248" font-family="Inter" font-size="8" fill="#F59E0B">subsidy</text>
+      <text x="630" y="246" font-family="Inter" font-size="10" fill="#F59E0B">spend</text>
+      <text x="695" y="248" font-family="Inter" font-size="7" fill="#F59E0B">relief</text>
+
+      <!-- Bottom summary -->
+      <rect x="120" y="275" width="520" height="28" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="0.8"/>
+      <text x="380" y="293" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">Each document = weighted mixture of topics. Each topic = probability distribution over words.</text>
+    </svg>
+  </figure>
+</section>
+
 <!-- ═══ Slide 9: NMF ════════════════════════════════════════ -->
 <section>
   <h2>NMF — topics via matrix factorisation</h2>
@@ -212,42 +389,101 @@
   </div>
 </section>
 
-<!-- ═══ Slide 10: BERTopic ══════════════════════════════════ -->
+<!-- ═══ Slide 10: BERTopic — intermediate outputs ═══════════ -->
 <section>
-  <h2>BERTopic — the 2020s upgrade</h2>
+  <h2>BERTopic — what each step produces</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="40" width="130" height="80" fill="#EFF6FF" stroke="#3B82F6" rx="6"/>
-      <text x="85" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#3B82F6">BERT embed</text>
-      <text x="85" y="90" text-anchor="middle" font-size="10">sentence-transformers</text>
+    <svg viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+      <!-- Step 1: BERT embeddings (points in high-D, shown as random scatter) -->
+      <rect x="10" y="15" width="165" height="170" rx="6" fill="#EFF6FF" stroke="#3B82F6"/>
+      <text x="92" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#3B82F6">1. BERT embed</text>
+      <text x="92" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">384 dimensions</text>
+      <!-- Random scatter — no visible clusters in high-D projection -->
+      <g fill="#94A3B8" opacity="0.6">
+        <circle cx="45" cy="80" r="2.5"/><circle cx="78" cy="65" r="2.5"/><circle cx="120" cy="95" r="2.5"/>
+        <circle cx="55" cy="130" r="2.5"/><circle cx="100" cy="110" r="2.5"/><circle cx="140" cy="75" r="2.5"/>
+        <circle cx="35" cy="105" r="2.5"/><circle cx="88" cy="145" r="2.5"/><circle cx="150" cy="125" r="2.5"/>
+        <circle cx="65" cy="155" r="2.5"/><circle cx="110" cy="60" r="2.5"/><circle cx="130" cy="150" r="2.5"/>
+        <circle cx="50" cy="70" r="2.5"/><circle cx="95" cy="85" r="2.5"/><circle cx="75" cy="120" r="2.5"/>
+        <circle cx="145" cy="100" r="2.5"/><circle cx="40" cy="150" r="2.5"/><circle cx="160" cy="140" r="2.5"/>
+      </g>
+      <text x="92" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">No visible structure yet</text>
 
-      <line x1="155" y1="80" x2="185" y2="80" stroke="#0D9488" stroke-width="2"/>
-      <polygon points="185,80 179,76 179,84" fill="#0D9488"/>
+      <!-- Arrow -->
+      <line x1="180" y1="100" x2="198" y2="100" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="198,100 192,96 192,104" fill="#0D9488"/>
 
-      <rect x="190" y="40" width="130" height="80" fill="#F5F3FF" stroke="#8B5CF6" rx="6"/>
-      <text x="255" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#8B5CF6">UMAP</text>
-      <text x="255" y="90" text-anchor="middle" font-size="10">reduce dims</text>
+      <!-- Step 2: UMAP projection (clusters become visible in 2D) -->
+      <rect x="203" y="15" width="165" height="170" rx="6" fill="#F5F3FF" stroke="#8B5CF6"/>
+      <text x="285" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#8B5CF6">2. UMAP</text>
+      <text x="285" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">2 dimensions</text>
+      <!-- Visible clusters emerging -->
+      <g fill="#94A3B8" opacity="0.7">
+        <!-- Cluster top-left -->
+        <circle cx="230" cy="70" r="2.5"/><circle cx="240" cy="62" r="2.5"/><circle cx="235" cy="80" r="2.5"/>
+        <circle cx="248" cy="72" r="2.5"/><circle cx="225" cy="68" r="2.5"/><circle cx="242" cy="55" r="2.5"/>
+        <!-- Cluster bottom-left -->
+        <circle cx="232" cy="140" r="2.5"/><circle cx="245" cy="148" r="2.5"/><circle cx="240" cy="135" r="2.5"/>
+        <circle cx="250" cy="155" r="2.5"/><circle cx="228" cy="150" r="2.5"/><circle cx="238" cy="160" r="2.5"/>
+        <!-- Cluster right -->
+        <circle cx="330" cy="95" r="2.5"/><circle cx="340" cy="105" r="2.5"/><circle cx="345" cy="90" r="2.5"/>
+        <circle cx="335" cy="115" r="2.5"/><circle cx="350" cy="100" r="2.5"/><circle cx="325" cy="108" r="2.5"/>
+      </g>
+      <text x="285" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Clusters visible in 2D</text>
 
-      <line x1="325" y1="80" x2="355" y2="80" stroke="#0D9488" stroke-width="2"/>
-      <polygon points="355,80 349,76 349,84" fill="#0D9488"/>
+      <!-- Arrow -->
+      <line x1="373" y1="100" x2="391" y2="100" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="391,100 385,96 385,104" fill="#0D9488"/>
 
-      <rect x="360" y="40" width="130" height="80" fill="#FEF3C7" stroke="#F59E0B" rx="6"/>
-      <text x="425" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#F59E0B">HDBSCAN</text>
-      <text x="425" y="90" text-anchor="middle" font-size="10">cluster</text>
+      <!-- Step 3: HDBSCAN labels (clusters coloured) -->
+      <rect x="396" y="15" width="165" height="170" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="478" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#F59E0B">3. HDBSCAN</text>
+      <text x="478" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">cluster labels</text>
+      <!-- Coloured clusters -->
+      <g>
+        <!-- Cluster A: teal -->
+        <circle cx="423" cy="70" r="2.5" fill="#0D9488"/><circle cx="433" cy="62" r="2.5" fill="#0D9488"/>
+        <circle cx="428" cy="80" r="2.5" fill="#0D9488"/><circle cx="441" cy="72" r="2.5" fill="#0D9488"/>
+        <circle cx="418" cy="68" r="2.5" fill="#0D9488"/><circle cx="435" cy="55" r="2.5" fill="#0D9488"/>
+        <!-- Cluster B: blue -->
+        <circle cx="425" cy="140" r="2.5" fill="#3B82F6"/><circle cx="438" cy="148" r="2.5" fill="#3B82F6"/>
+        <circle cx="433" cy="135" r="2.5" fill="#3B82F6"/><circle cx="443" cy="155" r="2.5" fill="#3B82F6"/>
+        <circle cx="421" cy="150" r="2.5" fill="#3B82F6"/><circle cx="431" cy="160" r="2.5" fill="#3B82F6"/>
+        <!-- Cluster C: amber -->
+        <circle cx="523" cy="95" r="2.5" fill="#F59E0B"/><circle cx="533" cy="105" r="2.5" fill="#F59E0B"/>
+        <circle cx="538" cy="90" r="2.5" fill="#F59E0B"/><circle cx="528" cy="115" r="2.5" fill="#F59E0B"/>
+        <circle cx="543" cy="100" r="2.5" fill="#F59E0B"/><circle cx="518" cy="108" r="2.5" fill="#F59E0B"/>
+      </g>
+      <text x="478" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Auto: 3 topics + noise</text>
 
-      <line x1="495" y1="80" x2="525" y2="80" stroke="#0D9488" stroke-width="2"/>
-      <polygon points="525,80 519,76 519,84" fill="#0D9488"/>
+      <!-- Arrow -->
+      <line x1="566" y1="100" x2="584" y2="100" stroke="#0D9488" stroke-width="2"/>
+      <polygon points="584,100 578,96 578,104" fill="#0D9488"/>
 
-      <rect x="530" y="40" width="160" height="80" fill="#DCFCE7" stroke="#22C55E" rx="6"/>
-      <text x="610" y="70" text-anchor="middle" font-weight="600" font-size="12" fill="#22C55E">c-TF-IDF</text>
-      <text x="610" y="90" text-anchor="middle" font-size="10">representative words</text>
+      <!-- Step 4: c-TF-IDF top words -->
+      <rect x="589" y="15" width="165" height="170" rx="6" fill="#DCFCE7" stroke="#22C55E"/>
+      <text x="671" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#22C55E">4. c-TF-IDF</text>
+      <text x="671" y="44" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">top words per topic</text>
+      <!-- Topic word lists -->
+      <circle cx="604" cy="62" r="4" fill="#0D9488"/>
+      <text x="614" y="60" font-family="Inter" font-size="8" fill="#0D9488" font-weight="600">Topic 0</text>
+      <text x="614" y="70" font-family="JetBrains Mono" font-size="7" fill="#475569">mrt, delay, train</text>
+      <text x="614" y="80" font-family="JetBrains Mono" font-size="7" fill="#475569">commuter, line</text>
+
+      <circle cx="604" cy="107" r="4" fill="#3B82F6"/>
+      <text x="614" y="105" font-family="Inter" font-size="8" fill="#3B82F6" font-weight="600">Topic 1</text>
+      <text x="614" y="115" font-family="JetBrains Mono" font-size="7" fill="#475569">hdb, flat, price</text>
+      <text x="614" y="125" font-family="JetBrains Mono" font-size="7" fill="#475569">bto, resale</text>
+
+      <circle cx="604" cy="152" r="4" fill="#F59E0B"/>
+      <text x="614" y="150" font-family="Inter" font-size="8" fill="#F59E0B" font-weight="600">Topic 2</text>
+      <text x="614" y="160" font-family="JetBrains Mono" font-size="7" fill="#475569">budget, tax, gst</text>
+      <text x="614" y="170" font-family="JetBrains Mono" font-size="7" fill="#475569">policy, govt</text>
+
+      <!-- Bottom annotation -->
+      <text x="380" y="205" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Each step produces a concrete intermediate: embeddings --> 2D projection --> labels --> topic words</text>
     </svg>
   </figure>
-  <ul style="font-size: 0.85em;">
-    <li>Captures semantic relationships, not just co-occurrence.</li>
-    <li>Auto-determines number of topics.</li>
-    <li>Needs a few hundred documents minimum.</li>
-  </ul>
 </section>
 
 <!-- ═══ Slide 11: BERTopic code ═════════════════════════════ -->
@@ -358,7 +594,7 @@ for k, topic in enumerate(nmf.components_):
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>
 </html>

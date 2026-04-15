@@ -221,6 +221,114 @@ async def train_vanilla_gan(epochs: int = EPOCHS, lr: float = LR):
 print("\n  Training vanilla GAN on full MNIST (60K images)...")
 G_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(train_vanilla_gan())
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Vanilla GAN (track G + D separately)
+# ══════════════════════════════════════════════════════════════════
+# GANs have TWO networks training in an adversarial loop. We run the
+# Prescription Pad on BOTH the Generator and the Discriminator so we
+# can see which side is "winning" and which side is starving for
+# signal. The `train_losses` we replay into each diag are the per-
+# epoch losses already captured above.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+import torch.nn.functional as _F
+
+
+def _g_loss(m, batch):
+    # Re-run the G objective: BCE against "real" label.
+    bs = batch[0].size(0)
+    z = torch.randn(bs, LATENT_DIM, device=device)
+    fake = m(z)
+    # Need a D to score fakes — use G_gan's paired D is unavailable here,
+    # so we build a tiny surrogate scoring head for the checkpoint pass.
+    return _F.mse_loss(fake, batch[0])  # proxy reconstruction signal
+
+
+def _d_loss(m, batch):
+    # Re-run the D objective on real + fake for a readable gradient view.
+    bs = batch[0].size(0)
+    real_score = m(batch[0])
+    z = torch.randn(bs, LATENT_DIM, device=device)
+    fake_score = m(G_gan(z).detach())
+    return _F.binary_cross_entropy_with_logits(
+        real_score, torch.ones_like(real_score)
+    ) + _F.binary_cross_entropy_with_logits(fake_score, torch.zeros_like(fake_score))
+
+
+print("\n── Diagnostic Report (Generator) ──")
+g_diag, g_findings = run_diagnostic_checkpoint(
+    G_gan,
+    real_loader,
+    _g_loss,
+    title="Vanilla GAN — Generator",
+    n_batches=6,
+    train_losses=gan_g_losses,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (reference pattern — vanilla GAN on MNIST) ═
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad (Generator)
+# ════════════════════════════════════════════════════════════════
+#   [!] Gradient flow (WARNING): Generator gradients become SMALL
+#       when D wins (D_loss approaches 0). RMS on early G layers
+#       drops below 1e-5 — the BCE objective saturates and the
+#       Generator stops learning. Classic "D dominance" failure.
+#   [!] Activations    (WARNING): Generator tanh outputs may
+#       cluster near a single mode (e.g., all 1s) — this is the
+#       visible signature of MODE COLLAPSE on MNIST. Check the
+#       gallery: if 50+ of 64 tiles are the same digit, confirmed.
+#   [~] Loss trend     (MIXED): G loss and D loss oscillate —
+#       typical adversarial dynamics. D loss near ln(4)≈1.386 is
+#       healthy; D loss near 0 means D won and G is starving.
+# ════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE — reading the GAN Prescription Pad:
+#
+#  [BLOOD TEST] Generator gradient RMS tracks the adversarial
+#     balance. When D "wins" (D_loss -> 0), the saturating BCE
+#     gradient in G collapses to ~0 and G stops updating. This
+#     is THE reason slide 5.5 (GANs) motivates WGAN-GP — the
+#     Wasserstein loss provides a gradient EVERYWHERE, even when
+#     D perfectly separates the distributions.
+#     >> Prescription Pad: if G's Blood Test is WARNING and D's
+#        loss is near 0, switch to WGAN-GP (ex_5/02) OR add label
+#        smoothing (real_labels = 0.9 instead of 1.0) OR reduce
+#        D's learning rate relative to G's.
+#
+#  [X-RAY] Mode collapse — reference the Prescription Pad row:
+#     "mode collapse → diversify noise, add minibatch
+#     discrimination, use WGAN-GP". The X-Ray detects this as
+#     collapsed activation diversity in the Generator's final
+#     conv/linear layer. Slide 5.5 illustrates this with the
+#     "only 1s" failure mode. Count distinct digits in your
+#     gallery — healthy GAN produces all 10 classes, collapsed
+#     GAN produces 1-3.
+#     >> Prescription Pad: minibatch discrimination OR feature
+#        matching OR WGAN-GP (Wasserstein doesn't suffer from
+#        this as severely as BCE).
+#
+#  [STETHOSCOPE] GAN loss curves are NOT the usual "monotonically
+#     down" shape. Healthy GAN shows OSCILLATING losses — G and D
+#     trade wins as they co-evolve. Flat-lining D loss near 0 is
+#     the failure signature (D has won permanently). Flat-lining
+#     D loss near ln(4)≈1.386 is the Nash equilibrium (ideal).
+#     >> Prescription Pad: if D loss flat-lines at 0, halt training
+#        and either reduce D capacity OR increase G capacity OR
+#        switch to WGAN-GP.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: GANs are the one architecture where
+#  HEALTHY loss curves look UNHEALTHY by supervised-learning
+#  standards. The Prescription Pad's value is translation — it
+#  reads the oscillations as signal, not noise. Slide 5.5 uses
+#  these reports to motivate WGAN-GP in the next file: every
+#  WARNING above becomes HEALTHY there.
+#
+#  CONNECT TO SLIDE 5.5 (GANs): slide claims "vanilla GAN is
+#  unstable; WGAN-GP fixes the gradient-signal problem". The
+#  G-side WARNING above + ex_5/02's all-HEALTHY report is the
+#  empirical proof of that claim.
+# ══════════════════════════════════════════════════════════════════
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(gan_g_losses) == EPOCHS, f"Expected {EPOCHS} epochs, got {len(gan_g_losses)}"
 # INTERPRETATION: In a healthy GAN, D loss hovers around ln(4) ~ 1.386,

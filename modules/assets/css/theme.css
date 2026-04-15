@@ -176,12 +176,46 @@
 
 .reveal code {
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
-  color: var(--mlfp-code-text);
+}
+
+/* Force light background on code blocks — override monokai dark bg.
+   Uses literal values because var() + !important can fail in some browsers. */
+.reveal pre code.hljs {
+  background: #F8FAFC !important;
+  color: #334155 !important;
+  max-height: 420px;
 }
 
 .reveal pre code {
+  background: #F8FAFC !important;
+  color: #334155 !important;
   max-height: 420px;
 }
+
+/* ── Light syntax highlighting (overrides monokai dark tokens) ── */
+.reveal pre code .hljs-keyword,
+.reveal pre code .hljs-selector-tag { color: #8250DF; }       /* purple — keywords */
+.reveal pre code .hljs-built_in { color: #0550AE; }           /* blue — builtins */
+.reveal pre code .hljs-type,
+.reveal pre code .hljs-title.class_ { color: #0550AE; }       /* blue — types/classes */
+.reveal pre code .hljs-title.function_ { color: #6639BA; }    /* deep purple — functions */
+.reveal pre code .hljs-string,
+.reveal pre code .hljs-addition { color: #0A3069; }           /* dark blue — strings */
+.reveal pre code .hljs-number,
+.reveal pre code .hljs-literal { color: #0550AE; }            /* blue — numbers */
+.reveal pre code .hljs-comment,
+.reveal pre code .hljs-meta { color: #6E7781; }               /* grey — comments (visible!) */
+.reveal pre code .hljs-variable,
+.reveal pre code .hljs-template-variable { color: #953800; }  /* orange — variables */
+.reveal pre code .hljs-attr,
+.reveal pre code .hljs-attribute { color: #0550AE; }          /* blue — attributes */
+.reveal pre code .hljs-params { color: #24292F; }             /* dark — params */
+.reveal pre code .hljs-punctuation { color: #24292F; }        /* dark — punctuation */
+.reveal pre code .hljs-operator { color: #CF222E; }           /* red — operators */
+.reveal pre code .hljs-decorator,
+.reveal pre code .hljs-meta .hljs-keyword { color: #0550AE; } /* blue — decorators */
+.reveal pre code .hljs-deletion { color: #82071E; background: #FFEBE9; }
+.reveal pre code .hljs-addition { color: #116329; background: #DAFBE1; }
 
 /* Dense code slides — use on sections with >18 lines of code */
 .reveal section.code-dense pre code {
@@ -195,8 +229,10 @@
   margin-bottom: 0.2em;
 }
 
+/* Inline code — dark text on light bg pill */
 .reveal p code, .reveal li code {
   background: var(--mlfp-code-bg);
+  color: var(--mlfp-code-text);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.85em;

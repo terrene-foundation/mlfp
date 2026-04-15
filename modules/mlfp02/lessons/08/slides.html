@@ -36,30 +36,72 @@
 </section>
 
 <section>
-  <h2>The statistical analysis pipeline</h2>
-  <figure style="text-align: center; margin-top: 1em;">
-    <svg viewBox="0 0 720 140" xmlns="http://www.w3.org/2000/svg">
-      <defs><marker id="a28s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
-      <g font-family="Inter" font-size="11">
-        <rect x="10" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="55" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Load</text>
-        <text x="55" y="80" text-anchor="middle" font-size="9" fill="#64748B">Profile</text>
-        <line x1="100" y1="65" x2="125" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
-        <rect x="130" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="175" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Describe</text>
-        <line x1="220" y1="65" x2="245" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
-        <rect x="250" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="295" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Engineer</text>
-        <line x1="340" y1="65" x2="365" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
-        <rect x="370" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="415" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Model</text>
-        <line x1="460" y1="65" x2="485" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
-        <rect x="490" y="40" width="90" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="535" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Test</text>
-        <line x1="580" y1="65" x2="605" y2="65" stroke="#0D9488" stroke-width="2" marker-end="url(#a28s)"/>
-        <rect x="610" y="40" width="100" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-        <text x="660" y="65" text-anchor="middle" font-weight="600" fill="#0D9488">Report</text>
-      </g>
+  <h2>How Module 2 fits together</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a28m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94A3B8"/></marker></defs>
+      <!-- Row 1: Foundations -->
+      <rect x="20" y="20" width="160" height="55" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="100" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">2.1 Probability</text>
+      <text x="100" y="58" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Bayes, distributions, priors</text>
+      <rect x="210" y="20" width="160" height="55" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
+      <text x="290" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">2.2 Estimation</text>
+      <text x="290" y="58" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">MLE, CLT, confidence intervals</text>
+      <!-- Arrow 2.1 -> 2.2 -->
+      <line x1="180" y1="47" x2="207" y2="47" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Row 2: Testing -->
+      <rect x="20" y="105" width="160" height="55" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="100" y="127" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#3B82F6">2.3 Testing</text>
+      <text x="100" y="143" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Bootstrap, p-values, power</text>
+      <rect x="210" y="105" width="160" height="55" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="290" y="127" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#3B82F6">2.4 Experiments</text>
+      <text x="290" y="143" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">A/B tests, SRM, power sizing</text>
+      <!-- Arrows down -->
+      <line x1="100" y1="75" x2="100" y2="102" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <line x1="290" y1="75" x2="290" y2="102" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Arrow 2.3 -> 2.4 -->
+      <line x1="180" y1="132" x2="207" y2="132" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Row 3: Modelling -->
+      <rect x="20" y="190" width="160" height="55" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="100" y="212" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#B45309">2.5 Linear Reg.</text>
+      <text x="100" y="228" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">OLS, t-stats, R&#178;, F-stat</text>
+      <rect x="210" y="190" width="160" height="55" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="290" y="212" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#B45309">2.6 Logistic Reg.</text>
+      <text x="290" y="228" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Sigmoid, odds, ANOVA</text>
+      <!-- Arrows down -->
+      <line x1="100" y1="160" x2="100" y2="187" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <line x1="290" y1="160" x2="290" y2="187" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Arrow 2.5 -> 2.6 -->
+      <line x1="180" y1="217" x2="207" y2="217" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Row 4: Advanced + Capstone -->
+      <rect x="20" y="275" width="160" height="55" rx="8" fill="#FFF1F2" stroke="#F43F5E" stroke-width="2"/>
+      <text x="100" y="297" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#F43F5E">2.7 Causal Inf.</text>
+      <text x="100" y="313" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">CUPED, DiD, counterfactuals</text>
+      <!-- Arrows down -->
+      <line x1="100" y1="245" x2="100" y2="272" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <line x1="290" y1="245" x2="290" y2="295" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- 2.4 feeds into 2.7 -->
+      <path d="M 370,145 Q 420,145 420,220 Q 420,285 180,300" fill="none" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Capstone -->
+      <rect x="430" y="190" width="300" height="140" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
+      <text x="580" y="215" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">2.8 Capstone</text>
+      <text x="580" y="238" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">FeatureEngineer + FeatureStore</text>
+      <text x="580" y="258" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">End-to-end statistical analysis</text>
+      <text x="580" y="280" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">Combines all lessons into one project</text>
+      <!-- Arrows into capstone -->
+      <line x1="180" y1="302" x2="427" y2="302" stroke="#0D9488" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <line x1="370" y1="217" x2="427" y2="230" stroke="#0D9488" stroke-width="1.5" marker-end="url(#a28m)"/>
+      <!-- Colour legend -->
+      <rect x="440" y="30" width="12" height="12" rx="3" fill="#E0F2F1" stroke="#0D9488"/>
+      <text x="458" y="41" font-family="Inter" font-size="9" fill="#64748B">Foundations</text>
+      <rect x="540" y="30" width="12" height="12" rx="3" fill="#EFF6FF" stroke="#3B82F6"/>
+      <text x="558" y="41" font-family="Inter" font-size="9" fill="#64748B">Inference</text>
+      <rect x="630" y="30" width="12" height="12" rx="3" fill="#FEF3C7" stroke="#F59E0B"/>
+      <text x="648" y="41" font-family="Inter" font-size="9" fill="#64748B">Modelling</text>
+      <rect x="440" y="50" width="12" height="12" rx="3" fill="#FFF1F2" stroke="#F43F5E"/>
+      <text x="458" y="61" font-family="Inter" font-size="9" fill="#64748B">Causal</text>
+      <rect x="540" y="50" width="12" height="12" rx="3" fill="#F0FDFA" stroke="#0D9488"/>
+      <text x="558" y="61" font-family="Inter" font-size="9" fill="#64748B">Capstone</text>
     </svg>
   </figure>
 </section>
@@ -104,25 +146,53 @@ features = store.get_features(
 </section>
 
 <section>
-  <h2>Feature lifecycle</h2>
+  <h2>Point-in-time correctness</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
-      <defs><marker id="a28f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/></marker></defs>
-      <rect x="20" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="85" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Create</text>
-      <text x="85" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">FeatureEngineer</text>
-      <line x1="155" y1="90" x2="195" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
-      <rect x="200" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="265" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Store</text>
-      <text x="265" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">FeatureStore</text>
-      <line x1="335" y1="90" x2="375" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
-      <rect x="380" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="445" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Retrieve</text>
-      <text x="445" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Point-in-time</text>
-      <line x1="515" y1="90" x2="555" y2="90" stroke="#0D9488" stroke-width="2" marker-end="url(#a28f)"/>
-      <rect x="560" y="60" width="130" height="60" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="625" y="90" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#0D9488">Train</text>
-      <text x="625" y="108" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">TrainingPipeline</text>
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Timeline axis -->
+      <line x1="60" y1="150" x2="720" y2="150" stroke="#1E293B" stroke-width="2"/>
+      <defs><marker id="a28t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1E293B"/></marker></defs>
+      <text x="730" y="154" font-family="Inter" font-size="10" fill="#64748B">time</text>
+      <!-- Feature lookback window (green zone) -->
+      <rect x="60" y="115" width="300" height="70" rx="4" fill="#22C55E" opacity="0.12"/>
+      <text x="210" y="108" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#15803D">Feature lookback window</text>
+      <text x="210" y="198" text-anchor="middle" font-family="Inter" font-size="9" fill="#15803D">Safe: only past data used</text>
+      <!-- Training date marker -->
+      <line x1="360" y1="80" x2="360" y2="220" stroke="#0D9488" stroke-width="3"/>
+      <rect x="310" y="55" width="100" height="25" rx="4" fill="#0D9488"/>
+      <text x="360" y="72" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="white">Training date</text>
+      <!-- Label period (blue zone) -->
+      <rect x="360" y="115" width="140" height="70" rx="4" fill="#3B82F6" opacity="0.12"/>
+      <text x="430" y="108" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Label window</text>
+      <text x="430" y="198" text-anchor="middle" font-family="Inter" font-size="9" fill="#3B82F6">Outcome observed here</text>
+      <!-- Forbidden future zone (red) -->
+      <rect x="500" y="115" width="220" height="70" rx="4" fill="#F43F5E" opacity="0.12"/>
+      <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="8" stroke="#F43F5E" stroke-width="1" opacity="0.2"/>
+      </pattern>
+      <rect x="500" y="115" width="220" height="70" rx="4" fill="url(#hatch)"/>
+      <text x="610" y="108" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#F43F5E">FORBIDDEN FUTURE</text>
+      <text x="610" y="198" text-anchor="middle" font-family="Inter" font-size="9" fill="#F43F5E">Using this data = leakage</text>
+      <!-- Time markers on axis -->
+      <circle cx="100" cy="150" r="4" fill="#22C55E"/>
+      <text x="100" y="232" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">6 months</text>
+      <text x="100" y="244" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">before</text>
+      <circle cx="360" cy="150" r="5" fill="#0D9488"/>
+      <text x="360" y="236" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#0D9488">as_of</text>
+      <circle cx="500" cy="150" r="4" fill="#3B82F6"/>
+      <text x="500" y="236" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">label</text>
+      <text x="500" y="248" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">horizon</text>
+      <!-- Example features -->
+      <text x="60" y="30" font-family="Inter" font-weight="600" font-size="10" fill="#64748B">Example features:</text>
+      <text x="60" y="46" font-family="JetBrains Mono" font-size="9" fill="#22C55E">lag_1, rolling_mean_6</text>
+      <text x="60" y="60" font-family="Inter" font-size="9" fill="#64748B">computed from lookback window only</text>
+      <!-- Leakage example -->
+      <text x="530" y="30" font-family="Inter" font-weight="600" font-size="10" fill="#F43F5E">Leakage example:</text>
+      <text x="530" y="46" font-family="JetBrains Mono" font-size="9" fill="#F43F5E">next_month_price</text>
+      <text x="530" y="60" font-family="Inter" font-size="9" fill="#F43F5E">uses data after training date</text>
+      <!-- FeatureStore callout -->
+      <rect x="170" y="262" width="420" height="30" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="380" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">FeatureStore.get_features(as_of="2024-01-01") enforces this boundary</text>
     </svg>
   </figure>
 </section>
@@ -250,6 +320,6 @@ for name, coef in result.coefficients.items():
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
+<script>Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [RevealHighlight, RevealMath.KaTeX] });</script>
 </body>
 </html>

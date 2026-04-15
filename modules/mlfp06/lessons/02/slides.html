@@ -251,11 +251,80 @@ class LoRALayer(nn.Module):
     <li><strong>GPTQ / AWQ</strong> — post-training 4-bit, calibrated</li>
     <li><strong>GGUF</strong> — llama.cpp; runs on CPU + Apple Silicon</li>
     <li><strong>bitsandbytes</strong> — on-the-fly during PyTorch training</li>
-    <li><strong>QLoRA:</strong> 4-bit base + fp16 LoRA → fine-tune 65B on 1× 48GB GPU</li>
+    <li><strong>QLoRA:</strong> 4-bit base + fp16 LoRA → fine-tune 65B on 1x 48GB GPU</li>
   </ul>
   <div style="background:#EFF6FF; padding:14px 18px; border-left:4px solid #3B82F6; border-radius:4px;">
-    <strong>🔵 Serious LoRA runs on constrained hardware should default to QLoRA.</strong>
+    <strong>Serious LoRA runs on constrained hardware should default to QLoRA.</strong>
   </div>
+</section>
+
+<!-- 13b QLoRA memory layout -->
+<section>
+  <h2>QLoRA: 4-bit base + fp16 adapters</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="qlora-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+      </defs>
+
+      <!-- Base weight matrix W (large, frozen, 4-bit) -->
+      <rect x="30" y="30" width="220" height="200" rx="6" fill="#E2E8F0" stroke="#64748B" stroke-width="2" stroke-dasharray="4 4"/>
+      <text x="140" y="55" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#334155">W (base weights)</text>
+      <text x="140" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="24" fill="#94A3B8">d x k</text>
+      <rect x="55" y="100" width="170" height="24" rx="4" fill="#CBD5E1"/>
+      <text x="140" y="116" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#334155">4-bit NF4 quantised</text>
+      <rect x="55" y="130" width="170" height="24" rx="4" fill="#CBD5E1"/>
+      <text x="140" y="146" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">frozen -- no gradients</text>
+      <text x="140" y="178" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">double quantisation:</text>
+      <text x="140" y="192" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">quantise the quantisation</text>
+      <text x="140" y="206" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">constants too</text>
+
+      <!-- Plus sign -->
+      <text x="275" y="130" text-anchor="middle" font-family="Inter" font-weight="700" font-size="26" fill="#0D9488">+</text>
+
+      <!-- LoRA B matrix (tall, narrow) -->
+      <rect x="310" y="30" width="50" height="200" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="335" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">B</text>
+      <text x="335" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0D9488" transform="rotate(-90,335,130)">d x r</text>
+
+      <!-- Multiply sign -->
+      <text x="378" y="130" text-anchor="middle" font-family="Inter" font-weight="700" font-size="22" fill="#0D9488">x</text>
+
+      <!-- LoRA A matrix (short, wide) -->
+      <rect x="400" y="105" width="200" height="50" rx="4" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="500" y="95" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">A</text>
+      <text x="500" y="135" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#0D9488">r x k</text>
+
+      <!-- fp16 label spanning both -->
+      <rect x="310" y="240" width="290" height="22" rx="3" fill="#CCFBF1" stroke="#0D9488"/>
+      <text x="455" y="255" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0F766E">fp16 trainable (gradients flow here)</text>
+
+      <!-- Inference formula -->
+      <rect x="30" y="270" width="570" height="30" rx="4" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="315" y="290" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#334155">inference = dequant(W) + B x A   (merged at deploy time)</text>
+
+      <!-- Memory comparison (right side) -->
+      <rect x="620" y="30" width="130" height="200" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+      <text x="685" y="52" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#334155">Memory (7B)</text>
+
+      <!-- Full fine-tune bar -->
+      <rect x="635" y="65" width="100" height="22" rx="3" fill="#F43F5E"/>
+      <text x="685" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Full FT: 28 GB</text>
+
+      <!-- LoRA bar -->
+      <rect x="635" y="97" width="50" height="22" rx="3" fill="#3B82F6"/>
+      <text x="660" y="112" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">LoRA: 14 GB</text>
+
+      <!-- QLoRA bar -->
+      <rect x="635" y="129" width="18" height="22" rx="3" fill="#0D9488"/>
+      <text x="668" y="144" font-family="Inter" font-weight="600" font-size="9" fill="#0D9488">QLoRA: 5 GB</text>
+
+      <!-- Scale note -->
+      <text x="685" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">QLoRA makes 65B</text>
+      <text x="685" y="188" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">possible on 1x 48GB</text>
+      <text x="685" y="201" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">consumer GPU</text>
+    </svg>
+  </figure>
 </section>
 
 <!-- 14 AlignmentConfig -->
@@ -366,7 +435,7 @@ print(f"train={result.train_loss:.4f}  eval={result.eval_loss:.4f}")
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>

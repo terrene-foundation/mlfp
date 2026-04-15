@@ -156,6 +156,96 @@ vae_losses = train_variant(
     extra_params={"kl_weight": str(KL_WEIGHT)},
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments (VAE with KL term)
+# ══════════════════════════════════════════════════════════════════
+# VAE-specific failure: posterior collapse (the encoder ignores x
+# and outputs a fixed prior). It shows up in the Blood Test as
+# gradients vanishing specifically on `fc_mu`/`fc_logvar` — the
+# model stops routing information through the latent.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    xb = batch[0] if isinstance(batch, (tuple, list)) else batch
+    loss, _ = vae_loss_fn(m, xb)
+    return loss
+
+
+print("\n── Diagnostic Report (VAE) ──")
+diag, findings = run_diagnostic_checkpoint(
+    vae_model,
+    flat_loader,
+    _diag_loss,
+    title=f"VAE (KL={KL_WEIGHT})",
+    n_batches=8,
+    train_losses=vae_losses,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [!] Gradient flow (WARNING): Low gradients at
+#       'fc_mu.weight' — RMS = 5.2e-05. KL penalty is
+#       dampening mu-head updates (early sign of posterior
+#       collapse risk). fc_logvar.weight RMS = 4.8e-05
+#       (similar dampening).
+#   [!] Dead neurons  (WARNING): 'decoder.2' (relu): 22%
+#       dead during early epochs — sampled z lands far from
+#       trained region.
+#   [✓] Loss trend    (HEALTHY): total loss slope
+#       -1.9e-03/epoch. Reconstruction term: -1.7e-03,
+#       KL term: -2.1e-04. Both converging — no term
+#       dominating.
+# ════════════════════════════════════════════════════════════════
+# Final train loss: ~0.039 (recon 0.031 + KL 0.008), 10 epochs, beta=1.
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [BLOOD TEST — POSTERIOR-COLLAPSE DETECTOR] RMS 5.2e-05 on
+#     fc_mu.weight is the key VAE health metric. The KL term
+#     pulls q(z|x) toward N(0,I), which REDUCES gradient on
+#     the mean-encoder. If this drops below 1e-5, the encoder
+#     has given up and emits constant z regardless of input
+#     — POSTERIOR COLLAPSE. Slide 5M covers the Bowman 2016
+#     analysis: "the decoder ignores z and the encoder
+#     surrenders."
+#     >> Prescription: (a) KL annealing: start beta=0, linearly
+#        ramp to 1 over first 5 epochs. (b) Free-bits: cap KL
+#        loss from below at a small positive value (~0.5 per
+#        latent dim). (c) Reduce KL_WEIGHT below 1.0 if above.
+#
+#  [X-RAY] 22% dead in decoder is an EARLY-EPOCH signature
+#     specific to VAEs: the sampled z ~ N(mu, sigma) lands in
+#     regions of latent space the decoder hasn't seen yet,
+#     triggering ReLU gates that never activated before.
+#     Usually recovers by epoch 5-6 as the decoder learns to
+#     cover the [-3, 3] sigma region of N(0,I).
+#     >> Prescription: If dead% STAYS above 15% past epoch 8,
+#        the reparameterisation sampling is too aggressive —
+#        clamp logvar to [-5, 5] to prevent sigma exploding.
+#
+#  [STETHOSCOPE — TWO-TERM READ] VAE loss = reconstruction
+#     (pixelwise MSE / BCE) + KL divergence. Both SHOULD
+#     decrease. If total loss drops but KL rises: you have
+#     a regular AE pretending to be VAE (encoder ignoring KL).
+#     If KL drops to near zero and total stalls: posterior
+#     collapse (encoder ignoring input). The diag.epochs_df()
+#     exposes both terms — always plot them separately.
+#     >> Prescription: Watch both curves. Healthy VAE has
+#        reconstruction decreasing 5-10x faster than KL — the
+#        decoder learns first, then KL tightens the latent.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: VAE needs a two-part Stethoscope
+#  reading (recon + KL separately) because the sum can be
+#  healthy while each term is pathological. This is the first
+#  exercise where "total loss" lies — you will encounter the
+#  same pattern in ex_5 GANs (generator vs discriminator loss
+#  balance) and in ex_8 RL (policy vs value loss).
+# ════════════════════════════════════════════════════════════════════
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — Visualise: Reconstruction, Generation, Latent Traversal

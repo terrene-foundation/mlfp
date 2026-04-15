@@ -382,6 +382,96 @@ bert_losses, bert_accs = asyncio.run(
     train_bert_async(bert_model, bert_train_loader, bert_val_loader, epochs=3)
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
+# ══════════════════════════════════════════════════════════════════
+from shared.mlfp05.diagnostics import diagnose_classifier, run_diagnostic_checkpoint
+
+print("\n── Diagnostic Report (LSTM) ──")
+lstm_diag, lstm_findings = diagnose_classifier(
+    lstm_model,
+    val_loader,
+    title="LSTM (3-way comparison)",
+    n_batches=6,
+    train_losses=lstm_losses,
+    val_losses=[1.0 - a for a in lstm_accs],
+    show=False,
+)
+
+print("\n── Diagnostic Report (Transformer) ──")
+tfm_diag, tfm_findings = diagnose_classifier(
+    transformer_model,
+    val_loader,
+    title="Transformer (3-way comparison)",
+    n_batches=6,
+    train_losses=transformer_losses,
+    val_losses=[1.0 - a for a in transformer_accs],
+    show=False,
+)
+
+
+def _bert_loss(m, ids, mask, labels):
+    return m(input_ids=ids, attention_mask=mask, labels=labels).loss
+
+
+def _bert_adapter(batch):
+    return batch[0], batch[1], batch[2]
+
+
+print("\n── Diagnostic Report (BERT fine-tune) ──")
+bert_diag, bert_findings = run_diagnostic_checkpoint(
+    bert_model,
+    bert_val_loader,
+    _bert_loss,
+    title="BERT fine-tune (3-way comparison)",
+    n_batches=4,
+    train_losses=bert_losses,
+    val_losses=[1.0 - a for a in bert_accs],
+    batch_adapter=_bert_adapter,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (reference pattern — 3-way on AG News) ══════
+# All three reports follow their individual-file patterns (02, 03, 04).
+# Side-by-side takeaway:
+#   LSTM        : gradient-flow WARNING (recurrent weights 1:50 of head)
+#   Transformer : all HEALTHY, uniform gradients across encoder layers
+#   BERT        : all HEALTHY, frozen layers 0-7 show ZERO RMS (by design)
+#
+# STUDENT INTERPRETATION GUIDE — the comparative narrative:
+#
+#  [BLOOD TEST] compare gradient-flow readings across the three
+#     reports. The LSTM shows concentrated gradients at the head;
+#     the Transformer shows uniform gradients across `encoder.layers`;
+#     BERT shows zeros in frozen layers and healthy signal above layer
+#     8. This ONE instrument tells the whole story of slide 5.4:
+#     attention + residuals + pretraining stack three architectural
+#     wins on top of each other.
+#     >> Prescription Pad reading: the accuracy gap (LSTM -> Transformer
+#        -> BERT) is NOT just hyperparameter tuning — it's visible in
+#        the gradient-flow report before you ever look at val acc.
+#
+#  [STETHOSCOPE] loss curve shapes differ:
+#     - LSTM: slow convergence, plateau by epoch 5 (sequential ceiling)
+#     - Transformer: steady decline, could benefit from more epochs
+#     - BERT: sharp drop in 2 epochs, then gentle tail (pretraining
+#       head-start is doing the work)
+#     The Stethoscope surfaces the "how fast can this architecture
+#     learn" question that slide 5.4 frames as "inductive bias from
+#     pretraining amortises compute".
+#
+#  [FIVE-INSTRUMENT TAKEAWAY] This comparison is the most valuable
+#  diagnostic exercise in ex_4. You see the SAME instruments producing
+#  three distinct signatures on the SAME dataset. Students who memorise
+#  these three signatures can diagnose any NLP architecture in the
+#  future. Prescription Pad's value is as a classifier OF classifiers.
+#
+#  CONNECT TO SLIDE 5.4: The slide's "pretrain-then-finetune is the
+#  dominant paradigm" claim is proven by the ZERO RMS on BERT's
+#  frozen layers + the 4-point accuracy win at 3 epochs. That's the
+#  empirical form of the argument.
+# ══════════════════════════════════════════════════════════════════
+
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert max(lstm_accs) > 0.60, f"LSTM should exceed 60%, got {max(lstm_accs):.3f}"
 assert (

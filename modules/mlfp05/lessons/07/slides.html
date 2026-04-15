@@ -33,6 +33,85 @@
 </section>
 
 <section>
+  <h2>Lower layers transfer; higher layers specialize</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="tl-a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#1E293B"/></marker>
+      </defs>
+
+      <!-- CNN column (ImageNet pretrained) -->
+      <text x="140" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E293B">Pretrained CNN (ImageNet)</text>
+
+      <!-- Early layers -->
+      <rect x="40" y="32" width="200" height="70" rx="6" fill="#3B82F6" opacity="0.12" stroke="#3B82F6" stroke-width="2"/>
+      <text x="140" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Early layers (conv1-2)</text>
+      <!-- Pattern representations -->
+      <line x1="70" y1="72" x2="90" y2="72" stroke="#3B82F6" stroke-width="2"/><line x1="80" y1="62" x2="80" y2="82" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="110" y1="62" x2="130" y2="82" stroke="#3B82F6" stroke-width="2"/><line x1="110" y1="82" x2="130" y2="62" stroke="#3B82F6" stroke-width="2"/>
+      <circle cx="165" cy="72" r="8" fill="none" stroke="#3B82F6" stroke-width="2"/>
+      <line x1="190" y1="65" x2="210" y2="78" stroke="#3B82F6" stroke-width="2"/>
+      <text x="140" y="94" text-anchor="middle" font-family="Inter" font-size="9" fill="#3B82F6">edges, lines, corners, gradients</text>
+
+      <!-- Middle layers -->
+      <rect x="40" y="112" width="200" height="70" rx="6" fill="#F59E0B" opacity="0.12" stroke="#F59E0B" stroke-width="2"/>
+      <text x="140" y="135" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#F59E0B">Middle layers (conv3-4)</text>
+      <!-- Texture patterns -->
+      <rect x="65" y="145" width="16" height="16" rx="2" fill="#F59E0B" opacity="0.3"/><rect x="67" y="147" width="4" height="4" fill="#F59E0B" opacity="0.5"/><rect x="73" y="147" width="4" height="4" fill="#F59E0B" opacity="0.5"/><rect x="67" y="153" width="4" height="4" fill="#F59E0B" opacity="0.5"/><rect x="73" y="153" width="4" height="4" fill="#F59E0B" opacity="0.5"/>
+      <rect x="95" y="145" width="16" height="16" rx="2" fill="#F59E0B" opacity="0.2"/><line x1="97" y1="147" x2="109" y2="147" stroke="#F59E0B" stroke-width="1"/><line x1="97" y1="151" x2="109" y2="151" stroke="#F59E0B" stroke-width="1"/><line x1="97" y1="155" x2="109" y2="155" stroke="#F59E0B" stroke-width="1"/>
+      <rect x="125" y="145" width="16" height="16" rx="2" fill="#F59E0B" opacity="0.25"/>
+      <rect x="155" y="145" width="16" height="16" rx="2" fill="#F59E0B" opacity="0.2"/><circle cx="163" cy="153" r="3" fill="none" stroke="#F59E0B" stroke-width="1"/><circle cx="163" cy="153" r="6" fill="none" stroke="#F59E0B" stroke-width="0.5"/>
+      <text x="140" y="174" text-anchor="middle" font-family="Inter" font-size="9" fill="#F59E0B">textures, patterns, fur, brick, stripes</text>
+
+      <!-- Late layers -->
+      <rect x="40" y="192" width="200" height="70" rx="6" fill="#F43F5E" opacity="0.12" stroke="#F43F5E" stroke-width="2"/>
+      <text x="140" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#F43F5E">Late layers (conv5, FC)</text>
+      <text x="80" y="240" font-family="Inter" font-size="10" fill="#F43F5E">eyes</text>
+      <text x="120" y="240" font-family="Inter" font-size="10" fill="#F43F5E">wheels</text>
+      <text x="170" y="240" font-family="Inter" font-size="10" fill="#F43F5E">faces</text>
+      <text x="140" y="254" text-anchor="middle" font-family="Inter" font-size="9" fill="#F43F5E">object parts, high-level semantics</text>
+
+      <!-- Classification head -->
+      <rect x="40" y="272" width="200" height="35" rx="6" fill="#22C55E" opacity="0.12" stroke="#22C55E" stroke-width="2"/>
+      <text x="140" y="294" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#22C55E">Classification head (1000 classes)</text>
+
+      <!-- Arrow: pretrained to new task -->
+      <line x1="280" y1="160" x2="380" y2="160" stroke="#1E293B" stroke-width="2" marker-end="url(#tl-a)"/>
+      <text x="330" y="148" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#1E293B">Transfer to</text>
+      <text x="330" y="162" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">new task</text>
+
+      <!-- New task column -->
+      <text x="520" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#1E293B">Your task (e.g., 3-class)</text>
+
+      <!-- Frozen early -->
+      <rect x="420" y="32" width="200" height="70" rx="6" fill="#3B82F6" opacity="0.08" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="6 3"/>
+      <text x="520" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Early layers</text>
+      <text x="520" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="700" fill="#3B82F6">FROZEN</text>
+      <text x="520" y="94" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">requires_grad = False</text>
+
+      <!-- Frozen middle -->
+      <rect x="420" y="112" width="200" height="70" rx="6" fill="#F59E0B" opacity="0.08" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="6 3"/>
+      <text x="520" y="140" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#F59E0B">Middle layers</text>
+      <text x="520" y="158" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="700" fill="#F59E0B">FROZEN (or low LR)</text>
+      <text x="520" y="174" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">unfreeze later if needed</text>
+
+      <!-- Fine-tuned late -->
+      <rect x="420" y="192" width="200" height="70" rx="6" fill="#F43F5E" opacity="0.15" stroke="#F43F5E" stroke-width="2"/>
+      <text x="520" y="220" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#F43F5E">Late layers</text>
+      <text x="520" y="238" text-anchor="middle" font-family="JetBrains Mono" font-size="10" font-weight="700" fill="#F43F5E">FINE-TUNED</text>
+      <text x="520" y="254" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">low learning rate</text>
+
+      <!-- New head -->
+      <rect x="420" y="272" width="200" height="35" rx="6" fill="#22C55E" opacity="0.2" stroke="#22C55E" stroke-width="2"/>
+      <text x="520" y="294" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#22C55E">NEW head (3 classes)</text>
+
+      <!-- Footer -->
+      <text x="380" y="316" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">Universal features (edges, textures) transfer to any vision task. Object parts must adapt to your domain.</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>The strategy</h2>
   <figure style="text-align:center">
     <svg viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg">
@@ -55,7 +134,7 @@
 <section>
   <h2>ResNet fine-tuning</h2>
   <pre><code class="language-python" data-trim>
-model = models.resnet18(pretrained=True)
+model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 for param in model.parameters():
     param.requires_grad = False  # freeze
 
@@ -136,6 +215,6 @@ result = server.predict(new_data)
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+<script>Reveal.initialize({hash:true,slideNumber:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
 </body>
 </html>

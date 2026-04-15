@@ -61,38 +61,84 @@
 <section>
   <h2>Clustering in one picture</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="30" width="200" height="200" rx="10" fill="#F8FAFC" stroke="#CBD5E1"/>
-      <text x="120" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Unlabelled</text>
-      <g fill="#64748B">
-        <circle cx="60" cy="70" r="4"/><circle cx="90" cy="85" r="4"/><circle cx="75" cy="110" r="4"/>
-        <circle cx="110" cy="80" r="4"/><circle cx="140" cy="100" r="4"/><circle cx="165" cy="75" r="4"/>
-        <circle cx="50" cy="160" r="4"/><circle cx="70" cy="180" r="4"/><circle cx="95" cy="195" r="4"/>
-        <circle cx="130" cy="175" r="4"/><circle cx="160" cy="200" r="4"/><circle cx="185" cy="165" r="4"/>
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Panel 1: Raw scatter — all grey -->
+      <text x="120" y="16" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">Raw data</text>
+      <rect x="15" y="22" width="210" height="195" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <text x="220" y="222" font-family="Inter" font-size="9" fill="#94A3B8">spend</text>
+      <text x="18" y="30" font-family="Inter" font-size="9" fill="#94A3B8">freq</text>
+      <!-- Cluster A points (will become teal) -->
+      <g fill="#94A3B8">
+        <circle cx="55" cy="60" r="3.5"/><circle cx="70" cy="52" r="3.5"/><circle cx="62" cy="72" r="3.5"/>
+        <circle cx="80" cy="65" r="3.5"/><circle cx="48" cy="78" r="3.5"/><circle cx="73" cy="45" r="3.5"/>
+        <circle cx="90" cy="58" r="3.5"/><circle cx="58" cy="85" r="3.5"/>
       </g>
-      <line x1="235" y1="130" x2="290" y2="130" stroke="#0D9488" stroke-width="3"/>
-      <polygon points="290,130 284,126 284,134" fill="#0D9488"/>
+      <!-- Cluster B points (will become blue) -->
+      <g fill="#94A3B8">
+        <circle cx="150" cy="145" r="3.5"/><circle cx="165" cy="155" r="3.5"/><circle cx="175" cy="140" r="3.5"/>
+        <circle cx="140" cy="160" r="3.5"/><circle cx="185" cy="150" r="3.5"/><circle cx="160" cy="170" r="3.5"/>
+        <circle cx="195" cy="162" r="3.5"/><circle cx="148" cy="175" r="3.5"/>
+      </g>
+      <!-- Cluster C points (will become amber) -->
+      <g fill="#94A3B8">
+        <circle cx="175" cy="55" r="3.5"/><circle cx="190" cy="48" r="3.5"/><circle cx="185" cy="68" r="3.5"/>
+        <circle cx="200" cy="58" r="3.5"/><circle cx="170" cy="42" r="3.5"/><circle cx="195" cy="75" r="3.5"/>
+      </g>
 
-      <rect x="300" y="30" width="200" height="200" rx="10" fill="#F8FAFC" stroke="#CBD5E1"/>
-      <text x="400" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#475569">Clustered</text>
-      <g fill="#EF4444">
-        <circle cx="340" cy="70" r="4"/><circle cx="370" cy="85" r="4"/><circle cx="355" cy="110" r="4"/>
-        <circle cx="390" cy="80" r="4"/><circle cx="420" cy="100" r="4"/><circle cx="445" cy="75" r="4"/>
+      <!-- Arrow 1 -->
+      <line x1="235" y1="120" x2="272" y2="120" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="272,120 266,116 266,124" fill="#0D9488"/>
+      <text x="253" y="110" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">K-means</text>
+
+      <!-- Panel 2: Coloured by cluster + centroids -->
+      <text x="395" y="16" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">Clustered</text>
+      <rect x="283" y="22" width="225" height="195" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <!-- Cluster A — teal -->
+      <g fill="#0D9488">
+        <circle cx="323" cy="60" r="3.5"/><circle cx="338" cy="52" r="3.5"/><circle cx="330" cy="72" r="3.5"/>
+        <circle cx="348" cy="65" r="3.5"/><circle cx="316" cy="78" r="3.5"/><circle cx="341" cy="45" r="3.5"/>
+        <circle cx="358" cy="58" r="3.5"/><circle cx="326" cy="85" r="3.5"/>
       </g>
+      <rect x="332" y="60" width="8" height="8" rx="1" fill="#0D9488" stroke="#1E293B" stroke-width="1.5"/>
+      <!-- Cluster B — blue -->
       <g fill="#3B82F6">
-        <circle cx="330" cy="160" r="4"/><circle cx="350" cy="180" r="4"/><circle cx="375" cy="195" r="4"/>
-        <circle cx="410" cy="175" r="4"/><circle cx="440" cy="200" r="4"/><circle cx="465" cy="165" r="4"/>
+        <circle cx="418" cy="145" r="3.5"/><circle cx="433" cy="155" r="3.5"/><circle cx="443" cy="140" r="3.5"/>
+        <circle cx="408" cy="160" r="3.5"/><circle cx="453" cy="150" r="3.5"/><circle cx="428" cy="170" r="3.5"/>
+        <circle cx="463" cy="162" r="3.5"/><circle cx="416" cy="175" r="3.5"/>
       </g>
-      <line x1="515" y1="130" x2="570" y2="130" stroke="#0D9488" stroke-width="3"/>
-      <polygon points="570,130 564,126 564,134" fill="#0D9488"/>
+      <rect x="431" y="153" width="8" height="8" rx="1" fill="#3B82F6" stroke="#1E293B" stroke-width="1.5"/>
+      <!-- Cluster C — amber -->
+      <g fill="#F59E0B">
+        <circle cx="443" cy="55" r="3.5"/><circle cx="458" cy="48" r="3.5"/><circle cx="453" cy="68" r="3.5"/>
+        <circle cx="468" cy="58" r="3.5"/><circle cx="438" cy="42" r="3.5"/><circle cx="463" cy="75" r="3.5"/>
+      </g>
+      <rect x="450" y="55" width="8" height="8" rx="1" fill="#F59E0B" stroke="#1E293B" stroke-width="1.5"/>
+      <!-- Legend -->
+      <rect x="290" y="192" width="6" height="6" rx="1" fill="#1E293B"/>
+      <text x="300" y="198" font-family="Inter" font-size="8" fill="#64748B">= centroid</text>
 
-      <rect x="580" y="30" width="160" height="200" rx="10" fill="#F0FDFA" stroke="#0D9488"/>
-      <text x="660" y="22" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">Meaning</text>
-      <text x="590" y="80" font-family="Inter" font-size="12" fill="#1E293B">• High value</text>
-      <text x="590" y="110" font-family="Inter" font-size="12" fill="#1E293B">• Dormant</text>
-      <text x="590" y="140" font-family="Inter" font-size="12" fill="#1E293B">• Bargain</text>
-      <text x="590" y="180" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">Human finds</text>
-      <text x="590" y="195" font-family="Inter" font-size="10" font-style="italic" fill="#64748B">the labels.</text>
+      <!-- Arrow 2 -->
+      <line x1="517" y1="120" x2="554" y2="120" stroke="#0D9488" stroke-width="2.5"/>
+      <polygon points="554,120 548,116 548,124" fill="#0D9488"/>
+      <text x="535" y="110" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">interpret</text>
+
+      <!-- Panel 3: Business meaning -->
+      <text x="657" y="16" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Business meaning</text>
+      <rect x="562" y="22" width="190" height="195" rx="6" fill="#F0FDFA" stroke="#0D9488"/>
+      <!-- Cluster labels with colour keys -->
+      <circle cx="580" cy="58" r="5" fill="#F59E0B"/>
+      <text x="592" y="55" font-family="Inter" font-weight="600" font-size="11" fill="#1E293B">High value</text>
+      <text x="592" y="68" font-family="Inter" font-size="9" fill="#64748B">High spend, high frequency</text>
+
+      <circle cx="580" cy="108" r="5" fill="#0D9488"/>
+      <text x="592" y="105" font-family="Inter" font-weight="600" font-size="11" fill="#1E293B">Price sensitive</text>
+      <text x="592" y="118" font-family="Inter" font-size="9" fill="#64748B">Low spend, high frequency</text>
+
+      <circle cx="580" cy="158" r="5" fill="#3B82F6"/>
+      <text x="592" y="155" font-family="Inter" font-weight="600" font-size="11" fill="#1E293B">Churning</text>
+      <text x="592" y="168" font-family="Inter" font-size="9" fill="#64748B">Moderate spend, low frequency</text>
+
+      <text x="580" y="200" font-family="Inter" font-size="9" font-style="italic" fill="#64748B">Human assigns the labels.</text>
     </svg>
   </figure>
 </section>
@@ -370,7 +416,7 @@ X_scaled = StandardScaler().fit_transform(X)
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
   Reveal.initialize({
-    hash: true,
+    hash: true, slideNumber: true,
     width: 1280,
     height: 720,
     margin: 0.05,

@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/theme.css">
   <style>
     .reveal section { text-align: left; }
     .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
@@ -74,6 +75,101 @@
 </section>
 
 <section>
+  <h2>Attention: which words matter for which</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <!-- Title row (keys) -->
+      <text x="240" y="30" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#64748B">Keys (columns)</text>
+      <text x="195" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">The</text>
+      <text x="255" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">cat</text>
+      <text x="315" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">sat</text>
+      <text x="375" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">on</text>
+      <text x="435" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">the</text>
+      <text x="495" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">mat</text>
+
+      <!-- Side label (queries) -->
+      <text x="80" y="120" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#64748B" transform="rotate(-90,50,120)">Queries (rows)</text>
+
+      <!-- Row labels -->
+      <text x="148" y="82" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">The</text>
+      <text x="148" y="122" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">cat</text>
+      <text x="148" y="162" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">sat</text>
+      <text x="148" y="202" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">on</text>
+      <text x="148" y="242" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">the</text>
+      <text x="148" y="282" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#1E293B">mat</text>
+
+      <!-- Heatmap: 6x6 grid, cell=60x40, origin (165,60) -->
+      <!-- Row "The" — attends to self -->
+      <rect x="165" y="62" width="60" height="40" fill="#4F46E5" opacity="0.55"/><text x="195" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.42</text>
+      <rect x="225" y="62" width="60" height="40" fill="#4F46E5" opacity="0.20"/><text x="255" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.15</text>
+      <rect x="285" y="62" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="315" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.08</text>
+      <rect x="345" y="62" width="60" height="40" fill="#4F46E5" opacity="0.15"/><text x="375" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.12</text>
+      <rect x="405" y="62" width="60" height="40" fill="#4F46E5" opacity="0.15"/><text x="435" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.13</text>
+      <rect x="465" y="62" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="495" y="86" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.10</text>
+
+      <!-- Row "cat" — attends to "sat" and self -->
+      <rect x="165" y="102" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="195" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.08</text>
+      <rect x="225" y="102" width="60" height="40" fill="#4F46E5" opacity="0.50"/><text x="255" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.35</text>
+      <rect x="285" y="102" width="60" height="40" fill="#4F46E5" opacity="0.60"/><text x="315" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.30</text>
+      <rect x="345" y="102" width="60" height="40" fill="#4F46E5" opacity="0.08"/><text x="375" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.05</text>
+      <rect x="405" y="102" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="435" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.07</text>
+      <rect x="465" y="102" width="60" height="40" fill="#4F46E5" opacity="0.18"/><text x="495" y="126" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.15</text>
+
+      <!-- Row "sat" — attends strongly to "cat" and "mat" -->
+      <rect x="165" y="142" width="60" height="40" fill="#4F46E5" opacity="0.06"/><text x="195" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.04</text>
+      <rect x="225" y="142" width="60" height="40" fill="#4F46E5" opacity="0.70"/><text x="255" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.32</text>
+      <rect x="285" y="142" width="60" height="40" fill="#4F46E5" opacity="0.30"/><text x="315" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.18</text>
+      <rect x="345" y="142" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="375" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.06</text>
+      <rect x="405" y="142" width="60" height="40" fill="#4F46E5" opacity="0.08"/><text x="435" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.05</text>
+      <rect x="465" y="142" width="60" height="40" fill="#4F46E5" opacity="0.65"/><text x="495" y="166" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.35</text>
+
+      <!-- Row "on" — attends to "sat" and "mat" -->
+      <rect x="165" y="182" width="60" height="40" fill="#4F46E5" opacity="0.08"/><text x="195" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.06</text>
+      <rect x="225" y="182" width="60" height="40" fill="#4F46E5" opacity="0.12"/><text x="255" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.10</text>
+      <rect x="285" y="182" width="60" height="40" fill="#4F46E5" opacity="0.45"/><text x="315" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.28</text>
+      <rect x="345" y="182" width="60" height="40" fill="#4F46E5" opacity="0.25"/><text x="375" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.16</text>
+      <rect x="405" y="182" width="60" height="40" fill="#4F46E5" opacity="0.12"/><text x="435" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.08</text>
+      <rect x="465" y="182" width="60" height="40" fill="#4F46E5" opacity="0.55"/><text x="495" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.32</text>
+
+      <!-- Row "the" — attends to "mat" -->
+      <rect x="165" y="222" width="60" height="40" fill="#4F46E5" opacity="0.20"/><text x="195" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.14</text>
+      <rect x="225" y="222" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="255" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.08</text>
+      <rect x="285" y="222" width="60" height="40" fill="#4F46E5" opacity="0.08"/><text x="315" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.06</text>
+      <rect x="345" y="222" width="60" height="40" fill="#4F46E5" opacity="0.10"/><text x="375" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.08</text>
+      <rect x="405" y="222" width="60" height="40" fill="#4F46E5" opacity="0.20"/><text x="435" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.14</text>
+      <rect x="465" y="222" width="60" height="40" fill="#4F46E5" opacity="0.75"/><text x="495" y="246" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.50</text>
+
+      <!-- Row "mat" — attends to "on" and self -->
+      <rect x="165" y="262" width="60" height="40" fill="#4F46E5" opacity="0.06"/><text x="195" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.05</text>
+      <rect x="225" y="262" width="60" height="40" fill="#4F46E5" opacity="0.15"/><text x="255" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.12</text>
+      <rect x="285" y="262" width="60" height="40" fill="#4F46E5" opacity="0.35"/><text x="315" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.22</text>
+      <rect x="345" y="262" width="60" height="40" fill="#4F46E5" opacity="0.40"/><text x="375" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.25</text>
+      <rect x="405" y="262" width="60" height="40" fill="#4F46E5" opacity="0.08"/><text x="435" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1E293B">.06</text>
+      <rect x="465" y="262" width="60" height="40" fill="#4F46E5" opacity="0.50"/><text x="495" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="white">.30</text>
+
+      <!-- Grid outlines -->
+      <rect x="165" y="62" width="360" height="240" fill="none" stroke="#CBD5E1" stroke-width="1"/>
+
+      <!-- Color scale -->
+      <text x="600" y="75" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">Attention weight</text>
+      <rect x="580" y="82" width="40" height="14" fill="#4F46E5" opacity="0.75"/><text x="630" y="94" font-family="JetBrains Mono" font-size="9" fill="#64748B">high</text>
+      <rect x="580" y="102" width="40" height="14" fill="#4F46E5" opacity="0.40"/><text x="630" y="114" font-family="JetBrains Mono" font-size="9" fill="#64748B">mid</text>
+      <rect x="580" y="122" width="40" height="14" fill="#4F46E5" opacity="0.10"/><text x="630" y="134" font-family="JetBrains Mono" font-size="9" fill="#64748B">low</text>
+
+      <!-- Annotation -->
+      <text x="620" y="180" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">"sat" attends</text>
+      <text x="620" y="195" text-anchor="middle" font-family="Inter" font-size="10" fill="#1E293B">strongly to</text>
+      <text x="620" y="210" text-anchor="middle" font-family="Inter" font-weight="700" font-size="10" fill="#4F46E5">"cat" and "mat"</text>
+      <text x="620" y="240" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">Each row sums to 1</text>
+      <text x="620" y="255" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">(softmax output)</text>
+
+      <!-- Footer -->
+      <text x="340" y="326" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">This is one head's attention pattern. Different heads learn different linguistic relationships.</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>From scratch with einsum</h2>
   <pre><code class="language-python" data-trim>
 def scaled_dot_product_attention(q, k, v, mask=None):
@@ -98,31 +194,89 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 </section>
 
 <section>
-  <h2>Multi-head diagram</h2>
+  <h2>Multi-head attention with tensor shapes</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="100" width="100" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="70" y="125" text-anchor="middle" font-weight="700" fill="#3B82F6">x</text>
-      <rect x="160" y="30" width="130" height="30" rx="5" fill="#E0F2F1" stroke="#0D9488"/>
-      <text x="225" y="50" text-anchor="middle" font-size="12">head 1 Q/K/V</text>
-      <rect x="160" y="80" width="130" height="30" rx="5" fill="#E0F2F1" stroke="#0D9488"/>
-      <text x="225" y="100" text-anchor="middle" font-size="12">head 2 Q/K/V</text>
-      <rect x="160" y="130" width="130" height="30" rx="5" fill="#E0F2F1" stroke="#0D9488"/>
-      <text x="225" y="150" text-anchor="middle" font-size="12">head 3 Q/K/V</text>
-      <rect x="160" y="180" width="130" height="30" rx="5" fill="#E0F2F1" stroke="#0D9488"/>
-      <text x="225" y="200" text-anchor="middle" font-size="12">head h Q/K/V</text>
-      <rect x="320" y="30" width="130" height="30" rx="5" fill="#FEF9C3" stroke="#EAB308"/>
-      <text x="385" y="50" text-anchor="middle" font-size="11">attention</text>
-      <rect x="320" y="80" width="130" height="30" rx="5" fill="#FEF9C3" stroke="#EAB308"/>
-      <text x="385" y="100" text-anchor="middle" font-size="11">attention</text>
-      <rect x="320" y="130" width="130" height="30" rx="5" fill="#FEF9C3" stroke="#EAB308"/>
-      <text x="385" y="150" text-anchor="middle" font-size="11">attention</text>
-      <rect x="320" y="180" width="130" height="30" rx="5" fill="#FEF9C3" stroke="#EAB308"/>
-      <text x="385" y="200" text-anchor="middle" font-size="11">attention</text>
-      <rect x="480" y="80" width="90" height="80" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-      <text x="525" y="125" text-anchor="middle" font-weight="700" fill="#B45309">Concat</text>
-      <rect x="600" y="100" width="80" height="40" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="640" y="125" text-anchor="middle" font-weight="700" fill="#3B82F6">W^O</text>
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="mha-a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#0D9488"/></marker>
+      </defs>
+
+      <!-- Input -->
+      <rect x="10" y="120" width="76" height="60" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="48" y="146" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#3B82F6">Input</text>
+      <text x="48" y="168" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">(L, d_model)</text>
+
+      <!-- Split arrow -->
+      <line x1="86" y1="150" x2="110" y2="150" stroke="#0D9488" stroke-width="1.5" marker-end="url(#mha-a)"/>
+      <text x="98" y="142" font-family="Inter" font-size="8" fill="#0D9488">split</text>
+
+      <!-- h heads: show 4 -->
+      <rect x="116" y="30" width="120" height="44" rx="4" fill="#0D9488" opacity="0.1" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="176" y="48" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Head 1: Q1 K1 V1</text>
+      <text x="176" y="64" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk) dk=d_model/h</text>
+
+      <rect x="116" y="84" width="120" height="44" rx="4" fill="#0D9488" opacity="0.1" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="176" y="102" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Head 2: Q2 K2 V2</text>
+      <text x="176" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+
+      <rect x="116" y="138" width="120" height="44" rx="4" fill="#0D9488" opacity="0.1" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="176" y="156" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Head 3: Q3 K3 V3</text>
+      <text x="176" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+
+      <text x="176" y="200" text-anchor="middle" font-family="Inter" font-size="14" fill="#94A3B8">...</text>
+
+      <rect x="116" y="210" width="120" height="44" rx="4" fill="#0D9488" opacity="0.1" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="176" y="228" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Head h: Qh Kh Vh</text>
+      <text x="176" y="244" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+
+      <!-- Attention per head -->
+      <rect x="272" y="30" width="130" height="44" rx="4" fill="#FEF9C3" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="337" y="48" text-anchor="middle" font-family="Inter" font-size="10" fill="#B45309">softmax(Q1K1'/root dk)V1</text>
+      <text x="337" y="64" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">output: (L, dk)</text>
+      <line x1="236" y1="52" x2="270" y2="52" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <rect x="272" y="84" width="130" height="44" rx="4" fill="#FEF9C3" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="337" y="102" text-anchor="middle" font-family="Inter" font-size="10" fill="#B45309">softmax(Q2K2'/root dk)V2</text>
+      <text x="337" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+      <line x1="236" y1="106" x2="270" y2="106" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <rect x="272" y="138" width="130" height="44" rx="4" fill="#FEF9C3" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="337" y="156" text-anchor="middle" font-family="Inter" font-size="10" fill="#B45309">softmax(Q3K3'/root dk)V3</text>
+      <text x="337" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+      <line x1="236" y1="160" x2="270" y2="160" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <text x="337" y="200" text-anchor="middle" font-family="Inter" font-size="14" fill="#94A3B8">...</text>
+
+      <rect x="272" y="210" width="130" height="44" rx="4" fill="#FEF9C3" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="337" y="228" text-anchor="middle" font-family="Inter" font-size="10" fill="#B45309">softmax(QhKh'/root dk)Vh</text>
+      <text x="337" y="244" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">(L, dk)</text>
+      <line x1="236" y1="232" x2="270" y2="232" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <!-- Concat -->
+      <rect x="440" y="90" width="90" height="120" rx="6" fill="#F59E0B" opacity="0.12" stroke="#F59E0B" stroke-width="2"/>
+      <text x="485" y="145" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#B45309">Concat</text>
+      <text x="485" y="165" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">(L, h*dk)</text>
+      <text x="485" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">= (L, d_model)</text>
+
+      <line x1="402" y1="52" x2="438" y2="120" stroke="#F59E0B" stroke-width="1.5"/>
+      <line x1="402" y1="106" x2="438" y2="135" stroke="#F59E0B" stroke-width="1.5"/>
+      <line x1="402" y1="160" x2="438" y2="155" stroke="#F59E0B" stroke-width="1.5"/>
+      <line x1="402" y1="232" x2="438" y2="185" stroke="#F59E0B" stroke-width="1.5"/>
+
+      <!-- Linear W^O -->
+      <rect x="565" y="120" width="76" height="60" rx="4" fill="#4F46E5" opacity="0.12" stroke="#4F46E5" stroke-width="2"/>
+      <text x="603" y="148" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="13" fill="#4F46E5">W^O</text>
+      <text x="603" y="168" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">linear proj</text>
+      <line x1="530" y1="150" x2="563" y2="150" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <!-- Output -->
+      <rect x="675" y="120" width="76" height="60" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="713" y="146" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#3B82F6">Output</text>
+      <text x="713" y="168" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">(L, d_model)</text>
+      <line x1="641" y1="150" x2="673" y2="150" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#mha-a)"/>
+
+      <!-- Example numbers -->
+      <text x="380" y="290" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">Example: d_model=512, h=8 heads, each dk=64. Same total parameters, 8 different relationship patterns.</text>
     </svg>
   </figure>
 </section>
@@ -157,16 +311,79 @@ class PositionalEncoding(nn.Module):
 </section>
 
 <section>
-  <h2>The encoder block</h2>
-  <ol>
-    <li>Multi-head self-attention</li>
-    <li>Residual connection</li>
-    <li>Layer norm</li>
-    <li>Feed-forward (2 Linear + ReLU)</li>
-    <li>Residual connection</li>
-    <li>Layer norm</li>
-  </ol>
-  <p>Stack N identical blocks. PyTorch has <code>nn.TransformerEncoderLayer</code> and <code>nn.TransformerEncoder</code> built in.</p>
+  <h2>The block that repeats N times</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="tb-a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#1E293B"/></marker>
+        <marker id="tb-skip" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#F59E0B"/></marker>
+      </defs>
+
+      <!-- Input at bottom -->
+      <rect x="195" y="290" width="120" height="34" rx="4" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
+      <text x="255" y="312" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#3B82F6">Input</text>
+      <text x="385" y="312" font-family="JetBrains Mono" font-size="10" fill="#64748B">(seq_len, d_model)</text>
+
+      <!-- Arrow up -->
+      <line x1="255" y1="290" x2="255" y2="260" stroke="#1E293B" stroke-width="1.5" marker-end="url(#tb-a)"/>
+
+      <!-- Multi-Head Self-Attention -->
+      <rect x="175" y="222" width="160" height="36" rx="4" fill="#0D9488" opacity="0.12" stroke="#0D9488" stroke-width="2"/>
+      <text x="255" y="244" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#0D9488">Multi-Head Self-Attention</text>
+
+      <!-- Residual skip 1 -->
+      <path d="M 195 305 L 120 305 L 120 205 L 195 205" stroke="#F59E0B" stroke-width="2" fill="none" stroke-dasharray="5 3"/>
+      <!-- Add circle 1 -->
+      <circle cx="255" cy="205" r="10" fill="white" stroke="#F59E0B" stroke-width="2"/>
+      <text x="255" y="209" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F59E0B">+</text>
+      <line x1="255" y1="222" x2="255" y2="217" stroke="#1E293B" stroke-width="1.5"/>
+
+      <!-- Arrow up from add to LN -->
+      <line x1="255" y1="195" x2="255" y2="182" stroke="#1E293B" stroke-width="1.5" marker-end="url(#tb-a)"/>
+
+      <!-- LayerNorm 1 -->
+      <rect x="195" y="152" width="120" height="28" rx="4" fill="#8B5CF6" opacity="0.1" stroke="#8B5CF6" stroke-width="1.5"/>
+      <text x="255" y="170" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#8B5CF6">LayerNorm</text>
+
+      <!-- Arrow up -->
+      <line x1="255" y1="152" x2="255" y2="138" stroke="#1E293B" stroke-width="1.5" marker-end="url(#tb-a)"/>
+
+      <!-- Feed-Forward Network -->
+      <rect x="175" y="100" width="160" height="36" rx="4" fill="#3B82F6" opacity="0.12" stroke="#3B82F6" stroke-width="2"/>
+      <text x="255" y="116" text-anchor="middle" font-family="Inter" font-weight="600" font-size="11" fill="#3B82F6">Feed-Forward (2 Linear+ReLU)</text>
+      <text x="385" y="122" font-family="JetBrains Mono" font-size="9" fill="#64748B">d_model -> 4*d_model -> d_model</text>
+
+      <!-- Residual skip 2 -->
+      <path d="M 195 165 L 120 165 L 120 80 L 195 80" stroke="#F59E0B" stroke-width="2" fill="none" stroke-dasharray="5 3"/>
+      <!-- Add circle 2 -->
+      <circle cx="255" cy="80" r="10" fill="white" stroke="#F59E0B" stroke-width="2"/>
+      <text x="255" y="84" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F59E0B">+</text>
+      <line x1="255" y1="100" x2="255" y2="92" stroke="#1E293B" stroke-width="1.5"/>
+
+      <!-- Arrow up from add to LN 2 -->
+      <line x1="255" y1="70" x2="255" y2="56" stroke="#1E293B" stroke-width="1.5" marker-end="url(#tb-a)"/>
+
+      <!-- LayerNorm 2 -->
+      <rect x="195" y="26" width="120" height="28" rx="4" fill="#8B5CF6" opacity="0.1" stroke="#8B5CF6" stroke-width="1.5"/>
+      <text x="255" y="44" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#8B5CF6">LayerNorm</text>
+
+      <!-- Output at top -->
+      <line x1="255" y1="26" x2="255" y2="12" stroke="#1E293B" stroke-width="1.5" marker-end="url(#tb-a)"/>
+      <text x="255" y="8" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#1E293B">Output</text>
+      <text x="385" y="8" font-family="JetBrains Mono" font-size="10" fill="#64748B">(seq_len, d_model)</text>
+
+      <!-- N-block bracket on right -->
+      <line x1="520" y1="10" x2="530" y2="10" stroke="#F43F5E" stroke-width="2"/>
+      <line x1="530" y1="10" x2="530" y2="324" stroke="#F43F5E" stroke-width="2"/>
+      <line x1="520" y1="324" x2="530" y2="324" stroke="#F43F5E" stroke-width="2"/>
+      <text x="545" y="170" font-family="Inter" font-weight="700" font-size="14" fill="#F43F5E">x N</text>
+      <text x="545" y="190" font-family="Inter" font-size="10" fill="#F43F5E">(e.g. N=6)</text>
+
+      <!-- Skip connection label -->
+      <text x="90" y="252" font-family="Inter" font-size="9" fill="#F59E0B" transform="rotate(-90,90,252)">residual (skip)</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Stack N identical blocks. Input and output shapes are identical: (seq_len, d_model). PyTorch has <code>nn.TransformerEncoderLayer</code> built in.</p>
 </section>
 
 <section>
@@ -267,6 +484,6 @@ model = TinyTransformer(n_tokens=2, d_model=32, n_heads=4,
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });</script>
+<script>Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });</script>
 </body>
 </html>

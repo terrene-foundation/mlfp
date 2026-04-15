@@ -79,45 +79,71 @@
 </section>
 
 <section>
-  <h2>DCGAN architecture</h2>
+  <h2>DCGAN generator: progressive upsampling</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 680 180" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="50" width="80" height="80" rx="4" fill="#F8FAFC" stroke="#CBD5E1"/>
-      <text x="60" y="85" text-anchor="middle" font-size="10" font-weight="600">z</text>
-      <text x="60" y="100" text-anchor="middle" font-size="9" fill="#64748B">100-d noise</text>
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="dcg-a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#3B82F6"/></marker>
+      </defs>
 
-      <line x1="105" y1="90" x2="135" y2="90" stroke="#3B82F6" stroke-width="2"/>
-      <polygon points="135,90 129,86 129,94" fill="#3B82F6"/>
+      <!-- z: 1x1x100 — tiny square -->
+      <rect x="20" y="118" width="14" height="14" rx="2" fill="#8B5CF6" opacity="0.3" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="27" y="108" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#8B5CF6">z</text>
+      <text x="27" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#8B5CF6">1x1</text>
+      <text x="27" y="162" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">x100</text>
 
-      <rect x="140" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
-      <text x="190" y="75" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
-      <text x="190" y="95" text-anchor="middle" font-size="9">+ BatchNorm</text>
-      <text x="190" y="112" text-anchor="middle" font-size="9">+ ReLU</text>
+      <line x1="38" y1="125" x2="58" y2="125" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#dcg-a)"/>
+      <text x="48" y="118" font-family="Inter" font-size="8" fill="#3B82F6">ConvT</text>
 
-      <line x1="245" y1="90" x2="275" y2="90" stroke="#3B82F6" stroke-width="2"/>
-      <polygon points="275,90 269,86 269,94" fill="#3B82F6"/>
+      <!-- 4x4x256 -->
+      <rect x="64" y="93" width="56" height="56" rx="3" fill="#3B82F6" opacity="0.15" stroke="#3B82F6" stroke-width="2"/>
+      <text x="92" y="118" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="#3B82F6">4x4</text>
+      <text x="92" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">x256</text>
+      <text x="92" y="162" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">BN+ReLU</text>
 
-      <rect x="280" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
-      <text x="330" y="75" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
-      <text x="330" y="95" text-anchor="middle" font-size="9">+ BatchNorm</text>
-      <text x="330" y="112" text-anchor="middle" font-size="9">+ ReLU</text>
+      <line x1="124" y1="125" x2="150" y2="125" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#dcg-a)"/>
+      <text x="137" y="118" font-family="Inter" font-size="8" fill="#3B82F6">ConvT</text>
 
-      <line x1="385" y1="90" x2="415" y2="90" stroke="#3B82F6" stroke-width="2"/>
-      <polygon points="415,90 409,86 409,94" fill="#3B82F6"/>
+      <!-- 8x8x128 -->
+      <rect x="156" y="77" width="84" height="84" rx="3" fill="#3B82F6" opacity="0.15" stroke="#3B82F6" stroke-width="2"/>
+      <text x="198" y="116" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="11" fill="#3B82F6">8x8</text>
+      <text x="198" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">x128</text>
+      <text x="198" y="176" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">BN+ReLU</text>
 
-      <rect x="420" y="40" width="100" height="100" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
-      <text x="470" y="80" text-anchor="middle" font-size="10" font-weight="600" fill="#3B82F6">ConvTranspose</text>
-      <text x="470" y="100" text-anchor="middle" font-size="9">+ Tanh</text>
+      <line x1="244" y1="125" x2="270" y2="125" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#dcg-a)"/>
+      <text x="257" y="118" font-family="Inter" font-size="8" fill="#3B82F6">ConvT</text>
 
-      <line x1="525" y1="90" x2="555" y2="90" stroke="#3B82F6" stroke-width="2"/>
-      <polygon points="555,90 549,86 549,94" fill="#3B82F6"/>
+      <!-- 16x16x64 -->
+      <rect x="276" y="53" width="130" height="130" rx="3" fill="#3B82F6" opacity="0.15" stroke="#3B82F6" stroke-width="2"/>
+      <text x="341" y="115" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="12" fill="#3B82F6">16x16</text>
+      <text x="341" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#64748B">x64</text>
+      <text x="341" y="198" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">BN+ReLU</text>
 
-      <rect x="560" y="50" width="80" height="80" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
-      <text x="600" y="85" text-anchor="middle" font-size="10" font-weight="600" fill="#22C55E">Image</text>
-      <text x="600" y="100" text-anchor="middle" font-size="9" fill="#22C55E">28x28</text>
+      <line x1="410" y1="125" x2="436" y2="125" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#dcg-a)"/>
+      <text x="423" y="118" font-family="Inter" font-size="8" fill="#3B82F6">ConvT</text>
+
+      <!-- 28x28x1 — final output -->
+      <rect x="442" y="28" width="182" height="182" rx="3" fill="#22C55E" opacity="0.1" stroke="#22C55E" stroke-width="2"/>
+      <text x="533" y="112" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#22C55E">28x28</text>
+      <text x="533" y="130" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#22C55E">x1</text>
+      <text x="533" y="148" text-anchor="middle" font-family="Inter" font-size="10" fill="#22C55E">Tanh output</text>
+      <text x="533" y="226" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#22C55E">generated image</text>
+
+      <!-- Arrow labels -->
+      <text x="380" y="260" text-anchor="middle" font-family="Inter" font-size="11" fill="#1E293B">Each ConvTranspose2d doubles spatial dimensions. Channels decrease as spatial size grows.</text>
+      <text x="380" y="278" text-anchor="middle" font-family="Inter" font-size="10" fill="#64748B">No FC layers, no pooling. BatchNorm + ReLU at every stage except the final Tanh.</text>
+
+      <!-- Scale indicator -->
+      <rect x="650" y="50" width="100" height="170" rx="4" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4 2"/>
+      <text x="700" y="44" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">spatial scale</text>
+      <line x1="700" y1="60" x2="700" y2="210" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="700" y="75" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">1x1</text>
+      <text x="700" y="110" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">4x4</text>
+      <text x="700" y="140" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">8x8</text>
+      <text x="700" y="170" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">16x16</text>
+      <text x="700" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#64748B">28x28</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">DCGAN rules: no max pooling, no FC layers, batch norm everywhere except output, Tanh at generator output.</p>
 </section>
 
 <section>
@@ -228,6 +254,7 @@
 for epoch in range(epochs):
     for real_batch in dataloader:
         # Train D: maximise log D(x) + log(1-D(G(z)))
+        d_opt.zero_grad()
         z = torch.randn(batch_size, latent_dim)
         fake = generator(z)
         d_loss = -torch.mean(torch.log(D(real_batch))
@@ -235,6 +262,7 @@ for epoch in range(epochs):
         d_loss.backward(); d_opt.step()
 
         # Train G: minimise log(1-D(G(z)))
+        g_opt.zero_grad()
         z = torch.randn(batch_size, latent_dim)
         fake = generator(z)
         g_loss = -torch.mean(torch.log(D(fake)))
@@ -298,7 +326,7 @@ d_loss = d_fake.mean() - d_real.mean() + 10 * gp
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>
 </html>

@@ -58,6 +58,79 @@
 </section>
 
 <section>
+  <h2>Each metric reads different cells</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="Inter" font-size="11">
+        <!-- Confusion matrix (center-left) -->
+        <text x="200" y="24" text-anchor="middle" font-weight="700" font-size="13" fill="#1E293B">Confusion Matrix</text>
+
+        <!-- Column headers -->
+        <text x="185" y="52" text-anchor="middle" font-weight="600" fill="#475569">Actual Neg</text>
+        <text x="310" y="52" text-anchor="middle" font-weight="600" fill="#475569">Actual Pos</text>
+
+        <!-- Row headers -->
+        <text x="60" y="96" text-anchor="middle" font-weight="600" fill="#475569">Pred</text>
+        <text x="60" y="110" text-anchor="middle" font-weight="600" fill="#475569">Neg</text>
+        <text x="60" y="166" text-anchor="middle" font-weight="600" fill="#475569">Pred</text>
+        <text x="60" y="180" text-anchor="middle" font-weight="600" fill="#475569">Pos</text>
+
+        <!-- TN cell -->
+        <rect x="110" y="62" width="120" height="56" rx="4" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="170" y="88" text-anchor="middle" font-weight="700" font-size="16" fill="#166534">TN</text>
+        <text x="170" y="108" text-anchor="middle" font-size="10" fill="#166534">850</text>
+
+        <!-- FN cell -->
+        <rect x="240" y="62" width="120" height="56" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="300" y="88" text-anchor="middle" font-weight="700" font-size="16" fill="#B45309">FN</text>
+        <text x="300" y="108" text-anchor="middle" font-size="10" fill="#B45309">30</text>
+
+        <!-- FP cell -->
+        <rect x="110" y="128" width="120" height="56" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+        <text x="170" y="154" text-anchor="middle" font-weight="700" font-size="16" fill="#B45309">FP</text>
+        <text x="170" y="174" text-anchor="middle" font-size="10" fill="#B45309">50</text>
+
+        <!-- TP cell -->
+        <rect x="240" y="128" width="120" height="56" rx="4" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+        <text x="300" y="154" text-anchor="middle" font-weight="700" font-size="16" fill="#166534">TP</text>
+        <text x="300" y="174" text-anchor="middle" font-size="10" fill="#166534">70</text>
+
+        <!-- PRECISION highlight: TP column (Pred Pos row) -->
+        <rect x="108" y="126" width="254" height="60" rx="0" fill="none" stroke="#4F46E5" stroke-width="3" stroke-dasharray="6 3"/>
+        <line x1="362" y1="156" x2="420" y2="156" stroke="#4F46E5" stroke-width="2"/>
+        <rect x="424" y="128" width="200" height="56" rx="6" fill="#EDE9FE" stroke="#4F46E5" stroke-width="1.5"/>
+        <text x="524" y="148" text-anchor="middle" font-weight="700" font-size="12" fill="#4F46E5">Precision</text>
+        <text x="524" y="164" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4F46E5">TP / (TP + FP)</text>
+        <text x="524" y="178" text-anchor="middle" font-size="10" fill="#64748B">= 70/120 = 0.58</text>
+
+        <!-- RECALL highlight: TP+FN (Actual Pos column) -->
+        <rect x="238" y="60" width="124" height="126" rx="0" fill="none" stroke="#0D9488" stroke-width="3" stroke-dasharray="6 3"/>
+        <line x1="300" y1="60" x2="300" y2="30" stroke="#0D9488" stroke-width="2"/>
+        <line x1="300" y1="30" x2="420" y2="30" stroke="#0D9488" stroke-width="2"/>
+        <rect x="424" y="18" width="200" height="56" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+        <text x="524" y="38" text-anchor="middle" font-weight="700" font-size="12" fill="#0D9488">Recall (Sensitivity)</text>
+        <text x="524" y="54" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">TP / (TP + FN)</text>
+        <text x="524" y="68" text-anchor="middle" font-size="10" fill="#64748B">= 70/100 = 0.70</text>
+
+        <!-- SPECIFICITY highlight: TN+FP (Actual Neg column) -->
+        <rect x="108" y="60" width="124" height="126" rx="0" fill="none" stroke="#3B82F6" stroke-width="3" stroke-dasharray="6 3"/>
+        <line x1="170" y1="186" x2="170" y2="210" stroke="#3B82F6" stroke-width="2"/>
+        <line x1="170" y1="210" x2="420" y2="210" stroke="#3B82F6" stroke-width="2"/>
+        <rect x="424" y="198" width="200" height="56" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="524" y="218" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">Specificity</text>
+        <text x="524" y="234" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#3B82F6">TN / (TN + FP)</text>
+        <text x="524" y="248" text-anchor="middle" font-size="10" fill="#64748B">= 850/900 = 0.94</text>
+
+        <!-- Bottom insight -->
+        <rect x="110" y="272" width="520" height="40" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
+        <text x="370" y="290" text-anchor="middle" font-weight="600" font-size="10" fill="#92400E">Precision: "of those I flagged, how many were real?"</text>
+        <text x="370" y="304" text-anchor="middle" font-size="10" fill="#92400E">Recall: "of all real positives, how many did I catch?"  Specificity: "of all negatives, how many did I spare?"</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>The formulas</h2>
   <div style="padding: 14px; background: #F8FAFC; border-radius: 8px;">
     \[ \text{Precision} = \frac{TP}{TP+FP}\qquad \text{Recall} = \frac{TP}{TP+FN} \]
@@ -240,7 +313,7 @@ print("Brier:", brier_score_loss(y_te, p_cal))
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>

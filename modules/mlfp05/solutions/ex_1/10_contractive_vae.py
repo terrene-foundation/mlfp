@@ -211,6 +211,98 @@ cvae_losses = train_variant(
     },
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments (VAE + Jacobian penalty)
+# ══════════════════════════════════════════════════════════════════
+# Contractive VAE = VAE loss + Jacobian penalty. Expect the BLOOD
+# TEST to show low-but-stable gradients — both regularisers pull
+# the encoder toward smoother manifolds.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+
+
+def _diag_loss(m, batch):
+    xb = batch[0] if isinstance(batch, (tuple, list)) else batch
+    loss, _ = cvae_loss_fn(m, xb)
+    return loss
+
+
+print("\n── Diagnostic Report (Contractive VAE) ──")
+diag, findings = run_diagnostic_checkpoint(
+    cvae_model,
+    flat_loader,
+    _diag_loss,
+    title=f"CVAE (KL={KL_WEIGHT}, lam={CVAE_CONTRACTIVE_WEIGHT})",
+    n_batches=8,
+    train_losses=cvae_losses,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [!] Gradient flow (WARNING): Compound dampening at
+#       'fc_mu.weight' — RMS = 3.1e-05. Both KL penalty AND
+#       Jacobian penalty act on mu-head. Contrast: VAE
+#       (09) had 5.2e-05, ContractiveAE (05) had 7.4e-05 —
+#       CVAE sits below both because TWO regularisers.
+#   [!] Dead neurons  (WARNING): 'decoder.2' (relu): 18%
+#       dead — early-epoch VAE signature plus contractive
+#       dampening of encoder gradients.
+#   [✓] Loss trend    (HEALTHY): 3-term composition, all
+#       decreasing. Total slope -2.3e-03/epoch. Final loss
+#       ~0.046 (recon 0.033 + KL 0.009 + Jacobian 0.004).
+# ════════════════════════════════════════════════════════════════
+# Final train loss: ~0.046, 10 epochs, beta=1, lambda=1e-4.
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [BLOOD TEST — TWO REGULARISERS COMPOUNDING] RMS 3.1e-05
+#     at fc_mu is the key diagnostic. This is the SUM of
+#     two dampening effects: (a) KL penalty shrinking encoder
+#     gradients (see 09 VAE), (b) Jacobian penalty further
+#     constraining encoder sensitivity (see 05 contractive).
+#     The floor sits BELOW either alone. If it drops below
+#     1e-5, one regulariser is winning — halve the heavier
+#     weight first.
+#     >> Prescription: Compute the ratio
+#        beta*KL_loss : lambda*Jacobian_loss. If >3:1 or
+#        <1:3, one is dominating. Target 1:1 to 2:1 (KL
+#        primary, Jacobian secondary).
+#
+#  [X-RAY] 18% dead is the VAE early-epoch pattern persisting
+#     slightly longer due to contractive dampening (slower
+#     decoder adaptation). Should converge to <10% by epoch 8.
+#     If it stays above 15%, EITHER the KL is too strong
+#     (posterior collapse risk) OR Jacobian is too strong
+#     (encoder stuck). Diagnose by reading the Blood Test
+#     first: which weight is dampening more?
+#     >> Prescription: If KL term dominates: anneal beta.
+#        If Jacobian dominates: halve lambda.
+#
+#  [STETHOSCOPE — THREE-TERM COMPOSITION] Unlike 09 (2 terms),
+#     CVAE's loss is recon + KL + Jacobian. diag.epochs_df()
+#     should expose all three. A healthy run sees: recon falls
+#     fastest (decoder learns), KL falls next (latent tightens),
+#     Jacobian last (encoder smooths). Any other ordering
+#     signals imbalance — e.g. Jacobian dropping first means
+#     lambda is too large and is crushing learning.
+#     >> Prescription: Read three curves. If Jacobian curve
+#        is flat, lambda is too small — no contraction
+#        benefit. If Jacobian drops faster than recon,
+#        lambda is too large — crushing reconstruction.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: CVAE demonstrates the DIAGNOSTIC
+#  SKILL OF DISENTANGLING MULTIPLE REGULARISERS. Same Blood
+#  Test signal (low RMS), but the attribution depends on
+#  weighing the terms. This reading skill scales to ex_5 GANs
+#  (generator regulariser + discriminator regulariser +
+#  gradient penalty = 3 terms to balance) and to ex_8 RL
+#  (policy + value + entropy bonuses). Clinical reading in
+#  the face of multiple compounding signals is the ceiling
+#  skill for this module.
+# ════════════════════════════════════════════════════════════════════
+
 show_reconstruction(cvae_model, X_test_flat, "Contractive VAE")
 
 

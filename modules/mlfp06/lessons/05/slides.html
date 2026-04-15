@@ -11,8 +11,86 @@
 <div class="reveal"><div class="slides">
 <section><p class="lesson-meta">Module 6 · Lesson 6.5</p><h1>AI Agents — ReAct, Tool Use, Function Calling</h1><p style="font-size:.7em;color:#64748B">ReAct loop · Custom tools · Cost budgets · Kaizen agents</p><div style="margin-top:2em;padding:16px 20px;background:#F0FDFA;border-left:4px solid #0D9488"><strong>⏱ 90 minutes</strong> · <strong>Outcome:</strong> build a ReAct agent with tools and cost budget</div></section>
 
-<section><h2>ReAct: Thought → Action → Observation</h2>
-<figure style="text-align:center"><svg viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg"><rect x="30" y="30" width="160" height="70" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="110" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#3B82F6">Thought</text><text x="110" y="80" text-anchor="middle" font-size="10">Reason about task</text><line x1="195" y1="65" x2="225" y2="65" stroke="#0D9488" stroke-width="2"/><polygon points="225,65 219,61 219,69" fill="#0D9488"/><rect x="230" y="30" width="160" height="70" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="310" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#F59E0B">Action</text><text x="310" y="80" text-anchor="middle" font-size="10">Call tool</text><line x1="395" y1="65" x2="425" y2="65" stroke="#0D9488" stroke-width="2"/><polygon points="425,65 419,61 419,69" fill="#0D9488"/><rect x="430" y="30" width="160" height="70" rx="6" fill="#DCFCE7" stroke="#22C55E"/><text x="510" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#22C55E">Observation</text><text x="510" y="80" text-anchor="middle" font-size="10">Tool result</text><path d="M 510 105 C 510 130 110 130 110 105" stroke="#94A3B8" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/><text x="310" y="140" text-anchor="middle" font-size="10" fill="#94A3B8">repeat until done</text></svg></figure></section>
+<section><h2>ReAct: a concrete reasoning trace</h2>
+<figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="react-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+  </defs>
+
+  <!-- Question -->
+  <rect x="20" y="10" width="720" height="30" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="30" y="30" font-family="Inter" font-weight="700" font-size="11" fill="#1E293B">Question: "What's the weather in Singapore and should I bring an umbrella?"</text>
+
+  <!-- Step 1: Thought -->
+  <rect x="20" y="52" width="350" height="38" rx="4" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="30" y="66" font-family="Inter" font-weight="700" font-size="10" fill="#1E40AF">Thought 1</text>
+  <text x="30" y="82" font-family="Inter" font-size="9" fill="#1E40AF">I need current weather data for Singapore. Let me check the weather API.</text>
+
+  <!-- Arrow down -->
+  <line x1="195" y1="90" x2="195" y2="100" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+
+  <!-- Step 2: Action -->
+  <rect x="20" y="104" width="350" height="38" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="30" y="118" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">Action</text>
+  <text x="30" y="134" font-family="JetBrains Mono" font-size="9" fill="#92400E">call_tool("weather_api", city="Singapore")</text>
+
+  <!-- Arrow down -->
+  <line x1="195" y1="142" x2="195" y2="152" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+
+  <!-- Step 3: Observation -->
+  <rect x="20" y="156" width="350" height="38" rx="4" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="30" y="170" font-family="Inter" font-weight="700" font-size="10" fill="#15803D">Observation</text>
+  <text x="30" y="186" font-family="JetBrains Mono" font-size="9" fill="#15803D">{"temp": "32C", "humidity": "85%", "forecast": "thunderstorms PM"}</text>
+
+  <!-- Arrow down -->
+  <line x1="195" y1="194" x2="195" y2="204" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+
+  <!-- Step 4: Thought 2 -->
+  <rect x="20" y="208" width="350" height="38" rx="4" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="30" y="222" font-family="Inter" font-weight="700" font-size="10" fill="#1E40AF">Thought 2</text>
+  <text x="30" y="238" font-family="Inter" font-size="9" fill="#1E40AF">32C with thunderstorms in the afternoon. I have enough info to answer.</text>
+
+  <!-- Arrow down -->
+  <line x1="195" y1="246" x2="195" y2="256" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+
+  <!-- Step 5: Final response -->
+  <rect x="20" y="260" width="350" height="50" rx="4" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
+  <text x="30" y="274" font-family="Inter" font-weight="700" font-size="10" fill="#6D28D9">Response</text>
+  <text x="30" y="290" font-family="Inter" font-size="9" fill="#6D28D9">It's 32C in Singapore with 85% humidity. Thunderstorms are</text>
+  <text x="30" y="302" font-family="Inter" font-size="9" fill="#6D28D9">forecast for the afternoon -- definitely bring an umbrella.</text>
+
+  <!-- Right side: Pattern diagram -->
+  <rect x="410" y="52" width="340" height="258" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="580" y="75" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">The ReAct Pattern</text>
+
+  <!-- Thought box -->
+  <rect x="510" y="90" width="100" height="35" rx="6" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="560" y="112" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E40AF">Thought</text>
+  <!-- Arrow down -->
+  <line x1="560" y1="125" x2="560" y2="140" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+  <!-- Action box -->
+  <rect x="510" y="144" width="100" height="35" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="560" y="166" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#92400E">Action</text>
+  <!-- Arrow down -->
+  <line x1="560" y1="179" x2="560" y2="194" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+  <!-- Observation box -->
+  <rect x="510" y="198" width="100" height="35" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="560" y="220" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#15803D">Observation</text>
+
+  <!-- Loop arrow -->
+  <path d="M 510 216 Q 440 216, 440 140 Q 440 108, 510 108" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="433" y="168" text-anchor="end" font-family="Inter" font-size="8" fill="#94A3B8">loop</text>
+
+  <!-- Final answer -->
+  <line x1="560" y1="233" x2="560" y2="248" stroke="#475569" stroke-width="1.5" marker-end="url(#react-arr)"/>
+  <rect x="510" y="252" width="100" height="30" rx="6" fill="#8B5CF6"/>
+  <text x="560" y="271" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="white">Response</text>
+
+  <!-- Key annotations -->
+  <text x="620" y="112" font-family="Inter" font-size="8" fill="#64748B">LLM generates</text>
+  <text x="620" y="166" font-family="Inter" font-size="8" fill="#64748B">tool executed</text>
+  <text x="620" y="220" font-family="Inter" font-size="8" fill="#64748B">result returned</text>
+</svg></figure></section>
 
 <section><h2>Function calling</h2><pre><code class="language-python" data-trim>tools = [{"type": "function", "function": {
     "name": "explore_data",
@@ -42,5 +120,5 @@ result = await agent.run("Analyse HDB data and recommend a model")</code></pre><
 <section><h2>What you can now do</h2><ul><li>✓ Build ReAct agents with custom tools.</li><li>✓ Implement function calling with structured schemas.</li><li>✓ Apply cost budgets to prevent runaway spending.</li><li>✓ Design agents using the specialist framework.</li></ul><div class="callout-slide foundations"><strong>Next:</strong> 6.6 — Multi-Agent Orchestration and MCP. Single agents compose into teams.</div></section>
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+<script>Reveal.initialize({hash:true,slideNumber:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
 </body></html>

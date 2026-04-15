@@ -33,18 +33,107 @@
 </section>
 
 <section>
-  <h2>The RAG pipeline</h2>
+  <h2>The RAG pipeline — two paths meet at the vector store</h2>
   <figure style="text-align:center">
-    <svg viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="30" width="120" height="100" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/><text x="80" y="65" text-anchor="middle" font-weight="600" font-size="11">Documents</text><text x="80" y="85" text-anchor="middle" font-size="9" fill="#64748B">MAS, PDPA</text><text x="80" y="100" text-anchor="middle" font-size="9" fill="#64748B">AI Verify</text>
-      <line x1="145" y1="80" x2="175" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="175,80 169,76 169,84" fill="#0D9488"/>
-      <rect x="180" y="30" width="120" height="100" rx="6" fill="#DBEAFE" stroke="#3B82F6"/><text x="240" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#3B82F6">Chunk</text><text x="240" y="80" text-anchor="middle" font-size="9">Fixed / semantic</text><text x="240" y="95" text-anchor="middle" font-size="9">200-500 tokens</text>
-      <line x1="305" y1="80" x2="335" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="335,80 329,76 329,84" fill="#0D9488"/>
-      <rect x="340" y="30" width="120" height="100" rx="6" fill="#DCFCE7" stroke="#22C55E"/><text x="400" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#22C55E">Embed</text><text x="400" y="80" text-anchor="middle" font-size="9">Sentence-BERT</text><text x="400" y="95" text-anchor="middle" font-size="9">or BM25 index</text>
-      <line x1="465" y1="80" x2="495" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="495,80 489,76 489,84" fill="#0D9488"/>
-      <rect x="500" y="30" width="100" height="100" rx="6" fill="#FEF3C7" stroke="#F59E0B"/><text x="550" y="60" text-anchor="middle" font-weight="600" font-size="11" fill="#F59E0B">Retrieve</text><text x="550" y="80" text-anchor="middle" font-size="9">Top-k</text>
-      <line x1="605" y1="80" x2="635" y2="80" stroke="#0D9488" stroke-width="2"/><polygon points="635,80 629,76 629,84" fill="#0D9488"/>
-      <rect x="640" y="30" width="60" height="100" rx="6" fill="#E0E7FF" stroke="#4F46E5"/><text x="670" y="70" text-anchor="middle" font-weight="600" font-size="10" fill="#4F46E5">LLM</text><text x="670" y="90" text-anchor="middle" font-size="9" fill="#4F46E5">answer</text>
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="rag-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0D9488"/></marker>
+        <marker id="rag-arr-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3B82F6"/></marker>
+        <marker id="rag-arr-indigo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4F46E5"/></marker>
+      </defs>
+
+      <!-- Section label: Indexing path (top) -->
+      <text x="20" y="18" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">INDEXING (offline, batch)</text>
+
+      <!-- Documents -->
+      <rect x="15" y="30" width="100" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+      <text x="65" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10">Documents</text>
+      <text x="65" y="66" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">MAS notices</text>
+      <text x="65" y="78" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">PDPA guidelines</text>
+      <text x="65" y="90" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">AI Verify docs</text>
+
+      <!-- Arrow -->
+      <line x1="115" y1="70" x2="135" y2="70" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
+
+      <!-- Chunk -->
+      <rect x="137" y="30" width="130" height="80" rx="6" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="202" y="48" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E40AF">Chunk</text>
+      <!-- Show overlapping chunks visually -->
+      <rect x="149" y="56" width="80" height="12" rx="2" fill="#BFDBFE" stroke="#3B82F6" stroke-width="0.5"/>
+      <rect x="159" y="64" width="80" height="12" rx="2" fill="#93C5FD" stroke="#3B82F6" stroke-width="0.5"/>
+      <rect x="169" y="72" width="80" height="12" rx="2" fill="#60A5FA" stroke="#3B82F6" stroke-width="0.5"/>
+      <text x="202" y="98" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">200-500 tokens, 10-20% overlap</text>
+
+      <!-- Arrow -->
+      <line x1="267" y1="70" x2="287" y2="70" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
+
+      <!-- Embed (indexing) -->
+      <rect x="289" y="30" width="110" height="80" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="344" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#15803D">Embed</text>
+      <!-- Show vector representation -->
+      <text x="344" y="68" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[0.12, -0.34, ...]</text>
+      <text x="344" y="80" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[0.56, 0.09, ...]</text>
+      <text x="344" y="92" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">[-.21, 0.78, ...]</text>
+      <text x="344" y="104" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">d = 384 or 768</text>
+
+      <!-- Arrow down to vector store -->
+      <line x1="399" y1="70" x2="465" y2="142" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
+
+      <!-- ========= VECTOR STORE (shared, center) ========= -->
+      <rect x="460" y="120" width="120" height="70" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2.5"/>
+      <text x="520" y="145" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#0D9488">Vector Store</text>
+      <text x="520" y="162" text-anchor="middle" font-family="Inter" font-size="8" fill="#0F766E">FAISS / Chroma</text>
+      <text x="520" y="175" text-anchor="middle" font-family="Inter" font-size="8" fill="#0F766E">+ BM25 index</text>
+
+      <!-- ========= QUERY PATH (bottom) ========= -->
+      <text x="20" y="210" font-family="Inter" font-weight="700" font-size="11" fill="#3B82F6">QUERY (online, per request)</text>
+
+      <!-- User query -->
+      <rect x="15" y="222" width="115" height="55" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="72" y="242" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E40AF">User query</text>
+      <text x="72" y="260" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6">"What is MAS stance</text>
+      <text x="72" y="270" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6"> on crypto custody?"</text>
+
+      <!-- Arrow -->
+      <line x1="130" y1="250" x2="150" y2="250" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#rag-arr-blue)"/>
+
+      <!-- Embed (query) -->
+      <rect x="152" y="225" width="95" height="50" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+      <text x="199" y="245" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#15803D">Embed</text>
+      <text x="199" y="262" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#15803D">q = [0.31, ...]</text>
+
+      <!-- Arrow up to vector store -->
+      <line x1="247" y1="250" x2="465" y2="175" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#rag-arr-blue)"/>
+      <text x="340" y="222" font-family="Inter" font-size="8" fill="#3B82F6">similarity search</text>
+
+      <!-- Arrow from vector store to top-k -->
+      <line x1="520" y1="190" x2="520" y2="218" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rag-arr)"/>
+      <text x="545" y="210" font-family="Inter" font-size="8" fill="#0D9488">top-k = 5</text>
+
+      <!-- Top-k chunks -->
+      <rect x="465" y="220" width="120" height="55" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="525" y="240" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#92400E">Top-k chunks</text>
+      <text x="525" y="255" text-anchor="middle" font-family="Inter" font-size="8" fill="#92400E">ranked by score</text>
+      <text x="525" y="267" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">re-rank optional</text>
+
+      <!-- Arrow -->
+      <line x1="585" y1="248" x2="605" y2="248" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#rag-arr-indigo)"/>
+
+      <!-- Augmented prompt -->
+      <rect x="607" y="218" width="140" height="60" rx="6" fill="#E0E7FF" stroke="#4F46E5" stroke-width="1.5"/>
+      <text x="677" y="238" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#4338CA">LLM</text>
+      <text x="677" y="253" text-anchor="middle" font-family="Inter" font-size="8" fill="#4338CA">[system + context + query]</text>
+      <text x="677" y="268" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">augmented prompt</text>
+
+      <!-- Arrow to answer -->
+      <line x1="677" y1="278" x2="677" y2="298" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#rag-arr-indigo)"/>
+
+      <!-- Answer -->
+      <rect x="627" y="300" width="120" height="32" rx="6" fill="#4F46E5"/>
+      <text x="687" y="320" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="white">Cited answer</text>
+
+      <!-- Dotted line showing the two paths converge -->
+      <rect x="447" y="115" width="146" height="170" rx="12" fill="none" stroke="#0D9488" stroke-width="1" stroke-dasharray="4 3"/>
     </svg>
   </figure>
 </section>
@@ -157,6 +246,6 @@ answer = llm.generate(f"Context: {context}\nQ: {query}\nA:")
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
-<script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+<script>Reveal.initialize({hash:true,slideNumber:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
 </body>
 </html>

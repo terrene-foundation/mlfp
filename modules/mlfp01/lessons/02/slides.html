@@ -118,6 +118,95 @@
   <p style="font-size: 0.85em;">An expression on its own does nothing. Handed to <code>filter</code>, <code>with_columns</code>, or <code>select</code>, it becomes work.</p>
 </section>
 
+<!-- Slide 4b: What filter does to rows -->
+<section>
+  <h2>What filter does to rows</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-filt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0D9488"/>
+        </marker>
+      </defs>
+
+      <!-- Input DataFrame -->
+      <text x="105" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Input DataFrame</text>
+      <rect x="20" y="30" width="170" height="18" rx="2" fill="#0D9488"/>
+      <text x="55" y="43" font-family="JetBrains Mono" font-size="10" fill="white">town</text>
+      <text x="140" y="43" font-family="JetBrains Mono" font-size="10" fill="white">price</text>
+      <g font-family="JetBrains Mono" font-size="10">
+        <rect x="20" y="48" width="170" height="22" fill="white" stroke="#E2E8F0"/>
+        <text x="35" y="63" fill="#1E293B">BISHAN</text>
+        <text x="140" y="63" fill="#1E293B">720k</text>
+        <rect x="20" y="70" width="170" height="22" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="35" y="85" fill="#1E293B">BISHAN</text>
+        <text x="140" y="85" fill="#1E293B">680k</text>
+        <rect x="20" y="92" width="170" height="22" fill="white" stroke="#E2E8F0"/>
+        <text x="35" y="107" fill="#1E293B">JURONG</text>
+        <text x="140" y="107" fill="#1E293B">420k</text>
+        <rect x="20" y="114" width="170" height="22" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="35" y="129" fill="#1E293B">BISHAN</text>
+        <text x="140" y="129" fill="#1E293B">740k</text>
+        <rect x="20" y="136" width="170" height="22" fill="white" stroke="#E2E8F0"/>
+        <text x="35" y="151" fill="#1E293B">JURONG</text>
+        <text x="140" y="151" fill="#1E293B">445k</text>
+        <rect x="20" y="158" width="170" height="22" fill="#F8FAFC" stroke="#E2E8F0"/>
+        <text x="35" y="173" fill="#1E293B">TOA PY</text>
+        <text x="140" y="173" fill="#1E293B">650k</text>
+      </g>
+
+      <!-- Boolean mask column -->
+      <text x="310" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#4F46E5">Boolean mask</text>
+      <text x="310" y="280" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#4F46E5">town == "BISHAN"</text>
+      <g font-family="JetBrains Mono" font-size="12">
+        <rect x="270" y="48" width="80" height="22" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="310" y="63" text-anchor="middle" fill="#22C55E" font-weight="600">True</text>
+        <rect x="270" y="70" width="80" height="22" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="310" y="85" text-anchor="middle" fill="#22C55E" font-weight="600">True</text>
+        <rect x="270" y="92" width="80" height="22" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="310" y="107" text-anchor="middle" fill="#F43F5E">False</text>
+        <rect x="270" y="114" width="80" height="22" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+        <text x="310" y="129" text-anchor="middle" fill="#22C55E" font-weight="600">True</text>
+        <rect x="270" y="136" width="80" height="22" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="310" y="151" text-anchor="middle" fill="#F43F5E">False</text>
+        <rect x="270" y="158" width="80" height="22" fill="#FFF1F2" stroke="#F43F5E" stroke-width="1.5"/>
+        <text x="310" y="173" text-anchor="middle" fill="#F43F5E">False</text>
+      </g>
+
+      <!-- Greyed-out False rows with strikethrough effect -->
+      <rect x="20" y="92" width="170" height="22" fill="#F1F5F9" fill-opacity="0.6"/>
+      <rect x="20" y="136" width="170" height="22" fill="#F1F5F9" fill-opacity="0.6"/>
+      <rect x="20" y="158" width="170" height="22" fill="#F1F5F9" fill-opacity="0.6"/>
+
+      <!-- Arrows from True rows to output -->
+      <line x1="350" y1="59" x2="460" y2="59" stroke="#22C55E" stroke-width="1.5" marker-end="url(#arr-filt)"/>
+      <line x1="350" y1="81" x2="460" y2="81" stroke="#22C55E" stroke-width="1.5" marker-end="url(#arr-filt)"/>
+      <line x1="350" y1="125" x2="460" y2="103" stroke="#22C55E" stroke-width="1.5" marker-end="url(#arr-filt)"/>
+
+      <!-- Output DataFrame -->
+      <text x="560" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Result</text>
+      <rect x="470" y="30" width="170" height="18" rx="2" fill="#0D9488"/>
+      <text x="505" y="43" font-family="JetBrains Mono" font-size="10" fill="white">town</text>
+      <text x="590" y="43" font-family="JetBrains Mono" font-size="10" fill="white">price</text>
+      <g font-family="JetBrains Mono" font-size="10">
+        <rect x="470" y="48" width="170" height="22" fill="white" stroke="#0D9488"/>
+        <text x="485" y="63" fill="#1E293B">BISHAN</text>
+        <text x="590" y="63" fill="#1E293B">720k</text>
+        <rect x="470" y="70" width="170" height="22" fill="#F0FDFA" stroke="#0D9488"/>
+        <text x="485" y="85" fill="#1E293B">BISHAN</text>
+        <text x="590" y="85" fill="#1E293B">680k</text>
+        <rect x="470" y="92" width="170" height="22" fill="white" stroke="#0D9488"/>
+        <text x="485" y="107" fill="#1E293B">BISHAN</text>
+        <text x="590" y="107" fill="#1E293B">740k</text>
+      </g>
+      <text x="555" y="135" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">3 of 6 rows kept</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em; text-align: center; color: #64748B;">
+    <code>filter</code> evaluates a boolean expression on every row, then keeps only the <code>True</code> rows.
+  </p>
+</section>
+
 <!-- Slide 5: Simple filter -->
 <section>
   <h2>Your first filter</h2>
@@ -300,7 +389,7 @@ recent_premium = (
 
 <!-- Slide 14: Common mistakes -->
 <section>
-  <h2>Three traps to avoid</h2>
+  <h2>Four traps to avoid</h2>
   <div style="background: #FFF1F2; padding: 10px 16px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.6em 0;">
     <strong>1. Missing parentheses.</strong> <code>&amp;</code> binds tighter
     than <code>==</code>. Always wrap each condition.
@@ -344,7 +433,7 @@ recent_premium = (
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
   Reveal.initialize({
-    hash: true,
+    hash: true, slideNumber: true,
     width: 1280,
     height: 720,
     margin: 0.05,

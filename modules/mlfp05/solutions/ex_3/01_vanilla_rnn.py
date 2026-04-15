@@ -169,6 +169,53 @@ rnn_results = train_model(
     device,
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — the vanishing-gradient TEXTBOOK case
+# ══════════════════════════════════════════════════════════════════
+# VanillaRNN is the vanishing-gradient poster child. This diagnostic
+# run is EXPECTED to fire a CRITICAL Blood Test finding — that is
+# the pedagogical point. LSTM (02) and GRU (03) fix it.
+from shared.mlfp05.diagnostics import diagnose_regressor
+
+print("\n── Diagnostic Report (VanillaRNN) ──")
+diag, findings = diagnose_regressor(
+    rnn_model,
+    val_loader,
+    title="Vanilla RNN",
+    n_batches=8,
+    train_losses=rnn_results["train_losses"],
+    val_losses=rnn_results.get("val_losses"),
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (reference shape — BAD but INSTRUCTIVE) ══════
+# ══════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ══════════════════════════════════════════════════════════════════
+#   [X] Gradient flow (CRITICAL): Vanishing gradients at
+#       'rnn.weight_hh_l0' — min RMS ~1e-6. Fix: switch to LSTM/GRU,
+#       shorten sequence, or use gradient clipping.
+#   [!] Dead neurons  (depends on Tanh saturation): 'rnn' (tanh)
+#       showing saturation (|x|>0.99) — the classic recurrent
+#       vanishing-gradient fingerprint.
+#   [?] Loss trend    (HEALTHY or plateaued early): loss stops
+#       dropping because gradients through time are ~0.
+# ══════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE:
+#   - The `rnn.weight_hh_l0` parameter is the hidden-to-hidden
+#     matrix. Gradients propagating backward through time repeatedly
+#     multiply by it; if its spectral radius < 1, gradients shrink
+#     exponentially with sequence length. Bengio et al. 1994.
+#   - Tanh saturation (|x|>0.99) is a second diagnostic — once
+#     the recurrence saturates, derivatives collapse toward zero
+#     and no learning can propagate backward through that step.
+#   - THIS is the failure LSTM's gating mechanism solves — cells
+#     can selectively preserve gradient flow across time.
+#   - Do NOT "fix" this RNN; its pathology IS the lesson. Move to
+#     02_lstm.py to see a healthier Prescription Pad on the same task.
+# ══════════════════════════════════════════════════════════════════
+
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert len(rnn_results["train_losses"]) == EPOCHS, f"Should have {EPOCHS} epochs"
 assert rnn_results["final_val_loss"] < 5.0, "Val loss suspiciously high"

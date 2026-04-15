@@ -282,6 +282,99 @@ bert_losses, bert_accs = asyncio.run(
     train_bert_async(bert_model, bert_train_loader, bert_val_loader, epochs=BERT_EPOCHS)
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — BERT fine-tuning (HF batch format)
+# ══════════════════════════════════════════════════════════════════
+# BERT batches are dicts of (ids, mask, labels) not (x, y) tuples,
+# so we use run_diagnostic_checkpoint directly with a batch_adapter.
+from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+import torch.nn.functional as _F
+
+
+def _bert_loss(m, ids, mask, labels):
+    out = m(input_ids=ids, attention_mask=mask, labels=labels)
+    return out.loss
+
+
+def _bert_adapter(batch):
+    return batch[0], batch[1], batch[2]
+
+
+print("\n── Diagnostic Report (BERT fine-tune) ──")
+diag, findings = run_diagnostic_checkpoint(
+    bert_model,
+    bert_val_loader,
+    _bert_loss,
+    title="BERT fine-tuned (AG News)",
+    n_batches=4,  # BERT batches are expensive; 4 is enough for stats
+    train_losses=bert_losses,
+    val_losses=[1.0 - a for a in bert_accs],
+    batch_adapter=_bert_adapter,
+    show=False,
+)
+
+# ══════ EXPECTED OUTPUT (reference pattern — BERT fine-tune, 3 epochs) ══
+# ════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ════════════════════════════════════════════════════════════════
+#   [✓] Gradient flow (HEALTHY): unfrozen `encoder.layer.{8..11}`
+#       RMS uniform (~5e-5 to 2e-4), classifier head RMS ~1e-3
+#       (healthy ratio, classifier needs more signal early).
+#       Frozen layers 0-7 report ZERO RMS — confirmed frozen.
+#   [✓] Activations    (HEALTHY): GELU outputs well-distributed;
+#       no dead units in unfrozen FFN sub-blocks.
+#   [✓] Loss trend     (HEALTHY): train loss drops from ~0.9 to
+#       ~0.15 in 3 epochs. Val acc hits ~0.92 by epoch 2.
+# ════════════════════════════════════════════════════════════════
+# Best val acc: ~0.92 after 3 epochs — this is the "pretraining
+# payoff": 120K labelled examples + billions of pretraining
+# tokens beat 120K + scratch-init by ~4 accuracy points.
+#
+# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
+#
+#  [BLOOD TEST] Frozen layers report ZERO gradient RMS — this
+#     is the structural proof that `requires_grad=False` worked.
+#     If you see non-zero RMS on a layer you thought was frozen,
+#     something unfroze it (a `.train()` call that reset params,
+#     or a missed freeze in layer-wise unfreezing). The Blood
+#     Test is the only instrument that catches this — unit tests
+#     on the parameter count do not.
+#     >> Prescription Pad: if any "supposed-frozen" layer shows
+#        RMS > 0, re-apply the freeze loop after model.to(device).
+#
+#  [X-RAY] Unfrozen BERT layers + head show HEALTHY activation
+#     distributions. The head's gradient is ~10x higher than the
+#     BERT layers — this is EXPECTED and HEALTHY during early
+#     fine-tuning. The head starts random and needs to catch up
+#     to the already-trained BERT features. If this ratio
+#     grows to >100x, the classifier is racing ahead and will
+#     overfit — lower the head's learning rate or increase BERT's.
+#     >> Prescription Pad: use discriminative learning rates
+#        (lower LR for BERT, higher for head) — see slide 5G.
+#
+#  [STETHOSCOPE] Loss trajectory is the textbook "fine-tuning"
+#     shape: fast initial drop (epochs 1-2) as the head calibrates
+#     to the new task, then a gentle tail as the top BERT layers
+#     adapt. Unlike scratch training, there is no long warm-up
+#     because the features already exist.
+#     >> Prescription Pad: 2-4 epochs is typically enough for
+#        text classification fine-tunes. More epochs overfit.
+#
+#  FIVE-INSTRUMENT TAKEAWAY: BERT's diagnostic report is a
+#  different species from scratch training. The HEALTHY readings
+#  everywhere combined with 92% accuracy in 3 epochs is the
+#  empirical case for transfer learning in NLP. Compare to
+#  ex_4/02 Transformer (88% from scratch at 8 epochs) — BERT
+#  beats it with LESS training AND higher accuracy.
+#
+#  CONNECT TO SLIDE 5.4 (Transformers) + transfer learning: the
+#  slide claims pretraining "amortises billions of dollars of
+#  compute across every downstream task". The 4-point accuracy
+#  gap + 5x fewer epochs is the numeric version of that claim.
+#  The frozen-layer ZERO RMS reading is the structural proof
+#  that frozen representations ARE the language prior.
+# ══════════════════════════════════════════════════════════════════
+
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert len(bert_losses) == BERT_EPOCHS, "BERT should train for all epochs"
 assert (

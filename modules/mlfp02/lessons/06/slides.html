@@ -74,13 +74,76 @@
 </section>
 
 <section>
-  <h2>Bernoulli log-likelihood</h2>
+  <h2>Logistic regression draws a probability boundary</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg">
+      <!-- Axes -->
+      <line x1="60" y1="280" x2="680" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="60" y1="20" x2="60" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+      <text x="370" y="310" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">feature x&#8321;</text>
+      <text x="20" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90,20,150)">feature x&#8322;</text>
+      <!-- Probability gradient background (lighter = less confident) -->
+      <rect x="60" y="20" width="310" height="260" fill="#3B82F6" opacity="0.06"/>
+      <rect x="370" y="20" width="310" height="260" fill="#F43F5E" opacity="0.06"/>
+      <rect x="60" y="20" width="200" height="260" fill="#3B82F6" opacity="0.06"/>
+      <rect x="480" y="20" width="200" height="260" fill="#F43F5E" opacity="0.06"/>
+      <rect x="60" y="20" width="100" height="260" fill="#3B82F6" opacity="0.06"/>
+      <rect x="580" y="20" width="100" height="260" fill="#F43F5E" opacity="0.06"/>
+      <!-- Decision boundary (diagonal line) -->
+      <line x1="370" y1="20" x2="370" y2="280" stroke="#1E293B" stroke-width="2.5" stroke-dasharray="8 4"/>
+      <text x="380" y="40" font-family="Inter" font-weight="600" font-size="11" fill="#1E293B">p = 0.5</text>
+      <!-- Class 0 points (circles, blue) -->
+      <g fill="#3B82F6">
+        <circle cx="120" cy="80" r="5"/><circle cx="150" cy="140" r="5"/>
+        <circle cx="100" cy="200" r="5"/><circle cx="180" cy="60" r="5"/>
+        <circle cx="200" cy="180" r="5"/><circle cx="140" cy="240" r="5"/>
+        <circle cx="250" cy="100" r="5"/><circle cx="220" cy="220" r="5"/>
+        <circle cx="280" cy="160" r="5"/><circle cx="300" cy="70" r="5"/>
+        <circle cx="310" cy="230" r="5"/><circle cx="170" cy="120" r="5"/>
+        <circle cx="330" cy="140" r="5"/><circle cx="260" cy="250" r="5"/>
+      </g>
+      <!-- Class 1 points (squares, rose) -->
+      <g fill="#F43F5E">
+        <rect x="420" y="55" width="10" height="10"/><rect x="460" y="130" width="10" height="10"/>
+        <rect x="500" y="70" width="10" height="10"/><rect x="530" y="190" width="10" height="10"/>
+        <rect x="440" y="210" width="10" height="10"/><rect x="570" y="100" width="10" height="10"/>
+        <rect x="480" y="240" width="10" height="10"/><rect x="600" y="160" width="10" height="10"/>
+        <rect x="550" y="50" width="10" height="10"/><rect x="620" y="220" width="10" height="10"/>
+        <rect x="410" y="150" width="10" height="10"/><rect x="640" y="90" width="10" height="10"/>
+        <rect x="490" y="170" width="10" height="10"/><rect x="580" y="250" width="10" height="10"/>
+      </g>
+      <!-- Legend -->
+      <circle cx="100" cy="310" r="5" fill="#3B82F6"/>
+      <text x="112" y="314" font-family="Inter" font-size="10" fill="#3B82F6">class 0</text>
+      <rect x="165" y="305" width="10" height="10" fill="#F43F5E"/>
+      <text x="182" y="314" font-family="Inter" font-size="10" fill="#F43F5E">class 1</text>
+      <!-- Annotations -->
+      <text x="190" y="300" font-family="Inter" font-size="10" fill="#64748B">     darker = more confident</text>
+    </svg>
+  </figure>
+</section>
+
+<section>
+  <h2>Bernoulli likelihood</h2>
+  <p>Each observation contributes a Bernoulli probability:</p>
   \[ P(y_i \mid x_i, \beta) = p_i^{y_i}(1 - p_i)^{1 - y_i} \]
+  <p style="font-size: 0.85em;">
+    When $y_i = 1$, this is $p_i$. When $y_i = 0$, this is $1 - p_i$. The
+    product over all observations is the likelihood.
+  </p>
+</section>
+
+<section>
+  <h2>The log-likelihood (cross-entropy)</h2>
   <p>Log over $n$ observations:</p>
   \[ \ell(\beta) = \sum_{i=1}^{n}\big[y_i \log p_i + (1 - y_i)\log(1 - p_i)\big] \]
   <div style="background: #FEF3C7; padding: 12px 16px; border-left: 4px solid #F59E0B; margin-top: 1em; font-size: 0.85em;">
     No closed form. Gradient is non-linear in $\beta$. Optimise with BFGS or IRLS.
   </div>
+  <p style="font-size: 0.85em; color: #64748B; margin-top: 0.5em;">
+    Negating $\ell$ gives the <strong>binary cross-entropy loss</strong> -- the
+    same function deep learning frameworks minimise.
+  </p>
 </section>
 
 <section>
@@ -131,6 +194,45 @@
     </svg>
   </figure>
   <p style="font-size: 0.85em;">Accuracy = (TP+TN)/total. Precision = TP/(TP+FP). Recall = TP/(TP+FN). AUC is threshold-independent.</p>
+</section>
+
+<section>
+  <h2>ROC: threshold sweep from strict to lenient</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg">
+      <!-- Axes -->
+      <line x1="80" y1="280" x2="620" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+      <line x1="80" y1="20" x2="80" y2="280" stroke="#94A3B8" stroke-width="1.5"/>
+      <text x="350" y="310" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">False Positive Rate (FPR)</text>
+      <text x="30" y="150" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90,30,150)">True Positive Rate (TPR)</text>
+      <!-- Axis labels -->
+      <text x="80" y="298" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">0</text>
+      <text x="620" y="298" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">1</text>
+      <text x="68" y="284" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#64748B">0</text>
+      <text x="68" y="24" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#64748B">1</text>
+      <!-- Diagonal (random classifier) -->
+      <line x1="80" y1="280" x2="620" y2="20" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="400" y="110" font-family="Inter" font-size="10" fill="#94A3B8" transform="rotate(-29,400,110)">random (AUC = 0.5)</text>
+      <!-- AUC shading -->
+      <path d="M 80,280 C 80,240 90,160 130,110 C 180,55 260,30 350,25 C 440,22 560,20 620,20 L 620,280 Z"
+            fill="#0D9488" opacity="0.12"/>
+      <text x="360" y="180" text-anchor="middle" font-family="Inter" font-weight="700" font-size="16" fill="#0D9488" opacity="0.6">AUC</text>
+      <!-- ROC curve -->
+      <path d="M 80,280 C 80,240 90,160 130,110 C 180,55 260,30 350,25 C 440,22 560,20 620,20"
+            fill="none" stroke="#0D9488" stroke-width="3"/>
+      <!-- Perfect point -->
+      <circle cx="80" cy="20" r="6" fill="none" stroke="#F59E0B" stroke-width="2"/>
+      <text x="95" y="18" font-family="Inter" font-weight="600" font-size="10" fill="#F59E0B">perfect</text>
+      <!-- Threshold annotation -->
+      <circle cx="130" cy="110" r="5" fill="#4F46E5"/>
+      <text x="145" y="105" font-family="Inter" font-size="9" fill="#4F46E5">strict (high threshold)</text>
+      <circle cx="350" cy="25" r="5" fill="#4F46E5"/>
+      <text x="350" y="48" text-anchor="middle" font-family="Inter" font-size="9" fill="#4F46E5">balanced</text>
+      <circle cx="560" cy="20" r="5" fill="#4F46E5"/>
+      <text x="548" y="42" text-anchor="end" font-family="Inter" font-size="9" fill="#4F46E5">lenient (low threshold)</text>
+    </svg>
+  </figure>
+  <p style="font-size: 0.85em;">Every point on the curve is one threshold. Higher AUC = better separation of classes at all thresholds.</p>
 </section>
 
 <section>
@@ -236,7 +338,7 @@ pairwise_tukeyhsd(prices, labels)
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 

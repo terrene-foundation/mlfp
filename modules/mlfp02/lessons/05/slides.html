@@ -87,12 +87,24 @@
 </section>
 
 <section>
-  <h2>Standard errors and $t$-stats</h2>
+  <h2>Standard errors of $\hat\beta$</h2>
   <p>Under Normal errors, the covariance of $\hat\beta$ is:</p>
   \[ \text{Var}(\hat\beta) = \sigma^2 (X^\top X)^{-1} \]
-  <p>Estimate $\sigma^2$ with residual variance (note $n - k - 1$ denominator — general Bessel):</p>
+  <p>Estimate $\sigma^2$ with residual variance (note $n - k - 1$ denominator -- general Bessel):</p>
   \[ \hat\sigma^2 = \frac{e^\top e}{n - k - 1} \]
-  \[ t_j = \frac{\hat\beta_j}{\text{SE}(\hat\beta_j)} \sim t_{n-k-1} \]
+  <p style="font-size: 0.85em;">The diagonal of $\hat\sigma^2 (X^\top X)^{-1}$ gives the squared standard errors.</p>
+</section>
+
+<section>
+  <h2>The $t$-statistic for each coefficient</h2>
+  <div style="text-align: center; margin: 1.5em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
+    \[ t_j = \frac{\hat\beta_j}{\text{SE}(\hat\beta_j)} \sim t_{n-k-1} \]
+  </div>
+  <p>Large $|t_j|$ means "this coefficient is many standard errors from zero" -- strong evidence the predictor matters.</p>
+  <p style="font-size: 0.85em; color: #64748B;">
+    Rule of thumb: $|t| > 2$ roughly corresponds to $p < 0.05$. But always
+    report the exact p-value.
+  </p>
 </section>
 
 <section>
@@ -253,7 +265,7 @@ F = (r2 / (p-1)) / ((1 - r2) / (n - p))
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 

@@ -54,21 +54,94 @@
 <section>
   <h2>Classical RLHF — three stages</h2>
   <figure style="text-align:center;">
-    <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg">
-      <rect x="20" y="60" width="200" height="140" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
-      <text x="120" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#0D9488">1. SFT</text>
-      <text x="120" y="130" text-anchor="middle" font-family="Inter" font-size="12" fill="#0F766E">Supervised fine-tune</text>
-      <text x="120" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#0F766E">π_SFT</text>
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="rlhf-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+        <marker id="rlhf-arr-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0D9488"/></marker>
+      </defs>
 
-      <rect x="270" y="60" width="220" height="140" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-      <text x="380" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#92400E">2. Reward model</text>
-      <text x="380" y="130" text-anchor="middle" font-family="Inter" font-size="12" fill="#78350F">Train on (y_w, y_l)</text>
-      <text x="380" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#78350F">r_φ: (x, y) → ℝ</text>
+      <!-- Stage 1: SFT -->
+      <rect x="10" y="15" width="230" height="95" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+      <text x="20" y="36" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">Stage 1: Supervised Fine-Tuning</text>
+      <!-- Data flowing in -->
+      <rect x="22" y="46" width="70" height="22" rx="3" fill="white" stroke="#0D9488"/>
+      <text x="57" y="61" text-anchor="middle" font-family="Inter" font-size="9" fill="#0F766E">SFT data</text>
+      <line x1="92" y1="57" x2="106" y2="57" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rlhf-arr-teal)"/>
+      <rect x="108" y="44" width="76" height="26" rx="4" fill="#CCFBF1" stroke="#0D9488"/>
+      <text x="146" y="61" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#0F766E">Base LLM</text>
+      <line x1="184" y1="57" x2="198" y2="57" stroke="#0D9488" stroke-width="1.5" marker-end="url(#rlhf-arr-teal)"/>
+      <!-- Output -->
+      <rect x="108" y="76" width="120" height="22" rx="3" fill="#0D9488"/>
+      <text x="168" y="91" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="white">pi_SFT</text>
+      <!-- Trained label -->
+      <text x="22" y="100" font-family="Inter" font-size="8" fill="#64748B">trained</text>
 
-      <rect x="540" y="60" width="200" height="140" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
-      <text x="640" y="90" text-anchor="middle" font-family="Inter" font-weight="700" font-size="14" fill="#6D28D9">3. PPO</text>
-      <text x="640" y="130" text-anchor="middle" font-family="Inter" font-size="12" fill="#5B21B6">Maximise r − βKL</text>
-      <text x="640" y="155" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#5B21B6">π ← PPO(r_φ, π_SFT)</text>
+      <!-- Arrow Stage 1 -> Stage 2 -->
+      <line x1="125" y1="110" x2="125" y2="128" stroke="#475569" stroke-width="1.5" marker-end="url(#rlhf-arr)"/>
+      <text x="138" y="123" font-family="Inter" font-size="8" fill="#64748B">generates pairs</text>
+
+      <!-- Stage 2: Reward Model -->
+      <rect x="10" y="130" width="355" height="95" rx="8" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+      <text x="20" y="151" font-family="Inter" font-weight="700" font-size="13" fill="#92400E">Stage 2: Train Reward Model</text>
+      <!-- Comparison pairs -->
+      <rect x="22" y="162" width="95" height="48" rx="4" fill="white" stroke="#F59E0B"/>
+      <text x="69" y="177" text-anchor="middle" font-family="Inter" font-size="9" fill="#78350F">Comparison pairs</text>
+      <text x="40" y="195" font-family="JetBrains Mono" font-size="8" fill="#22C55E">y_w (chosen)</text>
+      <text x="40" y="205" font-family="JetBrains Mono" font-size="8" fill="#F43F5E">y_l (rejected)</text>
+      <!-- Arrow -->
+      <line x1="117" y1="186" x2="132" y2="186" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#rlhf-arr)"/>
+      <!-- Reward model training -->
+      <rect x="134" y="165" width="110" height="42" rx="4" fill="#FDE68A" stroke="#F59E0B"/>
+      <text x="189" y="183" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#92400E">Bradley-Terry</text>
+      <text x="189" y="198" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">P(y_w > y_l)</text>
+      <!-- Arrow -->
+      <line x1="244" y1="186" x2="259" y2="186" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#rlhf-arr)"/>
+      <!-- Output: reward model -->
+      <rect x="261" y="167" width="90" height="38" rx="4" fill="#F59E0B"/>
+      <text x="306" y="184" text-anchor="middle" font-family="JetBrains Mono" font-weight="600" font-size="10" fill="white">R_phi</text>
+      <text x="306" y="198" text-anchor="middle" font-family="Inter" font-size="8" fill="white">(x, y) -> score</text>
+      <!-- Frozen label -->
+      <text x="280" y="215" font-family="Inter" font-size="8" fill="#64748B">frozen after training</text>
+
+      <!-- Arrow Stage 2 -> Stage 3 -->
+      <line x1="306" y1="225" x2="460" y2="260" stroke="#475569" stroke-width="1.5" marker-end="url(#rlhf-arr)"/>
+
+      <!-- Arrow pi_SFT -> Stage 3 -->
+      <path d="M 240 87 Q 400 87, 470 240" fill="none" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="380" y="140" font-family="Inter" font-size="8" fill="#0D9488">pi_ref (frozen copy)</text>
+
+      <!-- Stage 3: PPO -->
+      <rect x="380" y="240" width="370" height="95" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
+      <text x="390" y="261" font-family="Inter" font-weight="700" font-size="13" fill="#6D28D9">Stage 3: PPO Optimisation</text>
+      <!-- Prompts in -->
+      <rect x="392" y="270" width="62" height="22" rx="3" fill="white" stroke="#8B5CF6"/>
+      <text x="423" y="285" text-anchor="middle" font-family="Inter" font-size="8" fill="#6D28D9">prompts</text>
+      <line x1="454" y1="281" x2="466" y2="281" stroke="#8B5CF6" stroke-width="1.5"/>
+      <!-- Policy generates -->
+      <rect x="468" y="268" width="60" height="26" rx="4" fill="#E9D5FF" stroke="#8B5CF6"/>
+      <text x="498" y="285" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#6D28D9">pi gen</text>
+      <line x1="528" y1="281" x2="540" y2="281" stroke="#8B5CF6" stroke-width="1.5"/>
+      <!-- R scores -->
+      <rect x="542" y="268" width="60" height="26" rx="4" fill="#FDE68A" stroke="#F59E0B"/>
+      <text x="572" y="285" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">R scores</text>
+      <line x1="602" y1="281" x2="614" y2="281" stroke="#8B5CF6" stroke-width="1.5"/>
+      <!-- PPO update -->
+      <rect x="616" y="264" width="124" height="34" rx="4" fill="#8B5CF6"/>
+      <text x="678" y="280" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">PPO update pi</text>
+      <text x="678" y="292" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#E9D5FF">max R - beta*KL</text>
+      <!-- Loop arrow back -->
+      <path d="M 678 298 Q 678 328, 498 328 Q 442 328, 442 298" fill="none" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#rlhf-arr)"/>
+      <text x="560" y="324" text-anchor="middle" font-family="Inter" font-size="8" fill="#6D28D9">iterate until convergence</text>
+
+      <!-- Output: aligned model -->
+      <rect x="616" y="300" width="124" height="22" rx="3" fill="#8B5CF6"/>
+      <text x="678" y="315" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">pi* (aligned)</text>
+
+      <!-- Legend: trained vs frozen -->
+      <rect x="490" y="15" width="10" height="10" rx="2" fill="#0D9488"/>
+      <text x="505" y="24" font-family="Inter" font-size="9" fill="#334155">trained</text>
+      <rect x="560" y="15" width="10" height="10" rx="2" fill="none" stroke="#64748B" stroke-dasharray="2 2"/>
+      <text x="575" y="24" font-family="Inter" font-size="9" fill="#334155">frozen</text>
     </svg>
   </figure>
   <p style="font-size:0.82em;">Stages 2 and 3 are the painful ones — reward model can be exploited, PPO is unstable.</p>
@@ -111,6 +184,86 @@
   <div style="text-align:center; padding:18px; background:#F0FDFA; border-radius:8px;">
     \[ P(y_w \succ y_l | x) = \sigma\!\left(\beta \log\tfrac{\pi^*(y_w|x)}{\pi_\text{ref}(y_w|x)} - \beta \log\tfrac{\pi^*(y_l|x)}{\pi_\text{ref}(y_l|x)}\right) \]
   </div>
+</section>
+
+<!-- 6b — DPO: skip the reward model -->
+<section>
+  <h2>DPO: from three stages to one</h2>
+  <figure style="text-align:center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="dpo-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+      </defs>
+
+      <!-- Left side: RLHF (3 stages) -->
+      <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#8B5CF6">RLHF (3 stages)</text>
+
+      <rect x="30" y="35" width="300" height="280" rx="8" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+      <!-- Stage 1 -->
+      <rect x="55" y="48" width="250" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5"/>
+      <text x="70" y="66" font-family="Inter" font-weight="700" font-size="10" fill="#0D9488">1. SFT</text>
+      <text x="70" y="82" font-family="Inter" font-size="9" fill="#0F766E">demonstrations -> fine-tune base -> pi_SFT</text>
+      <text x="270" y="90" text-anchor="end" font-family="Inter" font-size="8" fill="#22C55E">trained</text>
+
+      <line x1="180" y1="98" x2="180" y2="112" stroke="#475569" stroke-width="1" marker-end="url(#dpo-arr)"/>
+
+      <!-- Stage 2 -->
+      <rect x="55" y="114" width="250" height="65" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="70" y="132" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">2. Reward Model</text>
+      <text x="70" y="148" font-family="Inter" font-size="9" fill="#78350F">human preference pairs (y_w, y_l)</text>
+      <text x="70" y="164" font-family="Inter" font-size="9" fill="#78350F">-> train separate reward network R_phi</text>
+      <text x="270" y="172" text-anchor="end" font-family="Inter" font-size="8" fill="#F43F5E">extra model</text>
+
+      <line x1="180" y1="179" x2="180" y2="193" stroke="#475569" stroke-width="1" marker-end="url(#dpo-arr)"/>
+
+      <!-- Stage 3 -->
+      <rect x="55" y="195" width="250" height="65" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
+      <text x="70" y="213" font-family="Inter" font-weight="700" font-size="10" fill="#6D28D9">3. PPO Loop</text>
+      <text x="70" y="229" font-family="Inter" font-size="9" fill="#5B21B6">generate -> R scores -> clip ratio -> update</text>
+      <text x="70" y="245" font-family="Inter" font-size="9" fill="#5B21B6">KL penalty to stay near pi_ref</text>
+      <text x="270" y="253" text-anchor="end" font-family="Inter" font-size="8" fill="#F43F5E">unstable, 4 models in memory</text>
+
+      <text x="180" y="288" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#64748B">3 training runs, 4 models simultaneously</text>
+      <text x="180" y="303" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">(pi, pi_ref, R_phi, value head)</text>
+
+      <!-- Divider -->
+      <line x1="370" y1="30" x2="370" y2="310" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 3"/>
+      <text x="370" y="325" text-anchor="middle" font-family="Inter" font-weight="700" font-size="11" fill="#CBD5E1">vs</text>
+
+      <!-- Right side: DPO (1 stage) -->
+      <text x="560" y="20" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">DPO (1 stage)</text>
+
+      <rect x="410" y="35" width="330" height="280" rx="8" fill="#F0FDFA" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+      <!-- Preference data -->
+      <rect x="435" y="55" width="280" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="450" y="73" font-family="Inter" font-weight="700" font-size="10" fill="#92400E">Preference pairs (same data)</text>
+      <text x="450" y="89" font-family="Inter" font-size="9" fill="#78350F">(prompt, y_chosen, y_rejected) -- identical to RLHF Stage 2</text>
+
+      <line x1="575" y1="105" x2="575" y2="125" stroke="#0D9488" stroke-width="1.5" marker-end="url(#dpo-arr)"/>
+
+      <!-- DPO: direct policy optimisation -->
+      <rect x="435" y="130" width="280" height="100" rx="6" fill="#CCFBF1" stroke="#0D9488" stroke-width="2"/>
+      <text x="450" y="150" font-family="Inter" font-weight="700" font-size="11" fill="#0F766E">Direct Policy Optimisation</text>
+      <text x="450" y="170" font-family="Inter" font-size="9" fill="#0F766E">No reward model -- implicit in the loss</text>
+      <text x="450" y="186" font-family="Inter" font-size="9" fill="#0F766E">No PPO -- one supervised loss function</text>
+      <text x="450" y="202" font-family="JetBrains Mono" font-size="8" fill="#0F766E">L = -log sigma(beta * (log pi(yw)/pi_ref(yw) - log pi(yl)/pi_ref(yl)))</text>
+      <text x="680" y="222" text-anchor="end" font-family="Inter" font-size="8" fill="#22C55E">stable, 2 models only</text>
+
+      <!-- pi_ref (frozen) -->
+      <rect x="435" y="248" width="130" height="38" rx="4" fill="#E2E8F0" stroke="#64748B" stroke-dasharray="3 2"/>
+      <text x="500" y="265" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">pi_ref (frozen copy)</text>
+      <text x="500" y="278" text-anchor="middle" font-family="Inter" font-size="8" fill="#94A3B8">provides baseline</text>
+
+      <!-- pi (training) -->
+      <rect x="585" y="248" width="130" height="38" rx="4" fill="#0D9488"/>
+      <text x="650" y="265" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">pi (training)</text>
+      <text x="650" y="278" text-anchor="middle" font-family="Inter" font-size="8" fill="#CCFBF1">LoRA weights</text>
+
+      <text x="575" y="305" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#64748B">1 training run, 2 models (pi + pi_ref)</text>
+    </svg>
+  </figure>
 </section>
 
 <!-- 7 -->
@@ -353,7 +506,7 @@ assert benign_refusals / len(benign) < 0.05, "catastrophic refusal!"
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05,
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05,
     plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>

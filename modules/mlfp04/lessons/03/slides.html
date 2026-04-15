@@ -196,6 +196,106 @@ for i in range(3):
 </section>
 
 <section>
+  <h2>Same data, different preservation guarantees</h2>
+  <figure style="text-align: center;">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <!-- Left panel: t-SNE -->
+      <text x="190" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">t-SNE projection</text>
+      <rect x="15" y="24" width="350" height="260" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <!-- Cluster A: tight compact blob, top-left -->
+      <g fill="#0D9488">
+        <circle cx="85" cy="75" r="3"/><circle cx="92" cy="68" r="3"/><circle cx="78" cy="82" r="3"/>
+        <circle cx="98" cy="78" r="3"/><circle cx="82" cy="65" r="3"/><circle cx="75" cy="72" r="3"/>
+        <circle cx="95" cy="85" r="3"/><circle cx="88" cy="60" r="3"/><circle cx="70" cy="80" r="3"/>
+        <circle cx="100" cy="70" r="3"/><circle cx="86" cy="88" r="3"/>
+      </g>
+      <!-- Cluster B: tight compact blob, mid-right -->
+      <g fill="#3B82F6">
+        <circle cx="280" cy="130" r="3"/><circle cx="288" cy="125" r="3"/><circle cx="272" cy="138" r="3"/>
+        <circle cx="295" cy="135" r="3"/><circle cx="275" cy="128" r="3"/><circle cx="290" cy="140" r="3"/>
+        <circle cx="268" cy="132" r="3"/><circle cx="285" cy="120" r="3"/><circle cx="298" cy="128" r="3"/>
+        <circle cx="278" cy="142" r="3"/>
+      </g>
+      <!-- Cluster C: tight compact blob, bottom-left -->
+      <g fill="#F59E0B">
+        <circle cx="120" cy="220" r="3"/><circle cx="128" cy="215" r="3"/><circle cx="112" cy="228" r="3"/>
+        <circle cx="135" cy="225" r="3"/><circle cx="115" cy="218" r="3"/><circle cx="130" cy="230" r="3"/>
+        <circle cx="108" cy="222" r="3"/><circle cx="125" cy="210" r="3"/><circle cx="138" cy="218" r="3"/>
+      </g>
+      <!-- Cluster D: tight compact blob, bottom-right -->
+      <g fill="#8B5CF6">
+        <circle cx="290" cy="235" r="3"/><circle cx="298" cy="228" r="3"/><circle cx="282" cy="242" r="3"/>
+        <circle cx="305" cy="238" r="3"/><circle cx="285" cy="230" r="3"/><circle cx="300" cy="245" r="3"/>
+        <circle cx="278" cy="236" r="3"/><circle cx="295" cy="222" r="3"/>
+      </g>
+      <!-- Cluster E: top-right -->
+      <g fill="#F43F5E">
+        <circle cx="300" cy="60" r="3"/><circle cx="308" cy="55" r="3"/><circle cx="292" cy="68" r="3"/>
+        <circle cx="315" cy="62" r="3"/><circle cx="295" cy="58" r="3"/><circle cx="310" cy="70" r="3"/>
+        <circle cx="288" cy="62" r="3"/>
+      </g>
+      <!-- Distances between clusters are arbitrary -->
+      <text x="190" y="270" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Tight clusters, but inter-cluster</text>
+      <text x="190" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#EF4444">distances are meaningless</text>
+
+      <!-- Right panel: UMAP -->
+      <text x="570" y="18" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#475569">UMAP projection</text>
+      <rect x="395" y="24" width="355" height="260" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <!-- Same clusters but with meaningful inter-cluster structure -->
+      <!-- Clusters A and E are "close" (related); C and D are "close" (related) -->
+      <!-- Cluster A: top-left area -->
+      <g fill="#0D9488">
+        <circle cx="450" cy="75" r="3"/><circle cx="458" cy="68" r="3"/><circle cx="442" cy="82" r="3"/>
+        <circle cx="465" cy="78" r="3"/><circle cx="448" cy="65" r="3"/><circle cx="440" cy="72" r="3"/>
+        <circle cx="462" cy="85" r="3"/><circle cx="455" cy="60" r="3"/><circle cx="438" cy="78" r="3"/>
+        <circle cx="468" cy="70" r="3"/><circle cx="453" cy="88" r="3"/>
+      </g>
+      <!-- Cluster E: near A (top-right, close neighbor) -->
+      <g fill="#F43F5E">
+        <circle cx="540" cy="65" r="3"/><circle cx="548" cy="58" r="3"/><circle cx="532" cy="72" r="3"/>
+        <circle cx="555" cy="68" r="3"/><circle cx="535" cy="60" r="3"/><circle cx="550" cy="75" r="3"/>
+        <circle cx="530" cy="66" r="3"/>
+      </g>
+      <!-- Cluster B: center-right, far from A/E -->
+      <g fill="#3B82F6">
+        <circle cx="640" cy="155" r="3"/><circle cx="648" cy="148" r="3"/><circle cx="632" cy="162" r="3"/>
+        <circle cx="655" cy="158" r="3"/><circle cx="635" cy="150" r="3"/><circle cx="650" cy="165" r="3"/>
+        <circle cx="628" cy="155" r="3"/><circle cx="645" cy="142" r="3"/><circle cx="658" cy="152" r="3"/>
+        <circle cx="638" cy="168" r="3"/>
+      </g>
+      <!-- Cluster C: bottom-left -->
+      <g fill="#F59E0B">
+        <circle cx="470" cy="220" r="3"/><circle cx="478" cy="215" r="3"/><circle cx="462" cy="228" r="3"/>
+        <circle cx="485" cy="225" r="3"/><circle cx="465" cy="218" r="3"/><circle cx="480" cy="230" r="3"/>
+        <circle cx="458" cy="222" r="3"/><circle cx="475" cy="210" r="3"/><circle cx="488" cy="218" r="3"/>
+      </g>
+      <!-- Cluster D: near C (bottom-center, close neighbor) -->
+      <g fill="#8B5CF6">
+        <circle cx="560" cy="230" r="3"/><circle cx="568" cy="225" r="3"/><circle cx="552" cy="238" r="3"/>
+        <circle cx="575" cy="232" r="3"/><circle cx="555" cy="228" r="3"/><circle cx="570" cy="242" r="3"/>
+        <circle cx="548" cy="234" r="3"/><circle cx="565" cy="220" r="3"/>
+      </g>
+      <!-- Meaningful distance annotations -->
+      <line x1="468" y1="90" x2="535" y2="68" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
+      <text x="502" y="88" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">nearby = related</text>
+      <line x1="488" y1="228" x2="548" y2="232" stroke="#94A3B8" stroke-width="0.8" stroke-dasharray="3 2"/>
+      <text x="518" y="248" text-anchor="middle" font-family="Inter" font-size="7" fill="#94A3B8">nearby = related</text>
+      <text x="570" y="270" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Local structure preserved AND</text>
+      <text x="570" y="282" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#22C55E">inter-cluster distances meaningful</text>
+
+      <!-- Bottom labels -->
+      <g font-family="Inter" font-size="9">
+        <circle cx="425" cy="305" r="4" fill="#0D9488"/><text x="435" y="308" fill="#475569">Cluster A</text>
+        <circle cx="505" cy="305" r="4" fill="#3B82F6"/><text x="515" y="308" fill="#475569">B</text>
+        <circle cx="555" cy="305" r="4" fill="#F59E0B"/><text x="565" y="308" fill="#475569">C</text>
+        <circle cx="605" cy="305" r="4" fill="#8B5CF6"/><text x="615" y="308" fill="#475569">D</text>
+        <circle cx="655" cy="305" r="4" fill="#F43F5E"/><text x="665" y="308" fill="#475569">E</text>
+      </g>
+    </svg>
+  </figure>
+</section>
+
+<section>
   <h2>Eckart-Young: PCA is optimal</h2>
   <p>Best rank-$k$ approximation in Frobenius norm:</p>
   \[ \min_{\text{rank}(\hat X) \leq k}\ \lVert X - \hat X \rVert_F^2 \;=\; \sum_{i=k+1}^{r}\sigma_i^2 \]
@@ -285,7 +385,7 @@ fig.write_html("scree.html")
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script>
 <script>
-  Reveal.initialize({ hash: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
+  Reveal.initialize({ hash: true, slideNumber: true, width: 1280, height: 720, margin: 0.05, plugins: [ RevealHighlight, RevealMath.KaTeX ] });
 </script>
 </body>
 </html>

@@ -238,6 +238,81 @@ simple_losses, simple_accs = train_model(
     epochs=EPOCHS,
 )
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments + Grad-CAM for CNNs
+# ══════════════════════════════════════════════════════════════════
+# First classifier in M5: we use `diagnose_classifier` which wraps
+# `run_diagnostic_checkpoint` with a cross-entropy loss function.
+# For CNNs, Grad-CAM is the sixth instrument — it answers "which
+# pixels drove the prediction?" and surfaces spurious shortcuts
+# (Zech et al. 2018: hospitals' chest-X-ray models latched onto
+# watermarks instead of pathology).
+from shared.mlfp05.diagnostics import diagnose_classifier
+
+print("\n── Diagnostic Report (SimpleCNN) ──")
+diag, findings = diagnose_classifier(
+    simple_cnn,
+    val_loader,
+    title="SimpleCNN (CIFAR-10)",
+    n_batches=8,
+    train_losses=simple_losses,
+    val_losses=[1.0 - a for a in simple_accs],  # proxy val curve
+    show=False,
+)
+
+# Grad-CAM on the last conv layer: verify the model looks at objects,
+# not backgrounds. Pick a validation batch and a target class.
+try:
+    _vx, _vy = next(iter(val_loader))
+    # Find the last conv layer in the model
+    _last_conv = None
+    for _name, _mod in simple_cnn.named_modules():
+        if isinstance(_mod, nn.Conv2d):
+            _last_conv = _name
+    if _last_conv is not None:
+        cam = diag.grad_cam(
+            _vx[:4].to(DEVICE),
+            target_class=int(_vy[0].item()),
+            layer_name=_last_conv,
+        )
+        print(
+            f"  Grad-CAM computed on layer '{_last_conv}', "
+            f"heatmap shape={tuple(cam.shape)}"
+        )
+        # Students: overlay `cam[i]` onto `_vx[i]` (resize CAM to 32x32)
+        # and inspect — if the hot region is off the object, the model
+        # learned a shortcut (see Zech 2018 hospital-watermark study).
+except Exception as _exc:  # pragma: no cover — visualisation optional
+    print(f"  Grad-CAM skipped ({_exc})")
+
+# ══════ EXPECTED OUTPUT (reference shape) ══════
+# ══════════════════════════════════════════════════════════════════
+#   DL Diagnostics Report — Prescription Pad
+# ══════════════════════════════════════════════════════════════════
+#   [✓] Gradient flow (HEALTHY): RMS range ~1e-4 – ~1e-2, uniform
+#       across Conv2d and Linear layers (BatchNorm is keeping flow
+#       healthy — this is WHY BN was invented).
+#   [✓] Dead neurons  (HEALTHY): No ReLU layer above 30% inactive;
+#       weight sharing in Conv2d naturally keeps channels alive.
+#   [✓] Loss trend    (HEALTHY): Training converging, val accuracy
+#       rising monotonically — no overfitting after 8 epochs.
+#   + Grad-CAM: heatmap concentrates on the object, not the corners.
+# ══════════════════════════════════════════════════════════════════
+#
+# STUDENT INTERPRETATION GUIDE:
+#   - Healthy CNN signature: uniform gradient RMS + low dead %% +
+#     Grad-CAM on the object. If any of the three fails, investigate
+#     BEFORE trusting val accuracy.
+#   - Zech 2018 lesson: a pneumonia classifier achieved SOTA accuracy
+#     but Grad-CAM revealed it was attending to hospital watermarks
+#     — a dataset-shortcut that would FAIL on any other hospital's
+#     scans. Always visualise attribution; never ship on accuracy
+#     alone.
+#   - If Grad-CAM highlights background/corners, the model is
+#     using spurious features. Fix: data augmentation, balanced
+#     sampling, or a different loss.
+# ══════════════════════════════════════════════════════════════════
+
 # ── Checkpoint 3: Training converged ─────────────────────────────────
 assert len(simple_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses"
 assert simple_losses[-1] < simple_losses[0], "Loss should decrease during training"

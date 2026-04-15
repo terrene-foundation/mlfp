@@ -7,17 +7,215 @@
 
 <section><h2>Four multi-agent patterns</h2><table style="font-size:.7em"><thead><tr><th>Pattern</th><th>How</th><th>When</th></tr></thead><tbody><tr><td>Supervisor-worker</td><td>One agent delegates to specialists</td><td>Complex tasks with sub-problems</td></tr><tr><td>Sequential</td><td>Output of one feeds next</td><td>Pipeline stages</td></tr><tr><td>Parallel</td><td>Run simultaneously, aggregate</td><td>Independent sub-tasks</td></tr><tr><td>Handoff</td><td>Transfer to specialist on topic change</td><td>Multi-domain queries</td></tr></tbody></table></section>
 
-<section><h2>Multi-agent ML pipeline</h2><pre><code class="language-python" data-trim>from kailash_kaizen import SupervisorAgent, BaseAgent
+<section><h2>Three orchestration patterns</h2>
+<figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ma-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+    <marker id="ma-arr-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0D9488"/></marker>
+  </defs>
+
+  <!-- ===== Panel 1: Sequential (Pipeline) ===== -->
+  <rect x="10" y="10" width="230" height="320" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="125" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Sequential (Pipeline)</text>
+
+  <rect x="55" y="50" width="120" height="36" rx="6" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="115" y="72" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#1E40AF">Agent A</text>
+  <text x="115" y="60" text-anchor="middle" font-family="Inter" font-size="7" fill="#3B82F6">fetch data</text>
+
+  <line x1="115" y1="86" x2="115" y2="102" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <text x="135" y="98" font-family="JetBrains Mono" font-size="7" fill="#64748B">df</text>
+
+  <rect x="55" y="106" width="120" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="115" y="128" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#92400E">Agent B</text>
+  <text x="115" y="118" text-anchor="middle" font-family="Inter" font-size="7" fill="#F59E0B">analyse</text>
+
+  <line x1="115" y1="142" x2="115" y2="158" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <text x="135" y="154" font-family="JetBrains Mono" font-size="7" fill="#64748B">insights</text>
+
+  <rect x="55" y="162" width="120" height="36" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="115" y="184" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#15803D">Agent C</text>
+  <text x="115" y="174" text-anchor="middle" font-family="Inter" font-size="7" fill="#22C55E">write report</text>
+
+  <line x1="115" y1="198" x2="115" y2="214" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+
+  <rect x="65" y="218" width="100" height="26" rx="4" fill="#0D9488"/>
+  <text x="115" y="235" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Result</text>
+
+  <text x="125" y="262" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Each output feeds the</text>
+  <text x="125" y="273" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">next agent's input.</text>
+  <text x="125" y="290" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Good for: ETL, review</text>
+  <text x="125" y="301" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">chains, content pipelines</text>
+
+  <!-- ===== Panel 2: Parallel (Map-Reduce) ===== -->
+  <rect x="260" y="10" width="230" height="320" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="375" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#F59E0B">Parallel (Map-Reduce)</text>
+
+  <!-- Supervisor -->
+  <rect x="320" y="50" width="110" height="36" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
+  <text x="375" y="72" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#6D28D9">Supervisor</text>
+
+  <!-- Fan-out arrows -->
+  <line x1="340" y1="86" x2="300" y2="110" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <line x1="375" y1="86" x2="375" y2="110" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <line x1="410" y1="86" x2="450" y2="110" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+
+  <!-- Workers -->
+  <rect x="270" y="114" width="60" height="36" rx="4" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="300" y="136" text-anchor="middle" font-family="Inter" font-size="8" fill="#1E40AF">W1</text>
+  <rect x="345" y="114" width="60" height="36" rx="4" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="375" y="136" text-anchor="middle" font-family="Inter" font-size="8" fill="#92400E">W2</text>
+  <rect x="420" y="114" width="60" height="36" rx="4" fill="#DCFCE7" stroke="#22C55E"/>
+  <text x="450" y="136" text-anchor="middle" font-family="Inter" font-size="8" fill="#15803D">W3</text>
+
+  <!-- Fan-in arrows -->
+  <line x1="300" y1="150" x2="340" y2="174" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <line x1="375" y1="150" x2="375" y2="174" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <line x1="450" y1="150" x2="410" y2="174" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+
+  <!-- Aggregate -->
+  <rect x="315" y="178" width="120" height="36" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="1.5"/>
+  <text x="375" y="195" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#6D28D9">Aggregate</text>
+
+  <line x1="375" y1="214" x2="375" y2="230" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <rect x="325" y="234" width="100" height="26" rx="4" fill="#0D9488"/>
+  <text x="375" y="251" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Result</text>
+
+  <text x="375" y="278" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Workers run independently.</text>
+  <text x="375" y="289" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Supervisor waits, merges.</text>
+  <text x="375" y="306" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Good for: search, eval,</text>
+  <text x="375" y="317" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">multi-perspective analysis</text>
+
+  <!-- ===== Panel 3: Hierarchical (Delegation) ===== -->
+  <rect x="510" y="10" width="240" height="320" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="630" y="32" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#8B5CF6">Hierarchical (Delegation)</text>
+
+  <!-- Top supervisor -->
+  <rect x="580" y="50" width="100" height="32" rx="6" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="630" y="70" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="#6D28D9">Supervisor</text>
+
+  <!-- Mid-level supervisors -->
+  <line x1="600" y1="82" x2="570" y2="100" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <line x1="660" y1="82" x2="690" y2="100" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+
+  <rect x="530" y="104" width="80" height="30" rx="4" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="570" y="123" text-anchor="middle" font-family="Inter" font-size="8" fill="#4338CA">Sub-sup A</text>
+  <rect x="650" y="104" width="80" height="30" rx="4" fill="#E0E7FF" stroke="#4F46E5"/>
+  <text x="690" y="123" text-anchor="middle" font-family="Inter" font-size="8" fill="#4338CA">Sub-sup B</text>
+
+  <!-- Leaf workers under A -->
+  <line x1="550" y1="134" x2="540" y2="152" stroke="#475569" stroke-width="1" marker-end="url(#ma-arr)"/>
+  <line x1="590" y1="134" x2="600" y2="152" stroke="#475569" stroke-width="1" marker-end="url(#ma-arr)"/>
+  <rect x="522" y="156" width="40" height="24" rx="3" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="542" y="172" text-anchor="middle" font-family="Inter" font-size="7" fill="#1E40AF">W1</text>
+  <rect x="580" y="156" width="40" height="24" rx="3" fill="#DBEAFE" stroke="#3B82F6"/>
+  <text x="600" y="172" text-anchor="middle" font-family="Inter" font-size="7" fill="#1E40AF">W2</text>
+
+  <!-- Leaf workers under B -->
+  <line x1="670" y1="134" x2="660" y2="152" stroke="#475569" stroke-width="1" marker-end="url(#ma-arr)"/>
+  <line x1="710" y1="134" x2="720" y2="152" stroke="#475569" stroke-width="1" marker-end="url(#ma-arr)"/>
+  <rect x="642" y="156" width="40" height="24" rx="3" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="662" y="172" text-anchor="middle" font-family="Inter" font-size="7" fill="#92400E">W3</text>
+  <rect x="702" y="156" width="40" height="24" rx="3" fill="#FEF3C7" stroke="#F59E0B"/>
+  <text x="722" y="172" text-anchor="middle" font-family="Inter" font-size="7" fill="#92400E">W4</text>
+
+  <!-- Results flow back up -->
+  <path d="M 630 180 Q 630 210, 630 220" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#ma-arr)"/>
+  <rect x="580" y="224" width="100" height="26" rx="4" fill="#0D9488"/>
+  <text x="630" y="241" text-anchor="middle" font-family="Inter" font-weight="600" font-size="9" fill="white">Result</text>
+
+  <text x="630" y="268" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Tree of authority.</text>
+  <text x="630" y="279" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Each level can sub-delegate.</text>
+  <text x="630" y="296" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Good for: complex orgs,</text>
+  <text x="630" y="307" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">budget cascading, D/T/R</text>
+</svg></figure></section>
+
+<section><h2>Supervisors delegate with budgets</h2>
+<figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="sd-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+    <marker id="sd-arr-up" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0D9488"/></marker>
+  </defs>
+
+  <!-- Task input -->
+  <rect x="240" y="5" width="280" height="30" rx="4" fill="#F8FAFC" stroke="#1E293B" stroke-width="1.5"/>
+  <text x="380" y="24" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E293B">Task: "Analyse Q3 Singapore property sales"</text>
+
+  <line x1="380" y1="35" x2="380" y2="55" stroke="#475569" stroke-width="1.5" marker-end="url(#sd-arr)"/>
+
+  <!-- Supervisor -->
+  <rect x="260" y="58" width="240" height="50" rx="8" fill="#F3E8FF" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="380" y="78" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#6D28D9">Supervisor Agent</text>
+  <text x="380" y="96" text-anchor="middle" font-family="Inter" font-size="9" fill="#5B21B6">Total budget: $0.50 | Plans and delegates</text>
+
+  <!-- Delegation arrows -->
+  <line x1="300" y1="108" x2="120" y2="140" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#sd-arr)"/>
+  <line x1="380" y1="108" x2="380" y2="140" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#sd-arr)"/>
+  <line x1="460" y1="108" x2="640" y2="140" stroke="#8B5CF6" stroke-width="1.5" marker-end="url(#sd-arr)"/>
+
+  <!-- DataAgent -->
+  <rect x="30" y="143" width="180" height="75" rx="6" fill="#DBEAFE" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="120" y="163" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#1E40AF">DataAgent</text>
+  <rect x="45" y="170" width="60" height="18" rx="3" fill="#3B82F6"/>
+  <text x="75" y="183" text-anchor="middle" font-family="Inter" font-weight="600" font-size="8" fill="white">$0.05</text>
+  <text x="115" y="183" font-family="Inter" font-size="8" fill="#1E40AF">budget</text>
+  <text x="120" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#3B82F6">"Fetch Q3 HDB + condo data"</text>
+
+  <!-- AnalystAgent -->
+  <rect x="290" y="143" width="180" height="75" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="380" y="163" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#92400E">AnalystAgent</text>
+  <rect x="305" y="170" width="60" height="18" rx="3" fill="#F59E0B"/>
+  <text x="335" y="183" text-anchor="middle" font-family="Inter" font-weight="600" font-size="8" fill="white">$0.20</text>
+  <text x="375" y="183" font-family="Inter" font-size="8" fill="#92400E">budget</text>
+  <text x="380" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#92400E">"Run price analysis + trends"</text>
+
+  <!-- WriterAgent -->
+  <rect x="550" y="143" width="180" height="75" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="640" y="163" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#15803D">WriterAgent</text>
+  <rect x="565" y="170" width="60" height="18" rx="3" fill="#22C55E"/>
+  <text x="595" y="183" text-anchor="middle" font-family="Inter" font-weight="600" font-size="8" fill="white">$0.15</text>
+  <text x="635" y="183" font-family="Inter" font-size="8" fill="#15803D">budget</text>
+  <text x="640" y="205" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#15803D">"Write exec summary"</text>
+
+  <!-- Results flowing back up -->
+  <line x1="120" y1="218" x2="120" y2="245" stroke="#0D9488" stroke-width="1.5" marker-end="url(#sd-arr-up)"/>
+  <text x="120" y="258" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#0D9488">df (cost: $0.03)</text>
+
+  <line x1="380" y1="218" x2="380" y2="245" stroke="#0D9488" stroke-width="1.5" marker-end="url(#sd-arr-up)"/>
+  <text x="380" y="258" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#0D9488">insights (cost: $0.12)</text>
+
+  <line x1="640" y1="218" x2="640" y2="245" stroke="#0D9488" stroke-width="1.5" marker-end="url(#sd-arr-up)"/>
+  <text x="640" y="258" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="#0D9488">report (cost: $0.08)</text>
+
+  <!-- Aggregate back to supervisor -->
+  <line x1="120" y1="262" x2="300" y2="285" stroke="#0D9488" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="380" y1="262" x2="380" y2="285" stroke="#0D9488" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="640" y1="262" x2="460" y2="285" stroke="#0D9488" stroke-width="1" stroke-dasharray="3 2"/>
+
+  <!-- Final result -->
+  <rect x="260" y="285" width="240" height="42" rx="6" fill="#0D9488"/>
+  <text x="380" y="303" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="white">Aggregated result to user</text>
+  <text x="380" y="318" text-anchor="middle" font-family="Inter" font-size="9" fill="#CCFBF1">Total spent: $0.23 of $0.50 budget</text>
+
+  <!-- Budget tracking annotation -->
+  <rect x="30" y="290" width="195" height="40" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
+  <text x="127" y="306" text-anchor="middle" font-family="Inter" font-size="8" fill="#92400E">Budget invariant: sum of child</text>
+  <text x="127" y="318" text-anchor="middle" font-family="Inter" font-size="8" fill="#92400E">budgets &lt;= parent budget always</text>
+</svg></figure></section>
+
+<section><h2>Multi-agent ML pipeline</h2><pre><code class="language-python" data-trim>from kaizen_agents import BaseAgent, Delegate
 
 data_agent = BaseAgent(name="DataScientist", ...)
 feature_agent = BaseAgent(name="FeatureEngineer", ...)
 model_agent = BaseAgent(name="ModelSelector", ...)
 report_agent = BaseAgent(name="ReportWriter", ...)
 
-supervisor = SupervisorAgent(
+# Supervisor delegates to workers with individual budgets
+supervisor = BaseAgent(
+    name="Supervisor",
     workers=[data_agent, feature_agent,
-             model_agent, report_agent])
-result = supervisor.run("Build model for HDB prices")</code></pre></section>
+             model_agent, report_agent],
+    max_llm_cost_usd=5.00)
+result = await supervisor.run("Build model for HDB prices")</code></pre></section>
 
 <section><h2>Agent memory</h2><table style="font-size:.7em"><thead><tr><th>Type</th><th>Scope</th><th>Use</th></tr></thead><tbody><tr><td>Short-term</td><td>Current conversation</td><td>Track context</td></tr><tr><td>Long-term</td><td>Persistent</td><td>User preferences</td></tr><tr><td>Entity</td><td>Structured</td><td>People, places, concepts</td></tr></tbody></table></section>
 
@@ -30,7 +228,85 @@ def explore_data(dataset: str) -> dict:
     df = loader.load("mlfp06", dataset)
     return {"shape": df.shape, "columns": df.columns}
 
-server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><strong>⚙ Kailash:</strong> MCP exposes tools to any MCP-compatible client. Build once, use from any agent framework.</div></section>
+server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><strong>Kailash:</strong> MCP exposes tools to any MCP-compatible client. Build once, use from any agent framework.</div></section>
+
+<section><h2>MCP: a universal protocol for LLM-tool integration</h2>
+<figure style="text-align:center"><svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="mcp-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4F46E5"/></marker>
+    <marker id="mcp-arr-back" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#0D9488"/></marker>
+  </defs>
+
+  <!-- ===== LEFT: LLM Client ===== -->
+  <rect x="20" y="40" width="180" height="260" rx="10" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2"/>
+  <text x="110" y="70" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#4338CA">LLM Client</text>
+
+  <rect x="35" y="88" width="150" height="32" rx="5" fill="white" stroke="#4F46E5"/>
+  <text x="110" y="108" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">Claude Desktop</text>
+
+  <rect x="35" y="128" width="150" height="32" rx="5" fill="white" stroke="#4F46E5"/>
+  <text x="110" y="148" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">VS Code Copilot</text>
+
+  <rect x="35" y="168" width="150" height="32" rx="5" fill="white" stroke="#4F46E5"/>
+  <text x="110" y="188" text-anchor="middle" font-family="Inter" font-size="10" fill="#4338CA">Custom Agent</text>
+
+  <text x="110" y="225" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">Any MCP-compatible</text>
+  <text x="110" y="238" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">host application</text>
+
+  <!-- ===== CENTER: Protocol Layer ===== -->
+  <rect x="240" y="40" width="180" height="260" rx="10" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="330" y="70" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#92400E">MCP Protocol</text>
+
+  <rect x="255" y="88" width="150" height="28" rx="4" fill="white" stroke="#F59E0B"/>
+  <text x="330" y="107" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#92400E">JSON-RPC 2.0</text>
+
+  <text x="330" y="140" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10" fill="#78350F">Transport:</text>
+  <rect x="260" y="148" width="60" height="22" rx="3" fill="#FDE68A" stroke="#F59E0B"/>
+  <text x="290" y="163" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">stdio</text>
+  <rect x="330" y="148" width="60" height="22" rx="3" fill="#FDE68A" stroke="#F59E0B"/>
+  <text x="360" y="163" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">SSE</text>
+
+  <!-- Request/Response arrows -->
+  <text x="330" y="195" text-anchor="middle" font-family="Inter" font-size="9" fill="#78350F">Request flow:</text>
+  <rect x="260" y="202" width="140" height="20" rx="3" fill="#4F46E5"/>
+  <text x="330" y="216" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">tools/call {"name": "explore"}</text>
+
+  <text x="330" y="240" text-anchor="middle" font-family="Inter" font-size="9" fill="#78350F">Response flow:</text>
+  <rect x="260" y="247" width="140" height="20" rx="3" fill="#0D9488"/>
+  <text x="330" y="261" text-anchor="middle" font-family="JetBrains Mono" font-size="7" fill="white">{"shape": [1000, 12], ...}</text>
+
+  <!-- ===== RIGHT: MCP Server ===== -->
+  <rect x="460" y="40" width="280" height="260" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+  <text x="600" y="70" text-anchor="middle" font-family="Inter" font-weight="700" font-size="13" fill="#0D9488">MCP Server</text>
+
+  <!-- Tools -->
+  <rect x="478" y="88" width="245" height="58" rx="6" fill="white" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="488" y="105" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Tools (functions)</text>
+  <text x="488" y="120" font-family="JetBrains Mono" font-size="8" fill="#0F766E">explore_data(dataset) -> dict</text>
+  <text x="488" y="133" font-family="JetBrains Mono" font-size="8" fill="#0F766E">train_model(config) -> metrics</text>
+
+  <!-- Resources -->
+  <rect x="478" y="155" width="245" height="48" rx="6" fill="white" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="488" y="172" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Resources (data)</text>
+  <text x="488" y="187" font-family="JetBrains Mono" font-size="8" fill="#0F766E">file://data/hdb_prices.parquet</text>
+  <text x="488" y="198" font-family="JetBrains Mono" font-size="8" fill="#0F766E">db://models/registry</text>
+
+  <!-- Prompts -->
+  <rect x="478" y="212" width="245" height="48" rx="6" fill="white" stroke="#0D9488" stroke-width="1.5"/>
+  <text x="488" y="229" font-family="Inter" font-weight="600" font-size="10" fill="#0D9488">Prompts (templates)</text>
+  <text x="488" y="244" font-family="JetBrains Mono" font-size="8" fill="#0F766E">analyse_dataset(dataset, question)</text>
+  <text x="488" y="255" font-family="JetBrains Mono" font-size="8" fill="#0F766E">explain_drift(report)</text>
+
+  <!-- Connection arrows between sections -->
+  <line x1="200" y1="140" x2="240" y2="140" stroke="#4F46E5" stroke-width="2" marker-end="url(#mcp-arr)"/>
+  <line x1="240" y1="170" x2="200" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#mcp-arr-back)"/>
+
+  <line x1="420" y1="140" x2="460" y2="140" stroke="#4F46E5" stroke-width="2" marker-end="url(#mcp-arr)"/>
+  <line x1="460" y1="170" x2="420" y2="170" stroke="#0D9488" stroke-width="2" marker-end="url(#mcp-arr-back)"/>
+
+  <!-- Bottom summary -->
+  <text x="380" y="325" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748B">One server, many clients. Tools defined once, usable from Claude, VS Code, custom agents, or CLI.</text>
+</svg></figure></section>
 
 <section><h2>A2A protocol</h2><ul style="font-size:.85em"><li>Structured communication between agents.</li><li>Each message has: sender, recipient, content schema, metadata.</li><li>Enables agents built in different frameworks to interoperate.</li></ul></section>
 
@@ -40,5 +316,5 @@ server.run(transport="stdio")</code></pre><div class="callout-slide kailash"><st
 
 <section><h2>What you can now do</h2><ul><li>✓ Implement supervisor-worker, sequential, and parallel patterns.</li><li>✓ Build an MCP server exposing ML tools.</li><li>✓ Configure agent memory (short/long/entity).</li><li>✓ Apply security to multi-agent systems.</li></ul><div class="callout-slide foundations"><strong>Next:</strong> 6.7 — AI Governance Engineering. PACT D/T/R, operating envelopes, budget cascading.</div></section>
 </div></div>
-<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script><script>Reveal.initialize({hash:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script><script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/math/math.js"></script><script>Reveal.initialize({hash:true,slideNumber:true,width:1280,height:720,margin:0.05,plugins:[RevealHighlight,RevealMath.KaTeX]});</script>
 </body></html>

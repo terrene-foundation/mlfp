@@ -55,7 +55,7 @@ dependencies = [
     "torch>=2.2",
     "torchvision>=0.17",
     "pytorch-lightning>=2.2",
-    "gymnasium[box2d]>=0.29",
+    "gymnasium>=0.29",
     "torch-geometric>=2.5",
     # Real-world datasets — M5 exercises hit real data, not toys
     "yfinance>=0.2.40",

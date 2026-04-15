@@ -51,6 +51,12 @@ dependencies = [
     # Bayesian hyperparameter search — kailash-ml lazily imports optuna
     # for HyperparameterSearch(strategy='bayesian') used in M3 ex_7/03
     "optuna>=3.6",
+    # M3 model explainability (ex_6/03)
+    "lime>=0.2",
+    # M4 clustering + dimensionality reduction + topic modelling
+    "hdbscan>=0.8.33",
+    "umap-learn>=0.5",
+    "bertopic>=0.16",
     # Deep learning — required by M5 (autoencoders, CNN, RNN, transformer, GAN, GNN, RL)
     "torch>=2.2",
     "torchvision>=0.17",

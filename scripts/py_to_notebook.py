@@ -174,17 +174,16 @@ def jupyter_setup_cell(source: str = "") -> dict:
 
 
 def colab_setup_cell(source: str = "") -> dict:
-    packages = _detect_packages(source)
     return make_code_cell(
         "# ══════════════════════════════════════════════════════════════════\n"
-        "# Google Colab setup — clones YOUR GitHub Classroom fork so that\n"
-        "# `from shared.mlfp05.diagnostics import ...` resolves correctly.\n"
+        "# Google Colab setup — one cell to rule them all.\n"
+        "# Before running: Runtime → Change runtime type → T4 GPU (free tier)\n"
         "# ══════════════════════════════════════════════════════════════════\n"
         "import os, sys\n"
         "\n"
         "# ① EDIT THIS to point at YOUR fork of the Classroom repo.\n"
         "#    Your fork URL is at the top of your assignment page on GitHub.\n"
-        '#    Example: "https://github.com/janedoe/pcml-run26-2601-janedoe.git"\n'
+        '#    Example: "https://github.com/janedoe/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601-janedoe.git"\n'
         'FORK_URL = "https://github.com/<your-github-username>/<your-fork>.git"\n'
         'REPO_DIR = "/content/pcml-run26"\n'
         "\n"
@@ -194,16 +193,25 @@ def colab_setup_cell(source: str = "") -> dict:
         "# ② cd into the repo so relative data paths resolve\n"
         "%cd {REPO_DIR}\n"
         "\n"
-        "# ③ Install deps (most are pre-installed on Colab)\n"
-        f"!pip install -q {packages}\n"
+        "# ③ Install deps — Colab has PyTorch preinstalled; add the Kailash stack.\n"
+        "!pip install -q kailash kailash-ml kailash-kaizen kailash-nexus \\\n"
+        "               polars plotly gdown python-dotenv nest-asyncio\n"
         "\n"
         "# ④ Make the `shared` package importable\n"
         "if REPO_DIR not in sys.path:\n"
         "    sys.path.insert(0, REPO_DIR)\n"
         "\n"
-        "# ⑤ (Optional) Mount Drive if your exercise reads from Drive\n"
-        "# from google.colab import drive\n"
-        '# drive.mount("/content/drive")\n'
+        "# ⑤ Patch asyncio — Colab has a running event loop; nested asyncio.run() fails without this.\n"
+        "import nest_asyncio\n"
+        "nest_asyncio.apply()\n"
+        "\n"
+        "# ⑥ GPU check — warn loudly if running on CPU (training will be much slower).\n"
+        "import torch\n"
+        "if torch.cuda.is_available():\n"
+        "    print(f'✓ GPU available: {torch.cuda.get_device_name(0)}')\n"
+        "else:\n"
+        "    print('⚠ No GPU detected — training will be slow.')\n"
+        "    print('  Runtime → Change runtime type → T4 GPU (free tier)')\n"
         "\n"
         'print("✓ Colab setup complete — shared.mlfp05 is importable")'
     )

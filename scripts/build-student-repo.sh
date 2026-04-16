@@ -57,12 +57,24 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
     # colab/ — notebook files
     [ -d "$module_dir/colab" ] && rsync -a --delete "$module_dir/colab/" "$dest/colab/"
 
+    # colab-selfcontained/ — self-contained Colab notebooks (no git clone needed)
+    [ -d "$module_dir/colab-selfcontained" ] && rsync -a --delete "$module_dir/colab-selfcontained/" "$dest/colab-selfcontained/"
+
     # diagnostic-reference/ — captured outputs (plots + reports)
     [ -d "$module_dir/diagnostic-reference" ] && rsync -a --delete "$module_dir/diagnostic-reference/" "$dest/diagnostic-reference/"
 
 
     # solutions/ — reference solutions (students can consult after attempting)
     [ -d "$module_dir/solutions" ] && rsync -a --delete --exclude='__pycache__' "$module_dir/solutions/" "$dest/solutions/"
+
+    # quiz/ — graded assessments (exclude *_solutions.ipynb + quiz_harness_solutions)
+    [ -d "$module_dir/quiz" ] && rsync -a --delete \
+        --exclude='*_solutions.ipynb' \
+        --exclude='_solutions/' \
+        --exclude='__pycache__' \
+        "$module_dir/quiz/" "$dest/quiz/"
+
+    # NOTE: colab-instructor/ is NEVER synced to students (instructor-only).
 
     echo "  $mod: $(ls "$dest" 2>/dev/null | tr '\n' ' ')"
 done

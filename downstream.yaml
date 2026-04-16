@@ -6,12 +6,13 @@
 # Students receive: exercises (local/), colab/, readings/, data/, shared/
 
 repositories:
-  - name: pcml-run26-2601
+  - name: pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601
     org: pcml-run26
-    url: https://github.com/pcml-run26/pcml-run26-2601
+    url: https://github.com/pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601
     type: github-classroom-template
-    description: "PCML Run 26 — student-facing exercises and data"
+    description: "PCML Run 26 — GitHub Classroom template; students fork via Classroom"
     created: 2026-04-13
+    updated: 2026-04-16
     modules: [mlfp01, mlfp02, mlfp03, mlfp04, mlfp05, mlfp06]
     notes: |
       - Template repo (is_template: true), no LFS
@@ -20,8 +21,6 @@ repositories:
       - Protected paths: shared/**, modules/*/local/*/helpers.py, pyproject.toml, uv.lock, data/**, .gitignore
 
 # To sync:
-#   ./scripts/build-student-repo.sh /tmp/pcml-run26-2601
-#   cd /tmp/pcml-run26-2601
+#   ./scripts/build-student-repo.sh --sync /tmp/pcml-run26-template
+#   cd /tmp/pcml-run26-template
 #   git add -A && git commit -m "sync: update from source" && git push
-#
-# Future runs can be added here with different names (e.g., pcml-run27-2602)

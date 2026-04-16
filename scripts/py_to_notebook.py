@@ -142,6 +142,12 @@ def make_notebook(cells: list[dict], kernel: str = "python3") -> dict:
                 "name": "python",
                 "version": "3.10.0",
             },
+            # Auto-select T4 GPU when opened in Google Colab
+            "accelerator": "GPU",
+            "colab": {
+                "provenance": [],
+                "gpuType": "T4",
+            },
         },
         "nbformat": 4,
         "nbformat_minor": 5,

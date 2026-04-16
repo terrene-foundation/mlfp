@@ -2,28 +2,39 @@
 
 ## Where we are
 
-M6 migration scoping complete. 9-shard plan ready, all 6 pedagogical decisions approved ("all defaults, go"). Zero shards executed. Next session's first action is Shard 0 (pre-flight: revert 5 partial edits, create `pyrightconfig.json`, verify `scripts/py_to_notebook.py`).
+The 9-shard M6 migration is NOW truly complete — teaching materials
+(lesson 05/07/08 HTML + textbook.md + deck.html + speaker-notes.md)
+finished this session. M2 shared package smoke-tested and repaired.
+M3 ex_7/01 + ex_7/04 migrated to TrainingPipeline (rest escalated).
+Full Kailash stack bump 3.4.5 → 3.4.9 / build 2.8.5 → 2.8.6 landed.
+Next session: **smoke-test the whole course against the new stack
+before teaching**, resolve any drift inline per the latest-stack mandate.
 
 ## Read first
 
-1. `workspaces/mlfp06-migration/README.md` — workspace entry + resume instructions
-2. `workspaces/mlfp06-migration/scoping.md` — drift inventory, specialist findings, bug bombs
-3. `workspaces/mlfp06-migration/api-cheatsheet.md` — old→new API mapping (copy-paste during every edit)
-4. `workspaces/mlfp06-migration/shard-plan.md` — Shard 0 is next; per-shard feedback loops
-5. `workspaces/mlfp06-migration/decisions.md` — 6 approved decisions, do not re-litigate
-6. `workspaces/mlfp06-migration/reference/ex_7_04_runtime_audit.py` — Shard 5 template (not standalone: depends on `make_fake_executor` that Shard 3 adds)
+1. `git log --oneline 6623c3f..HEAD` — full session commit series (M2, M3, M6, sync)
+2. `.claude/VERSION` — inherit template 3.4.9 / build 2.8.6
+3. `workspaces/mlfp06-migration/api-cheatsheet.md` — canonical modern imports, still the source of truth
+4. `~/.claude/accounts/term-23492/projects/-Users-esperie-repos-lyceum-courses-mlfp/memory/feedback_latest_stack.md` — MLFP always takes the full stack on /sync
+5. `CLAUDE.md` — framework-first + polars mandates (unchanged)
 
 ## In-flight state
 
-- 5 M6 solution files have half-applied import renames (`kailash_pact`→`pact`, `kailash_nexus`→`nexus`) but still call old APIs. `git checkout` them in Shard 0 — exact list in `README.md` § "In-Progress / Partial".
-- `pyproject.toml` + `uv.lock` carry valid pin bumps (`kailash>=2.8.5`, `kailash-dataflow>=2.0.7`, `kailash-mcp>=0.2.3`). DO NOT REVERT — M1-M5 verified byte-compiling, they land with the migration.
-- `.claude/` sync artifacts updated to kailash-coc-claude-py template 3.4.8. Marker at `.claude/.coc-sync-marker`.
+- Three follow-up workspaces proposed but not created: `mlfp03-stale-api-refresh`, `mlfp03-two-format-sync`, `mlfp02-ex6-sklearn-review`
+- Worktrees on disk: `agent-a737eb98` + `agent-aaef4cc6` are empty (M2/M6 agents bypassed isolation); `agent-aa519e0b` merged but not removed. All safe to `git worktree remove`.
+- Latest-stack mandate saved to memory; `/sync` now defaults to full stack bump, no pin-current option.
 
 ## Traps
 
-- `class XxxAgent(BaseAgent): signature = XxxSig` is a SILENT BUG — BaseAgent ignores class-level attrs, falls back to `DefaultSignature`. Pass signature as INSTANCE via `super().__init__(config=QAConfig(), signature=XxxSignature())`. See `api-cheatsheet.md` § Kaizen BaseAgent Pattern.
-- `await agent.run(question=...)` raises `TypeError` — `.run()` is sync and returns a dict. Use `await agent.run_async(...)` + `result["answer"]` (dict-indexed, not attribute access).
-- `GovernanceEngine.compile_org(path)` no longer exists as an instance method. Use module-level `pact.load_org_yaml()` + `GovernanceEngine(loaded.org_definition)` + `CompiledOrgAdapter` wrapper (Shard 3 adds the adapter to `shared/mlfp06/ex_7.py`).
-- ORG_YAML schema change: the MLFP06 `organization:/departments:/delegations:/operating_envelopes:` legacy schema will NOT load in pact 0.8.1. Rewrite to modern `org:/departments[]/teams[]/agents[]/envelopes[]/workspaces[]` — Shard 3 for ex_7 YAML, Shard 6 for ex_8 YAML.
-- Do NOT edit any M6 file without reading `scoping.md` + `api-cheatsheet.md` first — Pyright diagnostics will surface drift symptoms, and local fixes will drift from the shard plan.
-- The pact-specialist's reference impl at `reference/ex_7_04_runtime_audit.py` uses `make_fake_executor` which doesn't exist in `shared/mlfp06/ex_7.py` yet — that's normal, Shard 3 adds it before Shard 5 consumes it.
+- **kaizen 2.7.3 → 2.7.4 + nexus 2.0.1 → 2.0.3** may re-surface API drift on the just-migrated M6 ex_7/ex_8 files. Smoke-test `modules/mlfp06/solutions/ex_7/{01,04}*.py` + `04_runtime_audit.py` first; open `workspaces/mlfp06-kaizen-274-drift/` if anything breaks.
+- **M3 ex_7/02, 03, 05 + ex_8/02 are import-broken** on pre-existing stale kailash.dataflow (`field`), ParamDistribution (`log=`), HyperparameterSearch signature, DriftSpec kwargs. Only ex_7/01 + ex_7/04 run. Use xfail/--ignore when testing until the API-refresh shard lands.
+- **Scaffolded-file Pyright noise** on `modules/mlfp06/local/ex_7/01_org_compile.py` (`____` placeholders, unused imports) is EXPECTED per `rules/exercise-standards.md`. Do not chase.
+- **Two-format sync pending** for migrated M3 ex_7/01 + 04 — `local/` and `colab/` still reflect pre-migration scaffolds. Run `scripts/py_to_notebook.py modules/mlfp03/local/ex_7/` after hand-syncing local/.
+- **M2 ex_6 sklearn retained** (logistic compare-and-contrast) — flagged for ml-specialist review, not an error yet.
+- **Worktree isolation didn't hold for 2 of 3 parallel agents** — if re-running parallel work, either verify isolation OR skip it and accept serial commits to main.
+- Runtime pollution in working tree: `scripts/__pycache__/`, `scripts/pdf-build.log`, `mlfp02_experiments.db-{wal,shm}` — not in `.gitignore`. Don't `git add -A`.
+
+## Open questions for the human
+
+- Priority order for the three follow-up workspaces? (My earlier suggestion: #2 two-format sync → #1 stale-API refresh → #3 sklearn review)
+- Clean up the 3 leftover worktrees before next session, or wait?

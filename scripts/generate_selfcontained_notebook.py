@@ -148,9 +148,90 @@ def collect_helper_imports(source: str) -> set[str]:
     return mods
 
 
+def collect_helper_imports_transitive(exercise_source: str) -> set[str]:
+    """Walk the `shared.*` import graph to fixpoint.
+
+    An exercise imports `shared.mlfp02.ex_1`; that helper then imports
+    `shared.data_loader` and `shared.kailash_helpers`. Those must also be
+    inlined or the helper crashes at runtime with NameError. This does a
+    BFS over the imports so every transitive dependency surfaces.
+    """
+    seen: set[str] = set()
+    frontier = collect_helper_imports(exercise_source)
+    while frontier:
+        next_frontier: set[str] = set()
+        for mod in frontier:
+            if mod in seen:
+                continue
+            seen.add(mod)
+            path = _shared_import_to_path(mod)
+            if path and path.exists():
+                content = path.read_text()
+                next_frontier |= collect_helper_imports(content)
+        frontier = next_frontier - seen
+    return seen
+
+
+def _shared_import_to_path(imp: str) -> Path | None:
+    """Map `shared.X` import string to the file on disk that defines it.
+
+    Special case: `from shared import MLFPDataLoader` (top-level `shared`
+    package) maps to `shared/__init__.py`, whose own `from shared.X import`
+    statements the transitive walk will then pick up.
+    """
+    parts = imp.split(".")
+    # e.g. ["shared"] → shared/__init__.py
+    init_py = REPO_ROOT / Path(*parts) / "__init__.py"
+    if init_py.exists():
+        return init_py
+    # e.g. ["shared", "mlfp05", "ex_1"] → shared/mlfp05/ex_1.py
+    candidate_py = REPO_ROOT / Path(*parts).with_suffix(".py")
+    if candidate_py.exists():
+        return candidate_py
+    return None
+
+
+def strip_relative_imports(source: str) -> str:
+    """Remove `from .x import y` and `from .x.y import z` lines.
+
+    When a subpackage like `shared/mlfp06/diagnostics/` is flattened into
+    one cell, its internal relative imports become invalid — the symbols
+    are already defined in the same namespace from earlier inlined files.
+    """
+    lines = source.split("\n")
+    out: list[str] = []
+    i = 0
+    single_line = re.compile(r"^\s*from\s+\.[\w.]*\s+import\b")
+    paren_open = re.compile(r"^\s*from\s+\.[\w.]*\s+import\s*\(\s*$")
+    paren_inline = re.compile(r"^\s*from\s+\.[\w.]*\s+import\s*\([^)]*\)\s*$")
+    while i < len(lines):
+        line = lines[i]
+        if paren_inline.match(line):
+            i += 1
+            continue
+        if paren_open.match(line):
+            i += 1
+            while i < len(lines) and not re.match(r"^\s*\)\s*$", lines[i]):
+                i += 1
+            if i < len(lines):
+                i += 1
+            continue
+        if single_line.match(line):
+            i += 1
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
 def build_cell1_content(module: str, exercise_source: str) -> str:
-    """Concatenate every `shared/` helper the exercise needs into one cell body."""
-    imports = collect_helper_imports(exercise_source)
+    """Concatenate every `shared/` helper the exercise needs into one cell body.
+
+    Uses the transitive closure of `shared.*` imports — an exercise that
+    only imports `shared.mlfpNN.ex_1` still pulls in `shared.data_loader`
+    and `shared.kailash_helpers` if `ex_1.py` itself imports them.
+    """
+    imports = collect_helper_imports_transitive(exercise_source)
     parts: list[str] = [
         "# ══════════════════════════════════════════════════════════════════",
         "# MLFP inlined helpers — DO NOT EDIT (collapse this cell!)",
@@ -222,10 +303,51 @@ def build_cell1_content(module: str, exercise_source: str) -> str:
 
     # Rewrite inlined helpers that themselves import `from shared.*`:
     # those references now resolve to names already defined in this cell.
+    # Also strip relative imports (`from .x import y`) that appear in the
+    # M6 diagnostics subpackage — those symbols are co-located now.
     body = "\n".join(parts)
     body = strip_shared_imports(body)
+    body = strip_relative_imports(body)
+    # Flatten module-style references to leaf names. After inlining,
+    # `_plots.py` contributes PRIMARY, TEMPLATE, etc. at top level; the
+    # consuming files still write `_plots.PRIMARY` which no longer
+    # resolves. Rewrite those to the bare name.
+    body = flatten_module_references(body, ("_plots", "_judges", "_traces"))
+    body = rewrite_repo_root_resolution(body)
     body = dedupe_future_imports(body)
     return body
+
+
+def flatten_module_references(source: str, module_names: tuple[str, ...]) -> str:
+    """Replace `module_name.X` with `X` for each named subpackage module.
+
+    The inlining concatenates subpackage files into one namespace, so
+    `_plots.PRIMARY` no longer resolves through a module object — but
+    `PRIMARY` is defined at the same top level. The textual rewrite is
+    safe because these names are chosen to be subpackage-private (leading
+    underscore) and do not appear as prefixes of unrelated identifiers.
+    """
+    for name in module_names:
+        pattern = re.compile(rf"\b{re.escape(name)}\.")
+        source = pattern.sub("", source)
+    return source
+
+
+def rewrite_repo_root_resolution(source: str) -> str:
+    """Make `REPO_ROOT = Path(__file__).resolve().parents[N]` Colab-safe.
+
+    Helper files resolve the repo root from `__file__` so that data dirs
+    live alongside the source tree. In a Colab cell, `__file__` is not
+    defined — and when it IS defined (e.g. our tempfile test harness),
+    `.parents[N]` escapes the filesystem. Rewrite to `Path.cwd()`, which
+    is `/content` in Colab (writable, consistent) and the repo root when
+    running tests from that CWD.
+    """
+    return re.sub(
+        r"Path\(__file__\)\.resolve\(\)\.parents\[\d+\]",
+        "Path.cwd()",
+        source,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────

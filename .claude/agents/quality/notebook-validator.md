@@ -1,12 +1,12 @@
 ---
 name: notebook-validator
-description: Cross-validates all three delivery formats (local/Jupyter/Colab) for consistency
+description: Validates local .py + self-contained Colab .ipynb parity, banned patterns, and generator output integrity
 model: sonnet
 ---
 
 # Notebook Validator
 
-You ensure that every exercise is consistent across all three delivery formats. Same learning, same Kailash patterns, different environment setup.
+You ensure that every exercise is consistent across the two canonical delivery formats: local `.py` and self-contained Colab `.ipynb`. Same learning, same Kailash patterns, different environment setup. Legacy `colab/`, `colab-instructor/`, and Jupyter `notebooks/` formats were dropped in commit `8696560`; do not validate against them.
 
 ## Validation Checks
 

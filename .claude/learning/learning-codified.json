@@ -1,46 +1,94 @@
 {
-  "last_codified": "2026-04-13T16:00:00Z",
-  "digest_hash": "empty-digest-208-observations",
+  "last_codified": "2026-04-17T12:00:00Z",
+  "digest_hash": "session-2026-04-17-selfcontained-colab-consolidation",
+  "previous_codified": {
+    "last_codified": "2026-04-13T16:00:00Z",
+    "digest_hash": "empty-digest-208-observations",
+    "summary": "R10 exercise-directory restructure; two-format rule update; M5 restructure to per-technique files; readings/ reorg"
+  },
   "actions_taken": [
     {
       "type": "spec_update",
       "file": "specs/redlines.md",
-      "reason": "Added Redline 10: exercise directories with per-technique files, 5-phase narrative arc (Theory→Build→Train→Visualise→Apply)"
+      "reason": "Added Redline 11 (Self-Contained Colab Is the Canonical Notebook Format), Redline 12 (Class-Based Equation Markup and Shared Deck Assets), Redline 13 (Shared Package Structure and Transitive Inlining). Extended Redline 3 with the Full CI Guard Suite (check-deck-overflow.js + check_notebook_syntax.py + check-deck-parity.sh)."
     },
     {
-      "type": "agent_update",
-      "file": ".claude/agents/education/exercise-designer.md",
-      "reason": "Updated for R10 directory structure, two-format (not three), correct module paths, student import pattern"
+      "type": "spec_update",
+      "file": "specs/design-principles.md",
+      "reason": "Added §10 Exercise Delivery (two-format contract: local .py + colab-selfcontained .ipynb only) and §11 Shared Helper Package (shared/ layout, import discipline, _shared.py vs helpers.py convention)."
+    },
+    {
+      "type": "spec_update",
+      "file": "specs/_index.md",
+      "reason": "Updated redlines.md description from '8 non-negotiable' to '13 non-negotiable' and added self-contained / katex / shared-inlining tags."
     },
     {
       "type": "rule_update",
       "file": ".claude/rules/two-format.md",
-      "reason": "Updated for R10 directory-based exercises instead of single files"
+      "reason": "Canonical Colab path updated to modules/mlfpNN/colab-selfcontained/, replaced py_to_notebook.py references with generate_selfcontained_notebook.py, updated format-differences table for inlined-helpers pattern."
     },
     {
       "type": "rule_update",
       "file": ".claude/rules/exercise-standards.md",
-      "reason": "Added R10 directory structure section"
+      "reason": "R10 directory layout now includes both colab-selfcontained/ (student) and colab-selfcontained-solutions/ (instructor) dirs."
+    },
+    {
+      "type": "agent_update",
+      "file": ".claude/agents/education/exercise-designer.md",
+      "reason": "R10 diagram updated to show two-way output (student + instructor notebooks). Two-format generation section now invokes scripts/generate_selfcontained_notebook.py with full CLI. Added mandate that scripts/check_notebook_syntax.py MUST pass before commit."
+    },
+    {
+      "type": "agent_update",
+      "file": ".claude/agents/quality/notebook-validator.md",
+      "reason": "Parity check updated to reference colab-selfcontained/ + colab-selfcontained-solutions/ (not old colab/ + notebooks/). Converter-specific checks renamed to reference generate_selfcontained_notebook.py; added structural checks for Cell 0 pip boilerplate and Cell 1 'MLFP inlined helpers' marker."
     },
     {
       "type": "new_file",
-      "file": "STUDENT-REPO.md",
-      "reason": "Documented student/instructor content boundary and build process"
+      "file": "scripts/generate_selfcontained_notebook.py",
+      "reason": "Canonical 555-line generator. Strips all three forms of from shared.* imports, walks the import graph to fixpoint, flattens M6 diagnostics subpackage (_plots.X -> X), rewrites REPO_ROOT for Colab safety (Path(__file__).parents[N] -> Path.cwd()), AST-validates every emitted code cell."
     },
     {
       "type": "new_file",
-      "file": "scripts/build-student-repo.sh",
-      "reason": "Script to build student-facing repo from source"
+      "file": "scripts/check_notebook_syntax.py",
+      "reason": "CI guard — AST-parses every .ipynb code cell repo-wide, strips IPython magics with shell-continuation folding, accepts student notebooks with intentional # TODO / ____ scaffolds."
     },
     {
-      "type": "restructure",
-      "file": "modules/mlfp05/solutions/ex_1/ through ex_8/",
-      "reason": "Restructured all 8 M5 exercises from monolithic files to R10 directories with per-technique files"
+      "type": "new_file",
+      "file": "scripts/check-deck-parity.sh",
+      "reason": "CI guard — rebuilds M5/M6 deck PDFs via decktape, pdftotexts them, diffs against committed baselines in scripts/deck-parity-baselines/. Catches katex-init.js regressions."
     },
     {
-      "type": "reorganize",
-      "file": "modules/mlfpNN/readings/",
-      "reason": "Created readings/ directory in each module for student-facing PDFs (deck, textbook, notes)"
+      "type": "new_file",
+      "file": "modules/assets/js/katex-init.js",
+      "reason": "Idempotent KaTeX renderer extracted from M5+M6 decks. Pre-captures LaTeX source into data-mlfp-source before any render pass can pollute textContent. M5+M6 decks now include it via script src."
+    },
+    {
+      "type": "new_file",
+      "file": "modules/assets/js/README.md",
+      "reason": "Deck author contract for class-based equation markup. Documents the M5+M6 consumer list and M1-M4 delimiter-syntax decks that would need content rewrites to adopt."
+    },
+    {
+      "type": "new_dir",
+      "file": "modules/mlfp0?/colab-selfcontained{,-solutions}/",
+      "reason": "Rolled out self-contained Colab pattern to all 6 modules — 398 notebooks total. M5 regenerated from scratch (supersedes the 2026-04-17 regex band-aid over broken commit 6b28127)."
+    },
+    {
+      "type": "deletion",
+      "file": "modules/mlfp??/colab/, modules/mlfp05/colab-instructor/, modules/mlfp??/notebooks/, scripts/py_to_notebook.py",
+      "reason": "Consolidation — dropped 299 notebooks across three legacy formats + the superseded converter. One Colab implementation across every module."
+    },
+    {
+      "type": "documentation",
+      "file": "CLAUDE.md + README.md + README-student.md + downstream.yaml + scripts/build-student-repo.sh",
+      "reason": "Canonical paths updated from colab/ to colab-selfcontained/. README-student.md Colab section rewritten — no FORK_URL, no git clone, students open notebooks directly."
     }
+  ],
+  "commits": [
+    "bd7a1c0 feat(decks): extract shared KaTeX renderer to modules/assets/js/",
+    "2c8676d feat(notebooks): self-contained Colab generator + CI guards; regenerate M5",
+    "5459bfa feat(notebooks): roll out self-contained Colab to M1-M4+M6 (314 notebooks)",
+    "8696560 refactor(notebooks): consolidate on self-contained Colab; drop legacy formats",
+    "38549f1 fix(notebooks): transitive shared imports + Colab-safe REPO_ROOT; regenerate",
+    "8c6820b docs(specs): codify session learnings — redlines 11-13 + shared/ structure"
   ]
 }

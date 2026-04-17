@@ -276,8 +276,6 @@ find modules/ -name "ex_*_app_*.py" -type f
 
 ---
 
-## Red Team Protocol
-
 ## Redline 11: Self-Contained Colab Is the Canonical Notebook Format
 
 Every exercise ships in exactly TWO formats — VS Code `.py` and self-contained Colab `.ipynb`. No classic `colab/` (requires git clone + FORK_URL), no `colab-instructor/` (parallel maintenance burden), no `notebooks/` (Jupyter %pip format). One student format, one instructor format, full stop.
@@ -307,9 +305,12 @@ Cell structure of every generated notebook:
 ### Audit Test
 
 ```bash
-# Parity: every .py has a matching .ipynb under both output dirs (ignoring __init__.py)
+# Parity: every generator-eligible .py has a matching .ipynb under both output dirs.
+# The generator skips __init__.py and any `_shared.py` helpers (those are inlined,
+# not converted to standalone notebooks).
 for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
-  src=$(find modules/$m/solutions -name "*.py" ! -name "__init__.py" | wc -l)
+  src=$(find modules/$m/solutions -name "*.py" \
+             ! -name "__init__.py" ! -name "_shared.py" | wc -l)
   out=$(find modules/$m/colab-selfcontained-solutions -name "*.ipynb" | wc -l)
   [ "$src" = "$out" ] || echo "PARITY FAIL: $m src=$src out=$out"
 done

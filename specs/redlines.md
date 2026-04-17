@@ -1,6 +1,6 @@
 # MLFP Redlines — Non-Negotiable Quality Standards
 
-These 10 principles are ABSOLUTE. No deviations without explicit justification. All `/redteam` audits MUST validate against every redline. Any violation is a BLOCKING finding.
+These 13 principles are ABSOLUTE. No deviations without explicit justification. All `/redteam` audits MUST validate against every redline. Any violation is a BLOCKING finding.
 
 ## Redline 1: 25-Hour Depth Per Module
 
@@ -53,6 +53,31 @@ node scripts/check-deck-overflow.js --json
 The script catches the failure mode where a slide _renders_ (no JavaScript error) but content is clipped at the bottom edge — invisible to a static HTML parse.
 
 **Origin**: M5 deck overhaul session 2026-04-13. After adding 20 SVG diagrams + 8 application slides, two GNN slides clipped diagrams below the fold. The script was created to prevent regression and to surface this failure across all 6 module decks.
+
+### Full CI Guard Suite
+
+Overflow is one of three classes of shipping bug caught by automated guards. `/redteam` and `/release` MUST run all three:
+
+```bash
+# 1. Visual overflow — slide content fits in 1280×720
+node scripts/check-deck-overflow.js
+
+# 2. Notebook syntax — every code cell AST-parses (students allowed `# TODO` / `____` blanks)
+.venv/bin/python scripts/check_notebook_syntax.py modules/
+
+# 3. Deck content parity — rebuild deck PDFs; pdftotext MUST match committed baseline
+scripts/check-deck-parity.sh
+```
+
+The three guards catch disjoint failure modes:
+
+| Guard                      | Catches                                                                                                        | Origin                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `check-deck-overflow.js`   | Slide content clipped below the 720-pixel fold after richness edits                                            | M5 deck, 2026-04-13                |
+| `check_notebook_syntax.py` | Notebooks that ship with orphan tuples / broken cells (e.g. commit `6b28127` shipped 84 unusable student nbs)  | M5 self-contained audit 2026-04-17 |
+| `check-deck-parity.sh`     | KaTeX / rendering regressions invisible to HTML diff (e.g. a broken edit to `modules/assets/js/katex-init.js`) | KaTeX extraction 2026-04-17        |
+
+Unacknowledged failure in ANY guard BLOCKS `/redteam` convergence.
 
 ## Redline 4: Exercise Coverage = Deck Coverage
 
@@ -253,7 +278,166 @@ find modules/ -name "ex_*_app_*.py" -type f
 
 ## Red Team Protocol
 
-Every `/redteam` run MUST validate ALL 10 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
+## Redline 11: Self-Contained Colab Is the Canonical Notebook Format
+
+Every exercise ships in exactly TWO formats — VS Code `.py` and self-contained Colab `.ipynb`. No classic `colab/` (requires git clone + FORK_URL), no `colab-instructor/` (parallel maintenance burden), no `notebooks/` (Jupyter %pip format). One student format, one instructor format, full stop.
+
+### Contract
+
+| Format                                          | Audience   | Generation                                                              |
+| ----------------------------------------------- | ---------- | ----------------------------------------------------------------------- |
+| `modules/mlfpNN/local/ex_N/*.py`                | Student    | Source of truth (hand-authored with `____` / `# TODO` scaffolds)        |
+| `modules/mlfpNN/solutions/ex_N/*.py`            | Instructor | Source of truth (complete, runnable)                                    |
+| `modules/mlfpNN/colab-selfcontained/`           | Student    | Generated from `local/` by `scripts/generate_selfcontained_notebook.py` |
+| `modules/mlfpNN/colab-selfcontained-solutions/` | Instructor | Generated from `solutions/`                                             |
+
+Cell structure of every generated notebook:
+
+- **Cell 0** — `!pip install` + `nest_asyncio.apply()` + GPU check (no git clone, no FORK_URL)
+- **Cell 1** — Inlined shared helpers (collapsible; starts with `# MLFP inlined helpers — DO NOT EDIT`)
+- **Cell 2+** — Exercise content with every `from shared.*` stripped and the exercise cells rewritten for `await` top-level
+
+### BLOCKED
+
+- Authoring `.ipynb` files by hand — notebooks MUST be generated from `.py` source. Hand-edits silently drift from local.
+- Re-introducing `modules/mlfpNN/colab/` or `modules/mlfpNN/notebooks/` directories — the consolidation mandate is in force.
+- Shipping a notebook whose Cell 1 does not execute cleanly in a fresh Python process with repo root as CWD.
+- Shipping a solution notebook whose Cell 1 defines fewer symbols than the original helper — indicates stripping / flattening dropped content.
+
+### Audit Test
+
+```bash
+# Parity: every .py has a matching .ipynb under both output dirs (ignoring __init__.py)
+for m in mlfp01 mlfp02 mlfp03 mlfp04 mlfp05 mlfp06; do
+  src=$(find modules/$m/solutions -name "*.py" ! -name "__init__.py" | wc -l)
+  out=$(find modules/$m/colab-selfcontained-solutions -name "*.ipynb" | wc -l)
+  [ "$src" = "$out" ] || echo "PARITY FAIL: $m src=$src out=$out"
+done
+
+# Cell 1 exec smoke-test on every solution notebook
+.venv/bin/python scripts/check_notebook_syntax.py modules/
+```
+
+**Origin**: Session 2026-04-17. Commit `6b28127` shipped 84 M5 self-contained notebooks with `SyntaxError` in Cell 3 because an un-committed generator stripped only the first line of multi-line `from shared.X import (\n  A,\n  B,\n)` imports, leaving an orphan tuple. Band-aid applied, then superseded by a proper committed generator (`scripts/generate_selfcontained_notebook.py`) with AST validation. Consolidation to self-contained-only landed in commit `8696560`.
+
+## Redline 12: Class-Based Equation Markup and Shared Deck Assets
+
+Every deck math expression uses class-based markup, not dollar-delimiter syntax. Shared deck assets (KaTeX renderer, CSS themes) live in `modules/assets/` and are sourced by every deck via relative path.
+
+### Equation markup contract
+
+```html
+<!-- Display equation -->
+<div class="equation-box">
+  <span class="katex-display">E = mc^2</span>
+</div>
+
+<!-- Inline equation -->
+as shown in <span class="katex-inline">\nabla f(x)</span> above.
+```
+
+**BLOCKED** (these break the idempotent renderer):
+
+- `$E = mc^2$` / `$$E = mc^2$$` — dollar delimiters (triggers KaTeX auto-render, conflicts with the idempotent renderer)
+- `<span class="katex-display">...</span>` outside an `.equation-box` parent (renderer contract requires the wrapper)
+- Inline MathJax / custom KaTeX init blocks per-deck — use the shared script below
+
+### Shared asset contract
+
+All decks include the shared KaTeX renderer as the LAST `<script>` before `</body>`:
+
+```html
+<!-- Idempotent KaTeX renderer — shared across decks. See modules/assets/js/README.md. -->
+<script src="../assets/js/katex-init.js"></script>
+```
+
+The renderer at `modules/assets/js/katex-init.js` handles display + inline equations idempotently (pre-captures LaTeX source via `data-mlfp-source`, marks rendered elements via `data-mlfp-rendered`) so repeated `slidechanged` events don't compound corruption. See `modules/assets/js/README.md` for the full contract.
+
+### Audit test
+
+```bash
+# Delimiter-style math in any deck = BLOCKING (other than inside <pre><code>)
+grep -nE '\$\$?[^$]+\$\$?' modules/mlfp*/deck.html | grep -v '<code>'
+
+# Every deck using class-based markup must reference the shared renderer
+for d in modules/mlfp*/deck.html; do
+  grep -l "equation-box" "$d" >/dev/null && \
+    grep -q 'katex-init.js' "$d" || echo "MISSING shared renderer: $d"
+done
+```
+
+**Origin**: Session 2026-04-17. M6 deck crashed Chromium during `decktape` PDF export due to a double-render bug where authored `<span class="katex-display">` collided with the nested span KaTeX creates. Fixed with an idempotent renderer; extracted to `modules/assets/js/katex-init.js` in commit `bd7a1c0` so future decks inherit the fix without a per-deck copy.
+
+## Redline 13: Shared Package Structure and Transitive Inlining
+
+The `shared/` package is the canonical home for helper code. Exercises import FROM it; no exercise defines infrastructure locally. The self-contained notebook generator inlines the closure of `shared/` imports into Cell 1.
+
+### Package layout
+
+```
+shared/
+├── __init__.py                  # Re-exports MLFPDataLoader, get_device, run_profile
+├── kailash_helpers.py           # Env setup, connection managers, common Kailash glue
+├── data_loader.py               # MLFPDataLoader (Drive + local + gdown)
+├── run_profile.py               # Alert / comparison helpers
+├── mlfp02/                      # Module 2 helpers (polars-native)
+│   ├── __init__.py
+│   ├── ex_1.py                  # One helper module per exercise
+│   ├── ex_2.py
+│   └── ...
+├── mlfp03/ … mlfp05/            # Same structure
+└── mlfp06/                      # Module 6 — has a diagnostics subpackage
+    ├── __init__.py
+    ├── ex_1.py … ex_8.py
+    └── diagnostics/             # LLM Observatory subpackage
+        ├── __init__.py
+        ├── _judges.py            # Leaf utilities (inlined first)
+        ├── _plots.py
+        ├── _traces.py
+        ├── retrieval.py         # Higher-level lenses (inline after leaves)
+        ├── output.py
+        ├── alignment.py
+        ├── interpretability.py
+        ├── governance.py
+        ├── agent.py
+        └── observatory.py       # Top-level facade (inline last)
+```
+
+### Transitive inlining contract
+
+The generator MUST walk the `shared.*` import graph to fixpoint. Missing any transitive dependency yields a runtime `NameError`.
+
+- `from shared.mlfp02.ex_1 import load_customer_data` → inline `shared/mlfp02/ex_1.py`
+- `shared/mlfp02/ex_1.py` imports `from shared.data_loader import MLFPDataLoader` → inline `shared/data_loader.py`
+- `from shared import MLFPDataLoader` → resolve through `shared/__init__.py`, which re-exports from `shared.data_loader`
+
+### Colab safety rewrites
+
+Helpers written with `REPO_ROOT = Path(__file__).resolve().parents[N]` break in Colab (where `__file__` is unset during cell execution) and in tempfile test harnesses (where `.parents[N]` escapes the filesystem root). The generator MUST rewrite this pattern to `Path.cwd()` (which is `/content` in Colab, writable, consistent).
+
+### Subpackage flattening (M6 diagnostics)
+
+When inlining a subpackage, the generator MUST:
+
+1. Strip `from . import x` and `from .x import y` (relative imports — the symbols are co-located after concatenation)
+2. Flatten module-style references: `_plots.PRIMARY` → `PRIMARY` (since `_plots.py` contributes `PRIMARY` at top level after inlining)
+3. Order inline by dependency: leaves first (`_judges`, `_plots`, `_traces`), then higher-level modules that reference them
+
+### Audit test
+
+```bash
+# Every solution notebook Cell 1 runs clean in a fresh Python process (CWD = repo root)
+python3 scripts/check_notebook_syntax.py modules/
+# Plus a manual spot-check for each module: exec Cell 1 and confirm N symbols defined
+```
+
+**Origin**: Session 2026-04-17 red team. Three generator bugs surfaced by Cell 1 execution testing: (a) `NameError: MLFPDataLoader` on M2/M4 notebooks because transitive imports were not walked; (b) M6 `ImportError: attempted relative import with no known parent package` from flattened subpackage; (c) M5 ex_6/ex_7 `OSError: Read-only file system: '/data'` because `Path(__file__).parents[2]` escaped to `/`. All three fixed in commit `38549f1`; generator now validates every cell via AST + executes Cell 1 as part of the check.
+
+---
+
+## Red Team Protocol
+
+Every `/redteam` run MUST validate ALL 13 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
 
 1. **Status**: PASS / FAIL / PARTIAL
 2. **Evidence**: Specific files, line numbers, measurements

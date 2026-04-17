@@ -121,3 +121,63 @@ Every slide in the deck MUST include:
 ### PDF Export
 
 Decks export to PDF via `scripts/export-pdf.sh` using decktape. The PDF is the student-facing version (speaker notes excluded). PDF files live in `pdf/lessons/mlfpNN/NN/slides.pdf`.
+
+## 10. Exercise Delivery — Two Formats, One Canonical Each
+
+Every exercise has exactly two shipping formats — one for local development, one for cloud execution. No third parallel format, no instructor-only variant, no Jupyter-with-git-clone path.
+
+| Format  | Path                                            | Audience   | Purpose                                     |
+| ------- | ----------------------------------------------- | ---------- | ------------------------------------------- |
+| VS Code | `modules/mlfpNN/local/ex_N/*.py`                | Student    | Fill-in-the-blank with `uv sync`            |
+| VS Code | `modules/mlfpNN/solutions/ex_N/*.py`            | Instructor | Source of truth, runnable end-to-end        |
+| Colab   | `modules/mlfpNN/colab-selfcontained/`           | Student    | Zero-install, no git clone, inlined helpers |
+| Colab   | `modules/mlfpNN/colab-selfcontained-solutions/` | Instructor | Same as student with complete cells         |
+
+**Canonical generator**: `scripts/generate_selfcontained_notebook.py`. Run on every exercise edit; never hand-author notebooks. The generator:
+
+1. Walks the `shared.*` import graph to fixpoint (every transitive dependency gets inlined)
+2. Strips every `from shared.*` import form (single-line, inline-paren, multi-line paren)
+3. Dedupes `from __future__ import annotations`
+4. Strips relative imports (`from . import x`) when flattening subpackages
+5. Flattens module-style references (`_plots.X` → `X`) when subpackage leaves are co-located
+6. Rewrites `Path(__file__).parents[N]` → `Path.cwd()` for Colab safety
+7. AST-validates every generated cell before writing
+
+Pre-existing deprecated formats (`colab/`, `colab-instructor/`, `notebooks/`) were removed from the codebase in commit `8696560`. Their reintroduction is BLOCKED.
+
+See Redline 11 for the delivery contract and Redline 13 for the shared package structure.
+
+## 11. Shared Helper Package — `shared/`
+
+All cross-exercise infrastructure lives in `shared/`. Individual exercise files import from it; they do not define infrastructure inline. The package is installable via `uv sync` (root `pyproject.toml` declares it as a hatch package), so `from shared.xxx import` works from any CWD.
+
+### Layout contract
+
+- `shared/__init__.py` — re-exports the small number of universal helpers (`MLFPDataLoader`, `get_device`, `run_profile`). Imports from it resolve via fixpoint walk when inlined.
+- `shared/kailash_helpers.py` — environment setup, device detection, connection manager construction. Imported by nearly every exercise.
+- `shared/data_loader.py` — `MLFPDataLoader` with Drive + local + gdown backends. Auto-detects Colab vs local.
+- `shared/mlfpNN/` — per-module helper directory. One `ex_N.py` per exercise (matches the R10 `solutions/ex_N/` and `local/ex_N/` layout).
+- `shared/mlfp06/diagnostics/` — the only current subpackage (the LLM Observatory). Future modules MAY add subpackages when a feature needs >500 LOC of shared code.
+
+### Import discipline
+
+```python
+# DO — explicit module-per-exercise imports
+from shared.mlfp05.ex_1 import INPUT_DIM, EPOCHS, load_fashion_mnist, train_variant
+
+# DO — universal helpers through shared/__init__.py
+from shared import MLFPDataLoader
+
+# DO NOT — wildcard imports or reaching into sibling exercises
+from shared.mlfp05.ex_1 import *                         # BLOCKED (breaks strip logic)
+from shared.mlfp05.ex_2 import helper_from_different_ex  # BLOCKED (cross-exercise coupling)
+```
+
+### `_shared.py` vs `helpers.py` (within exercise directories)
+
+R10 permits per-exercise helper files when truly local infrastructure can't live in `shared/mlfpNN/ex_N.py` without cross-exercise pollution. Convention:
+
+- **Solutions**: `_shared.py` — underscore prefix, NOT distributed to students.
+- **Local (student)**: `helpers.py` — same content, rename applied by the exercise-designer agent.
+
+Prefer promoting infrastructure to `shared/mlfpNN/ex_N.py` over a per-exercise helper; the generator only knows how to inline the former.

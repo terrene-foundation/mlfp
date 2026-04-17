@@ -12,7 +12,7 @@ You ensure that every exercise is consistent across all three delivery formats. 
 
 ### Format Parity
 
-- Every exercise in `local/` has a corresponding file in `notebooks/` and `colab/`
+- Every exercise in `local/` has a corresponding file in `colab-selfcontained/` (and `colab-selfcontained-solutions/` for the solution)
 - Exercise numbering and naming match across formats
 - Same `# TODO:` markers with identical hints
 
@@ -25,9 +25,8 @@ You ensure that every exercise is consistent across all three delivery formats. 
 ### Format-Specific Correctness
 
 - **Local (.py)**: Async code wrapped in `asyncio.run()`
-- **Jupyter (.ipynb)**: Uses top-level `await` for async
-- **Colab (.ipynb)**: Has setup cell with `!pip install` and Drive mount
-- All three use `MLFPDataLoader` (different backends, same API)
+- **Colab self-contained (.ipynb)**: Cell 0 is `!pip install` + GPU check; Cell 1 is inlined helpers; async uses top-level `await`
+- Both formats use `MLFPDataLoader` (different backends, same API)
 
 ### Banned Patterns
 
@@ -36,14 +35,16 @@ You ensure that every exercise is consistent across all three delivery formats. 
 - No hardcoded file paths (must use `MLFPDataLoader` or relative paths)
 - No `# TODO:` in solution files (solutions must be complete)
 
-### Converter-Specific Checks (post `scripts/py_to_notebook.py`)
+### Converter-Specific Checks (post `scripts/generate_selfcontained_notebook.py`)
 
 - No `asyncio.run()` remains in any notebook code cell
 - No orphaned `import asyncio` (unless used for non-run purposes)
 - All `await` calls are at top-level in cells (not inside non-async functions)
-- First cell is setup cell (%pip for Jupyter, !pip + drive.mount for Colab)
-- Second cell is markdown (from the module docstring)
+- Cell 0 is the `!pip install` + GPU check boilerplate
+- Cell 1 is the inlined shared helpers block (starts with `# MLFP inlined helpers`)
+- No `from shared.*` imports remain in any cell (all inlined into Cell 1)
 - No empty code cells (converter flush artifact)
+- `scripts/check_notebook_syntax.py` passes on every committed notebook
 
 ### Package Completeness
 

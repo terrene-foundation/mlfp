@@ -64,7 +64,11 @@ modules/mlfpNN/local/ex_N/           # student version (scaffolded)
   02_technique_b.py
   ...
 
-modules/mlfpNN/colab/ex_N/           # notebook version
+modules/mlfpNN/colab-selfcontained/ex_N/             # student Colab (self-contained)
+  01_technique_a.ipynb
+  ...
+
+modules/mlfpNN/colab-selfcontained-solutions/ex_N/   # instructor Colab (self-contained)
   01_technique_a.ipynb
   ...
 

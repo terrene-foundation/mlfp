@@ -9,11 +9,11 @@ Every exercise MUST exist in two formats with identical learning content.
 
 ## Formats
 
-| Format   | Location                                        | Data Loading         | Best For                      |
-| -------- | ----------------------------------------------- | -------------------- | ----------------------------- |
-| VS Code  | `modules/mlfpNN/local/ex_N/NN_technique.py`     | `shared.data_loader` | Full async, local development |
-| Colab    | `modules/mlfpNN/colab/ex_N/NN_technique.ipynb`  | Drive mount + gdown  | Zero-install, GPU access      |
-| Solution | `modules/mlfpNN/solutions/ex_N/NN_technique.py` | `shared.data_loader` | Source of truth               |
+| Format   | Location                                                     | Data Loading         | Best For                      |
+| -------- | ------------------------------------------------------------ | -------------------- | ----------------------------- |
+| VS Code  | `modules/mlfpNN/local/ex_N/NN_technique.py`                  | `shared.data_loader` | Full async, local development |
+| Colab    | `modules/mlfpNN/colab-selfcontained/ex_N/NN_technique.ipynb` | Inlined helpers, pip | Zero-install, GPU access      |
+| Solution | `modules/mlfpNN/solutions/ex_N/NN_technique.py`              | `shared.data_loader` | Source of truth               |
 
 Exercises with multiple techniques are directories (Redline 10). Each technique file follows the 5-phase structure independently.
 
@@ -23,12 +23,12 @@ Solutions contain `_shared.py` with reusable infrastructure. Students receive `h
 
 ## Format Differences (ONLY these may differ)
 
-| Aspect        | Local (.py)            | Colab (.ipynb)                    |
-| ------------- | ---------------------- | --------------------------------- |
-| Setup         | None (uv sync)         | `!pip install` + Drive mount cell |
-| Data loading  | gdown + `.data_cache/` | Drive mount path                  |
-| Async         | `asyncio.run(main())`  | Top-level `await`                 |
-| Visualization | `fig.write_html()`     | Inline display                    |
+| Aspect        | Local (.py)           | Colab (.ipynb)                                 |
+| ------------- | --------------------- | ---------------------------------------------- |
+| Setup         | None (uv sync)        | Cell 0 `!pip install` + Cell 1 inlined helpers |
+| Data loading  | `shared.data_loader`  | Same helpers, inlined                          |
+| Async         | `asyncio.run(main())` | Top-level `await`                              |
+| Visualization | `fig.write_html()`    | Inline display                                 |
 
 ## Exercise Code MUST Be Identical
 
@@ -50,17 +50,20 @@ The loader auto-detects Colab vs local and uses the appropriate backend.
 Local `.py` is the source of truth. Colab notebooks are generated, never hand-written.
 
 ```bash
-# Convert a single exercise directory
-python scripts/py_to_notebook.py modules/mlfp01/local/ex_1/
+# Single module (solutions + students)
+python scripts/generate_selfcontained_notebook.py \
+  --solutions modules/mlfp01/solutions \
+  --local modules/mlfp01/local \
+  --out-solutions modules/mlfp01/colab-selfcontained-solutions \
+  --out-students modules/mlfp01/colab-selfcontained
 
-# Convert an entire module
-python scripts/py_to_notebook.py --module mlfp01
-
-# Convert all modules
-python scripts/py_to_notebook.py --all
+# Single file
+python scripts/generate_selfcontained_notebook.py \
+  modules/mlfp05/solutions/ex_1/01_standard_ae.py \
+  --out modules/mlfp05/colab-selfcontained-solutions/ex_1/01_standard_ae.ipynb
 ```
 
-The converter handles: `asyncio.run()` -> `await`, setup cell injection, copyright stripping, TASK headers -> markdown cells.
+The generator: strips all `from shared.*` imports (single-line + multi-line paren forms), dedupes `from __future__`, inlines per-module helpers into Cell 1, AST-validates every code cell before writing.
 
 ## MUST NOT
 

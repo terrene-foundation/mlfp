@@ -382,7 +382,7 @@ Phase 3 produces:
 2. Per-exercise integration: `shared/mlfp06/ex_N.py` wires the relevant lenses into each lesson's exercise directory.
 3. Updates to `modules/mlfp06/solutions/ex_N/` to use the observatory (R10 5-phase structure: Theory / Build / Train / Visualise / Apply — the Visualise phase becomes the observatory dashboard).
 4. Updates to `modules/mlfp06/local/ex_N/` (scaffolded student versions, ~20% scaffolding per M6 progressive-disclosure).
-5. Colab conversion via `scripts/py_to_notebook.py`.
+5. Colab conversion via `scripts/generate_selfcontained_notebook.py`.
 6. Tier 2 integration tests under `tests/integration/test_mlfp06_diagnostics_*.py` that exercise each lens against real infrastructure (real Kaizen Delegate, real PACT engine, real transformer_lens model load). Unit-only tests are NOT sufficient per `orphan-detection.md` MUST Rule 2.
 
 Phase 3 is ~3-5 autonomous cycles per `autonomous-execution.md` sharding budget. Proposed shards:
@@ -419,7 +419,7 @@ To keep the design tractable for one module, the observatory explicitly does NOT
 | `env-models.md` — no hardcoded model names            | MUST: `judge_model` defaults to `os.environ["OPENAI_PROD_MODEL"]`. All lenses load `.env` at construction.       |
 | `dependencies.md` — latest versions                   | Each new dep gets `>=X.Y` floor only, no upper cap.                                                              |
 | `independence.md` — no commercial coupling            | Langfuse self-hosted (open-source) over Langsmith (hosted); `deepeval` over proprietary eval suites.             |
-| `two-format.md` — VS Code + Colab                     | Each exercise ships `.py` + `.ipynb` via `scripts/py_to_notebook.py`.                                            |
+| `two-format.md` — VS Code + Colab                     | Each exercise ships `.py` + `.ipynb` via `scripts/generate_selfcontained_notebook.py`.                           |
 | `exercise-standards.md` — R10 5-phase                 | Each technique file follows Theory → Build → Train → Visualise → Apply.                                          |
 | `orphan-detection.md` — Tier 2 wiring tests           | Each lens has a Tier 2 test that imports through `LLMObservatory`.                                               |
 | `facade-manager-detection.md` — manager-shape classes | The 6 lens classes follow the `*Diagnostics` pattern; each has a wiring test.                                    |

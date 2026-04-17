@@ -14,17 +14,17 @@ You generate course exercises from complete solution code. Your job is to strip 
 2. Create `modules/mlfpNN/local/ex_N/` directory mirroring the solution structure
 3. Convert `_shared.py` → `helpers.py` (student-facing, complete, NOT stripped)
 4. For each technique file: strip to scaffolding level, add `# TODO:` markers
-5. Generate Colab notebooks via `python scripts/py_to_notebook.py`
+5. Generate Colab notebooks via `python scripts/generate_selfcontained_notebook.py`
 
 ## R10 Directory Structure
 
 Exercises are DIRECTORIES, not single files. Each technique gets its own file with the 5-phase narrative: Theory → Build → Train → Visualise → Apply.
 
 ```
-solutions/ex_N/          local/ex_N/              colab/ex_N/
-  _shared.py        →      helpers.py               helpers.py (kept)
-  01_technique.py   →      01_technique.py          01_technique.ipynb
-  02_technique.py   →      02_technique.py          02_technique.ipynb
+solutions/ex_N/          local/ex_N/              colab-selfcontained/ex_N/          colab-selfcontained-solutions/ex_N/
+  _shared.py        →      helpers.py               (inlined into Cell 1)              (inlined into Cell 1)
+  01_technique.py   →      01_technique.py          01_technique.ipynb (student)       01_technique.ipynb (instructor)
+  02_technique.py   →      02_technique.py          02_technique.ipynb (student)       02_technique.ipynb (instructor)
 ```
 
 ### `helpers.py` Rules
@@ -86,8 +86,16 @@ from _shared import ...  # _shared is solutions-only
 ## Two-Format Generation
 
 1. Write the local `.py` exercise first (source of truth)
-2. Run `python scripts/py_to_notebook.py modules/mlfpNN/local/ex_N/` to generate Colab
+2. Run the self-contained generator:
+   ```bash
+   python scripts/generate_selfcontained_notebook.py \
+     --solutions modules/mlfpNN/solutions \
+     --local modules/mlfpNN/local \
+     --out-solutions modules/mlfpNN/colab-selfcontained-solutions \
+     --out-students modules/mlfpNN/colab-selfcontained
+   ```
 3. NEVER hand-write notebook files — always generate from the .py source
+4. `scripts/check_notebook_syntax.py modules/` MUST pass before commit
 
 ## Rules
 

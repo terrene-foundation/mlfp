@@ -16,22 +16,22 @@ ML Foundations for Professionals (MLFP) is an open-source ML engineering course 
 
 ## The Course
 
-|             | Foundation Certificate (M1-M4) | Advanced Certificate (M5-M6)           |
-| ----------- | ------------------------------ | -------------------------------------- |
-| **Level**   | Zero Python to production ML   | Deep learning to organisational AI     |
-| **Hours**   | ~128h (32 lessons)             | ~64h (16 lessons)                      |
+|             | Foundation Certificate (M1-M4) | Advanced Certificate (M5-M6)                 |
+| ----------- | ------------------------------ | -------------------------------------------- |
+| **Level**   | Zero Python to production ML   | Deep learning to organisational AI           |
+| **Hours**   | ~128h (32 lessons)             | ~64h (16 lessons)                            |
 | **Outcome** | Deploy governed ML models      | Build LLM agents and transform organisations |
 
 ### Module Map
 
-| #   | Module                                                                                        | What You Master                                                                                                          |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **Machine Learning Data Pipelines and Visualisation Mastery with Python**                     | Python from scratch, Polars data pipelines, interactive visualisation, data profiling, automated cleaning                |
-| 2   | **Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success**          | Probability, Bayesian inference, hypothesis testing, bootstrap, experiment design, feature engineering, feature stores    |
-| 3   | **Supervised Machine Learning for Building and Deploying Models**                             | Model zoo (linear through CatBoost), bias-variance decomposition, workflow orchestration, model registry, hyperparameter search |
-| 4   | **Unsupervised Machine Learning and Advanced Techniques for Insights**                        | Clustering (K-means through HDBSCAN), dimensionality reduction, anomaly detection, NLP text analysis, drift monitoring   |
-| 5   | **Deep Learning and Machine Learning Mastery in Vision and Transfer Learning**                | Neural networks, backpropagation, CNNs, vision architectures, NLP transformers, transfer learning, ONNX deployment       |
-| 6   | **Machine Learning with Language Models and Agentic Workflows** | LLM prompt engineering, fine-tuning (LoRA/DPO/GRPO), RAG systems, multi-agent orchestration, AI governance engineering, production deployment        |
+| #   | Module                                                                                | What You Master                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Machine Learning Data Pipelines and Visualisation Mastery with Python**             | Python from scratch, Polars data pipelines, interactive visualisation, data profiling, automated cleaning                                     |
+| 2   | **Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success** | Probability, Bayesian inference, hypothesis testing, bootstrap, experiment design, feature engineering, feature stores                        |
+| 3   | **Supervised Machine Learning for Building and Deploying Models**                     | Model zoo (linear through CatBoost), bias-variance decomposition, workflow orchestration, model registry, hyperparameter search               |
+| 4   | **Unsupervised Machine Learning and Advanced Techniques for Insights**                | Clustering (K-means through HDBSCAN), dimensionality reduction, anomaly detection, NLP text analysis, drift monitoring                        |
+| 5   | **Deep Learning and Machine Learning Mastery in Vision and Transfer Learning**        | Neural networks, backpropagation, CNNs, vision architectures, NLP transformers, transfer learning, ONNX deployment                            |
+| 6   | **Machine Learning with Language Models and Agentic Workflows**                       | LLM prompt engineering, fine-tuning (LoRA/DPO/GRPO), RAG systems, multi-agent orchestration, AI governance engineering, production deployment |
 
 ### The Organising Principle: Feature Engineering Spectrum
 
@@ -57,7 +57,7 @@ Every concept is taught at three depths simultaneously:
 | Layer           | Marker                     | Audience                      | Example (Bias-Variance)                                                                                                                      |
 | --------------- | -------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Intuition**   | :green_circle: FOUNDATIONS | Zero-background professionals | _"Imagine throwing darts at a target. Bias is how far the center of your throws is from the bullseye. Variance is how spread out they are."_ |
-| **Mathematics** | :blue_circle: THEORY       | Intermediate practitioners    | E[(y-y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2 — derived step by step, each term colour-coded                                        |
+| **Mathematics** | :blue_circle: THEORY       | Intermediate practitioners    | E[(y-y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2 — derived step by step, each term colour-coded                                         |
 | **Research**    | :purple_circle: ADVANCED   | Masters+ / PhD holders        | Double descent (Belkin et al., 2019): test error _decreases_ past the interpolation threshold in over-parameterised models                   |
 
 A banker and a PhD sit in the same classroom. Both leave having learned something they didn't know.
@@ -66,28 +66,28 @@ A banker and a PhD sit in the same classroom. Both leave having learned somethin
 
 ## What's In The Box
 
-| Component                 | Details                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| **Master lecture decks**  | 6 Reveal.js HTML decks (541 slides total), three-layer depth, KaTeX math                 |
-| **Master textbooks**      | 6 markdown chapters (~18,200 lines), full derivations, worked examples, glossaries       |
-| **Master speaker notes**  | 6 markdown files (~7,300 lines), per-slide timing, beginner/expert cues                  |
+| Component                 | Details                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| **Master lecture decks**  | 6 Reveal.js HTML decks (541 slides total), three-layer depth, KaTeX math                    |
+| **Master textbooks**      | 6 markdown chapters (~18,200 lines), full derivations, worked examples, glossaries          |
+| **Master speaker notes**  | 6 markdown files (~7,300 lines), per-slide timing, beginner/expert cues                     |
 | **Per-lesson HTML**       | 144 files (48 lessons × 3 formats): standalone `textbook.html`, `slides.html`, `notes.html` |
-| **Coding exercises**      | 48 solutions + scaffolded `local/*.py` + `colab/*.ipynb` (144 exercise files)            |
-| **Datasets**              | Singapore-context: HDB resale (50K), ICU patient data, weather, taxi, economic indicators |
-| **Red-team reports**      | 6 independent audits (math, pedagogy, student UX, spec compliance, QA, naming)           |
-| **End-of-module quizzes** | AI-resilient questions (context-specific, not recall)                                    |
+| **Coding exercises**      | 48 solutions + scaffolded `local/*.py` + `colab-selfcontained/*.ipynb` (144 exercise files) |
+| **Datasets**              | Singapore-context: HDB resale (50K), ICU patient data, weather, taxi, economic indicators   |
+| **Red-team reports**      | 6 independent audits (math, pedagogy, student UX, spec compliance, QA, naming)              |
+| **End-of-module quizzes** | AI-resilient questions (context-specific, not recall)                                       |
 
 ### Exercise Validation
 
 All exercises validated in a fresh `uv venv` with `kailash 2.8.4 + torch 2.11 + full ML stack`:
 
-| Module | Exercises | Status | Notes                                    |
-| ------ | --------- | ------ | ---------------------------------------- |
-| M1     | 8/8       | ✅ PASS | Polars pipelines, no external deps       |
-| M2     | 8/8       | ✅ PASS | Statistics, FeatureStore degrades gracefully |
-| M3     | 8/8       | ✅ PASS | sklearn + XGBoost/LightGBM/CatBoost + SHAP |
-| M4     | 8/8       | ✅ PASS | Clustering, NLP, recommenders, PyTorch DL |
-| M5     | 8/8       | ✅ PASS | PyTorch nn.Module (runs in 34s total)    |
+| Module | Exercises | Status                                       | Notes                                        |
+| ------ | --------- | -------------------------------------------- | -------------------------------------------- |
+| M1     | 8/8       | ✅ PASS                                      | Polars pipelines, no external deps           |
+| M2     | 8/8       | ✅ PASS                                      | Statistics, FeatureStore degrades gracefully |
+| M3     | 8/8       | ✅ PASS                                      | sklearn + XGBoost/LightGBM/CatBoost + SHAP   |
+| M4     | 8/8       | ✅ PASS                                      | Clustering, NLP, recommenders, PyTorch DL    |
+| M5     | 8/8       | ✅ PASS                                      | PyTorch nn.Module (runs in 34s total)        |
 | M6     | —         | Requires API keys (OPENAI_API_KEY, HF_TOKEN) |
 
 ---
@@ -114,21 +114,21 @@ open modules/mlfp01/lessons/01/textbook.html
 
 Every lesson ships as **three independent HTML files**, so instructors, students, and self-learners each get the right tool:
 
-| Format           | File                                       | Audience       | Layout    |
-| ---------------- | ------------------------------------------ | -------------- | --------- |
-| **Slides**       | `modules/mlfpNN/lessons/LL/slides.html`      | Lecturers      | Landscape (Reveal.js 1280×720) |
-| **Textbook**     | `modules/mlfpNN/lessons/LL/textbook.html`    | Self-learners  | Portrait (long-form reading)    |
-| **Speaker notes**| `modules/mlfpNN/lessons/LL/notes.html`       | Instructors    | Portrait (per-slide cues)       |
+| Format            | File                                      | Audience      | Layout                         |
+| ----------------- | ----------------------------------------- | ------------- | ------------------------------ |
+| **Slides**        | `modules/mlfpNN/lessons/LL/slides.html`   | Lecturers     | Landscape (Reveal.js 1280×720) |
+| **Textbook**      | `modules/mlfpNN/lessons/LL/textbook.html` | Self-learners | Portrait (long-form reading)   |
+| **Speaker notes** | `modules/mlfpNN/lessons/LL/notes.html`    | Instructors   | Portrait (per-slide cues)      |
 
 A module-level `deck.html` concatenates all 8 lessons into one Reveal.js deck for a continuous 3-hour session. A `textbook.md` / `speaker-notes.md` provides the markdown equivalents for instructors who prefer a single file.
 
 ### Exercise Delivery Formats
 
-| Format           | Location                              | Best For                                |
-| ---------------- | ------------------------------------- | --------------------------------------- |
-| **Solutions**    | `modules/mlfpNN/solutions/ex_N.py`    | Complete reference (instructor)         |
-| **Scaffolded**   | `modules/mlfpNN/local/ex_N.py`        | VS Code fill-in-the-blank (learner)     |
-| **Colab**        | `modules/mlfpNN/colab/ex_N.ipynb`     | Zero-install, GPU access (learner)      |
+| Format         | Location                                        | Best For                                                 |
+| -------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| **Solutions**  | `modules/mlfpNN/solutions/ex_N.py`              | Complete reference (instructor)                          |
+| **Scaffolded** | `modules/mlfpNN/local/ex_N.py`                  | VS Code fill-in-the-blank (learner)                      |
+| **Colab**      | `modules/mlfpNN/colab-selfcontained/ex_N.ipynb` | Zero-install, GPU access (learner) — no git clone needed |
 
 ### Data Loading
 
@@ -165,8 +165,8 @@ mlfp/
       index.html                  Module landing page with lesson TOC
       solutions/ex_1-8.py         Exercise solutions (instructor reference)
       local/ex_1-8.py             Scaffolded fill-in-the-blank (learner)
-      colab/ex_1-8.ipynb          Colab notebooks
-      notebooks/ex_1-8.ipynb      Jupyter notebooks
+      colab-selfcontained/        Colab notebooks (student, self-contained)
+      colab-selfcontained-solutions/ Colab notebooks (instructor, self-contained)
       lessons/                    PER-LESSON HTML (standalone, navigate independently)
         01/
           slides.html             Lesson 1.1 slides (landscape Reveal.js)
@@ -253,6 +253,7 @@ Plus the classical/deep ML stack (`pip install` or `uv sync`):
 **Speaker notes.** Per-slide timing, common student questions, "if beginners look confused" alternatives, "if experts look bored" tangents. Available as both a per-module master file (`speaker-notes.md`) and per-lesson HTML (`notes.html`) with audience cues and transition lines.
 
 **Red-team validated.** Six independent audits in `workspaces/curriculum/04-validate/`:
+
 - `rt1-math-rigor.md` — 110+ formulas verified, full derivations checked
 - `rt2-pedagogical-flow.md` — lesson progression, scaffolding consistency
 - `rt3-student-experience.md` — zero-Python beginner accessibility

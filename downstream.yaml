@@ -3,7 +3,7 @@
 #
 # Source: lyceum/courses/mlfp (this repo)
 # Authority: solutions, specs, deck.html, textbook.md, lessons/
-# Students receive: exercises (local/), colab/, readings/, data/, shared/
+# Students receive: exercises (local/), colab-selfcontained/, readings/, data/, shared/
 
 repositories:
   - name: pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601

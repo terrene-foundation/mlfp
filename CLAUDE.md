@@ -22,12 +22,12 @@ No pandas in any exercise. kailash-ml is polars-native — students learn polars
 
 Every exercise must exist in two formats:
 
-| Format  | Location                             | Data Loading         |
-| ------- | ------------------------------------ | -------------------- |
-| VS Code | `modules/mlfpNN/local/ex_N.py`       | `shared.data_loader` |
-| Colab   | `modules/mlfpNN/colab/ex_N.ipynb`    | Drive mount + gdown  |
+| Format  | Location                                        | Data Loading         |
+| ------- | ----------------------------------------------- | -------------------- |
+| VS Code | `modules/mlfpNN/local/ex_N.py`                  | `shared.data_loader` |
+| Colab   | `modules/mlfpNN/colab-selfcontained/ex_N.ipynb` | Inlined helpers, pip |
 
-Data loading via `shared/data_loader.py`. Setup differs by format; exercise code is identical.
+Data loading via `shared/data_loader.py` in VS Code. Colab notebooks are self-contained — no git clone, no `sys.path` — helpers inlined by `scripts/generate_selfcontained_notebook.py`.
 
 ### 4. Solution-First Authoring
 
@@ -52,14 +52,14 @@ No references to any institutional partner, funding body, or prior course code i
 
 ## Course Structure
 
-| Module | Title                                                                                        | Kailash Frameworks                                                                                             |
-| ------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| MLFP01 | Machine Learning Data Pipelines and Visualisation Mastery with Python                        | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                               |
-| MLFP02 | Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success             | kailash-ml: ExperimentTracker, FeatureEngineer, FeatureStore, ModelVisualizer                                  |
-| MLFP03 | Supervised Machine Learning for Building and Deploying Models                                | kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry; Core SDK: WorkflowBuilder; DataFlow         |
-| MLFP04 | Unsupervised Machine Learning and Advanced Techniques for Insights                           | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, ModelVisualizer                                        |
-| MLFP05 | Deep Learning and Machine Learning Mastery in Vision and Transfer Learning                   | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer                                     |
-| MLFP06 | Machine Learning with Language Models and Agentic Workflows | Kaizen: Delegate, BaseAgent, Signature; Align: AlignmentPipeline; PACT: GovernanceEngine; Nexus; MCP          |
+| Module | Title                                                                             | Kailash Frameworks                                                                                     |
+| ------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| MLFP01 | Machine Learning Data Pipelines and Visualisation Mastery with Python             | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                       |
+| MLFP02 | Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success | kailash-ml: ExperimentTracker, FeatureEngineer, FeatureStore, ModelVisualizer                          |
+| MLFP03 | Supervised Machine Learning for Building and Deploying Models                     | kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry; Core SDK: WorkflowBuilder; DataFlow |
+| MLFP04 | Unsupervised Machine Learning and Advanced Techniques for Insights                | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, ModelVisualizer                                |
+| MLFP05 | Deep Learning and Machine Learning Mastery in Vision and Transfer Learning        | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer                             |
+| MLFP06 | Machine Learning with Language Models and Agentic Workflows                       | Kaizen: Delegate, BaseAgent, Signature; Align: AlignmentPipeline; PACT: GovernanceEngine; Nexus; MCP   |
 
 ### Certification Structure
 
@@ -70,14 +70,14 @@ No references to any institutional partner, funding body, or prior course code i
 
 Each MLFP module draws from one or more ASCENT program modules:
 
-| MLFP   | ASCENT Source                      | Content Scope                                                           |
-| ------ | ---------------------------------- | ----------------------------------------------------------------------- |
-| MLFP01 | ASCENT01 (partial)                 | Python basics through data, Polars, visualisation, profiling, cleaning  |
-| MLFP02 | ASCENT01 (stats) + ASCENT02        | Probability, inference, experiments, features, feature store            |
-| MLFP03 | ASCENT03 + ASCENT05 (partial)      | Supervised ML, workflows, DataFlow, model registry, hyperparameters     |
-| MLFP04 | ASCENT04                           | Clustering, dimensionality reduction, anomaly detection, NLP, drift     |
-| MLFP05 | ASCENT07 + ASCENT08                | Neural networks, CNNs, vision, NLP transformers, transfer learning, ONNX |
-| MLFP06 | ASCENT05 (agents) + ASCENT06 + ASCENT09 + ASCENT10 | LLMs, agents, RAG, alignment, governance, deployment            |
+| MLFP   | ASCENT Source                                      | Content Scope                                                            |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------------------ |
+| MLFP01 | ASCENT01 (partial)                                 | Python basics through data, Polars, visualisation, profiling, cleaning   |
+| MLFP02 | ASCENT01 (stats) + ASCENT02                        | Probability, inference, experiments, features, feature store             |
+| MLFP03 | ASCENT03 + ASCENT05 (partial)                      | Supervised ML, workflows, DataFlow, model registry, hyperparameters      |
+| MLFP04 | ASCENT04                                           | Clustering, dimensionality reduction, anomaly detection, NLP, drift      |
+| MLFP05 | ASCENT07 + ASCENT08                                | Neural networks, CNNs, vision, NLP transformers, transfer learning, ONNX |
+| MLFP06 | ASCENT05 (agents) + ASCENT06 + ASCENT09 + ASCENT10 | LLMs, agents, RAG, alignment, governance, deployment                     |
 
 ## Kailash Platform
 

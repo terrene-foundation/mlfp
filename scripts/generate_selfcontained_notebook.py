@@ -274,14 +274,14 @@ def cell0_source(packages: list[str]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Exercise body → cells (re-uses py_to_notebook.py logic)
+# Exercise body → cells
 # ─────────────────────────────────────────────────────────────────────
 
 
 def py_to_cells(source: str) -> list[dict]:
     """Split a Python exercise file into notebook cells.
 
-    Mirrors the segmentation used in `scripts/py_to_notebook.py`:
+    Segmentation rules:
     - Module docstring → markdown cell
     - `# ══════` section headers → markdown h2
     - `# ── section ──` markers → markdown h3

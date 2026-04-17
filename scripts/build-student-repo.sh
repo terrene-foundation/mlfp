@@ -54,10 +54,7 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
     # local/ — exercise .py files (R10 directories)
     [ -d "$module_dir/local" ] && rsync -a --delete "$module_dir/local/" "$dest/local/"
 
-    # colab/ — notebook files
-    [ -d "$module_dir/colab" ] && rsync -a --delete "$module_dir/colab/" "$dest/colab/"
-
-    # colab-selfcontained/ — self-contained Colab notebooks (no git clone needed)
+    # colab-selfcontained/ — canonical Colab format (self-contained, no git clone)
     [ -d "$module_dir/colab-selfcontained" ] && rsync -a --delete "$module_dir/colab-selfcontained/" "$dest/colab-selfcontained/"
 
     # diagnostic-reference/ — captured outputs (plots + reports)
@@ -74,7 +71,7 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
         --exclude='__pycache__' \
         "$module_dir/quiz/" "$dest/quiz/"
 
-    # NOTE: colab-instructor/ is NEVER synced to students (instructor-only).
+    # NOTE: colab-selfcontained-solutions/ is NEVER synced to students (instructor-only).
 
     echo "  $mod: $(ls "$dest" 2>/dev/null | tr '\n' ' ')"
 done

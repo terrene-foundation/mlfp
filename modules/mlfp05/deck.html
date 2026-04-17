@@ -6746,83 +6746,8 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     plugins: [RevealHighlight, RevealNotes],
   });
 
-  // ── KaTeX rendering (idempotent, single-pass) ─────────────────
-  // Root cause of prior double-render: Reveal.on('slidechanged') fires
-  // BEFORE Reveal.on('ready') on deep-hash navigation. The first pass
-  // renders all <span class="katex-display"> elements. KaTeX's output
-  // INCLUDES a nested <span class="katex-display"> wrapper, doubling the
-  // count matched by querySelectorAll('.katex-display'). The subsequent
-  // 'ready' pass then walks 2x the elements, reading el.textContent
-  // which now contains both the rendered glyphs AND the LaTeX source
-  // embedded in KaTeX's <annotation> nodes, producing garbled output.
-  //
-  // Fix: capture the original LaTeX source in a data-* attribute on
-  // first sight, mark rendered elements with data-mlfp-rendered, and
-  // render exactly once per source element from that stored source.
-  function mlfpRenderMath(root) {
-    if (!window.katex) return;
-    // IMPORTANT: our authored class `katex-display` collides with the
-    // KaTeX internal class of the same name. After KaTeX renders into an
-    // element, that element contains a NESTED <span class="katex-display">.
-    // A naive `querySelectorAll('.katex-display')` on a second pass picks
-    // up both the authored outer span AND the KaTeX-created inner span,
-    // double-rendering the inner span using its polluted textContent.
-    //
-    // Fix: only process elements that are direct children of `.equation-box`
-    // (for displays) or inline spans with the `katex-inline` class that have
-    // no already-rendered parent. The `data-mlfp-rendered` marker provides
-    // idempotence across multiple invocations of this function.
-    const displays = (root || document).querySelectorAll('.equation-box > span.katex-display');
-    displays.forEach(el => {
-      if (el.dataset.mlfpRendered === 'true') return;
-      // Capture original LaTeX source from textContent exactly once —
-      // before any mutation — so subsequent calls never read polluted text.
-      if (!el.dataset.mlfpSource) {
-        el.dataset.mlfpSource = el.textContent;
-      }
-      try {
-        katex.render(el.dataset.mlfpSource, el, {
-          displayMode: true,
-          throwOnError: false,
-          strict: 'ignore',
-        });
-      } catch (e) {
-        console.warn('KaTeX display render failed:', e.message, el.dataset.mlfpSource);
-      }
-      el.dataset.mlfpRendered = 'true';
-    });
-    // Inline math: same guard pattern. Skip anything already rendered.
-    const inlines = (root || document).querySelectorAll('span.katex-inline');
-    inlines.forEach(el => {
-      if (el.dataset.mlfpRendered === 'true') return;
-      // Exclude inline spans that are descendants of an already-rendered
-      // KaTeX output (should not happen, but defensive).
-      if (el.closest('.katex')) return;
-      if (!el.dataset.mlfpSource) {
-        el.dataset.mlfpSource = el.textContent;
-      }
-      try {
-        katex.render(el.dataset.mlfpSource, el, {
-          displayMode: false,
-          throwOnError: false,
-          strict: 'ignore',
-        });
-      } catch (e) {
-        console.warn('KaTeX inline render failed:', e.message, el.dataset.mlfpSource);
-      }
-      el.dataset.mlfpRendered = 'true';
-    });
-  }
-
-  // Render as soon as Reveal is ready AND whenever a slide changes.
-  // mlfpRenderMath is idempotent: elements already marked data-mlfp-rendered
-  // are skipped, so multiple invocations are safe and cheap.
-  Reveal.on('ready', () => mlfpRenderMath(document));
-  Reveal.on('slidechanged', () => mlfpRenderMath(document));
-  // Fallback: if both events somehow miss an element (e.g. a late hash
-  // navigation that fires before our handlers are registered), try once
-  // more on the next animation frame.
-  requestAnimationFrame(() => mlfpRenderMath(document));
 </script>
+<!-- Idempotent KaTeX renderer — shared across decks. See modules/assets/js/README.md. -->
+<script src="../assets/js/katex-init.js"></script>
 </body>
 </html>

@@ -70,8 +70,13 @@ outputs/
 # Stray output files from exercise runs
 ex*_*.html
 ex*_*.onnx
+ex_*_*.png
 *.db
+*.db-shm
+*.db-wal
 mlfp*_experiments.db
+data/mlfp06/
+screenshots/
 
 # Generated PDFs (large binaries — build locally)
 pdf/

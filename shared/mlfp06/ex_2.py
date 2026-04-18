@@ -140,14 +140,14 @@ def full_finetune_params(
 
 
 def get_base_model_name() -> str:
-    """Read base model from SFT_BASE_MODEL env var (see rules/env-models.md).
+    """Return the HuggingFace repo id of the SFT base model.
 
-    Never hardcoded — fallback only for offline smoke tests.
+    Resolution: ``SFT_BASE_MODEL`` env var → ``Qwen/Qwen2.5-0.5B-Instruct``.
+    Note: Align/TRL training needs a HuggingFace repo id, NOT an Ollama tag —
+    the Ollama-side ``OLLAMA_FT_BASE_MODEL`` is for inference of the
+    fine-tuned model after GGUF export, not for training.
     """
-    return os.environ.get(
-        "SFT_BASE_MODEL",
-        os.environ.get("DEFAULT_LLM_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
-    )
+    return os.environ.get("SFT_BASE_MODEL") or "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 def build_sft_config(

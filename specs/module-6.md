@@ -16,6 +16,38 @@
 
 **Kailash Engines**: Kaizen (Delegate, BaseAgent, Signature, agents), kaizen-agents (GovernedSupervisor, ReActAgent, Pipeline), kailash-align (AlignmentPipeline, AdapterRegistry), pact (GovernanceEngine, RoleEnvelope, Address), nexus (Nexus, auth, middleware), kailash-mcp
 
+## Runtime Provider — Local Ollama Default
+
+M6 ships pre-configured for **local Ollama** as the LLM provider. No API
+keys required, no commercial provider account needed. The same notebook
+runs identically on a developer laptop and on a Colab T4. See `specs/redlines.md`
+Redline 14 for the full mandate.
+
+**Local setup** (one-time):
+
+```bash
+# Install Ollama (macOS / Linux)
+curl -fsSL https://ollama.com/install.sh | sh
+# Start the daemon (or use the macOS desktop app)
+ollama serve
+# Pull the M6 default models (~3GB total)
+ollama pull llama3.2:3b      # chat (lessons 6.1, 6.4-6.8)
+ollama pull nomic-embed-text  # RAG embeddings (lesson 6.4)
+ollama pull qwen2.5:0.5b      # fine-tuning baseline (lessons 6.2, 6.3)
+```
+
+**Colab setup**: Cell 1 of every M6 notebook installs Ollama, starts the
+daemon, and pulls the lesson's models automatically. Cold start cost is
+~2 min install + 1–3 min model pull = ~5 min the first time per session.
+Set Runtime → Change runtime type → **T4 GPU** before the first cell runs
+(Ollama auto-detects the GPU and uses it for ~10× faster inference).
+
+**Hard fail, no silent stub**: If the daemon is unreachable or a required
+model is missing, every M6 helper raises `OllamaUnreachableError` with the
+exact `ollama serve` / `ollama pull <model>` command needed to fix the
+environment. There is no offline fallback that produces fake results
+(see Redline 14 for the rationale).
+
 ---
 
 ## Lesson 6.1: LLM Fundamentals, Prompt Engineering, and Structured Output

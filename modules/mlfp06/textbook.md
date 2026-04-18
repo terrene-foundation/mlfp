@@ -1,6 +1,6 @@
 # Module 6 — Machine Learning with Language Models and Agentic Workflows
 
-> *"The model is not the product. The governed system is the product."*
+> _"The model is not the product. The governed system is the product."_
 
 This is the final chapter of the MLFP programme. You arrived here from a long road: Python basics and data wrangling in Module 1, statistics and probability in Module 2, the full supervised ML pipeline in Module 3, unsupervised learning and the neural network bridge in Module 4, and every major deep learning architecture in Module 5. Everything you have learned converges here.
 
@@ -56,16 +56,16 @@ Same structure as all previous modules. The scaffolding level is minimal (~20% c
 
 **Estimated reading time per lesson:**
 
-| Lesson | Title | Reading | Exercise | Total |
-|---|---|---|---|---|
-| 6.1 | LLM Fundamentals and Prompt Engineering | 100 min | 60 min | ~2h 40m |
-| 6.2 | LLM Fine-Tuning — LoRA, Adapters, and the Technique Landscape | 130 min | 80 min | ~3h 30m |
-| 6.3 | Preference Alignment — DPO and GRPO | 120 min | 75 min | ~3h 15m |
-| 6.4 | RAG Systems | 110 min | 70 min | ~3h |
-| 6.5 | AI Agents — ReAct, Tool Use, and Function Calling | 110 min | 65 min | ~2h 55m |
-| 6.6 | Multi-Agent Orchestration and MCP | 110 min | 70 min | ~3h |
-| 6.7 | AI Governance Engineering | 100 min | 65 min | ~2h 45m |
-| 6.8 | Capstone — Full Production Platform | 120 min | 80 min | ~3h 20m |
+| Lesson | Title                                                         | Reading | Exercise | Total   |
+| ------ | ------------------------------------------------------------- | ------- | -------- | ------- |
+| 6.1    | LLM Fundamentals and Prompt Engineering                       | 100 min | 60 min   | ~2h 40m |
+| 6.2    | LLM Fine-Tuning — LoRA, Adapters, and the Technique Landscape | 130 min | 80 min   | ~3h 30m |
+| 6.3    | Preference Alignment — DPO and GRPO                           | 120 min | 75 min   | ~3h 15m |
+| 6.4    | RAG Systems                                                   | 110 min | 70 min   | ~3h     |
+| 6.5    | AI Agents — ReAct, Tool Use, and Function Calling             | 110 min | 65 min   | ~2h 55m |
+| 6.6    | Multi-Agent Orchestration and MCP                             | 110 min | 70 min   | ~3h     |
+| 6.7    | AI Governance Engineering                                     | 100 min | 65 min   | ~2h 45m |
+| 6.8    | Capstone — Full Production Platform                           | 120 min | 80 min   | ~3h 20m |
 
 Total: roughly 24 hours.
 
@@ -112,7 +112,7 @@ Review: "The laksa at this hawker stall is the best I've had in Katong." ->
 **Chain-of-thought (CoT).** Prompt the model to reason step by step:
 
 ```
-Q: A Singapore taxi charges S$3.90 flag-down + S$0.25 per 400m. 
+Q: A Singapore taxi charges S$3.90 flag-down + S$0.25 per 400m.
    What is the fare for a 12km trip?
 
 Let's think step by step:
@@ -179,25 +179,26 @@ $$P(w_i) = \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}$$
 
 At $T = 1$ (default), the distribution is as trained. At $T < 1$, the distribution becomes peakier (more deterministic — the model is more confident). At $T > 1$, the distribution becomes flatter (more random — the model explores more). Temperature 0 is equivalent to argmax (always pick the most likely token). For factual tasks, use low temperature; for creative tasks, use higher temperature.
 
-## The Kailash Engine: Kaizen Delegate
+## The Kailash Engine: Kaizen Delegate via the M6 Bootstrap
+
+M6 routes every LLM call through `shared.mlfp06._ollama_bootstrap.make_delegate`, which constructs a Kaizen `Delegate` backed by a locally-running **Ollama** daemon. There are no API keys to manage, and the `OllamaUnreachableError` raised when the daemon is down points the student straight at the fix command (`ollama serve` / `ollama pull <model>`). See `specs/redlines.md` Redline 14 for the full mandate.
 
 ```python
-import os
-from kaizen_agents import Delegate
+from shared.mlfp06._ollama_bootstrap import make_delegate
 
-delegate = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    budget_usd=1.00,   # hard cost cap; Delegate halts when exhausted
+delegate = make_delegate(
+    model="llama3.2:3b",       # default; override via OLLAMA_CHAT_MODEL
     signature=SentimentSignature,
+    temperature=0.4,
 )
 
-# Track costs across multiple calls
+# Real LLM calls, no API budget — Ollama is free.
 for review in reviews:
     result = delegate.run_sync(f"Classify this review: {review}")
     print(f"Result: {result}")
 ```
 
-The budget lives on the `Delegate` itself — there is no separate `LLMCostTracker` class in Kaizen 2.7. The agent stops gracefully when the budget is exhausted.
+Cost note: the bootstrap forces `budget_usd=None` because Kaizen's cost estimator mis-prices Ollama at OpenAI rates (~$3/$15 per million tokens). The honest comparison signal across techniques is **token throughput**, surfaced via `run_delegate_text(...) -> (text, usage_dict, elapsed_s)`.
 
 ## Worked Example: Prompt Engineering Comparison
 
@@ -245,16 +246,14 @@ for problem in problems:
 
 ## Try It Yourself
 
-**Drill 1.** Compare zero-shot, few-shot (3 examples), and CoT prompting on 10 Singapore math word problems. Which technique achieves the highest accuracy? At what cost per problem?
+**Drill 1.** Compare zero-shot, few-shot (3 examples), and CoT prompting on 10 Singapore math word problems. Which technique achieves the highest accuracy? At what token cost per problem?
 
 **Solution:**
-```python
-import os
-from kaizen_agents import Delegate
 
-delegate = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    budget_usd=5.00,
+```python
+from shared.mlfp06._ollama_bootstrap import make_delegate
+
+delegate = make_delegate(
     signature=MathSolver,
 )
 
@@ -276,6 +275,7 @@ for name, transform in techniques.items():
 **Drill 2.** Implement self-consistency: sample 5 CoT responses (temperature=0.7) and take the majority-vote answer. Does self-consistency improve accuracy over single-sample CoT?
 
 **Solution:**
+
 ```python
 from collections import Counter
 
@@ -291,6 +291,7 @@ def self_consistency(delegate, problem, n_samples=5):
 **Drill 3.** Build a classification system using Kaizen Delegate that classifies Singapore news headlines into categories (politics, economy, sports, technology, lifestyle). Use a Signature with typed output. Test on 50 headlines.
 
 **Solution:**
+
 ```python
 class HeadlineClassifier(Signature):
     """Classify a Singapore news headline into a category."""
@@ -299,25 +300,26 @@ class HeadlineClassifier(Signature):
     confidence: float = OutputField()
 ```
 
-**Drill 4.** Implement cost tracking: process 100 classification requests and report total cost, average cost per request, and cost breakdown by model. Set a budget of S$0.50 and verify the tracker stops when the budget is exhausted.
+**Drill 4.** Implement token tracking: process 100 classification requests and report total tokens, average tokens per request, and per-model breakdown. (Cost tracking from the OpenAI era is replaced by token tracking — Ollama is free, but token throughput is the honest workload signal.)
 
 **Solution:**
-```python
-import os
-from kaizen_agents import Delegate
 
-delegate = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    budget_usd=0.50,
-    signature=HeadlineClassifier,
-)
-for headline in headlines[:100]:
-    try:
-        result = delegate.run_sync(f"Classify this headline: {headline}")
-    except Exception as exc:
-        # Delegate raises when the budget is exhausted
-        print(f"Budget exhausted or call failed: {exc}")
-        break
+```python
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+import asyncio
+
+delegate = make_delegate(signature=HeadlineClassifier)
+
+async def classify_all(headlines):
+    total_tokens = 0
+    for headline in headlines[:100]:
+        prompt = f"Classify this headline: {headline}"
+        text, usage, _elapsed = await run_delegate_text(delegate, prompt)
+        total_tokens += usage["total_tokens"]
+    return total_tokens
+
+total = asyncio.run(classify_all(headlines))
+print(f"Total tokens: {total}, avg per request: {total / 100:.0f}")
 ```
 
 **Drill 5.** Explain the relationship between temperature, top-p (nucleus sampling), and output quality. Run the same prompt at temperatures 0, 0.3, 0.7, and 1.0 ten times each. Measure the variance of the outputs.
@@ -402,27 +404,27 @@ class AdapterLayer(nn.Module):
 
 ### FOUNDATIONS: LoRA vs Adapter comparison
 
-| Dimension | LoRA | Adapter |
-|---|---|---|
-| Parameter update | Low-rank matrices A, B | Bottleneck FC layers |
-| Where applied | Weight matrices (Q, K, V, O) | Between transformer layers |
-| Merge at inference | Yes (add B×A to W) | No (module remains) |
-| Inference overhead | Zero | Small (extra forward pass) |
-| Typical parameter % | 0.1–1% | 1–5% |
+| Dimension           | LoRA                         | Adapter                    |
+| ------------------- | ---------------------------- | -------------------------- |
+| Parameter update    | Low-rank matrices A, B       | Bottleneck FC layers       |
+| Where applied       | Weight matrices (Q, K, V, O) | Between transformer layers |
+| Merge at inference  | Yes (add B×A to W)           | No (module remains)        |
+| Inference overhead  | Zero                         | Small (extra forward pass) |
+| Typical parameter % | 0.1–1%                       | 1–5%                       |
 
 ### FOUNDATIONS: The fine-tuning landscape (survey)
 
-| Technique | Key Idea | Parameters Trained |
-|---|---|---|
-| Full fine-tuning | Update all weights | 100% |
-| LoRA | Low-rank weight update | 0.1–1% |
-| Adapters | Bottleneck modules | 1–5% |
-| Prefix tuning | Learnable prefix tokens | < 1% |
-| Prompt tuning | Learnable soft prompts | < 0.1% |
-| LLRD | Layer-wise learning rate decay | 100% (different LRs) |
-| Progressive freezing | Gradually unfreeze layers | Varies |
-| Knowledge distillation | Teacher-student | 100% of student |
-| QLoRA | Quantised base + LoRA | 0.1–1% |
+| Technique              | Key Idea                       | Parameters Trained   |
+| ---------------------- | ------------------------------ | -------------------- |
+| Full fine-tuning       | Update all weights             | 100%                 |
+| LoRA                   | Low-rank weight update         | 0.1–1%               |
+| Adapters               | Bottleneck modules             | 1–5%                 |
+| Prefix tuning          | Learnable prefix tokens        | < 1%                 |
+| Prompt tuning          | Learnable soft prompts         | < 0.1%               |
+| LLRD                   | Layer-wise learning rate decay | 100% (different LRs) |
+| Progressive freezing   | Gradually unfreeze layers      | Varies               |
+| Knowledge distillation | Teacher-student                | 100% of student      |
+| QLoRA                  | Quantised base + LoRA          | 0.1–1%               |
 
 ### ADVANCED: Model merging
 
@@ -498,6 +500,7 @@ optimizer = torch.optim.AdamW(
 **Drill 1.** Implement LoRA from scratch (the `LoRALayer` class) and apply it to a pre-trained BERT model. Fine-tune on IMDB sentiment classification. Report accuracy and compare with full fine-tuning.
 
 **Solution:**
+
 ```python
 # Apply LoRALayer to Q, K, V projections in all attention layers
 # Train for 3 epochs, evaluate on test set
@@ -506,6 +509,7 @@ optimizer = torch.optim.AdamW(
 **Drill 2.** Implement adapter layers from scratch and insert them into BERT. Compare adapter fine-tuning with LoRA fine-tuning on the same task: accuracy, parameter count, training time.
 
 **Solution:**
+
 ```python
 class AdapterBertLayer(nn.Module):
     def __init__(self, original_layer, bottleneck=64):
@@ -521,6 +525,7 @@ class AdapterBertLayer(nn.Module):
 **Drill 3.** Vary the LoRA rank from 1 to 64 (1, 2, 4, 8, 16, 32, 64). Plot accuracy vs rank and training time vs rank. What is the optimal rank for the sentiment task?
 
 **Solution:**
+
 ```python
 for rank in [1, 2, 4, 8, 16, 32, 64]:
     # Rebuild model with this rank, train, evaluate
@@ -530,6 +535,7 @@ for rank in [1, 2, 4, 8, 16, 32, 64]:
 **Drill 4.** Train two LoRA adapters: one for sentiment classification and one for topic classification. Merge them using task arithmetic (add both weight deltas to the base model). Does the merged model perform both tasks?
 
 **Solution:**
+
 ```python
 # Extract adapter weights: delta_sentiment = LoRA_A @ LoRA_B for sentiment adapter
 # Extract adapter weights: delta_topic = LoRA_A @ LoRA_B for topic adapter
@@ -624,12 +630,12 @@ Mitigations: swap response positions and average, normalise by length, use multi
 
 ### FOUNDATIONS: Evaluation benchmarks
 
-| Benchmark | Tests | Format |
-|---|---|---|
-| MMLU | Multi-task language understanding | Multiple choice |
-| HellaSwag | Commonsense reasoning | Sentence completion |
-| HumanEval | Code generation | Function implementation |
-| MT-Bench | Multi-turn conversation | Open-ended + judge |
+| Benchmark | Tests                             | Format                  |
+| --------- | --------------------------------- | ----------------------- |
+| MMLU      | Multi-task language understanding | Multiple choice         |
+| HellaSwag | Commonsense reasoning             | Sentence completion     |
+| HumanEval | Code generation                   | Function implementation |
+| MT-Bench  | Multi-turn conversation           | Open-ended + judge      |
 
 ## The Kailash Engine: kailash-align (DPO)
 
@@ -675,6 +681,7 @@ def get_log_probs(model, input_ids):
 **Drill 1.** Implement the DPO loss function from scratch. Verify it decreases during training on a small preference dataset.
 
 **Solution:**
+
 ```python
 # Create synthetic preference pairs
 # Train for 10 epochs, plot loss curve
@@ -683,6 +690,7 @@ def get_log_probs(model, input_ids):
 **Drill 2.** Vary $\beta$ from 0.01 to 1.0 (0.01, 0.05, 0.1, 0.5, 1.0). How does $\beta$ affect the trade-off between alignment and generation quality? Report win rate against the reference model for each $\beta$.
 
 **Solution:**
+
 ```python
 for beta in [0.01, 0.05, 0.1, 0.5, 1.0]:
     # Train DPO with this beta
@@ -693,6 +701,7 @@ for beta in [0.01, 0.05, 0.1, 0.5, 1.0]:
 **Drill 3.** Implement LLM-as-judge evaluation. Measure position bias by evaluating the same pair of responses in both orderings. Report the bias magnitude.
 
 **Solution:**
+
 ```python
 class JudgeSignature(Signature):
     """Judge which response is better."""
@@ -1006,30 +1015,14 @@ server.run(transport="stdio")
 ## Worked Example: Multi-Agent ML Pipeline
 
 ```python
-import os
-from kaizen_agents import Delegate, Pipeline
+from shared.mlfp06._ollama_bootstrap import make_delegate
 
-# Each specialist is a Delegate bound to a tool set and a budget.
-data_scientist = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[profile_data, visualise_data],
-    budget_usd=2.00,
-)
-feature_engineer = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[create_features, validate_features],
-    budget_usd=2.00,
-)
-model_selector = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[train_model, evaluate_model],
-    budget_usd=3.00,
-)
-report_writer = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[generate_report],
-    budget_usd=1.00,
-)
+# Each specialist is a Delegate bound to a tool set. Ollama is free, so
+# there are no per-agent dollar budgets; the bootstrap forces budget_usd=None.
+data_scientist = make_delegate(tools=[profile_data, visualise_data])
+feature_engineer = make_delegate(tools=[create_features, validate_features])
+model_selector = make_delegate(tools=[train_model, evaluate_model])
+report_writer = make_delegate(tools=[generate_report])
 
 # Sequential orchestration — output of each specialist feeds the next.
 data_analysis = data_scientist.run_sync("Analyse sg_hdb_prices.csv")
@@ -1482,29 +1475,29 @@ Those are the questions of an ML engineer. Welcome to the profession.
 
 Module 6 covered the complete journey from a trained model to a governed production system:
 
-| Lesson | Topic | Key Concept |
-|---|---|---|
-| 6.1 | LLM Fundamentals | Prompt engineering, structured output |
-| 6.2 | Fine-Tuning | LoRA, adapters, PEFT landscape |
-| 6.3 | Alignment | DPO, GRPO, Bradley-Terry |
-| 6.4 | RAG | Retrieval-augmented generation |
-| 6.5 | Agents | ReAct, tool use, cost budgets |
-| 6.6 | Multi-Agent | Orchestration, MCP, memory |
-| 6.7 | Governance | PACT D/T/R, operating envelopes |
-| 6.8 | Capstone | Nexus deployment, full integration |
+| Lesson | Topic            | Key Concept                           |
+| ------ | ---------------- | ------------------------------------- |
+| 6.1    | LLM Fundamentals | Prompt engineering, structured output |
+| 6.2    | Fine-Tuning      | LoRA, adapters, PEFT landscape        |
+| 6.3    | Alignment        | DPO, GRPO, Bradley-Terry              |
+| 6.4    | RAG              | Retrieval-augmented generation        |
+| 6.5    | Agents           | ReAct, tool use, cost budgets         |
+| 6.6    | Multi-Agent      | Orchestration, MCP, memory            |
+| 6.7    | Governance       | PACT D/T/R, operating envelopes       |
+| 6.8    | Capstone         | Nexus deployment, full integration    |
 
 The progression mirrors the real-world deployment pipeline: understand the model (6.1), customise it (6.2), align it (6.3), ground it (6.4), give it tools (6.5), coordinate specialists (6.6), govern the system (6.7), and ship it (6.8).
 
 ## The complete MLFP arc
 
-| Module | Theme | Key Skill |
-|---|---|---|
-| M1 | Data foundations | Polars, visualisation, profiling |
-| M2 | Statistics and probability | Inference, hypothesis testing, regression |
-| M3 | Supervised ML | Full pipeline, evaluation, deployment |
-| M4 | Unsupervised ML + Neural bridge | Clustering, PCA, embeddings, backpropagation |
-| M5 | Deep learning architectures | CNN, RNN, Transformer, GAN, GNN, RL |
-| M6 | LLMs and production systems | Fine-tuning, RAG, agents, governance, deployment |
+| Module | Theme                           | Key Skill                                        |
+| ------ | ------------------------------- | ------------------------------------------------ |
+| M1     | Data foundations                | Polars, visualisation, profiling                 |
+| M2     | Statistics and probability      | Inference, hypothesis testing, regression        |
+| M3     | Supervised ML                   | Full pipeline, evaluation, deployment            |
+| M4     | Unsupervised ML + Neural bridge | Clustering, PCA, embeddings, backpropagation     |
+| M5     | Deep learning architectures     | CNN, RNN, Transformer, GAN, GNN, RL              |
+| M6     | LLMs and production systems     | Fine-tuning, RAG, agents, governance, deployment |
 
 You have traversed the Feature Engineering Spectrum from manual features to learned features to semantic features. You have built models from linear regression to transformers to governed multi-agent systems. You have deployed with Kailash's full stack: Core SDK, DataFlow, ML, Kaizen, PACT, Nexus, and Align.
 
@@ -1616,41 +1609,41 @@ The programme is complete. The learning continues.
 
 **On LLMs and prompt engineering**
 
-- Brown, T., et al. "Language Models are Few-Shot Learners." *NeurIPS*, 2020. The GPT-3 paper introducing few-shot prompting.
-- Wei, J., et al. "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models." *NeurIPS*, 2022.
-- Wang, X., et al. "Self-Consistency Improves Chain of Thought Reasoning." *ICLR*, 2023.
+- Brown, T., et al. "Language Models are Few-Shot Learners." _NeurIPS_, 2020. The GPT-3 paper introducing few-shot prompting.
+- Wei, J., et al. "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models." _NeurIPS_, 2022.
+- Wang, X., et al. "Self-Consistency Improves Chain of Thought Reasoning." _ICLR_, 2023.
 
 **On fine-tuning**
 
-- Hu, E., et al. "LoRA: Low-Rank Adaptation of Large Language Models." *ICLR*, 2022. The original LoRA paper.
-- Houlsby, N., et al. "Parameter-Efficient Transfer Learning for NLP." *ICML*, 2019. The adapter layers paper.
-- Aghajanyan, A., Gupta, S., and Zettlemoyer, L. "Intrinsic Dimensionality Explains the Effectiveness of Language Model Fine-Tuning." *ACL*, 2021.
-- Dettmers, T., et al. "QLoRA: Efficient Finetuning of Quantized Language Models." *NeurIPS*, 2023.
+- Hu, E., et al. "LoRA: Low-Rank Adaptation of Large Language Models." _ICLR_, 2022. The original LoRA paper.
+- Houlsby, N., et al. "Parameter-Efficient Transfer Learning for NLP." _ICML_, 2019. The adapter layers paper.
+- Aghajanyan, A., Gupta, S., and Zettlemoyer, L. "Intrinsic Dimensionality Explains the Effectiveness of Language Model Fine-Tuning." _ACL_, 2021.
+- Dettmers, T., et al. "QLoRA: Efficient Finetuning of Quantized Language Models." _NeurIPS_, 2023.
 
 **On preference alignment**
 
-- Rafailov, R., et al. "Direct Preference Optimization: Your Language Model is Secretly a Reward Model." *NeurIPS*, 2023. The DPO paper.
-- Shao, Z., et al. "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models." *arXiv:2402.03300*, 2024. Introduces GRPO.
-- Ouyang, L., et al. "Training language models to follow instructions with human feedback." *NeurIPS*, 2022. The InstructGPT/RLHF paper.
+- Rafailov, R., et al. "Direct Preference Optimization: Your Language Model is Secretly a Reward Model." _NeurIPS_, 2023. The DPO paper.
+- Shao, Z., et al. "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models." _arXiv:2402.03300_, 2024. Introduces GRPO.
+- Ouyang, L., et al. "Training language models to follow instructions with human feedback." _NeurIPS_, 2022. The InstructGPT/RLHF paper.
 
 **On RAG**
 
-- Lewis, P., et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." *NeurIPS*, 2020. The original RAG paper.
-- Gao, L., et al. "Precise Zero-Shot Dense Retrieval without Relevance Labels." *ACL*, 2023. The HyDE paper.
+- Lewis, P., et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." _NeurIPS_, 2020. The original RAG paper.
+- Gao, L., et al. "Precise Zero-Shot Dense Retrieval without Relevance Labels." _ACL_, 2023. The HyDE paper.
 
 **On AI agents**
 
-- Yao, S., et al. "ReAct: Synergizing Reasoning and Acting in Language Models." *ICLR*, 2023. The ReAct paper.
-- Schick, T., et al. "Toolformer: Language Models Can Teach Themselves to Use Tools." *NeurIPS*, 2023.
+- Yao, S., et al. "ReAct: Synergizing Reasoning and Acting in Language Models." _ICLR_, 2023. The ReAct paper.
+- Schick, T., et al. "Toolformer: Language Models Can Teach Themselves to Use Tools." _NeurIPS_, 2023.
 
 **On AI governance**
 
-- The Terrene Foundation. *PACT: Policy, Access, Controls, Trust — A Governance Framework for AI Agent Organizations.* 2024.
-- Mitchell, M., et al. "Model Cards for Model Reporting." *FAT\**, 2019.
+- The Terrene Foundation. _PACT: Policy, Access, Controls, Trust — A Governance Framework for AI Agent Organizations._ 2024.
+- Mitchell, M., et al. "Model Cards for Model Reporting." \*FAT\*\*, 2019.
 
 **On production ML systems**
 
-- Sculley, D., et al. "Hidden Technical Debt in Machine Learning Systems." *NeurIPS*, 2015. The classic paper on ML system complexity.
-- Paleyes, A., Urma, R.-G., and Lawrence, N. "Challenges in Deploying Machine Learning: A Survey of Case Studies." *ACM Computing Surveys*, 2022.
+- Sculley, D., et al. "Hidden Technical Debt in Machine Learning Systems." _NeurIPS_, 2015. The classic paper on ML system complexity.
+- Paleyes, A., Urma, R.-G., and Lawrence, N. "Challenges in Deploying Machine Learning: A Survey of Case Studies." _ACM Computing Surveys_, 2022.
 
 ---

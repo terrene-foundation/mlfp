@@ -255,6 +255,16 @@ def build_cell1_content(module: str, exercise_source: str) -> str:
             parts.append(load_helper("shared/data_loader.py"))
             parts.append("")
 
+    # M6 Ollama bootstrap — every M6 ex_N.py imports from this module, so
+    # it must be inlined BEFORE the per-module diagnostics and ex_N files
+    # (which call make_delegate / DEFAULT_CHAT_MODEL from the bootstrap).
+    if f"shared.{module}._ollama_bootstrap" in imports:
+        bootstrap_path = f"shared/{module}/_ollama_bootstrap.py"
+        if (REPO_ROOT / bootstrap_path).exists():
+            parts.append(f"# ── {bootstrap_path} ──")
+            parts.append(load_helper(bootstrap_path))
+            parts.append("")
+
     # Per-module diagnostics subpackage (M5 flat file; M6 subpackage)
     for imp in sorted(imports):
         if imp == f"shared.{module}.diagnostics":
@@ -358,7 +368,15 @@ def rewrite_repo_root_resolution(source: str) -> str:
 def detect_packages(source: str, helper_source: str) -> list[str]:
     """Which pip packages does the combined source need?"""
     combined = source + "\n" + helper_source
-    packages = ["kailash", "polars", "plotly", "gdown", "python-dotenv", "nest-asyncio"]
+    packages = [
+        "kailash",
+        "polars",
+        "plotly",
+        "gdown",
+        "python-dotenv",
+        "nest-asyncio",
+        "httpx",
+    ]
     pkg_map = {
         "kailash_ml": "kailash-ml",
         "kailash_align": "kailash-align",
@@ -372,6 +390,110 @@ def detect_packages(source: str, helper_source: str) -> list[str]:
             if pkg not in packages:
                 packages.append(pkg)
     return packages
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cell 0a: Ollama bootstrap (M6 only)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _lesson_from_path(path: Path) -> str | None:
+    """Parse the ``ex_N`` lesson id from a solution path, or return None."""
+    for part in path.parts:
+        if re.fullmatch(r"ex_\d+", part):
+            return part
+    return None
+
+
+# Mirrors LESSON_MODELS in shared/mlfp06/_ollama_bootstrap.py. Duplicated
+# here (not imported) because this generator runs without the repo's
+# .venv on its path in some CI paths, and we want the Cell 0 body to be
+# deterministic text that does not require a runtime import from shared/.
+_M6_LESSON_MODELS: dict[str, list[str]] = {
+    "ex_1": ["llama3.2:3b"],
+    "ex_2": ["qwen2.5:0.5b", "llama3.2:3b"],
+    "ex_3": ["qwen2.5:0.5b", "llama3.2:3b"],
+    "ex_4": ["llama3.2:3b", "nomic-embed-text"],
+    "ex_5": ["llama3.2:3b"],
+    "ex_6": ["llama3.2:3b"],
+    "ex_7": ["llama3.2:3b"],
+    "ex_8": ["llama3.2:3b"],
+}
+
+
+def ollama_bootstrap_cell_source(lesson_id: str) -> str:
+    """Generate the Colab-only Ollama bootstrap cell for an M6 lesson.
+
+    The cell is idempotent: re-running is free if Ollama is already
+    installed and the models are already pulled. It is a no-op on local
+    (where students run ``ollama serve`` in a terminal themselves).
+    """
+    models = _M6_LESSON_MODELS.get(lesson_id, ["llama3.2:3b"])
+    models_literal = repr(models)
+    return (
+        "# ══════════════════════════════════════════════════════════════════\n"
+        "# M6 Ollama bootstrap — local LLMs, no API keys\n"
+        "# On Colab: installs + starts Ollama and pulls this lesson's models.\n"
+        "# Locally: verifies the daemon is running and models are pulled.\n"
+        "# ══════════════════════════════════════════════════════════════════\n"
+        f"_LESSON_MODELS = {models_literal}\n"
+        "import sys, os, time, shutil, subprocess\n"
+        "import httpx\n"
+        "\n"
+        "_OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', "
+        "'http://localhost:11434')\n"
+        "_IN_COLAB = 'google.colab' in sys.modules\n"
+        "\n"
+        "def _daemon_up(timeout_s=1.0):\n"
+        "    try:\n"
+        "        r = httpx.get(f'{_OLLAMA_BASE_URL}/api/tags', timeout=timeout_s)\n"
+        "        r.raise_for_status()\n"
+        "        return r.json()\n"
+        "    except Exception:\n"
+        "        return None\n"
+        "\n"
+        "if _IN_COLAB and shutil.which('ollama') is None:\n"
+        "    print('[ollama] installing binary …')\n"
+        "    subprocess.run(\n"
+        "        'curl -fsSL https://ollama.com/install.sh | sh',\n"
+        "        shell=True, check=True,\n"
+        "    )\n"
+        "\n"
+        "if _IN_COLAB and _daemon_up() is None:\n"
+        "    print('[ollama] starting daemon …')\n"
+        "    subprocess.Popen(\n"
+        "        'nohup ollama serve > /tmp/ollama.log 2>&1 &',\n"
+        "        shell=True,\n"
+        "    )\n"
+        "    deadline = time.monotonic() + 30\n"
+        "    while time.monotonic() < deadline and _daemon_up() is None:\n"
+        "        time.sleep(0.5)\n"
+        "\n"
+        "_tags = _daemon_up(timeout_s=2.0)\n"
+        "if _tags is None:\n"
+        "    raise RuntimeError(\n"
+        "        f'Ollama daemon not reachable at {_OLLAMA_BASE_URL}. '\n"
+        "        'On Colab: re-run this cell. Locally: run `ollama serve`.'\n"
+        "    )\n"
+        "\n"
+        "_have = {m.get('name','').split(':',1)[0] for m in _tags.get('models', [])}\n"
+        "for _model in _LESSON_MODELS:\n"
+        "    _fam = _model.split(':', 1)[0]\n"
+        "    if _fam in _have:\n"
+        "        continue\n"
+        "    if _IN_COLAB:\n"
+        "        print(f'[ollama] pulling {_model} (one-time) …')\n"
+        "        subprocess.run(['ollama', 'pull', _model], check=True)\n"
+        "    else:\n"
+        "        raise RuntimeError(\n"
+        "            f'Model {_model!r} not pulled. Run: ollama pull {_model}'\n"
+        "        )\n"
+        "\n"
+        "print(\n"
+        "    '✓ Ollama ready at', _OLLAMA_BASE_URL,\n"
+        "    '— models:', _LESSON_MODELS,\n"
+        ")\n"
+    )
 
 
 def cell0_source(packages: list[str]) -> str:
@@ -587,6 +709,15 @@ def build_notebook(source_py: Path, *, module: str, allow_blanks: bool) -> dict:
     packages = detect_packages(raw, cell1_body)
 
     cells = [make_code_cell(cell0_source(packages))]
+
+    # M6 lessons need a real LLM. Insert the Ollama bootstrap cell between
+    # the pip-install cell and the inlined-helpers cell so the daemon is
+    # already running by the time any helper imports kaizen_agents.
+    if module == "mlfp06":
+        lesson = _lesson_from_path(source_py)
+        if lesson is not None:
+            cells.append(make_code_cell(ollama_bootstrap_cell_source(lesson)))
+
     cells.append(make_code_cell(cell1_body))
     cells.extend(convert_asyncio(py_to_cells(body)))
 

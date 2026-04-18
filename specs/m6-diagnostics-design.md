@@ -244,7 +244,7 @@ class LLMDiagnostics:
     def __init__(
         self,
         *,
-        judge_model: str | None = None,   # defaults to OPENAI_PROD_MODEL from .env
+        judge_model: str | None = None,   # defaults to OLLAMA_CHAT_MODEL via _ollama_bootstrap
         cache_dir: Path | None = None,    # per-exercise reproducibility cache
     ) -> None:
         # Loads .env (env-models.md), validates judge_model pairing with the right key,
@@ -258,12 +258,17 @@ class LLMDiagnostics:
     def faithfulness(self, response: str, context: list[str]) -> pl.DataFrame: ...
     def llm_as_judge(self, prompt: str, response: str, criteria: str) -> JudgeVerdict: ...
     def plot_output_dashboard(self) -> go.Figure: ...
-    def report(self) -> str: ...   # text-mode auto-diagnosis
+    def report(self, *, format: str = "rich") -> Any: ...
+    # default returns Rich Table; format="dict" → programmatic, format="text" → plain
 ```
 
 - All DataFrames are Polars.
 - All plots are Plotly.
-- All LLM calls route through Kaizen Delegate, never direct `openai.chat.completions.create` (framework-first MUST).
+- All LLM calls route through Kaizen Delegate constructed via
+  `shared.mlfp06._ollama_bootstrap.make_delegate`, which forces the local
+  Ollama provider (no API keys, no silent fallback). Direct `Delegate(...)`
+  construction is BLOCKED in M6 code; raw `openai.chat.completions.create`
+  is also BLOCKED (framework-first MUST). See Redline 14.
 - Every judge call uses a bias-mitigated wrapper (position swap + length normalisation) by default.
 - Every public method has a docstring with a one-line example, matching the M5 style.
 
@@ -413,18 +418,19 @@ To keep the design tractable for one module, the observatory explicitly does NOT
 
 ## 13. Compliance Summary
 
-| Rule                                                  | Disposition                                                                                                      |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `framework-first.md` — Kaizen for all LLM calls       | MUST: all judges and agents route through Delegate / BaseAgent. No raw `openai.chat.completions`.                |
-| `env-models.md` — no hardcoded model names            | MUST: `judge_model` defaults to `os.environ["OPENAI_PROD_MODEL"]`. All lenses load `.env` at construction.       |
-| `dependencies.md` — latest versions                   | Each new dep gets `>=X.Y` floor only, no upper cap.                                                              |
-| `independence.md` — no commercial coupling            | Langfuse self-hosted (open-source) over Langsmith (hosted); `deepeval` over proprietary eval suites.             |
-| `two-format.md` — VS Code + Colab                     | Each exercise ships `.py` + `.ipynb` via `scripts/generate_selfcontained_notebook.py`.                           |
-| `exercise-standards.md` — R10 5-phase                 | Each technique file follows Theory → Build → Train → Visualise → Apply.                                          |
-| `orphan-detection.md` — Tier 2 wiring tests           | Each lens has a Tier 2 test that imports through `LLMObservatory`.                                               |
-| `facade-manager-detection.md` — manager-shape classes | The 6 lens classes follow the `*Diagnostics` pattern; each has a wiring test.                                    |
-| `observability.md` — structured logs                  | Every lens emits structured INFO/WARN via the framework logger, never `print`.                                   |
-| `testing.md` — Tier 2 real infrastructure             | Lens tests use real Delegate, real PACT engine, real transformer_lens model — no mocks for the external surface. |
+| Rule                                                  | Disposition                                                                                                                            |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `framework-first.md` — Kaizen for all LLM calls       | MUST: all judges and agents route through Delegate / BaseAgent. No raw `openai.chat.completions`.                                      |
+| `env-models.md` — no hardcoded model names            | MUST: `judge_model` defaults to `OLLAMA_CHAT_MODEL` via the `_ollama_bootstrap` chain. All lenses load `.env` at construction.         |
+| Redline 14 — real LLM or loud failure (M6)            | MUST: every M6 LLM call routes through `_ollama_bootstrap.make_delegate`. Daemon-down raises `OllamaUnreachableError`; no silent stub. |
+| `dependencies.md` — latest versions                   | Each new dep gets `>=X.Y` floor only, no upper cap.                                                                                    |
+| `independence.md` — no commercial coupling            | Langfuse self-hosted (open-source) over Langsmith (hosted); `deepeval` over proprietary eval suites.                                   |
+| `two-format.md` — VS Code + Colab                     | Each exercise ships `.py` + `.ipynb` via `scripts/generate_selfcontained_notebook.py`.                                                 |
+| `exercise-standards.md` — R10 5-phase                 | Each technique file follows Theory → Build → Train → Visualise → Apply.                                                                |
+| `orphan-detection.md` — Tier 2 wiring tests           | Each lens has a Tier 2 test that imports through `LLMObservatory`.                                                                     |
+| `facade-manager-detection.md` — manager-shape classes | The 6 lens classes follow the `*Diagnostics` pattern; each has a wiring test.                                                          |
+| `observability.md` — structured logs                  | Every lens emits structured INFO/WARN via the framework logger, never `print`.                                                         |
+| `testing.md` — Tier 2 real infrastructure             | Lens tests use real Delegate, real PACT engine, real transformer_lens model — no mocks for the external surface.                       |
 
 ---
 

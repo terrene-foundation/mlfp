@@ -436,9 +436,97 @@ python3 scripts/check_notebook_syntax.py modules/
 
 ---
 
+## Redline 14: Real LLM or Loud Failure — No Silent Stubs (M6)
+
+Every M6 LLM call MUST execute against a real LLM provider. There is NO silent
+stub fallback. If the provider is unreachable, the exercise MUST raise a typed
+error with an actionable message (install command, daemon-start command,
+model-pull command). A successful exercise run MUST be distinguishable from
+an "I forgot to start the daemon" run.
+
+### What this prevents
+
+The pre-Ollama implementation of `shared.mlfp06.ex_1.run_delegate` swallowed
+every provider exception, returned `("unknown", 0.0, latency)`, and let the
+exercise complete with `accuracy=0% cost=$0.00`. A student running the
+notebook without an OpenAI key got a visually-complete result with zero
+accuracy and no signal that the LLM never fired. This violated
+`rules/zero-tolerance.md` Rule 2 (no silent placeholders) AND Rule 3 (no
+silent fallbacks); see DISCOVERY entry `m6-holistic-2026-04-17` open question
+#2.
+
+### Provider mandate (Ollama default)
+
+M6 ships pre-configured for **local Ollama** as the default provider — no
+API keys required, runs on a developer laptop and on Colab T4. Every M6
+LLM call routes through `shared.mlfp06._ollama_bootstrap`:
+
+- `make_delegate(model=...)` — the only sanctioned Delegate constructor for
+  M6. Forces `budget_usd=None` (Kaizen mis-prices Ollama as $3/$15 per Mtok).
+- `make_embedder(model=...)` — Ollama embedding adapter for lesson 6.4 RAG.
+- `preflight_ollama(required_models=[...])` — daemon reachability + model
+  presence check. Raises `OllamaUnreachableError` with the exact `ollama
+pull <model>` command needed to fix.
+
+Direct `Delegate(...)` construction in M6 code is BLOCKED. Direct
+`openai.*`, `anthropic.*`, or other-provider SDK calls in M6 code are
+BLOCKED. The two pre-existing direct-Delegate sites
+(`solutions/ex_3/04_grpo_and_judge.py` and
+`solutions/ex_6/05_memory_and_security.py`) were migrated to the bootstrap
+factory in the Ollama migration commit.
+
+### Generator contract
+
+`scripts/generate_selfcontained_notebook.py` MUST inject a Cell 1 (between
+the pip-install Cell 0 and the inlined-helpers Cell 2) for every M6 notebook
+that:
+
+1. Detects Colab via `'google.colab' in sys.modules`
+2. On Colab: installs the Ollama binary if missing, starts the daemon,
+   waits up to 30s for `/api/tags`, pulls the lesson's models
+3. On local: verifies daemon reachable + models pulled, raises with the
+   `ollama serve` / `ollama pull` commands if not
+4. The list of required models per lesson is the `_M6_LESSON_MODELS`
+   manifest in the generator (mirrors `LESSON_MODELS` in `_ollama_bootstrap.py`)
+
+### `.env` defaults
+
+The repo ships an `.env.example` that sets:
+
+- `OLLAMA_BASE_URL=http://localhost:11434`
+- `OLLAMA_CHAT_MODEL=llama3.2:3b` (tool-capable, ~2GB)
+- `OLLAMA_EMBED_MODEL=nomic-embed-text` (~270MB, 768-dim)
+- `OLLAMA_FT_BASE_MODEL=qwen2.5:0.5b` (lesson 6.2/6.3 served baseline)
+- `SFT_BASE_MODEL=Qwen/Qwen2.5-0.5B-Instruct` (HF repo for TRL training)
+
+Legacy `OPENAI_*` / `DEFAULT_LLM_MODEL` env vars are honoured if set (e.g.
+by the LLM-as-judge resolution chain in `_judges.py`) but the bootstrap
+default is Ollama. Setting `OPENAI_API_KEY` does not switch M6 to OpenAI —
+that would require explicit code changes inside the bootstrap factory.
+
+### Audit checklist
+
+- `grep -rn 'Delegate(' shared/mlfp06/ modules/mlfp06/` returns zero hits
+  outside `_ollama_bootstrap.py` and the rationale comments at the two
+  migrated sites.
+- `grep -rn 'OPENAI_PROD_MODEL\|gpt-4o' shared/mlfp06/ modules/mlfp06/`
+  returns zero non-comment hits.
+- Every M6 notebook's Cell 1 contains the `M6 Ollama bootstrap` header.
+- Every M6 helper module's MODEL constant resolves to the Ollama bootstrap
+  default when no env override is set.
+
+**Origin**: Session 2026-04-17 (M6 holistic audit) → 2026-04-17 (Ollama
+migration). The OpenAI silent-stub fallback was caught by the audit; the
+Ollama migration removed it and replaced the entire provider stack.
+End-to-end smoke validated: SST-2 zero-shot classifier scored 3/3 against
+real Ollama (qwen3:latest, 1403 tokens, 5s avg latency) before the
+migration was declared done.
+
+---
+
 ## Red Team Protocol
 
-Every `/redteam` run MUST validate ALL 13 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
+Every `/redteam` run MUST validate ALL 14 redlines for the module(s) under review. The red team report MUST include a section for each redline with:
 
 1. **Status**: PASS / FAIL / PARTIAL
 2. **Evidence**: Specific files, line numbers, measurements

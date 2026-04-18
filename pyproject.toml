@@ -75,6 +75,10 @@ dependencies = [
     # Environment
     "python-dotenv>=1.0",
     "onnxscript>=0.6.2",
+    # M6 Ollama bootstrap — preflight reachability check + Colab daemon install
+    "httpx>=0.27",
+    # M6 LLM Observatory — Rich-formatted report() default (specs/m6-diagnostics-design.md)
+    "rich>=13.0",
     # M6 — LLM Observatory diagnostics stack
     #
     # Output lens (classical + LLM-as-judge metrics for generation):

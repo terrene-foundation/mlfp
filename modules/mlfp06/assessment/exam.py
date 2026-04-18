@@ -57,9 +57,10 @@ setup_environment()
 loader = MLFPDataLoader()
 
 # Model from environment — NEVER hardcoded
-LLM_MODEL = os.environ.get("OPENAI_PROD_MODEL", os.environ.get("DEFAULT_LLM_MODEL"))
-assert LLM_MODEL is not None, "No LLM model configured in .env"
-print(f"Using model: {LLM_MODEL}")
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+
+LLM_MODEL = DEFAULT_CHAT_MODEL
+print(f"Using model: {LLM_MODEL}  (provider: ollama)")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -100,7 +101,7 @@ print(f"Using model: {LLM_MODEL}")
 # ════════════════════════════════════════════════════════════════════════
 
 print("=== Task 1a: Zero-Shot Classification ===")
-from kaizen_agents import Delegate
+from shared.mlfp06._ollama_bootstrap import make_delegate
 from kaizen import Signature, InputField, OutputField
 
 df_feedback = loader.load("mlfp06", "citizen_feedback.csv")
@@ -110,7 +111,7 @@ categories = ["transport", "housing", "healthcare", "education", "environment"]
 feedback_texts = df_feedback["feedback_text"].to_list()
 true_labels = df_feedback["category"].to_list()
 
-delegate = Delegate(model=LLM_MODEL)
+delegate = make_delegate(model=LLM_MODEL)
 
 # Zero-shot classification
 zero_shot_preds = []

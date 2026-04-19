@@ -25,16 +25,16 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    # Kailash platform — floors match COC template sync 3.4.9 (upstream.sdk_packages)
-    "kailash>=2.8.6",
-    "kailash-ml>=0.9.0",
-    "kailash-dataflow>=2.0.8",
-    "kailash-nexus>=2.0.3",
-    "kailash-kaizen>=2.7.4",
-    "kaizen-agents>=0.9.2",
-    "kailash-pact>=0.8.1",
-    "kailash-align>=0.3.1",
-    "kailash-mcp>=0.2.4",
+    # Kailash platform — floors match COC template sync 3.5.9 (upstream.sdk_packages)
+    "kailash>=2.8.9",
+    "kailash-ml>=0.12.0",
+    "kailash-dataflow>=2.0.12",
+    "kailash-nexus>=2.1.1",
+    "kailash-kaizen>=2.7.5",
+    "kaizen-agents>=0.9.3",
+    "kailash-pact>=0.8.2",
+    "kailash-align>=0.3.2",
+    "kailash-mcp>=0.2.5",
     # Data
     "polars>=1.0",
     "pyarrow>=14.0",
@@ -84,7 +84,11 @@ dependencies = [
     # Output lens (classical + LLM-as-judge metrics for generation):
     "deepeval>=2.0",
     "ragas>=0.2",
-    "trulens-eval>=1.0",
+    # trulens-eval moved to [trulens] extra — its trulens-dashboard pin
+    # (psutil<6) conflicts with kailash>=2.8.9 (psutil>=7), and the
+    # optional `trulens_scores()` helper routes through OpenAI which is
+    # blocked by Redline 14 (M6 is Ollama-only). Keep ragas + deepeval
+    # as the primary RAG eval path.
     "sacrebleu>=2.4",
     "rouge-score>=0.1.2",
     "bert-score>=0.3.13",

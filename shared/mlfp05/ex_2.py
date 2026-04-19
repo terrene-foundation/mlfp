@@ -221,27 +221,25 @@ class LitCNN(pl.LightningModule):
 
 
 def get_precision_setting() -> str:
-    """Detect whether mixed-precision training is beneficial."""
-    if torch.cuda.is_available():
-        cap = torch.cuda.get_device_capability()
-        if cap[0] >= 7:
-            print("  GPU with Tensor Cores detected -- using 16-mixed precision")
-            return "16-mixed"
-        print("  Older GPU detected -- using 32-bit precision")
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        print("  Apple MPS detected -- using 32-bit precision (no fp16 compute units)")
-    else:
-        print("  CPU detected -- using 32-bit precision")
-    return "32"
+    """Return the optimal Lightning precision string for the current backend.
+
+    Routes through ``kailash_ml.device()`` so MPS / CUDA / ROCm / Intel XPU /
+    CPU are all selected by the same policy the rest of the platform uses.
+    BackendInfo.precision is the canonical answer ("16-mixed" on Apple MPS
+    + Tensor-Core GPUs, "32" on older GPUs and CPU).
+    """
+    import kailash_ml as km
+
+    backend = km.device()
+    print(f"  {backend.backend} detected -- using {backend.precision} precision")
+    return backend.precision
 
 
 def get_accelerator() -> str:
-    """Return the Lightning accelerator string for the current device."""
-    if torch.cuda.is_available():
-        return "gpu"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    """Return the Lightning accelerator string for the current backend."""
+    import kailash_ml as km
+
+    return km.device().accelerator
 
 
 PRECISION = get_precision_setting()

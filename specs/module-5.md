@@ -3,6 +3,7 @@
 **Description**: Every major DL architecture. One paradigm per lesson. All implemented. Following R5 Deck 6A (comprehensive architecture coverage) + PCML6 notebooks (crown jewel implementations).
 
 **Module Learning Objectives**: By the end of M5, students can:
+
 - Build and train autoencoders (vanilla, denoising, VAE, convolutional)
 - Implement and train CNNs with modern enhancements (ResNet, SE blocks, mixed precision)
 - Build LSTM and GRU networks with attention mechanisms
@@ -14,6 +15,53 @@
 
 **Kailash Engines**: ModelVisualizer, OnnxBridge, InferenceServer, RLTrainer
 
+## Compute Backend — Auto-Detected (Apple MPS / NVIDIA CUDA / CPU)
+
+Every M5 lesson selects the best available compute backend through a single
+canonical detector (`kailash_ml.device()`), threaded into PyTorch via
+`shared.kailash_helpers.get_device()` and into Lightning via the
+`PRECISION` / `ACCELERATOR` constants in `shared.mlfp05.ex_2`.
+
+What this means in practice:
+
+| Hardware                        | Backend       | Precision    |
+| ------------------------------- | ------------- | ------------ |
+| Apple Silicon (M1/M2/M3/M4)     | `mps` (Metal) | `16-mixed`   |
+| NVIDIA Ampere+ (RTX 30/40, A/H) | `gpu` (CUDA)  | `16-mixed`   |
+| NVIDIA Turing- (older Tensor)   | `gpu` (CUDA)  | `32`         |
+| AMD ROCm                        | `gpu` (ROCm)  | per detector |
+| Intel Xe-HPC (via IPEX)         | `xpu`         | per detector |
+| No GPU                          | `cpu`         | `32`         |
+
+There is NO env var, NO `--device` flag, NO `if torch.cuda.is_available()`
+branch in any M5 lesson. Students get the right backend automatically. The
+`ACCELERATOR` and `PRECISION` constants in lesson helpers are derived from
+`kailash_ml.device()` so the choice the lessons report agrees with what the
+underlying `MLEngine()` actually picks.
+
+For a Lightning training step inside a lesson:
+
+```python
+from shared.mlfp05.ex_2 import ACCELERATOR, PRECISION  # auto MPS/CUDA/CPU
+trainer = lightning.Trainer(
+    accelerator=ACCELERATOR,
+    precision=PRECISION,
+    max_epochs=3,
+)
+```
+
+For raw PyTorch tensor placement:
+
+```python
+from shared.kailash_helpers import get_device
+device = get_device()       # torch.device('mps') on Mac, 'cuda' on NVIDIA
+model.to(device)
+```
+
+The kailash-ml 0.12 `MLEngine()` constructor (`accelerator='auto'` default)
+exercises the same detector, so anything routed through the engine inherits
+the same answer without further wiring.
+
 ---
 
 ## Lesson 5.1: Autoencoders
@@ -24,6 +72,7 @@
 **DL Toolkit Refresher** (30 min opening): "In M4.8 you learned forward pass, backprop, gradient descent, dropout, batch norm, optimisers. Quick exercise: build a 2-layer classifier. Good — now we modify this architecture for UNSUPERVISED learning. That's an autoencoder."
 
 **Topics**:
+
 - Autoencoder concept: encoder (compress) → latent space → decoder (reconstruct). Minimise reconstruction error.
 - **Deep dive** (4 variants with full implementations):
   - Vanilla autoencoder: simplest form, undercomplete
@@ -38,11 +87,13 @@
   - CVAE (Contractive + Variational)
 
 **Key Formulas**:
+
 - Reconstruction loss: L = ||x - decoder(encoder(x))||^2
 - VAE ELBO: L = E_q[log p(x|z)] - KL(q(z|x) || p(z))
-- Reparameterisation: z = mu + sigma * epsilon, epsilon ~ N(0,1)
+- Reparameterisation: z = mu + sigma \* epsilon, epsilon ~ N(0,1)
 
 **Learning Objectives**: Students can:
+
 - Implement vanilla, denoising, VAE, and convolutional autoencoders
 - Explain the VAE reparameterisation trick and why it enables gradient flow
 - Generate new data by sampling from VAE latent space
@@ -62,6 +113,7 @@
 **Spectrum Position**: Spatial feature learning — extracting patterns from grid data
 
 **Topics**:
+
 - **CNN fundamentals** (from Deck 6A):
   - Convolution operation: filters, stride, padding, feature maps
   - Pooling: max pooling, average pooling — reduce spatial dimensions
@@ -83,11 +135,13 @@
 - **Vision Transformers (ViT)**: brief intro — applying transformers to image patches (connects to M5.4)
 
 **Key Formulas**:
+
 - Conv output size: (W - F + 2P) / S + 1
 - ResNet: H(x) = F(x) + x (skip connection)
-- SE block: s = sigmoid(W2 * ReLU(W1 * GAP(x)))
+- SE block: s = sigmoid(W2 _ ReLU(W1 _ GAP(x)))
 
 **Learning Objectives**: Students can:
+
 - Build CNNs with convolution, pooling, and normalisation layers
 - Implement ResNet with skip connections
 - Apply modern training enhancements (SE blocks, mixed precision, Mixup)
@@ -107,6 +161,7 @@
 **Spectrum Position**: Temporal feature learning — extracting patterns from sequences
 
 **Topics**:
+
 - **RNN fundamentals**: directed cycles, hidden state memory, vanishing gradient problem
 - **LSTM** (from Deck 6A + PCML6-3):
   - 4 components: cell state, forget gate, input gate, output gate
@@ -123,14 +178,16 @@
 - **Gradient clipping** (from M4.8 toolkit): essential for RNNs to prevent exploding gradients
 
 **Key Formulas**:
-- LSTM forget gate: f_t = sigma(W_f * [h_{t-1}, x_t] + b_f)
-- LSTM input gate: i_t = sigma(W_i * [h_{t-1}, x_t] + b_i)
-- LSTM cell update: C_t = f_t * C_{t-1} + i_t * tanh(W_C * [h_{t-1}, x_t] + b_C)
-- LSTM output gate: o_t = sigma(W_o * [h_{t-1}, x_t] + b_o)
-- LSTM hidden state: h_t = o_t * tanh(C_t)
-- Perplexity: PP = exp(-1/N * Sum(log P(w_i)))
+
+- LSTM forget gate: f*t = sigma(W_f \* [h*{t-1}, x_t] + b_f)
+- LSTM input gate: i*t = sigma(W_i \* [h*{t-1}, x_t] + b_i)
+- LSTM cell update: C*t = f_t \* C*{t-1} + i*t * tanh(W_C * [h*{t-1}, x_t] + b_C)
+- LSTM output gate: o*t = sigma(W_o \* [h*{t-1}, x_t] + b_o)
+- LSTM hidden state: h_t = o_t \* tanh(C_t)
+- Perplexity: PP = exp(-1/N \* Sum(log P(w_i)))
 
 **Learning Objectives**: Students can:
+
 - Implement LSTM and GRU networks
 - Explain all LSTM gate equations and their purpose
 - Apply temporal attention to sequence models
@@ -150,9 +207,10 @@
 **Spectrum Position**: Attention-based feature learning — processing sequences in parallel
 
 **Topics**:
+
 - **Self-attention** (derive from scratch):
   - Query, Key, Value matrices
-  - Attention(Q, K, V) = softmax(Q * K^T / sqrt(d_k)) * V
+  - Attention(Q, K, V) = softmax(Q _ K^T / sqrt(d_k)) _ V
   - Why divide by sqrt(d_k): prevents softmax from saturating (dot products grow with dimension)
   - Multi-head attention: multiple attention heads capture different relationships
 - **Positional encoding**: sinusoidal or learned embeddings (transformers have no inherent position sense)
@@ -170,6 +228,7 @@
 - **BERT fine-tuning** (applied exercise from PCML6-4): fine-tune pre-trained BERT for text classification
 
 **Key Formulas**:
+
 - Scaled dot-product attention: Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) V
 - Multi-head attention: MultiHead(Q,K,V) = Concat(head_1,...,head_h) W^O
 - Positional encoding: PE(pos, 2i) = sin(pos / 10000^{2i/d}), PE(pos, 2i+1) = cos(pos / 10000^{2i/d})
@@ -177,6 +236,7 @@
 **Consolidation segment** (30 min): After Transformers, students have seen the four major paradigms (AE, CNN, RNN, Transformer). Compare: "Which architecture for which data type?" Table: images→CNN/ViT, sequences→RNN/Transformer, graphs→GNN (M5.6), generation→VAE/GAN (M5.5).
 
 **Learning Objectives**: Students can:
+
 - Derive scaled dot-product attention from scratch
 - Explain why dividing by sqrt(d_k) is necessary
 - Fine-tune BERT for a downstream NLP task
@@ -197,6 +257,7 @@
 **Spectrum Position**: Generative modelling — learning to create new data
 
 **Topics**:
+
 - **GAN fundamentals** (from Deck 6A):
   - Generator vs Discriminator: zero-sum game
   - Adversarial loss: binary cross-entropy
@@ -217,11 +278,13 @@
 - **Data generation applications** from Deck 6A: synthetic data for privacy, augmentation, simulation
 
 **Key Formulas**:
+
 - GAN minimax: min_G max_D [E[log D(x)] + E[log(1 - D(G(z)))]]
 - WGAN: min_G max_D [E[D(x)] - E[D(G(z))]]
 - FID: ||mu_r - mu_g||^2 + Tr(Sigma_r + Sigma_g - 2*(Sigma_r * Sigma_g)^{1/2})
 
 **Learning Objectives**: Students can:
+
 - Implement DCGAN and WGAN with training loops
 - Explain mode collapse and how WGAN addresses it
 - Compare GAN, VAE, and diffusion models for different generation tasks
@@ -241,6 +304,7 @@
 **Spectrum Position**: Graph feature learning — patterns in connected data
 
 **Topics**:
+
 - Graph data: nodes, edges, adjacency matrix. Applications: social networks, knowledge graphs, molecular structures.
 - **GNN architectures** (from Deck 6A):
   - **GCN (Graph Convolutional Networks)**: spectral methods, message passing, aggregation
@@ -251,10 +315,12 @@
 - torch_geometric library: `GCNConv`, `global_mean_pool`, DataLoader for graphs
 
 **Key Formulas**:
+
 - GCN: H^(l+1) = sigma(D^{-1/2} A D^{-1/2} H^(l) W^(l))
 - GAT attention: e_ij = LeakyReLU(a^T [Wh_i || Wh_j])
 
 **Learning Objectives**: Students can:
+
 - Build GCNs for node and graph classification
 - Explain message passing and neighbourhood aggregation
 - Compare GCN, GraphSAGE, GAT for different tasks
@@ -274,6 +340,7 @@
 **Spectrum Position**: Knowledge transfer — leveraging pre-trained representations
 
 **Topics**:
+
 - Transfer learning concept: pre-trained on large dataset, fine-tune on small target dataset
 - **CV Transfer Learning** (from PCML6-8):
   - ResNet fine-tuning: freeze early layers, train later layers + new classifier head
@@ -295,6 +362,7 @@
   | Tabular | Gradient boosting | Never (train from scratch) |
 
 **Learning Objectives**: Students can:
+
 - Fine-tune pre-trained vision and NLP models for new tasks
 - Apply proper transfer learning techniques (freeze/unfreeze layers)
 - Export models to ONNX for deployment
@@ -316,6 +384,7 @@
 **Bridge**: "All DL so far learns from static data (images, text, sequences). RL learns from INTERACTION with an environment. The agent takes actions, receives rewards, and learns a policy that maximises cumulative reward."
 
 **Topics**:
+
 - **RL fundamentals**:
   - Agent, environment, state, action, reward
   - Episode: sequence of (state, action, reward) until termination
@@ -334,12 +403,14 @@
 - Connection to M6: "RLHF uses PPO to align LLMs with human preferences. DPO achieves the same goal without the reward model."
 
 **Key Formulas**:
+
 - Bellman expectation: V(s) = E[R_{t+1} + gamma * V(S_{t+1}) | S_t = s]
-- Bellman optimality: Q*(s,a) = E[R_{t+1} + gamma * max_{a'} Q*(S_{t+1}, a') | S_t = s, A_t = a]
+- Bellman optimality: Q*(s,a) = E[R\_{t+1} + gamma * max*{a'} Q\*(S*{t+1}, a') | S_t = s, A_t = a]
 - PPO clipped objective: L^{CLIP} = E[min(r_t * A_t, clip(r_t, 1-epsilon, 1+epsilon) * A_t)]
 - DQN loss: L = E[(r + gamma * max_{a'} Q(s', a'; theta^-) - Q(s, a; theta))^2]
 
 **Learning Objectives**: Students can:
+
 - Explain the Bellman equations and what they represent
 - Implement DQN for a discrete action problem
 - Implement PPO for a continuous action problem

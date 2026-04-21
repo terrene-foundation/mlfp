@@ -162,7 +162,7 @@ lstm_losses, lstm_accs = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — LSTM baseline (contrast with Transformer 02)
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_classifier
+from kailash_ml.diagnostics import diagnose_classifier
 
 print("\n── Diagnostic Report (LSTM baseline) ──")
 diag, findings = diagnose_classifier(

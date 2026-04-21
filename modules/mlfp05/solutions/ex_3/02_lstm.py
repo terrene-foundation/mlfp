@@ -223,7 +223,7 @@ lstm_results = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — LSTM fixes vanilla RNN's vanishing gradients
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_regressor
+from kailash_ml.diagnostics import diagnose_regressor
 
 print("\n── Diagnostic Report (LSTM) ──")
 diag, findings = diagnose_regressor(

@@ -326,7 +326,7 @@ def train_and_diagnose(
     """
     # Import lazily so module import never triggers a diagnostics init on
     # import error in downstream repos without the shared package.
-    from shared.mlfp05.diagnostics import DLDiagnostics
+    from kailash_ml.diagnostics import DLDiagnostics
 
     model.to(device)
     optimizer = _build_optimizer(model, lr=lr, weight_decay=weight_decay)

@@ -737,7 +737,7 @@ print(
 # Running diagnostics BEFORE ONNX export is deployment hygiene: you
 # never want to ship a model that is secretly pathological. A clean
 # Prescription Pad is table stakes for production release.
-from shared.mlfp05.diagnostics import diagnose_classifier
+from kailash_ml.diagnostics import diagnose_classifier
 
 print("\n── Pre-Export Diagnostic Report (ResNetSE) ──")
 diag, findings = diagnose_classifier(

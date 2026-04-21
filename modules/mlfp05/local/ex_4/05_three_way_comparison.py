@@ -581,7 +581,7 @@ print(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_classifier, run_diagnostic_checkpoint
+from kailash_ml.diagnostics import diagnose_classifier, run_diagnostic_checkpoint
 
 print("\n── Diagnostic Report (LSTM) ──")
 lstm_diag, lstm_findings = diagnose_classifier(

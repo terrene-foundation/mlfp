@@ -359,7 +359,7 @@ print(
 # high dead_fraction on the sparse layer — but unlike 01's PATHOLOGICAL
 # dead-ReLU failure, here dead-neuron-ness is the DESIGN GOAL.
 # Students must learn to read intent from the report, not just icons.
-from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
 
 
 def _diag_loss(m, batch):

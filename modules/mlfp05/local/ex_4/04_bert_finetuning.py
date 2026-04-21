@@ -460,7 +460,7 @@ print(
 # ══════════════════════════════════════════════════════════════════
 # BERT batches are dicts of (ids, mask, labels) not (x, y) tuples,
 # so we use run_diagnostic_checkpoint directly with a batch_adapter.
-from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
 import torch.nn.functional as _F
 
 

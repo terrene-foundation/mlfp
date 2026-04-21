@@ -741,7 +741,7 @@ print(
 # collapse signature in the activations. The Stethoscope should
 # show critic loss decreasing smoothly as the Wasserstein distance
 # shrinks — NOT the oscillating adversarial dance of vanilla GAN.
-from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
 import torch.nn.functional as _F
 
 

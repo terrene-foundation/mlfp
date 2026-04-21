@@ -421,7 +421,7 @@ print(
 # VanillaRNN is the vanishing-gradient poster child. This diagnostic
 # run is EXPECTED to fire a CRITICAL Blood Test finding — that is
 # the pedagogical point. LSTM (02) and GRU (03) fix it.
-from shared.mlfp05.diagnostics import diagnose_regressor
+from kailash_ml.diagnostics import diagnose_regressor
 
 print("\n── Diagnostic Report (VanillaRNN) ──")
 diag, findings = diagnose_regressor(

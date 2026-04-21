@@ -629,7 +629,7 @@ print(
 # pixels drove the prediction?" and surfaces spurious shortcuts
 # (Zech et al. 2018: hospitals' chest-X-ray models latched onto
 # watermarks instead of pathology).
-from shared.mlfp05.diagnostics import diagnose_classifier
+from kailash_ml.diagnostics import diagnose_classifier
 
 print("\n── Diagnostic Report (SimpleCNN) ──")
 diag, findings = diagnose_classifier(

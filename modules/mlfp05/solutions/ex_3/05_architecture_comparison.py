@@ -233,7 +233,7 @@ for name, model in models.items():
     # Per-architecture diagnostic — the comparison is the teaching
     # moment: VanillaRNN should light up CRITICAL while LSTM/GRU/
     # Attention stay HEALTHY on the same task and identical data.
-    from shared.mlfp05.diagnostics import diagnose_regressor
+    from kailash_ml.diagnostics import diagnose_regressor
 
     print(f"  ── Diagnostic Report ({name}) ──")
     _diag, _findings = diagnose_regressor(

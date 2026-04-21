@@ -464,7 +464,7 @@ print(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — Transformer (attention + residual stack)
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_classifier
+from kailash_ml.diagnostics import diagnose_classifier
 
 print("\n── Diagnostic Report (Transformer Encoder) ──")
 diag, findings = diagnose_classifier(

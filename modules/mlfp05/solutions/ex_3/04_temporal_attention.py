@@ -238,7 +238,7 @@ attn_results = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — LSTM+Attention (forward returns tuple)
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_regressor
+from kailash_ml.diagnostics import diagnose_regressor
 
 print("\n── Diagnostic Report (LSTM+Attention) ──")
 diag, findings = diagnose_regressor(

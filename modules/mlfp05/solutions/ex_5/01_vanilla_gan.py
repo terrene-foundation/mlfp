@@ -229,7 +229,7 @@ G_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(train_vanilla_gan
 # can see which side is "winning" and which side is starving for
 # signal. The `train_losses` we replay into each diag are the per-
 # epoch losses already captured above.
-from shared.mlfp05.diagnostics import run_diagnostic_checkpoint
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
 import torch.nn.functional as _F
 
 

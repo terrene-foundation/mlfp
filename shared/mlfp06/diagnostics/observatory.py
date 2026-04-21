@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """LLM Observatory — central facade composing all six clinical lenses.
 
-Mirrors ``shared.mlfp05.diagnostics.DLDiagnostics`` (the M5 Doctor's Bag)
+Mirrors ``kailash_ml.diagnostics.DLDiagnostics`` (the M5 Doctor's Bag)
 for the M6 problem domain. The facade gives M6 exercises one import and
 one constructor call that wires up every lens:
 

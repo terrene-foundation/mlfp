@@ -200,7 +200,7 @@ gru_results = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — GRU (3 gates vs LSTM's 4)
 # ══════════════════════════════════════════════════════════════════
-from shared.mlfp05.diagnostics import diagnose_regressor
+from kailash_ml.diagnostics import diagnose_regressor
 
 print("\n── Diagnostic Report (GRU) ──")
 diag, findings = diagnose_regressor(

@@ -178,3 +178,37 @@ Every package published via PyPI OIDC trusted-publishing MUST be registered as a
 **Why:** Tag-triggered publishes (`push` of `v*` / `<pkg>-v*`) flow direct to PyPI only and never touch TestPyPI. The TestPyPI path requires `workflow_dispatch` with `publish_to=testpypi`, which requires the project to be pre-registered on test.pypi.org as a pending publisher. Without that one-time UI step, the upload returns `400 "Non-user identities cannot create new projects"` — a confusing error message that costs a release-cycle round-trip. Registration is a one-time UI step per package; document it in the repo's release runbook so the next package release does not re-discover it.
 
 Origin: kailash-py 2026-04-19 release — kailash-ml PyPI publish succeeded via tag push, TestPyPI workflow_dispatch failed with 400 because `kailash_ml` was not pre-registered on test.pypi.org.
+
+## MUST: Sibling-Package CI Installs Root SDK Editable For Unreleased Core Modules
+
+When a new public module lands in `src/kailash/` (or any core SDK module tree) and is not yet published to PyPI, every sibling-package CI workflow that imports from it MUST prepend `uv pip install -e "."` to its install block BEFORE installing the sub-package's own `[dev]` extras. Sub-package CI workflows that install only `packages/<pkg>[dev]` silently resolve `kailash>=X.Y.Z` from PyPI — where the new module does NOT yet exist — and every test importing the new module fails at collection with `ModuleNotFoundError`.
+
+```yaml
+# DO — root kailash editable installed FIRST, then sub-package
+- name: Install kailash-<subpkg>[dev]
+  run: |
+    uv venv .venv
+    # Install root kailash first so kailash.<new_module> resolves
+    # (not yet on PyPI; depends on PR #<N> of issue #<M>).
+    uv pip install -e "." --python .venv/bin/python
+    uv pip install -e "packages/kailash-<subpkg>[dev]" --python .venv/bin/python
+
+# DO NOT — only sub-package; transitively pulls kailash from PyPI
+- name: Install kailash-<subpkg>[dev]
+  run: |
+    uv venv .venv
+    uv pip install -e "packages/kailash-<subpkg>[dev]" --python .venv/bin/python
+    # → ModuleNotFoundError: No module named 'kailash.<new_module>'
+```
+
+**BLOCKED rationalizations:**
+
+- "The sub-package's `kailash>=X.Y.Z` dep should pull it in"
+- "We'll publish kailash first, then the sub-package CI will resolve"
+- "This workflow happened to pass last time; must be fine"
+- "The leading `uv pip install -e \".\"` is redundant with the sub-package dep"
+- "We'll add the root install when we see the first failure"
+
+**Why:** The sub-package's declared `kailash>=X.Y.Z` dependency resolves against PyPI, where the NEW module is not yet published. The build step succeeds (installs stable kailash from PyPI) but test collection fails because tests import the new module that exists only in the local editable source tree. Every `uv pip install -e "packages/..."` block in every sibling-package CI workflow MUST be preceded by `uv pip install -e "."`. No exceptions — even workflows that happen to pass today silently "work" because they do not import the new module yet. The comment in the CI step explaining the ordering is mandatory institutional knowledge: future contributors must understand that the leading root install is NOT redundant with the sub-package's declared kailash dep.
+
+Origin: kailash-py Session 2026-04-20 (issue #567 Session 3b) — PR #570 landed `kailash.diagnostics.protocols` in `src/kailash/` (not yet on PyPI). PR #577 extended the editable-root prepend to Base/DL/RL/Unit/Inter-Package CI jobs across `test-kailash-ml.yml` + `test-kailash-align.yml`, unblocking PRs #574/#575/#576 which all failed at collection with `ModuleNotFoundError: No module named 'kailash.diagnostics'`. Cross-SDK: companion issue to be filed on kailash-rs for the `path =` dependency / binding-CI analogue.

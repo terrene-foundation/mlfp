@@ -42,17 +42,17 @@ When multiple independent operations are needed, launch agents in parallel using
 
 Reviews happen at COC phase boundaries, not per-edit. Skip only when explicitly told to.
 
-**Why:** Skipping gate reviews lets analysis gaps, security holes, and naming violations propagate to downstream repos where they are far more expensive to fix. Evidence: 0052-DISCOVERY §3.3 — six commits shipped without a single review because gates were phrased as "recommended." Upgrading to MUST + background agents makes reviews nearly free.
+**Why:** Skipping lets gaps propagate to downstream repos where they are far more expensive to fix. Evidence: 0052-DISCOVERY §3.3 — six commits shipped without review because gates were "recommended." Background agents make MUST gates nearly free.
 
-| Gate                             | After Phase          | Enforcement | Review                                                                                                                                                                                                                                                                                         |
-| -------------------------------- | -------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Analysis complete                | `/analyze`           | RECOMMENDED | **reviewer**: Are findings complete? Gaps?                                                                                                                                                                                                                                                     |
-| Plan approved                    | `/todos`             | RECOMMENDED | **reviewer**: Does plan cover requirements?                                                                                                                                                                                                                                                    |
-| Implementation done              | `/implement`         | **MUST**    | **reviewer** + **security-reviewer**: Run as parallel background agents.                                                                                                                                                                                                                       |
-| Validation passed                | `/redteam`           | RECOMMENDED | **reviewer**: Are red team findings addressed?                                                                                                                                                                                                                                                 |
-| Knowledge captured               | `/codify`            | RECOMMENDED | **gold-standards-validator**: Naming, licensing compliance.                                                                                                                                                                                                                                    |
-| Before release                   | `/release`           | **MUST**    | **reviewer** + **security-reviewer** + **gold-standards-validator**: Blocking.                                                                                                                                                                                                                 |
-| After release (post-merge audit) | `/release` follow-up | RECOMMENDED | **reviewer** run against the MERGED release commit on main. Catches drift that pre-release review missed (e.g., a kwarg plumbing gap in a sibling call site, a keyspace bump with a missed invalidator). If CRIT/HIGH surfaces, open a patch branch in the SAME session and ship as `x.y.z+1`. |
+| Gate                             | After Phase          | Enforcement | Review                                                                         |
+| -------------------------------- | -------------------- | ----------- | ------------------------------------------------------------------------------ |
+| Analysis complete                | `/analyze`           | RECOMMENDED | **reviewer**: Are findings complete? Gaps?                                     |
+| Plan approved                    | `/todos`             | RECOMMENDED | **reviewer**: Does plan cover requirements?                                    |
+| Implementation done              | `/implement`         | **MUST**    | **reviewer** + **security-reviewer**: Run as parallel background agents.       |
+| Validation passed                | `/redteam`           | RECOMMENDED | **reviewer**: Are red team findings addressed?                                 |
+| Knowledge captured               | `/codify`            | RECOMMENDED | **gold-standards-validator**: Naming, licensing compliance.                    |
+| Before release                   | `/release`           | **MUST**    | **reviewer** + **security-reviewer** + **gold-standards-validator**: Blocking. |
+| After release (post-merge audit) | `/release` follow-up | RECOMMENDED | **reviewer** run against the MERGED release commit on main.                    |
 
 **BLOCKED responses when skipping MUST gates:**
 
@@ -64,10 +64,8 @@ Reviews happen at COC phase boundaries, not per-edit. Skip only when explicitly 
 **Background agent pattern for MUST gates** — the review costs nearly zero parent context:
 
 ```
-# At end of /implement, spawn reviews in background:
 Agent({subagent_type: "reviewer", run_in_background: true, prompt: "Review all changes since last gate..."})
 Agent({subagent_type: "security-reviewer", run_in_background: true, prompt: "Security audit all changes..."})
-# Parent continues; reviews arrive as notifications
 ```
 
 ### MUST: Reviewer Prompts Include Mechanical AST/Grep Sweep, Not Only Diff Review
@@ -75,22 +73,18 @@ Agent({subagent_type: "security-reviewer", run_in_background: true, prompt: "Sec
 Every gate-level reviewer prompt MUST include explicit mechanical sweeps that verify ABSOLUTE state (not only the diff). LLM-judgment review of the diff catches what's wrong with the new code; mechanical sweeps catch what's missing from the OLD code that the spec also touched.
 
 ```
-# DO — reviewer prompt enumerates mechanical sweeps to run
+# DO — reviewer prompt enumerates mechanical sweeps
 Agent(subagent_type="reviewer", prompt="""
 ... diff context ...
-
 Mechanical sweeps (run BEFORE LLM judgment):
 1. Parity grep — every `return TrainingResult(...)` call site must pass `device=...`
 2. `pytest --collect-only -q` exit 0 across all test dirs
-3. `pip check` / `cargo check` — no new conflicts vs main
+3. `pip check` — no new conflicts vs main
 4. For every public symbol in __all__ added by this PR — verify eager import
-   (per orphan-detection §6)
 """)
 
 # DO NOT — reviewer prompt only includes diff context
 Agent(subagent_type="reviewer", prompt="Review the diff between main and feat/X.")
-# ↑ reviewer reads the diff, judges the new code, never runs the sweep.
-#   Orphan in untouched lines stays invisible.
 ```
 
 **BLOCKED rationalizations:**
@@ -100,7 +94,7 @@ Agent(subagent_type="reviewer", prompt="Review the diff between main and feat/X.
 - "The diff IS the reviewer's scope"
 - "Adding sweeps to every reviewer prompt is repetitive"
 
-**Why:** Gate reviewers are constrained by the diff they're shown. The orphan failure mode of `rules/orphan-detection.md` §1 is invisible at diff-level — the new entries look complete; the OLD entries that were never updated for the new public surface stay invisible. A 4-second `grep -c` sweep catches what 5 minutes of LLM judgment misses. Without the sweep, the reviewer agent's APPROVE verdict is necessary but not sufficient. Evidence: Session 2026-04-19 — code reviewer APPROVED kailash-ml 0.12.0 with one minor finding; the subsequent `/redteam` mechanical sweep caught TorchTrainable + LightningTrainable missing `device=DeviceReport` (2 of 7 return sites). The reviewer never ran the parity grep.
+**Why:** Gate reviewers are constrained by the diff they're shown. The orphan failure mode of `rules/orphan-detection.md` §1 is invisible at diff-level. A 4-second `grep -c` sweep catches what 5 minutes of LLM judgment misses. See `skills/30-claude-code-patterns/worktree-orchestration.md § Reviewer Prompts` for the kailash-ml 0.12.0 post-mortem.
 
 Origin: kailash-py session 2026-04-19 ML GPU-first Phase 1 codify cycle.
 
@@ -108,39 +102,75 @@ Origin: kailash-py session 2026-04-19 ML GPU-first Phase 1 codify cycle.
 
 Pre-existing failures MUST be fixed (see `rules/zero-tolerance.md` Rule 1). No workarounds for SDK bugs — deep dive and fix directly (Rule 4).
 
-**Why:** Workarounds create parallel implementations that diverge from the SDK, doubling maintenance cost and masking the root bug from being fixed (see `rules/zero-tolerance.md` Rule 4).
+**Why:** Workarounds create parallel implementations that diverge from the SDK, doubling maintenance cost and masking the root bug from being fixed.
 
 ## MUST: Worktree Isolation for Compiling Agents
 
-When launching agents that will compile Rust code (build, test, implement), MUST use `isolation: "worktree"` to avoid build directory lock contention.
+When launching agents that compile (Rust `cargo`, Python `.venv` installs, JS `node_modules`), MUST use `isolation: "worktree"` to avoid build directory lock contention.
 
 ```
-# DO: Independent target/ dirs, compile in parallel
-Agent(isolation: "worktree", prompt: "implement feature X...")
-Agent(isolation: "worktree", prompt: "implement feature Y...")
-
-# DO NOT: Multiple agents sharing same target/ (serializes on lock)
-Agent(prompt: "implement feature X...")
-Agent(prompt: "implement feature Y...")  # Blocks waiting for X's build lock
+# DO: Agent(isolation="worktree", prompt="implement feature X...")
+# DO NOT: two agents sharing target/ serialize on cargo's exclusive lock
 ```
 
-**Why:** Cargo uses an exclusive filesystem lock on `target/`. Two cargo processes in the same directory serialize completely, turning parallel agents into sequential execution. Worktrees give each agent its own `target/` directory.
+**Why:** Cargo holds an exclusive filesystem lock on `target/`. Two cargo processes in the same directory serialize completely. See `rules/worktree-isolation.md` + `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 1`.
 
-**See `rules/worktree-isolation.md`** for the orchestrator pinning contract, the specialist self-check, and the post-agent file-existence verification. The `isolation: "worktree"` flag is necessary but not sufficient — without the verification layer, agents drift back to the main checkout silently.
+## MUST: Worktree Prompts Use Relative Paths Only
+
+Any absolute path in an `isolation: "worktree"` prompt MUST be anchored to the pinned worktree path — absolute paths pointing to the parent checkout are BLOCKED.
+
+```python
+# DO — relative paths, resolve to worktree cwd
+Agent(isolation="worktree", prompt="Edit packages/kailash-ml/src/kailash_ml/trainable.py...")
+# DO NOT — absolute path rooted in parent checkout
+# (writes land in MAIN; worktree empty; auto-cleanup loses the work)
+```
+
+**Why:** `isolation: "worktree"` sets cwd inside the worktree but file-write tools accept any absolute path — parent-rooted paths resolve there regardless of cwd. See `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 2` for the 2026-04-19 three-shard ml-specialist post-mortem (Shard A lost 300+ LOC).
+
+## MUST: Recover Orphan Writes From Zero-Commit Worktree Agents
+
+When an `isolation: "worktree"` agent reports completion but the branch has zero commits AND the worktree has been auto-cleaned, the parent orchestrator MUST inspect the MAIN checkout for orphaned untracked files via `git status --short` BEFORE concluding the work was lost. Absolute-path writes from the agent resolve to the MAIN checkout cwd — the files are NOT lost; they are orphaned, uncommitted, and reachable. Abandoning orphans and re-launching the agent is BLOCKED.
+
+```bash
+# DO — detect, recover, PR with recovery/ prefix
+git worktree list | grep <branch>; git log <branch> --oneline   # empty + zero = orphan
+git checkout -b recovery/<branch> && git add <orphans> && git commit -m "feat(...): recovered"
+# → fill missing deliverables (tests, specs, version bump, CHANGELOG) → gh pr create
+
+# DO NOT — re-launch the agent on the same task
+# Re-launch produces a second orphan set; next session must untangle two partial adapters.
+```
+
+**BLOCKED rationalizations:** "The agent said done, work must be committed somewhere" / "Re-launching is cleaner than recovery" / "Zero-commit branch means the work is gone" / "Main is clean, nothing to recover" / "`recovery/` is a workaround; `feat/` is more correct".
+
+**Why:** `git status` surfaces orphans the moment you look. The first four rationalizations discard 1000+ LOC per occurrence; the fifth conflates branch-name aesthetics with provenance — `recovery/` grep surfaces this rescue class across history; `feat/` does not. See `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 2a` for the 4-step protocol + 2026-04-20 PR #574 post-mortem (1129 LOC of `alignment.py` recovered from MAIN).
+
+Origin: kailash-py Session 2026-04-20 Session 3b (issue #567) — PR #574 `recovery/pr3-alignment-diagnostics`.
+
+## MUST: Worktree Agents Commit Incremental Progress
+
+Every agent launched with `isolation: "worktree"` MUST receive an explicit instruction to `git commit` after each major milestone, not only at completion. The orchestrator MUST verify the branch has ≥1 commit before declaring the agent's work landed. **This applies to every worktree agent regardless of task type** — compile work, prose drafting, one-line config edits, markdown briefs, and one-off spikes all exhibit the same failure mode.
+
+```python
+# DO — prompt: "after each file, git add <f> && git commit -m 'wip: <what>'"
+# DO NOT — "Implement feature X. Report when done." (truncation loses everything)
+# DO NOT — "Draft 11 briefs" / "Fix one line in pytest.ini" without commit step
+```
+
+**BLOCKED rationalizations:** "My agent is just writing markdown, commit discipline is overkill" / "One-line config edit doesn't need a commit cadence" / "The agent's summary in the conversation is enough evidence".
+
+**Why:** Worktree auto-cleanup deletes worktrees with zero commits. Truncation mid-message before commit loses 100% of output. See `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 3` for the 2026-04-19 three-shard compile post-mortem (3 of 3 truncated, 2 lost work) AND `rules/worktree-isolation.md` § Rule 5 for the 2026-04-21 non-compile post-mortem (11 drafted briefs + pytest.ini diagnosis lost).
 
 ## MUST: Verify Agent Deliverables Exist After Exit
 
-When an agent reports completion of a file-writing task, the parent orchestrator MUST `ls` or `Read` the claimed file before trusting the completion claim. Agent "done" messages are NOT evidence of file creation — budget exhaustion mid-message truncates the final write, and the agent emits "Now let me write X..." with no tool call behind it.
+When an agent reports completion of a file-writing task, the parent orchestrator MUST `ls` or `Read` the claimed file before trusting the completion claim. Agent "done" messages are NOT evidence of file creation.
 
 ```python
-# DO — verify
-result = Agent(prompt="Write src/feature.py with ...")
-# parent's next step:
+# DO — verify after Agent() returns
 Read("/abs/path/src/feature.py")  # raises if missing → retry
 
-# DO NOT — trust the completion message
-result = Agent(prompt="Write src/feature.py with ...")
-# parent moves on; src/feature.py never existed
+# DO NOT — trust completion message
 ```
 
 **BLOCKED rationalizations:**
@@ -149,30 +179,34 @@ result = Agent(prompt="Write src/feature.py with ...")
 - "Verifying every file slows the orchestrator"
 - "Now let me write the file…" (with no subsequent tool call)
 
-**Why:** Multi-agent sessions log occurrences where an agent hits its budget mid-message and reports success with zero files on disk. The `ls` check is O(1) and converts silent no-op into loud retry. See `rules/worktree-isolation.md` MUST Rule 3 for the full protocol.
+**Why:** Budget exhaustion truncates the final write; agent emits "Now let me write X..." with no tool call. `ls` is O(1) — silent no-op into loud retry. See `rules/worktree-isolation.md` Rule 3 + `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 4` (kaizen round 6, ml-specialist round 7).
+
+## MUST: Parallel-Worktree Package Ownership Coordination
+
+When two or more parallel agents' worktrees touch the SAME sub-package, the orchestrator MUST designate ONE agent as the **version owner** AND tell every other agent: "do NOT edit `packages/<pkg>/pyproject.toml` (or `Cargo.toml`), the package's `__version__` / crate version, or `packages/<pkg>/CHANGELOG.md`".
+
+```python
+# DO — A bumps version+CHANGELOG; B's prompt includes "MUST NOT edit pyproject.toml, __version__, CHANGELOG.md"
+# DO NOT — both agents race on pyproject.toml; git merge discards one's CHANGELOG prose silently
+```
+
+**BLOCKED rationalizations:**
+
+- "Both agents are smart enough to see the existing version"
+- "We'll resolve the conflict at merge time"
+- "The CHANGELOG entries are for different issues, they'll concat cleanly"
+- "Git's three-way merge handles this"
+- "Each agent owns a section of the CHANGELOG"
+
+**Why:** Parallel agents see the same base SHA and independently bump version + write top-level CHANGELOG entries. Git picks one; the other's prose is discarded. Pre-declared ownership is O(one-line-in-prompt). See `skills/30-claude-code-patterns/worktree-orchestration.md § Rule 5`.
+
+Origin: Session 2026-04-20 three-agent parallel-release cycle (kailash-ml 0.13.0).
 
 ## MUST NOT
 
-- Framework work without specialist
-
-**Why:** Framework misuse without specialist review produces code that looks correct but violates invariants (e.g., pool sharing, session lifecycle, trust boundaries).
-
-- Sequential when parallel is possible
-
-**Why:** See Parallel Execution above — same rule, expressed as MUST NOT.
-
-- Raw SQL when DataFlow exists
-
-**Why:** Raw SQL bypasses DataFlow's access controls, audit logging, and dialect portability, creating ungoverned database access.
-
-- Custom API when Nexus exists
-
-**Why:** Custom API endpoints miss Nexus's built-in session management, rate limiting, and multi-channel deployment, requiring manual reimplementation.
-
-- Custom agents when Kaizen exists
-
-**Why:** Custom agent implementations bypass Kaizen's signature validation, tool safety, and structured reasoning, producing fragile agents.
-
-- Custom governance when PACT exists
-
-**Why:** Custom governance lacks PACT's D/T/R accountability grammar and verification gradient, making audit compliance unverifiable.
+- Framework work without specialist — **Why:** Misuse produces code that looks correct but violates invariants (pool sharing, session lifecycle, trust boundaries).
+- Sequential when parallel is possible — **Why:** See Parallel Execution above.
+- Raw SQL when DataFlow exists — **Why:** Bypasses DataFlow's access controls, audit logging, and dialect portability.
+- Custom API when Nexus exists — **Why:** Misses Nexus's session management, rate limiting, multi-channel deployment.
+- Custom agents when Kaizen exists — **Why:** Bypasses Kaizen's signature validation, tool safety, structured reasoning.
+- Custom governance when PACT exists — **Why:** Lacks PACT's D/T/R accountability grammar and verification gradient.

@@ -134,6 +134,39 @@ When domain truth changes during any phase, the relevant spec file MUST be updat
 
 **Why:** Batched updates create a staleness window where other agents or the next session read outdated specs. First-instance updates keep specs current within one action.
 
+### 5b. Spec Edits MUST Trigger Full Sibling-Spec Re-Derivation
+
+Every spec edit MUST trigger a re-derivation sweep against the FULL sibling-spec set in the same domain (e.g. editing `specs/ml-engines.md` triggers re-derivation against all `specs/ml-*.md`; editing `specs/dataflow-core.md` triggers all `specs/dataflow-*.md`). Scoping the re-derivation to "specs I just edited" is BLOCKED — three categories of finding ONLY emerge from the full-sibling sweep:
+
+1. **Field-shape divergence** — sibling specs reference the changed dataclass differently.
+2. **Downstream consumer drift** — specs whose mandates depend on the changed surface are now stale.
+3. **Cross-spec terminology drift** — the same concept named two ways across files.
+
+```bash
+# DO — edit one spec, grep all siblings for references, re-derive assertions
+# Edited specs/ml-engines.md (added TrainingResult.device field)
+ls specs/ml-*.md                          # enumerate full sibling set
+grep -l "TrainingResult" specs/ml-*.md    # find downstream consumers
+# Re-derive assertions for EACH matching sibling, not just the edited file
+
+# DO NOT — narrow scope to "specs I edited"
+# (ml-backends.md still references TrainingResult.backend/.devices as if they
+#  were top-level fields — drift invisible to narrow scope, caught only by
+#  full-sibling sweep)
+```
+
+**BLOCKED rationalizations:**
+
+- "I only edited one spec, the others are out of scope"
+- "/redteam scoped to the diff is faster"
+- "Sibling specs will get re-derived when THEY are next edited"
+- "Cross-spec drift is a codify concern, not an edit-time concern"
+- "Round 3 was already green on the edited specs, re-running is redundant"
+
+**Why:** Spec domains share vocabulary, dataclasses, and invariants; editing one spec's dataclass without re-deriving the full sibling set lets narrow-scope APPROVE verdicts ship with silent cross-spec drift. The narrow-scope failure mode is empirically recurrent across two sessions: a narrow-scope sweep produced "14/14 green" APPROVE on edited specs; the subsequent full-sibling sweep found 9 HIGH cross-spec drift findings in specs the edit never touched. Full-sibling sweep is the only structural defense.
+
+Origin: Sessions 2026-04-19 + 2026-04-20 — two-session reproducibility validates the rule. Full `specs/ml-*.md` sweep surfaced 9 HIGH cross-spec drift findings invisible to narrow-scope APPROVE.
+
 ### 6. Deviations From Spec Require Explicit Acknowledgment
 
 When implementation deviates from a spec (different approach, technology, or user-observable behavior), the agent MUST: (a) update the spec file with the new truth, (b) log the deviation with rationale, and (c) flag user-visible changes for approval.

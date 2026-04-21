@@ -28,6 +28,11 @@ Validation patterns and compliance checking for Kailash SDK development.
 - **[validate-security](validate-security.md)** - Security checks
   - Secret exposure, SQL/code injection, file path traversal, API key handling
 
+### Audit Playbooks
+
+- **[orphan-audit-playbook](orphan-audit-playbook.md)** - Extended evidence + detection protocol for `rules/orphan-detection.md`
+  - Phase 5.11 TrustAwareQueryExecutor post-mortem, per-rule origin histories, 6-step detection protocol
+
 ## Quick Reference
 
 ### What Each Validation Catches

@@ -235,6 +235,48 @@ def test_create_token():
 
 Origin: PR #466 (2026-04-14) — eliminated 63 unit test warnings across 10 categories. Each pattern above resolves a category that recurred until the rule was added.
 
+### MUST: Pytest Plugin + Marker Declaration Pair
+
+Any test file that uses `@pytest.mark.<X>` or the `<X>` fixture from a pytest plugin MUST declare the plugin in the owning sub-package's `[dev]` extras AND register the marker in that sub-package's pytest `markers` config in the SAME commit. Using a plugin without declaring it OR using a marker without registering it is BLOCKED — collection fails with `"'<X>' not found in markers configuration option"` or `ModuleNotFoundError` and no test in that sub-package can run.
+
+```toml
+# DO — plugin declared in [dev] extras AND marker registered in same pyproject
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0.0",  # declared
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "benchmark: Performance benchmark tests (pytest-benchmark)",  # registered
+]
+```
+
+```python
+# DO — test uses the plugin AFTER declaration + registration landed
+@pytest.mark.benchmark
+def test_write_performance(benchmark):
+    benchmark(lambda: do_work())
+
+# DO NOT — test uses plugin with neither declaration nor marker registration
+@pytest.mark.benchmark   # marker unregistered → collection fails
+def test_write_performance(benchmark):   # benchmark fixture unavailable → ModuleNotFoundError
+    ...
+```
+
+**BLOCKED rationalizations:**
+
+- "The plugin is in CI so local works fine"
+- "pytest accepts unknown markers by default"
+- "We'll register the marker in a follow-up commit"
+- "The fixture is imported lazily so it doesn't matter"
+- "It works in the sub-package venv, root venv is a separate concern"
+
+**Why:** Pytest plugins form a hidden middle layer: declared in sub-package `[dev]` extras, registered in pytest `markers` config, invoked via decorator or fixture. Any one layer missing breaks collection with an unhelpful error and blocks the entire sub-package's test suite. The declared-imported discipline from `dependencies.md` applies 1:1 to pytest plugins; this rule is the pytest-specific binding.
+
+Origin: Session 2026-04-20 /redteam collection-gate sweep — a test file in a sub-package used `@pytest.mark.benchmark` + `benchmark` fixture without declaring `pytest-benchmark`; blocked 11,917 tests from collection. Fixed by adding `pytest-benchmark>=4.0.0` to the sub-package `[dev]` extras and registering `benchmark` in markers.
+
 ## 3-Tier Testing
 
 ### Tier 1 (Unit): Mocking allowed, <1s per test
@@ -245,6 +287,36 @@ Origin: PR #466 (2026-04-14) — eliminated 63 unit test warnings across 10 cate
 - NO mocking (`@patch`, `MagicMock`, `unittest.mock` — BLOCKED)
 
 **Why:** Mocks in integration tests hide real failures (connection handling, schema mismatches, transaction behavior) that only surface with real infrastructure.
+
+#### Exception: Protocol-Satisfying Deterministic Adapters Are Not Mocks
+
+A class that satisfies a `typing.Protocol` (Python) / trait (Rust) / duck-typed interface (Ruby) at runtime AND produces deterministic output from its inputs is NOT a mock — it is a real implementation of the contract whose output happens to be deterministic. Tier 2 integration tests MAY use such adapters for Protocol-typed dependencies where real production implementations require API keys, network, or GPU that CI cannot provide.
+
+```python
+# DO — real Protocol implementation, isinstance holds, deterministic output
+class DeterministicJudge:
+    judge_model: str = "deterministic-test-judge"
+
+    async def __call__(self, judge_input: JudgeInput) -> JudgeResult:
+        raw = min(len(judge_input.candidate_a) / 200.0, 1.0)
+        return JudgeResult(score=raw, winner=None, reasoning=f"score={raw:.2f}",
+                           judge_model=self.judge_model, cost_microdollars=150,
+                           prompt_tokens=10, completion_tokens=15)
+
+@pytest.mark.integration
+def test_facade_satisfies_protocol() -> None:
+    judge = DeterministicJudge()
+    assert isinstance(judge, JudgeCallable)  # Protocol check holds at runtime
+
+# DO NOT — MagicMock with spec=JudgeCallable
+judge = MagicMock(spec=JudgeCallable)  # auto-generated stubs, still mock-based
+```
+
+**BLOCKED rationalizations:** "MagicMock with `spec=` passes isinstance — same thing" / "It's the same as a mock if the output is scripted" / "`side_effect` on an AsyncMock is functionally equivalent" / "Protocol adapter is over-engineering; just use `patch`".
+
+**Why:** The Protocol contract is the scripting surface, not a mock framework's `side_effect`. A real class declaring the Protocol-required methods with correct signatures + returning real values of the Protocol-required types is a valid Tier 2 test-double even when its output is deterministic. A real PostgreSQL + `DeterministicJudge` are both Tier 2-legal; a mocked PostgreSQL + real OpenAI call is Tier 2 illegal. Rust equivalent: `struct DeterministicFoo` implementing `impl Foo` with type-system-enforced contract is stronger than Python's runtime `isinstance` check.
+
+Origin: kailash-py Session 2026-04-20 Session 3b PR#580 — `DeterministicJudge` in `packages/kailash-kaizen/tests/integration/judges/test_judges_wiring.py`, 7 Tier 2 tests passing without API keys against `kailash.diagnostics.protocols.JudgeCallable`.
 
 ### Tier 3 (E2E): Real everything
 
@@ -265,11 +337,11 @@ tests/
 
 Every test that is skipped, xfailed, or deleted MUST be classified into exactly one of the three tiers below. Silent skips, unbounded `@pytest.mark.skip` (or `#[ignore]` in Rust), or empty test bodies pretending to be tests are BLOCKED.
 
-| Tier | When | Action |
-|---|---|---|
-| **ACCEPTABLE** | Missing dep / infra unavailable / platform constraint | Keep skip; reason MUST name the constraint (`@pytest.mark.skipif(not REDIS_AVAILABLE, reason="redis required")`) |
+| Tier           | When                                                           | Action                                                                                                             |
+| -------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **ACCEPTABLE** | Missing dep / infra unavailable / platform constraint          | Keep skip; reason MUST name the constraint (`@pytest.mark.skipif(not REDIS_AVAILABLE, reason="redis required")`)   |
 | **BORDERLINE** | Real library limitation; documenting a known-failing edge case | Convert to `@pytest.mark.xfail(strict=False, reason="...")` — preserves test body, flips green when fixed upstream |
-| **BLOCKED** | "TODO", "needs refactoring", "flaky", "times out", empty body | DELETE the test (and any abandoned fixtures it owned); if the underlying bug matters, file an issue |
+| **BLOCKED**    | "TODO", "needs refactoring", "flaky", "times out", empty body  | DELETE the test (and any abandoned fixtures it owned); if the underlying bug matters, file an issue                |
 
 ```python
 # DO — ACCEPTABLE: infra-conditional skip

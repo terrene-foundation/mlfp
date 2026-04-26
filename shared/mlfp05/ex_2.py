@@ -26,9 +26,8 @@ import pytorch_lightning as pl
 import torchvision
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.bridge.onnx_bridge import OnnxBridge
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
 from kailash_ml.engines.inference_server import InferenceServer
 from kailash_ml.engines.model_registry import ModelRegistry
 from kailash_ml.types import MetricSpec
@@ -136,29 +135,17 @@ async def setup_engines(db_name: str = "mlfp05_cnns.db") -> tuple[
     ModelRegistry | None,
     bool,
 ]:
-    """Initialise ExperimentTracker and ModelRegistry.
+    """Initialise ExperimentTracker (kailash-ml 1.1.1 factory) and ModelRegistry.
 
     Returns:
-        conn, tracker, experiment_name, registry (or None), has_registry
+        conn, tracker, experiment_name, registry, has_registry
     """
-    conn = ConnectionManager(f"sqlite:///{db_name}")
+    db = f"sqlite:///{db_name}"
+    tracker = await ExperimentTracker.create(store_url=db)
+    conn = ConnectionManager(db)
     await conn.initialize()
-
-    tracker = ExperimentTracker(conn)
-    exp_name = await tracker.create_experiment(
-        name="m5_cnns",
-        description="CNN architectures on full CIFAR-10 (50K images)",
-    )
-
-    try:
-        registry = ModelRegistry(conn)
-        has_registry = True
-    except Exception as e:
-        registry = None
-        has_registry = False
-        print(f"  Note: ModelRegistry setup skipped ({e})")
-
-    return conn, tracker, exp_name, registry, has_registry
+    registry = ModelRegistry(conn)
+    return conn, tracker, "m5_cnns", registry, True
 
 
 def init_engines(db_name: str = "mlfp05_cnns.db") -> tuple[
@@ -258,8 +245,8 @@ async def train_model_async(
 ) -> tuple[list[float], list[float]]:
     """Train a CNN with Lightning and log metrics to ExperimentTracker.
 
-    Uses the ``tracker.run(...)`` async context manager. On normal exit
-    the run is marked COMPLETED; on exception it is marked FAILED.
+    Uses the kailash-ml 1.1.1 ``tracker.track(...)`` async context manager.
+    On normal exit the run is marked FINISHED; on exception it is marked FAILED.
     """
     lit = LitCNN(model, lr=lr)
     trainer = pl.Trainer(
@@ -272,8 +259,8 @@ async def train_model_async(
         enable_checkpointing=False,
     )
 
-    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
-        await ctx.log_params(
+    async with tracker.track(experiment=exp_name, run_name=name) as run:
+        await run.log_params(
             {
                 "architecture": name,
                 "lr": str(lr),
@@ -288,11 +275,11 @@ async def train_model_async(
         trainer.fit(lit, train_loader, val_loader)
 
         for epoch_idx, loss in enumerate(lit.train_losses):
-            await ctx.log_metric("train_loss", loss, step=epoch_idx + 1)
+            await run.log_metric("train_loss", loss, step=epoch_idx + 1)
         for epoch_idx, acc in enumerate(lit.val_accs):
-            await ctx.log_metric("val_accuracy", acc, step=epoch_idx + 1)
+            await run.log_metric("val_accuracy", acc, step=epoch_idx + 1)
 
-        await ctx.log_metrics(
+        await run.log_metrics(
             {
                 "final_train_loss": lit.train_losses[-1],
                 "final_val_accuracy": lit.val_accs[-1],

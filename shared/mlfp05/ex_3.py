@@ -29,8 +29,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from shared.kailash_helpers import get_device, setup_environment
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
 
 # ── Constants ───────────────────────────────────────────────────────────
@@ -56,6 +55,7 @@ LR = 1e-3
 CLIP = 1.0
 BATCH_SIZE = 64
 
+
 def init_environment() -> torch.device:
     """Set up environment, seeds, device, and output directories."""
     setup_environment()
@@ -66,6 +66,7 @@ def init_environment() -> torch.device:
     device = get_device()
     print(f"Using device: {device}")
     return device
+
 
 # ── Data Loading ────────────────────────────────────────────────────────
 def fetch_ticker(symbol: str) -> pl.DataFrame:
@@ -81,6 +82,7 @@ def fetch_ticker(symbol: str) -> pl.DataFrame:
     df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
     return pl.from_pandas(df.reset_index())
 
+
 def load_or_fetch(symbol: str) -> tuple[pl.DataFrame | None, str]:
     """Load from parquet cache, or download and cache."""
     cache = DATA_DIR / f"{symbol.replace('^', '').replace('.', '_')}.parquet"
@@ -93,6 +95,7 @@ def load_or_fetch(symbol: str) -> tuple[pl.DataFrame | None, str]:
     except Exception as exc:
         print(f"  {symbol} unavailable ({type(exc).__name__}: {exc})")
         return None, "failed"
+
 
 def load_stock_data() -> tuple[dict[str, pl.DataFrame], str, pl.DataFrame]:
     """Load all tickers and return (stock_data, primary_symbol, primary_df)."""
@@ -113,6 +116,7 @@ def load_stock_data() -> tuple[dict[str, pl.DataFrame], str, pl.DataFrame]:
         f"{primary_df['Date'].min()} -> {primary_df['Date'].max()}"
     )
     return stock_data, primary, primary_df
+
 
 # ── Windowed Datasets ───────────────────────────────────────────────────
 def build_dataset(
@@ -139,6 +143,7 @@ def build_dataset(
     )
     split_idx = split_n - seq_len
     return X.astype(np.float32), y.astype(np.float32), mean, std, split_idx
+
 
 def prepare_dataloaders(
     primary_df: pl.DataFrame,
@@ -192,37 +197,25 @@ def prepare_dataloaders(
         n_features,
     )
 
+
 # ── Experiment Tracking ─────────────────────────────────────────────────
 async def _setup_engines(
     primary: str,
     experiment_suffix: str = "",
 ) -> tuple[ConnectionManager, ExperimentTracker, str, ModelRegistry | None, bool]:
-    """Create ExperimentTracker and ModelRegistry for a technique file."""
-    conn = ConnectionManager("sqlite:///mlfp05_rnns.db")
+    """Create ExperimentTracker (kailash-ml 1.1.1 factory) and ModelRegistry."""
+    db = "sqlite:///mlfp05_rnns.db"
+    tracker = await ExperimentTracker.create(store_url=db)
+    conn = ConnectionManager(db)
     await conn.initialize()
-
-    tracker = ExperimentTracker(conn)
-    exp_name = await tracker.create_experiment(
-        name=(
-            f"m5_rnns_{experiment_suffix}"
-            if experiment_suffix
-            else "m5_rnns_sequence_models"
-        ),
-        description=(
-            f"RNN variant on {primary} stock data. "
-            f"Multi-step forecasting (next {FORECAST_HORIZON} days)."
-        ),
+    registry = ModelRegistry(conn)
+    exp_name = (
+        f"m5_rnns_{experiment_suffix}"
+        if experiment_suffix
+        else "m5_rnns_sequence_models"
     )
+    return conn, tracker, exp_name, registry, True
 
-    try:
-        registry = ModelRegistry(conn)
-        has_registry = True
-    except Exception as e:
-        registry = None
-        has_registry = False
-        print(f"  Note: ModelRegistry setup skipped ({e})")
-
-    return conn, tracker, exp_name, registry, has_registry
 
 def setup_engines(
     primary: str,
@@ -230,6 +223,7 @@ def setup_engines(
 ) -> tuple[ConnectionManager, ExperimentTracker, str, ModelRegistry | None, bool]:
     """Sync wrapper for engine setup."""
     return asyncio.run(_setup_engines(primary, experiment_suffix))
+
 
 # ── Training Harness ────────────────────────────────────────────────────
 def compute_gradient_norm(model: nn.Module) -> float:
@@ -240,10 +234,12 @@ def compute_gradient_norm(model: nn.Module) -> float:
             total_norm += p.grad.data.norm(2).item() ** 2
     return total_norm**0.5
 
+
 def _predict(model: nn.Module, x: torch.Tensor, attn: bool = False) -> torch.Tensor:
     """Forward pass, handling attention models that return a tuple."""
     out = model(x)
     return out[0] if attn else out
+
 
 async def _train_model_async(
     model: nn.Module,
@@ -264,8 +260,8 @@ async def _train_model_async(
     train_losses, val_losses, gradient_norms = [], [], []
     n_params = sum(p.numel() for p in model.parameters())
 
-    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
-        await ctx.log_params(
+    async with tracker.track(experiment=exp_name, run_name=name) as run:
+        await run.log_params(
             {
                 "model_type": name,
                 "hidden_dim": str(HIDDEN_DIM),
@@ -307,7 +303,7 @@ async def _train_model_async(
                 )
             val_losses.append(vl)
 
-            await ctx.log_metrics(
+            await run.log_metrics(
                 {"train_loss": tl, "val_loss": vl, "gradient_norm": gn},
                 step=epoch + 1,
             )
@@ -316,7 +312,7 @@ async def _train_model_async(
                 f"train={tl:.4f}  val={vl:.4f}  grad={gn:.4f}"
             )
 
-        await ctx.log_metric("final_val_loss", val_losses[-1])
+        await run.log_metric("final_val_loss", val_losses[-1])
 
     return {
         "train_losses": train_losses,
@@ -324,6 +320,7 @@ async def _train_model_async(
         "gradient_norms": gradient_norms,
         "final_val_loss": val_losses[-1],
     }
+
 
 def train_model(
     model: nn.Module,
@@ -354,6 +351,7 @@ def train_model(
             attn,
         )
     )
+
 
 # ── Model Registry ──────────────────────────────────────────────────────
 def register_best_model(
@@ -390,10 +388,12 @@ def register_best_model(
     except Exception as e:
         print(f"  ModelRegistry registration skipped ({type(e).__name__}: {e})")
 
+
 # ── Visualisation Helpers ───────────────────────────────────────────────
 def get_visualizer() -> ModelVisualizer:
     """Create a ModelVisualizer instance."""
     return ModelVisualizer()
+
 
 def plot_training_curves(
     viz: ModelVisualizer,
@@ -414,6 +414,7 @@ def plot_training_curves(
     viz.training_history(
         metrics=grad_metrics, x_label="Epoch", y_label="Gradient L2 Norm"
     ).write_html(str(OUTPUT_DIR / f"{output_prefix}_gradient_norms.html"))
+
 
 def plot_predictions(
     viz: ModelVisualizer,
@@ -453,6 +454,7 @@ def plot_predictions(
 
     return preds_denorm, actual_denorm, attn_weights
 
+
 def plot_time_series_overlay(
     preds_denorm: np.ndarray,
     actual_denorm: np.ndarray,
@@ -489,6 +491,7 @@ def plot_time_series_overlay(
     fig.savefig(str(OUTPUT_DIR / f"{output_prefix}_time_series_overlay.png"), dpi=150)
     plt.close(fig)
     print(f"  Saved: {output_prefix}_time_series_overlay.png")
+
 
 def plot_horizon_error(
     preds_denorm: np.ndarray,

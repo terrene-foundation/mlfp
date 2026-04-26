@@ -21,8 +21,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import torchvision
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
 
 from shared.kailash_helpers import get_device, setup_environment
@@ -114,24 +113,13 @@ def get_fashion_mnist_labels() -> tuple[torch.Tensor, torch.Tensor]:
 
 
 async def _setup_engines():
-    conn = ConnectionManager("sqlite:///mlfp05_autoencoders.db")
+    """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved for callers."""
+    db = "sqlite:///mlfp05_autoencoders.db"
+    tracker = await ExperimentTracker.create(store_url=db)
+    conn = ConnectionManager(db)
     await conn.initialize()
-
-    tracker = ExperimentTracker(conn)
-    exp_name = await tracker.create_experiment(
-        name="m5_autoencoders",
-        description="All 10 autoencoder variants on Fashion-MNIST (60K images)",
-    )
-
-    try:
-        registry = ModelRegistry(conn)
-        has_registry = True
-    except Exception as e:
-        registry = None
-        has_registry = False
-        print(f"  Note: ModelRegistry setup skipped ({e})")
-
-    return conn, tracker, exp_name, registry, has_registry
+    registry = ModelRegistry(conn)
+    return conn, tracker, "m5_autoencoders", registry, True
 
 
 def setup_engines() -> tuple:
@@ -407,8 +395,8 @@ async def _train_variant_async(
     if extra_params:
         params.update(extra_params)
 
-    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
-        await ctx.log_params(params)
+    async with tracker.track(experiment=exp_name, run_name=name) as run:
+        await run.log_params(params)
 
         for epoch in range(epochs):
             batch_losses = []
@@ -420,10 +408,10 @@ async def _train_variant_async(
                 batch_losses.append(loss.item())
             epoch_loss = float(np.mean(batch_losses))
             losses.append(epoch_loss)
-            await ctx.log_metric("loss", epoch_loss, step=epoch + 1)
+            await run.log_metric("loss", epoch_loss, step=epoch + 1)
             if (epoch + 1) % 5 == 0 or epoch == 0:
                 print(f"  [{name}] epoch {epoch + 1}/{epochs}  loss={epoch_loss:.4f}")
-        await ctx.log_metric("final_loss", losses[-1])
+        await run.log_metric("final_loss", losses[-1])
 
     return losses
 

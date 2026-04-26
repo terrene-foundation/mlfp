@@ -561,8 +561,16 @@ feature_cols = [
 ]
 target_col = "revenue"
 
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment("mlfp02_exam_regression")
+# kailash-ml 1.1.1 ExperimentTracker is async-only; wrap setup in asyncio.run.
+# We persist to a local SQLite store so the exam is self-contained.
+import asyncio
+
+
+async def _setup_exam_tracker(name: str):
+    return await ExperimentTracker.create(store_url=f"sqlite:///{name}.db"), name
+
+
+tracker, experiment = asyncio.run(_setup_exam_tracker("mlfp02_exam_regression"))
 
 pipeline = TrainingPipeline(
     model_type="linear_regression",
@@ -1046,29 +1054,35 @@ final_pipeline = TrainingPipeline(
 final_pipeline.fit(df_engineered)
 eval_metrics = final_pipeline.evaluate()
 
-# Log everything to ExperimentTracker
-tracker.log_metrics(
-    experiment,
-    {
-        "final_accuracy": eval_metrics.get("accuracy", 0),
-        "final_auc": eval_metrics.get("auc", 0),
-        "final_f1": eval_metrics.get("f1", 0),
-        "n_features": len(final_features),
-        "feature_store_retrieval_count": len(batch_users),
-    },
-)
-tracker.log_params(
-    experiment,
-    {
-        "model_type": "logistic_regression",
-        "features": str(final_features),
-        "cv_strategy": "stratified_5fold",
-        "regularisation": "l1",
-    },
-)
 
-experiment_summary = tracker.get_experiment_summary(experiment)
-print(f"\nExperiment summary:\n{experiment_summary}")
+# Log everything to ExperimentTracker (kailash-ml 1.1.1 async API).
+async def _log_final_run(t, exp_name: str):
+    async with t.track(experiment=exp_name, run_name="final_evaluation") as run:
+        await run.log_metrics(
+            {
+                "final_accuracy": eval_metrics.get("accuracy", 0),
+                "final_auc": eval_metrics.get("auc", 0),
+                "final_f1": eval_metrics.get("f1", 0),
+                "n_features": float(len(final_features)),
+                "feature_store_retrieval_count": float(len(batch_users)),
+            }
+        )
+        await run.log_params(
+            {
+                "model_type": "logistic_regression",
+                "features": str(final_features),
+                "cv_strategy": "stratified_5fold",
+                "regularisation": "l1",
+            }
+        )
+    runs = await t.list_runs(experiment=exp_name)
+    return runs
+
+
+experiment_runs = asyncio.run(_log_final_run(tracker, experiment))
+print(
+    f"\nExperiment summary: {len(experiment_runs)} run(s) recorded under {experiment}"
+)
 print(f"Features used: {final_features}")
 print(f"Evaluation: {eval_metrics}")
 

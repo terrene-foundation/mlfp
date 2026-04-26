@@ -71,8 +71,16 @@ device = torch.device(
 print(f"Device: {device}")
 
 viz = ModelVisualizer()
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment("mlfp05_exam")
+
+# kailash-ml 1.1.1 ExperimentTracker is async-only; wrap setup in asyncio.run.
+import asyncio
+
+
+async def _setup_exam_tracker(name: str):
+    return await ExperimentTracker.create(store_url=f"sqlite:///{name}.db"), name
+
+
+tracker, experiment = asyncio.run(_setup_exam_tracker("mlfp05_exam"))
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -996,15 +1004,21 @@ attn_fig = viz.heatmap(
 
 # --- 3e: Experiment tracking, registry, ONNX ---
 print("\n=== Task 3e: Tracking, Registry, and ONNX ===")
-tracker.log_metrics(
-    experiment,
-    {
-        "lstm_mse": lstm_mse,
-        "gru_mse": gru_mse,
-        "gru_attn_mse": gru_attn_mse,
-        "naive_mse": naive_mse,
-    },
-)
+
+
+async def _log_timeseries_metrics(t, exp_name: str):
+    async with t.track(experiment=exp_name, run_name="timeseries_models") as run:
+        await run.log_metrics(
+            {
+                "lstm_mse": float(lstm_mse),
+                "gru_mse": float(gru_mse),
+                "gru_attn_mse": float(gru_attn_mse),
+                "naive_mse": float(naive_mse),
+            }
+        )
+
+
+asyncio.run(_log_timeseries_metrics(tracker, experiment))
 
 # Best model
 best_ts_mse = min(lstm_mse, gru_mse, gru_attn_mse)
@@ -1431,22 +1445,29 @@ df_comparison = pl.DataFrame(comparison)
 print("\n=== ARCHITECTURE COMPARISON ===")
 print(df_comparison)
 
-# Log everything
-tracker.log_metrics(
-    experiment,
-    {
-        "ae_vanilla_f1": vanilla_metrics["f1"],
-        "ae_vae_f1": vae_metrics["f1"],
-        "cnn_plain_acc": plain_acc,
-        "cnn_se_acc": se_acc,
-        "lstm_ts_mse": lstm_mse,
-        "gru_attn_mse": gru_attn_mse,
-        "lstm_text_acc": lstm_text_acc,
-        "bert_acc": bert_acc if bert_available else 0,
-    },
-)
 
-print(f"\nExperiment summary: {tracker.get_experiment_summary(experiment)}")
+# Log everything to the architecture-comparison run.
+async def _log_arch_summary(t, exp_name: str):
+    async with t.track(experiment=exp_name, run_name="architecture_summary") as run:
+        await run.log_metrics(
+            {
+                "ae_vanilla_f1": float(vanilla_metrics["f1"]),
+                "ae_vae_f1": float(vae_metrics["f1"]),
+                "cnn_plain_acc": float(plain_acc),
+                "cnn_se_acc": float(se_acc),
+                "lstm_ts_mse": float(lstm_mse),
+                "gru_attn_mse": float(gru_attn_mse),
+                "lstm_text_acc": float(lstm_text_acc),
+                "bert_acc": float(bert_acc) if bert_available else 0.0,
+            }
+        )
+    return await t.list_runs(experiment=exp_name)
+
+
+experiment_runs = asyncio.run(_log_arch_summary(tracker, experiment))
+print(
+    f"\nExperiment summary: {len(experiment_runs)} run(s) recorded under {experiment}"
+)
 
 
 # ── Checkpoint 4 ─────────────────────────────────────────

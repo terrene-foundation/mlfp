@@ -241,10 +241,10 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         enable_checkpointing=False,
     )
 
-    async with tracker.run(
-        experiment_name=exp_name, run_name=f"hp_sweep_lr_{lr}"
-    ) as ctx:
-        await ctx.log_params(
+    async with tracker.track(
+        experiment=exp_name, run_name=f"hp_sweep_lr_{lr}"
+    ) as run:
+        await run.log_params(
             {
                 "architecture": "ResNetSE",
                 "lr": str(lr),
@@ -257,11 +257,11 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         trainer.fit(lit, train_loader, val_loader)
 
         for epoch_idx, loss in enumerate(lit.train_losses):
-            await ctx.log_metric("train_loss", loss, step=epoch_idx + 1)
+            await run.log_metric("train_loss", loss, step=epoch_idx + 1)
         for epoch_idx, acc in enumerate(lit.val_accs):
-            await ctx.log_metric("val_accuracy", acc, step=epoch_idx + 1)
+            await run.log_metric("val_accuracy", acc, step=epoch_idx + 1)
 
-        await ctx.log_metrics(
+        await run.log_metrics(
             {
                 "final_train_loss": lit.train_losses[-1],
                 "final_val_accuracy": lit.val_accs[-1],

@@ -139,8 +139,8 @@ async def _run_efficiency_trial(
     #   7. Train for EFF_EPOCHS: forward -> cross_entropy -> backward -> step
     #   8. Evaluate on full val_loader: count correct/total
     #   9. Return (accuracy, n_samples)
-    # Hint: async with tracker.run(experiment_name=exp_name, run_name=run_name) as ctx:
-    # Hint: await ctx.log_params({...}), await ctx.log_metric("val_acc", acc)
+    # Hint: async with tracker.track(experiment=exp_name, run_name=run_name) as run:
+    # Hint: await run.log_params({...}), await run.log_metric("val_acc", acc)
     n_samples = int(len(train_set) * frac)
     ____
 

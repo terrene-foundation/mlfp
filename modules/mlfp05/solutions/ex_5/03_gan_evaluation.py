@@ -277,9 +277,9 @@ print(f"    Distribution: {dist_wgan}")
 
 # Log to ExperimentTracker
 async def _log_evaluation():
-    async with tracker.run(experiment_name=exp_name, run_name="fid_evaluation") as ctx:
-        await ctx.log_param("n_generated", str(N_FID))
-        await ctx.log_metrics(
+    async with tracker.track(experiment=exp_name, run_name="fid_evaluation") as run:
+        await run.log_param("n_generated", str(N_FID))
+        await run.log_metrics(
             {
                 "fid_vanilla_gan": fid_gan,
                 "fid_wgan_gp": fid_wgan,

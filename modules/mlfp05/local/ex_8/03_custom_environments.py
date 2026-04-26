@@ -608,13 +608,13 @@ churn_actions_hist: list[list[int]] = []  # track action distribution per episod
 
 
 async def _train_churn_dqn_async():
-    """Train DQN on ChurnPrevention under a tracker.run(...) context."""
+    """Train DQN on ChurnPrevention under a tracker.track(...) context."""
     churn_epsilon = 1.0
 
-    async with tracker.run(
-        experiment_name=exp_name, run_name="dqn_churn_prevention"
-    ) as ctx:
-        await ctx.log_params(
+    async with tracker.track(
+        experiment=exp_name, run_name="dqn_churn_prevention"
+    ) as run:
+        await run.log_params(
             {
                 "algorithm": "DQN",
                 "environment": "ChurnPrevention",
@@ -667,7 +667,7 @@ async def _train_churn_dqn_async():
 
             churn_rewards_hist.append(total_reward)
             churn_actions_hist.append(ep_actions)
-            await ctx.log_metric("episode_reward", total_reward, step=ep)
+            await run.log_metric("episode_reward", total_reward, step=ep)
 
             if (ep + 1) % 30 == 0:
                 avg_30 = float(np.mean(churn_rewards_hist[-30:]))
@@ -676,7 +676,7 @@ async def _train_churn_dqn_async():
                     f"avg30={avg_30:6.1f}  eps={churn_epsilon:.3f}"
                 )
 
-        await ctx.log_metric(
+        await run.log_metric(
             "final_avg_reward", float(np.mean(churn_rewards_hist[-30:]))
         )
 

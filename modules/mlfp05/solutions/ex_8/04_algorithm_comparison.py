@@ -133,8 +133,8 @@ async def _train_dqn_timed():
     episode_rewards: list[float] = []
     env_steps = 0
 
-    async with tracker.run(experiment_name=exp_name, run_name="comparison_dqn") as ctx:
-        await ctx.log_params({"algorithm": "DQN", "episodes": str(N_DQN_EPISODES)})
+    async with tracker.track(experiment=exp_name, run_name="comparison_dqn") as run:
+        await run.log_params({"algorithm": "DQN", "episodes": str(N_DQN_EPISODES)})
         for ep in range(N_DQN_EPISODES):
             state, _ = cartpole_env.reset(seed=42 + ep)
             total_reward = 0.0
@@ -166,7 +166,7 @@ async def _train_dqn_timed():
             if (ep + 1) % 10 == 0:
                 target_net.load_state_dict(q_net.state_dict())
             episode_rewards.append(total_reward)
-            await ctx.log_metric("episode_reward", total_reward, step=ep)
+            await run.log_metric("episode_reward", total_reward, step=ep)
     N_DQN_ENV_STEPS = env_steps
     return q_net, episode_rewards
 
@@ -191,8 +191,8 @@ async def _train_ppo_timed():
     opt = torch.optim.Adam(model.parameters(), lr=3e-4)
     iter_returns: list[float] = []
 
-    async with tracker.run(experiment_name=exp_name, run_name="comparison_ppo") as ctx:
-        await ctx.log_params({"algorithm": "PPO", "iterations": str(N_PPO_ITERS)})
+    async with tracker.track(experiment=exp_name, run_name="comparison_ppo") as run:
+        await run.log_params({"algorithm": "PPO", "iterations": str(N_PPO_ITERS)})
         for it in range(N_PPO_ITERS):
             # Collect trajectory
             states, actions, log_probs, values, rewards, dones = [], [], [], [], [], []
@@ -251,7 +251,7 @@ async def _train_ppo_timed():
                     running = 0.0
             avg_ret = float(np.mean(ep_rs)) if ep_rs else float(running)
             iter_returns.append(avg_ret)
-            await ctx.log_metric("avg_episode_return", avg_ret, step=it)
+            await run.log_metric("avg_episode_return", avg_ret, step=it)
     return model, iter_returns
 
 

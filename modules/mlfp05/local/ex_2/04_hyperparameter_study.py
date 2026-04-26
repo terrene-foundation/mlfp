@@ -226,7 +226,7 @@ print("  " + "-" * 60)
 #   1. Create fresh ResNetSE for each LR
 #   2. Wrap in LitCNN(model, lr=lr)
 #   3. Create pl.Trainer with HP_EPOCHS, ACCELERATOR, PRECISION, no progress bar
-#   4. Use tracker.run() async context to log params and metrics
+#   4. Use tracker.track() async context to log params and metrics
 #   5. Return (train_losses, val_accs)
 async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
     """Run one LR sweep trial, logged under its own tracker run."""
@@ -242,10 +242,10 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         enable_checkpointing=False,
     )
 
-    async with tracker.run(
-        experiment_name=exp_name, run_name=f"hp_sweep_lr_{lr}"
-    ) as ctx:
-        await ctx.log_params(
+    async with tracker.track(
+        experiment=exp_name, run_name=f"hp_sweep_lr_{lr}"
+    ) as run:
+        await run.log_params(
             {
                 "architecture": "ResNetSE",
                 "lr": str(lr),
@@ -265,7 +265,7 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         for epoch_idx, acc in enumerate(lit.val_accs):
             ____
 
-        await ctx.log_metrics(
+        await run.log_metrics(
             {
                 "final_train_loss": lit.train_losses[-1],
                 "final_val_accuracy": lit.val_accs[-1],
@@ -803,10 +803,10 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         enable_checkpointing=False,
     )
 
-    async with tracker.run(
-        experiment_name=exp_name, run_name=f"hp_sweep_lr_{lr}"
-    ) as ctx:
-        await ctx.log_params(
+    async with tracker.track(
+        experiment=exp_name, run_name=f"hp_sweep_lr_{lr}"
+    ) as run:
+        await run.log_params(
             {
                 "architecture": "ResNetSE",
                 "lr": str(lr),
@@ -819,11 +819,11 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         trainer.fit(lit, train_loader, val_loader)
 
         for epoch_idx, loss in enumerate(lit.train_losses):
-            await ctx.log_metric("train_loss", loss, step=epoch_idx + 1)
+            await run.log_metric("train_loss", loss, step=epoch_idx + 1)
         for epoch_idx, acc in enumerate(lit.val_accs):
-            await ctx.log_metric("val_accuracy", acc, step=epoch_idx + 1)
+            await run.log_metric("val_accuracy", acc, step=epoch_idx + 1)
 
-        await ctx.log_metrics(
+        await run.log_metrics(
             {
                 "final_train_loss": lit.train_losses[-1],
                 "final_val_accuracy": lit.val_accs[-1],

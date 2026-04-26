@@ -227,7 +227,7 @@ async def train_model_async(
 ) -> tuple[list[float], list[float]]:
     """Train a PyTorch classifier and log every epoch to ExperimentTracker.
 
-    Uses the modern ``tracker.run(...)`` async context manager -- bulk
+    Uses the modern ``tracker.track(...)`` async context manager -- bulk
     param logging, per-step metrics, automatic COMPLETED/FAILED state.
     """
     model.to(DEVICE)

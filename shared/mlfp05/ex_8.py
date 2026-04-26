@@ -25,8 +25,7 @@ from gymnasium import spaces
 import polars as pl
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
 
 from shared.kailash_helpers import get_device, setup_environment
@@ -65,24 +64,13 @@ def make_cartpole() -> tuple[gym.Env, int, int]:
 
 
 async def _setup_engines():
-    conn = ConnectionManager("sqlite:///mlfp05_rl.db")
+    """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved."""
+    db = "sqlite:///mlfp05_rl.db"
+    tracker = await ExperimentTracker.create(store_url=db)
+    conn = ConnectionManager(db)
     await conn.initialize()
-
-    tracker = ExperimentTracker(conn)
-    exp_name = await tracker.create_experiment(
-        name="m5_reinforcement_learning",
-        description="RL algorithms: DQN and PPO on CartPole and business envs",
-    )
-
-    try:
-        registry = ModelRegistry(conn)
-        has_registry = True
-    except Exception as e:
-        registry = None
-        has_registry = False
-        print(f"  Note: ModelRegistry setup skipped ({e})")
-
-    return conn, tracker, exp_name, registry, has_registry
+    registry = ModelRegistry(conn)
+    return conn, tracker, "m5_reinforcement_learning", registry, True
 
 
 def setup_engines() -> tuple:

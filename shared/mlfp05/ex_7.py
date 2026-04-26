@@ -25,8 +25,7 @@ import torchvision
 import torchvision.transforms as T
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
 from kailash_ml.types import MetricSpec
 
@@ -143,24 +142,13 @@ def load_cifar10() -> tuple[
 
 
 async def _setup_engines():
-    conn = ConnectionManager("sqlite:///mlfp05_transfer.db")
+    """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved."""
+    db = "sqlite:///mlfp05_transfer.db"
+    tracker = await ExperimentTracker.create(store_url=db)
+    conn = ConnectionManager(db)
     await conn.initialize()
-
-    tracker = ExperimentTracker(conn)
-    exp_name = await tracker.create_experiment(
-        name="m5_transfer_learning",
-        description="Transfer learning: ResNet-18 vs from-scratch on CIFAR-10 (50K)",
-    )
-
-    try:
-        registry = ModelRegistry(conn)
-        has_registry = True
-    except Exception as e:
-        registry = None
-        has_registry = False
-        print(f"  Note: ModelRegistry setup skipped ({e})")
-
-    return conn, tracker, exp_name, registry, has_registry
+    registry = ModelRegistry(conn)
+    return conn, tracker, "m5_transfer_learning", registry, True
 
 
 def init_engines() -> tuple[
@@ -207,8 +195,8 @@ async def _train_model_async(
     val_accs: list[float] = []
     train_accs: list[float] = []
 
-    async with tracker.run(experiment_name=exp_name, run_name=name) as ctx:
-        await ctx.log_params(
+    async with tracker.track(experiment=exp_name, run_name=name) as run:
+        await run.log_params(
             {
                 "model_type": name,
                 "trainable_params": str(n_trainable),
@@ -250,7 +238,7 @@ async def _train_model_async(
                     total += int(yb.size(0))
             val_accs.append(correct / total)
 
-            await ctx.log_metrics(
+            await run.log_metrics(
                 {
                     "train_loss": train_losses[-1],
                     "train_acc": train_accs[-1],
@@ -266,7 +254,7 @@ async def _train_model_async(
                 f"val_acc={val_accs[-1]:.3f}"
             )
 
-        await ctx.log_metrics(
+        await run.log_metrics(
             {
                 "final_val_acc": val_accs[-1],
                 "best_val_acc": max(val_accs),

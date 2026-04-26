@@ -22,8 +22,7 @@ import torchvision
 import matplotlib.pyplot as plt
 
 from kailash.db import ConnectionManager
-from kailash_ml import ModelVisualizer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
 from kailash_ml.types import MetricSpec
 
@@ -101,26 +100,19 @@ def load_mnist(device: torch.device) -> tuple[torch.Tensor, torch.Tensor, DataLo
 def setup_engines() -> (
     tuple[ConnectionManager, ExperimentTracker, str, ModelRegistry | None]
 ):
-    """Create ExperimentTracker and ModelRegistry for GAN experiments.
+    """Create ExperimentTracker (kailash-ml 1.1.1 factory) and ModelRegistry.
 
     Returns:
-        conn, tracker, experiment_name, registry (or None)
+        conn, tracker, experiment_name, registry
     """
 
     async def _setup():
-        conn = ConnectionManager("sqlite:///mlfp05_gans.db")
+        db = "sqlite:///mlfp05_gans.db"
+        tracker = await ExperimentTracker.create(store_url=db)
+        conn = ConnectionManager(db)
         await conn.initialize()
-        tracker = ExperimentTracker(conn)
-        exp_name = await tracker.create_experiment(
-            name="m5_gans",
-            description="GAN variants on MNIST (60K images)",
-        )
-        try:
-            registry = ModelRegistry(conn)
-        except Exception as e:
-            registry = None
-            print(f"  Note: ModelRegistry setup skipped ({e})")
-        return conn, tracker, exp_name, registry
+        registry = ModelRegistry(conn)
+        return conn, tracker, "m5_gans", registry
 
     return asyncio.run(_setup())
 

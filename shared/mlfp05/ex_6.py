@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import pickle
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -63,7 +64,9 @@ def load_cora() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str, in
     from torch_geometric.datasets import Planetoid
 
     dataset = Planetoid(root=str(DATA_DIR), name="Cora")
-    data = dataset[0]
+    # torch_geometric.data.Data has dynamic attributes (num_nodes/x/y/edge_index);
+    # use Any to avoid type-checker false positives without losing runtime fidelity.
+    data: Any = dataset[0]
     n = data.num_nodes
     X_np = data.x.numpy().astype(np.float32)
     y_np = data.y.numpy().astype(np.int64)
@@ -348,6 +351,7 @@ def plot_training_curves(
         x_label="Epoch",
         y_label=y_label,
     )
+    fig.update_layout(title=title)
     filepath = OUTPUT_DIR / filename
     fig.write_html(str(filepath))
     print(f"  Saved: {filepath}")
@@ -366,7 +370,7 @@ def plot_node_embeddings(
     should cluster together if the GNN learned meaningful representations.
     """
     emb_centered = embeddings - embeddings.mean(axis=0, keepdims=True)
-    U, S, Vt = np.linalg.svd(emb_centered, full_matrices=False)
+    Vt = np.linalg.svd(emb_centered, full_matrices=False)[2]
     coords = emb_centered @ Vt.T[:, :2]
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
@@ -490,7 +494,7 @@ def plot_attention_weights(
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     bar_colors = [plt.cm.get_cmap("tab10")(labels[n] % 10) for n in top_neighbours]
-    bars = ax.barh(
+    ax.barh(
         range(len(top_neighbours)),
         top_weights,
         color=bar_colors,

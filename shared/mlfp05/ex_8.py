@@ -22,8 +22,6 @@ import torch.nn as nn
 import gymnasium as gym
 from gymnasium import spaces
 
-import polars as pl
-
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
@@ -52,8 +50,16 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def make_cartpole() -> tuple[gym.Env, int, int]:
     """Create CartPole-v1 and return (env, obs_dim, n_actions)."""
     env = gym.make("CartPole-v1")
-    obs_dim = env.observation_space.shape[0]
-    n_actions = env.action_space.n
+    obs_space = env.observation_space
+    act_space = env.action_space
+    assert (
+        isinstance(obs_space, spaces.Box) and obs_space.shape is not None
+    ), f"CartPole obs space expected gymnasium Box, got {type(obs_space).__name__}"
+    assert isinstance(
+        act_space, spaces.Discrete
+    ), f"CartPole action space expected Discrete, got {type(act_space).__name__}"
+    obs_dim = obs_space.shape[0]
+    n_actions = int(act_space.n)
     print(f"CartPole-v1  obs_dim={obs_dim}  n_actions={n_actions}")
     return env, obs_dim, n_actions
 
@@ -144,7 +150,7 @@ def evaluate_policy(env: gym.Env, policy_fn, n_episodes: int = 30) -> list[float
         while not done:
             action = policy_fn(state)
             state, reward, terminated, truncated, _ = env.step(action)
-            total += reward
+            total += float(reward)
             done = terminated or truncated
         eval_returns.append(total)
     return eval_returns

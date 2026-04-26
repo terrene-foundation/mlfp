@@ -31,6 +31,7 @@ from shared.kailash_helpers import get_device, setup_environment
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
 from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml.types import MetricSpec
 
 # ── Constants ───────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -210,9 +211,9 @@ async def _setup_engines(
     await conn.initialize()
     registry = ModelRegistry(conn)
     exp_name = (
-        f"m5_rnns_{experiment_suffix}"
+        f"m5_rnns_{primary}_{experiment_suffix}"
         if experiment_suffix
-        else "m5_rnns_sequence_models"
+        else f"m5_rnns_{primary}"
     )
     return conn, tracker, exp_name, registry, True
 
@@ -368,25 +369,23 @@ def register_best_model(
         return
 
     model_bytes = pickle.dumps(model.state_dict())
-    try:
-        reg_result = asyncio.run(
-            registry.register(
-                name=f"m5_rnn_{model_name.lower()}_{primary.replace('^', '')}",
-                model_data=model_bytes,
-                metadata={
-                    "architecture": model_name,
-                    "ticker": primary,
-                    "hidden_dim": HIDDEN_DIM,
-                    "seq_len": SEQ_LEN,
-                    "forecast_horizon": FORECAST_HORIZON,
-                    "val_loss": val_loss,
-                    "epochs": EPOCHS,
-                },
-            )
+    # Architecture/ticker are encoded in the model name; numeric facts go to MetricSpec.
+    reg_result = asyncio.run(
+        registry.register_model(
+            name=f"m5_rnn_{model_name.lower()}_{primary.replace('^', '')}",
+            artifact=model_bytes,
+            metrics=[
+                MetricSpec(
+                    name="val_loss", value=float(val_loss), higher_is_better=False
+                ),
+                MetricSpec(name="hidden_dim", value=float(HIDDEN_DIM)),
+                MetricSpec(name="seq_len", value=float(SEQ_LEN)),
+                MetricSpec(name="forecast_horizon", value=float(FORECAST_HORIZON)),
+                MetricSpec(name="epochs", value=float(EPOCHS)),
+            ],
         )
-        print(f"  Registered: {reg_result}")
-    except Exception as e:
-        print(f"  ModelRegistry registration skipped ({type(e).__name__}: {e})")
+    )
+    print(f"  Registered: {reg_result.name} v{reg_result.version}")
 
 
 # ── Visualisation Helpers ───────────────────────────────────────────────

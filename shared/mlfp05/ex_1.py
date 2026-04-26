@@ -16,12 +16,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import torchvision
 
 from kailash.db import ConnectionManager
-from kailash_ml import ExperimentTracker, ModelVisualizer
+from kailash_ml import ExperimentTracker
 from kailash_ml.engines.model_registry import ModelRegistry
 
 from shared.kailash_helpers import get_device, setup_environment
@@ -208,7 +207,7 @@ def show_activation_sparsity(model, test_data, title="Sparse AE Activations"):
 
     activations = h.cpu().numpy().flatten()
 
-    fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+    _, ax = plt.subplots(1, 1, figsize=(8, 4))
     ax.hist(activations, bins=100, color="steelblue", edgecolor="white", alpha=0.8)
     ax.set_title(title, fontsize=14, fontweight="bold")
     ax.set_xlabel("Activation Value")

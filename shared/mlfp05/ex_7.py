@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.manifold import TSNE
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
 import torchvision
 import torchvision.transforms as T
@@ -346,12 +346,20 @@ def extract_features(
     labels: list[np.ndarray] = []
 
     def hook_fn(module, inp, out):
+        del module, inp  # PyTorch hook protocol args; not used here
         hook_features.append(out.flatten(1).detach().cpu())
 
     # ResNet: hook into avgpool; Sequential: second-to-last layer
     if hasattr(model, "avgpool"):
-        handle = model.avgpool.register_forward_hook(hook_fn)
+        avgpool = model.avgpool
+        assert isinstance(
+            avgpool, nn.Module
+        ), f"expected nn.Module for avgpool, got {type(avgpool).__name__}"
+        handle = avgpool.register_forward_hook(hook_fn)
     else:
+        assert isinstance(
+            model, nn.Sequential
+        ), f"hook fallback requires nn.Sequential, got {type(model).__name__}"
         handle = model[-3].register_forward_hook(hook_fn)
 
     with torch.no_grad():
@@ -397,7 +405,7 @@ def cluster_quality(coords: np.ndarray, labels: np.ndarray) -> float:
         ]
     )
     avg_intra = np.mean(intra)
-    return avg_intra / inter if inter > 0 else float("inf")
+    return float(avg_intra / inter) if inter > 0 else float("inf")
 
 
 def plot_tsne(

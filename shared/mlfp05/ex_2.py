@@ -27,8 +27,6 @@ import torchvision
 
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
-from kailash_ml.engines.inference_server import InferenceServer
 from kailash_ml.engines.model_registry import ModelRegistry
 from kailash_ml.types import MetricSpec
 from shared.kailash_helpers import get_device, setup_environment
@@ -180,6 +178,7 @@ class LitCNN(pl.LightningModule):
         self._val_total = 0
 
     def training_step(self, batch, batch_idx):
+        del batch_idx  # Lightning protocol arg; not used here
         x, y = batch
         logits = self.model(x)
         loss = F.cross_entropy(logits, y)
@@ -192,6 +191,7 @@ class LitCNN(pl.LightningModule):
             self._batch_losses = []
 
     def validation_step(self, batch, batch_idx):
+        del batch_idx  # Lightning protocol arg; not used here
         x, y = batch
         logits = self.model(x)
         self._val_correct += int((logits.argmax(dim=-1) == y).sum().item())

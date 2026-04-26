@@ -20,9 +20,10 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 import torchvision
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from kailash.db import ConnectionManager
-from kailash_ml import ExperimentTracker, ModelVisualizer
+from kailash_ml import ExperimentTracker
 from kailash_ml.engines.model_registry import ModelRegistry
 from kailash_ml.types import MetricSpec
 
@@ -312,7 +313,7 @@ def plot_image_grid(
     ncol: int = 8,
     title: str = "Generated Images",
     save_path: str | None = None,
-) -> plt.Figure:
+) -> Figure:
     """Plot an 8x8 grid of generated images.
 
     Args:
@@ -347,7 +348,7 @@ def plot_latent_interpolation(
     n_rows: int = 5,
     title: str = "Latent Space Interpolation",
     save_path: str | None = None,
-) -> plt.Figure:
+) -> Figure:
     """Interpolate between pairs of random latent vectors.
 
     Shows smooth transitions between generated images — evidence that
@@ -382,7 +383,7 @@ def plot_training_progression(
     epoch_snapshots: dict[int, dict],
     title: str = "Training Progression",
     save_path: str | None = None,
-) -> plt.Figure:
+) -> Figure:
     """Plot generated images at different training epochs.
 
     Shows how generation quality improves over training — from random
@@ -428,7 +429,7 @@ def plot_loss_curves(
     g_label: str = "Generator",
     d_label: str = "Discriminator",
     save_path: str | None = None,
-) -> plt.Figure:
+) -> Figure:
     """Plot G vs D loss curves across epochs."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(title, fontsize=14, fontweight="bold")

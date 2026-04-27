@@ -22,7 +22,7 @@ from __future__ import annotations
 import polars as pl
 
 from kailash_ml import FeatureField, FeatureSchema
-from kailash_ml.engines.feature_engineer import (
+from kailash_ml import (
     FeatureEngineer,
     FeatureRank,
     GeneratedColumn,

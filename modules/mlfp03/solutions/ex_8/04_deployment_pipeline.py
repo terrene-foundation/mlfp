@@ -42,7 +42,7 @@ from shared.mlfp03.ex_8 import (
 )
 
 try:
-    from kailash_ml.engines.model_registry import ModelRegistry
+    from kailash_ml import ModelRegistry
 
     HAS_REGISTRY = True
 except ImportError:

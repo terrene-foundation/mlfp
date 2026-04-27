@@ -35,13 +35,13 @@ import numpy as np
 from dataflow import DataFlow
 from kailash.runtime import LocalRuntime
 from kailash.workflow.builder import WorkflowBuilder
-from kailash_ml.engines.hyperparameter_search import (
+from kailash_ml import (
     HyperparameterSearch,
     ParamDistribution,
     SearchConfig,
     SearchSpace,
 )
-from kailash_ml.engines.training_pipeline import (
+from kailash_ml import (
     EvalSpec,
     ModelSpec,
     TrainingPipeline,

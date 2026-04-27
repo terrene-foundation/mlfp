@@ -21,7 +21,7 @@ import torchvision
 
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker
-from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml import ModelRegistry
 
 from shared.kailash_helpers import get_device, setup_environment
 

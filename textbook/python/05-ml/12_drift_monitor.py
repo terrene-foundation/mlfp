@@ -25,7 +25,7 @@ from datetime import timedelta
 import polars as pl
 
 from kailash.db.connection import ConnectionManager
-from kailash_ml.engines.drift_monitor import (
+from kailash_ml import (
     DriftMonitor,
     DriftReport,
     DriftSpec,

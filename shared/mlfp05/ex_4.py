@@ -31,8 +31,8 @@ import plotly.graph_objects as go
 
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
-from kailash_ml.engines.model_registry import ModelRegistry
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
+from kailash_ml import ModelRegistry
+from kailash_ml import OnnxBridge
 from shared.kailash_helpers import get_device, setup_environment
 
 # ════════════════════════════════════════════════════════════════════════

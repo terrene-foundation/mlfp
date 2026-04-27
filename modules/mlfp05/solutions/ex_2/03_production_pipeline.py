@@ -60,8 +60,8 @@ from shared.mlfp05.ex_2 import (
     register_model,
     train_model,
 )
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
-from kailash_ml.engines.inference_server import InferenceServer
+from kailash_ml import OnnxBridge
+from kailash_ml import InferenceServer
 
 
 # ════════════════════════════════════════════════════════════════════════

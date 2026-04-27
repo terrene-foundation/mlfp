@@ -36,7 +36,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 from kailash_ml import ModelVisualizer
-from kailash_ml.engines.automl_engine import AutoMLConfig, AutoMLEngine
+from kailash_ml import AutoMLConfig, AutoMLEngine
 
 from shared.mlfp04.ex_1 import (
     RANDOM_STATE,

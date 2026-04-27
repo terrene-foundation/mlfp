@@ -26,7 +26,7 @@ import torchvision.transforms as T
 
 from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker, ModelVisualizer
-from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml import ModelRegistry
 from kailash_ml.types import MetricSpec
 
 from shared.kailash_helpers import get_device, setup_environment

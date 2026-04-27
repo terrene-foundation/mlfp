@@ -27,7 +27,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 from kailash.db.connection import ConnectionManager
 from kailash_ml import FeatureField, FeatureSchema, MetricSpec, ModelSignature
-from kailash_ml.engines.model_registry import (
+from kailash_ml import (
     LocalFileArtifactStore,
     ModelNotFoundError,
     ModelRegistry,

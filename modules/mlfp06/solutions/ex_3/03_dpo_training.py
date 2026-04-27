@@ -228,12 +228,48 @@ REFUSAL_KEYWORDS = [
 ]
 
 
-async def evaluate_safety() -> pl.DataFrame:
+# kailash-align 0.6.0 AlignmentPipeline only exposes .train(); inference
+# happens via either KaizenModelBridge (Ollama/vLLM deployment, production
+# path) OR direct PeftModel.disable_adapter() context manager (in-process,
+# teaching path). We use the in-process path here: load the trained
+# adapter once, toggle it on/off via the PEFT context manager, and
+# generate base + aligned responses against the same model.
+def evaluate_safety_inproc() -> pl.DataFrame:
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    print("Loading base + DPO-aligned models for inline generation...")
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    base_model = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    )
+    aligned_model = PeftModel.from_pretrained(base_model, dpo_result.adapter_path)
+    aligned_model.eval()
+
+    def gen(model, prompt: str, max_new_tokens: int = 64) -> str:
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+        prompt_len = inputs["input_ids"].shape[1]
+        return tokenizer.decode(outputs[0][prompt_len:], skip_special_tokens=True)
+
     print("Generating responses from base and aligned policies...")
     rows = []
     for prompt in SAFETY_PROMPTS:
-        base_resp = await dpo_pipeline.generate(prompt, use_adapter=False)
-        aligned_resp = await dpo_pipeline.generate(prompt, use_adapter=True)
+        # disable_adapter() exposes the unmodified base model; default
+        # state runs the DPO-trained LoRA on top.
+        with aligned_model.disable_adapter():
+            base_resp = gen(aligned_model, prompt)
+        aligned_resp = gen(aligned_model, prompt)
 
         base_refuses = any(kw in base_resp.lower() for kw in REFUSAL_KEYWORDS)
         aligned_refuses = any(kw in aligned_resp.lower() for kw in REFUSAL_KEYWORDS)
@@ -255,7 +291,7 @@ async def evaluate_safety() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-safety_df = asyncio.run(evaluate_safety())
+safety_df = evaluate_safety_inproc()
 
 base_rate = float(safety_df["base_refused"].sum()) / safety_df.height
 aligned_rate = float(safety_df["aligned_refused"].sum()) / safety_df.height

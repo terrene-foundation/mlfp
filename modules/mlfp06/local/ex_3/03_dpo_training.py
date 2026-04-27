@@ -183,12 +183,41 @@ REFUSAL_KEYWORDS = [
 ]
 
 
-async def evaluate_safety() -> pl.DataFrame:
+# kailash-align 0.6.0 AlignmentPipeline only exposes .train(); inference
+# happens via PeftModel directly. Use disable_adapter() to compare base
+# vs DPO-aligned responses against the SAME model in memory.
+def evaluate_safety_inproc() -> pl.DataFrame:
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    base_model = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    )
+    aligned_model = PeftModel.from_pretrained(base_model, dpo_result.adapter_path)
+    aligned_model.eval()
+
+    def gen(model, prompt: str, max_new_tokens: int = 64) -> str:
+        # TODO: tokenize the prompt with `return_tensors="pt"` and move
+        #       to model.device. Then call model.generate(...) with
+        #       max_new_tokens=max_new_tokens, do_sample=False, and
+        #       pad_token_id=tokenizer.pad_token_id. Decode the part of
+        #       outputs[0] that comes AFTER the prompt tokens.
+        inputs = ____
+        outputs = ____
+        prompt_len = inputs["input_ids"].shape[1]
+        return tokenizer.decode(outputs[0][prompt_len:], skip_special_tokens=True)
+
     rows = []
     for prompt in SAFETY_PROMPTS:
-        # TODO: Generate a base response via dpo_pipeline.generate(prompt, use_adapter=False)
+        # TODO: Use `with aligned_model.disable_adapter():` to generate
+        #       the BASE response (LoRA off), then call gen() again
+        #       outside the context manager for the ALIGNED response.
         base_resp = ____
-        # TODO: Generate an aligned response via dpo_pipeline.generate(prompt, use_adapter=True)
         aligned_resp = ____
         base_refuses = any(kw in base_resp.lower() for kw in REFUSAL_KEYWORDS)
         aligned_refuses = any(kw in aligned_resp.lower() for kw in REFUSAL_KEYWORDS)
@@ -203,7 +232,7 @@ async def evaluate_safety() -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-safety_df = asyncio.run(evaluate_safety())
+safety_df = evaluate_safety_inproc()
 
 base_rate = float(safety_df["base_refused"].sum()) / safety_df.height
 aligned_rate = float(safety_df["aligned_refused"].sum()) / safety_df.height

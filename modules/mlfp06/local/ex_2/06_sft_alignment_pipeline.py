@@ -129,7 +129,11 @@ async def run_sft_and_register() -> dict:
             "adapter_path": str(OUTPUT_DIR / "sft_output" / "adapter"),
         }
     else:
-        from kailash_align import AdapterRegistry, AlignmentPipeline
+        from kailash_align import (
+            AdapterRegistry,
+            AdapterSignature,
+            AlignmentPipeline,
+        )
 
         # TODO: Instantiate AlignmentPipeline(config) and await
         # pipeline.train(train_data=..., eval_data=...)
@@ -147,12 +151,21 @@ async def run_sft_and_register() -> dict:
         print(f"  Eval loss:     {metrics['eval_loss']:.4f}")
         print(f"  Training time: {metrics['training_time_seconds']:.0f}s")
 
-        # TODO: registry = AdapterRegistry(); await registry.register(
-        #     name="imdb_sentiment_sft_v1", base_model=config.base_model,
-        #     method="sft_lora", adapter_path=metrics["adapter_path"],
-        #     metrics={"final_loss": ..., "eval_loss": ...},
-        #     tags=["imdb", "sentiment", "lora-r16"])
+        # TODO: Instantiate registry = AdapterRegistry()
         registry = ____
+        # TODO: Build an AdapterSignature with base_model_id=config.base_model,
+        #   adapter_type="lora", training_method="sft"
+        signature = ____
+        # TODO: await registry.register_adapter(
+        #     name="imdb_sentiment_sft_v1",
+        #     adapter_path=metrics["adapter_path"],
+        #     signature=signature,
+        #     training_metrics={"final_loss": ..., "eval_loss": ...},
+        #     tags=["imdb", "sentiment", "lora-r16"])
+        # register_adapter returns an AdapterVersion (not a string).
+        version = ____
+        # TODO: Build a stable adapter_id string of the form
+        #   f"{version.adapter_name}:v{version.version}"
         adapter_id = ____
         metrics["adapter_id"] = adapter_id
         print(f"  Registered as: {adapter_id}")

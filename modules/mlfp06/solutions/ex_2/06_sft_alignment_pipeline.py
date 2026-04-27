@@ -153,7 +153,11 @@ async def run_sft_and_register() -> dict:
             "adapter_path": str(OUTPUT_DIR / "sft_output" / "adapter"),
         }
     else:
-        from kailash_align import AdapterRegistry, AlignmentPipeline
+        from kailash_align import (
+            AdapterRegistry,
+            AdapterSignature,
+            AlignmentPipeline,
+        )
 
         pipeline = AlignmentPipeline(config)
         print("  Running SFT training (this may take several minutes)...")
@@ -168,19 +172,26 @@ async def run_sft_and_register() -> dict:
         print(f"  Eval loss:     {metrics['eval_loss']:.4f}")
         print(f"  Training time: {metrics['training_time_seconds']:.0f}s")
 
-        # Register the trained adapter
+        # Register the trained adapter (kailash-align 0.6.0+ API):
+        # AdapterSignature bundles base + adapter_type + training_method;
+        # register_adapter returns an AdapterVersion dataclass.
         registry = AdapterRegistry()
-        adapter_id = await registry.register(
+        signature = AdapterSignature(
+            base_model_id=config.base_model,
+            adapter_type="lora",
+            training_method="sft",
+        )
+        version = await registry.register_adapter(
             name="imdb_sentiment_sft_v1",
-            base_model=config.base_model,
-            method="sft_lora",
             adapter_path=metrics["adapter_path"],
-            metrics={
+            signature=signature,
+            training_metrics={
                 "final_loss": metrics["final_loss"],
                 "eval_loss": metrics["eval_loss"],
             },
             tags=["imdb", "sentiment", "lora-r16"],
         )
+        adapter_id = f"{version.adapter_name}:v{version.version}"
         metrics["adapter_id"] = adapter_id
         print(f"  Registered as: {adapter_id}")
 

@@ -31,7 +31,12 @@ from __future__ import annotations
 import asyncio
 
 import polars as pl
-from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
+from kailash_align import (
+    AdapterRegistry,
+    AdapterSignature,
+    AlignmentConfig,
+    AlignmentPipeline,
+)
 
 from shared.mlfp06.ex_3 import (
     ADAPTER_OUTPUT_DIR,
@@ -117,11 +122,18 @@ print("=" * 70)
 
 async def register_adapter() -> str:
     registry = AdapterRegistry()
-    # TODO: Call registry.register() with:
-    #   name="ultrafeedback_dpo_v1", base_model=BASE_MODEL,
-    #   method="dpo_lora", adapter_path=dpo_result.adapter_path,
-    #   metrics={"final_loss": ..., "eval_loss": ..., "beta": ...},
+    # TODO: Build an AdapterSignature with base_model_id=BASE_MODEL,
+    #   adapter_type="lora", training_method="dpo"
+    signature = ____
+    # TODO: Call registry.register_adapter() with:
+    #   name="ultrafeedback_dpo_v1", adapter_path=dpo_result.adapter_path,
+    #   signature=signature,
+    #   training_metrics={"final_loss": ..., "eval_loss": ..., "beta": ...},
     #   tags=["ultrafeedback", "dpo", "preference-aligned"]
+    # register_adapter returns an AdapterVersion (not a string).
+    version = ____
+    # TODO: Return a stable id string of the form
+    #   f"{version.adapter_name}:v{version.version}"
     adapter_id = ____
     return adapter_id
 

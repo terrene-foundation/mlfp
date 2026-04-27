@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 import os
+import pickle
 import time
 from pathlib import Path
 
@@ -46,12 +47,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from kailash.db import ConnectionManager
 from kailash_ml import (
     ExperimentTracker,
-    InferenceServer,
     ModelRegistry,
     ModelVisualizer,
-    OnnxBridge,
+)
+from kailash_ml.types import (
+    FeatureField,
+    FeatureSchema,
+    MetricSpec,
+    ModelSignature,
 )
 
 from shared import MLFPDataLoader
@@ -536,7 +542,7 @@ def train_and_eval(
     criterion = nn.CrossEntropyLoss()
 
     t0 = time.perf_counter()
-    for epoch in range(epochs):
+    for _ in range(epochs):
         model.train()
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
@@ -1034,16 +1040,56 @@ else:
 
 print(f"Best time series model: {best_ts_name} (MSE={best_ts_mse:.6f})")
 
-registry = ModelRegistry()
-registry.register(
-    model_name="energy_forecaster_v1",
-    model=best_ts_model,
-    signature={
-        "inputs": {"sequence": f"float32[batch, {seq_len}, 1]"},
-        "outputs": {"forecast": f"float32[batch, {pred_len}]"},
-    },
-    metadata={"mse": best_ts_mse, "architecture": best_ts_name},
-    stage="production",
+# kailash-ml 1.1.1 ModelRegistry is conn-backed and async — register +
+# promote in one asyncio.run() block. Architecture is encoded in the
+# version's metric stack; sequence/forecast shapes go through
+# ModelSignature so the InferenceServer can validate at serve time.
+ts_signature = ModelSignature(
+    input_schema=FeatureSchema(
+        name="energy_forecaster_v1",
+        features=[FeatureField(name="sequence", dtype="float32")],
+        entity_id_column="series_id",
+    ),
+    output_columns=["forecast"],
+    output_dtypes=["float32"],
+    model_type="regressor",
+)
+ts_metrics = [
+    MetricSpec(name="mse", value=float(best_ts_mse), higher_is_better=False),
+    MetricSpec(name="seq_len", value=float(seq_len)),
+    MetricSpec(name="pred_len", value=float(pred_len)),
+]
+
+
+async def _register_energy_forecaster() -> tuple:
+    conn = ConnectionManager("sqlite:///mlfp05_exam.db")
+    await conn.initialize()
+    try:
+        registry_local = ModelRegistry(conn)
+        version = await registry_local.register_model(
+            name="energy_forecaster_v1",
+            artifact=pickle.dumps(best_ts_model),
+            metrics=ts_metrics,
+            signature=ts_signature,
+        )
+        await registry_local.promote_model(
+            name="energy_forecaster_v1",
+            version=version.version,
+            target_stage="production",
+            reason=f"Best architecture {best_ts_name} (MSE={best_ts_mse:.6f}).",
+        )
+        prod = await registry_local.get_model(
+            "energy_forecaster_v1", stage="production"
+        )
+        return version, prod
+    finally:
+        await conn.close()
+
+
+registered_ts_version, prod_ts_model = asyncio.run(_register_energy_forecaster())
+print(
+    f"Model registered as 'energy_forecaster_v1' v{registered_ts_version.version}; "
+    f"promoted to {prod_ts_model.stage}"
 )
 
 # ONNX export
@@ -1303,7 +1349,7 @@ class TextLSTM(nn.Module):
 
     def forward(self, x):
         embedded = self.embedding(x)
-        output, (hidden, _) = self.lstm(embedded)
+        _, (hidden, _) = self.lstm(embedded)
         # Concatenate forward and backward final hidden states
         hidden_cat = torch.cat([hidden[-2], hidden[-1]], dim=1)
         return self.fc(hidden_cat)

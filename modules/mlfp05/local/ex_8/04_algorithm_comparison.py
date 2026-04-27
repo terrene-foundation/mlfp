@@ -485,6 +485,34 @@ cartpole_env.close()
 asyncio.run(conn.close())
 
 
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — km.diagnose
+# ════════════════════════════════════════════════════════════════════════
+# This lesson walked the journey of reinforcement learning algorithms —
+# Random baseline, DQN with replay buffers, PPO with GAE — each with its
+# own training loop, environment-step accounting, and decision framework.
+# The kailash-ml SDK ships a single-call diagnostic primitive that
+# closes the production loop: km.diagnose inspects a trained model and
+# emits an auto-dashboard (loss curves, gradient flow, dead neurons,
+# activation stats, weight distributions). One cell. Every diagnostic
+# students would otherwise hand-roll, ready to surface in a Plotly
+# dashboard.
+
+from kailash_ml import diagnose
+
+# RL networks are torch.nn.Module — `kind='auto'` correctly dispatches
+# them to DLDiagnostics (verified empirically; no rl-specific kind needed
+# for the policy network's gradient/activation surface). We feed a small
+# iterable of observation-shaped tensors as the diagnostic batch.
+obs_iter = [torch.randn(64, obs_dim, device=device) for _ in range(4)]
+report = diagnose(dqn_model, kind="auto", data=obs_iter, show=False)
+report.plot_training_dashboard()
+print()
+print("km.diagnose: 1 line of code -> the same observability the lesson")
+print("body hand-rolled in 200+ lines. This is what 'destination-first'")
+print("means — when the journey is internalised, the SDK is one call.")
+
+
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════

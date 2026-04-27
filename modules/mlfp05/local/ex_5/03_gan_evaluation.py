@@ -747,6 +747,32 @@ asyncio.run(close_engines(conn))
 
 
 # ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — km.diagnose
+# ════════════════════════════════════════════════════════════════════════
+# This lesson walked the journey of generative adversarial networks —
+# vanilla GAN, WGAN-GP, FID/coverage/entropy QA pipelines. The kailash-ml
+# SDK ships a single-call diagnostic primitive that closes the production
+# loop: km.diagnose inspects a trained model and emits an auto-dashboard
+# (loss curves, gradient flow, dead neurons, activation stats, weight
+# distributions). One cell. Every diagnostic students would otherwise
+# hand-roll, ready to surface in a Plotly dashboard.
+
+from kailash_ml import diagnose
+
+# Diagnose the WGAN-GP generator (the more stable of the two architectures).
+# Generators take noise vectors as input — we feed a small iterable of
+# `LATENT_DIM`-shaped noise tensors. `kind='auto'` correctly dispatches a
+# torch.nn.Module to DLDiagnostics regardless of input shape.
+noise_iter = [torch.randn(64, LATENT_DIM, device=device) for _ in range(4)]
+report = diagnose(G_wgan, kind="auto", data=noise_iter, show=False)
+report.plot_training_dashboard()
+print()
+print("km.diagnose: 1 line of code -> the same observability the lesson")
+print("body hand-rolled in 200+ lines. This is what 'destination-first'")
+print("means — when the journey is internalised, the SDK is one call.")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -820,6 +846,7 @@ def _diag_loss(m, batch):
         x, y = batch, None
     out = m(x)
     import torch.nn.functional as F
+
     if y is None:
         return F.mse_loss(out, x)
     return F.cross_entropy(out, y)
@@ -870,5 +897,3 @@ except Exception as exc:
 #  [STETHOSCOPE] Diverging G/D losses (D→0, G→∞) is the classic
 #     "Nash equilibrium lost" pattern. WGAN-GP (next exercise) is
 #     the direct fix.
-
-

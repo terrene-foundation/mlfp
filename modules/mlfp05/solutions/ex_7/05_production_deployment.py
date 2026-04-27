@@ -490,6 +490,31 @@ asyncio.run(conn.close())
 
 
 # ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — km.diagnose
+# ════════════════════════════════════════════════════════════════════════
+# This lesson walked the journey of transfer learning and production
+# deployment — from-scratch baseline, ResNet-18 fine-tuning, ONNX export,
+# inference benchmarking. The kailash-ml SDK ships a single-call
+# diagnostic primitive that closes the production loop: km.diagnose
+# inspects a trained model and emits an auto-dashboard (loss curves,
+# gradient flow, dead neurons, activation stats, weight distributions).
+# One cell. Every diagnostic students would otherwise hand-roll, ready
+# to surface in a Plotly dashboard.
+
+from kailash_ml import diagnose
+
+# Diagnose the production transfer model. `kind='auto'` dispatches by
+# model type — DLDiagnostics for torch.nn.Module. `data=` accepts any
+# iterable yielding tensors; we reuse val_loader.
+report = diagnose(prod_model, kind="auto", data=val_loader, show=False)
+report.plot_training_dashboard()
+print()
+print("km.diagnose: 1 line of code -> the same observability the lesson")
+print("body hand-rolled in 200+ lines. This is what 'destination-first'")
+print("means — when the journey is internalised, the SDK is one call.")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -559,6 +584,7 @@ def _diag_loss(m, batch):
         x, y = batch, None
     out = m(x)
     import torch.nn.functional as F
+
     if y is None:
         return F.mse_loss(out, x)
     return F.cross_entropy(out, y)
@@ -600,4 +626,3 @@ except Exception as exc:
 #     means 99% of requests fit in a 10ms SLA. Slide 5.7
 #     production bridge slide references OnnxBridge + InferenceServer
 #     as the Kailash production stack.
-

@@ -241,9 +241,7 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
         enable_checkpointing=False,
     )
 
-    async with tracker.track(
-        experiment=exp_name, run_name=f"hp_sweep_lr_{lr}"
-    ) as run:
+    async with tracker.track(experiment=exp_name, run_name=f"hp_sweep_lr_{lr}") as run:
         await run.log_params(
             {
                 "architecture": "ResNetSE",
@@ -820,6 +818,32 @@ print(f"\n  All runs are queryable via ExperimentTracker for future comparison."
 # Clean up
 # ════════════════════════════════════════════════════════════════════════
 asyncio.run(conn.close())
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — km.diagnose
+# ════════════════════════════════════════════════════════════════════════
+# This lesson walked the journey of CNN hyperparameter tuning — learning
+# rate sweeps, augmentation studies, per-config diagnose_classifier
+# reports. The kailash-ml SDK ships a single-call diagnostic primitive
+# that closes the production loop: km.diagnose inspects a trained model
+# and emits an auto-dashboard (loss curves, gradient flow, dead neurons,
+# activation stats, weight distributions). One cell. Every diagnostic
+# students would otherwise hand-roll, ready to surface in a Plotly
+# dashboard.
+
+from kailash_ml import diagnose
+
+# The flip_crop run was the winning HP configuration. `kind='auto'`
+# dispatches by model type — DLDiagnostics for torch.nn.Module.
+# `data=` accepts any iterable yielding tensors; we reuse val_loader.
+winning_model = aug_results["flip_crop"]["model"]
+report = diagnose(winning_model, kind="auto", data=val_loader, show=False)
+report.plot_training_dashboard()
+print()
+print("km.diagnose: 1 line of code -> the same observability the lesson")
+print("body hand-rolled in 200+ lines. This is what 'destination-first'")
+print("means — when the journey is internalised, the SDK is one call.")
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -162,10 +162,13 @@ async def run_sft_and_register() -> dict:
         pipeline = AlignmentPipeline(config)
         print("  Running SFT training (this may take several minutes)...")
         result = await pipeline.train(train_data=train_data, eval_data=eval_data)
+        # AlignmentResult.training_metrics is a dict in 0.6.0 — final_loss /
+        # eval_loss / training_time_seconds live there, not as direct attrs.
+        train_metrics = result.training_metrics
         metrics = {
-            "final_loss": result.final_loss,
-            "eval_loss": result.eval_loss,
-            "training_time_seconds": result.training_time_seconds,
+            "final_loss": train_metrics["final_loss"],
+            "eval_loss": train_metrics["eval_loss"],
+            "training_time_seconds": train_metrics.get("training_time_seconds", 0),
             "adapter_path": result.adapter_path,
         }
         print(f"  Final loss:    {metrics['final_loss']:.4f}")

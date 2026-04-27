@@ -36,6 +36,7 @@ from kailash_align import (
     AdapterSignature,
     AlignmentConfig,
     AlignmentPipeline,
+    AlignmentResult,
     DPOConfig,
     LoRAConfig,
     SFTConfig,
@@ -126,13 +127,16 @@ train_pref, eval_pref = split_preferences(pref_data, train_frac=0.9)
 print(f"Train: {train_pref.height} pairs | Eval: {eval_pref.height} pairs")
 
 
-async def run_dpo_training() -> tuple[AlignmentPipeline, object]:
+async def run_dpo_training() -> tuple[AlignmentPipeline, AlignmentResult]:
     pipeline = AlignmentPipeline(dpo_config)
     print("\nRunning DPO training (this is the slow bit)...")
     result = await pipeline.train(train_data=train_pref, eval_data=eval_pref)
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss:  {result.eval_loss:.4f}")
-    print(f"  Time:       {result.training_time_seconds:.0f}s")
+    # AlignmentResult.training_metrics is a dict — final_loss / eval_loss /
+    # training_time_seconds live there, not as direct attributes (kailash-align 0.6.0).
+    metrics = result.training_metrics
+    print(f"  Final loss: {metrics['final_loss']:.4f}")
+    print(f"  Eval loss:  {metrics['eval_loss']:.4f}")
+    print(f"  Time:       {metrics.get('training_time_seconds', 0):.0f}s")
     print(f"  Adapter:    {result.adapter_path}")
     return pipeline, result
 
@@ -141,8 +145,11 @@ dpo_pipeline, dpo_result = asyncio.run(run_dpo_training())
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert dpo_result is not None
-assert dpo_result.final_loss > 0
-print(f"✓ Checkpoint 2 passed — DPO final loss={dpo_result.final_loss:.4f}\n")
+assert dpo_result.training_metrics["final_loss"] > 0
+print(
+    f"✓ Checkpoint 2 passed — DPO final loss="
+    f"{dpo_result.training_metrics['final_loss']:.4f}\n"
+)
 
 # INTERPRETATION: Unlike SFT, DPO loss can trend negative — it measures
 # how confident the policy is about preference ordering, not absolute
@@ -172,8 +179,8 @@ async def register_adapter() -> str:
         adapter_path=dpo_result.adapter_path,
         signature=signature,
         training_metrics={
-            "final_loss": dpo_result.final_loss,
-            "eval_loss": dpo_result.eval_loss,
+            "final_loss": dpo_result.training_metrics["final_loss"],
+            "eval_loss": dpo_result.training_metrics["eval_loss"],
             "beta": dpo_config.dpo.beta,
         },
         tags=["ultrafeedback", "dpo", "preference-aligned"],

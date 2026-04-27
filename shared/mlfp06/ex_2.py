@@ -161,22 +161,31 @@ def build_sft_config(
 
     Imported lazily so technique files that do not call SFT are not
     forced to install the align extra at import time.
+
+    kailash-align 0.6.0+ uses a composed AlignmentConfig: top-level
+    method + base_model_id + experiment_dir, plus required LoRAConfig
+    + SFTConfig + DPOConfig sub-configs. The DPOConfig is unused for
+    SFT but the constructor still expects it (default values are fine).
     """
-    from kailash_align import AlignmentConfig
+    from kailash_align import AlignmentConfig, DPOConfig, LoRAConfig, SFTConfig
 
     return AlignmentConfig(
         method="sft",
-        base_model=base_model or get_base_model_name(),
-        dataset_format="instruction",
-        lora_r=lora_r,
-        lora_alpha=lora_alpha,
-        lora_dropout=0.05,
-        target_modules=["q_proj", "v_proj"],
-        num_epochs=num_epochs,
-        batch_size=4,
-        learning_rate=2e-4,
-        warmup_ratio=0.1,
-        max_seq_length=512,
-        gradient_accumulation_steps=4,
-        output_dir=str(OUTPUT_DIR / output_subdir),
+        base_model_id=base_model or get_base_model_name(),
+        lora=LoRAConfig(
+            rank=lora_r,
+            alpha=lora_alpha,
+            target_modules=("q_proj", "v_proj"),
+            dropout=0.05,
+        ),
+        sft=SFTConfig(
+            num_train_epochs=num_epochs,
+            per_device_train_batch_size=4,
+            gradient_accumulation_steps=4,
+            learning_rate=2e-4,
+            warmup_ratio=0.1,
+            max_seq_length=512,
+        ),
+        dpo=DPOConfig(),
+        experiment_dir=str(OUTPUT_DIR / output_subdir),
     )

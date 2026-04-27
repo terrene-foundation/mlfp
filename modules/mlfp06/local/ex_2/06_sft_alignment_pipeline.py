@@ -88,18 +88,18 @@ base_model = ____
 config = ____
 
 print(f"  Method:        {config.method}")
-print(f"  Base model:    {config.base_model}")
-print(f"  LoRA:          r={config.lora_r}, alpha={config.lora_alpha}")
-print(f"  Target modules: {config.target_modules}")
-print(f"  Epochs:        {config.num_epochs}")
-print(f"  Batch size:    {config.batch_size}")
-print(f"  Learning rate: {config.learning_rate}")
-print(f"  Output dir:    {config.output_dir}")
+print(f"  Base model:    {config.base_model_id}")
+print(f"  LoRA:          r={config.lora.rank}, alpha={config.lora.alpha}")
+print(f"  Target modules: {config.lora.target_modules}")
+print(f"  Epochs:        {config.sft.num_train_epochs}")
+print(f"  Batch size:    {config.sft.per_device_train_batch_size}")
+print(f"  Learning rate: {config.sft.learning_rate}")
+print(f"  Output dir:    {config.experiment_dir}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert config.method == "sft", "Task 2: method should be 'sft'"
-assert config.lora_r == 16, "Task 2: LoRA rank should be 16"
-assert "q_proj" in config.target_modules, "Task 2: q_proj must be a target module"
+assert config.lora.rank == 16, "Task 2: LoRA rank should be 16"
+assert "q_proj" in config.lora.target_modules, "Task 2: q_proj must be a target module"
 print("✓ Checkpoint 2 passed — AlignmentConfig built\n")
 
 
@@ -153,7 +153,7 @@ async def run_sft_and_register() -> dict:
 
         # TODO: Instantiate registry = AdapterRegistry()
         registry = ____
-        # TODO: Build an AdapterSignature with base_model_id=config.base_model,
+        # TODO: Build an AdapterSignature with base_model_id=config.base_model_id,
         #   adapter_type="lora", training_method="sft"
         signature = ____
         # TODO: await registry.register_adapter(

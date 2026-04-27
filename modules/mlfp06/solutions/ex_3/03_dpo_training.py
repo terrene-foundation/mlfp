@@ -36,6 +36,9 @@ from kailash_align import (
     AdapterSignature,
     AlignmentConfig,
     AlignmentPipeline,
+    DPOConfig,
+    LoRAConfig,
+    SFTConfig,
 )
 
 from shared.mlfp06.ex_3 import (
@@ -67,35 +70,46 @@ print("=" * 70)
 print("TASK 1: Build DPO AlignmentConfig")
 print("=" * 70)
 
+# kailash-align 0.6.0+ uses a composed AlignmentConfig: top-level
+# method + base_model_id + experiment_dir, plus LoRAConfig + SFTConfig
+# + DPOConfig sub-configs. Here we set DPO + LoRA hyperparameters; the
+# SFTConfig is unused for method="dpo" but the constructor still requires
+# it (default values are fine).
 dpo_config = AlignmentConfig(
     method="dpo",
-    base_model=BASE_MODEL,
-    dataset_format="preference",
-    beta=0.1,
-    lora_r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj"],
-    num_epochs=2,
-    batch_size=2,
-    learning_rate=5e-5,
-    warmup_ratio=0.1,
-    max_seq_length=512,
-    gradient_accumulation_steps=4,
-    output_dir=str(ADAPTER_OUTPUT_DIR),
+    base_model_id=BASE_MODEL,
+    lora=LoRAConfig(
+        rank=16,
+        alpha=32,
+        target_modules=("q_proj", "v_proj"),
+        dropout=0.05,
+    ),
+    sft=SFTConfig(),
+    dpo=DPOConfig(
+        num_train_epochs=2,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        learning_rate=5e-5,
+        warmup_ratio=0.1,
+        max_length=512,
+        beta=0.1,
+    ),
+    experiment_dir=str(ADAPTER_OUTPUT_DIR),
 )
 
 print(f"  Method:    {dpo_config.method}")
-print(f"  Beta:      {dpo_config.beta}")
-print(f"  Base:      {dpo_config.base_model}")
-print(f"  Format:    {dpo_config.dataset_format}")
-print(f"  LoRA:      r={dpo_config.lora_r}, alpha={dpo_config.lora_alpha}")
-print(f"  Training:  {dpo_config.num_epochs} epochs, lr={dpo_config.learning_rate}")
+print(f"  Beta:      {dpo_config.dpo.beta}")
+print(f"  Base:      {dpo_config.base_model_id}")
+print(f"  LoRA:      r={dpo_config.lora.rank}, alpha={dpo_config.lora.alpha}")
+print(
+    f"  Training:  {dpo_config.dpo.num_train_epochs} epochs, "
+    f"lr={dpo_config.dpo.learning_rate}"
+)
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert dpo_config.method == "dpo"
-assert dpo_config.dataset_format == "preference"
-assert dpo_config.beta == 0.1
+assert dpo_config.dpo.beta == 0.1
+assert dpo_config.lora.rank == 16
 print("✓ Checkpoint 1 passed — DPO config ready\n")
 
 
@@ -160,7 +174,7 @@ async def register_adapter() -> str:
         training_metrics={
             "final_loss": dpo_result.final_loss,
             "eval_loss": dpo_result.eval_loss,
-            "beta": dpo_config.beta,
+            "beta": dpo_config.dpo.beta,
         },
         tags=["ultrafeedback", "dpo", "preference-aligned"],
     )

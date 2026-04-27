@@ -36,6 +36,9 @@ from kailash_align import (
     AdapterSignature,
     AlignmentConfig,
     AlignmentPipeline,
+    DPOConfig,
+    LoRAConfig,
+    SFTConfig,
 )
 
 from shared.mlfp06.ex_3 import (
@@ -64,19 +67,24 @@ print("=" * 70)
 print("TASK 1: Build DPO AlignmentConfig")
 print("=" * 70)
 
-# TODO: Configure AlignmentConfig for DPO:
-#   method="dpo", base_model=BASE_MODEL, dataset_format="preference",
-#   beta=0.1, lora_r=16, lora_alpha=32, lora_dropout=0.05,
-#   target_modules=["q_proj", "v_proj"], num_epochs=2, batch_size=2,
-#   learning_rate=5e-5, warmup_ratio=0.1, max_seq_length=512,
-#   gradient_accumulation_steps=4, output_dir=str(ADAPTER_OUTPUT_DIR)
+# TODO: Configure AlignmentConfig for DPO. kailash-align 0.6.0+ uses a
+# composed shape — top-level method + base_model_id + experiment_dir,
+# plus LoRAConfig + SFTConfig + DPOConfig sub-configs. Build:
+#   method="dpo", base_model_id=BASE_MODEL,
+#   lora=LoRAConfig(rank=16, alpha=32,
+#                   target_modules=("q_proj","v_proj"), dropout=0.05),
+#   sft=SFTConfig(),  # unused for DPO but required by the constructor
+#   dpo=DPOConfig(num_train_epochs=2, per_device_train_batch_size=2,
+#                 gradient_accumulation_steps=4, learning_rate=5e-5,
+#                 warmup_ratio=0.1, max_length=512, beta=0.1),
+#   experiment_dir=str(ADAPTER_OUTPUT_DIR)
 dpo_config = ____
 
 print(f"  Method: {dpo_config.method}")
-print(f"  Beta:   {dpo_config.beta}")
+print(f"  Beta:   {dpo_config.dpo.beta}")
 
 assert dpo_config.method == "dpo"
-assert dpo_config.dataset_format == "preference"
+assert dpo_config.dpo.beta == 0.1
 print("✓ Checkpoint 1 passed\n")
 
 

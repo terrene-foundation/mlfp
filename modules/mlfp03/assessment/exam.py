@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import pickle
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -368,7 +369,7 @@ model_configs = {
     "LightGBM": {"model_type": "lightgbm"},
 }
 
-results: dict[str, dict[str, float]] = {}
+results: dict[str, dict[str, Any]] = {}
 for name, config in model_configs.items():
     t0 = time.perf_counter()
     pipe = TrainingPipeline(

@@ -25,16 +25,16 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    # Kailash platform — floors match COC template sync 3.5.15 (upstream.sdk_packages)
-    "kailash>=2.8.12",
-    "kailash-ml>=0.17.0",
-    "kailash-dataflow>=2.0.12",
-    "kailash-nexus>=2.1.1",
-    "kailash-kaizen>=2.10.1",
-    "kaizen-agents>=0.9.3",
-    "kailash-pact>=0.9.0",
-    "kailash-align>=0.4.0",
-    "kailash-mcp>=0.2.8",
+    # Kailash platform — floors match COC template sync 3.5.20 (upstream.sdk_packages)
+    "kailash>=2.11.1",
+    "kailash-ml>=1.1.1",
+    "kailash-dataflow>=2.3.1",
+    "kailash-nexus>=2.3.0",
+    "kailash-kaizen>=2.13.1",
+    "kaizen-agents>=0.9.4",
+    "kailash-pact>=0.11.0",
+    "kailash-align>=0.6.0",
+    "kailash-mcp>=0.2.10",
     # Data
     "polars>=1.0",
     "pyarrow>=14.0",

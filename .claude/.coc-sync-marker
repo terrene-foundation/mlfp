@@ -1,1 +1,29 @@
-2026-04-21T14:35:00Z template=kailash-coc-claude-py 3.5.15 files=1 (1 new global rule: rules/build-repo-release-discipline.md); SDK floors bumped 6 packages now available on PyPI (kailash 2.8.11→2.8.12, kailash-mcp 0.2.7→0.2.8, kailash-kaizen 2.7.5→2.10.1, kailash-pact 0.8.2→0.9.0, kailash-ml 0.15.2→0.17.0, kailash-align 0.3.2→0.4.0); kailash-trust dep not present locally (template yanked it — kailash exports it directly now).
+# MLFP COC Sync Marker
+synced_at: 2026-04-28T03:11:28Z
+template: kailash-coc-claude-py
+template_version: 3.5.23
+loom_version: 2.9.3
+sdk_pins:
+  kailash: 2.11.3
+  kailash-ml: 1.4.2
+  kailash-dataflow: 2.3.1
+  kailash-nexus: 2.3.0
+  kailash-kaizen: 2.13.1
+  kailash-pact: 0.11.0
+  kailash-mcp: 0.2.10
+  kailash-align: 0.7.0
+  kaizen-agents: 0.9.4
+delta_from: 3.5.21
+delta_summary: |
+  PATCH: SDK pin refresh — kailash 2.11.1→2.11.3 (ML error class hotfix wheel),
+  kailash-ml 1.1.1→1.4.2 (3 minor bumps + atomic version-anchor refresh from
+  v1.4.2 release; uv resolved to 1.5.1 in venv), kailash-align 0.6.0→0.7.0.
+  All other pins unchanged. Migration work in this branch (S0..S0e + S1)
+  validated against kailash-ml 1.5.1 — API surface (ExperimentTracker.create,
+  ModelRegistry.register_model, km.diagnose) stable; no migration regressions.
+obsoleted_purged:
+  - .claude/commands/send-it.md
+verification:
+  hooks_resolved: 12/12
+  uv_sync: clean (4 packages upgraded)
+  m5_helpers_import: 8/8 ok

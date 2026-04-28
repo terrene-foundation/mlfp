@@ -1,15 +1,27 @@
 {
   "version": "2.0",
-  "built_at": "2026-04-13T04:32:11.611Z",
+  "built_at": "2026-04-19T23:01:04.751Z",
   "period": {
     "from": "2026-03-02T11:48:24.920Z",
-    "to": "2026-04-13T04:32:11.587Z",
-    "observation_count": 214
+    "to": "2026-04-19T23:01:04.724Z",
+    "observation_count": 908
   },
   "corrections": [],
   "error_patterns": [],
   "accomplishments": [],
   "decisions": [],
-  "active_frameworks": {},
-  "workflow_patterns": []
+  "active_frameworks": {
+    "kaizen": 40,
+    "nexus": 5,
+    "core-sdk": 1,
+    "dataflow": 4
+  },
+  "workflow_patterns": [
+    {
+      "node_types": [
+        "PythonCodeNode"
+      ],
+      "count": 4
+    }
+  ]
 }

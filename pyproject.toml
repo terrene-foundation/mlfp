@@ -25,15 +25,15 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    # Kailash platform — floors match COC template sync 3.5.20 (upstream.sdk_packages)
-    "kailash>=2.11.1",
-    "kailash-ml>=1.1.1",
+    # Kailash platform — floors match COC template sync 3.5.23 (upstream.sdk_packages)
+    "kailash>=2.11.3",
+    "kailash-ml>=1.4.2",
     "kailash-dataflow>=2.3.1",
     "kailash-nexus>=2.3.0",
     "kailash-kaizen>=2.13.1",
     "kaizen-agents>=0.9.4",
     "kailash-pact>=0.11.0",
-    "kailash-align>=0.6.0",
+    "kailash-align>=0.7.0",
     "kailash-mcp>=0.2.10",
     # Data
     "polars>=1.0",
@@ -188,3 +188,9 @@ reportCallIssue = "none"
 reportArgumentType = "none"
 reportOptionalMemberAccess = "none"
 reportUndefinedVariable = "none"
+# torch.X (tensor/from_numpy/cat/einsum/etc) flagged "private" because
+# torch's __init__.py omits __all__; these are documented public API.
+# Same applies to a handful of matplotlib re-exports. Disabling project-wide
+# is the right tradeoff for course code; real misuse is caught by
+# reportAttributeAccessIssue elsewhere.
+reportPrivateImportUsage = "none"

@@ -38,6 +38,12 @@ data/mlfp05/cifar10/
 data/mlfp05/cora/
 data/mlfp05/agnews/
 
+# Smoke-test cache: notebook runners create data/ inside the notebook
+# directory because Colab's `/content` is the canonical CWD. These are
+# downloaded artifacts, never source.
+modules/mlfp05/colab-selfcontained/ex_*/data/
+modules/mlfp05/colab-selfcontained-solutions/ex_*/data/
+
 # ML artifacts
 *.onnx
 *.pt

@@ -1,29 +1,37 @@
 # MLFP COC Sync Marker
-synced_at: 2026-04-28T03:11:28Z
+synced_at: 2026-04-28T07:35:56Z
 template: kailash-coc-claude-py
-template_version: 3.5.23
-loom_version: 2.9.3
+template_version: 3.5.25
+loom_version: 2.9.4
 sdk_pins:
   kailash: 2.11.3
-  kailash-ml: 1.4.2
-  kailash-dataflow: 2.3.1
+  kailash-ml: 1.5.1
+  kailash-dataflow: 2.3.2
   kailash-nexus: 2.3.0
   kailash-kaizen: 2.13.1
   kailash-pact: 0.11.0
   kailash-mcp: 0.2.10
   kailash-align: 0.7.0
   kaizen-agents: 0.9.4
-delta_from: 3.5.21
+delta_from: 3.5.23
 delta_summary: |
-  PATCH: SDK pin refresh — kailash 2.11.1→2.11.3 (ML error class hotfix wheel),
-  kailash-ml 1.1.1→1.4.2 (3 minor bumps + atomic version-anchor refresh from
-  v1.4.2 release; uv resolved to 1.5.1 in venv), kailash-align 0.6.0→0.7.0.
-  All other pins unchanged. Migration work in this branch (S0..S0e + S1)
-  validated against kailash-ml 1.5.1 — API surface (ExperimentTracker.create,
-  ModelRegistry.register_model, km.diagnose) stable; no migration regressions.
+  Template 3.5.23 → 3.5.25 (loom 2.9.3 → 2.9.4) — large artifact sweep:
+    • 169 modified files (rules/agents.md + rules/testing.md slimmed to ≤200 lines per
+      rule-authoring.md MUST NOT cap; 6 framework specialists, 5 commands, 1 guide, ~157
+      skills under 01-core-sdk through 29-pact)
+    • 6 new files:
+        .claude/commands/autonomize.md   (renamed from decisive.md per loom 2.9.4)
+        .claude/commands/sweep.md        (NEW — outstanding-work audit before /wrapup)
+        .claude/bin/compose.mjs          (loom emit pipeline)
+        .claude/bin/emit.mjs             (loom emit pipeline)
+        .claude/bin/emit-cli-artifacts.mjs (loom emit pipeline)
+        .claude/bin/repin-downstream.mjs (loom emit pipeline)
+    • SDK pins UNCHANGED — already at PyPI-live tips from prior re-sync
+      (kailash-ml 1.5.1, kailash-dataflow 2.3.2 et al)
 obsoleted_purged:
-  - .claude/commands/send-it.md
+  - .claude/commands/decisive.md
 verification:
   hooks_resolved: 12/12
-  uv_sync: clean (4 packages upgraded)
-  m5_helpers_import: 8/8 ok
+  uv_sync: clean (432 resolved, 317 checked)
+  pyproject_floors_match_pypi: 9/9
+  settings_json_stale_refs: 0

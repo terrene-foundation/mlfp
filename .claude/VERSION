@@ -5,18 +5,18 @@
   "upstream": {
     "template": "kailash-coc-claude-py",
     "template_repo": "terrene-foundation/kailash-coc-claude-py",
-    "template_version": "3.5.23",
+    "template_version": "3.5.25",
     "build_version": "2.11.3",
-    "loom_version": "2.9.3",
-    "synced_at": "2026-04-28T03:10:22Z",
+    "loom_version": "2.9.4",
+    "synced_at": "2026-04-28T07:35:56Z",
     "sdk_packages": {
       "kailash": "2.11.3",
-      "kailash-dataflow": "2.3.1",
+      "kailash-dataflow": "2.3.2",
       "kailash-nexus": "2.3.0",
       "kailash-kaizen": "2.13.1",
       "kailash-pact": "0.11.0",
       "kailash-mcp": "0.2.10",
-      "kailash-ml": "1.4.2",
+      "kailash-ml": "1.5.1",
       "kailash-align": "0.7.0",
       "kaizen-agents": "0.9.4"
     }

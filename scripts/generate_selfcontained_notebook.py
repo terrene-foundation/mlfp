@@ -348,11 +348,18 @@ def rewrite_repo_root_resolution(source: str) -> str:
     is `/content` in Colab (writable, consistent) and the repo root when
     running tests from that CWD.
     """
-    return re.sub(
+    # Handle both .parents[N] (multi-level up) and .parent (one-level up)
+    source = re.sub(
         r"Path\(__file__\)\.resolve\(\)\.parents\[\d+\]",
         "Path.cwd()",
         source,
     )
+    source = re.sub(
+        r"Path\(__file__\)\.resolve\(\)\.parent\b",
+        "Path.cwd()",
+        source,
+    )
+    return source
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -624,12 +631,24 @@ def convert_asyncio(cells: list[dict]) -> list[dict]:
             out.append(cell)
             continue
         src = "".join(cell["source"])
+        # Only transform top-level (column-0) asyncio.run — leaving
+        # asyncio.run inside function bodies untouched. Sync wrappers
+        # like `def train(...): return asyncio.run(train_async(...))`
+        # MUST keep their asyncio.run; converting to `await` inside a
+        # regular `def` produces SyntaxError.
+        # Match dotted function names too (km.train, foo.bar.baz).
         src = re.sub(
-            r"(\w[\w, ]*)\s*=\s*asyncio\.run\((\w+)\((.*?)\)\)",
+            r"(?m)^(\w[\w, ]*)\s*=\s*asyncio\.run\((\w+(?:\.\w+)*)\((.*?)\)\)",
             r"\1 = await \2(\3)",
             src,
         )
-        src = re.sub(r"asyncio\.run\((\w+)\((.*?)\)\)", r"await \1(\2)", src)
+        src = re.sub(
+            r"(?m)^asyncio\.run\((\w+(?:\.\w+)*)\((.*?)\)\)",
+            r"await \1(\2)",
+            src,
+        )
+        # Keep `import asyncio` whenever asyncio is still referenced
+        # anywhere in the cell (e.g. asyncio.run inside a function body).
         if "asyncio" not in src.replace("import asyncio", ""):
             src = re.sub(r"import asyncio\n?", "", src)
         out.append({**cell, "source": [l + "\n" for l in src.split("\n")]})

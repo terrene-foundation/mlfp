@@ -16,5 +16,6 @@
   "reportCallIssue": "none",
   "reportArgumentType": "none",
   "reportOptionalMemberAccess": "none",
-  "reportUndefinedVariable": "none"
+  "reportUndefinedVariable": "none",
+  "reportPrivateImportUsage": "none"
 }

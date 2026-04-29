@@ -25,10 +25,10 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    # Kailash platform — floors match COC template sync 3.5.23 (upstream.sdk_packages)
+    # Kailash platform — floors at PyPI-live tips (post-3.5.23 patch drift)
     "kailash>=2.11.3",
-    "kailash-ml>=1.4.2",
-    "kailash-dataflow>=2.3.1",
+    "kailash-ml>=1.5.1",
+    "kailash-dataflow>=2.3.2",
     "kailash-nexus>=2.3.0",
     "kailash-kaizen>=2.13.1",
     "kaizen-agents>=0.9.4",

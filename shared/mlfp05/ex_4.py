@@ -184,9 +184,13 @@ async def _setup_engines_async() -> (
     tuple[ConnectionManager, ExperimentTracker, str, ModelRegistry | None, bool]
 ):
     """Initialise ExperimentTracker (kailash-ml 1.1.1 factory) + ModelRegistry."""
+    # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
+    # and ModelRegistry use incompatible _kml_model_versions schemas.
+    # Route them to separate sqlite files until upstream fixes the conflict.
     db = "sqlite:///mlfp05_transformers.db"
+    registry_db = "sqlite:///mlfp05_transformers_registry.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
+    conn = ConnectionManager(registry_db)
     await conn.initialize()
     registry = ModelRegistry(conn)
     return conn, tracker, "m5_transformers", registry, True

@@ -38,9 +38,16 @@ np.random.seed(42)
 pl.seed_everything(42, workers=True)
 
 DEVICE = get_device()
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Notebook-safe path resolution: __file__ is undefined when this module is
+# inlined into a Colab notebook by scripts/generate_selfcontained_notebook.py.
+try:
+    _HERE = Path(__file__).resolve()
+    REPO_ROOT = _HERE.parents[2]
+    ARTIFACT_DIR = _HERE.parent
+except NameError:
+    REPO_ROOT = Path.cwd()
+    ARTIFACT_DIR = Path.cwd()
 DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "cifar10"
-ARTIFACT_DIR = Path(__file__).resolve().parent
 
 N_CLASSES = 10
 BATCH_SIZE = 128
@@ -138,9 +145,18 @@ async def setup_engines(db_name: str = "mlfp05_cnns.db") -> tuple[
     Returns:
         conn, tracker, experiment_name, registry, has_registry
     """
+    # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker and
+    # ModelRegistry use incompatible _kml_model_versions schemas. Route them
+    # to separate sqlite files until upstream fixes the conflict.
     db = f"sqlite:///{db_name}"
+    registry_db_name = (
+        db_name.replace(".db", "_registry.db")
+        if db_name.endswith(".db")
+        else db_name + "_registry.db"
+    )
+    registry_db = f"sqlite:///{registry_db_name}"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
+    conn = ConnectionManager(registry_db)
     await conn.initialize()
     registry = ModelRegistry(conn)
     return conn, tracker, "m5_cnns", registry, True

@@ -143,9 +143,13 @@ def load_cifar10() -> tuple[
 
 async def _setup_engines():
     """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved."""
+    # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
+    # and ModelRegistry use incompatible _kml_model_versions schemas.
+    # Route them to separate sqlite files until upstream fixes the conflict.
     db = "sqlite:///mlfp05_transfer.db"
+    registry_db = "sqlite:///mlfp05_transfer_registry.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
+    conn = ConnectionManager(registry_db)
     await conn.initialize()
     registry = ModelRegistry(conn)
     return conn, tracker, "m5_transfer_learning", registry, True
@@ -380,7 +384,8 @@ def extract_features(
 
 def compute_tsne(features: np.ndarray, perplexity: int = 30) -> np.ndarray:
     """Run t-SNE dimensionality reduction to 2D."""
-    tsne = TSNE(n_components=2, perplexity=perplexity, n_iter=500, random_state=42)
+    # sklearn 1.5+ renamed n_iter → max_iter in TSNE.__init__
+    tsne = TSNE(n_components=2, perplexity=perplexity, max_iter=500, random_state=42)
     return tsne.fit_transform(features)
 
 

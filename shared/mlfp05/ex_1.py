@@ -113,9 +113,13 @@ def get_fashion_mnist_labels() -> tuple[torch.Tensor, torch.Tensor]:
 
 async def _setup_engines():
     """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved for callers."""
+    # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
+    # and ModelRegistry use incompatible _kml_model_versions schemas.
+    # Route them to separate sqlite files until upstream fixes the conflict.
     db = "sqlite:///mlfp05_autoencoders.db"
+    registry_db = "sqlite:///mlfp05_autoencoders_registry.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
+    conn = ConnectionManager(registry_db)
     await conn.initialize()
     registry = ModelRegistry(conn)
     return conn, tracker, "m5_autoencoders", registry, True

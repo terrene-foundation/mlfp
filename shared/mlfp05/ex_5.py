@@ -38,9 +38,14 @@ if TYPE_CHECKING:
 LATENT_DIM = 64
 IMG_DIM = 28 * 28
 BATCH_SIZE = 128
-REPO_ROOT = Path(__file__).resolve().parents[2]
+try:
+    _HERE = Path(__file__).resolve()
+    REPO_ROOT = _HERE.parents[2]
+    OUTPUT_DIR = _HERE.parent
+except NameError:
+    REPO_ROOT = Path.cwd()
+    OUTPUT_DIR = Path.cwd()
 DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "mnist"
-OUTPUT_DIR = Path(__file__).resolve().parent
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -108,9 +113,13 @@ def setup_engines() -> (
     """
 
     async def _setup():
+        # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
+        # and ModelRegistry use incompatible _kml_model_versions schemas.
+        # Route them to separate sqlite files until upstream fixes the conflict.
         db = "sqlite:///mlfp05_gans.db"
+        registry_db = "sqlite:///mlfp05_gans_registry.db"
         tracker = await ExperimentTracker.create(store_url=db)
-        conn = ConnectionManager(db)
+        conn = ConnectionManager(registry_db)
         await conn.initialize()
         registry = ModelRegistry(conn)
         return conn, tracker, "m5_gans", registry

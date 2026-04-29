@@ -71,9 +71,13 @@ def make_cartpole() -> tuple[gym.Env, int, int]:
 
 async def _setup_engines():
     """Open kailash-ml 1.1.1 tracker + registry. 5-tuple preserved."""
+    # Schema-conflict workaround (kailash-ml 1.5.x): ExperimentTracker
+    # and ModelRegistry use incompatible _kml_model_versions schemas.
+    # Route them to separate sqlite files until upstream fixes the conflict.
     db = "sqlite:///mlfp05_rl.db"
+    registry_db = "sqlite:///mlfp05_rl_registry.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
+    conn = ConnectionManager(registry_db)
     await conn.initialize()
     registry = ModelRegistry(conn)
     return conn, tracker, "m5_reinforcement_learning", registry, True

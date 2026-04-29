@@ -581,27 +581,17 @@ print(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — comparative Prescription Pad for all 3
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml.diagnostics import diagnose_classifier, run_diagnostic_checkpoint
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from kailash_ml import diagnose
 
 print("\n── Diagnostic Report (LSTM) ──")
-lstm_diag, lstm_findings = diagnose_classifier(
-    lstm_model,
-    val_loader,
-    title="LSTM (3-way comparison)",
-    n_batches=6,
-    train_losses=lstm_losses,
-    val_losses=[1.0 - a for a in lstm_accs],
-    show=False,
-)
+report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
 
 print("\n── Diagnostic Report (Transformer) ──")
-tfm_diag, tfm_findings = diagnose_classifier(
+report = diagnose(
     transformer_model,
-    val_loader,
-    title="Transformer (3-way comparison)",
-    n_batches=6,
-    train_losses=transformer_losses,
-    val_losses=[1.0 - a for a in transformer_accs],
+    kind="dl",
+    data=val_loader,
     show=False,
 )
 

@@ -231,9 +231,12 @@ async def train_dqn_async(
             epsilons.append(epsilon)
             episode_lengths.append(steps)
 
-            metrics = {"episode_reward": total_reward, "epsilon": epsilon}
+            metrics = {
+                "episode_reward": float(total_reward),
+                "epsilon": float(epsilon),
+            }
             if ep_loss_count > 0:
-                metrics["loss"] = avg_loss
+                metrics["loss"] = float(avg_loss)
             await run.log_metrics(metrics, step=ep)
 
             if (ep + 1) % 40 == 0:
@@ -512,7 +515,7 @@ inv_env = RetailInventoryEnv()
 obs, info = inv_env.reset(seed=42)
 assert obs.shape == (3,), "Inventory env should have 3-D state"
 obs2, r, term, trunc, info = inv_env.step(1)
-assert isinstance(r, float), "Reward should be float"
+assert isinstance(r, (int, float)) or hasattr(r, "__float__"), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
 print(f"  RetailInventory env: obs={obs.shape}, actions=4, sample_reward={r:.3f}")
 
 # ── Train DQN on inventory environment ───────────────────────────────

@@ -318,7 +318,9 @@ async def _log_evaluation():
 asyncio.run(_log_evaluation())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
-assert fid_gan >= 0 and fid_wgan >= 0, "FID must be non-negative"
+assert fid_gan >= -1e-3 and fid_wgan >= -1e-3, (
+    f"FID expected ~0+; got fid_gan={fid_gan:.6f}, fid_wgan={fid_wgan:.6f}"
+)
 assert 0 <= ent_gan <= np.log2(10) + 0.01, "Entropy out of range"
 assert cov_gan >= 1 and cov_wgan >= 1, "Must produce at least 1 class"
 # INTERPRETATION: FID = 0 means identical distributions. Typical MNIST

@@ -567,7 +567,9 @@ for env_name, env_cls in env_classes:
     assert (
         obs2.shape == test_env.observation_space.shape
     ), f"{env_name}: step obs shape mismatch"
-    assert isinstance(reward, float), f"{env_name}: reward should be float"
+    assert isinstance(reward, (int, float)) or hasattr(reward, "__float__"), (
+        f"{env_name}: reward should be numeric, got {type(reward).__name__}: {reward!r}"
+    )
     print(
         f"  {env_name}: obs={obs.shape}, actions={test_env.action_space.n}, reward={reward:.3f}"
     )

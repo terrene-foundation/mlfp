@@ -208,11 +208,23 @@ serving_model.to(device)
 
 
 async def serve_predictions():
-    """Load model and serve sample predictions via InferenceServer."""
-    server = InferenceServer()
+    """Load model and serve sample predictions via InferenceServer.
+
+    kailash-ml 1.5.x: InferenceServer is constructed via
+    ``InferenceServer.from_registry(name, registry=...)`` and binds a
+    single model. The earlier ``server.load_model(...)`` direct-handoff
+    pattern is gone; production serving expects models to flow through
+    the registry first.
+    """
+    try:
+        server = InferenceServer.from_registry("cifar10_transfer", registry=registry)
+        print("  InferenceServer (1.5.x): bound to cifar10_transfer")
+    except Exception as e:
+        # Model may not be registered yet on a fresh run; degrade gracefully.
+        print(f"  InferenceServer demo skipped: {type(e).__name__}: {e}")
+        server = None  # noqa: F841 — preserve var name for later cells
 
     try:
-        await server.load_model("cifar10_transfer", serving_model)
 
         # Get a batch of test images
         test_batch_x, test_batch_y = next(iter(val_loader))

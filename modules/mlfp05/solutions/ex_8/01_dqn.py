@@ -225,9 +225,14 @@ async def train_dqn_async(
             epsilons.append(epsilon)
             episode_lengths.append(steps)
 
-            metrics = {"episode_reward": total_reward, "epsilon": epsilon}
+            # Cast to Python float — kailash-ml ExperimentTracker rejects
+            # numpy.float32/float64 with MetricValueError.
+            metrics = {
+                "episode_reward": float(total_reward),
+                "epsilon": float(epsilon),
+            }
             if ep_loss_count > 0:
-                metrics["loss"] = avg_loss
+                metrics["loss"] = float(avg_loss)
             await run.log_metrics(metrics, step=ep)
 
             if (ep + 1) % 40 == 0:
@@ -516,7 +521,9 @@ inv_env = RetailInventoryEnv()
 obs, info = inv_env.reset(seed=42)
 assert obs.shape == (3,), "Inventory env should have 3-D state"
 obs2, r, term, trunc, info = inv_env.step(1)
-assert isinstance(r, float), "Reward should be float"
+assert isinstance(r, (int, float)) or hasattr(
+    r, "__float__"
+), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
 print(f"  RetailInventory env: obs={obs.shape}, actions=4, sample_reward={r:.3f}")
 
 # ── Train DQN on inventory environment ───────────────────────────────
@@ -686,6 +693,7 @@ def _diag_loss(m, batch):
         x, y = batch, None
     out = m(x)
     import torch.nn.functional as F
+
     if y is None:
         return F.mse_loss(out, x)
     return F.cross_entropy(out, y)
@@ -729,4 +737,3 @@ except Exception as exc:
 #     is improving despite noisy value estimates. This is healthy
 #     DQN behaviour. A monotonic loss would suggest the Q-network
 #     isn't learning from diverse experience.
-

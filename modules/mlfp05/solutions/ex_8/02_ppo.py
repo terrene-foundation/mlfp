@@ -612,7 +612,7 @@ pricing_env = RideHailingPricingEnv()
 obs, info = pricing_env.reset(seed=42)
 assert obs.shape == (4,), "Pricing env should have 4-D state"
 obs2, r, term, trunc, info = pricing_env.step(2)
-assert isinstance(r, float), "Reward should be float"
+assert isinstance(r, (int, float)) or hasattr(r, "__float__"), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
 print(f"  RideHailingPricing env: obs={obs.shape}, actions=5, sample_reward={r:.3f}")
 
 # ── Train PPO on pricing environment ─────────────────────────────────

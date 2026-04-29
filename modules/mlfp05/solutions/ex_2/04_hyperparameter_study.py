@@ -425,18 +425,10 @@ for aug_name, loader in [("no_augmentation", noaug_loader), ("flip_crop", aug_lo
     # Quick diagnostic check per HP configuration — surfaces whether
     # a high-loss config is hurting the network's CLINICAL HEALTH
     # (dead neurons, vanishing gradients) or merely its accuracy.
-    from kailash_ml.diagnostics import diagnose_classifier
+    from kailash_ml import diagnose
 
     print(f"  ── Diagnostic Report ({aug_name}) ──")
-    _diag, _findings = diagnose_classifier(
-        model,
-        val_loader,
-        title=f"ResNetSE {aug_name}",
-        n_batches=4,  # brief sweep — full report on winning model
-        train_losses=losses,
-        val_losses=[1.0 - a for a in accs],
-        show=False,
-    )
+    report = diagnose(model, kind="dl", data=val_loader, show=False)
     # ══════ EXPECTED OUTPUT (synthesized reference across HP configs) ══════
     # Typical Prescription-Pad patterns observed per augmentation config:
     # ┌──────────────────────────┬──────────────────────────────────────────┐

@@ -59,6 +59,12 @@ classroom/
 .claude/worktrees/
 .claude/learning/observations.jsonl
 
+# CC observability hooks write a localised .claude/learning/ at the
+# CWD they're invoked from — strip from anywhere in the tree, not
+# only the repo root.
+**/.claude/learning/
+**/.claude/.coc-sync-marker
+
 # MCP / Playwright artifacts
 .mcp.json
 .playwright-mcp/

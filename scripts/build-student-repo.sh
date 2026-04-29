@@ -78,7 +78,13 @@ done
 
 # ── Shared utilities ──
 echo "Syncing shared/..."
-[ -d "$SOURCE/shared" ] && rsync -a --delete --exclude='__pycache__' "$SOURCE/shared/" "$TARGET/shared/"
+[ -d "$SOURCE/shared" ] && rsync -a --delete --delete-excluded \
+    --exclude='__pycache__' \
+    --exclude='.claude/' \
+    --exclude='.coc/' \
+    --exclude='.codex/' \
+    --exclude='.gemini/' \
+    "$SOURCE/shared/" "$TARGET/shared/"
 
 # ── Config files ──
 echo "Syncing config files..."

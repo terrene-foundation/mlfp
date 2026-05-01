@@ -40,11 +40,16 @@ from shared.mlfp04.ex_1 import (
     RANDOM_STATE,
     load_customers,
     out_path,
+    setup_engines,
     standardise,
     subsample,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -261,6 +266,59 @@ print("    Estimated annual promo waste recovery: S$12.8M (10% of S$128M).")
 assert int(sizes.sum()) == n_hier, "Task 5: Ward partition size mismatch"
 assert len(sizes) == CUT_K, "Task 5: Ward cut should yield exactly CUT_K clusters"
 print("\n  [ok] Checkpoint 4 passed — Ward taxonomy valid\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+track_run(
+    tracker,
+    exp_name,
+    run_name=f"hierarchical_{best_method[0]}",
+    params={
+        "linkage_methods": ",".join(LINKAGE_METHODS),
+        "cut_k": CUT_K,
+        "best_linkage": best_method[0],
+        "n_subsample": n_hier,
+        "n_features": X_hier.shape[1],
+    },
+    scalar_metrics={
+        f"{m}_silhouette": float(r["silhouette"]) for m, r in hier_results.items()
+    }
+    | {f"{m}_calinski_harabasz": float(r["ch"]) for m, r in hier_results.items()}
+    | {f"{m}_davies_bouldin": float(r["db"]) for m, r in hier_results.items()}
+    | {f"{m}_time_s": float(r["time"]) for m, r in hier_results.items()},
+)
+print(
+    f"  [tracked] linkage comparison logged to {exp_name} run='hierarchical_{best_method[0]}'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — engine surface honesty for hierarchical
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1 ClusteringEngine ships kmeans/dbscan/spectral/gmm but
+# NOT hierarchical/agglomerative — it's the one mainstream clustering
+# family the engine doesn't yet wrap. The engine-first surface for THIS
+# lesson is therefore the ExperimentTracker we just used: every linkage
+# method, every score, every timing — already in m4_clustering_zoo.db
+# next to the kmeans run from 01. The destination is the comparable
+# leaderboard, not a one-line replacement for scipy's `linkage`.
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+print("  ClusteringEngine 1.5.1 algorithms:", ClusteringEngine.__doc__ or "")
+print("    Supported: kmeans, dbscan, spectral, gmm")
+print(
+    "    Hierarchical / agglomerative: use scipy.cluster.hierarchy until"
+    " a future kailash-ml release adds the adapter.\n"
+)
+print(
+    "  Engine-first take-away: the tracker leaderboard IS the destination —"
+    " open mlfp04_ex1_clustering.db to compare every linkage method against"
+    " the kmeans run from lesson 01 side-by-side.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

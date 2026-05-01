@@ -12,10 +12,14 @@
 #   line of a PyTorch training loop does and why.
 #
 #   Before that journey, see the destination. This is what production
-#   ML training looks like in 2026 with the unified `kailash-ml` 0.12
+#   ML training looks like in 2026 with the unified `kailash-ml` 1.1+
 #   surface. The same training that takes 80 lines of hand-written
 #   PyTorch fits in 3 — and runs on Apple Silicon's Metal Performance
 #   Shaders backend automatically, with mixed-precision, with no flags.
+#
+#   Note on async: `km.train()` and `km.register()` are async (kailash-ml
+#   1.0+ canonical pair). In a notebook with `nest_asyncio`, `await` works
+#   at top level. In a CLI script (this file), wrap with `asyncio.run()`.
 #
 # WHAT YOU'LL SEE:
 #   1. `km.device()` — auto-detects MPS / CUDA / ROCm / Intel XPU / CPU
@@ -33,6 +37,8 @@
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
+
+import asyncio
 
 import polars as pl
 from sklearn.datasets import make_classification
@@ -88,7 +94,10 @@ X, y = make_classification(
 df = pl.DataFrame({**{f"f{i}": X[:, i] for i in range(10)}, "y": y})
 print(f"  dataset shape : {df.shape}  (polars-native, no pandas)")
 
-result = km.train(df, target="y")  # ← three lines: build df, call train, read metrics
+# km.train is async in kailash-ml 1.0+ — wrap with asyncio.run() in a CLI script.
+# In a notebook (with nest_asyncio applied at the top), `await km.train(...)`
+# works at the top of a cell.
+result = asyncio.run(km.train(df, target="y"))
 
 print(f"  result type   : {type(result).__name__}")
 print(f"  metrics       : {result.metrics}")

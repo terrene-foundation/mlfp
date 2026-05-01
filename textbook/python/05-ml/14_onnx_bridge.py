@@ -27,7 +27,7 @@ from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, Ridge
 
 from kailash_ml import FeatureField, FeatureSchema, ModelSignature
-from kailash_ml.bridge.onnx_bridge import (
+from kailash_ml import (
     OnnxBridge,
     OnnxCompatibility,
     OnnxExportResult,

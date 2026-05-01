@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from kailash_ml.engines.preprocessing import PreprocessingPipeline, SetupResult
+from kailash_ml import PreprocessingPipeline, SetupResult
 
 # ── 1. Create synthetic data ────────────────────────────────────────
 # A classification dataset with numeric and categorical features,

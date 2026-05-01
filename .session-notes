@@ -1,34 +1,58 @@
-# Session Notes — 2026-04-15
+# Session Notes — 2026-04-29
 
 ## Where we are
 
-Full-course smoke test COMPLETE on Python 3.13 with kailash 2.8.6 /
-kaizen 2.7.4 / nexus 2.0.3. All 160 solution files across M1-M6
-import clean. Downstream synced and pushed to pcml-run26/pcml-run26-2601.
-Next session: **full specs audit** (`specs/` directory review).
+M5 notebook smoke-testing complete: every notebook under
+`modules/mlfp05/colab-selfcontained-solutions/` now starts training cleanly
+under kailash-ml 1.5.1 (verify via `/tmp/mlfp-smoke/parallel-runner.py
+--workers 4`). Branch `fix/expt-tracker-1.1.1-migration` carries the source
+fixes; many files uncommitted. Next: commit + push + classroom sync.
 
 ## Read first
 
-1. `specs/_index.md` — entry point for the specs audit
-2. `CLAUDE.md` § Course Structure — module-framework mapping
-3. `workspaces/mlfp06-migration/api-cheatsheet.md` — canonical modern kaizen/pact/nexus imports (verified against 2.7.4/2.0.3)
-4. `git log --oneline 879181e..HEAD` — all commits from the two-session smoke-test pass
+1. `/tmp/mlfp-smoke/parallel-results.json` — last verified state of all M5
+   solution notebooks (PASS-FULL / PASS-WALL / PASS-CELLCAP).
+2. `/tmp/mlfp-smoke/parallel-runner.py` — the smoke runner; re-run if anything
+   changes. 4 workers, 90s wall, 80s cell, timeout==PASS.
+3. `SWEEP-2026-04-28.md` (repo root) — engine-first / seamless-pipeline /
+   diagnostics / automl audit. Findings still apply for M1-M4 + M6.
+4. `CLAUDE.md` — repo directives (engine-first, polars-only, two-format).
+5. Memory `project_downstream_repo.md` — classroom repo URL is
+   `pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601`
+   (NOT terrene-foundation; updated this session).
 
 ## In-flight state
 
-- GitHub org moved from `terrene-foundation` to `pcml-run26` — memory updated, downstream remote confirmed at `pcml-run26/pcml-run26-2601`
-- M3 ex_7/{03,05} local/ scaffolds have proper ~50% TODOs but were hand-stripped, not exercise-designer generated. May drift from sibling style.
-- `optuna>=3.6`, `lime>=0.2`, `hdbscan>=0.8.33`, `umap-learn>=0.5`, `bertopic>=0.16` added to pyproject.toml this session as previously-undeclared deps.
-- `gymnasium[box2d]` extra dropped (unused, no 3.14 wheel).
-- Runtime pollution still in tree: `data/mlfp06/`, `mlfp02_experiments.db-{wal,shm}`, `modules/mlfp02/notebooks/`, `modules/mlfp03/notebooks/`. Don't `git add -A`.
+- Many files modified across `shared/mlfp05/`, `modules/mlfp05/{solutions,local}/`,
+  `modules/mlfp05/colab-selfcontained{,-solutions}/`, `scripts/generate_*.py`.
+  Nothing committed yet. Branch is many commits ahead of `main`.
+- 3 upstream issues filed at `terrene-foundation/kailash-py`: **#699** (schema
+  conflict), **#700** (InferenceServer hard break), **#701** (diagnose() API).
+  Each issue body documents the MLFP-side workaround already in this branch.
+- `/tmp/pcml-run26-template/` exists as raw files (no .git). For classroom
+  rollout, clone fresh: `gh repo clone pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601 /tmp/pcml-classroom`.
 
 ## Traps
 
-- **Python 3.14 blocked**: kaizen `Signature` metaclass can't find `InputField`/`OutputField` class attributes on 3.14 (PEP 649 deferred annotations). `_signature_inputs` stays empty. Blocks ALL Signature-based exercises. kailash-py dev is working on a fix. Stay on 3.13.
-- **Worktree isolation unreliable**: 3/4 parallel agents in the prior session and 1/1 exercise-designer agent this session wrote to main instead of their worktrees. Plan for serial commits when dispatching specialists.
-- **DelegateEvent 0.9 is a typed union**: base class has only `event_type`+`timestamp`. Use `getattr(event, "text", None)` pattern, not `event.text`. Cost via `delegate.consumed_usd` after stream ends.
-- **ReActAgent 0.9 constructor reshape**: no `tools=` or budget kwargs. Post-construct: `agent.config.budget_limit_usd = X` + `agent.available_tools.append(tool)`.
+- `shared/mlfp05/*.py::setup_engines` now uses **separate `*_registry.db`** for
+  ModelRegistry vs `*.db` for ExperimentTracker (kailash-py#699 workaround).
+  Reverting to a single DB will reintroduce the schema-conflict crash.
+- `benchmark_inference` in `modules/mlfp05/solutions/ex_3/03_gru.py` infers
+  `n_features` from `model.gru.input_size` (sensor models use input_dim=1,
+  stock models use 4). Don't refactor it back to the global `N_FEATURES`.
+- `km.diagnose(kind="dl", data=val_loader)` silently ignores `data=` per
+  kailash-py#701 — DataLoader is not consumed by DLDiagnostics. Calls are
+  pedagogical "report exists" markers, not live evaluations.
+- Local notebooks under `modules/mlfp05/colab-selfcontained/` intentionally
+  keep `____` scaffolding. Generator syntax check fails on those by design.
+- `scripts/generate_selfcontained_notebook.py` was patched: only **top-level**
+  (column-0) `asyncio.run(...)` is converted to `await ...`. Sync wrappers
+  inside `def` bodies must keep `asyncio.run`.
 
 ## Open questions for the human
 
-- Specs audit scope: full `specs/` rewrite to match post-migration API reality, or targeted review of files that reference stale kaizen/pact patterns?
+1. Commit strategy: one atomic commit or split by fix-class (schema /
+   diagnose / asserts / generator)?
+2. Classroom rollout now, or stage on a side branch first?
+3. Audit M1–M4 + M6 next? `SWEEP-2026-04-28.md` flagged M3/M4 engine-first
+   gaps as the top follow-on.

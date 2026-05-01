@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 import os
+import pickle
 import time
 from pathlib import Path
 
@@ -46,12 +47,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from kailash.db import ConnectionManager
 from kailash_ml import (
     ExperimentTracker,
-    InferenceServer,
     ModelRegistry,
     ModelVisualizer,
-    OnnxBridge,
+)
+from kailash_ml.types import (
+    FeatureField,
+    FeatureSchema,
+    MetricSpec,
+    ModelSignature,
 )
 
 from shared import MLFPDataLoader
@@ -71,8 +77,16 @@ device = torch.device(
 print(f"Device: {device}")
 
 viz = ModelVisualizer()
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment("mlfp05_exam")
+
+# kailash-ml 1.1.1 ExperimentTracker is async-only; wrap setup in asyncio.run.
+import asyncio
+
+
+async def _setup_exam_tracker(name: str):
+    return await ExperimentTracker.create(store_url=f"sqlite:///{name}.db"), name
+
+
+tracker, experiment = asyncio.run(_setup_exam_tracker("mlfp05_exam"))
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -528,7 +542,7 @@ def train_and_eval(
     criterion = nn.CrossEntropyLoss()
 
     t0 = time.perf_counter()
-    for epoch in range(epochs):
+    for _ in range(epochs):
         model.train()
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
@@ -996,15 +1010,21 @@ attn_fig = viz.heatmap(
 
 # --- 3e: Experiment tracking, registry, ONNX ---
 print("\n=== Task 3e: Tracking, Registry, and ONNX ===")
-tracker.log_metrics(
-    experiment,
-    {
-        "lstm_mse": lstm_mse,
-        "gru_mse": gru_mse,
-        "gru_attn_mse": gru_attn_mse,
-        "naive_mse": naive_mse,
-    },
-)
+
+
+async def _log_timeseries_metrics(t, exp_name: str):
+    async with t.track(experiment=exp_name, run_name="timeseries_models") as run:
+        await run.log_metrics(
+            {
+                "lstm_mse": float(lstm_mse),
+                "gru_mse": float(gru_mse),
+                "gru_attn_mse": float(gru_attn_mse),
+                "naive_mse": float(naive_mse),
+            }
+        )
+
+
+asyncio.run(_log_timeseries_metrics(tracker, experiment))
 
 # Best model
 best_ts_mse = min(lstm_mse, gru_mse, gru_attn_mse)
@@ -1020,16 +1040,56 @@ else:
 
 print(f"Best time series model: {best_ts_name} (MSE={best_ts_mse:.6f})")
 
-registry = ModelRegistry()
-registry.register(
-    model_name="energy_forecaster_v1",
-    model=best_ts_model,
-    signature={
-        "inputs": {"sequence": f"float32[batch, {seq_len}, 1]"},
-        "outputs": {"forecast": f"float32[batch, {pred_len}]"},
-    },
-    metadata={"mse": best_ts_mse, "architecture": best_ts_name},
-    stage="production",
+# kailash-ml 1.1.1 ModelRegistry is conn-backed and async — register +
+# promote in one asyncio.run() block. Architecture is encoded in the
+# version's metric stack; sequence/forecast shapes go through
+# ModelSignature so the InferenceServer can validate at serve time.
+ts_signature = ModelSignature(
+    input_schema=FeatureSchema(
+        name="energy_forecaster_v1",
+        features=[FeatureField(name="sequence", dtype="float32")],
+        entity_id_column="series_id",
+    ),
+    output_columns=["forecast"],
+    output_dtypes=["float32"],
+    model_type="regressor",
+)
+ts_metrics = [
+    MetricSpec(name="mse", value=float(best_ts_mse), higher_is_better=False),
+    MetricSpec(name="seq_len", value=float(seq_len)),
+    MetricSpec(name="pred_len", value=float(pred_len)),
+]
+
+
+async def _register_energy_forecaster() -> tuple:
+    conn = ConnectionManager("sqlite:///mlfp05_exam.db")
+    await conn.initialize()
+    try:
+        registry_local = ModelRegistry(conn)
+        version = await registry_local.register_model(
+            name="energy_forecaster_v1",
+            artifact=pickle.dumps(best_ts_model),
+            metrics=ts_metrics,
+            signature=ts_signature,
+        )
+        await registry_local.promote_model(
+            name="energy_forecaster_v1",
+            version=version.version,
+            target_stage="production",
+            reason=f"Best architecture {best_ts_name} (MSE={best_ts_mse:.6f}).",
+        )
+        prod = await registry_local.get_model(
+            "energy_forecaster_v1", stage="production"
+        )
+        return version, prod
+    finally:
+        await conn.close()
+
+
+registered_ts_version, prod_ts_model = asyncio.run(_register_energy_forecaster())
+print(
+    f"Model registered as 'energy_forecaster_v1' v{registered_ts_version.version}; "
+    f"promoted to {prod_ts_model.stage}"
 )
 
 # ONNX export
@@ -1289,7 +1349,7 @@ class TextLSTM(nn.Module):
 
     def forward(self, x):
         embedded = self.embedding(x)
-        output, (hidden, _) = self.lstm(embedded)
+        _, (hidden, _) = self.lstm(embedded)
         # Concatenate forward and backward final hidden states
         hidden_cat = torch.cat([hidden[-2], hidden[-1]], dim=1)
         return self.fc(hidden_cat)
@@ -1431,22 +1491,29 @@ df_comparison = pl.DataFrame(comparison)
 print("\n=== ARCHITECTURE COMPARISON ===")
 print(df_comparison)
 
-# Log everything
-tracker.log_metrics(
-    experiment,
-    {
-        "ae_vanilla_f1": vanilla_metrics["f1"],
-        "ae_vae_f1": vae_metrics["f1"],
-        "cnn_plain_acc": plain_acc,
-        "cnn_se_acc": se_acc,
-        "lstm_ts_mse": lstm_mse,
-        "gru_attn_mse": gru_attn_mse,
-        "lstm_text_acc": lstm_text_acc,
-        "bert_acc": bert_acc if bert_available else 0,
-    },
-)
 
-print(f"\nExperiment summary: {tracker.get_experiment_summary(experiment)}")
+# Log everything to the architecture-comparison run.
+async def _log_arch_summary(t, exp_name: str):
+    async with t.track(experiment=exp_name, run_name="architecture_summary") as run:
+        await run.log_metrics(
+            {
+                "ae_vanilla_f1": float(vanilla_metrics["f1"]),
+                "ae_vae_f1": float(vae_metrics["f1"]),
+                "cnn_plain_acc": float(plain_acc),
+                "cnn_se_acc": float(se_acc),
+                "lstm_ts_mse": float(lstm_mse),
+                "gru_attn_mse": float(gru_attn_mse),
+                "lstm_text_acc": float(lstm_text_acc),
+                "bert_acc": float(bert_acc) if bert_available else 0.0,
+            }
+        )
+    return await t.list_runs(experiment=exp_name)
+
+
+experiment_runs = asyncio.run(_log_arch_summary(tracker, experiment))
+print(
+    f"\nExperiment summary: {len(experiment_runs)} run(s) recorded under {experiment}"
+)
 
 
 # ── Checkpoint 4 ─────────────────────────────────────────

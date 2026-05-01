@@ -38,11 +38,12 @@
 from __future__ import annotations
 
 import asyncio
-import math
-import os
+import pickle
+from typing import Any
 
 import numpy as np
 import polars as pl
+from kailash.db import ConnectionManager
 from kailash.runtime import LocalRuntime
 from kailash.workflow.builder import WorkflowBuilder
 from kailash_ml import (
@@ -56,6 +57,12 @@ from kailash_ml import (
     ModelVisualizer,
     PreprocessingPipeline,
     TrainingPipeline,
+)
+from kailash_ml.types import (
+    FeatureField,
+    FeatureSchema,
+    MetricSpec,
+    ModelSignature,
 )
 
 from shared import MLFPDataLoader
@@ -118,8 +125,10 @@ print(f"Profiling alerts: {len(profile.alerts)}")
 # Target distribution
 target_dist = df["readmitted_30d"].value_counts()
 print(f"Target distribution:\n{target_dist}")
-positive_rate = df["readmitted_30d"].mean()
-imbalance_ratio = (1 - positive_rate) / positive_rate
+positive_rate = float(df["readmitted_30d"].mean() or 0.0)
+imbalance_ratio = (
+    (1 - positive_rate) / positive_rate if positive_rate > 0 else float("inf")
+)
 print(f"Positive rate: {positive_rate:.4f}")
 print(f"Imbalance ratio: {imbalance_ratio:.1f}:1")
 
@@ -360,7 +369,7 @@ model_configs = {
     "LightGBM": {"model_type": "lightgbm"},
 }
 
-results = {}
+results: dict[str, dict[str, Any]] = {}
 for name, config in model_configs.items():
     t0 = time.perf_counter()
     pipe = TrainingPipeline(
@@ -592,7 +601,7 @@ auc_roc = roc_auc_score(y_true, y_prob)
 brier = brier_score_loss(y_true, y_prob)
 logloss = log_loss(y_true, y_prob)
 prec_curve, rec_curve, _ = precision_recall_curve(y_true, y_prob)
-auc_pr = np.trapz(prec_curve[::-1], rec_curve[::-1])
+auc_pr = np.trapezoid(prec_curve[::-1], rec_curve[::-1])
 
 print(f"Accuracy:  {accuracy:.4f}")
 print(f"Precision: {precision:.4f}")
@@ -630,7 +639,7 @@ pipe_weighted.fit(df_train_processed)
 pred_weighted = pipe_weighted.predict(df_test_processed)
 prob_weighted = pipe_weighted.predict_proba(df_test_processed)
 f1_weighted = f1_score(y_true, pred_weighted.to_numpy())
-auc_pr_weighted = np.trapz(
+auc_pr_weighted = np.trapezoid(
     *precision_recall_curve(
         y_true, prob_weighted[:, 1] if prob_weighted.ndim > 1 else prob_weighted
     )[:2][::-1]
@@ -638,8 +647,6 @@ auc_pr_weighted = np.trapz(
 imbalance_results["cost_sensitive"] = {"f1": f1_weighted, "auc_pr": auc_pr_weighted}
 
 # 2. SMOTE
-from kailash_ml import PreprocessingPipeline as PP
-
 smote_pipeline = PreprocessingPipeline()
 smote_pipeline.configure(oversampling="smote", oversampling_target="readmitted_30d")
 df_train_smote = smote_pipeline.fit_transform(df_train_processed)
@@ -783,6 +790,7 @@ print("=== Task 3e: Fairness Assessment ===")
 
 def compute_disparate_impact(y_true, y_pred, group_mask):
     """Compute disparate impact ratio between groups."""
+    del y_true  # signature parity for fairness API; this metric uses y_pred only
     rate_protected = y_pred[group_mask].mean()
     rate_unprotected = y_pred[~group_mask].mean()
     if rate_unprotected == 0:
@@ -960,78 +968,164 @@ print(f"Pipeline nodes: data_load -> preprocess -> predict -> postprocess -> per
 
 
 # --- 4b: Model Registry ---
+# kailash-ml 1.1.1 ModelRegistry is conn-backed and async — every call
+# (register_model, promote_model, get_model) returns a coroutine, so we
+# wrap the staging→production lifecycle in one asyncio.run() block.
 print("\n=== Task 4b: Model Registry ===")
-registry = ModelRegistry()
 
-model_signature = {
-    "inputs": {feat: "float64" for feat in consensus_features},
-    "outputs": {"risk_score": "float64", "risk_tier": "string"},
-}
-
-registry.register(
-    model_name="readmission_risk_v1",
-    model=best_model,
-    signature=model_signature,
-    metadata={
-        "training_date": "2026-04-13",
-        "dataset_size": df_train.height,
-        "features": consensus_features,
-        "metrics": {"auc": auc_roc, "f1": f1, "brier": brier_after},
-        "fairness": {"di_age": di_age if "age" in df_test_processed.columns else None},
-    },
-    stage="staging",
+# ModelSignature is the typed input/output contract the InferenceServer
+# enforces at serving time. We rebuild it from the consensus features.
+model_signature = ModelSignature(
+    input_schema=FeatureSchema(
+        name="readmission_risk_v1",
+        features=[FeatureField(name=f, dtype="float64") for f in consensus_features],
+        entity_id_column="patient_id",
+    ),
+    output_columns=["risk_score", "risk_tier"],
+    output_dtypes=["float64", "string"],
+    model_type="classifier",
 )
-print("Model registered as 'readmission_risk_v1' in staging")
 
-# Promote to production
-registry.promote("readmission_risk_v1", from_stage="staging", to_stage="production")
-prod_model = registry.get_model("readmission_risk_v1", stage="production")
+# MetricSpec list — only numeric values; textual metadata (training date,
+# feature list) is encoded in the signature input names + the promotion reason.
+registry_metrics = [
+    MetricSpec(name="auc", value=float(auc_roc)),
+    MetricSpec(name="f1", value=float(f1)),
+    MetricSpec(name="brier", value=float(brier_after), higher_is_better=False),
+    MetricSpec(name="dataset_size", value=float(df_train.height)),
+]
+if "age" in df_test_processed.columns and di_age is not None:
+    registry_metrics.append(MetricSpec(name="di_age", value=float(di_age)))
+
+
+async def _register_and_promote_readmission_model():
+    conn = ConnectionManager("sqlite:///mlfp03_exam.db")
+    await conn.initialize()
+    try:
+        registry_local = ModelRegistry(conn)
+        version = await registry_local.register_model(
+            name="readmission_risk_v1",
+            artifact=pickle.dumps(best_model),
+            metrics=registry_metrics,
+            signature=model_signature,
+        )
+        await registry_local.promote_model(
+            name="readmission_risk_v1",
+            version=version.version,
+            target_stage="production",
+            reason=(
+                f"Quality gates passed on training_date=2026-04-13: "
+                f"AUC={auc_roc:.4f}, F1={f1:.4f}, Brier={brier_after:.4f}; "
+                f"dataset_size={df_train.height} rows, "
+                f"features={len(consensus_features)} consensus features."
+            ),
+        )
+        prod_version = await registry_local.get_model(
+            "readmission_risk_v1", stage="production"
+        )
+        return version, prod_version
+    finally:
+        await conn.close()
+
+
+registered_version, prod_model = asyncio.run(_register_and_promote_readmission_model())
+print(
+    f"Model registered as 'readmission_risk_v1' v{registered_version.version} "
+    f"(staged at registration)"
+)
 print(f"Model promoted to production. Stage: {prod_model.stage}")
 
 
 # --- 4c: Drift monitoring ---
+# kailash-ml 1.1.1 DriftMonitor is tenant-scoped and conn-backed. The
+# pre-1.0 ``configure()/set_reference()/check()`` surface is replaced
+# with constructor kwargs + ``set_reference_data()`` + ``check_drift()``.
+# DriftReport in 1.1.1 reports feature-level drift only (PSI + KS); a
+# single ``overall_drift_detected`` boolean rolls the per-feature
+# results up. Performance degradation is a separate report from
+# ``check_performance(predictions, actuals)`` — we focus on feature
+# drift here, matching what file 4c teaches.
 print("\n=== Task 4c: Drift Monitoring ===")
-monitor = DriftMonitor()
-monitor.configure(
-    features=consensus_features,
-    feature_method="psi",
-    feature_threshold=0.1,
-    prediction_method="ks",
-    prediction_threshold=0.05,
-    performance_metric="auc",
-    performance_threshold=0.02,
+
+# Drift only meaningful on numeric columns; categorical features are
+# already one-hot encoded by the preprocessing pipeline.
+numeric_features = [
+    f
+    for f in consensus_features
+    if df_train_processed[f].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
+]
+
+
+async def _run_drift_monitoring(numeric_cols: list[str]):
+    conn = ConnectionManager("sqlite:///mlfp03_exam.db")
+    await conn.initialize()
+    try:
+        # PSI threshold 0.1 (feature drift), KS threshold 0.05 (distribution
+        # shift), performance threshold 0.02 (AUC degradation tolerance).
+        # Tenant scopes every reference + report row to this exam run.
+        monitor_local = DriftMonitor(
+            conn,
+            tenant_id="mlfp03_exam",
+            psi_threshold=0.1,
+            ks_threshold=0.05,
+            performance_threshold=0.02,
+        )
+
+        # Reference distribution = training data, monitored across the
+        # numeric consensus features.
+        await monitor_local.set_reference_data(
+            model_name="readmission_risk_v1",
+            reference_data=df_train_processed,
+            feature_columns=numeric_cols,
+        )
+
+        # Normal-case drift check on held-out test data. We expect
+        # overall_drift_detected to be False (the pipeline didn't move).
+        report_normal = await monitor_local.check_drift(
+            model_name="readmission_risk_v1",
+            current_data=df_test_processed,
+        )
+
+        # Simulate drift by shifting each numeric feature by 0.5 std.
+        df_drifted_local = df_test_processed.clone()
+        for feat in numeric_cols:
+            feat_std = df_drifted_local[feat].std()
+            if feat_std is not None and feat_std > 0:
+                df_drifted_local = df_drifted_local.with_columns(
+                    (pl.col(feat) + 0.5 * feat_std).alias(feat)
+                )
+
+        report_shifted = await monitor_local.check_drift(
+            model_name="readmission_risk_v1",
+            current_data=df_drifted_local,
+        )
+        return report_normal, report_shifted
+    finally:
+        await conn.close()
+
+
+drift_report_normal, drift_report_shifted = asyncio.run(
+    _run_drift_monitoring(numeric_features)
 )
-
-# Set reference distribution (training data)
-monitor.set_reference(df_train_processed, target="readmitted_30d")
-
-# Check drift on normal test data (should be minimal)
-drift_report_normal = monitor.check(df_test_processed, target="readmitted_30d")
 print(f"Normal data drift report:")
-print(f"  Feature drift detected: {drift_report_normal.feature_drift_detected}")
-print(f"  Prediction drift: {drift_report_normal.prediction_drift_detected}")
+print(f"  Feature drift detected: {drift_report_normal.overall_drift_detected}")
+print(f"  Overall severity:       {drift_report_normal.overall_severity}")
 print(
-    f"  Performance degradation: {drift_report_normal.performance_degradation_detected}"
+    f"  Sample sizes:           "
+    f"reference={drift_report_normal.sample_size_reference}, "
+    f"current={drift_report_normal.sample_size_current}"
 )
 
-# Simulate drift: shift numeric features by 0.5 std
 print("\nSimulating drift (shifting features by 0.5 std)...")
-df_drifted = df_test_processed.clone()
-for feat in consensus_features:
-    if df_drifted[feat].dtype in [pl.Float64, pl.Float32, pl.Int64]:
-        feat_std = df_drifted[feat].std()
-        if feat_std is not None and feat_std > 0:
-            df_drifted = df_drifted.with_columns(
-                (pl.col(feat) + 0.5 * feat_std).alias(feat)
-            )
-
-drift_report_shifted = monitor.check(df_drifted, target="readmitted_30d")
+drifted_features = [
+    r.feature_name for r in drift_report_shifted.feature_results if r.drift_detected
+]
 print(f"Drifted data drift report:")
-print(f"  Feature drift detected: {drift_report_shifted.feature_drift_detected}")
-print(f"  Drifted features: {drift_report_shifted.drifted_features}")
-print(f"  Prediction drift: {drift_report_shifted.prediction_drift_detected}")
+print(f"  Feature drift detected: {drift_report_shifted.overall_drift_detected}")
+print(f"  Overall severity:       {drift_report_shifted.overall_severity}")
+print(f"  Drifted features:       {drifted_features}")
 assert (
-    drift_report_shifted.feature_drift_detected
+    drift_report_shifted.overall_drift_detected
 ), "Drift monitor failed to detect injected drift!"
 print("Drift monitor correctly detected injected drift.")
 
@@ -1101,7 +1195,6 @@ for section, content in model_card.items():
 
 # --- 4e: Persist to DataFlow ---
 print("\n=== Task 4e: DataFlow Persistence ===")
-from kailash.db import ConnectionManager
 
 # Define prediction model
 # In production this would use @db.model decorator with DataFlow
@@ -1168,7 +1261,8 @@ print(f"Persisted {n_persisted} predictions to DataFlow")
 
 # ── Checkpoint 4 ─────────────────────────────────────────
 assert prod_model is not None, "Task 4: model not in production"
-assert drift_report_shifted.feature_drift_detected, "Task 4: drift not detected"
+assert prod_model.stage == "production", "Task 4: prod_model not at production stage"
+assert drift_report_shifted.overall_drift_detected, "Task 4: drift not detected"
 assert len(model_card) > 0, "Task 4: model card empty"
 print(
     "\n>>> Checkpoint 4 passed: workflow, registry, drift, model card, persistence complete"

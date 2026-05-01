@@ -25,8 +25,8 @@ from sklearn.ensemble import RandomForestClassifier
 
 from kailash.db.connection import ConnectionManager
 from kailash_ml import FeatureField, FeatureSchema, MetricSpec, ModelSignature
-from kailash_ml.engines.inference_server import InferenceServer, PredictionResult
-from kailash_ml.engines.model_registry import LocalFileArtifactStore, ModelRegistry
+from kailash_ml import InferenceServer, PredictionResult
+from kailash_ml import LocalFileArtifactStore, ModelRegistry
 
 
 async def main() -> None:

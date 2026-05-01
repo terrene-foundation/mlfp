@@ -25,7 +25,7 @@ import polars as pl
 
 from kailash.db.connection import ConnectionManager
 from kailash_ml import FeatureField, FeatureSchema
-from kailash_ml.engines.feature_store import FeatureStore
+from kailash_ml import FeatureStore
 
 
 async def main() -> None:

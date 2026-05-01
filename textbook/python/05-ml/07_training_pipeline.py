@@ -24,9 +24,9 @@ import polars as pl
 
 from kailash.db.connection import ConnectionManager
 from kailash_ml import FeatureField, FeatureSchema
-from kailash_ml.engines.feature_store import FeatureStore
-from kailash_ml.engines.model_registry import LocalFileArtifactStore, ModelRegistry
-from kailash_ml.engines.training_pipeline import (
+from kailash_ml import FeatureStore
+from kailash_ml import LocalFileArtifactStore, ModelRegistry
+from kailash_ml import (
     EvalSpec,
     ModelSpec,
     TrainingPipeline,

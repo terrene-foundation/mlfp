@@ -25,7 +25,7 @@ from sklearn.datasets import make_classification, make_regression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 
-from kailash_ml.engines.model_visualizer import ModelVisualizer
+from kailash_ml import ModelVisualizer
 
 # ── 1. Instantiate ModelVisualizer ──────────────────────────────────
 # ModelVisualizer is stateless — no connection or initialization needed.

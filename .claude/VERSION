@@ -1,24 +1,24 @@
 {
   "version": "0.1.0",
   "type": "coc-project",
-  "description": "MLFP — ML Foundations for Professionals (Terrene Open Academy course)",
+  "description": "MLFP \u2014 ML Foundations for Professionals (Terrene Open Academy course)",
   "upstream": {
     "template": "kailash-coc-claude-py",
     "template_repo": "terrene-foundation/kailash-coc-claude-py",
-    "template_version": "3.5.9",
-    "build_version": "2.8.9",
-    "synced_at": "2026-04-20T00:00:00Z",
+    "template_version": "3.5.25",
+    "build_version": "2.11.3",
+    "loom_version": "2.9.4",
+    "synced_at": "2026-04-28T07:35:56Z",
     "sdk_packages": {
-      "kailash": "2.8.9",
-      "kailash-dataflow": "2.0.12",
-      "kailash-nexus": "2.1.1",
-      "kailash-kaizen": "2.7.5",
-      "kailash-pact": "0.8.2",
-      "kailash-mcp": "0.2.5",
-      "kailash-ml": "0.12.0",
-      "kailash-align": "0.3.2",
-      "kailash-trust": "0.1.1",
-      "kaizen-agents": "0.9.3"
+      "kailash": "2.11.3",
+      "kailash-dataflow": "2.3.2",
+      "kailash-nexus": "2.3.0",
+      "kailash-kaizen": "2.13.1",
+      "kailash-pact": "0.11.0",
+      "kailash-mcp": "0.2.10",
+      "kailash-ml": "1.5.1",
+      "kailash-align": "0.7.0",
+      "kaizen-agents": "0.9.4"
     }
   }
 }

@@ -12,10 +12,14 @@
 #   line of a PyTorch training loop does and why.
 #
 #   Before that journey, see the destination. This is what production
-#   ML training looks like in 2026 with the unified `kailash-ml` 0.12
+#   ML training looks like in 2026 with the unified `kailash-ml` 1.1+
 #   surface. The same training that takes 80 lines of hand-written
 #   PyTorch fits in 3 — and runs on Apple Silicon's Metal Performance
 #   Shaders backend automatically, with mixed-precision, with no flags.
+#
+#   Note on async: `km.train()` is async (kailash-ml 1.0+). In a CLI
+#   script you wrap with `asyncio.run(km.train(...))`. In a notebook
+#   with `nest_asyncio`, top-level `await km.train(...)` works.
 #
 # WHAT YOU'LL DO:
 #   1. Print the auto-detected compute backend
@@ -27,6 +31,8 @@
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
+
+import asyncio  # noqa: F401  — used in TASK 2
 
 import polars as pl
 from sklearn.datasets import make_classification
@@ -67,6 +73,10 @@ print("✓ Checkpoint 1 passed — backend detected\n")
 # Hint: km.train(df, target='y') runs a default RandomForestClassifier
 # pipeline end-to-end (split, fit, evaluate, package metrics). Pass the
 # polars DataFrame and the name of the target column.
+#
+# km.train is async — call it via asyncio.run(km.train(df, target='y'))
+# in this CLI script. In a notebook with nest_asyncio, top-level await
+# works directly.
 
 print("=" * 72)
 print("TASK 2 — km.train() three-line zero-config training")
@@ -78,7 +88,7 @@ X, y = make_classification(
 df = pl.DataFrame({**{f"f{i}": X[:, i] for i in range(10)}, "y": y})
 print(f"  dataset shape : {df.shape}")
 
-# TODO: call km.train on `df` with target='y'
+# TODO: call asyncio.run(km.train(df, target='y'))  — km.train is async
 result = ____
 
 print(f"  metrics       : {result.metrics}")

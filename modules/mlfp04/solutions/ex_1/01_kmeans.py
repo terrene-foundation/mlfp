@@ -44,10 +44,15 @@ from shared.mlfp04.ex_1 import (
     RANDOM_STATE,
     load_customers,
     out_path,
+    setup_engines,
     standardise,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -241,6 +246,83 @@ assert (
     int(segment_sizes.sum()) == n_samples
 ), "Task 5: segment counts must sum to n_samples"
 print("\n  [ok] Checkpoint 4 passed — segment sizes valid\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# The sweep's per-K silhouette/inertia series + the final-fit scalars go
+# into one experiment ("m4_clustering_zoo") so subsequent lessons in this
+# group (hierarchical, density-based, spectral, evaluation_profiling) can
+# be compared side-by-side from one SQLite store at the end of the group.
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="kmeans_pp",
+    params={
+        "init": "k-means++",
+        "n_init": 10,
+        "random_state": RANDOM_STATE,
+        "best_k": best_k,
+        "n_features": n_features,
+        "n_samples": n_samples,
+    },
+    scalar_metrics={
+        "best_silhouette": float(max(sweep["silhouette"])),
+        "best_calinski_harabasz": float(max(sweep["ch"])),
+        "best_davies_bouldin": float(min(sweep["db"])),
+        "kmeans_pp_inertia": float(km_plus.inertia_),
+        "kmeans_random_inertia": float(km_random.inertia_),
+        "kmeans_pp_iters": float(km_plus.n_iter_),
+        "kmeans_random_iters": float(km_random.n_iter_),
+        "kmeans_pp_time_s": float(t_plus),
+        "kmeans_random_time_s": float(t_random),
+    },
+    series_metrics={
+        "sweep_silhouette": sweep["silhouette"],
+        "sweep_inertia": sweep["inertia"],
+    },
+)
+print(f"  [tracked] sweep + final-fit metrics logged to {exp_name} run='kmeans_pp'\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the kailash-ml ClusteringEngine
+# ════════════════════════════════════════════════════════════════════════
+# This lesson hand-rolled the K sweep, the silhouette/CH/DB metrics, the
+# k-means++-vs-random comparison, and the per-sample silhouette audit —
+# ~120 lines of structure to internalise the moving parts.
+#
+# kailash-ml ships a single engine that IS that pipeline. ClusteringEngine.
+# `sweep_k` runs the whole K-vs-criterion sweep for any supported algorithm
+# (kmeans, hierarchical, dbscan, spectral, gmm) and `fit` returns a
+# ClusterResult with labels + silhouette + Calinski-Harabasz + inertia.
+# One sync call. Everything you just built, ready to drop into production.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cluster_df = pl.from_numpy(X_scaled, schema=feature_cols)
+clustering = ClusteringEngine()
+
+sweep_result = clustering.sweep_k(
+    cluster_df, range(2, 11), algorithm="kmeans", criterion="silhouette"
+)
+print(f"  ClusteringEngine.sweep_k(): optimal_k={sweep_result.optimal_k}")
+
+fit_result = clustering.fit(cluster_df, algorithm="kmeans", n_clusters=best_k)
+print(
+    f"  ClusteringEngine.fit(K={best_k}): "
+    f"silhouette={fit_result.silhouette_score:.4f}  "
+    f"CH={fit_result.calinski_harabasz_score:.0f}  "
+    f"inertia={fit_result.inertia:.0f}"
+)
+print()
+print("  Every metric the lesson printed by hand — silhouette, CH, inertia,")
+print("  cluster sizes — is a field on ClusterResult. ClusteringEngine IS")
+print("  the destination this lesson walked you toward.\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

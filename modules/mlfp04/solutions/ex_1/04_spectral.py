@@ -38,11 +38,16 @@ from shared.mlfp04.ex_1 import (
     RANDOM_STATE,
     load_customers,
     out_path,
+    setup_engines,
     standardise,
     subsample,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -210,6 +215,65 @@ print("    Estimated annual benefit: S$29M (capacity + ads + rerouting).")
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
 assert int(sizes.sum()) == n_spec, "Task 5: spectral partition size mismatch"
 print("\n  [ok] Checkpoint 4 passed — spectral community partition valid\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="spectral_rbf",
+    params={
+        "k_candidates": ",".join(str(k) for k in K_CANDIDATES),
+        "best_k": best_k_spec,
+        "affinity": "rbf",
+        "gamma": 1.0,
+        "n_subsample": n_spec,
+    },
+    scalar_metrics={
+        "spectral_best_silhouette": float(best_stats["sil"]),
+        "kmeans_baseline_silhouette": float(km_sil),
+        "spectral_minus_kmeans_delta": float(best_stats["sil"] - km_sil),
+    }
+    | {
+        f"spectral_k{k}_silhouette": float(r["sil"])
+        for k, r in spectral_results.items()
+    }
+    | {f"spectral_k{k}_time_s": float(r["time"]) for k, r in spectral_results.items()},
+)
+print(
+    f"  [tracked] spectral sweep + K-means baseline logged to {exp_name} run='spectral_rbf'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='spectral')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps spectral clustering with the
+# same RBF-affinity + Laplacian-embedding + KMeans-on-embedding pipeline
+# this lesson just hand-built. The engine handles polars→numpy and
+# returns ClusterResult — silhouette, CH, inertia, labels — in one call.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+spec_df = pl.from_numpy(X_spec, schema=feature_cols)
+clustering = ClusteringEngine()
+fit_result = clustering.fit(spec_df, algorithm="spectral", n_clusters=best_k_spec)
+print(
+    f"  ClusteringEngine.fit(spectral, K={best_k_spec}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print()
+print(
+    "  Three lessons, one ClusteringEngine surface — kmeans (lesson 01),"
+    " dbscan (lesson 03), spectral (here). Same fit() signature across all"
+    " three; the ExperimentTracker leaderboard makes the comparison trivial.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

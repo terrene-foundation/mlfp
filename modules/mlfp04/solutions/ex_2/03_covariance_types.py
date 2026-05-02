@@ -31,12 +31,17 @@ from sklearn.mixture import GaussianMixture
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared.
+from shared.mlfp04.ex_1 import setup_engines, track_run
 from shared.mlfp04.ex_2 import (
     count_gmm_params,
     load_customers_scaled,
     out_path,
     safe_silhouette,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -211,6 +216,59 @@ print(
 print("\nParameter count per covariance type at the same K:")
 for ct, v in cov_results.items():
     print(f"  {ct:<12} -> {int(v['n_params']):>6} parameters")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+track_run(
+    tracker,
+    exp_name,
+    run_name=f"gmm_cov_{best_cov}",
+    params={
+        "best_k": best_k,
+        "best_cov": best_cov,
+        "cov_types": "full,tied,diag,spherical",
+        "n_features": n_features,
+        "n_samples": X_scaled.shape[0],
+    },
+    scalar_metrics={f"{ct}_bic": float(v["bic"]) for ct, v in cov_results.items()}
+    | {f"{ct}_log_lik": float(v["log_lik"]) for ct, v in cov_results.items()}
+    | {f"{ct}_silhouette": float(v["silhouette"]) for ct, v in cov_results.items()}
+    | {f"{ct}_n_params": float(v["n_params"]) for ct, v in cov_results.items()},
+)
+print(
+    f"  [tracked] covariance comparison logged to {exp_name} run='gmm_cov_{best_cov}'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — engine wraps GMM; covariance type is your call
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps GaussianMixture but exposes
+# only `n_clusters` + `algorithm='gmm'` — covariance_type is sklearn's
+# default ('full'). For production deployments needing diag/tied/spherical,
+# students still pass `covariance_type=...` via **kwargs.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cust_df = pl.from_numpy(X_scaled, schema=feature_cols)
+clustering = ClusteringEngine()
+fit_result = clustering.fit(
+    cust_df, algorithm="gmm", n_clusters=best_k, covariance_type=best_cov
+)
+print(
+    f"  ClusteringEngine.fit(gmm, K={best_k}, cov={best_cov}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Covariance shape stays a hyperparameter you reason about with BIC;"
+    " the engine takes whatever shape you decided on and ships the fit.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

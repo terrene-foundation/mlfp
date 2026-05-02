@@ -34,6 +34,9 @@ from sklearn.metrics import silhouette_score
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared so every M4
+# unsupervised technique logs to the same `m4_clustering_zoo` experiment.
+from shared.mlfp04.ex_1 import setup_engines, track_run
 from shared.mlfp04.ex_2 import (
     N_SYNTH,
     TRUE_COVS,
@@ -43,6 +46,9 @@ from shared.mlfp04.ex_2 import (
     out_path,
     safe_silhouette,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -335,6 +341,64 @@ print(
     f"({n_ambiguous / N_SYNTH:.1%}) are ambiguous (max responsibility 0.4-0.6)."
 )
 print("Hard clustering would lose the between-segment signal on every one.")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="em_from_scratch",
+    params={
+        "n_components": 3,
+        "n_synth": N_SYNTH,
+        "max_iter": 100,
+        "tol": 1e-4,
+        "init": "random",
+    },
+    scalar_metrics={
+        "final_log_likelihood": float(em["final_ll"]),
+        "n_iter": float(em["n_iter"]),
+        "true_param_assignment_accuracy": float(accuracy_true),
+        "recovered_silhouette": float(sil) if sil == sil else 0.0,  # NaN guard
+        "ambiguous_count": float(n_ambiguous),
+        "ambiguous_pct": float(n_ambiguous) / float(N_SYNTH),
+    },
+    series_metrics={"log_likelihood_per_iter": em["log_likelihoods"]},
+)
+print(
+    f"  [tracked] EM convergence + assignment metrics logged to {exp_name} "
+    f"run='em_from_scratch'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
+# ════════════════════════════════════════════════════════════════════════
+# This lesson built EM from scratch — E-step responsibilities, M-step
+# weighted MLE, the log-likelihood staircase, the convergence proof.
+# kailash-ml 1.5.1 ships the same EM in its ClusteringEngine: one sync
+# call returns labels + silhouette/CH/inertia.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+synth_df = pl.from_numpy(X_synth, schema=["x0", "x1"])
+clustering = ClusteringEngine()
+fit_result = clustering.fit(synth_df, algorithm="gmm", n_clusters=3)
+print(
+    f"  ClusteringEngine.fit(gmm, K=3): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Same EM you derived by hand — encapsulated under the same fit()"
+    " surface that backs kmeans/dbscan/spectral. The ExperimentTracker"
+    " leaderboard now compares your from-scratch loop to the engine.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

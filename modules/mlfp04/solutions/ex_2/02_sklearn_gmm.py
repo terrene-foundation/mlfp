@@ -31,11 +31,16 @@ from sklearn.mixture import GaussianMixture
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared.
+from shared.mlfp04.ex_1 import setup_engines, track_run
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
     safe_silhouette,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -209,6 +214,66 @@ for k, w in enumerate(segment_weights):
 assert len(segment_weights) == best_k_bic, "weights length must match K"
 assert abs(segment_weights.sum() - 1.0) < 1e-6, "weights must sum to 1"
 print("\n[ok] Checkpoint 3 passed — BIC-optimal segmentation produced")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+
+ks = sorted(sweep.keys())
+track_run(
+    tracker,
+    exp_name,
+    run_name="sklearn_gmm_bic_aic",
+    params={
+        "cov_type": "full",
+        "k_range": f"{min(ks)}-{max(ks)}",
+        "best_k_bic": best_k_bic,
+        "best_k_aic": best_k_aic,
+        "best_k_silhouette": best_k_sil,
+        "n_samples": X_scaled.shape[0],
+        "n_features": X_scaled.shape[1],
+    },
+    scalar_metrics={
+        "best_bic": float(min(v["bic"] for v in sweep.values())),
+        "best_aic": float(min(v["aic"] for v in sweep.values())),
+        "best_silhouette": float(max(v["silhouette"] for v in sweep.values())),
+    },
+    series_metrics={
+        "sweep_bic": [sweep[k]["bic"] for k in ks],
+        "sweep_aic": [sweep[k]["aic"] for k in ks],
+        "sweep_log_lik": [sweep[k]["log_lik"] for k in ks],
+        "sweep_silhouette": [sweep[k]["silhouette"] for k in ks],
+    },
+)
+print(f"  [tracked] BIC/AIC sweep logged to {exp_name} run='sklearn_gmm_bic_aic'\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1 wraps sklearn's GaussianMixture in ClusteringEngine.
+# The sweep + BIC selection itself is not yet exposed at engine level —
+# students still drive K via BIC by hand, then hand the chosen K to the
+# engine for the production fit.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cust_df = pl.from_numpy(X_scaled, schema=feature_cols)
+clustering = ClusteringEngine()
+fit_result = clustering.fit(cust_df, algorithm="gmm", n_clusters=best_k_bic)
+print(
+    f"  ClusteringEngine.fit(gmm, K={best_k_bic}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Engine-first take-away: BIC drives K selection (your job); the"
+    " engine drives the fit. The tracker leaderboard now compares this"
+    " K with the kmeans/dbscan/spectral runs from ex_1.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

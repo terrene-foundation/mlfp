@@ -43,17 +43,23 @@ session on `feat/m4-engine-first` (PR #2 against `main`):
 
 ## Smoke-run status
 
-Solutions verified end-to-end this session:
-- ex_3/01_pca.py — PASS (full output incl. tracker emit + engine close)
-- ex_3/02_kernel_pca.py — PASS (after _slug fix, clean DB)
-- ex_3/03_tsne.py — PASS (initial parallel run before kill)
-- ex_3/04_umap.py — NOT smoked end-to-end. Engine call mirrors 03_tsne;
-  metric keys mechanically verified tracker-compliant; 6-config UMAP sweep
-  takes ~9 min so deferred. Run alone:
-  `rm -f mlfp04_ex3_dimreduction.db* && .venv/bin/python -u modules/mlfp04/solutions/ex_3/04_umap.py`
-- ex_3/05_comparison.py — Started but did not confirm before commit. Same
-  mechanical check applies. Output at `/tmp/ex3_05_comparison.log` if
-  the previous-session process is still alive (PID 73992 at last check).
+All five ex_3 solutions verified end-to-end this session:
+- ex_3/01_pca.py        — PASS (tracker emit + DimReductionEngine close)
+- ex_3/02_kernel_pca.py — PASS after `_slug()` fix for kernel-label keys
+- ex_3/03_tsne.py       — PASS
+- ex_3/04_umap.py       — PASS after prophylactic `_finite()` NaN-guard
+                          on per-config silhouettes (~9 min sweep)
+- ex_3/05_comparison.py — PASS after `intrinsic_dim_mle` + per-method
+                          silhouette NaN-guard (commit 8787e101).
+                          Top reducer: KernelPCA poly d=3 (sil +0.8488);
+                          engine leaderboard: umap +0.6148 / tsne +0.4762
+                          / pca +0.4310 / nmf +0.3970.
+
+Two metric-emit landmines caught + closed:
+  - tracker key regex `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` rejects spaces +
+    parens + `=` → `_slug()` helper in 02 + 05.
+  - tracker value validator rejects non-finite floats → `_finite()` /
+    inline NaN-check in 04 + 05.
 
 ## Traps
 
@@ -66,6 +72,12 @@ Solutions verified end-to-end this session:
   no parens, no `=`, no `,`. Use the `_slug()` helper introduced in
   02_kernel_pca / 05_comparison whenever per-config dict comprehensions
   feed values from labels containing prose.
+- **Tracker non-finite reject**: kailash_ml's `_validate_metric_value`
+  rejects NaN/inf with `MetricValueError`. Any computed scalar that can
+  return NaN (e.g. Levina-Bickel intrinsic_dim, silhouette on collapsed
+  embeddings) MUST go through `float(x) if x == x else 0.0` (or the
+  named `_finite()` helper introduced in 04_umap). 05_comparison +
+  04_umap carry the guards; ex_2/01 had the same guard from r2.
 - **DimReductionEngine.reduce is sync** despite `km.list_engines()`
   reporting `is_async=True`. Same trap as ClusteringEngine in r1+r2.
 - **kernel_pca / isomap / lle / nmf-positive-only**: DimReductionEngine
@@ -91,9 +103,8 @@ Solutions verified end-to-end this session:
 
 ## Open questions for the human
 
-1. Confirm 04_umap and 05_comparison smoke results before pushing PR #2
-   for review, or trust the mechanical safety check?
-2. Take ex_4 (anomaly detection / EnsembleEngine) next on this same
-   branch, or pause for PR #2 review/merge first?
-3. ex_1/05_evaluation_profiling.py SOLUTION tracker emit + local strip:
+1. Take ex_4 (anomaly detection / EnsembleEngine) next on this same
+   branch, or pause for PR #2 review/merge first? (All five ex_3
+   solutions now smoke-verified end-to-end.)
+2. ex_1/05_evaluation_profiling.py SOLUTION tracker emit + local strip:
    one shard or split into solution-only + local-strip?

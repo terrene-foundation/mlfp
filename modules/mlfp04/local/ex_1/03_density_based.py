@@ -36,10 +36,15 @@ from kailash_ml import ModelVisualizer
 from shared.mlfp04.ex_1 import (
     load_customers,
     out_path,
+    setup_engines,
     standardise,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 try:
     import hdbscan as hdbscan_lib
@@ -199,6 +204,76 @@ assert (
     int((hdb_eom_labels >= 0).sum() + (hdb_eom_labels == -1).sum()) == n_samples
 ), "Task 5: HDBSCAN labels must cover every sample"
 print("\n  [ok] Checkpoint 4 passed — hotspot partition valid\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Best DBSCAN epsilon = the one with the highest silhouette in the sweep.
+
+dbscan_best_eps, dbscan_best_stats = max(
+    dbscan_results.items(), key=lambda x: x[1]["sil"]
+)
+
+# TODO: call track_run with run_name "dbscan_hdbscan". scalar_metrics MUST
+# include dbscan_best_eps, dbscan_best_silhouette, dbscan_best_n_clusters,
+# hdbscan_eom_n_clusters (use n_eom), hdbscan_leaf_n_clusters (n_leaf),
+# hdbscan_eom_noise_pct (noise_eom).
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "eps_suggested": eps_suggested,
+        "min_pts": K_NN,
+        "n_samples": n_samples,
+        "hdb_min_cluster_size": 50,
+        "hdb_min_samples": 10,
+    },
+    scalar_metrics={
+        "dbscan_best_eps": float(dbscan_best_eps),
+        "dbscan_best_silhouette": float(dbscan_best_stats["sil"]),
+        "dbscan_best_n_clusters": float(dbscan_best_stats["k"]),
+        "dbscan_best_noise_pct": float(dbscan_best_stats["noise_pct"]),
+        "hdbscan_eom_n_clusters": ____,
+        "hdbscan_leaf_n_clusters": ____,
+        "hdbscan_eom_noise_pct": ____,
+    },
+)
+print(f"  [tracked] DBSCAN sweep + HDBSCAN run logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='dbscan')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps DBSCAN. The engine handles the
+# polars→numpy conversion, fits, computes silhouette over the non-noise
+# subset, and returns ClusterResult — the same flow this lesson hand-rolled
+# across 60 lines of sklearn glue.
+#
+# HDBSCAN remains an exception: 1.5.1 does not have an HDBSCAN adapter
+# yet. For HDBSCAN, the destination is the ExperimentTracker leaderboard.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+dbscan_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: instantiate ClusteringEngine and call .fit on dbscan_df with
+# algorithm='dbscan', eps=eps_suggested, min_samples=K_NN. The returned
+# ClusterResult exposes .n_clusters and .silhouette_score.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(dbscan, eps={eps_suggested:.4f}): "
+    f"n_clusters={fit_result.n_clusters}  "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}"
+)
+print(
+    "  ClusteringEngine 1.5.1: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
+    " hdbscan library + tracker until the engine adapter lands.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

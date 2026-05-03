@@ -32,10 +32,16 @@ from sklearn.mixture import GaussianMixture
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared so every M4
+# unsupervised technique logs to the same `m4_clustering_zoo` experiment.
+from shared.mlfp04.ex_1 import setup_engines, track_run
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -221,6 +227,77 @@ print(
     "At Carousell's scale, blending intents with soft responsibilities "
     "recovers ~S$29.6M/year in feed monetisation — from the same GMM "
     "you just fitted, read a different way."
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# This is the FINAL lesson in the M4 ex_2 GMM block. After it lands the
+# m4_clustering_zoo experiment will hold eight runs across four families.
+
+# TODO: call track_run with run_name "gmm_soft_assignment_moe". scalar
+# metrics include the four confidence-band percentages from `profile`,
+# mean_entropy, max_entropy, boundary_count (n_boundary), boundary_pct,
+# and per-expert MoE active rates: float((moe_demo[:, k] > 0.5).mean())
+# for k in 0, 1.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "best_k": best_k,
+        "cov_type": "full",
+        "n_samples": X_scaled.shape[0],
+        "n_features": X_scaled.shape[1],
+        "moe_n_experts": 2,
+    },
+    scalar_metrics={
+        "confident_pct": float(profile["confident"]),
+        "moderate_pct": float(profile["moderate"]),
+        "ambiguous_pct": float(profile["ambiguous"]),
+        "uncertain_pct": float(profile["uncertain"]),
+        "mean_entropy": float(profile["mean_entropy"]),
+        "max_entropy": float(profile["max_entropy"]),
+        "boundary_count": float(n_boundary),
+        "boundary_pct": float(n_boundary) / float(X_scaled.shape[0]),
+        "moe_expert0_active_pct": ____,
+        "moe_expert1_active_pct": ____,
+    },
+)
+print(f"  [tracked] soft-assignment + MoE gate metrics logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — engine fit + close the m4_clustering_zoo loop
+# ════════════════════════════════════════════════════════════════════════
+# After this lesson, the m4_clustering_zoo experiment in
+# mlfp04_ex1_clustering.db holds eight runs across four families:
+#   kmeans_pp / hierarchical_<linkage> / dbscan_hdbscan / spectral_rbf
+#   em_from_scratch / sklearn_gmm_bic_aic / gmm_cov_<best> / gmm_soft_moe
+#
+# The leaderboard is the unifying surface across all clustering runs on
+# the same Singapore e-commerce dataset. ClusteringEngine.fit returns
+# hard labels in one call; soft predict_proba still routes through
+# sklearn's GaussianMixture for the responsibility matrix.
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cust_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: instantiate ClusteringEngine and call .fit on cust_df with
+# algorithm='gmm' and n_clusters=best_k.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(gmm, K={best_k}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Open mlfp04_ex1_clustering.db for the full m4_clustering_zoo"
+    " leaderboard — eight runs across four clustering families on the"
+    " same dataset, ready for cross-method comparison.\n"
 )
 
 

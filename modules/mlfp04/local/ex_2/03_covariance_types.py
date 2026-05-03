@@ -31,12 +31,18 @@ from sklearn.mixture import GaussianMixture
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared so every M4
+# unsupervised technique logs to the same `m4_clustering_zoo` experiment.
+from shared.mlfp04.ex_1 import setup_engines, track_run
 from shared.mlfp04.ex_2 import (
     count_gmm_params,
     load_customers_scaled,
     out_path,
     safe_silhouette,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -181,6 +187,64 @@ print(
 print("\nParameter count per covariance type at the same K:")
 for ct, v in cov_results.items():
     print(f"  {ct:<12} -> {int(v['n_params']):>6} parameters")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# scalar_metrics merges four parallel per-cov-type dicts (bic, log_lik,
+# silhouette, n_params) — the same |-merge pattern used in 02_hierarchical
+# and 04_spectral.
+
+# TODO: call track_run with run_name f"gmm_cov_{best_cov}". scalar_metrics
+# is the |-merge of four dict comprehensions, all over cov_results.items():
+#   {f"{ct}_bic": float(v["bic"]) ...}
+#   | {f"{ct}_log_lik": float(v["log_lik"]) ...}
+#   | {f"{ct}_silhouette": float(v["silhouette"]) ...}
+#   | {f"{ct}_n_params": float(v["n_params"]) ...}
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "best_k": best_k,
+        "best_cov": best_cov,
+        "cov_types": "full,tied,diag,spherical",
+        "n_features": n_features,
+        "n_samples": X_scaled.shape[0],
+    },
+    scalar_metrics=____,
+)
+print(f"  [tracked] covariance comparison logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — engine wraps GMM; covariance type is your call
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps GaussianMixture but exposes
+# only `n_clusters` + `algorithm='gmm'` — covariance_type is sklearn's
+# default ('full'). For production deployments needing diag/tied/spherical,
+# pass `covariance_type=...` via **kwargs.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cust_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: instantiate ClusteringEngine and call .fit on cust_df with
+# algorithm='gmm', n_clusters=best_k, and covariance_type=best_cov.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(gmm, K={best_k}, cov={best_cov}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Covariance shape stays a hyperparameter you reason about with BIC;"
+    " the engine takes whatever shape you decided on and ships the fit.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

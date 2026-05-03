@@ -13,6 +13,7 @@ lives in the per-technique files in `modules/mlfp04/solutions/ex_4/`.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import StandardScaler
 
+from kailash_ml import ExperimentTracker
 from kailash_ml.interop import to_sklearn_input
 
 from shared.data_loader import MLFPDataLoader
@@ -245,3 +247,73 @@ class AnomalyScoreEstimator:
         n = len(X) if hasattr(X, "__len__") else self._scores.shape[0]
         threshold = float(np.median(self._scores))
         return (self._scores[:n] > threshold).astype(int)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# KAILASH-ML EXPERIMENT TRACKER — shared by every anomaly technique
+# ════════════════════════════════════════════════════════════════════════
+# Every M4 ex_4 lesson logs its sweep + final-fit metrics to a single
+# SQLite store so students can compare detectors across the lesson group
+# (statistical, isolation forest, LOF, ensemble) after class. Mirrors the
+# m4_clustering_zoo / m4_dimreduction_zoo experiments from ex_1 / ex_3.
+#
+# IMPORTANT: this store is SEPARATE from the clustering and dim-reduction
+# stores. Per the SQLite contention trap (see .session-notes), running
+# two ExperimentTracker writers against the same SQLite file concurrently
+# triggers `disk I/O error`. Each exercise group gets its own DB.
+
+ANOMALY_DB = "sqlite:///mlfp04_ex4_anomaly.db"
+ANOMALY_EXPERIMENT_NAME = "m4_anomaly_zoo"
+
+
+def _finite(x: float) -> float:
+    """Tracker rejects NaN/inf via MetricValueError; coerce to 0.0.
+    Anomaly metrics like AUC-ROC/AP can NaN on degenerate label arrays
+    (e.g., all-positive or all-negative slices in a sweep)."""
+    return float(x) if x == x and x not in (float("inf"), float("-inf")) else 0.0
+
+
+async def _setup_engines_async() -> tuple[ExperimentTracker, str]:
+    """Open the anomaly-detection ExperimentTracker (kailash-ml 1.5.1)."""
+    tracker = await ExperimentTracker.create(store_url=ANOMALY_DB)
+    return tracker, ANOMALY_EXPERIMENT_NAME
+
+
+def setup_engines() -> tuple[ExperimentTracker, str]:
+    """Sync wrapper. Returns (tracker, experiment_name)."""
+    return asyncio.run(_setup_engines_async())
+
+
+async def _track_run_async(
+    tracker: ExperimentTracker,
+    exp_name: str,
+    run_name: str,
+    params: dict[str, Any],
+    scalar_metrics: dict[str, float],
+    series_metrics: dict[str, list[float]] | None = None,
+) -> None:
+    """Log one lesson's run: scalar metrics + optional per-step series."""
+    async with tracker.track(experiment=exp_name, run_name=run_name) as run:
+        await run.log_params({k: str(v) for k, v in params.items()})
+        for name, value in scalar_metrics.items():
+            await run.log_metric(name, float(value))
+        if series_metrics:
+            for name, values in series_metrics.items():
+                for step, value in enumerate(values, start=1):
+                    await run.log_metric(name, float(value), step=step)
+
+
+def track_run(
+    tracker: ExperimentTracker,
+    exp_name: str,
+    run_name: str,
+    params: dict[str, Any],
+    scalar_metrics: dict[str, float],
+    series_metrics: dict[str, list[float]] | None = None,
+) -> None:
+    """Sync wrapper for logging a single technique's run."""
+    asyncio.run(
+        _track_run_async(
+            tracker, exp_name, run_name, params, scalar_metrics, series_metrics
+        )
+    )

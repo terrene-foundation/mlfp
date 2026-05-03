@@ -29,11 +29,21 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    track_run,
     write_roc_chart,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
+
+# Capture per-contamination sweep metrics so the TRACK section below can
+# emit them after Task 5. Mutated inside the Task 2 sweep loop.
+sweep_results: dict[float, dict[str, float]] = {}
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -86,6 +96,10 @@ for contam in contamination_grid:
     n_flagged = int((preds == -1).sum())
     flagged = preds == -1
     precision = float(y[flagged].mean()) if n_flagged else 0.0
+    sweep_results[contam] = {
+        "n_flagged": float(n_flagged),
+        "precision": precision,
+    }
     print(
         f"  contamination={contam:<6}  flagged={n_flagged:>5,}  "
         f"precision={precision:.3f}"
@@ -174,6 +188,73 @@ print(f"Saved ROC chart: {roc_path}")
 # LIMITATIONS: Isolation Forest is GLOBAL — it finds points far from
 # every cluster. If the fraud merchants form their OWN cluster, LOF
 # (Exercise 4.3) does better because it compares local densities.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Per-contamination sweep keys are formatted as `iso_contam_X_precision`
+# / `iso_contam_X_flagged` where X is the contamination value with dots
+# replaced by underscores (the tracker key regex disallows `.` followed
+# by a digit, so 0.001 → "0_001"). Final-fit metrics use bare names.
+
+sweep_metrics: dict[str, float] = {}
+for contam, stats in sweep_results.items():
+    label = str(contam).replace(".", "_")
+    sweep_metrics[f"iso_contam_{label}_n_flagged"] = stats["n_flagged"]
+    sweep_metrics[f"iso_contam_{label}_precision"] = _finite(stats["precision"])
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="isolation_forest",
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "n_estimators": 200,
+        "best_contamination": 0.01,
+        "anomaly_rate": float(y.mean()),
+    },
+    scalar_metrics={
+        "iso_auc_roc": _finite(iso_metrics["auc_roc"]),
+        "iso_avg_precision": _finite(iso_metrics["avg_precision"]),
+        "iso_n_predicted_anomalies": float(int((iso_labels == -1).sum())),
+    }
+    | sweep_metrics,
+)
+print(
+    f"\n  [tracked] isolation_forest sweep + final-fit logged to {exp_name} "
+    f"run='isolation_forest'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's AnomalyDetectionEngine.detect() wraps Isolation
+# Forest with the same sklearn machinery this lesson hand-built. The
+# engine handles polars→numpy conversion and emits an AnomalyResult
+# (labels + scores + n_anomalies + algorithm-specific metrics) in one
+# call. The tracker leaderboard is the natural follow-up.
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=_feature_cols)
+det = AnomalyDetectionEngine()
+fit_result = det.detect(anomaly_df, algorithm="isolation_forest", contamination=0.01)
+fit_metrics = score_metrics(y, np.asarray(fit_result.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(isolation_forest, contamination=0.01): "
+    f"AUC-ROC={fit_metrics['auc_roc']:.4f}  "
+    f"AP={fit_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={fit_result.n_anomalies}"
+)
+print(
+    f"  Hand-rolled AUC-ROC (Task 3): {iso_metrics['auc_roc']:.4f} "
+    f"— same algorithm under the hood, one-line vs ten-line interface.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -29,10 +29,16 @@ import numpy as np
 from scipy.stats import skew
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -150,6 +156,73 @@ queue_recall = float(y[queue_order].sum() / max(y.sum(), 1))
 print(f"\nQueue-prioritisation demo (reviewer budget = {reviewer_budget}):")
 print(f"  Precision in top-{reviewer_budget}: {queue_precision:.3f}")
 print(f"  Recall in top-{reviewer_budget}:    {queue_recall:.3f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Method names (zscore_*, iqr_*, queue_*) are simple snake_case so they
+# match the tracker key regex directly. AUC-ROC/AP can be NaN on a
+# single-class slice; wrap each emit in _finite().
+
+# TODO: call track_run with run_name="statistical_zscore_iqr". Headline
+# scalars are zscore_auc_roc + zscore_avg_precision (from z_metrics),
+# iqr_auc_roc + iqr_avg_precision (from iqr_metrics), queue_precision,
+# queue_recall, skew_before, skew_after — every value through _finite().
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "anomaly_rate": float(y.mean()),
+        "reviewer_budget": reviewer_budget,
+        "n_winsorised": n_clipped,
+    },
+    scalar_metrics={
+        "zscore_auc_roc": _finite(z_metrics["auc_roc"]),
+        "zscore_avg_precision": _finite(z_metrics["avg_precision"]),
+        "iqr_auc_roc": _finite(iqr_metrics["auc_roc"]),
+        "iqr_avg_precision": _finite(iqr_metrics["avg_precision"]),
+        "queue_precision": ____,
+        "queue_recall": ____,
+        "skew_before": _finite(skew_before),
+        "skew_after": _finite(skew_after),
+    },
+)
+print(f"\n  [tracked] zscore + IQR + queue logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
+# ════════════════════════════════════════════════════════════════════════
+# AnomalyDetectionEngine.detect() does NOT support zscore/IQR — those
+# are pure statistical primitives. The engine's algorithms start at
+# isolation_forest (next lesson). This close shows the engine surface
+# you'll use from here on.
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=feature_cols)
+
+# TODO: Instantiate AnomalyDetectionEngine and call .detect on anomaly_df
+# with algorithm='isolation_forest' and contamination=0.01.
+det = ____
+preview = ____
+preview_metrics = score_metrics(y, np.asarray(preview.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(isolation_forest): "
+    f"AUC-ROC={preview_metrics['auc_roc']:.4f}  "
+    f"AP={preview_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={preview.n_anomalies}"
+)
+print(
+    "  Statistical is the cheap-and-explainable primitive layer; the engine"
+    " path begins next lesson with isolation_forest.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

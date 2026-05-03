@@ -29,11 +29,20 @@ import numpy as np
 from sklearn.neighbors import LocalOutlierFactor
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    track_run,
     write_roc_chart,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
+
+# Per-n_neighbors sweep results captured below for the TRACK section.
+nbrs_sweep: dict[int, dict[str, float]] = {}
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -89,6 +98,11 @@ for n_nbrs in [10, 20, 30, 50]:
     scores_test = -lof_test.negative_outlier_factor_
     m = score_metrics(y, scores_test)
     n_flagged = int((labels_test == -1).sum())
+    nbrs_sweep[n_nbrs] = {
+        "auc_roc": m["auc_roc"],
+        "avg_precision": m["avg_precision"],
+        "n_flagged": float(n_flagged),
+    }
     print(
         f"  n_neighbors={n_nbrs:<3}  AUC-ROC={m['auc_roc']:.4f}  "
         f"AP={m['avg_precision']:.4f}  flagged={n_flagged:,}"
@@ -261,6 +275,73 @@ print("  cluster. Use BOTH, then blend — see 04_ensemble_blending.py.")
 # a HDBSCAN + density-ratio approximation, or sub-sample to 200K rows
 # per run. Exercise 4.4 (Ensemble Engine) shows how blending LOF with
 # Isolation Forest raises recall further without raising cost much.
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Sweep keys: lof_k{N}_auc_roc / lof_k{N}_avg_precision / lof_k{N}_n_flagged
+# Integer N is regex-safe directly — no _slug() needed.
+
+sweep_metrics: dict[str, float] = {}
+for n_nbrs, stats in nbrs_sweep.items():
+    sweep_metrics[f"lof_k{n_nbrs}_auc_roc"] = _finite(stats["auc_roc"])
+    sweep_metrics[f"lof_k{n_nbrs}_avg_precision"] = _finite(stats["avg_precision"])
+    sweep_metrics[f"lof_k{n_nbrs}_n_flagged"] = stats["n_flagged"]
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="local_outlier_factor",
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "best_n_neighbors": 20,
+        "contamination": 0.01,
+        "anomaly_rate": float(y.mean()),
+    },
+    scalar_metrics={
+        "lof_auc_roc": _finite(lof_metrics["auc_roc"]),
+        "lof_avg_precision": _finite(lof_metrics["avg_precision"]),
+        "lof_n_predicted_anomalies": float(int((lof_labels == -1).sum())),
+        "lof_normal_median": _finite(median_normal),
+        "lof_anomaly_median": _finite(median_anomaly),
+    }
+    | sweep_metrics,
+)
+print(
+    f"\n  [tracked] LOF n_neighbors sweep + final-fit logged to {exp_name} "
+    f"run='local_outlier_factor'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect(algorithm='lof')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's AnomalyDetectionEngine wraps LOF under the same
+# .detect() surface used in lesson 02 for isolation_forest. Same engine,
+# different `algorithm=` string. Production stacks blend both via the
+# EnsembleEngine in lesson 04.
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=_feature_cols)
+det = AnomalyDetectionEngine()
+fit_result = det.detect(anomaly_df, algorithm="lof", contamination=0.01)
+fit_metrics = score_metrics(y, np.asarray(fit_result.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(lof, contamination=0.01): "
+    f"AUC-ROC={fit_metrics['auc_roc']:.4f}  "
+    f"AP={fit_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={fit_result.n_anomalies}"
+)
+print(
+    f"  Hand-rolled AUC-ROC (Task 3): {lof_metrics['auc_roc']:.4f}  "
+    "— same algorithm under one surface; the engine's contamination knob"
+    " maps directly to LocalOutlierFactor's parameter.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

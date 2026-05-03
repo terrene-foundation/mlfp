@@ -14,7 +14,9 @@ technique files, NOT here.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -22,6 +24,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
+from kailash_ml import ExperimentTracker
 from kailash_ml.interop import to_sklearn_input
 
 from shared import MLFPDataLoader
@@ -101,3 +104,62 @@ def subsample_indices(
     """Deterministic subsample indices for expensive O(n^2) methods."""
     rng = np.random.default_rng(random_state)
     return rng.choice(n_samples, min(n_target, n_samples), replace=False)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# KAILASH-ML EXPERIMENT TRACKER — shared by every dim-reduction technique
+# ════════════════════════════════════════════════════════════════════════
+# Every M4 ex_3 lesson logs its sweep + final-fit metrics to a single
+# SQLite store so students can compare PCA / Kernel-PCA / t-SNE / UMAP
+# embedding-quality runs after the lesson group ends. Mirrors the ex_1
+# clustering-zoo pattern; separate DB so dim-reduction has its own
+# leaderboard distinct from clustering.
+
+DIMREDUCE_DB = "sqlite:///mlfp04_ex3_dimreduction.db"
+EXPERIMENT_NAME = "m4_dimreduction_zoo"
+
+
+async def _setup_engines_async() -> tuple[ExperimentTracker, str]:
+    """Open the dim-reduction ExperimentTracker (kailash-ml 1.5.1)."""
+    tracker = await ExperimentTracker.create(store_url=DIMREDUCE_DB)
+    return tracker, EXPERIMENT_NAME
+
+
+def setup_engines() -> tuple[ExperimentTracker, str]:
+    """Sync wrapper. Returns (tracker, experiment_name)."""
+    return asyncio.run(_setup_engines_async())
+
+
+async def _track_run_async(
+    tracker: ExperimentTracker,
+    exp_name: str,
+    run_name: str,
+    params: dict[str, Any],
+    scalar_metrics: dict[str, float],
+    series_metrics: dict[str, list[float]] | None = None,
+) -> None:
+    """Log one lesson's run: scalar metrics + optional per-step series."""
+    async with tracker.track(experiment=exp_name, run_name=run_name) as run:
+        await run.log_params({k: str(v) for k, v in params.items()})
+        for name, value in scalar_metrics.items():
+            await run.log_metric(name, float(value))
+        if series_metrics:
+            for name, values in series_metrics.items():
+                for step, value in enumerate(values, start=1):
+                    await run.log_metric(name, float(value), step=step)
+
+
+def track_run(
+    tracker: ExperimentTracker,
+    exp_name: str,
+    run_name: str,
+    params: dict[str, Any],
+    scalar_metrics: dict[str, float],
+    series_metrics: dict[str, list[float]] | None = None,
+) -> None:
+    """Sync wrapper for logging a single technique's run."""
+    asyncio.run(
+        _track_run_async(
+            tracker, exp_name, run_name, params, scalar_metrics, series_metrics
+        )
+    )

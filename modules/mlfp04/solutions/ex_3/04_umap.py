@@ -35,8 +35,13 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     evaluate_embedding_silhouette,
     load_customer_matrix,
+    setup_engines,
     subsample_indices,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 # UMAP is an optional extra — fall back gracefully so the exercise stays
 # runnable on machines without umap-learn installed (e.g. Colab cold
@@ -218,6 +223,87 @@ if UMAP_AVAILABLE and umap_results:
     print(f"  Output shape    : {best['embedding'].shape}")
 else:
     print("\n[note] Install umap-learn to run the full MAS scenario.")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Per-config silhouette + wall-time scalars + parallel series go into the
+# m4_dimreduction_zoo experiment for side-by-side comparison.
+
+config_labels = list(umap_results.keys())
+best_label_for_run = (
+    max(umap_results.items(), key=lambda kv: kv[1]["silhouette"])[0]
+    if umap_results
+    else "none"
+)
+track_run(
+    tracker,
+    exp_name,
+    run_name=f"umap_{best_label_for_run.split()[0].replace('-', '_')}",
+    params={
+        "algorithm": "umap",
+        "n_components": 2,
+        "n_fit_subsample": int(len(fit_idx)),
+        "n_transform_full": int(n_samples),
+        "pca_pre_components": int(X_pca.shape[1]),
+        "umap_available": str(UMAP_AVAILABLE),
+        "best_config": best_label_for_run,
+    },
+    scalar_metrics={
+        "best_silhouette": (
+            float(umap_results[best_label_for_run]["silhouette"])
+            if umap_results
+            else 0.0
+        ),
+    }
+    | {
+        f"cfg{i}_silhouette": float(umap_results[label]["silhouette"])
+        for i, label in enumerate(config_labels)
+    }
+    | {
+        f"cfg{i}_time_s": float(umap_results[label]["time_s"])
+        for i, label in enumerate(config_labels)
+    },
+    series_metrics={
+        "sweep_silhouette": [
+            float(umap_results[label]["silhouette"]) for label in config_labels
+        ],
+        "sweep_time_s": [
+            float(umap_results[label]["time_s"]) for label in config_labels
+        ],
+    },
+)
+print(f"  [tracked] UMAP sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — DimReductionEngine.reduce(algorithm='umap')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's DimReductionEngine wraps UMAP under the same `reduce`
+# surface that backed PCA in lesson 01 and t-SNE in lesson 03. The engine
+# handles polars→numpy and returns a DimReductionResult — embedding +
+# n_neighbors + min_dist surfaced on the metrics dict.
+
+import polars as pl
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+cust_df = pl.from_numpy(X[fit_idx], schema=feature_cols)
+dimreduce = DimReductionEngine()
+
+reduce_result = dimreduce.reduce(cust_df, algorithm="umap", n_components=2)
+print(
+    f"  DimReductionEngine.reduce(umap, n_components=2): "
+    f"embedding shape=({len(reduce_result.transformed)}, "
+    f"{reduce_result.n_components})  "
+    f"n_neighbors={reduce_result.metrics.get('n_neighbors', 'n/a')}  "
+    f"min_dist={reduce_result.metrics.get('min_dist', 'n/a')}"
+)
+print()
+print("  Same UMAP you swept by hand — wrapped under the engine surface")
+print("  that backs pca / tsne / umap / nmf. The leaderboard now compares")
+print("  this fit with the PCA + t-SNE runs from lessons 01 and 03.\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

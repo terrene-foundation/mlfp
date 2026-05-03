@@ -35,8 +35,13 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     evaluate_embedding_silhouette,
     load_customer_matrix,
+    setup_engines,
     subsample_indices,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -150,6 +155,83 @@ print(f"  Best kernel           : {best_label}")
 print(f"  Best silhouette       : {best['silhouette']:.4f}")
 lift = best["silhouette"] - linear_sil
 print(f"  Lift over linear PCA  : {lift:+.4f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Per-kernel silhouette + wall time scalars + parallel series go into the
+# m4_dimreduction_zoo experiment for side-by-side comparison.
+
+kernel_labels = list(kernel_results.keys())
+
+
+def _slug(s: str) -> str:
+    """Tracker metric keys allow only [A-Za-z0-9_.-]; slugify the rest.
+    Kernel labels like 'rbf (gamma=0.1)' contain spaces / parens — slug
+    them before using as a metric-key suffix.
+    """
+    out = "".join(c if c.isalnum() or c in "_.-" else "_" for c in s)
+    return out.lstrip("_") or "k"
+
+
+# TODO: call track_run with run_name f"kernel_pca_{_slug(best_label.split()[0])}".
+# scalar_metrics headline = linear_silhouette, best_silhouette, lift_over_linear,
+# then |-merge per-kernel silhouette + time dicts (use _slug(k) as the prefix
+# so 'rbf (gamma=0.1)' becomes 'rbf__gamma_0.1_'). series_metrics: parallel
+# silhouette + time arrays in kernel_labels order.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "algorithm": "kernel_pca",
+        "n_components": 8,
+        "n_subsample": int(X_sub.shape[0]),
+        "n_features": n_features,
+        "best_kernel": best_label,
+    },
+    scalar_metrics={
+        "linear_silhouette": float(linear_sil),
+        "best_silhouette": float(best["silhouette"]),
+        "lift_over_linear": float(lift),
+    }
+    | ____
+    | ____,
+    series_metrics={
+        "kernel_silhouettes": ____,
+        "kernel_times_s": ____,
+    },
+)
+print(f"  [tracked] kernel sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — engine surface honesty for kernel PCA
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's DimReductionEngine ships pca, tsne, umap, nmf — but
+# NOT kernel_pca. The kernel-trick variant remains an explicit sklearn
+# fallback. The engine-first surface for THIS lesson is therefore the
+# ExperimentTracker we just used: every kernel/gamma combination, every
+# silhouette, every wall-time — already in mlfp04_ex3_dimreduction.db
+# next to the PCA run from 01.
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+print(
+    "  DimReductionEngine 1.5.1 algorithms:",
+    "pca, tsne, umap, nmf",
+)
+print(
+    "    Kernel PCA: use sklearn.decomposition.KernelPCA + tracker until"
+    " a future kailash-ml release adds the adapter."
+)
+_ = DimReductionEngine  # keep the engine import live for the leaderboard story
+print(
+    "\n  Engine-first take-away: the tracker leaderboard IS the destination —"
+    " open mlfp04_ex3_dimreduction.db to compare every kernel/gamma run"
+    " against the PCA baseline from lesson 01.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

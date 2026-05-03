@@ -36,8 +36,13 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     evaluate_embedding_silhouette,
     load_customer_matrix,
+    setup_engines,
     subsample_indices,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -201,6 +206,75 @@ print(f"\n=== Changi-style micro-segment projection ===")
 print(f"  Best perplexity : {best_p}")
 print(f"  Silhouette      : {best_r['silhouette']:.4f}")
 print(f"  KL divergence   : {best_r['kl']:.4f}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Per-perplexity KL/silhouette/time scalars + parallel series go into the
+# m4_dimreduction_zoo experiment for side-by-side comparison.
+
+perplexities_sorted = sorted(tsne_results.keys())
+track_run(
+    tracker,
+    exp_name,
+    run_name=f"tsne_perp_{best_p}",
+    params={
+        "algorithm": "tsne",
+        "n_components": 2,
+        "n_subsample": int(X_tsne_input.shape[0]),
+        "pca_pre_components": int(X_tsne_input.shape[1]),
+        "perplexities": ",".join(str(p) for p in perplexities_sorted),
+        "best_perplexity": best_p,
+    },
+    scalar_metrics={
+        "best_silhouette": float(best_r["silhouette"]),
+        "best_kl": float(best_r["kl"]),
+    }
+    | {f"perp_{p}_silhouette": float(r["silhouette"]) for p, r in tsne_results.items()}
+    | {f"perp_{p}_kl": float(r["kl"]) for p, r in tsne_results.items()}
+    | {f"perp_{p}_time_s": float(r["time_s"]) for p, r in tsne_results.items()},
+    series_metrics={
+        "sweep_silhouette": [
+            float(tsne_results[p]["silhouette"]) for p in perplexities_sorted
+        ],
+        "sweep_kl": [float(tsne_results[p]["kl"]) for p in perplexities_sorted],
+    },
+)
+print(f"  [tracked] perplexity sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — DimReductionEngine.reduce(algorithm='tsne')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's DimReductionEngine wraps sklearn t-SNE under the same
+# `reduce` surface that backed PCA in lesson 01. The engine handles the
+# polars→numpy conversion, runs t-SNE, returns a DimReductionResult with
+# the embedding and KL divergence in the metrics dict — one sync call.
+
+import polars as pl
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+# Engine takes raw features (not the PCA-pre-reduced matrix) and runs the
+# whole pipeline; it picks a sensible default perplexity internally.
+sub_idx = idx
+cust_df = pl.from_numpy(X[sub_idx], schema=feature_cols)
+dimreduce = DimReductionEngine()
+
+reduce_result = dimreduce.reduce(
+    cust_df, algorithm="tsne", n_components=2, perplexity=best_p
+)
+print(
+    f"  DimReductionEngine.reduce(tsne, perplexity={best_p}): "
+    f"embedding shape=({len(reduce_result.transformed)}, "
+    f"{reduce_result.n_components})  "
+    f"kl={reduce_result.metrics.get('kl_divergence', float('nan')):.4f}"
+)
+print()
+print("  Same t-SNE you swept by hand — wrapped under the engine surface")
+print("  that backs pca / tsne / umap / nmf. The leaderboard now compares")
+print("  this perplexity with the PCA baseline from lesson 01.\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -35,8 +35,13 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     evaluate_embedding_silhouette,
     load_customer_matrix,
+    setup_engines,
     subsample_indices,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 try:
     import umap as umap_lib  # type: ignore
@@ -245,6 +250,95 @@ print(
   VISUALISE:    t-SNE for dense micro-clusters, UMAP for mixed scales.
   EXPLAIN:      PCA — it's the only one with true inverse_transform.
 """
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# This is the FINAL lesson in the M4 ex_3 dim-reduction block. After this,
+# m4_dimreduction_zoo holds five runs across PCA / Kernel-PCA / t-SNE /
+# UMAP / cross-method comparison.
+
+
+def _slug(s: str) -> str:
+    """Tracker metric keys allow only [A-Za-z0-9_.-]; slugify the rest."""
+    out = "".join(c if c.isalnum() or c in "_.-" else "_" for c in s)
+    return out.lstrip("_") or "k"
+
+
+# TODO: call track_run with run_name "method_comparison". scalar_metrics
+# headline = top_silhouette + intrinsic_dim_mle + four PCA component picks
+# + n_kaiser + n_broken_stick, then |-merge per-method silhouettes from
+# method_silhouettes — use _slug(name) as the suffix because method names
+# like 'PCA 2d' / 't-SNE p=15' contain spaces and equals signs.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "algorithms_compared": "pca,kernel_pca,tsne,umap,isomap",
+        "n_configs": len(method_silhouettes),
+        "n_features_ambient": n_features,
+        "n_samples": n_samples,
+        "intrinsic_dim_method": "levina_bickel_nn_mle",
+    },
+    scalar_metrics={
+        "top_silhouette": float(top_sil),
+        "intrinsic_dim_mle": float(intrinsic_mle),
+        "n_components_80": float(n_80),
+        "n_components_90": float(n_90),
+        "n_components_95": float(n_95),
+        "n_kaiser": float(n_kaiser),
+        "n_broken_stick": float(n_broken),
+    }
+    | ____,
+)
+print(f"  [tracked] cross-method leaderboard logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — DimReductionEngine across the four supported
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's DimReductionEngine wraps pca / tsne / umap / nmf
+# under one `reduce` surface. The leaderboard you just built is the
+# engine's natural output: same input, four algorithms, one comparable
+# silhouette ruler. Run them through the engine to confirm the cross-
+# method story holds end-to-end.
+
+import polars as pl
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+cust_df = pl.from_numpy(X[idx], schema=feature_cols)
+dimreduce = DimReductionEngine()
+
+engine_leaderboard: dict[str, float] = {}
+for alg in ("pca", "tsne", "umap", "nmf"):
+    try:
+        if alg == "nmf":
+            # NMF requires non-negative data; shift to make it valid.
+            cust_for_nmf = pl.from_numpy(
+                X[idx] - X[idx].min(axis=0) + 1e-6, schema=feature_cols
+            )
+            r = dimreduce.reduce(cust_for_nmf, algorithm=alg, n_components=2)
+        else:
+            r = dimreduce.reduce(cust_df, algorithm=alg, n_components=2)
+        emb = np.asarray(r.transformed)
+        engine_leaderboard[f"engine.{alg}"] = evaluate_embedding_silhouette(emb)
+    except Exception as exc:  # pragma: no cover — engine drift safety
+        engine_leaderboard[f"engine.{alg}"] = float("nan")
+        print(f"  engine.{alg}: skipped ({type(exc).__name__})")
+
+print("\n  DimReductionEngine.reduce leaderboard:")
+for name, sil in sorted(
+    engine_leaderboard.items(), key=lambda x: -(x[1] if x[1] == x[1] else -1)
+):
+    print(f"    {name:<22}: {sil:+.4f}")
+print(
+    "\n  Same silhouette ruler, four algorithms, one engine surface —"
+    " open mlfp04_ex3_dimreduction.db for the full m4_dimreduction_zoo"
+    " leaderboard.\n"
 )
 
 

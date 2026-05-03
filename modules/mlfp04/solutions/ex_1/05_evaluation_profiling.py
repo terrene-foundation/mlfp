@@ -53,11 +53,23 @@ from shared.mlfp04.ex_1 import (
     out_path,
     print_metric_row,
     score_partition,
+    setup_engines,
     standardise,
     subsample,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — clustering zoo shared store ───────────
+tracker, exp_name = setup_engines()
+
+
+def _finite(x: float) -> float:
+    """Tracker rejects NaN/inf; coerce to 0.0. Silhouette is NaN when a
+    partition collapses to a single cluster (e.g., DBSCAN with bad eps)."""
+    return float(x) if x == x and x not in (float("inf"), float("-inf")) else 0.0
+
 
 try:
     import hdbscan as hdbscan_lib
@@ -344,6 +356,77 @@ print(f"  Estimated DBS annual benefit: S$62M across four segmentation programs.
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
 assert best_name in results, "Task 5: best method must be in results"
 print("\n  [ok] Checkpoint 4 passed — selection guide delivered\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's leaderboard to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Every method's silhouette + DB + CH + a winner-pick row land in the
+# shared m4_clustering_zoo experiment so a student can compare lessons
+# 01-04 against this evaluation pass via tracker.list_runs() at any time.
+
+# Per-method scalars; method names (K-means / GMM / Ward / DBSCAN / HDBSCAN
+# / Spectral) all match the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]*
+# already, so no _slug() is needed here.
+per_method_scalars: dict[str, float] = {}
+for name, m in results.items():
+    per_method_scalars[f"{name}_silhouette"] = _finite(m["silhouette"])
+    per_method_scalars[f"{name}_calinski_harabasz"] = _finite(m["calinski_harabasz"])
+    per_method_scalars[f"{name}_davies_bouldin"] = _finite(m["davies_bouldin"])
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="evaluation_profiling",
+    params={
+        "best_k": BEST_K,
+        "n_methods": len(results),
+        "n_samples": n_samples,
+        "automl_strategy": config.search_strategy,
+        "automl_max_trials": config.max_trials,
+        "automl_agent": config.agent,
+    },
+    scalar_metrics={
+        "winner_silhouette": _finite(results[best_name]["silhouette"]),
+        "n_methods_scored": float(len(results)),
+    }
+    | per_method_scalars,
+)
+print(
+    f"  [tracked] {len(results)}-method leaderboard logged to {exp_name} "
+    f"run='evaluation_profiling' (winner: {best_name})\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='kmeans')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps every algorithm this lesson
+# fitted by hand under one .fit() surface. The AutoMLEngine config above
+# generalises this to a SEARCH (random / grid / bayesian) over the
+# algorithm + hyper-parameter space — same engine, one strategy switch.
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cluster_df = pl.from_numpy(X_scaled, schema=feature_cols)
+clustering = ClusteringEngine()
+fit_result = clustering.fit(cluster_df, algorithm="kmeans", n_clusters=BEST_K)
+print(
+    f"  ClusteringEngine.fit(kmeans, K={BEST_K}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    f"  Hand-rolled K-means silhouette (Task 2): "
+    f"{results['K-means']['silhouette']:.4f} "
+    f"— same algorithm under the hood, one-line vs ten-line interface.\n"
+)
+print(
+    "  Five lessons, one ClusteringEngine surface — kmeans (01), hierarchical"
+    " (02), dbscan (03), spectral (04), and this evaluation harness (05)."
+    " AutoMLEngine.run() generalises to a search across the same surface;"
+    " agent=True adds LLM proposals on top of the same trial_fn.\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════

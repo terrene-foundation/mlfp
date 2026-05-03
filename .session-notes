@@ -1,110 +1,161 @@
-# Session Notes — 2026-05-03
+# Session Notes — 2026-05-03 (cont.)
 
 ## Where we are
 
-HIGH-01 (M4 ExperimentTracker integration) progressed two shards this
-session on `feat/m4-engine-first` (PR #2 against `main`):
+HIGH-01 (M4 ExperimentTracker integration) **complete for ex_1+ex_2+ex_3+ex_4**
+on `feat/m4-engine-first` (PR #2 against `main`). Two new shards landed
+this session on top of r1/r2/r2.5/r3:
 
-- **r2.5** (`97c64768`): backfilled local/ex_1 (01-04) + local/ex_2
-  (01-04) — all 8 student-facing files now carry the same scaffolded
-  TRACK + DESTINATION-FIRST sections their solutions had since r1+r2.
-  Student notebooks regenerated.
-- **r3** (`dfe24265`): ex_3 round-3 — `shared/mlfp04/ex_3.py` got
-  setup_engines/track_run helpers (separate `mlfp04_ex3_dimreduction.db`
-  + `m4_dimreduction_zoo` experiment so dim-reduction has its own
-  leaderboard). All 5 solutions + 5 locals + 10 notebooks landed.
+- **r4** (`bf8f2a66`): ex_1/05 evaluation_profiling — backfill the lesson
+  the prior session deferred. Tracker emit (per-method silhouette / CH /
+  DB on K-means / GMM / Ward / DBSCAN / HDBSCAN / Spectral, +
+  winner_silhouette + n_methods_scored) into the existing
+  `m4_clustering_zoo` experiment. Destination-first close runs
+  ClusteringEngine.fit(algorithm="kmeans") and shows it matches the
+  hand-rolled K-means within rounding (sil 0.1777 vs 0.1786). HIGH-03
+  closed: smoke against 1.5.1 passed cleanly, no migration needed.
+
+- **r5** (`7820c43a`): ex_4 anomaly-detection — full coverage across all
+  4 technique files (statistical / isolation_forest / LOF / ensemble
+  blending). Own SQLite store `mlfp04_ex4_anomaly.db` and experiment
+  `m4_anomaly_zoo` (separate from clustering and dim-reduction stores
+  per the SQLite-contention trap). Destination-first close on 01-03 uses
+  AnomalyDetectionEngine.detect() at supported algorithms; 04 already
+  uses EnsembleEngine.blend() so its TRACK section persists the
+  8-detector leaderboard.
 
 ## Read first
 
-1. `SWEEP-2026-04-28.md` — outstanding-work scope; r3 closes one of
-   HIGH-01's three sub-shards. The remaining one is below.
-2. `modules/mlfp04/solutions/ex_3/01_pca.py` — canonical M4 ex_3 pattern
-   (DimReductionEngine.reduce destination)
-3. `modules/mlfp04/solutions/ex_3/02_kernel_pca.py` — the `_slug()` helper
-   pattern for tracker-key sanitization (kernel labels contain spaces/parens
-   that violate the tracker's `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` regex)
-4. `shared/mlfp04/ex_3.py` — tracker helpers + DimReduce DB anchor
-5. `CLAUDE.md` — engine-first / two-format / polars-only directives
+1. `SWEEP-2026-04-28.md` — outstanding-work scope; HIGH-01 now fully
+   closed for ex_1, ex_2, ex_3, ex_4. ex_5/6/7/8 are out of HIGH-01
+   scope (the SWEEP miscounted M4 as having 5 lessons; actual count is
+   8) — defer for a future shard.
+2. `shared/mlfp04/ex_4.py` — the new tracker helpers; mirror of ex_1.py
+   shape (CLUSTERING_DB → ANOMALY_DB, m4_clustering_zoo →
+   m4_anomaly_zoo, +_finite() guard).
+3. `modules/mlfp04/solutions/ex_4/02_isolation_forest.py` — canonical
+   M4-ex_4 pattern with sweep + final-fit + AnomalyDetectionEngine close.
+4. `modules/mlfp04/solutions/ex_4/04_ensemble_blending.py` — engine-as-
+   destination pattern (EnsembleEngine.blend() above; TRACK persists
+   the 8-detector leaderboard).
+5. `CLAUDE.md` — engine-first / two-format / polars-only directives.
 
 ## In-flight state
 
-- Branch ahead of main by **four** commits (r1, r2, r2.5, r3). PR #2 still
-  open, no review queued.
-- ex_1+ex_2 student notebooks regenerated to inline the new tracker import
-  + scaffolded sections; 8 .ipynb diffs landed in r2.5 commit.
-- ex_3 has full two-format coverage: 5 solutions, 5 locals, 5 student
-  notebooks, 5 instructor notebooks. All parse via
-  `scripts/check_notebook_syntax.py`.
-- 02_kernel_pca + 05_comparison both required `_slug()` for metric keys —
-  kernel labels (`"rbf (gamma=0.1)"`) and method names (`"PCA 2d"`,
-  `"t-SNE p=15"`) trigger TrackingError without sanitization. Same helper
-  shows up in both locals so students filling in the obvious form do
-  not hit the trap.
+- Branch ahead of main by **9** commits (r1..r5 + 3 chore/notes
+  commits). PR #2 still open, no review queued.
+- ex_4 has full two-format coverage: 4 solutions, 4 locals, 4 student
+  notebooks, 4 instructor notebooks. All parse via
+  `scripts/check_notebook_syntax.py` (402 / 402 across the whole repo).
+- ex_1/05 backfill complete: solution + local + 2 notebooks.
+- 7 stale `worktrees/curriculum/journal/.pending/*` entries + the
+  stale `mlfp05/readings/deck.pdf` mod + `.claude/learning/observations.jsonl`
+  mod + `checkpoints/` + `workspaces/curriculum/drafts/` +
+  `workspaces/mlfp06-migration/journal/` — all DEFERRED to a hygiene
+  pass (no impact on M4 work).
 
 ## Smoke-run status
 
-All five ex_3 solutions verified end-to-end this session:
-- ex_3/01_pca.py        — PASS (tracker emit + DimReductionEngine close)
-- ex_3/02_kernel_pca.py — PASS after `_slug()` fix for kernel-label keys
-- ex_3/03_tsne.py       — PASS
-- ex_3/04_umap.py       — PASS after prophylactic `_finite()` NaN-guard
-                          on per-config silhouettes (~9 min sweep)
-- ex_3/05_comparison.py — PASS after `intrinsic_dim_mle` + per-method
-                          silhouette NaN-guard (commit 8787e101).
-                          Top reducer: KernelPCA poly d=3 (sil +0.8488);
-                          engine leaderboard: umap +0.6148 / tsne +0.4762
-                          / pca +0.4310 / nmf +0.3970.
+All four ex_4 solutions verified end-to-end this session via the
+kill-after-MASTERED watchdog at `/tmp/smoke_with_timeout.sh`
+(workaround for the shared shutdown hang documented below):
 
-Two metric-emit landmines caught + closed:
-  - tracker key regex `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` rejects spaces +
-    parens + `=` → `_slug()` helper in 02 + 05.
-  - tracker value validator rejects non-finite floats → `_finite()` /
-    inline NaN-check in 04 + 05.
+- ex_4/01_statistical_methods.py   — PASS
+                                     (zscore AUC-ROC=0.9819, IQR=0.6975,
+                                      tracker emit, AnomalyDetectionEngine
+                                      .detect(isolation_forest)=0.9396)
+- ex_4/02_isolation_forest.py      — PASS
+                                     (sweep across 5 contam values,
+                                      final-fit AUC-ROC=0.9496,
+                                      engine close=0.9396)
+- ex_4/03_local_outlier_factor.py  — PASS
+                                     (n_nbrs sweep across 4 values,
+                                      final-fit AUC-ROC=0.6373,
+                                      engine close matches exactly)
+- ex_4/04_ensemble_blending.py     — PASS
+                                     (8-detector leaderboard logged;
+                                      EnsembleEngine.blend ran;
+                                      monitoring windows logged)
+
+ex_1/05_evaluation_profiling.py — PASS (initial 1.5.1 compatibility
+  smoke + post-tracker smoke; tracker logged "winner: Spectral";
+  ClusteringEngine.fit(kmeans, K=5) silhouette=0.1777).
 
 ## Traps
 
-- **SQLite contention**: ExperimentTracker on a single SQLite store fails
-  with `disk I/O error` if two processes write concurrently. WAL/SHM
-  siblings can wedge the file even after the writers exit; clean with
-  `rm -f mlfp04_ex3_dimreduction.db*` (note the wildcard) before retry.
-  Always run ex_3 smokes SEQUENTIALLY against the same store.
-- **Tracker metric-key regex**: `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` — no spaces,
-  no parens, no `=`, no `,`. Use the `_slug()` helper introduced in
-  02_kernel_pca / 05_comparison whenever per-config dict comprehensions
-  feed values from labels containing prose.
-- **Tracker non-finite reject**: kailash_ml's `_validate_metric_value`
-  rejects NaN/inf with `MetricValueError`. Any computed scalar that can
-  return NaN (e.g. Levina-Bickel intrinsic_dim, silhouette on collapsed
-  embeddings) MUST go through `float(x) if x == x else 0.0` (or the
-  named `_finite()` helper introduced in 04_umap). 05_comparison +
-  04_umap carry the guards; ex_2/01 had the same guard from r2.
-- **DimReductionEngine.reduce is sync** despite `km.list_engines()`
-  reporting `is_async=True`. Same trap as ClusteringEngine in r1+r2.
-- **kernel_pca / isomap / lle / nmf-positive-only**: DimReductionEngine
-  1.5.1 supports `pca, tsne, umap, nmf` ONLY. Anything outside that set
-  raises `ValueError: Unsupported algorithm 'X'. Choose from: ...`. NMF
-  also requires non-negative inputs (handled in 05_comparison via
-  per-feature shift).
+- **Shared shutdown hang (NEW finding, filed as follow-up shard)**: every
+  M4 lesson that calls `setup_engines()` from shared/mlfp04/ex_*.py
+  hangs at `Py_Finalize → wait_for_thread_shutdown` because the first
+  asyncio.run() in setup_engines orphans an aiosqlite worker thread.
+  Logic completes correctly; only interpreter shutdown blocks. Symptom
+  observed across r1/r2/r2.5/r3/r4/r5. Workaround for smokes: detect
+  REFLECTION print, kill via `/tmp/smoke_with_timeout.sh`. Proper fix:
+  refactor setup_engines to return (store_url, exp_name) and have
+  track_run open + close the tracker inside its own asyncio lifecycle.
+  Touches ~26 files; OUT OF SCOPE for HIGH-01.
+
+- **AnomalyDetectionEngine.detect is sync** despite km.list_engines()
+  reporting `is_async=True`. Same trap as DimReductionEngine.reduce
+  (r3) and ClusteringEngine (r1+r2). Supported algorithms in 1.5.1:
+  `isolation_forest`, `lof`, `one_class_svm`. zscore/IQR/elliptic/
+  autoencoder are NOT engine-supported (lesson 01 narrates why).
+
+- **SQLite contention** (carried over): never run two M4 trackers
+  against the same .db concurrently. ex_1 / ex_3 / ex_4 each get
+  their own store. WAL/SHM cleanup wildcard:
+  `rm -f mlfp04_ex4_anomaly.db mlfp04_ex4_anomaly.db-shm mlfp04_ex4_anomaly.db-wal`
+  (zsh dies on glob-no-match without setopt NO_EXTENDED_GLOB; expand
+  the names instead).
+
+- **Tracker metric-key regex** `^[a-zA-Z_][a-zA-Z0-9_.\-]*$`: ex_4/02's
+  contamination sweep encodes `0.001 → "0_001"` (dots followed by digits
+  are technically allowed by the regex BUT can confuse downstream
+  consumers — using underscore for sweep keys is safer). Method names
+  in ex_4 (Z-score / IQR / Isolation Forest / LOF / Equal Blend / etc.)
+  use simple snake_case after lowercasing — no _slug() needed.
+
+- **Tracker non-finite reject** (carried over): `_finite()` helper in
+  every shared/mlfp04/ex_*.py wraps every metric emit. ex_4's AUC-ROC /
+  AP can NaN on a single-class slice in a sweep.
+
+- **Stale 04_umap.py from prior session**: PID was 58493, running since
+  2026-05-03 15:03 (7+ hours), reaped this session. Pre-existing
+  shutdown-hang victim.
+
+- **kernel_pca / isomap / lle / nmf-positive-only** (carried over):
+  DimReductionEngine 1.5.1 supports `pca, tsne, umap, nmf` ONLY.
+
 - **DBSCAN/HDBSCAN/hierarchical** still missing engine adapters in
   ClusteringEngine 1.5.1; ex_1/02 + ex_1/03 keep their honest
   no-engine close patterns.
+
 - ex_2 locals import tracker via `from shared.mlfp04.ex_1 import ...`
   (cross-exercise). Refactor to `shared.mlfp04.__init__` is still a
   deferred clean-up shard.
-- `ex_1's 05_evaluation_profiling.py` AutoMLEngine tracker-emit wiring
-  STILL pending on the SOLUTION side (carried over from prior session
-  notes — not addressed this session). Local 05 needs the same backfill
-  AFTER the solution lands the tracker.
+
 - `.venv` is Python 3.13 / kailash-ml 1.5.1; pyenv-global resolves a
   DIFFERENT kailash_ml. Always `.venv/bin/python`.
+
 - Classroom remote URL at `/Users/esperie/repos/training/pcml-run26-2601`
-  still points at the old org name and works only via redirect — fix
-  when next in that repo.
+  still points at the old org name and works only via redirect.
 
 ## Open questions for the human
 
-1. Take ex_4 (anomaly detection / EnsembleEngine) next on this same
-   branch, or pause for PR #2 review/merge first? (All five ex_3
-   solutions now smoke-verified end-to-end.)
-2. ex_1/05_evaluation_profiling.py SOLUTION tracker emit + local strip:
-   one shard or split into solution-only + local-strip?
+1. **Pause for PR #2 review/merge, or continue with the next shard?**
+   Recommendation: pause. PR #2 now contains the complete HIGH-01
+   scope as the SWEEP defined it (ex_1, ex_2, ex_3, ex_4). ex_5+
+   topics (association rules, NLP, recommenders, DL foundations) are
+   separate exercise families that the SWEEP miscounted; they belong
+   in their own PR(s).
+
+2. **Should the shared setup_engines() shutdown-hang fix happen on a
+   new branch, or before any PR #2 merge?** Recommendation: new branch
+   AFTER PR #2 merges. The fix touches r1+r2+r2.5+r3+r4+r5 file
+   surfaces; doing it pre-merge would force a second redteam pass on
+   the whole HIGH-01 set. Post-merge, the fix is its own PR with a
+   clean before/after.
+
+3. **Hygiene shard scope**: 7 stale .pending/ + drafts/ + checkpoints/
+   + mlfp06-migration/journal/ + deck.pdf + observations.jsonl have
+   been carried for several sessions now. /journal session would
+   clear most of these; defer or take next?

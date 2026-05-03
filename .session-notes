@@ -1,58 +1,99 @@
-# Session Notes — 2026-04-29
+# Session Notes — 2026-05-03
 
 ## Where we are
 
-M5 notebook smoke-testing complete: every notebook under
-`modules/mlfp05/colab-selfcontained-solutions/` now starts training cleanly
-under kailash-ml 1.5.1 (verify via `/tmp/mlfp-smoke/parallel-runner.py
---workers 4`). Branch `fix/expt-tracker-1.1.1-migration` carries the source
-fixes; many files uncommitted. Next: commit + push + classroom sync.
+HIGH-01 (M4 ExperimentTracker integration) progressed two shards this
+session on `feat/m4-engine-first` (PR #2 against `main`):
+
+- **r2.5** (`97c64768`): backfilled local/ex_1 (01-04) + local/ex_2
+  (01-04) — all 8 student-facing files now carry the same scaffolded
+  TRACK + DESTINATION-FIRST sections their solutions had since r1+r2.
+  Student notebooks regenerated.
+- **r3** (`dfe24265`): ex_3 round-3 — `shared/mlfp04/ex_3.py` got
+  setup_engines/track_run helpers (separate `mlfp04_ex3_dimreduction.db`
+  + `m4_dimreduction_zoo` experiment so dim-reduction has its own
+  leaderboard). All 5 solutions + 5 locals + 10 notebooks landed.
 
 ## Read first
 
-1. `/tmp/mlfp-smoke/parallel-results.json` — last verified state of all M5
-   solution notebooks (PASS-FULL / PASS-WALL / PASS-CELLCAP).
-2. `/tmp/mlfp-smoke/parallel-runner.py` — the smoke runner; re-run if anything
-   changes. 4 workers, 90s wall, 80s cell, timeout==PASS.
-3. `SWEEP-2026-04-28.md` (repo root) — engine-first / seamless-pipeline /
-   diagnostics / automl audit. Findings still apply for M1-M4 + M6.
-4. `CLAUDE.md` — repo directives (engine-first, polars-only, two-format).
-5. Memory `project_downstream_repo.md` — classroom repo URL is
-   `pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601`
-   (NOT terrene-foundation; updated this session).
+1. `SWEEP-2026-04-28.md` — outstanding-work scope; r3 closes one of
+   HIGH-01's three sub-shards. The remaining one is below.
+2. `modules/mlfp04/solutions/ex_3/01_pca.py` — canonical M4 ex_3 pattern
+   (DimReductionEngine.reduce destination)
+3. `modules/mlfp04/solutions/ex_3/02_kernel_pca.py` — the `_slug()` helper
+   pattern for tracker-key sanitization (kernel labels contain spaces/parens
+   that violate the tracker's `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` regex)
+4. `shared/mlfp04/ex_3.py` — tracker helpers + DimReduce DB anchor
+5. `CLAUDE.md` — engine-first / two-format / polars-only directives
 
 ## In-flight state
 
-- Many files modified across `shared/mlfp05/`, `modules/mlfp05/{solutions,local}/`,
-  `modules/mlfp05/colab-selfcontained{,-solutions}/`, `scripts/generate_*.py`.
-  Nothing committed yet. Branch is many commits ahead of `main`.
-- 3 upstream issues filed at `terrene-foundation/kailash-py`: **#699** (schema
-  conflict), **#700** (InferenceServer hard break), **#701** (diagnose() API).
-  Each issue body documents the MLFP-side workaround already in this branch.
-- `/tmp/pcml-run26-template/` exists as raw files (no .git). For classroom
-  rollout, clone fresh: `gh repo clone pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601 /tmp/pcml-classroom`.
+- Branch ahead of main by **four** commits (r1, r2, r2.5, r3). PR #2 still
+  open, no review queued.
+- ex_1+ex_2 student notebooks regenerated to inline the new tracker import
+  + scaffolded sections; 8 .ipynb diffs landed in r2.5 commit.
+- ex_3 has full two-format coverage: 5 solutions, 5 locals, 5 student
+  notebooks, 5 instructor notebooks. All parse via
+  `scripts/check_notebook_syntax.py`.
+- 02_kernel_pca + 05_comparison both required `_slug()` for metric keys —
+  kernel labels (`"rbf (gamma=0.1)"`) and method names (`"PCA 2d"`,
+  `"t-SNE p=15"`) trigger TrackingError without sanitization. Same helper
+  shows up in both locals so students filling in the obvious form do
+  not hit the trap.
+
+## Smoke-run status
+
+Solutions verified end-to-end this session:
+- ex_3/01_pca.py — PASS (full output incl. tracker emit + engine close)
+- ex_3/02_kernel_pca.py — PASS (after _slug fix, clean DB)
+- ex_3/03_tsne.py — PASS (initial parallel run before kill)
+- ex_3/04_umap.py — NOT smoked end-to-end. Engine call mirrors 03_tsne;
+  metric keys mechanically verified tracker-compliant; 6-config UMAP sweep
+  takes ~9 min so deferred. Run alone:
+  `rm -f mlfp04_ex3_dimreduction.db* && .venv/bin/python -u modules/mlfp04/solutions/ex_3/04_umap.py`
+- ex_3/05_comparison.py — Started but did not confirm before commit. Same
+  mechanical check applies. Output at `/tmp/ex3_05_comparison.log` if
+  the previous-session process is still alive (PID 73992 at last check).
 
 ## Traps
 
-- `shared/mlfp05/*.py::setup_engines` now uses **separate `*_registry.db`** for
-  ModelRegistry vs `*.db` for ExperimentTracker (kailash-py#699 workaround).
-  Reverting to a single DB will reintroduce the schema-conflict crash.
-- `benchmark_inference` in `modules/mlfp05/solutions/ex_3/03_gru.py` infers
-  `n_features` from `model.gru.input_size` (sensor models use input_dim=1,
-  stock models use 4). Don't refactor it back to the global `N_FEATURES`.
-- `km.diagnose(kind="dl", data=val_loader)` silently ignores `data=` per
-  kailash-py#701 — DataLoader is not consumed by DLDiagnostics. Calls are
-  pedagogical "report exists" markers, not live evaluations.
-- Local notebooks under `modules/mlfp05/colab-selfcontained/` intentionally
-  keep `____` scaffolding. Generator syntax check fails on those by design.
-- `scripts/generate_selfcontained_notebook.py` was patched: only **top-level**
-  (column-0) `asyncio.run(...)` is converted to `await ...`. Sync wrappers
-  inside `def` bodies must keep `asyncio.run`.
+- **SQLite contention**: ExperimentTracker on a single SQLite store fails
+  with `disk I/O error` if two processes write concurrently. WAL/SHM
+  siblings can wedge the file even after the writers exit; clean with
+  `rm -f mlfp04_ex3_dimreduction.db*` (note the wildcard) before retry.
+  Always run ex_3 smokes SEQUENTIALLY against the same store.
+- **Tracker metric-key regex**: `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` — no spaces,
+  no parens, no `=`, no `,`. Use the `_slug()` helper introduced in
+  02_kernel_pca / 05_comparison whenever per-config dict comprehensions
+  feed values from labels containing prose.
+- **DimReductionEngine.reduce is sync** despite `km.list_engines()`
+  reporting `is_async=True`. Same trap as ClusteringEngine in r1+r2.
+- **kernel_pca / isomap / lle / nmf-positive-only**: DimReductionEngine
+  1.5.1 supports `pca, tsne, umap, nmf` ONLY. Anything outside that set
+  raises `ValueError: Unsupported algorithm 'X'. Choose from: ...`. NMF
+  also requires non-negative inputs (handled in 05_comparison via
+  per-feature shift).
+- **DBSCAN/HDBSCAN/hierarchical** still missing engine adapters in
+  ClusteringEngine 1.5.1; ex_1/02 + ex_1/03 keep their honest
+  no-engine close patterns.
+- ex_2 locals import tracker via `from shared.mlfp04.ex_1 import ...`
+  (cross-exercise). Refactor to `shared.mlfp04.__init__` is still a
+  deferred clean-up shard.
+- `ex_1's 05_evaluation_profiling.py` AutoMLEngine tracker-emit wiring
+  STILL pending on the SOLUTION side (carried over from prior session
+  notes — not addressed this session). Local 05 needs the same backfill
+  AFTER the solution lands the tracker.
+- `.venv` is Python 3.13 / kailash-ml 1.5.1; pyenv-global resolves a
+  DIFFERENT kailash_ml. Always `.venv/bin/python`.
+- Classroom remote URL at `/Users/esperie/repos/training/pcml-run26-2601`
+  still points at the old org name and works only via redirect — fix
+  when next in that repo.
 
 ## Open questions for the human
 
-1. Commit strategy: one atomic commit or split by fix-class (schema /
-   diagnose / asserts / generator)?
-2. Classroom rollout now, or stage on a side branch first?
-3. Audit M1–M4 + M6 next? `SWEEP-2026-04-28.md` flagged M3/M4 engine-first
-   gaps as the top follow-on.
+1. Confirm 04_umap and 05_comparison smoke results before pushing PR #2
+   for review, or trust the mechanical safety check?
+2. Take ex_4 (anomaly detection / EnsembleEngine) next on this same
+   branch, or pause for PR #2 review/merge first?
+3. ex_1/05_evaluation_profiling.py SOLUTION tracker emit + local strip:
+   one shard or split into solution-only + local-strip?

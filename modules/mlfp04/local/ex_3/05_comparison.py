@@ -285,7 +285,12 @@ track_run(
     },
     scalar_metrics={
         "top_silhouette": float(top_sil),
-        "intrinsic_dim_mle": float(intrinsic_mle),
+        # NaN-guard: Levina-Bickel returns NaN when k-NN distances degenerate;
+        # the tracker rejects non-finite values. Same pattern as ex_2/01's
+        # `recovered_silhouette` guard.
+        "intrinsic_dim_mle": (
+            float(intrinsic_mle) if intrinsic_mle == intrinsic_mle else 0.0
+        ),
         "n_components_80": float(n_80),
         "n_components_90": float(n_90),
         "n_components_95": float(n_95),

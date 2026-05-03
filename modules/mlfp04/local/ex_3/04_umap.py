@@ -188,10 +188,18 @@ best_label_for_run = (
     else "none"
 )
 
+
+def _finite(x: float) -> float:
+    """NaN-guard: tracker rejects non-finite metric values. Silhouette can
+    return NaN when the embedding collapses to a single cluster."""
+    return float(x) if x == x else 0.0
+
+
 # TODO: call track_run with run_name f"umap_{best_label_for_run.split()[0].replace('-','_')}".
 # scalar_metrics: best_silhouette, then |-merge per-config silhouette + time
 # dicts (use cfg{i}_silhouette / cfg{i}_time_s naming, with i = enumerate(config_labels)).
-# series_metrics: parallel silhouette + time arrays in config_labels order.
+# Wrap silhouette values via _finite() to NaN-guard them. series_metrics:
+# parallel silhouette + time arrays in config_labels order.
 track_run(
     tracker,
     exp_name,

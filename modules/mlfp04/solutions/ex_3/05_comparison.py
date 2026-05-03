@@ -344,14 +344,23 @@ track_run(
     },
     scalar_metrics={
         "top_silhouette": float(top_sil),
-        "intrinsic_dim_mle": float(intrinsic_mle),
+        # Levina-Bickel returns NaN when k-NN distances degenerate (zero d_1
+        # or non-positive mean log-ratio); tracker rejects non-finite values.
+        "intrinsic_dim_mle": (
+            float(intrinsic_mle) if intrinsic_mle == intrinsic_mle else 0.0
+        ),
         "n_components_80": float(n_80),
         "n_components_90": float(n_90),
         "n_components_95": float(n_95),
         "n_kaiser": float(n_kaiser),
         "n_broken_stick": float(n_broken),
     }
-    | {f"sil_{_slug(name)}": float(sil) for name, sil in method_silhouettes.items()},
+    | {
+        # NaN-guard per-method silhouettes too — Isomap on dense data
+        # occasionally collapses to a single cluster.
+        f"sil_{_slug(name)}": (float(sil) if sil == sil else 0.0)
+        for name, sil in method_silhouettes.items()
+    },
 )
 print(f"  [tracked] cross-method leaderboard logged to {exp_name}\n")
 

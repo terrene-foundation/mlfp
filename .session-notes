@@ -1,161 +1,43 @@
-# Session Notes — 2026-05-03 (cont.)
+# Session Notes — 2026-05-06
 
 ## Where we are
 
-HIGH-01 (M4 ExperimentTracker integration) **complete for ex_1+ex_2+ex_3+ex_4**
-on `feat/m4-engine-first` (PR #2 against `main`). Two new shards landed
-this session on top of r1/r2/r2.5/r3:
-
-- **r4** (`bf8f2a66`): ex_1/05 evaluation_profiling — backfill the lesson
-  the prior session deferred. Tracker emit (per-method silhouette / CH /
-  DB on K-means / GMM / Ward / DBSCAN / HDBSCAN / Spectral, +
-  winner_silhouette + n_methods_scored) into the existing
-  `m4_clustering_zoo` experiment. Destination-first close runs
-  ClusteringEngine.fit(algorithm="kmeans") and shows it matches the
-  hand-rolled K-means within rounding (sil 0.1777 vs 0.1786). HIGH-03
-  closed: smoke against 1.5.1 passed cleanly, no migration needed.
-
-- **r5** (`7820c43a`): ex_4 anomaly-detection — full coverage across all
-  4 technique files (statistical / isolation_forest / LOF / ensemble
-  blending). Own SQLite store `mlfp04_ex4_anomaly.db` and experiment
-  `m4_anomaly_zoo` (separate from clustering and dim-reduction stores
-  per the SQLite-contention trap). Destination-first close on 01-03 uses
-  AnomalyDetectionEngine.detect() at supported algorithms; 04 already
-  uses EnsembleEngine.blend() so its TRACK section persists the
-  8-detector leaderboard.
+HIGH-01 (M4 ExperimentTracker) closed for ex_1+ex_2+ex_3+ex_4 on
+`feat/m4-engine-first` (PR #2 against main). Branch is at the natural
+PR-review boundary. This session added one chore commit on top of that:
+journal triage — promoted 6 manual entries to numbered slots, deleted
+24 hook-generated curriculum auto-extracts, replaced 30 mlfp06-migration
+auto-extracts with one curated migration-summary entry.
 
 ## Read first
 
-1. `SWEEP-2026-04-28.md` — outstanding-work scope; HIGH-01 now fully
-   closed for ex_1, ex_2, ex_3, ex_4. ex_5/6/7/8 are out of HIGH-01
-   scope (the SWEEP miscounted M4 as having 5 lessons; actual count is
-   8) — defer for a future shard.
-2. `shared/mlfp04/ex_4.py` — the new tracker helpers; mirror of ex_1.py
-   shape (CLUSTERING_DB → ANOMALY_DB, m4_clustering_zoo →
-   m4_anomaly_zoo, +_finite() guard).
-3. `modules/mlfp04/solutions/ex_4/02_isolation_forest.py` — canonical
-   M4-ex_4 pattern with sweep + final-fit + AnomalyDetectionEngine close.
-4. `modules/mlfp04/solutions/ex_4/04_ensemble_blending.py` — engine-as-
-   destination pattern (EnsembleEngine.blend() above; TRACK persists
-   the 8-detector leaderboard).
-5. `CLAUDE.md` — engine-first / two-format / polars-only directives.
+1. `git log --oneline main..feat/m4-engine-first` — r1-r5 + chores + journal triage
+2. `workspaces/curriculum/journal/0002`–`0007` — the 6 promoted manual entries (M5 generator gap, R11–R13 codify, M6 audit, M6 Ollama R14, Kaizen TextDelta trap, kailash-ml 0.12 gap analysis)
+3. `workspaces/mlfp06-migration/journal/0001` — 9-shard migration summary (replaces 30 hook auto-extracts)
+4. `SWEEP-2026-04-28.md` — outstanding scope; ex_5/6/7/8 are out of HIGH-01 (the SWEEP miscounted M4's lesson count as 5; actual is 8)
+5. `CLAUDE.md` — engine-first / two-format / polars-only directives
+6. `shared/mlfp04/ex_4.py` — canonical M4 tracker helpers; mirror for ex_5+
+7. `modules/mlfp04/solutions/ex_3/01_pca.py` — destination-first close pattern
 
 ## In-flight state
 
-- Branch ahead of main by **9** commits (r1..r5 + 3 chore/notes
-  commits). PR #2 still open, no review queued.
-- ex_4 has full two-format coverage: 4 solutions, 4 locals, 4 student
-  notebooks, 4 instructor notebooks. All parse via
-  `scripts/check_notebook_syntax.py` (402 / 402 across the whole repo).
-- ex_1/05 backfill complete: solution + local + 2 notebooks.
-- 7 stale `worktrees/curriculum/journal/.pending/*` entries + the
-  stale `mlfp05/readings/deck.pdf` mod + `.claude/learning/observations.jsonl`
-  mod + `checkpoints/` + `workspaces/curriculum/drafts/` +
-  `workspaces/mlfp06-migration/journal/` — all DEFERRED to a hygiene
-  pass (no impact on M4 work).
-
-## Smoke-run status
-
-All four ex_4 solutions verified end-to-end this session via the
-kill-after-MASTERED watchdog at `/tmp/smoke_with_timeout.sh`
-(workaround for the shared shutdown hang documented below):
-
-- ex_4/01_statistical_methods.py   — PASS
-                                     (zscore AUC-ROC=0.9819, IQR=0.6975,
-                                      tracker emit, AnomalyDetectionEngine
-                                      .detect(isolation_forest)=0.9396)
-- ex_4/02_isolation_forest.py      — PASS
-                                     (sweep across 5 contam values,
-                                      final-fit AUC-ROC=0.9496,
-                                      engine close=0.9396)
-- ex_4/03_local_outlier_factor.py  — PASS
-                                     (n_nbrs sweep across 4 values,
-                                      final-fit AUC-ROC=0.6373,
-                                      engine close matches exactly)
-- ex_4/04_ensemble_blending.py     — PASS
-                                     (8-detector leaderboard logged;
-                                      EnsembleEngine.blend ran;
-                                      monitoring windows logged)
-
-ex_1/05_evaluation_profiling.py — PASS (initial 1.5.1 compatibility
-  smoke + post-tracker smoke; tracker logged "winner: Spectral";
-  ClusteringEngine.fit(kmeans, K=5) silhouette=0.1777).
+- `.pending/` directories cleared in both workspaces (curriculum + mlfp06-migration). Future hook auto-extracts will rebuild them on next SessionEnd that matches a journal-worthy commit.
+- `modules/mlfp05/readings/deck.pdf` persistent `M` from pre-existing LFS migration gap (filed as follow-up — needs `git lfs migrate import`).
+- `/tmp/smoke_with_timeout.sh` — kill-after-MASTERED watchdog wrapping the shared M4 shutdown hang; recreate per session.
 
 ## Traps
 
-- **Shared shutdown hang (NEW finding, filed as follow-up shard)**: every
-  M4 lesson that calls `setup_engines()` from shared/mlfp04/ex_*.py
-  hangs at `Py_Finalize → wait_for_thread_shutdown` because the first
-  asyncio.run() in setup_engines orphans an aiosqlite worker thread.
-  Logic completes correctly; only interpreter shutdown blocks. Symptom
-  observed across r1/r2/r2.5/r3/r4/r5. Workaround for smokes: detect
-  REFLECTION print, kill via `/tmp/smoke_with_timeout.sh`. Proper fix:
-  refactor setup_engines to return (store_url, exp_name) and have
-  track_run open + close the tracker inside its own asyncio lifecycle.
-  Touches ~26 files; OUT OF SCOPE for HIGH-01.
-
-- **AnomalyDetectionEngine.detect is sync** despite km.list_engines()
-  reporting `is_async=True`. Same trap as DimReductionEngine.reduce
-  (r3) and ClusteringEngine (r1+r2). Supported algorithms in 1.5.1:
-  `isolation_forest`, `lof`, `one_class_svm`. zscore/IQR/elliptic/
-  autoencoder are NOT engine-supported (lesson 01 narrates why).
-
-- **SQLite contention** (carried over): never run two M4 trackers
-  against the same .db concurrently. ex_1 / ex_3 / ex_4 each get
-  their own store. WAL/SHM cleanup wildcard:
-  `rm -f mlfp04_ex4_anomaly.db mlfp04_ex4_anomaly.db-shm mlfp04_ex4_anomaly.db-wal`
-  (zsh dies on glob-no-match without setopt NO_EXTENDED_GLOB; expand
-  the names instead).
-
-- **Tracker metric-key regex** `^[a-zA-Z_][a-zA-Z0-9_.\-]*$`: ex_4/02's
-  contamination sweep encodes `0.001 → "0_001"` (dots followed by digits
-  are technically allowed by the regex BUT can confuse downstream
-  consumers — using underscore for sweep keys is safer). Method names
-  in ex_4 (Z-score / IQR / Isolation Forest / LOF / Equal Blend / etc.)
-  use simple snake_case after lowercasing — no _slug() needed.
-
-- **Tracker non-finite reject** (carried over): `_finite()` helper in
-  every shared/mlfp04/ex_*.py wraps every metric emit. ex_4's AUC-ROC /
-  AP can NaN on a single-class slice in a sweep.
-
-- **Stale 04_umap.py from prior session**: PID was 58493, running since
-  2026-05-03 15:03 (7+ hours), reaped this session. Pre-existing
-  shutdown-hang victim.
-
-- **kernel_pca / isomap / lle / nmf-positive-only** (carried over):
-  DimReductionEngine 1.5.1 supports `pca, tsne, umap, nmf` ONLY.
-
-- **DBSCAN/HDBSCAN/hierarchical** still missing engine adapters in
-  ClusteringEngine 1.5.1; ex_1/02 + ex_1/03 keep their honest
-  no-engine close patterns.
-
-- ex_2 locals import tracker via `from shared.mlfp04.ex_1 import ...`
-  (cross-exercise). Refactor to `shared.mlfp04.__init__` is still a
-  deferred clean-up shard.
-
-- `.venv` is Python 3.13 / kailash-ml 1.5.1; pyenv-global resolves a
-  DIFFERENT kailash_ml. Always `.venv/bin/python`.
-
-- Classroom remote URL at `/Users/esperie/repos/training/pcml-run26-2601`
-  still points at the old org name and works only via redirect.
+- Shared M4 `setup_engines()` orphans an aiosqlite worker thread; every solution hangs at `Py_Finalize` after the REFLECTION print. Logic completes; only shutdown blocks. Filed as a follow-up shard (~26 files; needs sharding plan before authorizing).
+- `AnomalyDetectionEngine.detect`, `DimReductionEngine.reduce`, `ClusteringEngine.fit` are all SYNC despite `km.list_engines()` reporting `is_async=True`. Don't `await`.
+- Tracker key regex `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` — use `_slug()` for prose keys; encode `0.001 → "0_001"` for sweep keys with dot-digit pairs.
+- Tracker rejects NaN/inf via `MetricValueError`; every emit through `_finite()` (silhouette, AUC-ROC, AP can collapse to NaN).
+- SQLite contention: never run two M4 trackers against the same `.db` concurrently. ex_1 / ex_3 / ex_4 each have their own store.
+- LFS attribute `modules/**/readings/*.pdf` was added after the PDFs were committed inline → eternal `M` until `git lfs migrate import` runs.
+- `.venv` is Python 3.13 / kailash-ml 1.5.1; pyenv-global resolves a DIFFERENT kailash_ml. Always `.venv/bin/python`.
 
 ## Open questions for the human
 
-1. **Pause for PR #2 review/merge, or continue with the next shard?**
-   Recommendation: pause. PR #2 now contains the complete HIGH-01
-   scope as the SWEEP defined it (ex_1, ex_2, ex_3, ex_4). ex_5+
-   topics (association rules, NLP, recommenders, DL foundations) are
-   separate exercise families that the SWEEP miscounted; they belong
-   in their own PR(s).
-
-2. **Should the shared setup_engines() shutdown-hang fix happen on a
-   new branch, or before any PR #2 merge?** Recommendation: new branch
-   AFTER PR #2 merges. The fix touches r1+r2+r2.5+r3+r4+r5 file
-   surfaces; doing it pre-merge would force a second redteam pass on
-   the whole HIGH-01 set. Post-merge, the fix is its own PR with a
-   clean before/after.
-
-3. **Hygiene shard scope**: 7 stale .pending/ + drafts/ + checkpoints/
-   + mlfp06-migration/journal/ + deck.pdf + observations.jsonl have
-   been carried for several sessions now. /journal session would
-   clear most of these; defer or take next?
+1. PR #2 review/merge, or take more shards on this branch?
+2. Authorize the LFS migrate (history-rewriting)?
+3. Authorize the shared `setup_engines()` shutdown-hang fix? Touches ~26 files; needs sharding plan first per `autonomous-execution.md` MUST Rule 1 (≤500 LOC load-bearing / ≤5–10 invariants per shard).
+4. SessionEnd hook emits 2–4 duplicate auto-extracts per commit (see 0001 §Why curated). Worth fixing the hook upstream, or accept that future `/journal` triage will dedupe?

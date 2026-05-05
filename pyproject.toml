@@ -25,16 +25,16 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    # Kailash platform — floors at PyPI-live tips (post-3.5.23 patch drift)
-    "kailash>=2.11.3",
-    "kailash-ml>=1.5.1",
-    "kailash-dataflow>=2.3.2",
-    "kailash-nexus>=2.3.0",
-    "kailash-kaizen>=2.13.1",
-    "kaizen-agents>=0.9.4",
+    # Kailash platform — floors at template 3.9.0 (loom 2.19.0) sdk_packages
+    "kailash>=2.13.4",
+    "kailash-ml>=1.7.1",
+    "kailash-dataflow>=2.7.7",
+    "kailash-nexus>=2.6.1",
+    "kailash-kaizen>=2.19.0",
+    "kaizen-agents>=0.9.5",
     "kailash-pact>=0.11.0",
     "kailash-align>=0.7.0",
-    "kailash-mcp>=0.2.10",
+    "kailash-mcp>=0.2.11",
     # Data
     "polars>=1.0",
     "pyarrow>=14.0",

@@ -2668,7 +2668,7 @@ wheels = [
 
 [[package]]
 name = "kailash"
-version = "2.11.3"
+version = "2.13.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2706,9 +2706,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/f2/07c6c669b6a3de5bc7e86a2d46c28f5dd9544e5afaf43b82b1cc2872164c/kailash-2.11.3.tar.gz", hash = "sha256:d4bca38f4942d8aca1ff4d13e48faaf8712e6178b5a56b71b8a01bc32f9e5f97", size = 2489384, upload-time = "2026-04-27T07:50:29.75Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/ae/36d3dbac1a3b15eea1f40f2625292b56b0507c18208e918bf15d75dd1553/kailash-2.13.4.tar.gz", hash = "sha256:94e4d061b1da2c746f9bd2d833a20c9498c019121552b30508f3c422c9f7cdb5", size = 2506315, upload-time = "2026-05-03T13:51:16.972Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/b3/b1910db253325baad0976eda3140e9fa3106a607b399a162a1dd2bafb890/kailash-2.11.3-py3-none-any.whl", hash = "sha256:9974232b9cf853dafce71e71da46c8b7252a213d5bf9580db731bc4a008e3f89", size = 2884440, upload-time = "2026-04-27T07:50:27.63Z" },
+    { url = "https://files.pythonhosted.org/packages/de/d3/a167b9eda7436f6094268befe47b06c115e828782bb1e7be0c2e5d9f3266/kailash-2.13.4-py3-none-any.whl", hash = "sha256:baec87d5c44376274737f010cb2576f8297aa528f47b5d024d56980e326c80a0", size = 2907969, upload-time = "2026-05-03T13:51:14.639Z" },
 ]
 
 [[package]]
@@ -2734,7 +2734,7 @@ wheels = [
 
 [[package]]
 name = "kailash-dataflow"
-version = "2.3.2"
+version = "2.7.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiomysql" },
@@ -2751,6 +2751,7 @@ dependencies = [
     { name = "motor" },
     { name = "passlib", extra = ["bcrypt"] },
     { name = "psutil" },
+    { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pymongo" },
@@ -2760,12 +2761,12 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/36/7124d1cfc63b9ad1bc0546aa765cc715b723b862d94b147867592e3e6e5e/kailash_dataflow-2.3.2-py3-none-any.whl", hash = "sha256:2701e10246db8d5504de708d3c895d233b32f0b728fb580fc52fd3996e6e072e", size = 1236834, upload-time = "2026-04-27T13:00:37.316Z" },
+    { url = "https://files.pythonhosted.org/packages/05/ff/20746a82e121eaeb4cd3e542ea8c1b8e4e046f7935f27cbfa21351032f01/kailash_dataflow-2.7.7-py3-none-any.whl", hash = "sha256:f6f25f0084677aa33033cc45489b450f482dea0a3dad6ecdcb0ddfbe86034f19", size = 1264846, upload-time = "2026-05-03T19:34:14.071Z" },
 ]
 
 [[package]]
 name = "kailash-kaizen"
-version = "2.13.1"
+version = "2.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2799,12 +2800,12 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/bb/e93b2b2fe547229830c62a7c9788b32af8a81545aace20edb8850b5fef2b/kailash_kaizen-2.13.1-py3-none-any.whl", hash = "sha256:4f077582580bb186bc23bae23829027493eac70da71ed00b82e43aa9bc4cc9e5", size = 1548828, upload-time = "2026-04-25T09:54:14.827Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/aa/937fb0a10257c0b0d0d41ec33ef952966db85bc1823dcdfbead82e46d371/kailash_kaizen-2.19.0-py3-none-any.whl", hash = "sha256:bc7e0235cd366671f113b315d0647fcf02a67820d749b8153558c06c1fb97d65", size = 1557223, upload-time = "2026-05-05T14:27:15.496Z" },
 ]
 
 [[package]]
 name = "kailash-mcp"
-version = "0.2.10"
+version = "0.2.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "kailash" },
@@ -2812,12 +2813,12 @@ dependencies = [
     { name = "pydantic" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/41/1649b2688015c863ee47809265c7233f19c0a82768b6a78cfcb011c13bf0/kailash_mcp-0.2.10-py3-none-any.whl", hash = "sha256:2732b85f3c7742fa1eb9cfb4bb0dcb0a9fb3827953a1c1db8a60075f3702e107", size = 185767, upload-time = "2026-04-26T04:13:38.961Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/79/982b96dda067f1973f3e0887fc1d6723f4b0b258970ff78c4fbae84d3636/kailash_mcp-0.2.11-py3-none-any.whl", hash = "sha256:df13d622c1ca333ba8c17d6e8b3b15969344842786c71d216672b86496d3d032", size = 185825, upload-time = "2026-05-03T13:51:40.946Z" },
 ]
 
 [[package]]
 name = "kailash-ml"
-version = "1.5.1"
+version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -2825,13 +2826,13 @@ dependencies = [
     { name = "kailash-dataflow" },
     { name = "kailash-nexus" },
     { name = "lightgbm" },
-    { name = "lightning" },
     { name = "numpy" },
     { name = "onnxmltools" },
     { name = "onnxruntime" },
     { name = "plotly" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pytorch-lightning" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "scipy" },
@@ -2841,7 +2842,7 @@ dependencies = [
     { name = "xgboost" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/78/e005102267ae151bc7d0446ba093f9b2e93e7e8bae3688f86ebc523d2cfa/kailash_ml-1.5.1-py3-none-any.whl", hash = "sha256:9a55fdafe5d36de0570cac61b922d38760c6818031629c8122f72ec273d74d6e", size = 654653, upload-time = "2026-04-28T01:34:38.204Z" },
+    { url = "https://files.pythonhosted.org/packages/62/ae/77c4ee2a59d364d62c0b27fcecda2832ab28258630b26f31273fd8b2eab5/kailash_ml-1.7.1-py3-none-any.whl", hash = "sha256:9e69fe3bf5aadc32a9f9bbd259a7fbd2fd28ac9816b2b0a9c301a0c8be2bdb00", size = 667230, upload-time = "2026-05-01T01:36:17.437Z" },
 ]
 
 [package.optional-dependencies]
@@ -2857,10 +2858,10 @@ all = [
     { name = "gymnasium" },
     { name = "imbalanced-learn" },
     { name = "kailash-kaizen" },
-    { name = "lightning" },
     { name = "optuna" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "pytorch-lightning" },
     { name = "pyyaml" },
     { name = "ray", extra = ["rllib"] },
     { name = "sb3-contrib" },
@@ -2878,8 +2879,8 @@ all = [
     { name = "xgboost" },
 ]
 dl = [
-    { name = "lightning" },
     { name = "plotly" },
+    { name = "pytorch-lightning" },
     { name = "timm" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -2888,8 +2889,8 @@ dl = [
 ]
 rl = [
     { name = "gymnasium" },
-    { name = "lightning" },
     { name = "plotly" },
+    { name = "pytorch-lightning" },
     { name = "sb3-contrib" },
     { name = "stable-baselines3" },
     { name = "timm" },
@@ -2901,7 +2902,7 @@ rl = [
 
 [[package]]
 name = "kailash-nexus"
-version = "2.3.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -2912,7 +2913,7 @@ dependencies = [
     { name = "websockets" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/a4/bd1433fdc0329c9891afb3d714647818128120bf0b86325e783dea676eb9/kailash_nexus-2.3.0-py3-none-any.whl", hash = "sha256:0832fdca2e0fb8914e61eb735d570d4c3be41f4ec07b4f8cc6536c0572db41cc", size = 239010, upload-time = "2026-04-25T09:20:15.087Z" },
+    { url = "https://files.pythonhosted.org/packages/62/7d/e191bbd73c4aa7259acd03b054c2273fda1c7d64b5d94ef93efd6d8c29bd/kailash_nexus-2.6.1-py3-none-any.whl", hash = "sha256:86c98f5e41d46de175fb0d956861a2aacd5876f2df8ba632f53b8868768aa790", size = 251209, upload-time = "2026-05-03T13:51:25.226Z" },
 ]
 
 [[package]]
@@ -2934,7 +2935,7 @@ wheels = [
 
 [[package]]
 name = "kaizen-agents"
-version = "0.9.4"
+version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -2946,7 +2947,7 @@ dependencies = [
     { name = "structlog" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/a0/0da90ee25d6512e67a9071c3e0e114a882486fc6cd2a71a27f15d2d7ccfc/kaizen_agents-0.9.4-py3-none-any.whl", hash = "sha256:6bed40238dcc685d89d08e824b376465b84bd96f92c66f9f6ca816df4bfeb1db", size = 632286, upload-time = "2026-04-24T03:46:41.472Z" },
+    { url = "https://files.pythonhosted.org/packages/14/af/631c03d839027300d2a6fbdf2f841b2d70375ef54233c2aace4c7c50246b/kaizen_agents-0.9.5-py3-none-any.whl", hash = "sha256:55a47c53eb902a101de71806d5e5776e0d3f7a3535d3cdc8a8245fdfc6543bb5", size = 632450, upload-time = "2026-05-03T13:51:44.08Z" },
 ]
 
 [[package]]
@@ -3307,26 +3308,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/64/41/4fbde2c3d29e25ee7c41d87df2f2e5eda65b431ee154d4d462c31041846c/lightgbm-4.6.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4d68712bbd2b57a0b14390cbf9376c1d5ed773fa2e71e099cac588703b590336", size = 3454567, upload-time = "2025-02-15T04:02:56.443Z" },
     { url = "https://files.pythonhosted.org/packages/42/86/dabda8fbcb1b00bcfb0003c3776e8ade1aa7b413dff0a2c08f457dace22f/lightgbm-4.6.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:cb19b5afea55b5b61cbb2131095f50538bd608a00655f23ad5d25ae3e3bf1c8d", size = 3569831, upload-time = "2025-02-15T04:02:58.925Z" },
     { url = "https://files.pythonhosted.org/packages/5e/23/f8b28ca248bb629b9e08f877dd2965d1994e1674a03d67cd10c5246da248/lightgbm-4.6.0-py3-none-win_amd64.whl", hash = "sha256:37089ee95664b6550a7189d887dbf098e3eadab03537e411f52c63c121e3ba4b", size = 1451509, upload-time = "2025-02-15T04:03:01.515Z" },
-]
-
-[[package]]
-name = "lightning"
-version = "2.6.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "fsspec", extra = ["http"] },
-    { name = "lightning-utilities" },
-    { name = "packaging" },
-    { name = "pytorch-lightning" },
-    { name = "pyyaml" },
-    { name = "torch" },
-    { name = "torchmetrics" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/15/ad/a1c91a795521be252209d45fb080f28a4f1e7244d3b37121fcc6e3e43034/lightning-2.6.1.tar.gz", hash = "sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9", size = 663175, upload-time = "2026-01-30T14:59:13.92Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/6d/42640e15a8c34b57dc7ea922152440c0c6692214a08d5282b6e3eb46ddf4/lightning-2.6.1-py3-none-any.whl", hash = "sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30", size = 853631, upload-time = "2026-01-30T14:59:11.687Z" },
 ]
 
 [[package]]
@@ -3850,19 +3831,19 @@ requires-dist = [
     { name = "ipywidgets", marker = "extra == 'notebooks'", specifier = ">=8.0" },
     { name = "jupyter", marker = "extra == 'full'", specifier = ">=1.0" },
     { name = "jupyter", marker = "extra == 'notebooks'", specifier = ">=1.0" },
-    { name = "kailash", specifier = ">=2.11.3" },
+    { name = "kailash", specifier = ">=2.13.4" },
     { name = "kailash-align", specifier = ">=0.7.0" },
-    { name = "kailash-dataflow", specifier = ">=2.3.2" },
-    { name = "kailash-kaizen", specifier = ">=2.13.1" },
-    { name = "kailash-mcp", specifier = ">=0.2.10" },
-    { name = "kailash-ml", specifier = ">=1.5.1" },
+    { name = "kailash-dataflow", specifier = ">=2.7.7" },
+    { name = "kailash-kaizen", specifier = ">=2.19.0" },
+    { name = "kailash-mcp", specifier = ">=0.2.11" },
+    { name = "kailash-ml", specifier = ">=1.7.1" },
     { name = "kailash-ml", extras = ["agents"], marker = "extra == 'agents'" },
     { name = "kailash-ml", extras = ["all"], marker = "extra == 'full'" },
     { name = "kailash-ml", extras = ["dl"], marker = "extra == 'dl'" },
     { name = "kailash-ml", extras = ["rl"], marker = "extra == 'rl'" },
-    { name = "kailash-nexus", specifier = ">=2.3.0" },
+    { name = "kailash-nexus", specifier = ">=2.6.1" },
     { name = "kailash-pact", specifier = ">=0.11.0" },
-    { name = "kaizen-agents", specifier = ">=0.9.4" },
+    { name = "kaizen-agents", specifier = ">=0.9.5" },
     { name = "langfuse", specifier = ">=2.0" },
     { name = "lightgbm", specifier = ">=4.0" },
     { name = "lime", specifier = ">=0.2" },
@@ -5428,6 +5409,36 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/56/9a/9470d013d0d50af0da9c4251614aeb3c1823635cab3edc211e3839db0bcf/psycopg_pool-3.3.0.tar.gz", hash = "sha256:fa115eb2860bd88fce1717d75611f41490dec6135efb619611142b24da3f6db5", size = 31606, upload-time = "2025-12-01T11:34:33.11Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/c3/26b8a0908a9db249de3b4169692e1c7c19048a9bc41a4d3209cee7dbb758/psycopg_pool-3.3.0-py3-none-any.whl", hash = "sha256:2e44329155c410b5e8666372db44276a8b1ebd8c90f1c3026ebba40d4bc81063", size = 39995, upload-time = "2025-12-01T11:34:29.761Z" },
+]
+
+[[package]]
+name = "psycopg2-binary"
+version = "2.9.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/60/a3624f79acea344c16fbef3a94d28b89a8042ddfb8f3e4ca83f538671409/psycopg2_binary-2.9.12.tar.gz", hash = "sha256:5ac9444edc768c02a6b6a591f070b8aae28ff3a99be57560ac996001580f294c", size = 379686, upload-time = "2026-04-21T09:40:34.304Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/bb/4608c96f970f6e0c56572e87027ef4404f709382a3503e9934526d7ba051/psycopg2_binary-2.9.12-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:7c729a73c7b1b84de3582f73cdd27d905121dc2c531f3d9a3c32a3011033b965", size = 3712419, upload-time = "2026-04-20T23:34:58.754Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/af/48f76af9d50d61cf390f8cd657b503168b089e2e9298e48465d029fcc713/psycopg2_binary-2.9.12-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:4413d0caef93c5cf50b96863df4c2efe8c269bf2267df353225595e7e15e8df7", size = 3822990, upload-time = "2026-04-20T23:35:00.821Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/df/aba0f99397cd811d32e06fc0cc781f1f3ce98bc0e729cb423925085d781a/psycopg2_binary-2.9.12-cp313-cp313-manylinux2014_ppc64le.manylinux_2_17_ppc64le.whl", hash = "sha256:4dfcf8e45ebb0c663be34a3442f65e17311f3367089cd4e5e3a3e8e62c978777", size = 4578696, upload-time = "2026-04-20T23:35:03.409Z" },
+    { url = "https://files.pythonhosted.org/packages/95/9c/eaa74021ac4e4d5c2f83d82fc6615a63f4fe6c94dc4e94c3990427053f67/psycopg2_binary-2.9.12-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c41321a14dd74aceb6a9a643b9253a334521babfa763fa873e33d89cfa122fb5", size = 4274982, upload-time = "2026-04-20T23:35:05.583Z" },
+    { url = "https://files.pythonhosted.org/packages/35/ed/c25deff98bd26187ba48b3b250a3ffc3037c46c5b89362534a15d200e0db/psycopg2_binary-2.9.12-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:83946ba43979ebfdc99a3cd0ee775c89f221df026984ba19d46133d8d75d3cd9", size = 5894867, upload-time = "2026-04-20T23:35:07.902Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/81/8d0e21ca77373c6c9589e5c4528f6e8f0c08c62cafc76fb0bddb7a2cee22/psycopg2_binary-2.9.12-cp313-cp313-manylinux_2_38_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:411e85815652d13560fbe731878daa5d92378c4995a22302071890ec3397d019", size = 4110578, upload-time = "2026-04-20T23:35:10.149Z" },
+    { url = "https://files.pythonhosted.org/packages/00/fc/f481e2435bd8f742d0123309174aae4165160ad3ef17c1b99c3622c241d2/psycopg2_binary-2.9.12-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:1c8ad4c08e00f7679559eaed7aff1edfffc60c086b976f93972f686384a95e2c", size = 3655816, upload-time = "2026-04-20T23:35:12.56Z" },
+    { url = "https://files.pythonhosted.org/packages/53/79/b9f46466bdbe9f239c96cde8be33c1aace4842f06013b47b730dc9759187/psycopg2_binary-2.9.12-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:00814e40fa23c2b37ef0a1e3c749d89982c73a9cb5046137f0752a22d432e82f", size = 3301307, upload-time = "2026-04-20T23:35:15.029Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/19/7dc003b32fe35024df89b658104f7c8538a8b2dcbde7a4e746ce929742e7/psycopg2_binary-2.9.12-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:98062447aebc20ed20add1f547a364fd0ef8933640d5372ff1873f8deb9b61be", size = 3048968, upload-time = "2026-04-20T23:35:16.757Z" },
+    { url = "https://files.pythonhosted.org/packages/91/58/2dbd7db5c604d45f4950d988506aae672a14126ec22998ced5021cbb76bb/psycopg2_binary-2.9.12-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:66a7685d7e548f10fb4ce32fb01a7b7f4aa702134de92a292c7bd9e0d3dbd290", size = 3351369, upload-time = "2026-04-20T23:35:18.933Z" },
+    { url = "https://files.pythonhosted.org/packages/42/ee/dee8dcaad07f735824de3d6563bc67119fa6c28257b17977a8d624f02fab/psycopg2_binary-2.9.12-cp313-cp313-win_amd64.whl", hash = "sha256:b6937f5fe4e180aeee87de907a2fa982ded6f7f15d7218f78a083e4e1d68f2a0", size = 2757347, upload-time = "2026-04-20T23:35:21.283Z" },
+    { url = "https://files.pythonhosted.org/packages/13/1b/708c0dca874acfad6d65314271859899a79007686f3a1f74e82a2ed4b645/psycopg2_binary-2.9.12-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:6f3b3de8a74ef8db215f22edffb19e32dc6fa41340456de7ec99efdc8a7b3ec2", size = 3712428, upload-time = "2026-04-20T23:35:23.453Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/39/ddbea9d4b4de6aca9431b6ed253f530f8a02d3b8f9bcfd0dbfe2b3de6fe4/psycopg2_binary-2.9.12-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:1006fb62f0f0bc5ce256a832356c6262e91be43f5e4eb15b5eaf38079464caf2", size = 3823184, upload-time = "2026-04-20T23:35:25.92Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/a0/bc2fef74b106fa345567122a0659e6d94512ed7dc0131ec44c9e5aba3725/psycopg2_binary-2.9.12-cp314-cp314-manylinux2014_ppc64le.manylinux_2_17_ppc64le.whl", hash = "sha256:840066105706cd2eb29b9a1c2329620056582a4bf3e8169dec5c447042d0869f", size = 4579157, upload-time = "2026-04-20T23:35:28.542Z" },
+    { url = "https://files.pythonhosted.org/packages/57/d7/d4e3b2005d3de607ca4fbb0e8742e248056e52184a6b94ebda3c1c2c329b/psycopg2_binary-2.9.12-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:863f5d12241ebe1c76a72a04c2113b6dc905f90b9cef0e9be0efd994affd9354", size = 4274970, upload-time = "2026-04-20T23:35:30.418Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/42/c9853f8db3967fe08bcde11f53d53b85d351750cae726ce001cb68afa9c1/psycopg2_binary-2.9.12-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a99eaab34a9010f1a086b126de467466620a750634d114d20455f3a824aae033", size = 5895175, upload-time = "2026-04-20T23:35:33.584Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/fd/b82b5601a97630308bef079f545ffec481bbbc795c2ba5ec416a01d03f60/psycopg2_binary-2.9.12-cp314-cp314-manylinux_2_38_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:ffdd7dc5463ccd61845ac37b7012d0f35a1548df9febe14f8dd549be4a0bc81e", size = 4110658, upload-time = "2026-04-20T23:35:35.638Z" },
+    { url = "https://files.pythonhosted.org/packages/62/8c/32ca69b0389ef25dd22937bf9e8fbe2ce27aea20b05ded48c4ce4cb42475/psycopg2_binary-2.9.12-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:54a0dfecab1b48731f934e06139dfe11e24219fb6d0ceb32177cf0375f14c7b5", size = 3656251, upload-time = "2026-04-20T23:35:37.854Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/29/96992a2b59e3b9d730fcf9612d0a387305025dc867a9fc490a9e496e074e/psycopg2_binary-2.9.12-cp314-cp314-musllinux_1_2_ppc64le.whl", hash = "sha256:96937c9c5d891f772430f418a7a8b4691a90c3e6b93cf72b5bd7cad8cbca32a5", size = 3301810, upload-time = "2026-04-20T23:35:39.927Z" },
+    { url = "https://files.pythonhosted.org/packages/56/ad/44b06659949b243ae10112cd3b20a197f9bf3e81d5651379b9eb889bfaad/psycopg2_binary-2.9.12-cp314-cp314-musllinux_1_2_riscv64.whl", hash = "sha256:77b348775efd4cdab410ec6609d81ccecd1139c90265fa583a7255c8064bc03d", size = 3048977, upload-time = "2026-04-20T23:35:41.806Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/f2/10a1bcebadb6aa55e280e1f58975c36a7b560ea525184c7aa4064c466633/psycopg2_binary-2.9.12-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:527e6342b3e44c2f0544f6b8e927d60de7f163f5723b8f1dfa7d2a84298738cd", size = 3351466, upload-time = "2026-04-20T23:35:43.993Z" },
+    { url = "https://files.pythonhosted.org/packages/20/be/b732c8418ffa5bcfda002890f5dc4c869fc17db66ff11f53b17cfe44afc0/psycopg2_binary-2.9.12-cp314-cp314-win_amd64.whl", hash = "sha256:f12ae41fcafadb39b2785e64a40f9db05d6de2ac114077457e0e7c597f3af980", size = 2848762, upload-time = "2026-04-20T23:35:46.421Z" },
 ]
 
 [[package]]

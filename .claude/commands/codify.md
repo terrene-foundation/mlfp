@@ -98,7 +98,23 @@ Ensure user-facing documentation reflects new capabilities. Verify README.md, do
 
 ### 6. Red team the agents and skills
 
-Validate that generated agents and skills are correct, complete, and secure. **claude-code-architect** verifies cc-artifacts compliance (descriptions under 120 chars, agents under 400 lines, commands under 150 lines, rules path-scoped, SKILL.md progressive disclosure).
+Validate that generated agents and skills are correct, complete, and secure. **cc-architect** verifies cc-artifacts compliance (descriptions under 120 chars, agents under 400 lines, commands under 150 lines, rules path-scoped, SKILL.md progressive disclosure).
+
+### 6b. Trust Posture Wiring (MANDATORY for new rules — ENFORCED)
+
+Per `rules/trust-posture.md` MUST 7 + `skills/32-trust-posture/codify-integration.md`:
+
+For each NEW rule authored in this codify cycle (grandfathered rules pre-dating the trust-posture system are exempt):
+
+1. **Read** `.claude/learning/violations.jsonl` (last 30 days). Find self-reported / detected violations whose `addressed_by` is null AND whose root cause matches the candidate rule.
+2. **Link** the rule to those violations: update `addressed_by: "rules/<file>.md@<sha>"` for each.
+3. **Author** a "Trust Posture Wiring" section per `skills/32-trust-posture/rule-authoring-checklist.md` (severity, grace days, cumulative threshold, regression-within-grace policy, receipt requirement, detection mechanism, first-violation id, origin date).
+4. **Append** to `.claude/learning/posture.json::pending_verification` (via `state-io.js::writePosture`) — never via direct Edit/Write (denied by `permissions.deny`).
+5. **Verify** via cc-architect: every new rule file ends with `## Trust Posture Wiring`. Missing → audit FAIL → /codify halts and reports.
+
+**ENFORCEMENT**: this step is FAIL-on-missing for any rule authored after `rules/trust-posture.md` was committed. cc-architect MUST grep each new rule file for the literal `## Trust Posture Wiring` header AND verify all 7 fields present in the section body (severity / grace / cumulative / regression-within-grace / receipt / detection / first-violation / origin). Missing or incomplete → audit FAIL → /codify halts.
+
+The trust-posture rule itself is the only grandfather exception. Every other rule authored from this point forward MUST include the wiring section.
 
 ### 7. Create upstream proposal (BUILD repos) / 8. Upstream to atelier (loom only)
 
@@ -125,7 +141,7 @@ Deploy these agents as a team for codification:
 
 **Validation team (red team the agents and skills):**
 
-- **claude-code-architect** — Verify cc-artifacts compliance: descriptions <120 chars, agents <400 lines, commands <150 lines, rules have `paths:` frontmatter, SKILL.md progressive disclosure, no CLAUDE.md duplication
+- **cc-architect** — Verify cc-artifacts compliance: descriptions <120 chars, agents <400 lines, commands <150 lines, rules have `paths:` frontmatter, SKILL.md progressive disclosure, no CLAUDE.md duplication
 - **gold-standards-validator** — Terrene naming, licensing accuracy, terminology standards
 - **testing-specialist** — Verify any code examples in skills are testable
 - **security-reviewer** — Audit agents/skills for prompt injection, insecure patterns, secrets exposure

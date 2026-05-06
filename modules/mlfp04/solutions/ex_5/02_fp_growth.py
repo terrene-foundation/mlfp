@@ -34,8 +34,13 @@ from shared.mlfp04.ex_5 import (
     format_itemset,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    track_run,
     transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
+tracker, exp_name = setup_engines()
 
 # mlxtend is the only pandas-touching library used in this exercise. The
 # `rules/two-format.md` carve-out permits this because FP-Growth accepts
@@ -340,6 +345,72 @@ print(f"[viz] Speed comparison: {speed_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Logs FP-Growth's headline counts + the per-size runtime sweep against
+# Apriori. Series = runtimes at each transaction-count tested; scalars =
+# itemset / rule counts + Jaccard agreement vs the hand-rolled Apriori.
+
+speedup = apriori_times[-1] / fp_times[-1] if fp_times[-1] > 0 else 0.0
+track_run(
+    tracker,
+    exp_name,
+    run_name="fp_growth_mlxtend",
+    params={
+        "algorithm": "fp_growth",
+        "implementation": "mlxtend",
+        "n_transactions": len(transactions),
+        "min_support": MIN_SUPPORT,
+        "min_confidence": MIN_CONFIDENCE,
+        "swept_sizes": ",".join(str(s) for s in sizes),
+    },
+    scalar_metrics={
+        "n_frequent_itemsets": float(fp_frequent_df.height),
+        "n_rules": float(fp_rules_df.height),
+        "jaccard_apriori_vs_fp": float(agreement),
+        "apriori_only_count": float(len(apriori_set - fp_set)),
+        "fp_only_count": float(len(fp_set - apriori_set)),
+        "speedup_at_max_size": float(speedup),
+        "apriori_runtime_at_max": float(apriori_times[-1]),
+        "fp_runtime_at_max": float(fp_times[-1]),
+    },
+    series_metrics={
+        "apriori_runtime_seconds": [float(t) for t in apriori_times],
+        "fp_growth_runtime_seconds": [float(t) for t in fp_times],
+    },
+)
+print(f"  [tracked] FP-Growth + speed sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the mlxtend.frequent_patterns one-liner
+# ════════════════════════════════════════════════════════════════════════
+# This lesson built a polars wrapper around mlxtend FP-Growth, ran the
+# Apriori-vs-FP-Growth speed sweep, and verified itemset agreement —
+# ~270 lines of structure to internalise WHY FP-Growth is the production
+# choice on dense, city-scale data. The destination is exactly the two
+# library calls you saw inside ``run_fp_growth``:
+#
+#   from mlxtend.frequent_patterns import fpgrowth, association_rules
+#   itemsets = fpgrowth(onehot_df, min_support=0.03, use_colnames=True)
+#   rules    = association_rules(itemsets, metric='confidence', min_threshold=0.3)
+#
+# Two calls, one pandas frame in, two pandas frames out. The polars
+# wrapper exists for ergonomics, not for FP-Growth's correctness — every
+# downstream lesson (03 evaluation, 04 features) consumes that same rule
+# table.
+
+print("  Destination contract:")
+print("    fpgrowth(onehot_df, min_support, use_colnames=True)  -> itemsets")
+print("    association_rules(itemsets, metric, min_threshold)   -> rules")
+print(
+    f"  Today's run: {fp_frequent_df.height} itemsets, "
+    f"{fp_rules_df.height} rules — both shape: pandas DataFrame"
+)
+print()
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -352,6 +423,8 @@ print(
   [x] Verified that FP-Growth and Apriori agree on frequent itemsets
   [x] Identified a city-scale workload (GrabFood) where FP-Growth's
       single-pass tree construction is the economic difference-maker
+  [x] Locked in the production destination: two mlxtend calls
+      (fpgrowth + association_rules) feed every downstream lesson
 
   KEY INSIGHT: Both algorithms are correct. The choice between them is
   about the SHAPE of your data (size, density, access cost) and never

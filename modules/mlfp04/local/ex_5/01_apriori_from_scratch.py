@@ -38,7 +38,13 @@ from shared.mlfp04.ex_5 import (
     format_itemset,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    track_run,
+    transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -218,6 +224,67 @@ print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# All M4 ex_5 lessons share one experiment ('m4_assoc_rules_zoo') so you
+# can compare Apriori / FP-Growth / rules / rule-features in one store.
+
+# Per-level itemset count series — the visible "ladder" Apriori climbs.
+size_to_count: defaultdict[int, int] = defaultdict(int)
+for itemset in frequent_itemsets:
+    size_to_count[len(itemset)] += 1
+max_k = max(size_to_count) if size_to_count else 0
+ladder = [size_to_count[k] for k in range(1, max_k + 1)]
+support_values = [float(s) for s in frequent_itemsets.values()]
+
+# TODO: pick a stable run_name (e.g. "apriori_from_scratch") and fill in
+# the two blank scalars: how many singletons (size 1) and how many pairs
+# (size 2) Apriori found at min_support={MIN_SUPPORT}.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "algorithm": "apriori",
+        "implementation": "from_scratch",
+        "n_transactions": len(transactions),
+        "n_products": len(PRODUCTS),
+        "min_support": MIN_SUPPORT,
+        "max_k_reached": max_k,
+    },
+    scalar_metrics={
+        "n_frequent_itemsets": float(len(frequent_itemsets)),
+        "n_singletons_L1": ____,
+        "n_pairs_L2": ____,
+        "max_k_reached": float(max_k),
+        "max_support": float(max(support_values) if support_values else 0.0),
+    },
+    series_metrics={"frequent_count_by_level": [float(c) for c in ladder]},
+)
+print(f"  [tracked] Apriori ladder + headline counts logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — mlxtend.frequent_patterns.apriori
+# ════════════════════════════════════════════════════════════════════════
+# The hand-rolled walk-through internalised the algorithm; the production
+# destination is one library call:
+#   from mlxtend.frequent_patterns import apriori as mlx_apriori
+#   onehot = transactions_to_onehot(transactions).to_pandas().astype(bool)
+#   mlx_apriori(onehot, min_support=MIN_SUPPORT, use_colnames=True)
+
+# TODO: import mlxtend's apriori and call it on the one-hot frame; print
+# how many frequent itemsets it returns. Confirm it matches your hand-
+# rolled count.
+from mlxtend.frequent_patterns import apriori as mlx_apriori  # noqa: E402
+
+onehot_pd = transactions_to_onehot(transactions).to_pandas().astype(bool)
+mlx_frequent = mlx_apriori(onehot_pd, min_support=____, use_colnames=True)
+print(f"  mlxtend.apriori → {len(mlx_frequent)} frequent itemsets in 1 call")
+print(f"  Hand-rolled    → {len(frequent_itemsets)}")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -229,6 +296,7 @@ print(
   [x] Applied the anti-monotone pruning principle in _generate_candidates()
   [x] Counted support with one pass per level
   [x] Identified a production scenario where Apriori is the right tool
+  [x] Confirmed mlxtend.apriori produces the same frequent itemsets
 
   Next: 02_fp_growth.py — mlxtend's FP-Growth with no candidate generation,
   compared head-to-head against your Apriori output from this file.

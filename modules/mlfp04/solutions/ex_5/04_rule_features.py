@@ -44,8 +44,13 @@ from shared.mlfp04.ex_5 import (
     OUTPUT_DIR,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    track_run,
     transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -468,6 +473,86 @@ print(f"[viz] Accuracy comparison: {acc_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log baseline-vs-rule-enhanced metrics to ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Logs all four model variants side by side (LR Baseline / LR Combined /
+# RF Baseline / RF Combined) plus the product-vs-rule importance split.
+# Series = top-15 RF importances so the M4 dashboard can visualise the
+# combined-model ranking alongside the rule-quality distribution from
+# lesson 03.
+
+lr_combined_lift = (
+    results["LR: Combined"]["auc_roc"] - results["LR: Baseline"]["auc_roc"]
+)
+rf_combined_lift = (
+    results["RF: Combined"]["auc_roc"] - results["RF: Baseline"]["auc_roc"]
+)
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="rule_features_vs_baseline",
+    params={
+        "algorithm": "rule_features",
+        "implementation": "lr_plus_rf_baseline_vs_combined",
+        "n_transactions": len(transactions),
+        "n_baseline_features": int(X_baseline.shape[1]),
+        "n_rule_features": int(X_rules.shape[1]),
+        "n_combined_features": int(X_combined.shape[1]),
+        "rf_n_estimators": 200,
+        "rf_max_depth": 10,
+    },
+    scalar_metrics={
+        "lr_baseline_auc": float(results["LR: Baseline"]["auc_roc"]),
+        "lr_combined_auc": float(results["LR: Combined"]["auc_roc"]),
+        "lr_auc_lift_combined_vs_baseline": float(lr_combined_lift),
+        "rf_baseline_auc": float(results["RF: Baseline"]["auc_roc"]),
+        "rf_combined_auc": float(results["RF: Combined"]["auc_roc"]),
+        "rf_auc_lift_combined_vs_baseline": float(rf_combined_lift),
+        "lr_baseline_f1": float(results["LR: Baseline"]["f1"]),
+        "lr_combined_f1": float(results["LR: Combined"]["f1"]),
+        "rf_baseline_f1": float(results["RF: Baseline"]["f1"]),
+        "rf_combined_f1": float(results["RF: Combined"]["f1"]),
+        "product_importance_share": float(product_importance / total),
+        "rule_importance_share": float(rule_importance / total),
+    },
+    series_metrics={
+        "rf_top15_importances": [float(importances[i]) for i in top_idx],
+    },
+)
+print(f"  [tracked] Baseline-vs-combined classifier metrics logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — kailash-ml FeatureEngineer + TrainingPipeline
+# ════════════════════════════════════════════════════════════════════════
+# This lesson hand-rolled the rule-feature builder, the per-rule binary
+# columns, the aggregate (n_rules_triggered / total_lift / max_lift) +
+# four full sklearn classifier runs — ~340 lines to internalise rules-as-
+# features end-to-end. The destination-first surface in Kailash is two
+# engines stacked:
+#
+#   FeatureEngineer.generate(...) -> auto co-occurrence + lag features
+#   TrainingPipeline.train(schema, model_spec, eval_spec) -> ranked models
+#
+# In production you ship the rule-feature columns (kept verbatim for the
+# auditability story above) PLUS the FeatureEngineer-generated set, then
+# let TrainingPipeline train + rank LR vs RF vs gradient-boosted variants
+# in one call. Manual rule features become one feature group among many,
+# which is exactly the spectrum-of-discovery story this lesson opened on.
+
+print("  Destination contract:")
+print("    FeatureEngineer().generate(df)             -> auto co-occurrence cols")
+print("    TrainingPipeline().train(schema, model, eval) -> ranked classifiers")
+print(
+    f"  Today's run: hand-built {X_rules.shape[1]} rule features, "
+    f"trained 4 sklearn variants — top AUC = {max(auc_vals):.4f}"
+)
+print()
+print("  Manual rules are the bottom rung. The engine ships every rung above.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -480,6 +565,9 @@ print(
   [x] Attributed feature importance across product and rule groups
   [x] Identified a production scenario (NTUC Link CRM scoring) where
       explicit rule features are preferred over learned embeddings
+  [x] Pointed at the Kailash destination — FeatureEngineer +
+      TrainingPipeline — that ships rule features alongside auto-discovered
+      co-occurrence structure in one call
 
   KEY INSIGHT: Association rules are the MANUAL end of a spectrum that
   runs all the way to deep learning.

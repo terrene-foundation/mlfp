@@ -35,8 +35,13 @@ from shared.mlfp04.ex_5 import (
     format_itemset,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    track_run,
     transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+tracker, exp_name = setup_engines()
 
 # mlxtend requires pandas internally. Use at the boundary only — keep
 # the rest of this file polars-native.
@@ -218,6 +223,61 @@ fp_rules_df.write_csv(OUTPUT_DIR / "fp_growth_rules.csv")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log FP-Growth + the Apriori-vs-FP-Growth speed sweep
+# ════════════════════════════════════════════════════════════════════════
+# Same shared experiment as lesson 01. Series = per-size runtimes for
+# Apriori vs FP-Growth so you can see the speed crossover; scalars =
+# Jaccard agreement on the frequent-itemset sets + headline counts.
+
+speedup = apriori_times[-1] / fp_times[-1] if fp_times[-1] > 0 else 0.0
+
+# TODO: pick run_name="fp_growth_mlxtend" and fill in the agreement +
+# speedup scalars. Hint: agreement is the Jaccard you already computed.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "algorithm": "fp_growth",
+        "implementation": "mlxtend",
+        "n_transactions": len(transactions),
+        "min_support": MIN_SUPPORT,
+        "min_confidence": MIN_CONFIDENCE,
+        "swept_sizes": ",".join(str(s) for s in sizes),
+    },
+    scalar_metrics={
+        "n_frequent_itemsets": float(fp_frequent_df.height),
+        "n_rules": float(fp_rules_df.height),
+        "jaccard_apriori_vs_fp": ____,
+        "speedup_at_max_size": ____,
+    },
+    series_metrics={
+        "apriori_runtime_seconds": [float(t) for t in apriori_times],
+        "fp_growth_runtime_seconds": [float(t) for t in fp_times],
+    },
+)
+print(f"  [tracked] FP-Growth + speed sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the two mlxtend calls every downstream lesson uses
+# ════════════════════════════════════════════════════════════════════════
+# The polars wrapper exists for ergonomics, not for FP-Growth's
+# correctness. The destination contract is two pandas-frame calls:
+#   fpgrowth(onehot_df, min_support, use_colnames=True)  -> itemsets
+#   association_rules(itemsets, metric, min_threshold)   -> rules
+# Lessons 03 and 04 consume that same rule table.
+
+print("  Destination contract:")
+print("    fpgrowth(onehot, min_support, use_colnames=True)  -> itemsets")
+print("    association_rules(itemsets, metric, min_threshold) -> rules")
+print(
+    f"  Today's run: {fp_frequent_df.height} itemsets, "
+    f"{fp_rules_df.height} rules — both shape: pandas DataFrame"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -228,6 +288,8 @@ print(
   [x] Wrapped mlxtend FP-Growth in a polars-friendly call boundary
   [x] Converted basket-sets to one-hot for FP-Growth input
   [x] Verified Apriori and FP-Growth agree on frequent itemsets
+  [x] Locked in the production destination: two mlxtend calls feed
+      every downstream lesson (rules + features)
 
   Next: 03_rule_evaluation.py — turn frequent itemsets into association
   rules with support, confidence, lift, and conviction.

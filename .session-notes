@@ -2,42 +2,87 @@
 
 ## Where we are
 
-HIGH-01 (M4 ExperimentTracker) closed for ex_1+ex_2+ex_3+ex_4 on
-`feat/m4-engine-first` (PR #2 against main). Branch is at the natural
-PR-review boundary. This session added one chore commit on top of that:
-journal triage — promoted 6 manual entries to numbered slots, deleted
-24 hook-generated curriculum auto-extracts, replaced 30 mlfp06-migration
-auto-extracts with one curated migration-summary entry.
+Two parallel branches today:
+
+1. `chore/sync-loom-2.19.0` (PR #3) — adopted loom 2.19.0 stack, bumped
+   SDK pin floors to template's `sdk_packages` map, purged 7 obsoleted
+   paths, added skill `32-trust-posture/` + 6 new rules + 5 new hooks.
+   `uv sync` clean; 22 hooks resolve. PR open against main.
+
+2. `feat/m4-engine-first` (PR #2 base) — extended HIGH-01's engine-first
+   pattern from ex_1–ex_4 onto **ex_5 (association rules, 4 sub-files)**
+   as r6. All 4 solutions reach MASTERED via the watchdog wrapper.
+   ExperimentTracker store `m4_assoc_rules_zoo` accumulated 4 runs / 219
+   metric rows across apriori / fp_growth / association_rules /
+   rule_features. r6 committed (a2ac42a4) on top of HIGH-01 r1–r5.
 
 ## Read first
 
-1. `git log --oneline main..feat/m4-engine-first` — r1-r5 + chores + journal triage
-2. `workspaces/curriculum/journal/0002`–`0007` — the 6 promoted manual entries (M5 generator gap, R11–R13 codify, M6 audit, M6 Ollama R14, Kaizen TextDelta trap, kailash-ml 0.12 gap analysis)
-3. `workspaces/mlfp06-migration/journal/0001` — 9-shard migration summary (replaces 30 hook auto-extracts)
-4. `SWEEP-2026-04-28.md` — outstanding scope; ex_5/6/7/8 are out of HIGH-01 (the SWEEP miscounted M4's lesson count as 5; actual is 8)
+1. `git log --oneline main..feat/m4-engine-first` — r1–r6 + chores
+2. `shared/mlfp04/ex_5.py` — canonical helpers; `_slug()` is new
+   (handles prose keys + dot-digit sweep names)
+3. `modules/mlfp04/solutions/ex_5/01_apriori_from_scratch.py` — reference
+   destination-first close where kailash-ml has no engine: pivot to
+   mlxtend (the de facto production library)
+4. `SWEEP-2026-04-28.md` — outstanding scope; ex_6, ex_7, ex_8 remain
+   (5+5+5 sub-files) for r7/r8/r9
 5. `CLAUDE.md` — engine-first / two-format / polars-only directives
-6. `shared/mlfp04/ex_4.py` — canonical M4 tracker helpers; mirror for ex_5+
-7. `modules/mlfp04/solutions/ex_3/01_pca.py` — destination-first close pattern
+6. `.claude/VERSION` — now at template 3.9.0 / loom 2.19.0
+7. `.session-notes` (this file)
 
 ## In-flight state
 
-- `.pending/` directories cleared in both workspaces (curriculum + mlfp06-migration). Future hook auto-extracts will rebuild them on next SessionEnd that matches a journal-worthy commit.
-- `modules/mlfp05/readings/deck.pdf` persistent `M` from pre-existing LFS migration gap (filed as follow-up — needs `git lfs migrate import`).
-- `/tmp/smoke_with_timeout.sh` — kill-after-MASTERED watchdog wrapping the shared M4 shutdown hang; recreate per session.
+- PR #2 (HIGH-01 + r6) and PR #3 (sync) both open; neither reviewed.
+- `.pending/` directories in workspaces still cleared.
+- `modules/mlfp05/readings/deck.pdf` — pre-existing LFS migration trap;
+  on `feat/m4-engine-first` the file is an LFS pointer, on `main` /
+  `chore/sync-loom-2.19.0` it's an inline blob. To switch branches, may
+  need to `mv` the on-disk file out of the way (then restore via LFS
+  smudge or just discard — content is identical).
+- `/tmp/smoke_with_timeout.sh` — kill-after-MASTERED watchdog; recreate
+  per session.
+- `/tmp/deck.pdf.real-blob.backup` — created during chore→feat switch,
+  cleaned up.
 
 ## Traps
 
-- Shared M4 `setup_engines()` orphans an aiosqlite worker thread; every solution hangs at `Py_Finalize` after the REFLECTION print. Logic completes; only shutdown blocks. Filed as a follow-up shard (~26 files; needs sharding plan before authorizing).
-- `AnomalyDetectionEngine.detect`, `DimReductionEngine.reduce`, `ClusteringEngine.fit` are all SYNC despite `km.list_engines()` reporting `is_async=True`. Don't `await`.
-- Tracker key regex `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` — use `_slug()` for prose keys; encode `0.001 → "0_001"` for sweep keys with dot-digit pairs.
-- Tracker rejects NaN/inf via `MetricValueError`; every emit through `_finite()` (silhouette, AUC-ROC, AP can collapse to NaN).
-- SQLite contention: never run two M4 trackers against the same `.db` concurrently. ex_1 / ex_3 / ex_4 each have their own store.
-- LFS attribute `modules/**/readings/*.pdf` was added after the PDFs were committed inline → eternal `M` until `git lfs migrate import` runs.
-- `.venv` is Python 3.13 / kailash-ml 1.5.1; pyenv-global resolves a DIFFERENT kailash_ml. Always `.venv/bin/python`.
+- Shared M4 `setup_engines()` orphans an aiosqlite worker thread; every
+  solution hangs at `Py_Finalize` after the REFLECTION print. Logic
+  completes; only shutdown blocks. Filed as a follow-up shard (~26
+  files; needs sharding plan before authorizing).
+- `AnomalyDetectionEngine.detect`, `DimReductionEngine.reduce`,
+  `ClusteringEngine.fit` are all SYNC despite `km.list_engines()`
+  reporting `is_async=True`. Don't `await`.
+- Tracker key regex `^[a-zA-Z_][a-zA-Z0-9_.\-]*$` — `_slug()` handles
+  prose keys; explicit encoding for `0.001 → "0_001"` sweep keys with
+  dot-digit pairs.
+- Tracker rejects NaN/inf via `MetricValueError`; every emit through
+  `_finite()` (lift/conviction can collapse to NaN/inf at edges).
+- SQLite contention: never run two M4 trackers against the same `.db`
+  concurrently. ex_1 / ex_3 / ex_4 / **ex_5** each have their own store.
+- LFS: see deck.pdf trap above.
+- `.venv` is Python 3.13 / kailash-ml **1.7.1** (post-/sync); pyenv-global
+  resolves a different kailash_ml. Always `.venv/bin/python`.
+- Branch switching with deck.pdf: `git checkout` refuses when LFS
+  pointer ↔ inline blob differs. Workaround: `mv modules/mlfp05/readings/
+  deck.pdf /tmp/...` before checkout, then either restore via `git
+  checkout --` or let LFS smudge recreate it.
+- ex_5 has no kailash-ml engine — destination-first close points at
+  mlxtend (course dep) + FeatureEngineer/TrainingPipeline for ex_5/04.
+  Future ex_6/7/8 will likely have the same gap.
 
 ## Open questions for the human
 
-1. PR #2 review/merge, or take more shards on this branch?
-2. Authorize the LFS migrate (history-rewriting)?
-3. Authorize the shared `setup_engines()` shutdown-hang fix? Touches ~26 files; needs sharding plan first per `autonomous-execution.md` MUST Rule 1 (≤500 LOC load-bearing / ≤5–10 invariants per shard).
-4. SessionEnd hook emits 2–4 duplicate auto-extracts per commit (see 0001 §Why curated). Worth fixing the hook upstream, or accept that future `/journal` triage will dedupe?
+1. Merge PR #3 (sync) first or PR #2 (HIGH-01 + r6) first? PR #3 is
+   smaller and more reversible; PR #2 is the substantive curriculum
+   delivery.
+2. Authorize r7 (ex_6 NLP, 5 sub-files) on this branch? Same pattern,
+   but PR will keep growing. Alternative: cut a fresh branch off main
+   per exercise to keep PRs focused.
+3. Authorize the LFS migrate (history-rewriting)?
+4. Authorize the shared `setup_engines()` shutdown-hang fix? Touches
+   ~26 files; needs sharding plan first per `autonomous-execution.md`
+   MUST Rule 1 (≤500 LOC load-bearing / ≤5–10 invariants per shard).
+5. SessionEnd hook emits 2–4 duplicate auto-extracts per commit (see
+   journal/0001 §Why curated). Worth fixing the hook upstream, or
+   accept that future `/journal` triage will dedupe?

@@ -86,9 +86,14 @@ nn.fit(X_scaled)
 distances, _ = nn.kneighbors(X_scaled)
 k_dist = ____
 
-# Find the elbow via maximum second-derivative
-diffs2 = np.diff(np.diff(k_dist))
-elbow_idx = int(np.argmax(diffs2)) + 2
+# Find the elbow via Kneedle: the point on the sorted k-distance curve that
+# is FURTHEST from the chord between (0, k_dist[0]) and (n-1, k_dist[-1])
+# AFTER both axes are normalised to [0, 1]. This locates the true point of
+# maximum curvature — argmax of the 2nd derivative latches onto the steepest
+# tail jump (a single outlier) and over-shoots.
+_x = np.linspace(0.0, 1.0, k_dist.size)
+_y = (k_dist - k_dist.min()) / (k_dist.max() - k_dist.min())
+elbow_idx = int(np.argmax(np.abs(_y - _x)))
 eps_suggested = float(k_dist[elbow_idx])
 
 print(f"\n  k-distance elbow at eps ≈ {eps_suggested:.4f}")

@@ -83,6 +83,11 @@ n_95 = int(np.searchsorted(cum_evr, 0.95) + 1)
 
 X_pca10 = pca_full.transform(X)[:, : min(10, n_features)]
 idx = subsample_indices(n_samples, n_target=3000)
+# UMAP/Isomap transform target — 50K × N configs is too slow for a comparison.
+# A 10K OOS slice still produces a meaningful silhouette ranking.
+TRANSFORM_TARGET = 10_000
+transform_idx = subsample_indices(n_samples, n_target=TRANSFORM_TARGET)
+X_pca10_oos = X_pca10[transform_idx]
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -132,7 +137,7 @@ if UMAP_AVAILABLE:
             metric="euclidean",
         )
         reducer.fit(X_pca10[idx])
-        emb_full = reducer.transform(X_pca10)
+        emb_full = reducer.transform(X_pca10_oos)
         method_silhouettes[label] = evaluate_embedding_silhouette(emb_full)
 
 # (e) Isomap — manifold learning reference

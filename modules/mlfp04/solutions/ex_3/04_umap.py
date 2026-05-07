@@ -87,11 +87,19 @@ n_samples, n_features = X.shape
 pca_pre = PCA(n_components=min(10, n_features), random_state=42)
 X_pca = pca_pre.fit_transform(X)
 
-# Fit subsample; transform the full dataset to showcase OOS.
+# Fit subsample; transform a 10K out-of-sample slice to showcase OOS.
+# Transforming all 50K rows × 6 configs would push runtime past 9 minutes;
+# 10K still demonstrates the OOS workflow at a tractable cost.
 fit_idx = subsample_indices(n_samples, n_target=3000)
+TRANSFORM_TARGET = 10_000
+transform_idx = subsample_indices(n_samples, n_target=TRANSFORM_TARGET)
+n_transform = len(transform_idx)
+X_pca_transform = X_pca[transform_idx]
 print(f"=== UMAP inputs ===")
 print(f"  fit on  : {len(fit_idx):,} rows")
-print(f"  transform: {n_samples:,} rows (full dataset, out-of-sample)")
+print(
+    f"  transform: {n_transform:,} rows (out-of-sample, sub-sampled from {n_samples:,})"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -102,8 +110,6 @@ umap_configs = [
     {"n_neighbors": 5, "min_dist": 0.1, "label": "local (n=5, d=0.1)"},
     {"n_neighbors": 15, "min_dist": 0.1, "label": "default (n=15, d=0.1)"},
     {"n_neighbors": 30, "min_dist": 0.1, "label": "broad (n=30, d=0.1)"},
-    {"n_neighbors": 15, "min_dist": 0.0, "label": "tight (n=15, d=0.0)"},
-    {"n_neighbors": 15, "min_dist": 0.5, "label": "spread (n=15, d=0.5)"},
     {"n_neighbors": 50, "min_dist": 0.5, "label": "global (n=50, d=0.5)"},
 ]
 
@@ -124,7 +130,7 @@ if UMAP_AVAILABLE:
             metric="euclidean",
         )
         reducer.fit(X_pca[fit_idx])
-        embedding_full = reducer.transform(X_pca)  # out-of-sample for all rows
+        embedding_full = reducer.transform(X_pca_transform)  # out-of-sample
         elapsed = time.time() - t0
 
         sil = evaluate_embedding_silhouette(embedding_full)
@@ -137,7 +143,7 @@ if UMAP_AVAILABLE:
 else:
     # PCA 2D fallback — keeps the exercise runnable in minimal envs.
     pca_2d = PCA(n_components=2, random_state=42)
-    embedding_full = pca_2d.fit_transform(X_pca)
+    embedding_full = pca_2d.fit_transform(X_pca_transform)
     sil = evaluate_embedding_silhouette(embedding_full)
     umap_results["PCA-2D-fallback"] = {
         "embedding": embedding_full,
@@ -150,11 +156,11 @@ else:
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert len(umap_results) >= 1, "Must produce at least one UMAP result"
 for label, res in umap_results.items():
-    assert res["embedding"].shape == (n_samples, 2), (
-        f"UMAP {label} must return full-dataset 2D embedding "
-        f"(out-of-sample transform)"
+    assert res["embedding"].shape == (n_transform, 2), (
+        f"UMAP {label} must return ({n_transform}, 2) 2D embedding "
+        f"(out-of-sample transform on a {n_transform}-row slice)"
     )
-print("\n[ok] Checkpoint 1 — out-of-sample transform produced full-dataset 2D")
+print(f"\n[ok] Checkpoint 1 — out-of-sample transform produced {n_transform}-row 2D")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -254,7 +260,7 @@ track_run(
         "algorithm": "umap",
         "n_components": 2,
         "n_fit_subsample": int(len(fit_idx)),
-        "n_transform_full": int(n_samples),
+        "n_transform_oos": int(n_transform),
         "pca_pre_components": int(X_pca.shape[1]),
         "umap_available": str(UMAP_AVAILABLE),
         "best_config": best_label_for_run,

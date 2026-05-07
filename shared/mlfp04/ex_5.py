@@ -282,6 +282,23 @@ def setup_engines() -> tuple[ExperimentTracker, str]:
     return asyncio.run(_setup_engines_async())
 
 
+def teardown_engines(tracker: ExperimentTracker) -> None:
+    """Drain the aiosqlite worker threads before the script returns.
+
+    kailash's AsyncSQLitePool spawns NON-DAEMON aiosqlite worker threads on
+    first pool use. Python 3.13's ``Py_FinalizeEx`` joins non-daemon threads
+    BEFORE running ``atexit`` handlers, so an atexit-based close runs too
+    late — the interpreter hangs forever in ``wait_for_thread_shutdown``
+    waiting on workers stuck in ``queue.get()``.
+
+    Solutions MUST call ``teardown_engines(tracker)`` after the REFLECTION
+    block (or use it via ``try: … finally: teardown_engines(tracker)``).
+    See ``rules/patterns.md`` § "Async Resource Cleanup": real cleanup is
+    the caller's responsibility; ``close()`` must NOT live in ``__del__``.
+    """
+    asyncio.run(tracker.close())
+
+
 async def _track_run_async(
     tracker: ExperimentTracker,
     exp_name: str,

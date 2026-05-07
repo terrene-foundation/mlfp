@@ -45,6 +45,7 @@ from shared.mlfp04.ex_5 import (
     generate_transactions,
     print_transaction_summary,
     setup_engines,
+    teardown_engines,
     track_run,
     transactions_to_onehot,
 )
@@ -583,3 +584,6 @@ print(
   NMF topic modelling, and topic quality evaluation via NPMI coherence.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

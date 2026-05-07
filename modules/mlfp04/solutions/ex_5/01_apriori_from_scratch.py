@@ -39,6 +39,7 @@ from shared.mlfp04.ex_5 import (
     generate_transactions,
     print_transaction_summary,
     setup_engines,
+    teardown_engines,
     track_run,
 )
 
@@ -356,3 +357,6 @@ print(
   generation) and compare it against the Apriori output from this file.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

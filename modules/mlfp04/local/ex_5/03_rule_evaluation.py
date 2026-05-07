@@ -38,6 +38,7 @@ from shared.mlfp04.ex_5 import (
     print_transaction_summary,
     rules_to_polars,
     setup_engines,
+    teardown_engines,
     track_run,
     transactions_to_onehot,
 )
@@ -363,3 +364,6 @@ print(
   classifier and compare against a raw product-presence baseline.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -33,7 +33,7 @@ from sklearn.mixture import GaussianMixture
 from kailash_ml import ModelVisualizer
 
 # Cross-exercise import: tracker helpers live in ex_1.shared.
-from shared.mlfp04.ex_1 import setup_engines, track_run
+from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
 from shared.mlfp04.ex_2 import (
     load_customers_scaled,
     out_path,
@@ -362,3 +362,7 @@ print(
   dimensionality reduction on the same customer data.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -35,6 +35,7 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     load_customer_matrix,
     setup_engines,
+    teardown_engines,
     track_run,
 )
 
@@ -318,3 +319,7 @@ print(
   Next: 02_kernel_pca.py lifts this into nonlinear territory.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

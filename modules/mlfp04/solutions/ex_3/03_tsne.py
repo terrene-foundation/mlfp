@@ -38,6 +38,7 @@ from shared.mlfp04.ex_3 import (
     load_customer_matrix,
     setup_engines,
     subsample_indices,
+    teardown_engines,
     track_run,
 )
 
@@ -301,3 +302,7 @@ print(
   sample transform and preserves global structure too.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

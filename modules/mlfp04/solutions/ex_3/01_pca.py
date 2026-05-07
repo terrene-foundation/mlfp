@@ -35,6 +35,7 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     load_customer_matrix,
     setup_engines,
+    teardown_engines,
     track_run,
 )
 
@@ -336,3 +337,7 @@ print(
   kernel trick — same math, richer feature space.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

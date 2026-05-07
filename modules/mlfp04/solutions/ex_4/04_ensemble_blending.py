@@ -45,6 +45,7 @@ from shared.mlfp04.ex_4 import (
     rank_normalise,
     score_metrics,
     setup_engines,
+    teardown_engines,
     track_run,
     write_comparison_chart,
     write_monitoring_chart,
@@ -475,3 +476,7 @@ print(
   transaction patterns with association rule mining.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -43,6 +43,7 @@ from shared.mlfp04.ex_1 import (
     setup_engines,
     standardise,
     subsample,
+    teardown_engines,
     track_run,
 )
 
@@ -344,3 +345,7 @@ print(
   Next: 03_density_based.py — clusters of arbitrary SHAPE, not just size.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

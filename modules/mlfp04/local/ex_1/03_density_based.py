@@ -38,6 +38,7 @@ from shared.mlfp04.ex_1 import (
     out_path,
     setup_engines,
     standardise,
+    teardown_engines,
     track_run,
 )
 
@@ -293,3 +294,7 @@ print(
   Next: 04_spectral.py — non-convex clusters via the graph Laplacian.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -41,6 +41,7 @@ from shared.mlfp04.ex_1 import (
     setup_engines,
     standardise,
     subsample,
+    teardown_engines,
     track_run,
 )
 
@@ -250,3 +251,7 @@ print(
   Next: 05_evaluation_profiling.py — pick a winner.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

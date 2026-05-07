@@ -33,7 +33,7 @@ from kailash_ml import ModelVisualizer
 
 # Cross-exercise import: tracker helpers live in ex_1.shared so every M4
 # unsupervised technique logs to the same `m4_clustering_zoo` experiment.
-from shared.mlfp04.ex_1 import setup_engines, track_run
+from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
 from shared.mlfp04.ex_2 import (
     count_gmm_params,
     load_customers_scaled,
@@ -264,3 +264,7 @@ print(
   bridge from GMMs to modern LLM routing.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

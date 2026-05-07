@@ -34,6 +34,7 @@ from shared.mlfp04.ex_4 import (
     print_metrics,
     score_metrics,
     setup_engines,
+    teardown_engines,
     track_run,
     write_roc_chart,
 )
@@ -280,3 +281,7 @@ print(
   anomalies embedded in varying-density clusters.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

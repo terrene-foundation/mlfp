@@ -56,6 +56,7 @@ from shared.mlfp04.ex_1 import (
     setup_engines,
     standardise,
     subsample,
+    teardown_engines,
     track_run,
 )
 
@@ -459,3 +460,7 @@ print(
   iteration.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

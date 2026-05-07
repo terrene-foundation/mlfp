@@ -36,6 +36,7 @@ from kailash_ml import ModelVisualizer
 
 from shared.mlfp04.ex_1 import (
     setup_engines,
+    teardown_engines,
     track_run,
     load_customers,
     out_path,
@@ -354,3 +355,7 @@ print(
   you need the graph structure to find them.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

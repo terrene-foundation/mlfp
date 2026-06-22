@@ -30,7 +30,7 @@ from kailash_ml.types import MetricSpec
 from shared.kailash_helpers import get_device, setup_environment
 
 if TYPE_CHECKING:
-    from kailash_ml import ModelVersion
+    from kailash_ml.engines.model_registry import ModelVersion
 
 # ════════════════════════════════════════════════════════════════════════
 # Constants

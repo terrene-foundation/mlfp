@@ -133,12 +133,12 @@ class ActorCritic(nn.Module):
         # TODO: Build the shared trunk — two hidden layers with Tanh activation
         # Hint: nn.Sequential(nn.Linear(obs_dim, hidden), nn.Tanh(),
         #   nn.Linear(hidden, hidden), nn.Tanh())
-        self.trunk = # TODO
+        self.trunk = ____  # TODO
         # TODO: Create actor head (policy_head) and critic head (value_head)
         # Hint: policy_head = nn.Linear(hidden, n_actions)  — outputs action logits
         # Hint: value_head = nn.Linear(hidden, 1)  — outputs scalar state value
-        self.policy_head = # TODO
-        self.value_head = # TODO
+        self.policy_head = ____  # TODO
+        self.value_head = ____  # TODO
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         h = self.trunk(x)
@@ -150,8 +150,8 @@ class ActorCritic(nn.Module):
         logits, value = self.forward(s)
         # TODO: Create a Categorical distribution from logits and sample an action
         # Hint: dist = Categorical(logits=logits); a = dist.sample()
-        dist = # TODO
-        a = # TODO
+        dist = ____  # TODO
+        a = ____  # TODO
         return int(a.item()), dist.log_prob(a).detach(), value.detach()
 
 
@@ -205,9 +205,9 @@ def compute_gae(
     #   4. advantages[t] = gae
     #   5. next_value = float(values[t])
     for t in reversed(range(len(rewards))):
-        nonterminal = # TODO
-        delta = # TODO: TD error = reward + gamma * next_value * nonterminal - V(s)
-        gae = # TODO: accumulate GAE = delta + gamma * lam * nonterminal * gae
+        nonterminal = ____  # TODO
+        delta = ____  # TODO: TD error = reward + gamma * next_value * nonterminal - V(s)
+        gae = ____  # TODO: accumulate GAE = delta + gamma * lam * nonterminal * gae
         advantages[t] = gae
         next_value = float(values[t])
     returns = [a + float(v) for a, v in zip(advantages, values)]
@@ -290,20 +290,20 @@ async def train_ppo_async(
                     # 2. surr1 = ratio * advantage — unclipped objective
                     # 3. surr2 = clamp(ratio, 1-clip_eps, 1+clip_eps) * advantage — clipped
                     # 4. policy_loss = -min(surr1, surr2).mean() — take the pessimistic bound
-                    ratio = # TODO: torch.exp(new_lp - old_lp_t[mb])
-                    surr1 = # TODO: ratio * adv_t[mb]
-                    surr2 = # TODO: torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv_t[mb]
-                    policy_loss = # TODO: -torch.min(surr1, surr2).mean()
+                    ratio = ____  # TODO: torch.exp(new_lp - old_lp_t[mb])
+                    surr1 = ____  # TODO: ratio * adv_t[mb]
+                    surr2 = ____  # TODO: torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv_t[mb]
+                    policy_loss = ____  # TODO: -torch.min(surr1, surr2).mean()
 
                     # TODO: Compute value loss and entropy bonus
                     # Hint: value_loss = F.mse_loss(vpred, ret_t[mb])
                     # Hint: entropy = dist.entropy().mean()
-                    value_loss = # TODO
-                    entropy = # TODO
+                    value_loss = ____  # TODO
+                    entropy = ____  # TODO
 
                     # TODO: Combine into total loss
                     # Hint: loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
-                    loss = # TODO
+                    loss = ____  # TODO
 
                     opt.zero_grad()
                     loss.backward()
@@ -403,13 +403,13 @@ viz = ModelVisualizer()
 # ── Plot 1: PPO reward curve ─────────────────────────────────────────
 # TODO: Plot PPO returns using viz.training_history()
 # Hint: metrics={"PPO avg episode return": ppo_returns}
-fig1 = # TODO
+fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "02_ppo_reward_curve.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_reward_curve.html'}")
 
 # ── Plot 2: Policy entropy over training ─────────────────────────────
 # TODO: Plot entropy values using viz.training_history()
-fig2 = # TODO
+fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "02_ppo_entropy.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_entropy.html'}")
 # INTERPRETATION: Entropy measures how "spread out" the policy is across
@@ -430,7 +430,7 @@ from plotly.subplots import make_subplots
 
 # TODO: Create histogram of advantage values using go.Histogram
 # Hint: go.Figure() with go.Histogram(x=advantages_final, nbinsx=50, ...)
-fig3 = # TODO
+fig3 = ____  # TODO
 fig3.update_layout(
     title="PPO Advantage Distribution (Trained Policy)",
     xaxis_title="Advantage A(s,a)",
@@ -448,7 +448,7 @@ print(f"  Saved: {OUTPUT_DIR / '02_ppo_advantage_dist.html'}")
 # TODO: Plot actor and critic losses using viz.training_history()
 # Hint: metrics={"Actor (policy) loss": ppo_actor_losses,
 #   "Critic (value) loss": ppo_critic_losses}
-fig4 = # TODO
+fig4 = ____  # TODO
 fig4.write_html(str(OUTPUT_DIR / "02_ppo_actor_critic_loss.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_actor_critic_loss.html'}")
 # INTERPRETATION: Two losses, two learning signals:
@@ -556,16 +556,16 @@ class RideHailingPricingEnv(gym.Env):
         # Hint: price_demand_effect = 1.0 - 0.3 * (multiplier - 1.0) — demand drops with price
         # Hint: price_supply_effect = 1.0 + 0.2 * (multiplier - 1.0) — supply rises with price
         # Then clip effective_demand and effective_supply to [0, 1]
-        price_demand_effect = # TODO
-        price_supply_effect = # TODO
-        effective_demand = # TODO
-        effective_supply = # TODO
+        price_demand_effect = ____  # TODO
+        price_supply_effect = ____  # TODO
+        effective_demand = ____  # TODO
+        effective_supply = ____  # TODO
 
         # TODO: Compute rides completed and revenue
         # Hint: rides_completed = min(effective_demand, effective_supply)
         # Hint: revenue = rides_completed * multiplier
-        rides_completed = # TODO
-        revenue = # TODO
+        rides_completed = ____  # TODO
+        revenue = ____  # TODO
 
         # TODO: Compute customer satisfaction based on price multiplier
         # Hint: satisfaction = 0.95 if multiplier <= 1.0, 0.85 if <= 1.3,
@@ -575,9 +575,9 @@ class RideHailingPricingEnv(gym.Env):
         elif multiplier <= 1.3:
             satisfaction = 0.85
         elif multiplier <= 1.8:
-            satisfaction = # TODO
+            satisfaction = ____  # TODO
         else:
-            satisfaction = # TODO
+            satisfaction = ____  # TODO
 
         # Reward: revenue weighted by satisfaction (long-term loyalty matters)
         reward = revenue * satisfaction
@@ -683,8 +683,8 @@ print(f"  Improvement: {revenue_improvement:+.1f} ({revenue_pct:+.1f}%)")
 # ── Visualise: PPO vs fixed-rule pricing ─────────────────────────────
 # TODO: Create a box plot comparing PPO vs fixed-rule weekly performance
 # Hint: pl.DataFrame with "Policy" and "Weekly Revenue x Satisfaction" columns
-pricing_comparison_df = # TODO
-fig_apply = # TODO: viz.box_plot(...)
+pricing_comparison_df = ____  # TODO
+fig_apply = ____  # TODO: viz.box_plot(...)
 fig_apply.write_html(str(OUTPUT_DIR / "02_ppo_pricing_comparison.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_pricing_comparison.html'}")
 

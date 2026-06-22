@@ -143,11 +143,11 @@ async def _train_dqn_timed():
                 # TODO: Epsilon-greedy action selection
                 # Hint: same pattern as 01_dqn.py
                 if random.random() < epsilon:
-                    action = # TODO
+                    action = ____  # TODO
                 else:
                     with torch.no_grad():
                         s_t = torch.tensor(state, dtype=torch.float32, device=device)
-                        action = # TODO
+                        action = ____  # TODO
                 next_state, reward, terminated, truncated, _ = cartpole_env.step(action)
                 done = terminated or truncated
                 replay.push(state, action, reward, next_state, done)
@@ -158,11 +158,11 @@ async def _train_dqn_timed():
                 # Hint: same pattern as 01_dqn.py — sample, Q-values, targets, MSE loss
                 if len(replay) >= 500:
                     s_b, a_b, r_b, ns_b, d_b = replay.sample(64)
-                    q_values = # TODO
+                    q_values = ____  # TODO
                     with torch.no_grad():
-                        next_q = # TODO
-                        targets = # TODO
-                    loss = # TODO
+                        next_q = ____  # TODO
+                        targets = ____  # TODO
+                    loss = ____  # TODO
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
@@ -236,12 +236,12 @@ async def _train_ppo_timed():
                     logits, vpred = model(s_t[mb])
                     dist = Categorical(logits=logits)
                     new_lp = dist.log_prob(a_t[mb])
-                    ratio = # TODO: torch.exp(new_lp - old_lp_t[mb])
-                    surr1 = # TODO
-                    surr2 = # TODO: torch.clamp(ratio, 0.8, 1.2) * adv_t[mb]
-                    policy_loss = # TODO: -torch.min(surr1, surr2).mean()
-                    value_loss = # TODO: F.mse_loss(vpred, ret_t[mb])
-                    entropy = # TODO: dist.entropy().mean()
+                    ratio = ____  # TODO: torch.exp(new_lp - old_lp_t[mb])
+                    surr1 = ____  # TODO
+                    surr2 = ____  # TODO: torch.clamp(ratio, 0.8, 1.2) * adv_t[mb]
+                    policy_loss = ____  # TODO: -torch.min(surr1, surr2).mean()
+                    value_loss = ____  # TODO: F.mse_loss(vpred, ret_t[mb])
+                    entropy = ____  # TODO: dist.entropy().mean()
                     loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
                     opt.zero_grad()
                     loss.backward()
@@ -342,8 +342,8 @@ viz = ModelVisualizer()
 # ── Plot 1: Evaluation reward box plot ───────────────────────────────
 # TODO: Create box plot comparing Random, DQN, PPO evaluation returns
 # Hint: pl.DataFrame with "Policy" and "Evaluation Return" columns
-comparison_df = # TODO
-fig1 = # TODO: viz.box_plot(...)
+comparison_df = ____  # TODO
+fig1 = ____  # TODO: viz.box_plot(...)
 fig1.write_html(str(OUTPUT_DIR / "04_policy_comparison_boxplot.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 # INTERPRETATION: The box plot shows final policy quality. Random is
@@ -359,7 +359,7 @@ ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns)
 
 # TODO: Create a line plot with DQN and PPO training curves on env-steps x-axis
 # Hint: go.Figure() with two go.Scatter traces + random baseline hline
-fig2 = # TODO
+fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "04_sample_efficiency.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
 # INTERPRETATION: Sample efficiency measures how many environment
@@ -371,7 +371,7 @@ print(f"  Saved: {OUTPUT_DIR / '04_sample_efficiency.html'}")
 # ── Plot 3: Wall-clock training time comparison ──────────────────────
 # TODO: Create bar chart comparing DQN and PPO training times
 # Hint: go.Figure(data=[go.Bar(x=["DQN", "PPO"], y=[dqn_time, ppo_time], ...)])
-fig3 = # TODO
+fig3 = ____  # TODO
 fig3.write_html(str(OUTPUT_DIR / "04_training_time.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_training_time.html'}")
 
@@ -383,7 +383,7 @@ print(f"  Saved: {OUTPUT_DIR / '04_training_time.html'}")
 # Subplot (2,2): algorithm properties table
 # Hint: make_subplots(rows=2, cols=2, specs=[[{"type":"bar"},{"type":"scatter"}],
 #   [{"type":"bar"},{"type":"table"}]])
-fig4 = # TODO
+fig4 = ____  # TODO
 fig4.write_html(str(OUTPUT_DIR / "04_comparison_dashboard.html"))
 print(f"  Saved: {OUTPUT_DIR / '04_comparison_dashboard.html'}")
 

@@ -29,11 +29,8 @@ import asyncio
 
 from kailash.runtime import LocalRuntime
 from kailash.workflow.builder import WorkflowBuilder
-from kailash_ml import (
-    EvalSpec,
-    ModelSpec,
-    TrainingPipeline,
-)
+from kailash_ml import TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
 
 from shared.mlfp03.ex_7 import (
     RANDOM_SEED,

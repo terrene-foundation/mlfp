@@ -18,15 +18,16 @@
 # TASKS:
 #   1. Load the shared corpus (tools will search it)
 #   2. Define three MCP tool handlers (analyse_passage, search_corpus, stats)
-#   3. Wrap each handler in an MCPTool with a JSON schema
-#   4. Register tools on an MCPServer and verify the capability surface
+#   3. Register each handler on an MCPServer with the @server.tool decorator,
+#      attaching a JSON input schema + tool annotations
+#   4. Inspect the server's capability surface and verify 3 tools registered
 #
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
-from kailash_mcp import MCPServer, MCPTool
+from kailash_mcp import MCPServer, StructuredTool, ToolAnnotation
 
 from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
 
@@ -51,6 +52,14 @@ from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
 #   - Transport: stdio for local subprocesses, HTTP/SSE for remote
 #   - Tool:      handler function + JSON schema + description
 #   - Resource:  read-only data the agent can access
+#
+# HOW YOU REGISTER A TOOL (kailash-mcp):
+#   MCPServer exposes a `@server.tool(...)` decorator. You decorate a
+#   plain Python function; kailash-mcp reads its name, docstring, and
+#   type hints to build the tool's capability card. To describe the
+#   parameters precisely, pair it with `@structured_tool(input_schema=...)`
+#   — a JSON Schema — and a `ToolAnnotation` that records hints such as
+#   "read-only" or "estimated duration" for the calling agent.
 #
 # WHY THIS MATTERS FOR MULTI-AGENT:
 # MCP lets your agents share tools without hard-coding imports. A
@@ -79,12 +88,50 @@ print("✓ Checkpoint 1 passed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Define the three tool handlers
+# TASK 2 — Create the server, then define + register three tool handlers
 # ════════════════════════════════════════════════════════════════════════
+# In kailash-mcp you do not build separate "tool" objects and hand them to
+# the server — you register a plain function ON the server with the
+# @server.tool() decorator. So the server comes first. We declare it on the
+# stdio transport (the default for local subprocess agents); HTTP/SSE is a
+# constructor flag away when you need remote agents.
+
+print("=" * 70)
+print("TASK 2: Create MCPServer and register three tools")
+print("=" * 70)
+
+mcp_server = MCPServer(name="mlfp06-analysis-server", transport="stdio")
+
+# A JSON Schema describes each tool's parameters so any MCP-compatible agent
+# knows how to call it. ToolAnnotation records behavioural hints (read-only,
+# rough latency) that help an agent decide whether/when to call the tool.
+ANALYSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "passage": {"type": "string", "description": "Text to analyse"},
+        "analysis_type": {
+            "type": "string",
+            "enum": ["factual", "semantic", "structural"],
+        },
+    },
+    "required": ["passage"],
+}
+SEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search query"},
+        "top_k": {"type": "integer", "description": "Max results", "default": 3},
+    },
+    "required": ["query"],
+}
+STATS_SCHEMA = {"type": "object", "properties": {}}
+
+READ_ONLY = ToolAnnotation(is_read_only=True, estimated_duration=0.1)
 
 
-def mcp_analyse_passage(passage: str, analysis_type: str = "factual") -> str:
-    """Analyse a text passage from the specified perspective.
+@mcp_server.tool()
+def analyse_passage(passage: str, analysis_type: str = "factual") -> str:
+    """Analyse a text passage from a factual, semantic, or structural perspective.
 
     Args:
         passage: The text to analyse.
@@ -99,8 +146,9 @@ def mcp_analyse_passage(passage: str, analysis_type: str = "factual") -> str:
     )
 
 
-def mcp_search_corpus(query: str, top_k: int = 3) -> str:
-    """Search the SQuAD corpus for passages matching a query.
+@mcp_server.tool()
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the document corpus for passages matching a query.
 
     Args:
         query: Search query text.
@@ -120,7 +168,8 @@ def mcp_search_corpus(query: str, top_k: int = 3) -> str:
     return "\n\n".join(results) if results else "No matches found."
 
 
-def mcp_get_corpus_stats() -> str:
+@mcp_server.tool()
+def get_corpus_stats() -> str:
     """Get statistics about the available document corpus.
 
     Returns:
@@ -133,100 +182,85 @@ def mcp_get_corpus_stats() -> str:
     )
 
 
+# The @server.tool decorator returns the function unchanged, so each handler
+# is BOTH registered on the server AND directly callable here for testing.
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert mcp_get_corpus_stats().startswith("Corpus:")
-assert "[" in mcp_search_corpus("what", top_k=2) or "No matches" in mcp_search_corpus(
+assert get_corpus_stats().startswith("Corpus:")
+assert "[" in search_corpus("what", top_k=2) or "No matches" in search_corpus(
     "xyzxyz", top_k=2
 )
-print("✓ Checkpoint 2 passed — 3 handlers callable\n")
+print("✓ Checkpoint 2 passed — 3 handlers registered and callable\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Wrap handlers as MCPTools with JSON schemas
+# TASK 3 — Attach JSON schemas as StructuredTool capability cards
 # ════════════════════════════════════════════════════════════════════════
+# A StructuredTool bundles the input schema + annotation into one object —
+# the "capability card" an agent reads before deciding to call the tool.
+# Here we build one card per registered tool so we can list the full surface.
 
 print("=" * 70)
-print("TASK 3: Define MCPTool wrappers with JSON schemas")
+print("TASK 3: Build StructuredTool capability cards (schemas + annotations)")
 print("=" * 70)
 
-mcp_tools = [
-    MCPTool(
-        name="analyse_passage",
-        description=(
-            "Analyse a text passage from a factual, semantic, or structural "
-            "perspective."
-        ),
-        handler=mcp_analyse_passage,
-        parameters={
-            "passage": {"type": "string", "description": "Text to analyse"},
-            "analysis_type": {
-                "type": "string",
-                "enum": ["factual", "semantic", "structural"],
-            },
-        },
+tool_cards = {
+    "analyse_passage": StructuredTool(
+        input_schema=ANALYSE_SCHEMA, annotations=READ_ONLY
     ),
-    MCPTool(
-        name="search_corpus",
-        description="Search the document corpus for matching passages.",
-        handler=mcp_search_corpus,
-        parameters={
-            "query": {"type": "string", "description": "Search query"},
-            "top_k": {
-                "type": "integer",
-                "description": "Max results",
-                "default": 3,
-            },
-        },
+    "search_corpus": StructuredTool(input_schema=SEARCH_SCHEMA, annotations=READ_ONLY),
+    "get_corpus_stats": StructuredTool(
+        input_schema=STATS_SCHEMA, annotations=READ_ONLY
     ),
-    MCPTool(
-        name="get_corpus_stats",
-        description="Get statistics about the available corpus.",
-        handler=mcp_get_corpus_stats,
-        parameters={},
-    ),
-]
+}
 
-for tool in mcp_tools:
-    print(f"  {tool.name}: {tool.description}")
+for name, card in tool_cards.items():
+    handler = mcp_server.get_tool_by_name(name)
+    desc = (handler["original_function"].__doc__ or "").strip().splitlines()[0]
+    print(f"  {name}: {desc}")
+    print(f"      params: {list(card.input_schema['properties'])}")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert len(mcp_tools) == 3
-print("\n✓ Checkpoint 3 passed — 3 MCPTools defined\n")
+assert len(tool_cards) == 3
+assert all(isinstance(c, StructuredTool) for c in tool_cards.values())
+print("\n✓ Checkpoint 3 passed — 3 capability cards defined\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Register tools on an MCPServer
+# TASK 4 — Inspect the server's capability surface
 # ════════════════════════════════════════════════════════════════════════
+# The server already holds every tool we decorated. We never start a live
+# listener here — we introspect the registered surface, which is exactly
+# what an agent's `list_tools` call returns over the wire.
 
 print("=" * 70)
-print("TASK 4: MCP Server — register and verify")
+print("TASK 4: MCP Server — inspect and verify capability surface")
 print("=" * 70)
 
-mcp_server = MCPServer(name="mlfp06-analysis-server")
-for tool in mcp_tools:
-    mcp_server.register_tool(tool)
+stats = mcp_server.get_server_stats()
+registered_names = sorted(mcp_server._tool_registry.keys())
 
 print(f"Server: {mcp_server.name}")
-print(f"Registered tools: {len(mcp_tools)}")
+print(f"Registered tools ({stats['tools']['registered_tools']}): {registered_names}")
 print("\nTransport options:")
 print("  stdio:    for local subprocess agent connections")
 print("  HTTP/SSE: for remote/network agent connections")
 
 print("\nTool test — get_corpus_stats():")
-print(mcp_get_corpus_stats())
+print(get_corpus_stats())
 
 trace_path = OUTPUT_DIR / "ex6_mcp_server_trace.txt"
 trace_path.write_text(
     f"Server: {mcp_server.name}\n"
-    f"Tools: {[t.name for t in mcp_tools]}\n"
-    f"\n{mcp_get_corpus_stats()}\n"
+    f"Tools: {registered_names}\n"
+    f"\n{get_corpus_stats()}\n"
 )
 print(f"\nTrace written to: {trace_path}")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert mcp_server is not None
-assert len(mcp_tools) == 3
-print("\n✓ Checkpoint 4 passed — MCP server ready\n")
+assert stats["tools"]["registered_tools"] == 3
+assert registered_names == ["analyse_passage", "get_corpus_stats", "search_corpus"]
+print("\n✓ Checkpoint 4 passed — MCP server exposes 3 tools\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -237,9 +271,10 @@ print("\n✓ Checkpoint 4 passed — MCP server ready\n")
 # most frequently called. Skewed distributions reveal over-reliance
 # on a single tool (risk) or unused tools (dead code).
 
-tool_names = [t.name for t in mcp_tools]
-# Simulated production call counts (realistic distribution: search >> stats)
-simulated_calls = [45, 120, 15]
+tool_names = registered_names
+# Simulated production call counts (realistic distribution: search >> stats).
+# Order matches registered_names: analyse_passage, get_corpus_stats, search_corpus.
+simulated_calls = [45, 15, 120]
 
 fig, ax = plt.subplots(figsize=(8, 4))
 colors = ["#3498db", "#2ecc71", "#e67e22"]
@@ -363,8 +398,8 @@ print("=" * 70)
 print(
     """
   [x] MCP as the "USB for AI agents": one server, many consumers
-  [x] MCPTool definition: handler + JSON schema + description
-  [x] MCPServer registration and capability introspection
+  [x] @server.tool registration: handler + JSON schema + annotation
+  [x] StructuredTool capability cards and server introspection
   [x] Transport trade-off: stdio (local) vs HTTP/SSE (remote)
   [x] Singapore bank scenario: MCP collapses N×M glue to 1×N
       registrations

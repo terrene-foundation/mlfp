@@ -158,22 +158,22 @@ class ChurnPreventionEnv(gym.Env):
         # Hint: clip satisfaction and usage to [0, 1] using min()
         intervention_cost = 0.0
         if action == 1:  # discount
-            satisfaction = # TODO: min(1.0, satisfaction + 0.1)
-            usage = # TODO: min(1.0, usage + 0.05)
+            satisfaction = ____  # TODO: min(1.0, satisfaction + 0.1)
+            usage = ____  # TODO: min(1.0, usage + 0.05)
             intervention_cost = 1.0
         elif action == 2:  # support call
-            tickets = # TODO: max(0.0, tickets - 0.15)
-            satisfaction = # TODO: min(1.0, satisfaction + 0.05)
+            tickets = ____  # TODO: max(0.0, tickets - 0.15)
+            satisfaction = ____  # TODO: min(1.0, satisfaction + 0.05)
             intervention_cost = 0.5
         elif action == 3:  # feature upgrade
-            usage = # TODO: min(1.0, usage + 0.1)
+            usage = ____  # TODO: min(1.0, usage + 0.1)
             intervention_cost = 1.5
 
         # TODO: Natural drift — satisfaction decays, tickets accumulate
         # Hint: satisfaction -= 0.02 + noise, usage drifts slightly, tickets grow
-        satisfaction = # TODO: max(0.0, satisfaction - 0.02 + np_random.normal(0, 0.02))
-        usage = # TODO: max(0.0, min(1.0, usage - 0.01 + np_random.normal(0, 0.02)))
-        tickets = # TODO: max(0.0, min(1.0, tickets + 0.02 + np_random.normal(0, 0.01)))
+        satisfaction = ____  # TODO: max(0.0, satisfaction - 0.02 + np_random.normal(0, 0.02))
+        usage = ____  # TODO: max(0.0, min(1.0, usage - 0.01 + np_random.normal(0, 0.02)))
+        tickets = ____  # TODO: max(0.0, min(1.0, tickets + 0.02 + np_random.normal(0, 0.01)))
         tenure = min(1.0, tenure + 1.0 / self.max_steps)
 
         self.state = np.array([satisfaction, usage, tenure, tickets], dtype=np.float32)
@@ -181,8 +181,8 @@ class ChurnPreventionEnv(gym.Env):
         # TODO: Compute churn probability and determine if customer churns
         # Hint: churn_prob = max(0.0, 0.3 - satisfaction * 0.4 + tickets * 0.3)
         # Hint: churned = self.np_random.random() < churn_prob
-        churn_prob = # TODO
-        churned = # TODO
+        churn_prob = ____  # TODO
+        churned = ____  # TODO
 
         if churned:
             reward = -5.0
@@ -249,9 +249,9 @@ class PortfolioRebalancingEnv(gym.Env):
         # Hint: shifts = [[-0.05, 0.0, 0.05][d] for d in decisions]
         # Hint: transaction_cost = 0.005 * sum(abs(shifts))
         # Hint: weights = clip(weights + shifts, 0, 1) then normalise
-        decisions = # TODO
-        shifts = # TODO
-        transaction_cost = # TODO
+        decisions = ____  # TODO
+        shifts = ____  # TODO
+        transaction_cost = ____  # TODO
         weights = np.clip(weights + np.array(shifts, dtype=np.float32), 0.0, 1.0)
         weights = weights / (weights.sum() + 1e-8)
 
@@ -260,11 +260,11 @@ class PortfolioRebalancingEnv(gym.Env):
         # Hint: bond_return = np_random.normal(interest * 0.005, 0.02)
         # Hint: cash_return = 0.001
         # Hint: portfolio_return = dot(weights, [stock, bond, cash])
-        stock_return = # TODO
-        bond_return = # TODO
+        stock_return = ____  # TODO
+        bond_return = ____  # TODO
         cash_return = 0.001
         asset_returns = np.array([stock_return, bond_return, cash_return])
-        portfolio_return = # TODO
+        portfolio_return = ____  # TODO
 
         vol_penalty = market_vol * 0.05 * weights[0]
         reward = portfolio_return - vol_penalty - transaction_cost
@@ -351,17 +351,17 @@ class QueueManagementEnv(gym.Env):
         # TODO: Queue dynamics — arrivals add, staff serving removes
         # Hint: service_rate = staff * 0.3
         # Hint: queues = clip(queues + arrivals - service_rate, 0, 1)
-        service_rate = # TODO
-        queues = # TODO
+        service_rate = ____  # TODO
+        queues = ____  # TODO
 
         # TODO: Compute reward
         # Hint: avg_queue = mean(queues), max_queue = max(queues)
         # Hint: wait_penalty = 2.0 * avg_queue + 3.0 * max_queue
         # Hint: service_bonus = 1.0 if max_queue < 0.3 else 0.0
-        avg_queue = # TODO
-        max_queue = # TODO
-        wait_penalty = # TODO
-        service_bonus = # TODO
+        avg_queue = ____  # TODO
+        max_queue = ____  # TODO
+        wait_penalty = ____  # TODO
+        service_bonus = ____  # TODO
         reward = service_bonus - wait_penalty - realloc_cost
 
         self.state = np.concatenate([queues, staff]).astype(np.float32)
@@ -415,12 +415,12 @@ class EnergyTradingEnv(gym.Env):
         trade_cost = abs(trade) * 0.01
 
         if trade > 0:
-            reserve = # TODO
-            trading_pnl = # TODO
+            reserve = ____  # TODO
+            trading_pnl = ____  # TODO
         elif trade < 0:
-            actual_sell = # TODO
-            reserve = # TODO
-            trading_pnl = # TODO
+            actual_sell = ____  # TODO
+            reserve = ____  # TODO
+            trading_pnl = ____  # TODO
         else:
             trading_pnl = 0.0
 
@@ -517,11 +517,11 @@ class TrafficSignalEnv(gym.Env):
         # Hint: ew_green_fraction = 1.0 - ns_green_fraction
         # Hint: ns_served = min(queue_ns, ns_green_fraction * 0.5)
         # Hint: ew_served = min(queue_ew, ew_green_fraction * 0.5)
-        ns_green_fraction = # TODO
-        ew_green_fraction = # TODO
+        ns_green_fraction = ____  # TODO
+        ew_green_fraction = ____  # TODO
 
-        ns_served = # TODO
-        ew_served = # TODO
+        ns_served = ____  # TODO
+        ew_served = ____  # TODO
         queue_ns = max(0.0, queue_ns - ns_served)
         queue_ew = max(0.0, queue_ew - ew_served)
 
@@ -636,11 +636,11 @@ async def _train_churn_dqn_async():
                 # TODO: Epsilon-greedy action selection (same pattern as 01_dqn.py)
                 # Hint: random action with probability churn_epsilon, else argmax of churn_dqn
                 if random.random() < churn_epsilon:
-                    action = # TODO
+                    action = ____  # TODO
                 else:
                     with torch.no_grad():
                         s_t = torch.tensor(state, dtype=torch.float32, device=device)
-                        action = # TODO
+                        action = ____  # TODO
 
                 ep_actions.append(action)
                 next_state, reward, terminated, truncated, _ = churn_env.step(action)
@@ -654,11 +654,11 @@ async def _train_churn_dqn_async():
                 #   compute targets with churn_target, MSE loss, backprop
                 if len(churn_replay) >= 300:
                     s_b, a_b, r_b, ns_b, d_b = churn_replay.sample(64)
-                    q_vals = # TODO: churn_dqn(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
+                    q_vals = ____  # TODO: churn_dqn(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
                     with torch.no_grad():
-                        next_q = # TODO: churn_target(ns_b).max(dim=1).values
-                        targets = # TODO: r_b + 0.99 * next_q * (1.0 - d_b)
-                    loss = # TODO: F.mse_loss(q_vals, targets)
+                        next_q = ____  # TODO: churn_target(ns_b).max(dim=1).values
+                        targets = ____  # TODO: r_b + 0.99 * next_q * (1.0 - d_b)
+                    loss = ____  # TODO: F.mse_loss(q_vals, targets)
                     churn_opt.zero_grad()
                     loss.backward()
                     churn_opt.step()
@@ -715,7 +715,7 @@ viz = ModelVisualizer()
 
 # ── Plot 1: ChurnPrevention training reward curve ────────────────────
 # TODO: Plot training reward curve with moving average using viz.training_history()
-fig1 = # TODO
+fig1 = ____  # TODO
 fig1.write_html(str(OUTPUT_DIR / "03_churn_training_curve.html"))
 print(f"  Saved: {OUTPUT_DIR / '03_churn_training_curve.html'}")
 
@@ -735,7 +735,7 @@ late_counts = [late_actions.count(i) / max(len(late_actions), 1) for i in range(
 
 # TODO: Create grouped bar chart comparing early vs late action distributions
 # Hint: go.Figure with two go.Bar traces — one for early, one for late
-fig2 = # TODO
+fig2 = ____  # TODO
 fig2.write_html(str(OUTPUT_DIR / "03_churn_action_distribution.html"))
 print(f"  Saved: {OUTPUT_DIR / '03_churn_action_distribution.html'}")
 # INTERPRETATION: Early training shows near-uniform action distribution
@@ -770,7 +770,7 @@ traj_df = pl.DataFrame(trajectory)
 # Hint: make_subplots(rows=2, cols=1, shared_xaxes=True)
 # Hint: add go.Scatter traces for satisfaction/usage/tickets in row 1
 # Hint: add go.Bar traces for action colours in row 2
-fig3 = # TODO
+fig3 = ____  # TODO
 fig3.write_html(str(OUTPUT_DIR / "03_churn_episode_trajectory.html"))
 print(f"  Saved: {OUTPUT_DIR / '03_churn_episode_trajectory.html'}")
 
@@ -894,7 +894,7 @@ all_labels = (
 eval_df = pl.DataFrame({"Policy": all_labels, "Monthly Reward": all_rewards})
 # TODO: Create box plot comparing the three policies
 # Hint: viz.box_plot(eval_df, "Monthly Reward", group_by="Policy")
-fig_eval = # TODO
+fig_eval = ____  # TODO
 fig_eval.write_html(str(OUTPUT_DIR / "03_churn_business_impact.html"))
 print(f"\n  Saved: {OUTPUT_DIR / '03_churn_business_impact.html'}")
 

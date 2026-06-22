@@ -29,7 +29,7 @@ import json
 
 import lightgbm as lgb
 
-from kailash.dataflow import DataFlow, field
+from dataflow import DataFlow
 
 from shared.mlfp03.ex_7 import (
     DB_URL,
@@ -63,34 +63,40 @@ db = ____
 
 @db.model
 class ModelEvaluation:
-    """Stores evaluation metrics for every trained model version."""
+    """Stores evaluation metrics for every trained model version.
+
+    Note: the modern ``@db.model`` decorator AUTO-GENERATES the primary
+    key (named ``id``) from a plain ``id: int`` annotation — no helper
+    call is needed. Plain class annotations ARE the schema. Defaults
+    are written as ordinary Python defaults (e.g. ``... = "{}"``).
+    """
 
     # TODO: declare the primary-key column
-    # Hint: id: int = field(primary_key=True)
-    id: int = ____
-    model_name: str = field()
-    dataset: str = field()
-    accuracy: float = field()
-    f1_score: float = field()
-    auc_roc: float = field()
-    auc_pr: float = field()
-    log_loss_val: float = field()
-    train_size: int = field()
-    test_size: int = field()
-    feature_count: int = field()
-    hyperparameters: str = field(default="{}")
+    # Hint: a plain annotation `id: int` — @db.model auto-generates the PK
+    id: ____
+    model_name: str
+    dataset: str
+    accuracy: float
+    f1_score: float
+    auc_roc: float
+    auc_pr: float
+    log_loss_val: float
+    train_size: int
+    test_size: int
+    feature_count: int
+    hyperparameters: str = "{}"
 
 
 @db.model
 class ModelArtifact:
     """Stores the artefact pointer + lifecycle stage for each model."""
 
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    version: int = field()
-    artifact_path: str = field()
-    is_production: bool = field(default=False)
-    created_by: str = field(default="mlfp03_ex7")
+    id: int
+    model_name: str
+    version: int
+    artifact_path: str
+    is_production: bool = False
+    created_by: str = "mlfp03_ex7"
 
 
 # ════════════════════════════════════════════════════════════════════════

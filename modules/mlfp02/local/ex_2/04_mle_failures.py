@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from kailash_ml import ModelVisualizer
 from scipy import stats
 
@@ -191,10 +192,12 @@ print("\n--- Checkpoint 3 passed --- misspecification and tail risk demonstrated
 
 viz = ModelVisualizer()
 
+bimodal_df = pl.DataFrame({"gdp_growth_pct": bimodal_data})
 fig = viz.histogram(
-    bimodal_data,
+    bimodal_df,
+    column="gdp_growth_pct",
+    bins=40,
     title="Bimodal GDP Growth (Pre-COVID + COVID Shock)",
-    x_label="GDP Growth (%)",
 )
 fig.add_vline(x=bimodal_mle_mu, line_dash="dash", annotation_text="MLE mean")
 save_figure(fig, "ex2_04_bimodal_failure.html")

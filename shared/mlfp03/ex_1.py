@@ -469,11 +469,15 @@ def print_ranking(
     if not ranking:
         print("  (empty ranking)")
         return
-    max_score = max(abs(s) for _, s in ranking[:top]) or 1.0
+    # Guard against NaN/inf scores (e.g. mutual-information ties on duplicate
+    # rows can yield NaN) so the ASCII bar never does int(NaN).
+    finite = [abs(s) for _, s in ranking[:top] if np.isfinite(s)]
+    max_score = (max(finite) if finite else 1.0) or 1.0
     for name, score in ranking[:top]:
-        bar_len = int(abs(score) / max_score * 20)
+        safe = score if np.isfinite(score) else 0.0
+        bar_len = int(abs(safe) / max_score * 20)
         bar = "#" * bar_len
-        print(f"  {name:<33} {score:>10.4f}  {bar}")
+        print(f"  {name:<33} {safe:>10.4f}  {bar}")
 
 
 def save_ranking_csv(

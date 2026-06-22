@@ -199,13 +199,14 @@ print(f"Central large-or-expensive: {central_special.height:,}")
 progressive = (
     hdb.filter(pl.col("town") == "BISHAN")
     .filter(pl.col("flat_type").is_in(["4 ROOM", "5 ROOM"]))
-    .filter(pl.col("resale_price") >= 400_000)
-    .filter(pl.col("resale_price") <= 700_000)
+    .filter(pl.col("resale_price") >= 700_000)
+    .filter(pl.col("resale_price") <= 1_000_000)
 )
-print(f"Bishan 4/5-room S$400k-700k: {progressive.height:,}")
+print(f"Bishan 4/5-room S$700k-1M: {progressive.height:,}")
 # INTERPRETATION: Compound filters answer specific business questions.
-# A property investor asking "What can I get in Bishan for S$400-700k?"
-# would use exactly this filter. The count tells them how liquid the
+# A property investor asking "What can I get in Bishan for S$700k-1M?"
+# would use exactly this filter (Bishan is a mature, central estate, so
+# 4/5-room flats sit in this band). The count tells them how liquid the
 # market is — more transactions = easier to buy and sell.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────

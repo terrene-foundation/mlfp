@@ -94,8 +94,12 @@ print("\n  --- Training ---")
 for name, model in models.items():
     t0 = time.perf_counter()
     # TODO: Fit the model. CatBoost takes eval_set=(X_test, y_test);
-    # XGBoost and LightGBM take eval_set=[(X_test, y_test)], verbose=False.
+    # XGBoost takes eval_set=[(X_test, y_test)], verbose=False; LightGBM 4.x
+    # takes eval_set=[(X_test, y_test)] with NO verbose (its constructor
+    # already sets verbose=-1).
     if name == "CatBoost":
+        ____
+    elif name == "LightGBM":
         ____
     else:
         ____

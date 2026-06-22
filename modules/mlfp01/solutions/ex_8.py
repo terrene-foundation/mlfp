@@ -683,10 +683,11 @@ viz_files: list[str] = []
 # --- 9a: Fare distribution (cleaned) ---
 if "fare" in taxi_clean.columns:
     clean_fares = taxi_clean["fare"].drop_nulls().to_list()
-    fig_dist = viz.feature_distribution(
-        values=clean_fares[:50_000],
-        feature_name="Fare (S$) — Cleaned",
-    )
+    fig_dist = viz.histogram(
+    pl.DataFrame({"Fare (S$) — Cleaned": clean_fares[:50_000]}),
+    "Fare (S$) — Cleaned",
+    title="Fare (S$) — Cleaned",
+)
     fig_dist.update_layout(title="Taxi Fare Distribution (After Cleaning)")
     fig_dist.write_html("charts/ex8_fare_distribution.html")
     viz_files.append("charts/ex8_fare_distribution.html")
@@ -742,10 +743,11 @@ if "hour_of_day" in taxi_clean.columns:
 # --- 9d: Distance distribution ---
 if "haversine_km" in taxi_clean.columns:
     distances = taxi_clean["haversine_km"].drop_nulls().to_list()
-    fig_dist_km = viz.feature_distribution(
-        values=distances[:50_000],
-        feature_name="Trip Distance (km)",
-    )
+    fig_dist_km = viz.histogram(
+    pl.DataFrame({"Trip Distance (km)": distances[:50_000]}),
+    "Trip Distance (km)",
+    title="Trip Distance (km)",
+)
     fig_dist_km.update_layout(title="Trip Distance Distribution")
     fig_dist_km.write_html("charts/ex8_distance_distribution.html")
     viz_files.append("charts/ex8_distance_distribution.html")

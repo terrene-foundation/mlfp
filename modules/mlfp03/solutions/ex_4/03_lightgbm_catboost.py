@@ -118,6 +118,9 @@ for name, model in models.items():
     t0 = time.perf_counter()
     if name == "CatBoost":
         model.fit(X_train, y_train, eval_set=(X_test, y_test))
+    elif name == "LightGBM":
+        # LightGBM 4.x dropped fit(verbose=); the constructor's verbose=-1 silences it.
+        model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
     else:
         model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
     train_time = time.perf_counter() - t0

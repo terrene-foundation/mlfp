@@ -145,9 +145,10 @@ print("Saved: charts/ex6_price_per_sqm_histogram.html")
 
 # --- 2c: Feature distribution with ModelVisualizer ---
 clean_prices = hdb["resale_price"].drop_nulls().to_list()
-fig_feat_dist = viz.feature_distribution(
-    values=clean_prices[:50_000],  # Sample for performance
-    feature_name="Resale Price (S$)",
+fig_feat_dist = viz.histogram(
+    pl.DataFrame({"Resale Price (S$)": clean_prices[:50_000]}),
+    "Resale Price (S$)",
+    title="Resale Price (S$)",
 )
 fig_feat_dist.write_html("charts/ex6_price_feature_dist.html")
 print("Saved: charts/ex6_price_feature_dist.html")

@@ -1,65 +1,92 @@
-# MLFP05 — Task 1: Fashion-MNIST Image Classifier
+# MLFP05 — Task 1: Autoencoder Anomaly Detection on Sensor Telemetry
 
-**Difficulty**: Easy
-**Weight**: 20%
-**Dataset**: Fashion-MNIST (60k train / 10k test, 28×28 grayscale, 10 classes)
-**Time**: 20-40 minutes
-**Target**: ≥ 0.85 test accuracy on a hidden 5000-image test split
+**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 15s)
 
-## Problem
+## Scenario
 
-Train a small CNN image classifier on Fashion-MNIST and return a trained model
-plus a `predict(images)` callable. The grader will call your `solve()` and then
-run `predict` on a held-out test split that you never see.
+A Singapore precision-manufacturing line streams **12 sensor channels** (vibration,
+temperature, current draw, acoustic, ...) per machine cycle. You have **no labelled
+failures** — only the engineering assumption that _healthy_ cycles all "look alike"
+and that an impending bearing fault produces telemetry the line has never emitted
+before.
 
-Fashion-MNIST is downloaded by `torchvision` and cached under
-`data/mlfp05/fashion_mnist/`. Use a fixed seed so the grader can reproduce.
+This is the classic unsupervised anomaly-detection setup from Exercise 1: train an
+**undercomplete autoencoder on healthy-only data**, then score every incoming cycle
+by its **reconstruction error**. Healthy cycles reconstruct well (low error);
+anomalous cycles reconstruct poorly (high error) because the encoder never learned
+their structure. The reconstruction error is the anomaly score.
 
-## Required interface
+Implement `solve()`. It must train the AE and return the scored test set so the
+grader can verify the detector actually separates the planted anomalies.
+
+## Dataset
+
+**Synthetic, generated in-process with a fixed seed** (`numpy.random.default_rng(7)`)
+— no download, fully deterministic. Provided to you by `make_dataset()` in the
+starter:
+
+- `X_train` — `(800, 12)` float32, **healthy cycles only** (a low-rank correlated
+  signal + small Gaussian noise). Train the AE on this.
+- `X_test` — `(400, 12)` float32, a mix of healthy and anomalous cycles.
+- `y_test` — `(400,)` int, ground-truth labels (`0` = healthy, `1` = anomaly).
+  **Use this ONLY to compute the final AUC** — never as a training signal.
+
+Anomalies are planted by breaking the healthy correlation structure (off-manifold
+shifts), so a bottleneck AE that learned the healthy manifold will score them high.
+
+## Contract
 
 ```python
-import torch
-
-def solve() -> tuple[torch.nn.Module, callable]:
-    """
-    Returns:
-        model: a trained torch.nn.Module in eval() mode
-        predict: a callable predict(images: torch.Tensor) -> torch.Tensor
-                 where images has shape (N, 1, 28, 28) in [0, 1] and the
-                 returned tensor has shape (N,) with int64 class labels
-                 in 0..9
-    """
+def solve() -> dict:
     ...
+    return {
+        "model":       <trained torch.nn.Module>,   # the autoencoder
+        "scores":      <np.ndarray (400,) float>,   # per-test-row reconstruction MSE
+        "y_test":      <np.ndarray (400,) int>,     # labels, passed straight through
+        "input_dim":   12,                          # int
+        "latent_dim":  <int>,                       # bottleneck size you chose, < 12
+    }
 ```
+
+Requirements baked into the grading:
+
+1. **Bottleneck is undercomplete** — `latent_dim < input_dim` (a non-compressing AE
+   can learn the identity and will fail to separate anomalies).
+2. **`scores` are genuine reconstruction errors** — the grader re-runs your returned
+   `model` on a fresh healthy batch and a fresh anomalous batch and checks that the
+   model itself (not just your array) assigns higher error to anomalies.
+3. **Detector quality** — ROC-AUC of `scores` vs `y_test` **>= 0.90**.
+4. **Honest split** — mean reconstruction error on healthy test rows must be clearly
+   below the mean on anomalous test rows (separation ratio >= 1.5x).
+
+## Performance target
+
+- ROC-AUC (`scores` vs `y_test`) **>= 0.90**
+- Reconstruction-error separation (anomaly mean / healthy mean) **>= 1.5x**
+
+A correctly-built undercomplete AE trained ~40 epochs reaches AUC ~0.98 here.
 
 ## Visible sanity check
 
-After `solve()`:
+`solution.py` prints, when run directly:
 
-- `model` is an instance of `torch.nn.Module`
-- `model.training is False` (i.e. `model.eval()` was called)
-- The total number of parameters is between 5,000 and 5,000,000
-  (disallows returning a linear model with no hidden capacity, and also
-  disallows a 100M-parameter model that won't fit the 6-minute budget)
-- `predict(torch.zeros(2, 1, 28, 28))` returns a `torch.Tensor` of shape `(2,)`
-  with `dtype == torch.int64` and values in `0..9`
+```
+latent_dim=4  AUC=0.9xx  separation=x.xx
+```
 
-## Grading
+## Grading (8 automated checks, all must pass → 25 marks)
 
-The grader:
+return type is a dict · required keys present · model is an `nn.Module` ·
+`latent_dim < input_dim` (genuine bottleneck) · `scores` shape matches `y_test` ·
+AUC >= 0.90 · separation ratio >= 1.5x · model re-run on fresh data still ranks
+anomalies above healthy (the scores are not faked).
 
-1. Calls `solve()` and validates the return type / shape / dtype
-2. Loads Fashion-MNIST **test** split via `torchvision.datasets.FashionMNIST`
-3. Runs `predict` on 5000 test images
-4. Computes top-1 accuracy
-5. Passes when accuracy ≥ 0.85
+## Rules
 
-Budget: 6 minutes wall-clock on a 2024 laptop CPU.
-
-## Hints
-
-- A conv-pool-conv-pool-fc architecture trains in ~1 minute on CPU and reaches
-  ~0.89 test accuracy in 3 epochs
-- Use `torch.optim.Adam` with `lr=1e-3`
-- `torch.nn.CrossEntropyLoss` on raw logits (no softmax in the head)
-- Fix seeds before model creation: `torch.manual_seed(42); np.random.seed(42)`
+- **No GPU.** CPU only; the reference trains in well under 15 seconds.
+- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 1 builds
+  AEs directly in `torch.nn`.
+- **Polars** for any tabular work; **no pandas**.
+- Fix all seeds (`torch.manual_seed`) so your run is reproducible.
+- Do **not** read `y_test` during training — it is a held-out evaluation label only.
+- No hardcoded API keys or model names.

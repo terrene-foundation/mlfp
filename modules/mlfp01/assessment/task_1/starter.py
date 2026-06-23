@@ -1,12 +1,13 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP01 — Assessment Task 1: Monthly Weather Statistics
+MLFP01 — Assessment Task 1: Taxi Trip Data Forensics
 
-Complete the `solve()` function. Your solution will be auto-graded.
+Complete the `solve()` function. Read problem.md for the full specification.
+Your submission is auto-graded against strict invariants — every impossible
+row, missing null, or wrong column will fail a check.
 
-Run the grader with:
-    python grader.py starter.py
+    python grader.py starter.py     # grade your attempt
 """
 from __future__ import annotations
 
@@ -16,34 +17,29 @@ from shared import MLFPDataLoader
 
 
 def solve() -> pl.DataFrame:
-    """Compute monthly weather deviations from the annual mean.
+    """Clean the raw taxi-trip log into a 16-column analysis-ready table.
 
-    Returns:
-        A Polars DataFrame with 12 rows and 6 columns:
-            month, mean_temperature_c, total_rainfall_mm,
-            temp_deviation_c, rainfall_vs_mean_pct, is_wet_month
+    See problem.md for the exact column list, parsing rules, plausibility
+    filters, payment-normalisation mapping, imputation, dedup rule, and the
+    four derived columns. Return the cleaned frame sorted by pickup_datetime.
     """
     loader = MLFPDataLoader()
-    df = loader.load("mlfp01", "sg_weather.csv")
+    df = loader.load("mlfp01", "sg_taxi_trips.parquet")
 
-    # TODO: compute the annual mean temperature and rainfall across all 12 rows.
-    # Hint: use df["mean_temperature_c"].mean() and df["total_rainfall_mm"].mean()
+    # TODO 1: Parse pickup_datetime and dropoff_datetime to Datetime
+    #         (format "%Y-%m-%d %H:%M:%S").
+    # TODO 2: Normalise payment_type to exactly {"Card", "Cash", "NETS", "Grab"}
+    #         (the raw column has 15 spellings — see problem.md for the mapping).
+    # TODO 3: Impute tip_sgd nulls -> 0.0; pickup_zone / dropoff_zone nulls -> "Unknown".
+    # TODO 4: Derive trip_duration_min and implied_speed_kmh.
+    # TODO 5: Drop physically impossible rows (fare, distance, passengers,
+    #         duration, and implied-speed bounds — see problem.md).
+    # TODO 6: Deduplicate by trip_id, keeping the highest-fare row.
+    # TODO 7: Derive fare_per_km and is_airport.
+    # TODO 8: Select the 16 columns in the required order, sort by pickup_datetime.
 
-    # TODO: add three new columns with `with_columns`:
-    #   - temp_deviation_c     = mean_temperature_c - annual mean temperature
-    #   - rainfall_vs_mean_pct = 100 * (total_rainfall_mm - annual mean rainfall) / annual mean rainfall
-    #   - is_wet_month         = total_rainfall_mm > annual mean rainfall
-    # Hint: pl.col("total_rainfall_mm") > <annual_mean> returns a Boolean expression
-
-    # TODO: return a DataFrame with exactly these 6 columns in this order:
-    #   ["month", "mean_temperature_c", "total_rainfall_mm",
-    #    "temp_deviation_c", "rainfall_vs_mean_pct", "is_wet_month"]
-
-    raise NotImplementedError("TODO: complete solve()")
+    return df  # <- replace with your cleaned, 16-column frame
 
 
 if __name__ == "__main__":
-    result = solve()
-    print(result)
-    print(f"\nShape: {result.shape}")
-    print(f"Wet months: {result['is_wet_month'].sum()}")
+    print(solve().head())

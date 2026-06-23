@@ -1,80 +1,85 @@
-# MLFP05 — Task 2: Transfer Learning + ONNX Deployment
+# MLFP05 — Task 2: Tiny CNN for Image Classification (from scratch)
 
-**Difficulty**: Medium
-**Weight**: 35%
-**Dataset**: CIFAR-10 (50k train / 10k test, 32×32 colour, 10 classes)
-**Time**: 45-75 minutes
-**Target**: test accuracy ≥ 0.55 AND PyTorch/ONNX prediction parity on 100 images
+**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 25s)
 
-## Problem
+## Scenario
 
-You will:
+A document-digitisation pipeline must read **handwritten digits** from scanned
+forms. You have a small bundled dataset of **8×8 grayscale digit images** and must
+build a **convolutional neural network from scratch** — `Conv2d → BatchNorm → ReLU →
+MaxPool` blocks feeding a small classifier head, exactly the architecture pattern
+from Exercise 2.1 — and train it to classify the ten digits.
 
-1. Load a pre-trained `torchvision.models.resnet18` with ImageNet weights.
-2. **Freeze** the backbone and train a new classifier head on a 2000-image
-   CIFAR-10 training subset with ImageNet-normalised inputs.
-3. Export the model to **ONNX**.
-4. Implement a `predict` callable that runs **ONNX Runtime** (not PyTorch) for
-   inference so the grader can check PyTorch/ONNX parity.
+### CPU adaptation (read this)
 
-This mirrors the ship path a real ML engineer takes: train in PyTorch, serve
-through an ONNX runtime so the production system does not need torch.
+Exercise 2.1 trains on full CIFAR-10 (50K 32×32 colour photos) and Exercise 7
+fine-tunes a pretrained ResNet-18. **Neither is CPU-friendly, and downloading large
+backbones is forbidden here.** This task keeps the _same skill_ — design and train a
+CNN that learns real convolutional features — but on a tiny **bundled** 8×8 dataset
+that trains end-to-end on CPU in seconds. The "transfer learning" idea from Ex 7 is
+adapted to its small-from-scratch equivalent: you build the feature extractor
+yourself instead of downloading one. The architectural reasoning (local receptive
+fields, weight sharing, spatial hierarchy) is identical.
 
-## Required interface
+## Dataset
+
+**`sklearn.datasets.load_digits`** — 1,797 bundled 8×8 grayscale handwritten digits
+(0–9), shipped inside scikit-learn (no download). `make_dataset()` in the starter
+returns a deterministic split:
+
+- `X_train` — `(n_train, 1, 8, 8)` float32, pixel values scaled to `[0, 1]`.
+- `y_train` — `(n_train,)` int labels 0–9.
+- `X_test`, `y_test` — held-out split (`test_size=0.30`, `random_state=42`,
+  stratified). **Use `y_test` only for the final accuracy score.**
+
+## Contract
 
 ```python
-from pathlib import Path
-import torch
-from typing import Callable
-
-def solve(onnx_path: Path) -> tuple[torch.nn.Module, Callable[[torch.Tensor], torch.Tensor]]:
-    """
-    Train the model, export to `onnx_path`, then return:
-        model:   the trained torch.nn.Module (in eval mode)
-        predict: a callable(images: torch.Tensor) -> torch.Tensor
-                 where images has shape (N, 3, 32, 32) in [0, 1] and the
-                 returned tensor has shape (N,) with int64 class labels.
-                 predict() MUST run the ONNX model via onnxruntime, not
-                 the torch.nn.Module.
-    """
+def solve() -> dict:
+    ...
+    return {
+        "model":      <trained torch.nn.Module>,        # your CNN
+        "preds":      <np.ndarray (n_test,) int>,       # argmax predictions on X_test
+        "y_test":     <np.ndarray (n_test,) int>,       # labels, passed straight through
+        "n_conv":     <int>,                            # number of nn.Conv2d layers in model
+    }
 ```
 
-The grader passes `onnx_path = task_dir / "student.onnx"` and will delete the
-file before every run.
+Requirements baked into the grading:
+
+1. **It is genuinely convolutional** — the model must contain **at least one
+   `nn.Conv2d`** layer (`n_conv >= 1`, and the grader confirms by introspection).
+2. **`preds` come from your model** — the grader re-runs your returned `model` on
+   `X_test` and checks the predictions match what you submitted (no hand-tuned arrays).
+3. **Test accuracy** of `preds` vs `y_test` **>= 0.90**.
+4. **Generalisation, not memorisation** — the grader re-runs the model on a held-out
+   slice it carves from the test set; accuracy there must also clear **0.88**.
+
+## Performance target
+
+- Test accuracy **>= 0.90** (a correct 2-conv-block CNN reaches ~0.97 here).
 
 ## Visible sanity check
 
-- `onnx_path` exists and is ≤ 60 MB after `solve()`
-- The model is `resnet18`-shaped (i.e. its state dict contains a key
-  ending in `layer4.1.conv2.weight`) — this is how we verify you actually
-  loaded a pretrained backbone rather than shipping a one-line linear model
-- The student's `predict` on 100 test images matches the direct PyTorch
-  predictions from the same returned `model` on at least 95/100 images
-- Test accuracy on a hidden 1000-image slice ≥ 0.55
+`solution.py` prints, when run directly:
 
-## Grading
+```
+conv_layers=2  test_acc=0.9xx
+```
 
-1. Call `solve(onnx_path)`.
-2. Check `onnx_path` exists, size ≤ 60 MB.
-3. Check the returned model's state dict contains a `resnet18` key.
-4. Build a 1000-image held-out test slice using
-   `torchvision.datasets.CIFAR10(train=False)` with ImageNet normalisation.
-5. Run the student's `predict()` — this is the ONNX path.
-6. Run the model directly via `model(...).argmax(1)` — this is the PyTorch path.
-7. Check: PyTorch/ONNX agreement on 100 images ≥ 0.95.
-8. Check: ONNX test accuracy ≥ 0.55.
+## Grading (8 automated checks, all must pass → 25 marks)
 
-Budget: 6 minutes wall-clock on a 2024 laptop CPU.
+return type is a dict · required keys present · model is an `nn.Module` ·
+model has >= 1 `Conv2d` layer (declared `n_conv` matches introspection) ·
+`preds` shape matches `y_test` · test accuracy >= 0.90 · re-running the model
+reproduces the submitted `preds` (anti-faking) · held-out re-check accuracy >= 0.88.
 
-## Hints
+## Rules
 
-- `torchvision.models.resnet18(weights="IMAGENET1K_V1")` loads the backbone
-- Freeze: `for p in backbone.parameters(): p.requires_grad_(False)`
-- Replace `backbone.fc` with `nn.Linear(512, 10)` for 10 CIFAR-10 classes
-- ImageNet normalisation means subtracting `[0.485, 0.456, 0.406]` and
-  dividing by `[0.229, 0.224, 0.225]` per channel
-- Export with `torch.onnx.export(model, dummy, onnx_path, input_names=["input"],
-  output_names=["logits"], opset_version=17, dynamic_axes={"input": {0: "N"}})`
-- Use `onnxruntime.InferenceSession(str(onnx_path))` to load and run inference
-- Because you're training only the head (≈5k params), 1 epoch is enough to
-  clear 55% — the backbone already knows ImageNet features
+- **No GPU.** CPU only; the reference trains in well under 25 seconds.
+- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 2 builds
+  CNNs directly in `torch.nn`.
+- **No large pretrained backbones / downloads** — build the CNN from scratch.
+- Fix all seeds (`torch.manual_seed`) for reproducibility.
+- Do **not** train on `y_test`.
+- No hardcoded API keys or model names.

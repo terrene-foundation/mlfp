@@ -1,118 +1,92 @@
-#!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""MLFP05 Task 2 reference solution — transfer learning + ONNX."""
-from __future__ import annotations
+"""
+MLFP05 — Assessment Task 2: Tiny CNN for Image Classification (REFERENCE SOLUTION)
 
-from pathlib import Path
-from typing import Callable
+Two-block CNN built from scratch on bundled 8x8 digits. Deterministic, CPU-only, <25s.
+"""
+from __future__ import annotations
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torchvision
+import torch.nn.functional as F
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "cifar10"
-
-IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+N_CLASSES = 10
+SEED = 42
 
 
-def _normalize(x: torch.Tensor) -> torch.Tensor:
-    return (x - IMAGENET_MEAN.to(x.device)) / IMAGENET_STD.to(x.device)
-
-
-def _build_transfer_model() -> nn.Module:
-    backbone = torchvision.models.resnet18(
-        weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Deterministic 8x8 digit split — identical to starter."""
+    digits = load_digits()
+    X = (digits.images / 16.0).astype(np.float32)[:, None, :, :]
+    y = digits.target.astype(int)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.30, random_state=SEED, stratify=y
     )
-    for p in backbone.parameters():
-        p.requires_grad_(False)
-    backbone.fc = nn.Linear(backbone.fc.in_features, 10)
+    return X_train, y_train, X_test, y_test
 
-    class TransferNet(nn.Module):
-        def __init__(self, net: nn.Module):
+
+def solve() -> dict:
+    torch.manual_seed(SEED)
+    X_train, y_train, X_test, y_test = make_dataset()
+
+    class TinyCNN(nn.Module):
+        def __init__(self) -> None:
             super().__init__()
-            self.net = net
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            up = nn.functional.interpolate(
-                x, size=(96, 96), mode="bilinear", align_corners=False
+            self.features = nn.Sequential(
+                nn.Conv2d(1, 16, kernel_size=3, padding=1),
+                nn.BatchNorm2d(16),
+                nn.ReLU(),
+                nn.MaxPool2d(2),  # 8 -> 4
+                nn.Conv2d(16, 32, kernel_size=3, padding=1),
+                nn.BatchNorm2d(32),
+                nn.ReLU(),
+                nn.MaxPool2d(2),  # 4 -> 2
             )
-            return self.net(_normalize(up))
+            self.head = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(32 * 2 * 2, 64),
+                nn.ReLU(),
+                nn.Linear(64, N_CLASSES),
+            )
 
-    return TransferNet(backbone)
+        def forward(self, x):
+            return self.head(self.features(x))
 
+    model = TinyCNN()
+    n_conv = sum(1 for m in model.modules() if isinstance(m, nn.Conv2d))
 
-def solve(onnx_path: Path) -> tuple[nn.Module, Callable[[torch.Tensor], torch.Tensor]]:
-    torch.manual_seed(42)
-    np.random.seed(42)
-    device = torch.device("cpu")
+    train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+    loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    train_set = torchvision.datasets.CIFAR10(
-        root=str(DATA_DIR),
-        train=True,
-        download=True,
-        transform=torchvision.transforms.ToTensor(),
-    )
-
-    N_TRAIN = 2000
-    rng = np.random.default_rng(42)
-    idx = rng.choice(len(train_set), size=N_TRAIN, replace=False)
-    X_train = torch.stack([train_set[int(i)][0] for i in idx])
-    y_train = torch.tensor([train_set[int(i)][1] for i in idx], dtype=torch.long)
-
-    loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True)
-
-    model = _build_transfer_model().to(device)
-    head_params = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(head_params, lr=1e-3)
-    loss_fn = nn.CrossEntropyLoss()
-
-    for _epoch in range(4):
-        model.train()
+    model.train()
+    for _epoch in range(25):
         for xb, yb in loader:
-            opt.zero_grad()
-            loss = loss_fn(model(xb.to(device)), yb.to(device))
+            logits = model(xb)
+            loss = F.cross_entropy(logits, yb)
+            optimiser.zero_grad()
             loss.backward()
-            opt.step()
+            optimiser.step()
 
     model.eval()
+    with torch.no_grad():
+        logits = model(torch.tensor(X_test))
+        preds = logits.argmax(dim=1).cpu().numpy()
 
-    dummy = torch.zeros(1, 3, 32, 32)
-    torch.onnx.export(
-        model,
-        (dummy,),
-        str(onnx_path),
-        input_names=["input"],
-        output_names=["logits"],
-        opset_version=17,
-        dynamic_axes={"input": {0: "N"}, "logits": {0: "N"}},
-        dynamo=False,
-    )
-
-    import onnxruntime
-
-    session = onnxruntime.InferenceSession(
-        str(onnx_path), providers=["CPUExecutionProvider"]
-    )
-
-    def predict(images: torch.Tensor) -> torch.Tensor:
-        arr = images.detach().cpu().numpy().astype(np.float32)
-        logits = session.run(["logits"], {"input": arr})[0]
-        return torch.from_numpy(logits).argmax(dim=1).to(torch.int64)
-
-    return model, predict
+    return {
+        "model": model,
+        "preds": preds,
+        "y_test": y_test,
+        "n_conv": n_conv,
+    }
 
 
 if __name__ == "__main__":
-    out = Path(__file__).with_name("reference.onnx")
-    if out.exists():
-        out.unlink()
-    model, predict = solve(out)
-    print(f"onnx size: {out.stat().st_size / (1024 * 1024):.1f} MB")
-    sample = torch.rand(4, 3, 32, 32)
-    print(f"predict(sample) -> {predict(sample).tolist()}")
+    out = solve()
+    acc = (out["preds"] == out["y_test"]).mean()
+    print(f"conv_layers={out['n_conv']}  test_acc={acc:.3f}")

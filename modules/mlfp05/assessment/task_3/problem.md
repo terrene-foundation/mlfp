@@ -1,87 +1,95 @@
-# MLFP05 — Task 3: Sequence Forecasting on Real Market Data
+# MLFP05 — Task 3: GRU Time-Series Forecasting (beat the naive baseline)
 
-**Difficulty**: Hard
-**Weight**: 45%
-**Dataset**: Straits Times Index (^STI) daily closes via `yfinance`
-**Time**: 60-90 minutes
-**Target**: Walk-forward val MSE strictly below a naive baseline
+**Weight**: 25 marks · **Difficulty**: Hard · **No GPU required** (trains on CPU in < 25s)
 
-## Problem
+## Scenario
 
-You are given ~14 years of real daily OHLCV bars for the Straits Times Index
-(fetched by `yfinance` on first run and cached to
-`data/mlfp05/sti/sti_close.parquet`). The grader constructs a strict
-**walk-forward split**: the first 80% of trading days are training data, the
-last 20% are validation. You must build a recurrent model that predicts the
-next day's z-score-normalised close from a 10-day window of features, trained
-**only** on the training portion.
+You are forecasting the **next value of a noisy oscillating process** — the kind of
+signal you get from a vibrating machine component, a temperature controller, or a
+seasonally-driven demand series. The bar to clear is the **naive last-value
+forecast** ("next = most recent"). That baseline is genuinely hard to beat on noisy
+data. Your job, exactly as in Exercise 3, is to build a small recurrent model (a
+**GRU**) over fixed-length windows and **beat the naive baseline on held-out test
+MSE**.
 
-The model is graded on two things: (1) the architectural choice — your model
-must be recurrent (LSTM or GRU) with gradient clipping, not a pure MLP, and
-(2) the outcome — your walk-forward validation MSE must be strictly below a
-naive "tomorrow equals today" baseline computed on the same split.
+### CPU adaptation — and why the data is synthetic (read this)
 
-This replicates the real-world sequence-modelling trap: any model that simply
-copies the last observed value passes the smell test on a short split, so the
-grader requires you to **beat** the copy-last baseline on held-out data.
+Exercise 3 forecasts real STI / APAC stock prices. We tested a GRU on the bundled
+`sti_prices.parquet`: **daily equity returns are a near-perfect random walk**, so
+_no_ model — GRU, LSTM, transformer — beats "tomorrow = today" (we measured ratio
+1.00). Grading a "beat the baseline" target on a random walk would be dishonest (it
+is mathematically impossible). So this task uses a **synthetic series generated
+in-process with a fixed seed** that has _genuine learnable structure_: a **damped
+AR(2) oscillator** (its recurrence makes the next value depend on the _shape_ of the
+recent window, not just the last value) plus a short **seasonal cycle** plus modest
+noise. The skill tested is identical — windowed sequence forecasting that beats
+last-value — but the target is now honestly achievable on CPU in seconds.
 
-## Required interface
+## Dataset
+
+**Synthetic, deterministic** (`numpy.random.default_rng(13)`) — no download. Built by
+`make_dataset()` in the starter:
+
+- A length-3000 series: `y_t = 1.35·y_{t-1} − 0.55·y_{t-2} + 0.6·sin(2π t / 11) + ε_t`.
+- Windowed into sequences of length `SEQ_LEN = 20` → predict the **next value**.
+- Chronological split (first 80% train, last 20% test — no shuffling, no leakage).
+- `naive_pred` = the **last observed value** in each test window (the last-value
+  baseline). Because the series oscillates and turns at peaks/troughs, last-value is
+  a weak predictor — but a real one a naive model would also lose to.
+
+## Contract
 
 ```python
-import torch
-import polars as pl
-from typing import Callable
-
-def solve() -> tuple[torch.nn.Module, Callable[[pl.DataFrame], torch.Tensor]]:
-    """
-    Returns:
-        model: a trained torch.nn.Module in eval mode. MUST contain at least
-               one nn.LSTM or nn.GRU module in its children.
-        predict: a callable(df: pl.DataFrame) -> torch.Tensor
-                 where df has the same schema yfinance returns (columns at
-                 least ["Date", "Close", "High", "Low", "Volume"], sorted
-                 ascending by Date). Returns a 1-D float tensor of length
-                 (len(df) - 10), one z-score-normalised prediction per
-                 10-day rolling window, lined up so that the t-th prediction
-                 corresponds to day t+10.
-    """
+def solve() -> dict:
+    ...
+    return {
+        "model":       <trained torch.nn.Module>,       # your GRU forecaster
+        "test_pred":   <np.ndarray (Nte,) float>,       # your predicted next values
+        "y_test":      <np.ndarray (Nte,) float>,       # true next values (passthrough)
+        "naive_pred":  <np.ndarray (Nte,) float>,       # last-value baseline (passthrough)
+        "uses_recurrent": <bool>,                        # True — model contains an RNN/GRU/LSTM
+    }
 ```
 
-Normalisation note: both training and prediction MUST z-score features using
-statistics computed **only on the first 80% of the input frame** (the same
-training slice the grader will use). Using future statistics is a data leak
-and the grader will detect it by feeding a longer frame.
+Requirements baked into the grading:
+
+1. **It is recurrent** — the model must contain an `nn.GRU`, `nn.LSTM`, or `nn.RNN`
+   layer (the grader confirms by introspection; `uses_recurrent` must be `True`).
+2. **Beat the naive baseline** — `MSE(test_pred, y_test) < MSE(naive_pred, y_test)`
+   by a clear margin (model MSE <= **0.97 ×** naive MSE).
+3. **`test_pred` comes from your model** — the grader re-runs the returned `model` on
+   the re-derived `X_test` and checks it reproduces your predictions.
+4. **Naive baseline is correct** — `naive_pred` must equal the last-value baseline the
+   grader recomputes from the re-derived test windows.
+
+## Performance target
+
+- Test MSE <= **0.97 ×** naive-baseline test MSE (lower is better).
+
+A small 1-layer GRU (hidden 16) trained ~60 epochs reaches ratio ~0.2 here — a huge
+margin over the 0.97 ceiling.
 
 ## Visible sanity check
 
-- `model` contains at least one `nn.LSTM` or `nn.GRU` child
-- `predict(sti_df)` returns a 1-D float `torch.Tensor` of length `len(df) - 10`
-- On the hidden walk-forward split, the student's model validation MSE is
-  strictly less than the "copy-last" naive baseline MSE
+`solution.py` prints, when run directly:
 
-## Grading
+```
+gru  test_mse=x.xxe-01  naive_mse=x.xxe+00  ratio=0.2x
+```
 
-1. Load `data/mlfp05/sti/sti_close.parquet` (fetched by `ex_3.py` earlier).
-2. Call `student.solve()`.
-3. Check the model contains an LSTM or GRU child module.
-4. Check `predict(full_df)` returns a 1-D tensor of the expected length.
-5. Compute the walk-forward 80/20 split on the full frame.
-6. Compute the **naive baseline** MSE: predict normalised close at t+10
-   equals the normalised close at t+9 (the last value in the window).
-7. Compute the **student** MSE: run `predict(full_df)` and take only the
-   indices that fall in the val slice, MSE against the true normalised closes.
-8. Pass when student MSE < naive baseline MSE (strictly).
-9. Check that gradient clipping is applied during training (grep the source
-   for `clip_grad_norm_` or `clip_grad_value_`).
+## Grading (8 automated checks, all must pass → 25 marks)
 
-Budget: 6 minutes wall-clock on a 2024 laptop CPU.
+return type is a dict · required keys present · model is an `nn.Module` ·
+model contains a recurrent layer (declared `uses_recurrent` matches introspection) ·
+shapes of `test_pred`/`y_test`/`naive_pred` all match · model MSE beats naive MSE
+(ratio <= 0.97) · re-running the model reproduces `test_pred` (anti-faking) ·
+`naive_pred` is the correct last-value baseline.
 
-## Hints
+## Rules
 
-- Window size 10, features `["Close", "High", "Low", "Volume"]`, target =
-  next-day normalised close
-- `nn.LSTM(input_size=4, hidden_size=32, num_layers=1, batch_first=True)`
-- Train for ~20 epochs with Adam(lr=1e-3), clip grads at 1.0
-- Use the last hidden state (`h_n[-1]`) fed into a `nn.Linear(32, 1)` head
-- Naive baseline: `pred_t = normalised_close[t+9]` — a single-line numpy op
-- Don't use pandas — polars only
+- **No GPU.** CPU only; the reference trains in well under 25 seconds.
+- Raw **PyTorch is allowed** — this is the deep-learning module and Exercise 3 builds
+  GRUs/LSTMs directly in `torch.nn`.
+- Chronological split, **no leakage** — never let test windows inform training.
+- Fix all seeds (`torch.manual_seed`) for reproducibility.
+- No hardcoded API keys or model names.

@@ -1,11 +1,11 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP01 — Assessment Task 2: HDB YoY Price Changes in Ang Mo Kio
+MLFP01 — Assessment Task 2: HDB Feature Engineering
 
-Complete the `solve()` function. Your solution will be auto-graded.
+Complete the `solve()` function. Read problem.md for the full specification.
+The raw strings are deliberately messy — read the data before you parse it.
 
-Run the grader with:
     python grader.py starter.py
 """
 from __future__ import annotations
@@ -16,42 +16,29 @@ from shared import MLFPDataLoader
 
 
 def solve() -> pl.DataFrame:
-    """Compute YoY median resale price changes for Ang Mo Kio by flat type.
+    """Engineer the 10-column feature table from raw HDB resale data.
 
-    Returns:
-        A Polars DataFrame with 5 columns:
-            flat_type, year, median_price, prev_year_median, yoy_pct_change
-
-        Rows where prev_year_median is null (earliest year per flat_type) are dropped.
+    See problem.md for the exact columns, the storey_range OCR fix, the
+    dual-format remaining_lease parser + null imputation rule, the room
+    ordinal map, and the derived features.
     """
     loader = MLFPDataLoader()
     df = loader.load("mlfp01", "hdb_resale.parquet")
 
-    # TODO: filter the DataFrame to rows where town == "ANG MO KIO".
-    # Hint: df.filter(pl.col("town") == "ANG MO KIO")
+    # TODO 1: sale_year  <- first 4 chars of "month" ("YYYY-MM"), as Int.
+    # TODO 2: storey_midpoint  <- parse "LO TO HI"; some digits are OCR'd as the
+    #         letter "O" (e.g. "4O TO 42"). Fix only the numeric tokens, then
+    #         average the two bounds. (Careful: "TO" itself contains an O.)
+    # TODO 3: flat_age_years  <- sale_year - lease_commence_date.
+    # TODO 4: price_per_sqm   <- resale_price / floor_area_sqm.
+    # TODO 5: flat_type_rooms <- ordinal map (2/3/4/5 ROOM -> 2..5,
+    #         EXECUTIVE -> 6, MULTI-GENERATION -> 7).
+    # TODO 6: remaining_lease_years <- parse BOTH "X years Y months" and bare
+    #         "X"; impute nulls as 99 - flat_age_years (statutory 99y lease).
+    # TODO 7: select the 10 columns in order, sort by [sale_year, town].
 
-    # TODO: derive a `year` column (Int64) from the first 4 characters of `month`.
-    # Hint: pl.col("month").str.slice(0, 4).cast(pl.Int64)
-
-    # TODO: group by (flat_type, year) and compute the median resale_price.
-    # Hint: .group_by(["flat_type", "year"]).agg(pl.col("resale_price").median().alias("median_price"))
-
-    # TODO: sort by (flat_type, year), then add a `prev_year_median` column using
-    # a lag-1 window within each flat_type.
-    # Hint: pl.col("median_price").shift(1).over("flat_type") — but the DataFrame
-    # must be sorted first so the shift follows chronological order.
-
-    # TODO: compute yoy_pct_change = 100 * (median_price - prev_year_median) / prev_year_median
-
-    # TODO: drop rows where prev_year_median is null, then select the 5 columns
-    # in this exact order and sort by (flat_type, year):
-    #   ["flat_type", "year", "median_price", "prev_year_median", "yoy_pct_change"]
-
-    raise NotImplementedError("TODO: complete solve()")
+    return df  # <- replace with your 10-column engineered frame
 
 
 if __name__ == "__main__":
-    result = solve()
-    print(result)
-    print(f"\nShape: {result.shape}")
-    print(f"Flat types: {result['flat_type'].unique().sort().to_list()}")
+    print(solve().head())

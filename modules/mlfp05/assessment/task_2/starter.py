@@ -1,57 +1,94 @@
-#!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""MLFP05 Task 2 starter — transfer learning + ONNX.
+"""
+MLFP05 — Assessment Task 2: Tiny CNN for Image Classification
 
-Implement `solve(onnx_path)` per problem.md. predict() MUST use onnxruntime.
+Complete the `solve()` function. Read problem.md for the full specification.
+
+Build a convolutional neural network FROM SCRATCH and train it to classify bundled
+8x8 handwritten digits. The grader re-runs your model and requires test accuracy
+>= 0.90.
+
+    python grader.py starter.py     # grade your attempt
+    python grader.py solution.py    # verify the reference passes
+
+No GPU required — trains on CPU in well under 25 seconds.
 """
 from __future__ import annotations
-
-from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torchvision
+import torch.nn.functional as F
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "cifar10"
-
-IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+N_CLASSES = 10
+SEED = 42
 
 
-def solve(onnx_path: Path) -> tuple[nn.Module, Callable[[torch.Tensor], torch.Tensor]]:
-    torch.manual_seed(42)
-    np.random.seed(42)
-    device = torch.device("cpu")
+def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Deterministic 8x8 digit split — DO NOT EDIT.
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    train_set = torchvision.datasets.CIFAR10(
-        root=str(DATA_DIR),
-        train=True,
-        download=True,
-        transform=torchvision.transforms.ToTensor(),
+    Returns (X_train, y_train, X_test, y_test):
+      X_* (N, 1, 8, 8) float32 in [0, 1];  y_* (N,) int 0..9.
+    """
+    digits = load_digits()
+    X = (digits.images / 16.0).astype(np.float32)[:, None, :, :]  # (N, 1, 8, 8)
+    y = digits.target.astype(int)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.30, random_state=SEED, stratify=y
     )
+    return X_train, y_train, X_test, y_test
 
-    # TODO: subsample 2000 images from train_set and build X_train, y_train.
 
-    # TODO: load torchvision.models.resnet18 with ImageNet weights.
-    # TODO: freeze the backbone (requires_grad_ = False for every parameter).
-    # TODO: replace backbone.fc with nn.Linear(512, 10).
-    # TODO: wrap so forward() applies ImageNet normalisation before the backbone.
+def solve() -> dict:
+    """Build + train a CNN from scratch; return predictions on the test split."""
+    torch.manual_seed(SEED)
+    X_train, y_train, X_test, y_test = make_dataset()
 
-    # TODO: train the new head for 1-2 epochs with Adam(lr=1e-3).
+    # TODO 1: build a small CNN as a torch.nn.Module.
+    #         It MUST contain at least one nn.Conv2d layer.
+    #         A working recipe for 8x8 inputs:
+    #           Conv2d(1->16, 3, padding=1) -> BatchNorm2d(16) -> ReLU -> MaxPool2d(2)  # 8->4
+    #           Conv2d(16->32, 3, padding=1) -> BatchNorm2d(32) -> ReLU -> MaxPool2d(2) # 4->2
+    #           Flatten -> Linear(32*2*2 -> 64) -> ReLU -> Linear(64 -> 10)
+    class TinyCNN(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            # self.features = nn.Sequential(...)
+            # self.head = nn.Sequential(...)
 
-    # TODO: torch.onnx.export the wrapped model to onnx_path with a dynamic
-    #       batch axis. Use opset_version=17.
+        def forward(self, x):
+            # return self.head(self.features(x))
+            return torch.zeros(x.shape[0], N_CLASSES)  # <- replace
 
-    # TODO: build an onnxruntime.InferenceSession and define predict(images)
-    #       that runs the ONNX model (NOT the torch model) and returns int64
-    #       labels of shape (N,).
+    model = TinyCNN()
 
-    model: nn.Module = ...  # type: ignore
-    predict: Callable[[torch.Tensor], torch.Tensor] = ...  # type: ignore
-    return model, predict
+    # TODO 2: count the nn.Conv2d layers you actually defined.
+    n_conv = 0  # <- replace (must match the real number of Conv2d layers)
+
+    # TODO 3: train with cross-entropy on (X_train, y_train).
+    #         ~25 epochs of Adam (lr=1e-3), batch size 64 is enough.
+    #         loss = F.cross_entropy(model(xb), yb)
+    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+    # for epoch in range(25): ...
+
+    # TODO 4: predict on X_test (argmax of logits).
+    preds = np.zeros(len(y_test), dtype=int)  # <- replace with real predictions
+
+    return {
+        "model": model,
+        "preds": preds,
+        "y_test": y_test,
+        "n_conv": n_conv,
+    }
+
+
+if __name__ == "__main__":
+    out = solve()
+    acc = (out["preds"] == out["y_test"]).mean()
+    print(f"conv_layers={out['n_conv']}  test_acc={acc:.3f}")

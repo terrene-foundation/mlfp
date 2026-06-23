@@ -87,9 +87,12 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
             --exclude='README.md' \
             --exclude='*solution*' \
             --exclude='.claude/' \
+            --exclude='.kailash_ml/' \
             --exclude='.env' \
             --exclude='*.onnx' \
             --exclude='*.jsonl' \
+            --exclude='*.pkl' \
+            --exclude='*.db' \
             --exclude='.DS_Store' \
             "$module_dir/assessment/" "$dest/assessment/"
         # Drop any assessment subdir left empty after answer-key exclusion.
@@ -134,6 +137,7 @@ find "$TARGET" -name "*.onnx" -delete 2>/dev/null || true
 find "$TARGET" -path "*/.claude/*" -delete 2>/dev/null || true
 find "$TARGET" -type d -name ".claude" -exec rm -rf {} + 2>/dev/null || true
 find "$TARGET" -type d -name ".coc" -exec rm -rf {} + 2>/dev/null || true
+find "$TARGET" -type d -name ".kailash_ml" -exec rm -rf {} + 2>/dev/null || true
 
 # ── Summary ──
 echo ""

@@ -1,55 +1,71 @@
-# MLFP01 — Task 1: Monthly Weather Statistics
+# MLFP01 — Task 1: Taxi Trip Data Forensics
 
-**Difficulty**: Easy
-**Dataset**: `data/mlfp01/sg_weather.csv` (12 rows, 3 columns — one row per calendar month)
-**Time**: 15-25 minutes
+**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp01/sg_taxi_trips.parquet` (50,000 raw rows, 12 columns)
 
-## Problem
+## Scenario
 
-The Singapore weather dataset contains one row per calendar month, with columns:
+A Singapore ride-hailing operator hands you a raw trip log straight from three
+merged dispatch systems. It is dirty: duplicate trip IDs, physically impossible
+records (negative fares, teleporting trips), 15 different spellings of four
+payment methods, and missing zones/tips. Build the deterministic cleaning
+pipeline that turns it into an analysis-ready table.
 
-- `month` (String) — calendar month name (e.g., `"January"`, `"February"`)
-- `mean_temperature_c` (Float64) — mean temperature in Celsius for that month
-- `total_rainfall_mm` (Int64) — total rainfall in millimetres for that month
+Implement `solve() -> pl.DataFrame`.
 
-Implement a function `solve()` that returns a Polars `DataFrame` with the following **exact schema**, sorted by `month` in its original calendar order:
+## Required pipeline (in any order that produces the spec'd result)
 
-| Column                   | Type    | How to compute                                        |
-| ------------------------ | ------- | ----------------------------------------------------- |
-| `month`                  | String  | Passed through                                        |
-| `mean_temperature_c`     | Float64 | Passed through                                        |
-| `total_rainfall_mm`      | Int64   | Passed through                                        |
-| `temp_deviation_c`       | Float64 | `mean_temperature_c - annual_mean_temperature`        |
-| `rainfall_vs_mean_pct`   | Float64 | `100 * (total_rainfall_mm - annual_mean_rainfall) / annual_mean_rainfall` |
-| `is_wet_month`           | Boolean | `True` if `total_rainfall_mm` > annual mean rainfall |
+1. **Parse timestamps** — `pickup_datetime`, `dropoff_datetime` → `Datetime`
+   using format `"%Y-%m-%d %H:%M:%S"`.
+2. **Derive** `trip_duration_min` = minutes between dropoff and pickup, and
+   `implied_speed_kmh` = `distance_km / (trip_duration_min / 60)`.
+3. **Normalise `payment_type`** to exactly four canonical values. Match
+   case-insensitively on substrings:
+   - contains `grab` → `"Grab"`
+   - contains `nets` → `"NETS"`
+   - contains `cash` → `"Cash"`
+   - contains `card`, `visa`, `mastercard`, or `credit` → `"Card"`
+4. **Impute** — `tip_sgd` null → `0.0`; `pickup_zone` / `dropoff_zone` null →
+   `"Unknown"`.
+5. **Drop physically impossible rows** — keep a row only if ALL hold:
+   - `fare_sgd > 0`
+   - `0 < distance_km <= 100`
+   - `passengers >= 1`
+   - `0 < trip_duration_min <= 180`
+   - `2 <= implied_speed_kmh <= 120`
+6. **Deduplicate** by `trip_id`, keeping the row with the **highest `fare_sgd`**
+   (tie-break: latest `dropoff_datetime`). Exactly one row per `trip_id`.
+7. **Derive** `fare_per_km` = `fare_sgd / distance_km`, and `is_airport`
+   (Boolean) = `True` when `pickup_zone` **or** `dropoff_zone` is
+   `"Changi Airport"`.
+8. **Return** a DataFrame with these **16 columns in this exact order**, sorted
+   ascending by `pickup_datetime`:
 
-`annual_mean_temperature` and `annual_mean_rainfall` are computed over all 12 rows.
+   ```
+   trip_id, pickup_datetime, dropoff_datetime, pickup_zone, dropoff_zone,
+   distance_km, fare_sgd, tip_sgd, payment_type, passengers,
+   pickup_latitude, pickup_longitude, trip_duration_min, implied_speed_kmh,
+   fare_per_km, is_airport
+   ```
 
-## Input / Output
+## Visible sanity checks
 
-```python
-def solve() -> pl.DataFrame:
-    ...
-```
+After a correct implementation:
 
-**Returns**: a Polars DataFrame with exactly 12 rows and exactly 6 columns named above.
+- `result.shape == (44596, 16)`
+- `sorted(result["payment_type"].unique()) == ["Card", "Cash", "Grab", "NETS"]`
+- every `implied_speed_kmh` lies in `[2, 120]`
+- `result["trip_id"].n_unique() == result.height` (no duplicates)
+- about 2,400 airport trips
 
-## Visible test case
+## Grading (10 automated checks, all must pass)
 
-After running your solution:
+return type · exact 16-column schema · datetime dtypes · payment normalised to
+the 4 labels · no nulls in key columns · plausibility invariants (no impossible
+row survives) · no duplicate `trip_id` · row count matches the independently
+re-derived ground truth · derived columns correct · sorted by pickup.
 
-- `result.shape == (12, 6)`
-- `result.columns == ["month", "mean_temperature_c", "total_rainfall_mm", "temp_deviation_c", "rainfall_vs_mean_pct", "is_wet_month"]`
-- `result["is_wet_month"].sum()` is between 4 and 8 (about half the months are above average)
-- The row where `month == "January"` has `temp_deviation_c` close to `-0.93` (within 0.1)
+## Rules
 
-## Grading
-
-The grader calls `solve()` and checks:
-
-1. Return type is a Polars DataFrame
-2. Row count is 12
-3. Column names match the spec exactly
-4. `temp_deviation_c` sums to approximately 0 (within 0.01)
-5. `is_wet_month` count matches a hidden expected value
-6. Specific row values match the hidden ground truth (January deviation, wettest month rainfall)
+- **Polars only** — no pandas.
+- Load via `shared.MLFPDataLoader` (works in VS Code and Colab).
+- Cleaning must be **deterministic** — no random sampling.

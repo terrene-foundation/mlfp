@@ -56,6 +56,19 @@
   height: 100%;                    /* fill the canvas */
 }
 
+/* Vertically centre the content block so short slides (dividers, recaps,
+   exercises) sit in the optical centre instead of clinging to the top, leaving
+   a large dead bottom. Scoped to `.present` (the active slide) with !important
+   so it overrides Reveal's inline `display:block` WITHOUT un-hiding the other
+   slides — Reveal keeps `.past`/`.future` at inline `display:none`. height:100%
+   above keeps the absolutely-positioned marker badge + footer pinned to the
+   canvas corners; all 587 slides fit the canvas, so centring never clips. */
+.reveal .slides section.present {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+}
+
 /* All direct children stay within the padded content area */
 .reveal .slides section > * {
   max-width: 100%;

@@ -148,7 +148,7 @@ echo "Modules:"
 for mod_dir in "$TARGET"/modules/mlfp*/; do
     mod=$(basename "$mod_dir")
     exercises=$(find "$mod_dir/local" -name "*.py" 2>/dev/null | wc -l | tr -d ' ')
-    notebooks=$(find "$mod_dir/colab" -name "*.ipynb" 2>/dev/null | wc -l | tr -d ' ')
+    notebooks=$(find "$mod_dir/colab-selfcontained" -name "*.ipynb" 2>/dev/null | wc -l | tr -d ' ')
     pdfs=$(find "$mod_dir/readings" -name "*.pdf" 2>/dev/null | wc -l | tr -d ' ')
     echo "  $mod: ${exercises} exercises, ${notebooks} notebooks, ${pdfs} PDFs"
 done

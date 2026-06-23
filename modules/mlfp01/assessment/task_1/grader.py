@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Grade student submission for MLFP01 Task 1."""
+"""Automated grader for MLFP01 Assessment Task 1 — Taxi Trip Data Forensics.
+
+Usage:
+    python grader.py starter.py     # grade your attempt
+    python grader.py solution.py    # verify the reference passes
+
+The grader re-derives the expected cleaned dataset independently and checks the
+submission against strict invariants. All ten checks must pass.
+"""
 from __future__ import annotations
 
 import argparse
@@ -12,15 +20,56 @@ from pathlib import Path
 
 import polars as pl
 
+from shared import MLFPDataLoader
 
 EXPECTED_COLUMNS = [
-    "month",
-    "mean_temperature_c",
-    "total_rainfall_mm",
-    "temp_deviation_c",
-    "rainfall_vs_mean_pct",
-    "is_wet_month",
+    "trip_id",
+    "pickup_datetime",
+    "dropoff_datetime",
+    "pickup_zone",
+    "dropoff_zone",
+    "distance_km",
+    "fare_sgd",
+    "tip_sgd",
+    "payment_type",
+    "passengers",
+    "pickup_latitude",
+    "pickup_longitude",
+    "trip_duration_min",
+    "implied_speed_kmh",
+    "fare_per_km",
+    "is_airport",
 ]
+VALID_PAYMENTS = {"Card", "Cash", "NETS", "Grab"}
+
+
+def _reference_count() -> int:
+    """Independently re-derive the expected post-cleaning row count."""
+    df = MLFPDataLoader().load("mlfp01", "sg_taxi_trips.parquet")
+    fmt = "%Y-%m-%d %H:%M:%S"
+    df = df.with_columns(
+        [
+            pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt, strict=False),
+            pl.col("dropoff_datetime").str.strptime(pl.Datetime, fmt, strict=False),
+        ]
+    ).with_columns(
+        (
+            (pl.col("dropoff_datetime") - pl.col("pickup_datetime")).dt.total_seconds()
+            / 60.0
+        ).alias("d")
+    )
+    df = df.with_columns((pl.col("distance_km") / (pl.col("d") / 60.0)).alias("s"))
+    df = df.filter(
+        (pl.col("fare_sgd") > 0)
+        & (pl.col("distance_km") > 0)
+        & (pl.col("distance_km") <= 100)
+        & (pl.col("passengers") >= 1)
+        & (pl.col("d") > 0)
+        & (pl.col("d") <= 180)
+        & (pl.col("s") >= 2)
+        & (pl.col("s") <= 120)
+    )
+    return df.unique(subset="trip_id").height
 
 
 def load_student_module(path: Path):
@@ -39,76 +88,98 @@ def grade(student_path: Path) -> dict:
     except Exception as e:
         score["error"] = f"Failed to import: {type(e).__name__}: {e}"
         return score
-
     if not hasattr(student, "solve"):
         score["error"] = "Module does not define a solve() function"
         return score
-
     try:
-        result = student.solve()
+        r = student.solve()
     except Exception as e:
         score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
         return score
 
-    # Check 1: return type
-    score["checks"]["returns_dataframe"] = isinstance(result, pl.DataFrame)
-    if not score["checks"]["returns_dataframe"]:
-        _finalize(score)
-        return score
+    c = score["checks"]
+    c["returns_dataframe"] = isinstance(r, pl.DataFrame)
+    if not c["returns_dataframe"]:
+        return _finalize(score)
 
-    # Check 2: row count
-    score["checks"]["row_count_12"] = result.height == 12
-
-    # Check 3: columns match exactly
-    score["checks"]["columns_match"] = result.columns == EXPECTED_COLUMNS
-
-    # Check 4: temp deviation sums ~ 0
-    if "temp_deviation_c" in result.columns:
-        try:
-            dev_sum = float(result["temp_deviation_c"].sum())
-            score["checks"]["temp_deviation_sums_zero"] = abs(dev_sum) < 0.01
-        except Exception:
-            score["checks"]["temp_deviation_sums_zero"] = False
+    c["columns_exact"] = r.columns == EXPECTED_COLUMNS
+    c["datetime_dtypes"] = (
+        r.schema.get("pickup_datetime") == pl.Datetime
+        and r.schema.get("dropoff_datetime") == pl.Datetime
+    )
+    # Payment normalisation: only the 4 canonical labels, all 4 present.
+    if "payment_type" in r.columns:
+        pays = set(r["payment_type"].unique().to_list())
+        c["payment_normalised"] = (
+            pays.issubset(VALID_PAYMENTS) and pays == VALID_PAYMENTS
+        )
     else:
-        score["checks"]["temp_deviation_sums_zero"] = False
+        c["payment_normalised"] = False
 
-    # Check 5: January row has expected deviation (hidden ground truth)
-    from shared import MLFPDataLoader
-
-    loader = MLFPDataLoader()
-    truth = loader.load("mlfp01", "sg_weather.csv")
-    annual_mean_temp = float(truth["mean_temperature_c"].mean())
-    annual_mean_rain = float(truth["total_rainfall_mm"].mean())
-    jan_true_dev = float(
-        truth.filter(pl.col("month") == "January")["mean_temperature_c"][0]
-        - annual_mean_temp
+    null_cols = ["tip_sgd", "pickup_zone", "dropoff_zone", "payment_type"]
+    c["no_nulls_in_key_cols"] = all(
+        col in r.columns and r[col].null_count() == 0 for col in null_cols
     )
 
+    # Physical-plausibility invariants — any impossible row remaining fails.
     try:
-        jan_row = result.filter(pl.col("month") == "January")
-        jan_dev = float(jan_row["temp_deviation_c"][0])
-        score["checks"]["january_deviation_correct"] = abs(jan_dev - jan_true_dev) < 1e-6
+        bad = r.filter(
+            ~(
+                (pl.col("fare_sgd") > 0)
+                & (pl.col("distance_km") > 0)
+                & (pl.col("distance_km") <= 100)
+                & (pl.col("passengers") >= 1)
+                & (pl.col("trip_duration_min") > 0)
+                & (pl.col("trip_duration_min") <= 180)
+                & (pl.col("implied_speed_kmh") >= 2)
+                & (pl.col("implied_speed_kmh") <= 120)
+            )
+        ).height
+        c["plausibility_invariants"] = bad == 0
     except Exception:
-        score["checks"]["january_deviation_correct"] = False
+        c["plausibility_invariants"] = False
 
-    # Check 6: is_wet_month count matches expected
-    expected_wet = int(
-        (truth["total_rainfall_mm"] > annual_mean_rain).sum()
-    )
+    c["no_duplicate_trip_id"] = r.height > 0 and r["trip_id"].n_unique() == r.height
+
     try:
-        student_wet = int(result["is_wet_month"].sum())
-        score["checks"]["wet_month_count_correct"] = student_wet == expected_wet
+        c["row_count_correct"] = r.height == _reference_count()
     except Exception:
-        score["checks"]["wet_month_count_correct"] = False
+        c["row_count_correct"] = False
 
-    _finalize(score)
-    return score
+    # Derived columns: fare_per_km exact; is_airport matches zone rule.
+    try:
+        chk = r.with_columns(
+            [
+                (pl.col("fare_sgd") / pl.col("distance_km")).alias("_fpk"),
+                (
+                    (pl.col("pickup_zone") == "Changi Airport")
+                    | (pl.col("dropoff_zone") == "Changi Airport")
+                ).alias("_air"),
+            ]
+        )
+        fpk_ok = (
+            chk.select((pl.col("fare_per_km") - pl.col("_fpk")).abs().max()).item()
+            < 1e-9
+        )
+        air_ok = chk.select((pl.col("is_airport") == pl.col("_air")).all()).item()
+        c["derived_columns_correct"] = bool(fpk_ok and air_ok)
+    except Exception:
+        c["derived_columns_correct"] = False
+
+    try:
+        pk = r["pickup_datetime"]
+        c["sorted_by_pickup"] = pk.is_sorted()
+    except Exception:
+        c["sorted_by_pickup"] = False
+
+    return _finalize(score)
 
 
-def _finalize(score: dict) -> None:
+def _finalize(score: dict) -> dict:
     score["total"] = sum(1 for v in score["checks"].values() if v)
     score["max"] = len(score["checks"])
-    score["passed"] = score["total"] == score["max"] and score["max"] > 0
+    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
+    return score
 
 
 if __name__ == "__main__":

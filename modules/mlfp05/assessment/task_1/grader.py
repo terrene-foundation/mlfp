@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Grade MLFP05 Task 1 — Fashion-MNIST CNN classifier."""
+"""Automated grader for MLFP05 Assessment Task 1 — Autoencoder Anomaly Detection.
+
+Usage:
+    python grader.py starter.py     # grade your attempt
+    python grader.py solution.py    # verify the reference passes
+
+The grader regenerates fresh healthy/anomalous telemetry independently and re-runs
+the returned model on it, so a submission that returns a pre-baked `scores` array
+without a genuinely-trained autoencoder fails the anti-faking check.
+"""
 from __future__ import annotations
 
 import argparse
@@ -10,14 +19,28 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
-import torchvision
+import torch.nn as nn
+from sklearn.metrics import roc_auc_score
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "fashion_mnist"
+INPUT_DIM = 12
+AUC_FLOOR = 0.90
+SEP_FLOOR = 1.5
 
-N_TEST = 5000
-ACCURACY_THRESHOLD = 0.85
+
+def _fresh_eval_batches() -> tuple[np.ndarray, np.ndarray]:
+    """Independent healthy + anomalous batches with a DIFFERENT seed.
+
+    Used to verify the returned model itself ranks anomalies above healthy —
+    a faked `scores` array cannot pass this.
+    """
+    rng = np.random.default_rng(20260624)
+    basis = rng.normal(size=(3, INPUT_DIM))
+    z = rng.normal(size=(200, 3))
+    healthy = (z @ basis + 0.15 * rng.normal(size=(200, INPUT_DIM))).astype(np.float32)
+    anom = (2.5 * rng.normal(size=(200, INPUT_DIM))).astype(np.float32)
+    return healthy, anom
 
 
 def load_student_module(path: Path):
@@ -29,83 +52,90 @@ def load_student_module(path: Path):
     return mod
 
 
-def _finalize(score: dict) -> None:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["total"] == score["max"] and score["max"] > 0
-
-
 def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "metrics": {}, "total": 0, "max": 0}
+    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
     try:
         student = load_student_module(student_path)
     except Exception as e:
         score["error"] = f"Failed to import: {type(e).__name__}: {e}"
         return score
-
     if not hasattr(student, "solve"):
         score["error"] = "Module does not define a solve() function"
         return score
-
     try:
-        out = student.solve()
+        r = student.solve()
     except Exception as e:
         score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
         return score
 
-    if not (isinstance(out, tuple) and len(out) == 2):
-        score["error"] = "solve() must return a 2-tuple (model, predict)"
-        return score
+    c = score["checks"]
+    c["returns_dict"] = isinstance(r, dict)
+    if not c["returns_dict"]:
+        return _finalize(score)
 
-    model, predict = out
+    required = {"model", "scores", "y_test", "input_dim", "latent_dim"}
+    c["has_required_keys"] = required.issubset(r.keys())
+    if not c["has_required_keys"]:
+        return _finalize(score)
 
-    score["checks"]["returns_module"] = isinstance(model, torch.nn.Module)
-    if not score["checks"]["returns_module"]:
-        _finalize(score)
-        return score
-
-    score["checks"]["model_in_eval_mode"] = model.training is False
-
-    n_params = sum(p.numel() for p in model.parameters())
-    score["metrics"]["model_parameters"] = n_params
-    score["checks"]["parameter_count_reasonable"] = 5_000 <= n_params <= 5_000_000
+    model = r["model"]
+    c["model_is_nn_module"] = isinstance(model, nn.Module)
 
     try:
-        demo = predict(torch.zeros(2, 1, 28, 28))
-        shape_ok = isinstance(demo, torch.Tensor) and demo.shape == (2,)
-        dtype_ok = demo.dtype == torch.int64
-        range_ok = bool(((demo >= 0) & (demo <= 9)).all().item())
-        score["checks"]["predict_interface_ok"] = shape_ok and dtype_ok and range_ok
-    except Exception as e:
-        score["checks"]["predict_interface_ok"] = False
-        score["error"] = f"predict() raised: {type(e).__name__}: {e}"
-
-    if not score["checks"]["predict_interface_ok"]:
-        _finalize(score)
-        return score
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    test_set = torchvision.datasets.FashionMNIST(
-        root=str(DATA_DIR),
-        train=False,
-        download=True,
-        transform=torchvision.transforms.ToTensor(),
-    )
-    X_test = torch.stack([test_set[i][0] for i in range(N_TEST)])
-    y_test = torch.tensor([test_set[i][1] for i in range(N_TEST)], dtype=torch.int64)
+        latent = int(r["latent_dim"])
+        c["undercomplete_bottleneck"] = 0 < latent < int(r["input_dim"]) == INPUT_DIM
+    except Exception:
+        c["undercomplete_bottleneck"] = False
 
     try:
-        preds = predict(X_test)
-        accuracy = float((preds.cpu() == y_test).float().mean().item())
-    except Exception as e:
-        score["error"] = f"predict() raised on test set: {type(e).__name__}: {e}"
-        _finalize(score)
-        return score
+        scores = np.asarray(r["scores"], dtype=float).ravel()
+        y_test = np.asarray(r["y_test"]).ravel().astype(int)
+        c["scores_shape_matches"] = scores.shape == y_test.shape and scores.size > 0
+    except Exception:
+        c["scores_shape_matches"] = False
+        scores, y_test = np.array([]), np.array([])
 
-    score["metrics"]["test_accuracy"] = round(accuracy, 4)
-    score["checks"]["test_accuracy_above_threshold"] = accuracy >= ACCURACY_THRESHOLD
+    # AUC of the submitted scores against the labels.
+    if c["scores_shape_matches"] and len(set(y_test.tolist())) == 2:
+        try:
+            auc = roc_auc_score(y_test, scores)
+            c["auc_at_least_0p90"] = bool(auc >= AUC_FLOOR)
+        except Exception:
+            c["auc_at_least_0p90"] = False
+        try:
+            sep = scores[y_test == 1].mean() / max(scores[y_test == 0].mean(), 1e-12)
+            c["separation_at_least_1p5x"] = bool(sep >= SEP_FLOOR)
+        except Exception:
+            c["separation_at_least_1p5x"] = False
+    else:
+        c["auc_at_least_0p90"] = False
+        c["separation_at_least_1p5x"] = False
 
-    _finalize(score)
+    # Anti-faking: re-run the RETURNED model on fresh, independently-seeded data.
+    # A genuine AE trained on the healthy manifold must assign higher recon error
+    # to off-manifold anomalies than to fresh healthy cycles.
+    if c["model_is_nn_module"]:
+        try:
+            healthy, anom = _fresh_eval_batches()
+            model.eval()
+            with torch.no_grad():
+                h = torch.tensor(healthy)
+                a = torch.tensor(anom)
+                he = ((h - model(h)) ** 2).mean(dim=1).mean().item()
+                ae = ((a - model(a)) ** 2).mean(dim=1).mean().item()
+            c["model_ranks_anomalies_higher"] = bool(ae > he * SEP_FLOOR)
+        except Exception:
+            c["model_ranks_anomalies_higher"] = False
+    else:
+        c["model_ranks_anomalies_higher"] = False
+
+    return _finalize(score)
+
+
+def _finalize(score: dict) -> dict:
+    score["total"] = sum(1 for v in score["checks"].values() if v)
+    score["max"] = len(score["checks"])
+    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
     return score
 
 

@@ -1,69 +1,56 @@
-# MLFP01 — Task 2: HDB Year-over-Year Price Changes in Ang Mo Kio
+# MLFP01 — Task 2: HDB Feature Engineering
 
-**Difficulty**: Medium
-**Dataset**: `data/mlfp01/hdb_resale.parquet` (50K rows of HDB resale transactions 2015-2024)
-**Time**: 30-45 minutes
+**Weight**: 25 marks · **Difficulty**: Hard · **Dataset**: `data/mlfp01/hdb_resale.parquet` (50,150 rows, 11 columns)
 
-## Problem
+## Scenario
 
-The HDB resale dataset contains every resale transaction for HDB flats in Singapore. Relevant columns:
+Raw HDB resale records carry features locked inside messy strings: storey
+bands with OCR errors, lease durations in two incompatible formats, and
+categorical flat types. Engineer a clean, numeric, model-ready feature table.
+**No rows are dropped** — this is feature engineering, not filtering.
 
-- `month` (String) — transaction month in `"YYYY-MM"` format
-- `town` (String) — HDB town name (e.g., `"ANG MO KIO"`, `"BEDOK"`)
-- `flat_type` (String) — e.g., `"3 ROOM"`, `"4 ROOM"`, `"5 ROOM"`
-- `resale_price` (Int64) — sale price in SGD
+Implement `solve() -> pl.DataFrame`.
 
-Implement a function `solve()` that computes, for **ANG MO KIO only**, the **year-over-year (YoY) median resale price change by flat type**. Specifically:
+## Required features
 
-1. Filter to rows where `town == "ANG MO KIO"`.
-2. Derive a `year` column (Int64) from the first 4 characters of `month`.
-3. For each `(year, flat_type)`, compute the **median** `resale_price`.
-4. For each `flat_type`, sort by `year`, and add a `prev_year_median` column using a **lag window** (the previous year's median for the same flat type).
-5. Compute `yoy_pct_change = 100 * (median_price - prev_year_median) / prev_year_median`.
-6. Drop rows where `prev_year_median` is null (the earliest year for each flat type).
-7. Return the final DataFrame sorted by `flat_type`, then `year` ascending.
+1. **`sale_year`** (Int) — the year from the `"YYYY-MM"` `month` string.
+2. **`storey_midpoint`** (Float) — parse `storey_range` of the form
+   `"LO TO HI"` and average the two bounds. **Gotcha:** some digits were OCR'd
+   as the capital letter `O` (e.g. `"4O TO 42"`, `"1O TO 12"`). Fix the numeric
+   tokens — but note the delimiter `" TO "` legitimately contains an `O`, so a
+   blanket replace will corrupt it. Split first, fix the numbers second.
+3. **`flat_age_years`** (Int) — `sale_year - lease_commence_date`.
+4. **`price_per_sqm`** (Float) — `resale_price / floor_area_sqm`.
+5. **`flat_type_rooms`** (Int) — ordinal encoding:
+   `2 ROOM→2, 3 ROOM→3, 4 ROOM→4, 5 ROOM→5, EXECUTIVE→6, MULTI-GENERATION→7`.
+6. **`remaining_lease_years`** (Float) — parse the dual-format `remaining_lease`:
+   - `"71 years 11 months"` → `71 + 11/12`
+   - bare `"92"` → `92.0`
+   - **null** (1,474 rows) → impute as `99 - flat_age_years` (HDB flats are
+     sold on a statutory 99-year lease).
 
-## Input / Output
+## Output schema (10 columns, this exact order), sorted by `[sale_year, town]`
 
-```python
-def solve() -> pl.DataFrame:
-    ...
+```
+town, flat_type, flat_type_rooms, sale_year, storey_midpoint,
+floor_area_sqm, flat_age_years, remaining_lease_years, resale_price, price_per_sqm
 ```
 
-**Returns**: a Polars DataFrame with **exactly these 5 columns in this order**:
+## Visible sanity checks
 
-| Column             | Type    | Meaning                                      |
-| ------------------ | ------- | -------------------------------------------- |
-| `flat_type`        | String  | HDB flat type                                |
-| `year`             | Int64   | Transaction year                             |
-| `median_price`     | Float64 | Median resale price for that year + type     |
-| `prev_year_median` | Float64 | Previous year's median (lag-1 within flat_type) |
-| `yoy_pct_change`   | Float64 | `100 * (median - prev) / prev`               |
+- `result.shape == (50150, 10)` (no rows dropped)
+- `result["storey_midpoint"].null_count() == 0` (every band parsed)
+- `result["remaining_lease_years"].null_count() == 0` (every lease parsed/imputed)
+- `sorted(result["flat_type_rooms"].unique()) == [2, 3, 4, 5, 6, 7]`
 
-Rows where `prev_year_median` is null must be dropped.
+## Grading (10 automated checks, all must pass)
 
-## Visible test case
+return type · exact 10-column schema · row count 50,150 · no nulls in derived
+columns · `storey_midpoint` matches reference (OCR fix correct) ·
+`remaining_lease_years` matches reference (both formats + imputation) ·
+`flat_type_rooms` correct · `flat_age_years` correct · `price_per_sqm` correct ·
+sorted by `[sale_year, town]`.
 
-After running your solution:
+## Rules
 
-- `result` has column names exactly `["flat_type", "year", "median_price", "prev_year_median", "yoy_pct_change"]`
-- Every value in `prev_year_median` is not null
-- For `flat_type == "4 ROOM"`, `year == 2016`, `prev_year_median` equals the 2015 median
-- `result.height` is roughly `(num_flat_types * 9)` (9 = years 2016-2024)
-
-## Hints
-
-- Use `pl.col("month").str.slice(0, 4).cast(pl.Int64)` to extract the year.
-- Use `.over("flat_type")` on a sorted window to compute lags within each flat type.
-- `pl.col("median_price").shift(1).over("flat_type")` gives lag-1 within group, but you must sort the DataFrame by `(flat_type, year)` first.
-
-## Grading
-
-The grader calls `solve()` and checks:
-
-1. Return type is a Polars DataFrame
-2. Column names match the spec exactly
-3. No nulls in `prev_year_median`
-4. `yoy_pct_change` for (`4 ROOM`, 2016) matches the ground truth (recomputed independently)
-5. `yoy_pct_change` for (`5 ROOM`, 2020) matches the ground truth
-6. Row count equals the expected value
+- **Polars only** — no pandas. Load via `shared.MLFPDataLoader`. Deterministic.

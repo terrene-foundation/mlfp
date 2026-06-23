@@ -1,135 +1,107 @@
-#!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""MLFP05 Task 3 reference solution — STI walk-forward LSTM regression.
+"""
+MLFP05 — Assessment Task 3: GRU Time-Series Forecasting (REFERENCE SOLUTION)
 
-Predicts the HORIZON-day-ahead z-score-normalised close from a SEQ_LEN-day
-window. Naive baseline = "close HORIZON days ahead equals close today".
+Small 1-layer GRU on a windowed series with genuine temporal structure; beats the
+naive last-value baseline on held-out test MSE. Deterministic, CPU-only, < 25s.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Callable
-
 import numpy as np
-import polars as pl
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-STI_CACHE = REPO_ROOT / "data" / "mlfp05" / "sti" / "sti_close.parquet"
-
 SEQ_LEN = 20
-HORIZON = 5
-FEATURES = ["Close", "High", "Low", "Volume"]
+SEED = 13
 
 
-def _fetch_sti() -> pl.DataFrame:
-    if STI_CACHE.exists():
-        return pl.read_parquet(STI_CACHE)
-    import yfinance as yf
+def make_dataset():
+    """Deterministic windowed forecasting set with learnable structure — identical to starter.
 
-    STI_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    df = yf.download(
-        "^STI", start="2010-01-01", end="2024-12-31", progress=False, auto_adjust=True
-    )
-    if df is None or len(df) == 0:
-        df = yf.download(
-            "AAPL",
-            start="2010-01-01",
-            end="2024-12-31",
-            progress=False,
-            auto_adjust=True,
-        )
-    assert df is not None
-    df = df.copy()
-    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-    df = df.reset_index()
-    out = pl.from_pandas(df)
-    out.write_parquet(STI_CACHE)
-    return out
+    A pure random walk (raw STI returns) cannot be beaten by ANY model, so we use a
+    synthetic series with genuine temporal structure: a damped AR(2) oscillator plus a
+    short seasonal cycle plus modest noise. The next value depends on the SHAPE of the
+    recent window (not just the last value), so a GRU clears the naive last-value
+    baseline with a real margin while the baseline stays honestly hard.
+    """
+    rng = np.random.default_rng(SEED)
+    n = 3000
+    a1, a2 = 1.35, -0.55  # complex-conjugate roots => oscillation
+    series = np.zeros(n, dtype=np.float64)
+    noise = rng.normal(0.0, 0.5, size=n)
+    for t in range(2, n):
+        season = 0.6 * np.sin(2.0 * np.pi * t / 11.0)
+        series[t] = a1 * series[t - 1] + a2 * series[t - 2] + season + noise[t]
+    series = series.astype(np.float32)
 
+    xs, ys = [], []
+    for i in range(len(series) - SEQ_LEN - 1):
+        xs.append(series[i : i + SEQ_LEN])
+        ys.append(series[i + SEQ_LEN])
+    X = np.array(xs, dtype=np.float32)[:, :, None]  # (N, SEQ_LEN, 1)
+    y = np.array(ys, dtype=np.float32)
 
-def _train_stats(df: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    data = df.select(FEATURES).to_numpy().astype(np.float32)
-    split = int(0.8 * len(data))
-    train = data[:split]
-    mean = train.mean(axis=0, keepdims=True)
-    std = train.std(axis=0, keepdims=True) + 1e-8
-    return mean, std
+    split = int(len(X) * 0.8)
+    X_train, X_test = X[:split], X[split:]
+    y_train, y_test = y[:split], y[split:]
+    naive_pred = X_test[:, -1, 0].astype(np.float32)  # last observed value in window
+    return X_train, y_train, X_test, y_test, naive_pred
 
 
-def _windowed(
-    data: np.ndarray, seq_len: int, horizon: int
-) -> tuple[np.ndarray, np.ndarray]:
-    n_windows = len(data) - seq_len - horizon + 1
-    X = np.stack([data[i : i + seq_len] for i in range(n_windows)])
-    y = data[seq_len + horizon - 1 : seq_len + horizon - 1 + n_windows, 0]
-    return X.astype(np.float32), y.astype(np.float32)
+def solve() -> dict:
+    torch.manual_seed(SEED)
+    X_train, y_train, X_test, y_test, naive_pred = make_dataset()
 
+    class GRUForecaster(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rnn = nn.GRU(input_size=1, hidden_size=16, batch_first=True)
+            self.head = nn.Linear(16, 1)
 
-class SequenceLSTM(nn.Module):
-    def __init__(self, input_dim: int = len(FEATURES), hidden_dim: int = 48):
-        super().__init__()
-        self.lstm = nn.LSTM(
-            input_dim, hidden_dim, num_layers=2, batch_first=True, dropout=0.1
-        )
-        self.head = nn.Linear(hidden_dim, 1)
+        def forward(self, x):
+            out, _ = self.rnn(x)
+            return self.head(out[:, -1, :]).squeeze(-1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        _out, (h_n, _c_n) = self.lstm(x)
-        return self.head(h_n[-1]).squeeze(-1)
-
-
-def solve() -> tuple[nn.Module, Callable[[pl.DataFrame], torch.Tensor]]:
-    torch.manual_seed(42)
-    np.random.seed(42)
-
-    df = _fetch_sti()
-    mean, std = _train_stats(df)
-    data = df.select(FEATURES).to_numpy().astype(np.float32)
-    data_norm = (data - mean) / std
-
-    split = int(0.8 * len(data_norm))
-    train_norm = data_norm[:split]
-    X_train, y_train = _windowed(train_norm, SEQ_LEN, HORIZON)
-
-    loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train)),
-        batch_size=64,
-        shuffle=True,
+    model = GRUForecaster()
+    uses_recurrent = any(
+        isinstance(m, (nn.GRU, nn.LSTM, nn.RNN)) for m in model.modules()
     )
 
-    model = SequenceLSTM()
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    loss_fn = nn.MSELoss()
+    train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+    loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    for _epoch in range(40):
-        model.train()
+    model.train()
+    for _epoch in range(60):
         for xb, yb in loader:
-            opt.zero_grad()
-            loss = loss_fn(model(xb), yb)
+            pred = model(xb)
+            loss = F.mse_loss(pred, yb)
+            optimiser.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            opt.step()
+            optimiser.step()
 
     model.eval()
+    with torch.no_grad():
+        test_pred = model(torch.tensor(X_test)).cpu().numpy().astype(np.float32)
 
-    def predict(frame: pl.DataFrame) -> torch.Tensor:
-        raw = frame.select(FEATURES).to_numpy().astype(np.float32)
-        mean_p, std_p = _train_stats(frame)
-        normed = (raw - mean_p) / std_p
-        windows, _ = _windowed(normed, SEQ_LEN, HORIZON)
-        with torch.no_grad():
-            preds = model(torch.from_numpy(windows))
-        return preds.float()
-
-    return model, predict
+    return {
+        "model": model,
+        "test_pred": test_pred,
+        "y_test": y_test,
+        "naive_pred": naive_pred,
+        "uses_recurrent": uses_recurrent,
+    }
 
 
 if __name__ == "__main__":
-    model, predict = solve()
-    df = _fetch_sti()
-    preds = predict(df)
-    print(f"STI rows: {len(df)}  predictions: {tuple(preds.shape)}")
+    out = solve()
+    yt = out["y_test"]
+    mse = float(((out["test_pred"] - yt) ** 2).mean())
+    naive = float(((out["naive_pred"] - yt) ** 2).mean())
+    print(
+        f"gru  test_mse={mse:.2e}  naive_mse={naive:.2e}  "
+        f"ratio={mse / max(naive, 1e-12):.2f}"
+    )

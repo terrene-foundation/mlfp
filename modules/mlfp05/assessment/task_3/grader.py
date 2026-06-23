@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Grade MLFP05 Task 3 — STI walk-forward LSTM regression."""
+"""Automated grader for MLFP05 Assessment Task 3 — GRU Time-Series Forecasting.
+
+Usage:
+    python grader.py starter.py     # grade your attempt
+    python grader.py solution.py    # verify the reference passes
+
+The grader re-derives the exact same series and test split, re-runs the returned
+model on it (so a hand-tuned `test_pred` array fails the anti-faking check), and
+verifies the model is genuinely recurrent and beats the naive last-value baseline.
+"""
 from __future__ import annotations
 
 import argparse
@@ -11,16 +20,37 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 import torch
 import torch.nn as nn
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-STI_CACHE = REPO_ROOT / "data" / "mlfp05" / "sti" / "sti_close.parquet"
-
 SEQ_LEN = 20
-HORIZON = 5
-FEATURES = ["Close", "High", "Low", "Volume"]
+SEED = 13
+RATIO_CEILING = 0.97  # model MSE must be <= 0.97 * naive MSE
+
+
+def _reference_dataset():
+    """Re-derive (X_test, y_test, naive_pred) identically to the starter."""
+    rng = np.random.default_rng(SEED)
+    n = 3000
+    a1, a2 = 1.35, -0.55
+    series = np.zeros(n, dtype=np.float64)
+    noise = rng.normal(0.0, 0.5, size=n)
+    for t in range(2, n):
+        season = 0.6 * np.sin(2.0 * np.pi * t / 11.0)
+        series[t] = a1 * series[t - 1] + a2 * series[t - 2] + season + noise[t]
+    series = series.astype(np.float32)
+
+    xs, ys = [], []
+    for i in range(len(series) - SEQ_LEN - 1):
+        xs.append(series[i : i + SEQ_LEN])
+        ys.append(series[i + SEQ_LEN])
+    X = np.array(xs, dtype=np.float32)[:, :, None]
+    y = np.array(ys, dtype=np.float32)
+    split = int(len(X) * 0.8)
+    X_test = X[split:]
+    y_test = y[split:]
+    naive_pred = X_test[:, -1, 0].astype(np.float32)
+    return X_test, y_test, naive_pred
 
 
 def load_student_module(path: Path):
@@ -32,129 +62,97 @@ def load_student_module(path: Path):
     return mod
 
 
-def _finalize(score: dict) -> None:
-    score["total"] = sum(1 for v in score["checks"].values() if v)
-    score["max"] = len(score["checks"])
-    score["passed"] = score["total"] == score["max"] and score["max"] > 0
-
-
-def _ensure_sti() -> pl.DataFrame:
-    if STI_CACHE.exists():
-        return pl.read_parquet(STI_CACHE)
-    import yfinance as yf
-
-    STI_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    df = yf.download(
-        "^STI", start="2010-01-01", end="2024-12-31", progress=False, auto_adjust=True
-    )
-    if df is None or len(df) == 0:
-        df = yf.download(
-            "AAPL",
-            start="2010-01-01",
-            end="2024-12-31",
-            progress=False,
-            auto_adjust=True,
-        )
-    df = df.copy()
-    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-    df = df.reset_index()
-    out = pl.from_pandas(df)
-    out.write_parquet(STI_CACHE)
-    return out
-
-
-def _has_recurrent_child(model: nn.Module) -> bool:
-    for m in model.modules():
-        if isinstance(m, (nn.LSTM, nn.GRU)):
-            return True
-    return False
-
-
 def grade(student_path: Path) -> dict:
-    score: dict = {"passed": False, "checks": {}, "metrics": {}, "total": 0, "max": 0}
-
-    try:
-        source = student_path.read_text()
-    except Exception as e:
-        score["error"] = f"Failed to read source: {type(e).__name__}: {e}"
-        return score
-
-    score["checks"]["uses_gradient_clipping"] = (
-        "clip_grad_norm_" in source or "clip_grad_value_" in source
-    )
-
+    score: dict = {"passed": False, "checks": {}, "total": 0, "max": 0}
     try:
         student = load_student_module(student_path)
     except Exception as e:
         score["error"] = f"Failed to import: {type(e).__name__}: {e}"
         return score
-
     if not hasattr(student, "solve"):
         score["error"] = "Module does not define a solve() function"
         return score
-
     try:
-        out = student.solve()
+        r = student.solve()
     except Exception as e:
         score["error"] = f"Runtime error in solve(): {type(e).__name__}: {e}"
         return score
 
-    if not (isinstance(out, tuple) and len(out) == 2):
-        score["error"] = "solve() must return a 2-tuple (model, predict)"
-        return score
+    c = score["checks"]
+    c["returns_dict"] = isinstance(r, dict)
+    if not c["returns_dict"]:
+        return _finalize(score)
 
-    model, predict = out
+    required = {"model", "test_pred", "y_test", "naive_pred", "uses_recurrent"}
+    c["has_required_keys"] = required.issubset(r.keys())
+    if not c["has_required_keys"]:
+        return _finalize(score)
 
-    score["checks"]["returns_module"] = isinstance(model, nn.Module)
-    if not score["checks"]["returns_module"]:
-        _finalize(score)
-        return score
+    model = r["model"]
+    c["model_is_nn_module"] = isinstance(model, nn.Module)
 
-    score["checks"]["contains_lstm_or_gru"] = _has_recurrent_child(model)
+    # Genuine recurrent net: at least one GRU/LSTM/RNN, declared flag matches.
+    if c["model_is_nn_module"]:
+        actual_rec = any(
+            isinstance(m, (nn.GRU, nn.LSTM, nn.RNN)) for m in model.modules()
+        )
+        c["is_recurrent"] = actual_rec and bool(r["uses_recurrent"]) == actual_rec
+    else:
+        c["is_recurrent"] = False
 
-    df = _ensure_sti()
+    X_test_ref, y_test_ref, naive_ref = _reference_dataset()
+
     try:
-        preds = predict(df)
-    except Exception as e:
-        score["error"] = f"predict() raised: {type(e).__name__}: {e}"
-        _finalize(score)
-        return score
+        test_pred = np.asarray(r["test_pred"], dtype=np.float32).ravel()
+        y_test = np.asarray(r["y_test"], dtype=np.float32).ravel()
+        naive_pred = np.asarray(r["naive_pred"], dtype=np.float32).ravel()
+        c["shapes_match"] = (
+            test_pred.shape == y_test.shape == naive_pred.shape == y_test_ref.shape
+        )
+    except Exception:
+        c["shapes_match"] = False
+        test_pred = y_test = naive_pred = np.array([])
 
-    expected_len = len(df) - SEQ_LEN - HORIZON + 1
-    score["checks"]["prediction_shape_correct"] = (
-        isinstance(preds, torch.Tensor)
-        and preds.dim() == 1
-        and preds.shape[0] == expected_len
-    )
-    if not score["checks"]["prediction_shape_correct"]:
-        _finalize(score)
-        return score
+    # Model beats the naive baseline by a clear margin.
+    if c["shapes_match"]:
+        model_mse = float(((test_pred - y_test) ** 2).mean())
+        naive_mse = float(((naive_pred - y_test) ** 2).mean())
+        c["beats_naive_baseline"] = bool(
+            naive_mse > 0 and model_mse <= RATIO_CEILING * naive_mse
+        )
+    else:
+        c["beats_naive_baseline"] = False
 
-    data = df.select(FEATURES).to_numpy().astype(np.float32)
-    split = int(0.8 * len(data))
-    train = data[:split]
-    mean = train.mean(axis=0, keepdims=True)
-    std = train.std(axis=0, keepdims=True) + 1e-8
-    data_norm = (data - mean) / std
+    # Anti-faking: re-run the returned model on the re-derived X_test and require it
+    # to reproduce the submitted predictions.
+    if c["model_is_nn_module"] and c["shapes_match"]:
+        try:
+            model.eval()
+            with torch.no_grad():
+                rerun = model(torch.tensor(X_test_ref)).cpu().numpy().ravel()
+            max_abs = float(np.max(np.abs(rerun - test_pred)))
+            tol = 1e-3 * (float(np.std(y_test_ref)) + 1e-9)
+            c["preds_reproduced_by_model"] = bool(max_abs <= max(tol, 1e-4))
+        except Exception:
+            c["preds_reproduced_by_model"] = False
+    else:
+        c["preds_reproduced_by_model"] = False
 
-    n_windows = len(data_norm) - SEQ_LEN - HORIZON + 1
-    y_true_all = data_norm[SEQ_LEN + HORIZON - 1 : SEQ_LEN + HORIZON - 1 + n_windows, 0]
-    # Naive = "close HORIZON days ahead equals close at end of window"
-    window_end_vals = data_norm[SEQ_LEN - 1 : SEQ_LEN - 1 + n_windows, 0]
+    # Naive baseline is the correct last-value baseline (matches re-derivation).
+    if c["shapes_match"]:
+        c["naive_baseline_correct"] = bool(
+            np.allclose(naive_pred, naive_ref, atol=1e-5)
+        )
+    else:
+        c["naive_baseline_correct"] = False
 
-    n_train_w = split - SEQ_LEN - HORIZON + 1
-    val_true = y_true_all[n_train_w:]
-    naive_preds_val = window_end_vals[n_train_w:]
-    naive_mse = float(((naive_preds_val - val_true) ** 2).mean())
+    return _finalize(score)
 
-    student_val = preds[n_train_w:].detach().cpu().numpy().astype(np.float32)
-    student_mse = float(((student_val - val_true) ** 2).mean())
 
-    score["metrics"]["naive_mse"] = round(naive_mse, 6)
-    score["metrics"]["student_mse"] = round(student_mse, 6)
-    score["checks"]["beats_naive_baseline"] = student_mse < naive_mse
-
-    _finalize(score)
+def _finalize(score: dict) -> dict:
+    score["total"] = sum(1 for v in score["checks"].values() if v)
+    score["max"] = len(score["checks"])
+    score["passed"] = score["max"] > 0 and score["total"] == score["max"]
     return score
 
 

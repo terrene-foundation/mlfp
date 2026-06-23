@@ -1,91 +1,103 @@
-#!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""MLFP05 Task 1 reference solution — Fashion-MNIST CNN classifier."""
-from __future__ import annotations
+"""
+MLFP05 — Assessment Task 1: Autoencoder Anomaly Detection (REFERENCE SOLUTION)
 
-from pathlib import Path
-from typing import Callable
+Undercomplete AE trained on healthy-only telemetry; reconstruction error is the
+anomaly score. Deterministic, CPU-only, < 15s.
+"""
+from __future__ import annotations
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
 from torch.utils.data import DataLoader, TensorDataset
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = REPO_ROOT / "data" / "mlfp05" / "fashion_mnist"
+INPUT_DIM = 12
+SEED = 7
 
 
-class FashionCNN(nn.Module):
-    def __init__(self, n_classes: int = 10):
-        super().__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.dropout = nn.Dropout(0.3)
-        self.fc1 = nn.Linear(128 * 3 * 3, 128)
-        self.fc2 = nn.Linear(128, n_classes)
+def make_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Deterministic synthetic sensor telemetry — identical to starter."""
+    rng = np.random.default_rng(SEED)
+    basis = rng.normal(size=(3, INPUT_DIM))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.max_pool2d(F.relu(self.bn1(self.conv1(x))), 2)  # 32x14x14
-        x = F.max_pool2d(F.relu(self.bn2(self.conv2(x))), 2)  # 64x7x7
-        x = F.max_pool2d(F.relu(self.bn3(self.conv3(x))), 2)  # 128x3x3
-        x = self.dropout(x.flatten(1))
-        x = F.relu(self.fc1(x))
-        return self.fc2(x)
+    def healthy(n: int) -> np.ndarray:
+        z = rng.normal(size=(n, 3))
+        return (z @ basis + 0.15 * rng.normal(size=(n, INPUT_DIM))).astype(np.float32)
 
+    def anomaly(n: int) -> np.ndarray:
+        return (2.5 * rng.normal(size=(n, INPUT_DIM))).astype(np.float32)
 
-def solve() -> tuple[nn.Module, Callable[[torch.Tensor], torch.Tensor]]:
-    torch.manual_seed(42)
-    np.random.seed(42)
-    device = torch.device("cpu")
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    train_set = torchvision.datasets.FashionMNIST(
-        root=str(DATA_DIR),
-        train=True,
-        download=True,
-        transform=torchvision.transforms.ToTensor(),
+    X_train = healthy(800)
+    n_test_healthy, n_test_anom = 320, 80
+    X_test = np.vstack([healthy(n_test_healthy), anomaly(n_test_anom)])
+    y_test = np.concatenate(
+        [np.zeros(n_test_healthy, dtype=int), np.ones(n_test_anom, dtype=int)]
     )
+    perm = rng.permutation(len(y_test))
+    return X_train, X_test[perm], y_test[perm]
 
-    N_TRAIN = 20000
-    rng = np.random.default_rng(42)
-    idx = rng.choice(len(train_set), size=N_TRAIN, replace=False)
-    X_train = torch.stack([train_set[int(i)][0] for i in idx])
-    y_train = torch.tensor([train_set[int(i)][1] for i in idx], dtype=torch.long)
 
-    loader = DataLoader(TensorDataset(X_train, y_train), batch_size=128, shuffle=True)
+def solve() -> dict:
+    torch.manual_seed(SEED)
+    X_train, X_test, y_test = make_dataset()
 
-    model = FashionCNN().to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    loss_fn = nn.CrossEntropyLoss()
+    latent_dim = 4  # undercomplete: 4 < 12 (healthy manifold is rank-3)
 
-    for _epoch in range(6):
-        model.train()
-        for xb, yb in loader:
-            opt.zero_grad()
-            loss = loss_fn(model(xb.to(device)), yb.to(device))
+    class AE(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Sequential(
+                nn.Linear(INPUT_DIM, 16),
+                nn.ReLU(),
+                nn.Linear(16, latent_dim),
+            )
+            self.decoder = nn.Sequential(
+                nn.Linear(latent_dim, 16),
+                nn.ReLU(),
+                nn.Linear(16, INPUT_DIM),
+            )
+
+        def forward(self, x):
+            return self.decoder(self.encoder(x))
+
+    model = AE()
+
+    train_tensor = torch.tensor(X_train)
+    loader = DataLoader(TensorDataset(train_tensor), batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    model.train()
+    for _epoch in range(40):
+        for (batch,) in loader:
+            recon = model(batch)
+            loss = F.mse_loss(recon, batch)
+            optimiser.zero_grad()
             loss.backward()
-            opt.step()
+            optimiser.step()
 
     model.eval()
+    with torch.no_grad():
+        test_tensor = torch.tensor(X_test)
+        recon = model(test_tensor)
+        scores = ((test_tensor - recon) ** 2).mean(dim=1).cpu().numpy()
 
-    def predict(images: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            logits = model(images.to(device))
-            return logits.argmax(dim=1).cpu().to(torch.int64)
-
-    return model, predict
+    return {
+        "model": model,
+        "scores": scores,
+        "y_test": y_test,
+        "input_dim": INPUT_DIM,
+        "latent_dim": latent_dim,
+    }
 
 
 if __name__ == "__main__":
-    model, predict = solve()
-    n = sum(p.numel() for p in model.parameters())
-    print(f"parameters={n}")
-    demo = predict(torch.zeros(2, 1, 28, 28))
-    print(f"predict(zeros) -> {demo.tolist()}  dtype={demo.dtype}")
+    from sklearn.metrics import roc_auc_score
+
+    out = solve()
+    auc = roc_auc_score(out["y_test"], out["scores"])
+    s, yt = out["scores"], out["y_test"]
+    sep = s[yt == 1].mean() / max(s[yt == 0].mean(), 1e-9)
+    print(f"latent_dim={out['latent_dim']}  AUC={auc:.3f}  separation={sep:.2f}")

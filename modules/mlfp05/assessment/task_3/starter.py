@@ -1,81 +1,119 @@
-#!/usr/bin/env python3
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""MLFP05 Task 3 starter — STI walk-forward LSTM regression.
+"""
+MLFP05 — Assessment Task 3: GRU Time-Series Forecasting
 
-Implement `solve()` per problem.md. Your model MUST contain an nn.LSTM or
-nn.GRU child and MUST call nn.utils.clip_grad_norm_() during training.
+Complete the `solve()` function. Read problem.md for the full specification.
+
+Build a small GRU that forecasts the next value of a structured time series and
+BEATS the naive last-value baseline on held-out test MSE (model MSE <= 0.97 * naive
+MSE).
+
+    python grader.py starter.py     # grade your attempt
+    python grader.py solution.py    # verify the reference passes
+
+No GPU required — trains on CPU in well under 25 seconds.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Callable
-
 import numpy as np
-import polars as pl
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-STI_CACHE = REPO_ROOT / "data" / "mlfp05" / "sti" / "sti_close.parquet"
-
-SEQ_LEN = 10
-FEATURES = ["Close", "High", "Low", "Volume"]
+SEQ_LEN = 20
+SEED = 13
 
 
-def _fetch_sti() -> pl.DataFrame:
-    if STI_CACHE.exists():
-        return pl.read_parquet(STI_CACHE)
-    import yfinance as yf
+def make_dataset():
+    """Deterministic windowed forecasting set with learnable structure — DO NOT EDIT.
 
-    STI_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    df = yf.download(
-        "^STI", start="2010-01-01", end="2024-12-31", progress=False, auto_adjust=True
+    A pure random walk (raw STI returns) cannot be beaten by ANY model, so we use a
+    synthetic series with genuine temporal structure: a damped AR(2) oscillator plus a
+    short seasonal cycle plus modest noise. The next value depends on the SHAPE of the
+    recent window (not just the last value), so a GRU clears the naive last-value
+    baseline with a real margin while the baseline stays honestly hard.
+
+    Returns (X_train, y_train, X_test, y_test, naive_pred):
+      X_* (N, SEQ_LEN, 1) float32 — windows of the series.
+      y_* (N,) float32           — next value.
+      naive_pred (Nte,) float32  — last observed value in each test window.
+    """
+    rng = np.random.default_rng(SEED)
+    n = 3000
+    a1, a2 = 1.35, -0.55  # complex-conjugate roots => oscillation
+    series = np.zeros(n, dtype=np.float64)
+    noise = rng.normal(0.0, 0.5, size=n)
+    for t in range(2, n):
+        season = 0.6 * np.sin(2.0 * np.pi * t / 11.0)
+        series[t] = a1 * series[t - 1] + a2 * series[t - 2] + season + noise[t]
+    series = series.astype(np.float32)
+
+    xs, ys = [], []
+    for i in range(len(series) - SEQ_LEN - 1):
+        xs.append(series[i : i + SEQ_LEN])
+        ys.append(series[i + SEQ_LEN])
+    X = np.array(xs, dtype=np.float32)[:, :, None]  # (N, SEQ_LEN, 1)
+    y = np.array(ys, dtype=np.float32)
+
+    split = int(len(X) * 0.8)
+    X_train, X_test = X[:split], X[split:]
+    y_train, y_test = y[:split], y[split:]
+    naive_pred = X_test[:, -1, 0].astype(np.float32)  # last observed value in window
+    return X_train, y_train, X_test, y_test, naive_pred
+
+
+def solve() -> dict:
+    """Build + train a GRU forecaster; return predictions on the test split."""
+    torch.manual_seed(SEED)
+    X_train, y_train, X_test, y_test, naive_pred = make_dataset()
+
+    # TODO 1: build a recurrent forecaster as a torch.nn.Module.
+    #         It MUST contain an nn.GRU (or nn.LSTM / nn.RNN).
+    #         Recipe: nn.GRU(input_size=1, hidden_size=16, batch_first=True)
+    #                 -> take the LAST timestep's hidden state -> Linear(16, 1).
+    class GRUForecaster(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            # self.rnn = nn.GRU(1, 16, batch_first=True)
+            # self.head = nn.Linear(16, 1)
+
+        def forward(self, x):
+            # out, _ = self.rnn(x); return self.head(out[:, -1, :]).squeeze(-1)
+            return torch.zeros(x.shape[0])  # <- replace
+
+    model = GRUForecaster()
+
+    # TODO 2: report whether the model uses a recurrent layer (it must).
+    uses_recurrent = False  # <- replace with True once you add the GRU
+
+    # TODO 3: train with MSE on (X_train, y_train).
+    #         ~60 epochs of Adam (lr=1e-3), batch size 64 works well.
+    #         loss = F.mse_loss(model(xb), yb)
+    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+    # for epoch in range(60): ...
+
+    # TODO 4: predict the next value on X_test.
+    test_pred = np.zeros(len(y_test), dtype=np.float32)  # <- replace
+
+    return {
+        "model": model,
+        "test_pred": test_pred,
+        "y_test": y_test,
+        "naive_pred": naive_pred,
+        "uses_recurrent": uses_recurrent,
+    }
+
+
+if __name__ == "__main__":
+    out = solve()
+    yt = out["y_test"]
+    mse = float(((out["test_pred"] - yt) ** 2).mean())
+    naive = float(((out["naive_pred"] - yt) ** 2).mean())
+    print(
+        f"gru  test_mse={mse:.2e}  naive_mse={naive:.2e}  "
+        f"ratio={mse / max(naive, 1e-12):.2f}"
     )
-    if df is None or len(df) == 0:
-        df = yf.download(
-            "AAPL",
-            start="2010-01-01",
-            end="2024-12-31",
-            progress=False,
-            auto_adjust=True,
-        )
-    df = df.copy()
-    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-    df = df.reset_index()
-    out = pl.from_pandas(df)
-    out.write_parquet(STI_CACHE)
-    return out
-
-
-def solve() -> tuple[nn.Module, Callable[[pl.DataFrame], torch.Tensor]]:
-    torch.manual_seed(42)
-    np.random.seed(42)
-
-    df = _fetch_sti()
-
-    # TODO: compute train-only z-score stats (first 80% of rows) and
-    #       normalise ALL rows with those train stats. Do NOT use val
-    #       statistics.
-
-    # TODO: build (N, SEQ_LEN, 4) windows from the training portion and
-    #       a matching (N,) target vector (next-day normalised close).
-
-    # TODO: define a recurrent model. It MUST contain nn.LSTM or nn.GRU.
-    # Hint: nn.LSTM(4, 32, num_layers=1, batch_first=True), then a
-    #       nn.Linear(32, 1) head that consumes the last hidden state.
-
-    # TODO: train for ~20-25 epochs, Adam(lr=1e-3), MSE loss.
-    #       Apply nn.utils.clip_grad_norm_(model.parameters(), 1.0) every step.
-
-    # TODO: put model in eval mode and write predict(frame) that:
-    #         1. Recomputes z-score stats on the first 80% of `frame` only
-    #         2. Normalises `frame` with those stats
-    #         3. Builds rolling windows of length SEQ_LEN
-    #         4. Runs them through model and returns a (len(frame) - SEQ_LEN,)
-    #            float tensor
-
-    model: nn.Module = ...  # type: ignore
-    predict: Callable[[pl.DataFrame], torch.Tensor] = ...  # type: ignore
-    return model, predict

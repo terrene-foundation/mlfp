@@ -75,7 +75,10 @@ Current / Both** buttons in each conflicted file. Choose:
 # One-time — install dependencies
 uv sync
 
-# Run an exercise
+# Run an exercise — Modules 1-4 are single files:
+.venv/bin/python modules/mlfp01/local/ex_1.py
+
+# Modules 5-6 split each exercise into a directory of technique files:
 .venv/bin/python modules/mlfp05/local/ex_1/01_standard_ae.py
 ```
 

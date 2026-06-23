@@ -71,6 +71,31 @@ for module_dir in "$SOURCE"/modules/mlfp*/; do
         --exclude='__pycache__' \
         "$module_dir/quiz/" "$dest/quiz/"
 
+    # assessment/ — ship the WORK artifacts only (problem.md + starter.py).
+    # Students complete the starters, zip, and submit to the external grading
+    # portal. NEVER ship answer keys or anything that reveals them:
+    #   - solution.py     reference answer
+    #   - grader.py       re-derives the answer from data (leaks the formula)
+    #   - exam.py         the fully-solved module exam
+    #   - README.md       self-grade instructions referencing the withheld grader
+    if [ -d "$module_dir/assessment" ]; then
+        rsync -a --delete \
+            --exclude='__pycache__' \
+            --exclude='solution.py' \
+            --exclude='grader.py' \
+            --exclude='exam.py' \
+            --exclude='README.md' \
+            --exclude='*solution*' \
+            --exclude='.claude/' \
+            --exclude='.env' \
+            --exclude='*.onnx' \
+            --exclude='*.jsonl' \
+            --exclude='.DS_Store' \
+            "$module_dir/assessment/" "$dest/assessment/"
+        # Drop any assessment subdir left empty after answer-key exclusion.
+        find "$dest/assessment" -type d -empty -delete 2>/dev/null || true
+    fi
+
     # NOTE: colab-selfcontained-solutions/ is NEVER synced to students (instructor-only).
 
     echo "  $mod: $(ls "$dest" 2>/dev/null | tr '\n' ' ')"
@@ -101,6 +126,14 @@ fi
 find "$TARGET" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 find "$TARGET" -name ".DS_Store" -delete 2>/dev/null || true
 find "$TARGET" -name "*.pyc" -delete 2>/dev/null || true
+
+# ── Safety scrub: stray secrets / COC artifacts / built models must never ship ──
+# (.env.example is intentionally kept as a template; only real .env is scrubbed.)
+find "$TARGET" -name ".env" -delete 2>/dev/null || true
+find "$TARGET" -name "*.onnx" -delete 2>/dev/null || true
+find "$TARGET" -path "*/.claude/*" -delete 2>/dev/null || true
+find "$TARGET" -type d -name ".claude" -exec rm -rf {} + 2>/dev/null || true
+find "$TARGET" -type d -name ".coc" -exec rm -rf {} + 2>/dev/null || true
 
 # ── Summary ──
 echo ""

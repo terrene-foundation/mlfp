@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 from kaizen import InputField, OutputField, Signature
@@ -143,6 +143,12 @@ class DataAnalysisConfig:
     model: str = MODEL  # resolved from .env in shared/mlfp06/ex_5.py
     temperature: float = 0.2
     budget_limit_usd: float = 1.0  # replaces legacy max_llm_cost_usd
+    # kaizen 2.28: run_async() requires use_async_llm=True; json_object
+    # response_format + explicit mode make the typed Signature fields parse
+    # out of the model reply (otherwise the result is prose, not typed fields).
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
 
 
 class DataAnalysisAgent(BaseAgent):

@@ -117,7 +117,7 @@ reference_df = eval_data.with_columns(
 async def setup_drift_monitoring() -> tuple[DriftMonitor, object]:
     conn = ConnectionManager(f"sqlite:///{_DRIFT_DB_PATH}")
     await conn.initialize()
-    monitor = DriftMonitor(conn, psi_threshold=0.2)
+    monitor = DriftMonitor(conn, tenant_id="mlfp_demo", psi_threshold=0.2)
 
     # Store the reference distribution keyed by model name.
     await monitor.set_reference_data(

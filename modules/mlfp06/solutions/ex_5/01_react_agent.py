@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 
 from kaizen_agents.agents.specialized.react import ReActAgent
 
+from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL
 from shared.mlfp06.ex_5 import (
     MODEL,
     OUTPUT_DIR,
@@ -97,6 +98,13 @@ print("\n✓ Checkpoint 1 passed — 4 tools registered with HotpotQA\n")
 # This separation is intentional — tool registration and budget are
 # configuration concerns, not identity concerns.
 react_agent = ReActAgent(model=MODEL)
+# ReActConfig defaults to provider="openai" and reads KAIZEN_* env vars, so wire
+# it to the local Ollama daemon explicitly. config is mutable post-construction
+# (same pattern as budget_limit_usd below). kaizen 2.28: run_async() also needs
+# use_async_llm=True or it raises "Agent not configured for async mode".
+react_agent.config.llm_provider = "ollama"
+react_agent.config.base_url = OLLAMA_BASE_URL
+react_agent.config.use_async_llm = True
 react_agent.config.budget_limit_usd = 2.0
 for tool in tools:
     react_agent.available_tools.append(tool)

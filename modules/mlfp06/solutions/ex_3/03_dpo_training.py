@@ -130,14 +130,32 @@ print(f"Train: {train_pref.height} pairs | Eval: {eval_pref.height} pairs")
 async def run_dpo_training() -> tuple[AlignmentPipeline, AlignmentResult]:
     pipeline = AlignmentPipeline(dpo_config)
     print("\nRunning DPO training (this is the slow bit)...")
-    result = await pipeline.train(train_data=train_pref, eval_data=eval_pref)
-    # AlignmentResult.training_metrics is a dict — final_loss / eval_loss /
-    # training_time_seconds live there, not as direct attributes (kailash-align 0.6.0).
+    # kailash-align 0.7.3 validates the preference set via HuggingFace
+    # `dataset.column_names`, so it must be a `datasets.Dataset` — convert the
+    # polars frame (Arrow-backed, zero-copy) before handing it over.
+    from datasets import Dataset
+
+    train_pref_hf = Dataset.from_dict(
+        train_pref.select(["prompt", "chosen", "rejected"]).to_dict(as_series=False)
+    )
+    # train(dataset, adapter_name, preference_dataset=...). For DPO the
+    # prompt/chosen/rejected pairs go in `preference_dataset`, NOT the positional
+    # `dataset` slot (that's for SFT/online prompt data). adapter_name is
+    # REQUIRED; there is no eval_data parameter anymore.
+    result = await pipeline.train(
+        None,
+        adapter_name="ultrafeedback_dpo_v1",
+        preference_dataset=train_pref_hf,
+    )
+    # AlignmentResult.training_metrics is the raw TRL TrainOutput.metrics dict.
+    # For DPO it carries `train_loss` plus the reward signals
+    # (rewards/chosen, rewards/rejected, rewards/margins). There is NO
+    # eval_loss — the 0.7.3 train() API configures no eval dataset.
     metrics = result.training_metrics
-    print(f"  Final loss: {metrics['final_loss']:.4f}")
-    print(f"  Eval loss:  {metrics['eval_loss']:.4f}")
-    print(f"  Time:       {metrics.get('training_time_seconds', 0):.0f}s")
-    print(f"  Adapter:    {result.adapter_path}")
+    print(f"  Train loss:     {metrics.get('train_loss', float('nan')):.4f}")
+    print(f"  Reward margin:  {metrics.get('rewards/margins', float('nan')):.4f}")
+    print(f"  Train runtime:  {metrics.get('train_runtime', 0):.0f}s")
+    print(f"  Adapter:        {result.adapter_path}")
     return pipeline, result
 
 
@@ -145,15 +163,17 @@ dpo_pipeline, dpo_result = asyncio.run(run_dpo_training())
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
 assert dpo_result is not None
-assert dpo_result.training_metrics["final_loss"] > 0
+assert dpo_result.training_metrics.get("train_loss") is not None
 print(
-    f"✓ Checkpoint 2 passed — DPO final loss="
-    f"{dpo_result.training_metrics['final_loss']:.4f}\n"
+    f"✓ Checkpoint 2 passed — DPO train loss="
+    f"{dpo_result.training_metrics['train_loss']:.4f}\n"
 )
 
-# INTERPRETATION: Unlike SFT, DPO loss can trend negative — it measures
-# how confident the policy is about preference ordering, not absolute
-# likelihood. Watch eval_loss for overfitting to the preference pairs.
+# INTERPRETATION: Unlike SFT, DPO train loss can trend toward zero as the
+# policy grows confident about preference ordering, not absolute likelihood.
+# The real signal is the reward margin (rewards/chosen - rewards/rejected):
+# it should climb then plateau. Measure overfitting with a separate held-out
+# preference eval pass — the 0.7.3 train() API reports no eval_loss.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -179,8 +199,8 @@ async def register_adapter() -> str:
         adapter_path=dpo_result.adapter_path,
         signature=signature,
         training_metrics={
-            "final_loss": dpo_result.training_metrics["final_loss"],
-            "eval_loss": dpo_result.training_metrics["eval_loss"],
+            "train_loss": dpo_result.training_metrics.get("train_loss"),
+            "rewards_margin": dpo_result.training_metrics.get("rewards/margins"),
             "beta": dpo_config.dpo.beta,
         },
         tags=["ultrafeedback", "dpo", "preference-aligned"],

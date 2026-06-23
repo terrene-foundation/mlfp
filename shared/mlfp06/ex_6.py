@@ -10,7 +10,7 @@ Technique-specific orchestration logic lives in the per-technique files.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import polars as pl
@@ -174,6 +174,27 @@ class InterpretationSignature(Signature):
 # agent metadata, not part of the LLM-wiring contract.
 
 
+# kaizen 2.28 wiring contract for BaseAgent specialists:
+#
+#   1. `use_async_llm=True` — the exercises invoke `await agent.run_async(...)`.
+#      Without this flag BaseAgent never constructs the async LLM client and
+#      run_async() raises ValueError("Agent not configured for async mode").
+#
+#   2. `response_format={"type": "json_object"}` + `structured_output_mode=
+#      "explicit"` — in 2.28 the default mode is "explicit", which (unlike the
+#      old "auto") does NOT inject JSON-format instructions unless a
+#      response_format is declared. Without it the model returns prose, the
+#      strategy reports error="JSON_PARSE_FAILED", and the typed Signature
+#      fields (factual_claims, …) are never unpacked into the result dict —
+#      the exercises then KeyError on `result['factual_claims']`.
+#
+# from_domain_config() forwards all three fields automatically, so declaring
+# them on each domain config is the canonical, single-source fix for every
+# ex_6 solution and student file.
+def _json_object_format() -> dict[str, str]:
+    return {"type": "json_object"}
+
+
 @dataclass
 class FactualConfig:
     llm_provider: str = LLM_PROVIDER_DEFAULT
@@ -181,6 +202,9 @@ class FactualConfig:
     base_url: str = LLM_BASE_URL_DEFAULT
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -190,6 +214,9 @@ class SemanticConfig:
     base_url: str = LLM_BASE_URL_DEFAULT
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -199,6 +226,9 @@ class StructuralConfig:
     base_url: str = LLM_BASE_URL_DEFAULT
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -209,6 +239,9 @@ class SynthesisConfig:
     temperature: float = 0.2
     # Supervisor gets a larger budget — it reasons over all specialist outputs.
     budget_limit_usd: float = 2.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -218,6 +251,9 @@ class InterpretationConfig:
     base_url: str = LLM_BASE_URL_DEFAULT
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=_json_object_format)
+    structured_output_mode: str = "explicit"
 
 
 class FactualAgent(BaseAgent):

@@ -9,7 +9,7 @@
 #   - Build an AlignmentConfig for SFT + LoRA (no raw transformers.Trainer)
 #   - Run AlignmentPipeline.train() on the IMDB instruction dataset
 #   - Register the trained adapter in AdapterRegistry
-#   - Visualise training loss + interpret train/eval gap
+#   - Visualise SFT training loss + throughput
 #   - Apply adapter-registry discipline to a Singapore e-commerce scenario
 #
 # PREREQUISITES: Exercises 2.1-2.5
@@ -21,7 +21,7 @@
 #   1. THEORY: why AlignmentPipeline beats raw SFTTrainer
 #   2. BUILD: AlignmentConfig for SFT + LoRA r=16
 #   3. TRAIN: pipeline.train() on IMDB instruction pairs
-#   4. VISUALISE: train vs eval loss curve
+#   4. VISUALISE: SFT training loss + throughput
 #   5. APPLY: Singapore e-commerce adapter registry governance
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -122,10 +122,13 @@ async def run_sft_and_register() -> dict:
 
     if skip:
         print("  MLFP_SKIP_SFT_TRAIN=1 -> using synthetic metrics")
+        # Mirror the real AlignmentResult.training_metrics shape (kailash-align
+        # 0.7.3): raw TRL TrainOutput.metrics — train_loss + throughput, and
+        # NO eval_loss (the new train() API has no eval_data parameter).
         metrics = {
-            "final_loss": 0.742,
-            "eval_loss": 0.881,
-            "training_time_seconds": 0.0,
+            "train_loss": 0.742,
+            "train_runtime": 0.0,
+            "train_samples_per_second": 0.0,
             "adapter_path": str(OUTPUT_DIR / "sft_output" / "adapter"),
         }
     else:
@@ -135,21 +138,29 @@ async def run_sft_and_register() -> dict:
             AlignmentPipeline,
         )
 
-        # TODO: Instantiate AlignmentPipeline(config) and await
-        # pipeline.train(train_data=..., eval_data=...)
+        # TODO: Instantiate AlignmentPipeline(config), then await
+        # pipeline.train(train_data, adapter_name="imdb_sentiment_sft_v1").
+        # Note (kailash-align 0.7.3): `dataset` is positional, `adapter_name`
+        # is REQUIRED, and there is NO eval_data parameter anymore.
         pipeline = ____
         print("  Running SFT training (this may take several minutes)...")
         result = ____
 
+        # result.training_metrics is the raw TRL TrainOutput.metrics dict:
+        # train_loss + train_runtime + train_samples_per_second. There is NO
+        # eval_loss (no eval dataset is configured under the new API).
+        train_metrics = result.training_metrics
         metrics = {
-            "final_loss": result.final_loss,
-            "eval_loss": result.eval_loss,
-            "training_time_seconds": result.training_time_seconds,
+            "train_loss": train_metrics.get("train_loss"),
+            "train_runtime": train_metrics.get("train_runtime", 0),
+            "train_samples_per_second": train_metrics.get(
+                "train_samples_per_second", 0
+            ),
             "adapter_path": result.adapter_path,
         }
-        print(f"  Final loss:    {metrics['final_loss']:.4f}")
-        print(f"  Eval loss:     {metrics['eval_loss']:.4f}")
-        print(f"  Training time: {metrics['training_time_seconds']:.0f}s")
+        print(f"  Train loss:    {metrics['train_loss']:.4f}")
+        print(f"  Train runtime: {metrics['train_runtime']:.0f}s")
+        print(f"  Throughput:    {metrics['train_samples_per_second']:.1f} samples/s")
 
         # TODO: Instantiate registry = AdapterRegistry()
         registry = ____
@@ -160,7 +171,7 @@ async def run_sft_and_register() -> dict:
         #     name="imdb_sentiment_sft_v1",
         #     adapter_path=metrics["adapter_path"],
         #     signature=signature,
-        #     training_metrics={"final_loss": ..., "eval_loss": ...},
+        #     training_metrics={"train_loss": metrics["train_loss"]},
         #     tags=["imdb", "sentiment", "lora-r16"])
         # register_adapter returns an AdapterVersion (not a string).
         version = ____
@@ -176,35 +187,36 @@ async def run_sft_and_register() -> dict:
 metrics = asyncio.run(run_sft_and_register())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert metrics["final_loss"] is not None, "Task 3: training should produce a loss"
-assert metrics["final_loss"] > 0, "Task 3: final loss should be positive"
+assert metrics["train_loss"] is not None, "Task 3: training should produce a loss"
+assert metrics["train_loss"] > 0, "Task 3: train loss should be positive"
 print("✓ Checkpoint 3 passed — SFT training + registration complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: train vs eval loss bars
+# TASK 4 — VISUALISE: SFT training loss + throughput
 # ════════════════════════════════════════════════════════════════════════
+# The 0.7.3 train() API returns the TRL headline metrics (no eval split),
+# so plot the honest signals: final train loss + throughput. Do NOT
+# fabricate an eval curve — generalisation is a separate eval pass (Ex 3.4).
 
 print("=" * 70)
-print("TASK 4: Visualise final train vs eval loss")
+print("TASK 4: Visualise SFT training loss + throughput")
 print("=" * 70)
 
-labels = ["Train loss (final)", "Eval loss"]
-values = [metrics["final_loss"], metrics["eval_loss"]]
-
-# TODO: Bar chart with train and eval loss, annotations on each bar.
-# Save to OUTPUT_DIR / "ex2_sft_train_eval.png"
+# TODO: Two-panel bar chart. Left panel: metrics["train_loss"]. Right panel:
+# metrics["train_samples_per_second"]. Annotate each bar with its value.
+# Save to OUTPUT_DIR / "ex2_sft_train_loss.png"
 ____
-fname = OUTPUT_DIR / "ex2_sft_train_eval.png"
+fname = OUTPUT_DIR / "ex2_sft_train_loss.png"
 print(f"  Saved: {fname}")
 
-gap = metrics["eval_loss"] - metrics["final_loss"]
-print(f"\n  Train-eval gap: {gap:+.3f}")
-print("  Healthy: |gap| < 0.15; larger values suggest over/under-fitting")
+print(f"\n  Final train loss: {metrics['train_loss']:.3f}")
+print("  Healthy SFT runs show train_loss falling across epochs; measure")
+print("  generalisation with a separate held-out eval pass (Exercise 3.4).")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert fname.exists(), "Task 4: loss plot should exist"
-print("✓ Checkpoint 4 passed — train vs eval visualised\n")
+print("✓ Checkpoint 4 passed — SFT train loss visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -250,7 +262,8 @@ print(
       (framework-first: no raw transformers.Trainer)
   [x] Ran AlignmentPipeline.train() end-to-end on IMDB SFT data
   [x] Registered the trained adapter in AdapterRegistry with metrics
-  [x] Visualised train vs eval loss and interpreted the gap
+  [x] Visualised SFT train loss + throughput (the honest signals the
+      0.7.3 train() API reports — no fabricated eval curve)
   [x] Applied adapter-registry governance to a Singapore e-commerce
       scenario (~S$32k/year saving + unblocked MAS compliance)
 

@@ -9,7 +9,7 @@
 #   - Build an AlignmentConfig for SFT + LoRA (no raw transformers.Trainer)
 #   - Run AlignmentPipeline.train() on the IMDB instruction dataset
 #   - Register the trained adapter in AdapterRegistry
-#   - Visualise training loss + interpret train/eval gap
+#   - Visualise SFT training loss + throughput
 #   - Apply adapter-registry discipline to a Singapore e-commerce scenario
 #
 # PREREQUISITES: Exercises 2.1-2.5
@@ -24,7 +24,7 @@
 #   1. THEORY: why AlignmentPipeline beats raw SFTTrainer
 #   2. BUILD: AlignmentConfig for SFT + LoRA r=16
 #   3. TRAIN: pipeline.train() on IMDB instruction pairs
-#   4. VISUALISE: train vs eval loss curve
+#   4. VISUALISE: SFT training loss + throughput
 #   5. APPLY: Singapore e-commerce adapter registry governance
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -146,10 +146,13 @@ async def run_sft_and_register() -> dict:
 
     if skip:
         print("  MLFP_SKIP_SFT_TRAIN=1 -> using synthetic metrics")
+        # Mirror the real AlignmentResult.training_metrics shape (kailash-align
+        # 0.7.3): the dict is the raw TRL TrainOutput.metrics — train_loss +
+        # throughput, NO eval_loss (the new train() API has no eval_data param).
         metrics = {
-            "final_loss": 0.742,
-            "eval_loss": 0.881,
-            "training_time_seconds": 0.0,
+            "train_loss": 0.742,
+            "train_runtime": 0.0,
+            "train_samples_per_second": 0.0,
             "adapter_path": str(OUTPUT_DIR / "sft_output" / "adapter"),
         }
     else:
@@ -161,23 +164,39 @@ async def run_sft_and_register() -> dict:
 
         pipeline = AlignmentPipeline(config)
         print("  Running SFT training (this may take several minutes)...")
-        result = await pipeline.train(train_data=train_data, eval_data=eval_data)
-        # AlignmentResult.training_metrics is a dict in 0.6.0 — final_loss /
-        # eval_loss / training_time_seconds live there, not as direct attrs.
+        # kailash-align 0.7.3 validates the dataset via HuggingFace
+        # `dataset.column_names`, so convert the polars frame (Arrow-backed) to a
+        # `datasets.Dataset` first. SFT needs the `text` column (dataset_text_field).
+        from datasets import Dataset
+
+        train_data_hf = Dataset.from_dict(train_data.to_dict(as_series=False))
+        # train(dataset, adapter_name, ...) — dataset is positional, adapter_name
+        # is REQUIRED, and there is no eval_data parameter. SFT instruction data
+        # goes in the positional `dataset` slot.
+        result = await pipeline.train(
+            train_data_hf, adapter_name="imdb_sentiment_sft_v1"
+        )
+        # AlignmentResult.training_metrics is the raw TRL TrainOutput.metrics
+        # dict: train_loss + train_runtime + train_samples_per_second. There is
+        # NO eval_loss (no eval dataset is configured under the new API).
         train_metrics = result.training_metrics
         metrics = {
-            "final_loss": train_metrics["final_loss"],
-            "eval_loss": train_metrics["eval_loss"],
-            "training_time_seconds": train_metrics.get("training_time_seconds", 0),
+            "train_loss": train_metrics.get("train_loss"),
+            "train_runtime": train_metrics.get("train_runtime", 0),
+            "train_samples_per_second": train_metrics.get(
+                "train_samples_per_second", 0
+            ),
             "adapter_path": result.adapter_path,
         }
-        print(f"  Final loss:    {metrics['final_loss']:.4f}")
-        print(f"  Eval loss:     {metrics['eval_loss']:.4f}")
-        print(f"  Training time: {metrics['training_time_seconds']:.0f}s")
+        print(f"  Train loss:    {metrics['train_loss']:.4f}")
+        print(f"  Train runtime: {metrics['train_runtime']:.0f}s")
+        print(f"  Throughput:    {metrics['train_samples_per_second']:.1f} samples/s")
 
-        # Register the trained adapter (kailash-align 0.6.0+ API):
+        # Register the trained adapter (kailash-align 0.7.3 API):
         # AdapterSignature bundles base + adapter_type + training_method;
-        # register_adapter returns an AdapterVersion dataclass.
+        # register_adapter returns an AdapterVersion dataclass. NOTE: train()
+        # already registers the adapter under its own AdapterRegistry; this
+        # explicit registration shows the registry API and adds curated tags.
         registry = AdapterRegistry()
         signature = AdapterSignature(
             base_model_id=config.base_model_id,
@@ -189,8 +208,7 @@ async def run_sft_and_register() -> dict:
             adapter_path=metrics["adapter_path"],
             signature=signature,
             training_metrics={
-                "final_loss": metrics["final_loss"],
-                "eval_loss": metrics["eval_loss"],
+                "train_loss": metrics["train_loss"],
             },
             tags=["imdb", "sentiment", "lora-r16"],
         )
@@ -204,56 +222,88 @@ async def run_sft_and_register() -> dict:
 metrics = asyncio.run(run_sft_and_register())
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert metrics["final_loss"] is not None, "Task 3: training should produce a loss"
-assert metrics["final_loss"] > 0, "Task 3: final loss should be positive"
+assert metrics["train_loss"] is not None, "Task 3: training should produce a loss"
+assert metrics["train_loss"] > 0, "Task 3: train loss should be positive"
 print("✓ Checkpoint 3 passed — SFT training + registration complete\n")
 
 # INTERPRETATION:
-#   eval_loss ~ train_loss (within 0.1) -> healthy generalisation
-#   eval_loss >> train_loss             -> overfitting; reduce epochs
-#   eval_loss < train_loss              -> suspect data leakage between splits
+#   AlignmentPipeline.train() reports the TRL trainer's headline metrics:
+#   `train_loss` (mean cross-entropy over the run) plus throughput
+#   (train_runtime, train_samples_per_second). The 0.7.3 train() API has no
+#   eval_data parameter, so there is NO eval_loss here — to measure
+#   generalisation you run a separate held-out evaluation pass (Exercise 3.4
+#   covers eval). Read train_loss as a sanity signal: it should fall over
+#   epochs; a flat or rising train_loss means the LoRA targets or learning
+#   rate are wrong.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: train vs eval loss (conceptual bar)
+# TASK 4 — VISUALISE: SFT training loss + throughput
 # ════════════════════════════════════════════════════════════════════════
-# The real pipeline emits per-step loss curves; here we plot the
-# headline train/eval bars so the gap is visible at a glance.
+# The new train() API returns the TRL headline metrics (no eval split), so
+# we plot the honest signal it provides: the final train loss alongside
+# training throughput. We deliberately do NOT fabricate an eval curve —
+# generalisation is measured by a separate held-out eval pass (Ex 3.4).
 
 print("=" * 70)
-print("TASK 4: Visualise final train vs eval loss")
+print("TASK 4: Visualise SFT training loss + throughput")
 print("=" * 70)
 
-labels = ["Train loss (final)", "Eval loss"]
-values = [metrics["final_loss"], metrics["eval_loss"]]
-colors = ["steelblue", "darkorange"]
+fig, (ax_loss, ax_tput) = plt.subplots(1, 2, figsize=(11, 5))
 
-fig, ax = plt.subplots(1, 1, figsize=(8, 5))
-bars = ax.bar(labels, values, color=colors, edgecolor="black")
-for bar, v in zip(bars, values):
-    ax.annotate(
-        f"{v:.3f}",
-        xy=(bar.get_x() + bar.get_width() / 2, v),
-        xytext=(0, 3),
-        textcoords="offset points",
-        ha="center",
-    )
-ax.set_ylabel("Cross-entropy loss")
-ax.set_title("SFT LoRA r=16 — train vs eval loss", fontweight="bold")
-ax.grid(True, axis="y", alpha=0.3)
+# Left: final train loss (single headline bar — train() returns the run
+# mean, not a per-step curve; the per-step curve lives in the TRL logs).
+ax_loss.bar(
+    ["Train loss (run mean)"],
+    [metrics["train_loss"]],
+    color="steelblue",
+    edgecolor="black",
+)
+ax_loss.annotate(
+    f"{metrics['train_loss']:.3f}",
+    xy=(0, metrics["train_loss"]),
+    xytext=(0, 3),
+    textcoords="offset points",
+    ha="center",
+)
+ax_loss.set_ylabel("Cross-entropy loss")
+ax_loss.set_title("SFT LoRA r=16 — train loss", fontweight="bold")
+ax_loss.grid(True, axis="y", alpha=0.3)
+
+# Right: throughput — the other honest signal the pipeline reports.
+ax_tput.bar(
+    ["samples/s"],
+    [metrics["train_samples_per_second"]],
+    color="seagreen",
+    edgecolor="black",
+)
+ax_tput.annotate(
+    f"{metrics['train_samples_per_second']:.1f}",
+    xy=(0, metrics["train_samples_per_second"]),
+    xytext=(0, 3),
+    textcoords="offset points",
+    ha="center",
+)
+ax_tput.set_ylabel("Samples / second")
+ax_tput.set_title(
+    f"Training throughput (runtime {metrics['train_runtime']:.0f}s)",
+    fontweight="bold",
+)
+ax_tput.grid(True, axis="y", alpha=0.3)
+
 plt.tight_layout()
-fname = OUTPUT_DIR / "ex2_sft_train_eval.png"
+fname = OUTPUT_DIR / "ex2_sft_train_loss.png"
 plt.savefig(fname, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved: {fname}")
 
-gap = metrics["eval_loss"] - metrics["final_loss"]
-print(f"\n  Train-eval gap: {gap:+.3f}")
-print("  Healthy: |gap| < 0.15; larger values suggest over/under-fitting")
+print(f"\n  Final train loss: {metrics['train_loss']:.3f}")
+print("  Healthy SFT runs show train_loss falling across epochs; measure")
+print("  generalisation with a separate held-out eval pass (Exercise 3.4).")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert fname.exists(), "Task 4: loss plot should exist"
-print("✓ Checkpoint 4 passed — train vs eval visualised\n")
+print("✓ Checkpoint 4 passed — SFT train loss visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -393,7 +443,8 @@ print(
       (framework-first: no raw transformers.Trainer)
   [x] Ran AlignmentPipeline.train() end-to-end on IMDB SFT data
   [x] Registered the trained adapter in AdapterRegistry with metrics
-  [x] Visualised train vs eval loss and interpreted the gap
+  [x] Visualised SFT train loss + throughput (the honest signals the
+      0.7.3 train() API reports — no fabricated eval curve)
   [x] Applied adapter-registry governance to a Singapore e-commerce
       scenario (~S$32k/year saving + unblocked MAS compliance)
 

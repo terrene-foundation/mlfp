@@ -478,7 +478,7 @@ axes[0].legend(fontsize=10)
 
 bp = axes[1].boxplot(
     [normal_errors, fraud_errors],
-    labels=["Normal", "Fraud"],
+    tick_labels=["Normal", "Fraud"],
     patch_artist=True,
     widths=0.5,
 )

@@ -278,12 +278,17 @@ def compute_fid(
     sig_r, sig_g = np.cov(rf, rowvar=False), np.cov(gf, rowvar=False)
 
     diff = mu_r - mu_g
-    product = sig_r @ sig_g
-    eigvals, eigvecs = np.linalg.eigh(product)
-    eigvals = np.maximum(eigvals, 0.0)
-    sqrt_prod = eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
+    # Sigma_r @ Sigma_g is a product of two symmetric PSD matrices — it is
+    # NOT itself symmetric, so np.linalg.eigh (Hermitian-only) reads the wrong
+    # triangle and returns garbage (this produced large-negative FID). Its
+    # eigenvalues are nonetheless real and non-negative (it is similar to the
+    # symmetric PSD matrix Sigma_r^½ Sigma_g Sigma_r^½), so use the general
+    # eigensolver and the identity Tr(sqrt(AB)) = Σ sqrt(λ_i(AB)).
+    eigvals = np.linalg.eigvals(sig_r @ sig_g)
+    eigvals = np.maximum(np.real(eigvals), 0.0)
+    trace_sqrt = float(np.sum(np.sqrt(eigvals)))
 
-    return float(diff @ diff + np.trace(sig_r + sig_g - 2 * sqrt_prod))
+    return float(diff @ diff + np.trace(sig_r) + np.trace(sig_g) - 2 * trace_sqrt)
 
 
 # ════════════════════════════════════════════════════════════════════════

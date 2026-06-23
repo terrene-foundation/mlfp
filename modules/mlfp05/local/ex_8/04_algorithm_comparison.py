@@ -76,22 +76,33 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 
 # ── ActorCritic for PPO (needed for this comparison file) ────────────
 class ActorCritic(nn.Module):
-    """Shared trunk with actor and critic heads for PPO."""
+    """SEPARATE actor and critic networks for PPO.
+
+    A shared trunk lets the critic's large value-regression gradients swamp
+    the actor's tiny policy gradients, so the policy never moves (CartPole
+    stays stuck at ~random return). Independent MLPs let each learn at its
+    own scale — see ex_8/02 for the full explanation.
+    """
 
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):
         super().__init__()
-        self.trunk = nn.Sequential(
+        self.actor = nn.Sequential(
             nn.Linear(obs_dim, hidden),
             nn.Tanh(),
             nn.Linear(hidden, hidden),
             nn.Tanh(),
+            nn.Linear(hidden, n_actions),
         )
-        self.policy_head = nn.Linear(hidden, n_actions)
-        self.value_head = nn.Linear(hidden, 1)
+        self.critic = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = self.trunk(x)
-        return self.policy_head(h), self.value_head(h).squeeze(-1)
+        return self.actor(x), self.critic(x).squeeze(-1)
 
     def act(self, state: np.ndarray) -> tuple[int, torch.Tensor, torch.Tensor]:
         s = torch.from_numpy(state.astype(np.float32)).to(device)
@@ -352,9 +363,7 @@ print(f"  Saved: {OUTPUT_DIR / '04_policy_comparison_boxplot.html'}")
 
 # ── Plot 2: Training curves on a common x-axis (env steps) ──────────
 # Normalise both algorithms to environment interactions for fair comparison
-dqn_cumulative_steps = np.cumsum(
-    [max(10, r) for r in dqn_rewards]
-).tolist()
+dqn_cumulative_steps = np.cumsum([max(10, r) for r in dqn_rewards]).tolist()
 ppo_cumulative_steps = [(i + 1) * STEPS_PER_ITER for i in range(len(ppo_returns))]
 
 # TODO: Create a line plot with DQN and PPO training curves on env-steps x-axis
@@ -579,6 +588,7 @@ def _diag_loss(m, batch):
         x, y = batch, None
     out = m(x)
     import torch.nn.functional as F
+
     if y is None:
         return F.mse_loss(out, x)
     return F.cross_entropy(out, y)
@@ -621,5 +631,3 @@ except Exception as exc:
 #     Discrete or continuous + online + stability priority → PPO
 #     Continuous + hard exploration → SAC
 #     Slide 5.8 Prescription Pad for RL.
-
-

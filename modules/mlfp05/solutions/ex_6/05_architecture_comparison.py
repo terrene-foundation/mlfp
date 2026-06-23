@@ -346,7 +346,7 @@ for idx, (name, r) in enumerate(results.items()):
     U, S, Vt = np.linalg.svd(emb_centered, full_matrices=False)
     coords = emb_centered @ Vt.T[:, :2]
 
-    cmap = plt.cm.get_cmap("tab10", n_classes)
+    cmap = plt.get_cmap("tab10", n_classes)
     for c in range(n_classes):
         mask = y_np == c
         axes[idx].scatter(

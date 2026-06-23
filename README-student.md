@@ -1,9 +1,8 @@
-# PCML Run 26 — Student Repository
+# MLFP — Student Repository
 
-This is your **personal fork** of the PCML Run 26 course materials. Everything
-below applies to your fork; the instructor's repo at
-`https://github.com/pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601` is the "upstream" you pull
-updates from.
+This is your **personal copy** of the MLFP course materials, created for you by
+GitHub Classroom. Everything below applies to your copy; the course template at
+`https://github.com/pcml-dscc/mlfp` is the "upstream" you pull updates from.
 
 ---
 
@@ -32,12 +31,12 @@ Open the VSCode integrated terminal (`` Ctrl+` `` or `` Cmd+` ``) and paste:
 git remote -v
 
 # 2. Add the instructor's repo as "upstream" — copy this ONE line
-git remote add upstream https://github.com/pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601.git
+git remote add upstream https://github.com/pcml-dscc/mlfp.git
 
 # 3. Verify both remotes
 git remote -v
-# origin    → your fork
-# upstream  → pcml-run26/pcml-run26-professional-certificate-in-machine-learning-pcml-run26-2601
+# origin    → your personal copy
+# upstream  → pcml-dscc/mlfp (course template)
 ```
 
 That's it — setup done once per machine.

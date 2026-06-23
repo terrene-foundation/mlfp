@@ -30,10 +30,10 @@
 #   9.  Build a formatted summary report
 #   10. Cross-column analysis — temperature vs rainfall relationship
 #
-# DATASET: Singapore monthly weather data (temperature, rainfall, humidity)
+# DATASET: Singapore monthly weather data (temperature, rainfall)
 #   Source: Meteorological Service Singapore (data.gov.sg)
-#   Rows: ~12 monthly records | Columns: month, mean_temperature_c,
-#   total_rainfall_mm, relative_humidity_pct, sunshine_hours
+#   Rows: 12 monthly records | Columns: month, mean_temperature_c,
+#   total_rainfall_mm
 #
 # ════════════════════════════════════════════════════════════════════════
 """

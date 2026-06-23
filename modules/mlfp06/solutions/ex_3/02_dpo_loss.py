@@ -98,11 +98,15 @@ print("=" * 70)
 torch.manual_seed(42)
 batch_size = 16
 
-# Policy slightly prefers chosen (higher log-prob) vs rejected (lower log-prob)
-policy_chosen = torch.randn(batch_size) - 0.5
-policy_rejected = torch.randn(batch_size) - 1.0
-ref_chosen = torch.randn(batch_size) - 0.8
-ref_rejected = torch.randn(batch_size) - 0.8
+# Policy clearly prefers chosen (high log-prob) over rejected (low log-prob).
+# We use a clear mean separation (+1.0 vs -1.0) with small noise (×0.3) so the
+# demonstrated ordering (reversed prefs -> higher loss) is unambiguous and does
+# NOT depend on the exact RNG stream — importing shared.mlfp06 advances the
+# global torch RNG, so a subtle ±0.5 separation could flip the comparison.
+policy_chosen = torch.randn(batch_size) * 0.3 + 1.0
+policy_rejected = torch.randn(batch_size) * 0.3 - 1.0
+ref_chosen = torch.randn(batch_size) * 0.3
+ref_rejected = torch.randn(batch_size) * 0.3
 
 loss_val = dpo_loss(policy_chosen, policy_rejected, ref_chosen, ref_rejected, beta=0.1)
 print(f"DPO loss (synthetic batch, beta=0.1): {loss_val.item():.4f}")

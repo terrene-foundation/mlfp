@@ -378,7 +378,7 @@ def plot_node_embeddings(
     coords = emb_centered @ Vt.T[:, :2]
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-    cmap = plt.cm.get_cmap("tab10", n_classes)
+    cmap = plt.get_cmap("tab10", n_classes)
     for c in range(n_classes):
         mask = labels == c
         ax.scatter(
@@ -436,7 +436,7 @@ def plot_graph_with_embeddings(
     sub_A = A_np[np.ix_(subset, subset)]
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 9))
-    cmap = plt.cm.get_cmap("tab10", n_classes)
+    cmap = plt.get_cmap("tab10", n_classes)
 
     # Draw edges first (behind nodes)
     src_idx, dst_idx = np.where(np.triu(sub_A) > 0)
@@ -497,7 +497,7 @@ def plot_attention_weights(
     top_weights = weights[order]
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    bar_colors = [plt.cm.get_cmap("tab10")(labels[n] % 10) for n in top_neighbours]
+    bar_colors = [plt.get_cmap("tab10")(labels[n] % 10) for n in top_neighbours]
     ax.barh(
         range(len(top_neighbours)),
         top_weights,

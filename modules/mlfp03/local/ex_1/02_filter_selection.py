@@ -69,7 +69,10 @@ print(f"  Positive class rate: {y_binary.mean():.3f}")
 mi_scores = ____
 
 mi_ranking = sorted(
-    [(name, float(score)) for name, score in zip(feature_cols, mi_scores)],
+    [
+        (name, float(score) if np.isfinite(score) else 0.0)
+        for name, score in zip(feature_cols, mi_scores)
+    ],
     key=lambda x: x[1],
     reverse=True,
 )
@@ -84,7 +87,10 @@ X_chi2 = ____
 chi2_scores, chi2_pvalues = ____
 
 chi2_ranking = sorted(
-    [(name, float(score)) for name, score in zip(feature_cols, chi2_scores)],
+    [
+        (name, float(score) if np.isfinite(score) else 0.0)
+        for name, score in zip(feature_cols, chi2_scores)
+    ],
     key=lambda x: x[1],
     reverse=True,
 )

@@ -30,6 +30,7 @@ import asyncio
 
 from kaizen_agents.agents.specialized.react import ReActAgent
 
+from shared.mlfp06._ollama_bootstrap import OLLAMA_BASE_URL
 from shared.mlfp06.ex_5 import (
     MODEL,
     load_hotpotqa,
@@ -77,9 +78,19 @@ print("\n✓ Checkpoint 1 passed — 4 tools registered with HotpotQA\n")
 # TASK 2 — Build the ReActAgent
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Instantiate ReActAgent with:
-#       model=MODEL, tools=tools, max_llm_cost_usd=2.0
+# TODO: Instantiate ReActAgent with model=MODEL
+#       (kaizen_agents 0.9: tools and budget are set AFTER construction,
+#        not via constructor kwargs — see the provided wiring below)
 react_agent = ____
+# LLM wiring (provided): ReActConfig defaults to provider="openai", so point it
+# at the local Ollama daemon. kaizen 2.28 also needs use_async_llm=True for the
+# run_async() call in TASK 3. config is mutable post-construction.
+react_agent.config.llm_provider = "ollama"
+react_agent.config.base_url = OLLAMA_BASE_URL
+react_agent.config.use_async_llm = True
+react_agent.config.budget_limit_usd = 2.0
+for tool in tools:
+    react_agent.available_tools.append(tool)
 print(f"ReActAgent built:")
 print(f"  Model:   {MODEL}")
 print(f"  Tools:   {[t.__name__ for t in tools]}")

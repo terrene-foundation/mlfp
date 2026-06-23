@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -216,13 +217,21 @@ variant_final = [variant_val_histories[v][-1] for v in variant_names]
 variant_initial = [variant_val_histories[v][0] for v in variant_names]
 colors = ["#FECB52", "#636EFA", "#00CC96", "#AB63FA"]
 
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """plotly 6.x rejects 8-digit #RRGGBBAA hex; emit rgba() instead."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 fig_dropout = go.Figure()
 fig_dropout.add_trace(
     go.Bar(
         x=variant_names,
         y=variant_initial,
         name="Epoch 1 Val Loss",
-        marker_color=[c + "88" for c in colors],
+        marker_color=[_rgba(c, 0.53) for c in colors],
         text=[f"{v:.4f}" for v in variant_initial],
         textposition="outside",
     )

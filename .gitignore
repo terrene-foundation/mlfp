@@ -49,8 +49,11 @@ modules/mlfp05/colab-selfcontained-solutions/ex_*/data/
 *.pt
 *.pth
 *.safetensors
+*.ckpt
 mlruns/
 catboost_info/
+checkpoints/
+lightning_logs/
 
 # Classroom exercises (face-to-face only, not open-source)
 classroom/

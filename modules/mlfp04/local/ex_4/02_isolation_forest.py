@@ -29,11 +29,21 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    teardown_engines,
+    track_run,
     write_roc_chart,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
+
+# Per-contamination sweep results captured below for the TRACK section.
+sweep_results: dict[float, dict[str, float]] = {}
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -72,6 +82,10 @@ for contam in contamination_grid:
     n_flagged = int((preds == -1).sum())
     flagged = preds == -1
     precision = float(y[flagged].mean()) if n_flagged else 0.0
+    sweep_results[contam] = {
+        "n_flagged": float(n_flagged),
+        "precision": precision,
+    }
     print(
         f"  contamination={contam:<6}  flagged={n_flagged:>5,}  "
         f"precision={precision:.3f}"
@@ -131,6 +145,73 @@ print(f"Saved ROC chart: {roc_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Sweep keys use underscores in place of dots ("0.001" → "0_001") to
+# stay inside the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]*.
+
+sweep_metrics: dict[str, float] = {}
+for contam, stats in sweep_results.items():
+    label = str(contam).replace(".", "_")
+    sweep_metrics[f"iso_contam_{label}_n_flagged"] = stats["n_flagged"]
+    sweep_metrics[f"iso_contam_{label}_precision"] = _finite(stats["precision"])
+
+# TODO: call track_run with run_name="isolation_forest". Headline scalars:
+# iso_auc_roc + iso_avg_precision (from iso_metrics — wrap in _finite),
+# iso_n_predicted_anomalies (count of iso_labels == -1). |-merge with
+# sweep_metrics.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "n_estimators": 200,
+        "best_contamination": 0.01,
+        "anomaly_rate": float(y.mean()),
+    },
+    scalar_metrics={
+        "iso_auc_roc": _finite(iso_metrics["auc_roc"]),
+        "iso_avg_precision": ____,
+        "iso_n_predicted_anomalies": float(int((iso_labels == -1).sum())),
+    }
+    | sweep_metrics,
+)
+print(f"\n  [tracked] isolation_forest sweep + final-fit logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
+# ════════════════════════════════════════════════════════════════════════
+# AnomalyDetectionEngine wraps the same Isolation Forest you just fit by
+# hand under one .detect() surface. The tracker leaderboard is the
+# natural next step — engine + leaderboard = production anomaly stack.
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=_feature_cols)
+
+# TODO: Instantiate AnomalyDetectionEngine and call .detect on anomaly_df
+# with algorithm='isolation_forest' and contamination=0.01.
+det = ____
+fit_result = ____
+fit_metrics = score_metrics(y, np.asarray(fit_result.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(isolation_forest, contamination=0.01): "
+    f"AUC-ROC={fit_metrics['auc_roc']:.4f}  "
+    f"AP={fit_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={fit_result.n_anomalies}"
+)
+print(
+    f"  Hand-rolled AUC-ROC (Task 3): {iso_metrics['auc_roc']:.4f} "
+    "— same algorithm, one-line vs ten-line interface.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -148,3 +229,7 @@ print(
   that Isolation Forest misses.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -38,7 +38,13 @@ from shared.mlfp04.ex_5 import (
     format_itemset,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    teardown_engines,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -249,6 +255,83 @@ print(f"\n  Saved: {OUTPUT_DIR / 'apriori_top_itemsets.csv'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Every M4 ex_5 lesson logs into the SAME experiment ('m4_assoc_rules_zoo')
+# so Apriori / FP-Growth / rule-evaluation / rule-features can be compared
+# from one SQLite store after the lesson group ends. Series = per-level
+# itemset counts (the L1->Lk ladder); scalars = headline counts + supports.
+
+# Per-level size series — the visible "ladder" Apriori climbs.
+size_to_count: defaultdict[int, int] = defaultdict(int)
+for itemset in frequent_itemsets:
+    size_to_count[len(itemset)] += 1
+max_k = max(size_to_count) if size_to_count else 0
+ladder = [size_to_count[k] for k in range(1, max_k + 1)]
+support_values = [float(s) for s in frequent_itemsets.values()]
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="apriori_from_scratch",
+    params={
+        "algorithm": "apriori",
+        "implementation": "from_scratch",
+        "n_transactions": len(transactions),
+        "n_products": len(PRODUCTS),
+        "min_support": MIN_SUPPORT,
+        "max_k_reached": max_k,
+    },
+    scalar_metrics={
+        "n_frequent_itemsets": float(len(frequent_itemsets)),
+        "n_singletons_L1": float(size_to_count.get(1, 0)),
+        "n_pairs_L2": float(size_to_count.get(2, 0)),
+        "n_triples_L3": float(size_to_count.get(3, 0)),
+        "max_k_reached": float(max_k),
+        "max_support": float(max(support_values) if support_values else 0.0),
+        "min_support_observed": float(min(support_values) if support_values else 0.0),
+        "mean_support": float(
+            sum(support_values) / len(support_values) if support_values else 0.0
+        ),
+    },
+    series_metrics={"frequent_count_by_level": [float(c) for c in ladder]},
+)
+print(f"  [tracked] Apriori ladder + headline counts logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the mlxtend.frequent_patterns.apriori one-liner
+# ════════════════════════════════════════════════════════════════════════
+# This lesson hand-rolled the level-wise scan, the candidate joiner, and
+# the anti-monotone pruner — ~75 lines of structure to internalise WHY
+# Apriori scales beyond brute force. The production destination is one
+# function call. ``mlxtend.frequent_patterns.apriori`` runs the same
+# algorithm on a one-hot DataFrame and returns a polars-friendly table.
+# Lesson 02 (FP-Growth) then swaps the algorithm without changing the
+# call shape — both speak the same itemset-table contract.
+
+from mlxtend.frequent_patterns import apriori as mlx_apriori  # noqa: E402
+
+from shared.mlfp04.ex_5 import transactions_to_onehot  # noqa: E402
+
+onehot_pd = transactions_to_onehot(transactions).to_pandas().astype(bool)
+mlx_frequent = mlx_apriori(onehot_pd, min_support=MIN_SUPPORT, use_colnames=True)
+print(
+    f"  mlxtend.apriori(min_support={MIN_SUPPORT}): "
+    f"{len(mlx_frequent)} frequent itemsets in 1 call"
+)
+hand_set = {frozenset(items) for items in frequent_itemsets}
+mlx_set = {frozenset(items) for items in mlx_frequent["itemsets"].tolist()}
+print(f"  Hand-rolled: {len(hand_set)}  mlxtend: {len(mlx_set)}")
+print(
+    f"  Intersection: {len(hand_set & mlx_set)}  symmetric diff: {len(hand_set ^ mlx_set)}"
+)
+print()
+print("  Same algorithm, same result — the hand-rolled walk-through was")
+print("  the WHY; mlxtend.apriori is the destination you ship to prod.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -261,6 +344,8 @@ print(
   [x] Counted support with one pass per level against 2,500 baskets
   [x] Identified a production scenario (SG grocery shelf layout) where
       Apriori is the economically optimal choice
+  [x] Compared the hand-rolled implementation against mlxtend.apriori —
+      one call, same itemsets, ready for production
 
   KEY INSIGHT: Pruning > optimisation. The reason Apriori scales is not
   clever data structures — it is the mathematical observation that
@@ -272,3 +357,6 @@ print(
   generation) and compare it against the Apriori output from this file.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

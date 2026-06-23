@@ -44,10 +44,16 @@ from shared.mlfp04.ex_1 import (
     RANDOM_STATE,
     load_customers,
     out_path,
+    setup_engines,
     standardise,
+    teardown_engines,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -215,6 +221,89 @@ print("\n  [ok] Checkpoint 4 passed — segment sizes valid\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Every M4 ex_1 lesson logs into the SAME experiment ('m4_clustering_zoo')
+# so you can compare K-means against hierarchical / DBSCAN / spectral /
+# GMM later from one SQLite store. Sweep series = per-K curves; scalar
+# metrics = the final-fit numbers.
+
+# TODO: call track_run with the tracker + exp_name from setup_engines().
+# run_name should identify the technique ("kmeans_pp" matches the solution
+# leaderboard). Fill in the scalar_metrics value for the best silhouette
+# from sweep["silhouette"], and the series_metrics dict with sweep_silhouette
+# and sweep_inertia (already collected in `sweep`).
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "init": "k-means++",
+        "n_init": 10,
+        "random_state": RANDOM_STATE,
+        "best_k": best_k,
+        "n_features": n_features,
+        "n_samples": n_samples,
+    },
+    scalar_metrics={
+        "best_silhouette": ____,
+        "kmeans_pp_inertia": float(km_plus.inertia_),
+        "kmeans_random_inertia": float(km_random.inertia_),
+        "kmeans_pp_iters": float(km_plus.n_iter_),
+        "kmeans_random_iters": float(km_random.n_iter_),
+        "kmeans_pp_time_s": float(t_plus),
+        "kmeans_random_time_s": float(t_random),
+    },
+    series_metrics={
+        "sweep_silhouette": ____,
+        "sweep_inertia": ____,
+    },
+)
+print(f"  [tracked] sweep + final-fit metrics logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the kailash-ml ClusteringEngine
+# ════════════════════════════════════════════════════════════════════════
+# You hand-rolled the K sweep, the silhouette/CH/DB metrics, the
+# k-means++-vs-random comparison, and the per-sample silhouette audit —
+# ~120 lines of structure to internalise the moving parts.
+#
+# kailash-ml ships a single engine that IS that pipeline. ClusteringEngine.
+# `sweep_k` runs the whole K-vs-criterion sweep for any supported algorithm
+# (kmeans, hierarchical, dbscan, spectral, gmm) and `fit` returns a
+# ClusterResult with labels + silhouette + Calinski-Harabasz + inertia.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cluster_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: instantiate ClusteringEngine and call .sweep_k on cluster_df with
+# range(2, 11), algorithm='kmeans', criterion='silhouette'. Print the
+# returned sweep_result.optimal_k.
+clustering = ____
+sweep_result = ____
+print(f"  ClusteringEngine.sweep_k(): optimal_k={sweep_result.optimal_k}")
+
+# TODO: call clustering.fit on cluster_df with algorithm='kmeans' and
+# n_clusters=best_k. The returned ClusterResult exposes .silhouette_score,
+# .calinski_harabasz_score, and .inertia.
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(K={best_k}): "
+    f"silhouette={fit_result.silhouette_score:.4f}  "
+    f"CH={fit_result.calinski_harabasz_score:.0f}  "
+    f"inertia={fit_result.inertia:.0f}"
+)
+print()
+print("  Every metric the lesson printed by hand — silhouette, CH, inertia,")
+print("  cluster sizes — is a field on ClusterResult. ClusteringEngine IS")
+print("  the destination this lesson walked you toward.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
@@ -235,3 +324,7 @@ print(
   Next: 02_hierarchical.py — when you need a dendrogram instead of a K.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

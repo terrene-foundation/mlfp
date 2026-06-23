@@ -244,13 +244,23 @@ class MLFPDataLoader:
         else:
             # Check repo-local data/ first, then fall back to Drive download
             if self._local_data:
-                local_path = self._local_data / module / filename
+                module_dir = self._local_data / module
+                local_path = module_dir / filename
                 if local_path.exists():
                     path = local_path
                     logger.info(
                         "Loading %s/%s from local data/ (%s)", module, filename, path
                     )
                     return _read_file(path)
+                # Bundled data is present for this module but the file is absent
+                # → it is genuinely missing. Raise immediately instead of falling
+                # back to a Drive download that would hang offline (and pulls the
+                # whole folder online just to discover the file is not there).
+                if module_dir.is_dir():
+                    raise FileNotFoundError(
+                        f"File not found: {module}/{filename} "
+                        f"(not in local data/{module}/)."
+                    )
             path = _download_from_drive(module, filename, self._cache)
 
         logger.info("Loading %s/%s (%s)", module, filename, path)

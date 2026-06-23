@@ -102,21 +102,31 @@ train_pref, eval_pref = split_preferences(pref_data, train_frac=0.9)
 
 async def run_dpo_training():
     # TODO: Instantiate AlignmentPipeline(dpo_config), then call
-    #       pipeline.train(train_data=train_pref, eval_data=eval_pref).
-    #       Return (pipeline, result).
+    #       pipeline.train(None, adapter_name="ultrafeedback_dpo_v1",
+    #                      preference_dataset=train_pref).
+    #       kailash-align 0.7.3: DPO preference pairs go in `preference_dataset=`
+    #       (NOT the positional `dataset` slot), `adapter_name` is REQUIRED,
+    #       and there is NO eval_data parameter. Return (pipeline, result).
     pipeline = ____
     print("\nRunning DPO training...")
     result = ____
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss:  {result.eval_loss:.4f}")
-    print(f"  Adapter:    {result.adapter_path}")
+    # result.training_metrics is the raw TRL TrainOutput.metrics dict: it
+    # carries train_loss + reward signals (rewards/chosen, rewards/rejected,
+    # rewards/margins). There is NO eval_loss under the 0.7.3 train() API.
+    metrics = result.training_metrics
+    print(f"  Train loss:    {metrics.get('train_loss', float('nan')):.4f}")
+    print(f"  Reward margin: {metrics.get('rewards/margins', float('nan')):.4f}")
+    print(f"  Adapter:       {result.adapter_path}")
     return pipeline, result
 
 
 dpo_pipeline, dpo_result = asyncio.run(run_dpo_training())
 assert dpo_result is not None
-assert dpo_result.final_loss > 0
-print(f"✓ Checkpoint 2 passed — DPO loss={dpo_result.final_loss:.4f}\n")
+assert dpo_result.training_metrics.get("train_loss") is not None
+print(
+    f"✓ Checkpoint 2 passed — DPO train loss="
+    f"{dpo_result.training_metrics['train_loss']:.4f}\n"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -136,7 +146,10 @@ async def register_adapter() -> str:
     # TODO: Call registry.register_adapter() with:
     #   name="ultrafeedback_dpo_v1", adapter_path=dpo_result.adapter_path,
     #   signature=signature,
-    #   training_metrics={"final_loss": ..., "eval_loss": ..., "beta": ...},
+    #   training_metrics={
+    #       "train_loss": dpo_result.training_metrics.get("train_loss"),
+    #       "rewards_margin": dpo_result.training_metrics.get("rewards/margins"),
+    #       "beta": dpo_config.dpo.beta},
     #   tags=["ultrafeedback", "dpo", "preference-aligned"]
     # register_adapter returns an AdapterVersion (not a string).
     version = ____

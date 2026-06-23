@@ -42,8 +42,14 @@ from shared.mlfp04.ex_5 import (
     OUTPUT_DIR,
     generate_transactions,
     print_transaction_summary,
+    setup_engines,
+    teardown_engines,
+    track_run,
     transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — association-rules zoo shared store ────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -340,6 +346,68 @@ pl.DataFrame(metric_rows).write_csv(OUTPUT_DIR / "rule_features_metrics.csv")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log baseline-vs-rule-enhanced classifier metrics
+# ════════════════════════════════════════════════════════════════════════
+# Same shared experiment as 01-03. Logs all four model variants side by
+# side (LR Baseline / LR Combined / RF Baseline / RF Combined) plus the
+# product-vs-rule importance split. Series = top-15 RF importances.
+
+# TODO: pick run_name="rule_features_vs_baseline" and fill in the two
+# AUC-lift scalars (combined - baseline) for LR and RF.
+lr_combined_lift = ____
+rf_combined_lift = ____
+
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "algorithm": "rule_features",
+        "implementation": "lr_plus_rf_baseline_vs_combined",
+        "n_transactions": len(transactions),
+        "n_baseline_features": int(X_baseline.shape[1]),
+        "n_rule_features": int(X_rules.shape[1]),
+        "n_combined_features": int(X_combined.shape[1]),
+        "rf_n_estimators": 200,
+        "rf_max_depth": 10,
+    },
+    scalar_metrics={
+        "lr_baseline_auc": float(results["LR: Baseline"]["auc_roc"]),
+        "lr_combined_auc": float(results["LR: Combined"]["auc_roc"]),
+        "lr_auc_lift_combined_vs_baseline": float(lr_combined_lift),
+        "rf_baseline_auc": float(results["RF: Baseline"]["auc_roc"]),
+        "rf_combined_auc": float(results["RF: Combined"]["auc_roc"]),
+        "rf_auc_lift_combined_vs_baseline": float(rf_combined_lift),
+        "product_importance_share": float(product_importance / total),
+        "rule_importance_share": float(rule_importance / total),
+    },
+    series_metrics={
+        "rf_top15_importances": [float(importances[i]) for i in top_idx],
+    },
+)
+print(f"  [tracked] Baseline-vs-combined classifier metrics logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — kailash-ml FeatureEngineer + TrainingPipeline
+# ════════════════════════════════════════════════════════════════════════
+# The hand-built rule-feature columns made every interaction explicit
+# (auditability win). The Kailash destination stacks two engines: ship
+# the rule columns alongside auto-discovered co-occurrence features from
+# FeatureEngineer, then let TrainingPipeline train + rank LR vs RF vs
+# gradient-boosted variants in one call. Manual rules become one feature
+# group among many — the bottom rung of the discovery spectrum.
+
+print("  Destination contract:")
+print("    FeatureEngineer().generate(df)             -> auto co-occurrence cols")
+print("    TrainingPipeline().train(schema, model, eval) -> ranked classifiers")
+print(
+    f"  Today's run: {X_rules.shape[1]} hand-built rule features + "
+    f"4 sklearn variants — top AUC = {max(v['auc_roc'] for v in results.values()):.4f}"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -350,6 +418,9 @@ print(
   [x] Engineered numeric features from discovered association rules
   [x] Compared baseline vs rules-only vs combined models
   [x] Attributed feature importance across product and rule groups
+  [x] Pointed at the Kailash destination — FeatureEngineer +
+      TrainingPipeline — that ships rule features alongside auto-
+      discovered co-occurrence structure in one call
 
   KEY INSIGHT: Manual rules are the MANUAL end of a spectrum that runs
   all the way to deep learning.
@@ -359,3 +430,6 @@ print(
   NMF topic modelling, and NPMI coherence.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -7,8 +7,9 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Model Context Protocol (MCP) basics
-#   - Define MCP tools with JSON-schema parameters
-#   - Register tools on an MCPServer
+#   - Register tools on an MCPServer with the @server.tool decorator
+#   - Describe tools with JSON schemas via StructuredTool, then inspect
+#     the server's capability surface
 #
 # PREREQUISITES: 03_parallel_router.py
 # ESTIMATED TIME: ~30 min
@@ -16,7 +17,7 @@
 """
 from __future__ import annotations
 
-from kailash_mcp import MCPServer, MCPTool
+from kailash_mcp import MCPServer, StructuredTool, ToolAnnotation
 
 from shared.mlfp06.ex_6 import OUTPUT_DIR, load_squad_corpus
 
@@ -34,30 +35,38 @@ print("✓ Checkpoint 1 passed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — Define three tool handlers
+# TASK 2 — Create the server, then define + register three tool handlers
 # ════════════════════════════════════════════════════════════════════════
+# In kailash-mcp the server comes first; you register a plain function ON it
+# with the @server.tool() decorator. The decorator returns the function
+# unchanged, so each handler stays directly callable for testing.
+
+# TODO: Create the server on the stdio transport.
+#   MCPServer(name=..., transport=...)
+mcp_server = ____
 
 
-def mcp_analyse_passage(passage: str, analysis_type: str = "factual") -> str:
-    """Analyse a text passage from the specified perspective.
+# TODO: Decorate each handler with @mcp_server.tool() so it registers on the
+# server. The MCP tool name is taken from the function name — so name the
+# functions exactly analyse_passage / search_corpus / get_corpus_stats.
 
-    Args:
-        passage: The text to analyse.
-        analysis_type: One of 'factual', 'semantic', 'structural'.
-    """
-    # TODO: Return a short formatted string describing what analysis
-    # would run (this is a stub — in production it would delegate to
-    # the matching specialist agent).
+
+# @mcp_server.tool()
+def analyse_passage(passage: str, analysis_type: str = "factual") -> str:
+    """Analyse a text passage from a factual/semantic/structural perspective."""
+    # TODO: Return a short formatted string describing what analysis would
+    # run (a stub — in production it delegates to the matching agent).
     return ____
 
 
-def mcp_search_corpus(query: str, top_k: int = 3) -> str:
-    """Search the SQuAD corpus for passages matching a query."""
+# @mcp_server.tool()
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the document corpus for passages matching a query."""
     query_lower = query.lower()
     scored = []
     for row in passages.iter_rows(named=True):
-        # TODO: Score each row by counting how many query words appear
-        # in row["text"].lower(). Only keep rows with score > 0.
+        # TODO: Score each row by counting how many query words appear in
+        # row["text"].lower(). Keep only rows with score > 0.
         score = ____
         if score > 0:
             scored.append((score, row))
@@ -66,46 +75,56 @@ def mcp_search_corpus(query: str, top_k: int = 3) -> str:
     return "\n\n".join(results) if results else "No matches found."
 
 
-def mcp_get_corpus_stats() -> str:
+# @mcp_server.tool()
+def get_corpus_stats() -> str:
     """Get statistics about the available document corpus."""
-    # TODO: Return a string with passage count, unique title count,
-    # and the first 10 unique titles.
+    # TODO: Return a string starting with "Corpus:" giving passage count,
+    # unique title count, and the first 10 unique titles.
     return ____
 
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert mcp_get_corpus_stats().startswith("Corpus:")
-print("✓ Checkpoint 2 passed — 3 handlers callable\n")
+assert get_corpus_stats().startswith("Corpus:")
+assert "[" in search_corpus("what", top_k=2) or "No matches" in search_corpus(
+    "xyzxyz", top_k=2
+)
+print("✓ Checkpoint 2 passed — 3 handlers registered and callable\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — Wrap handlers as MCPTools
+# TASK 3 — Attach JSON schemas as StructuredTool capability cards
 # ════════════════════════════════════════════════════════════════════════
+# A StructuredTool bundles an input JSON Schema + a ToolAnnotation into the
+# "capability card" an agent reads before calling a tool.
 
-# TODO: Build a list of three MCPTool instances. Each needs:
-#   - name, description, handler, parameters (JSON schema).
-# See the reference at https://modelcontextprotocol.io and kailash_mcp docs.
-mcp_tools = ____
+# TODO: Build one StructuredTool per tool. Each needs input_schema (a JSON
+# Schema dict with "type": "object" and a "properties" map) and annotations
+# (a ToolAnnotation, e.g. ToolAnnotation(is_read_only=True)).
+tool_cards = ____
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────────
-assert len(mcp_tools) == 3
-print("✓ Checkpoint 3 passed — 3 MCPTools defined\n")
+assert len(tool_cards) == 3
+assert all(isinstance(c, StructuredTool) for c in tool_cards.values())
+print("✓ Checkpoint 3 passed — 3 capability cards defined\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — Register tools on an MCPServer
+# TASK 4 — Inspect the server's capability surface
 # ════════════════════════════════════════════════════════════════════════
+# The server already holds every tool you decorated. Introspect it — this is
+# what an agent's list_tools call returns over the wire. No live listener.
 
-# TODO: Instantiate MCPServer(name="mlfp06-analysis-server") and register
-# each tool in mcp_tools via mcp_server.register_tool(tool).
-mcp_server = ____
-for tool in mcp_tools:
-    ____
+# TODO: Read the registered tools off the server.
+#   - stats = mcp_server.get_server_stats()
+#   - registered_names = sorted(mcp_server._tool_registry.keys())
+stats = ____
+registered_names = ____
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────────
 assert mcp_server is not None
-assert len(mcp_tools) == 3
-print("✓ Checkpoint 4 passed — MCP server ready\n")
+assert stats["tools"]["registered_tools"] == 3
+assert registered_names == ["analyse_passage", "get_corpus_stats", "search_corpus"]
+print("✓ Checkpoint 4 passed — MCP server exposes 3 tools\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -127,7 +146,7 @@ print("=" * 70)
 print(
     """
   [x] MCP as the "USB for AI agents"
-  [x] MCPTool: handler + schema + description
+  [x] @server.tool: handler + JSON schema + annotation
   [x] MCPServer registration and capability introspection
 
   Next: 05_memory_and_security.py — agent memory and multi-agent

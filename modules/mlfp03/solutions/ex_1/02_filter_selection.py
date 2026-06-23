@@ -92,8 +92,13 @@ print(f"  Positive class rate: {y_binary.mean():.3f}")
 
 # --- Mutual Information ---
 mi_scores = mutual_info_classif(X_sel, y_binary, random_state=42)
+# kNN-based MI / chi2 can return NaN for features that are constant or tie
+# heavily on duplicate rows; treat an undefined score as "no information" (0.0).
 mi_ranking = sorted(
-    [(name, float(score)) for name, score in zip(feature_cols, mi_scores)],
+    [
+        (name, float(score) if np.isfinite(score) else 0.0)
+        for name, score in zip(feature_cols, mi_scores)
+    ],
     key=lambda x: x[1],
     reverse=True,
 )
@@ -102,7 +107,10 @@ mi_ranking = sorted(
 X_chi2 = MinMaxScaler().fit_transform(X_sel)
 chi2_scores, chi2_pvalues = chi2(X_chi2, y_binary)
 chi2_ranking = sorted(
-    [(name, float(score)) for name, score in zip(feature_cols, chi2_scores)],
+    [
+        (name, float(score) if np.isfinite(score) else 0.0)
+        for name, score in zip(feature_cols, chi2_scores)
+    ],
     key=lambda x: x[1],
     reverse=True,
 )

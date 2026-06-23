@@ -29,11 +29,21 @@ import numpy as np
 from sklearn.neighbors import LocalOutlierFactor
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    teardown_engines,
+    track_run,
     write_roc_chart,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
+
+# Per-n_neighbors sweep results captured below for the TRACK section.
+nbrs_sweep: dict[int, dict[str, float]] = {}
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -74,6 +84,11 @@ for n_nbrs in [10, 20, 30, 50]:
 
     m = score_metrics(y, scores_test)
     n_flagged = int((labels_test == -1).sum())
+    nbrs_sweep[n_nbrs] = {
+        "auc_roc": m["auc_roc"],
+        "avg_precision": m["avg_precision"],
+        "n_flagged": float(n_flagged),
+    }
     print(
         f"  n_neighbors={n_nbrs:<3}  AUC-ROC={m['auc_roc']:.4f}  "
         f"AP={m['avg_precision']:.4f}  flagged={n_flagged:,}"
@@ -126,6 +141,78 @@ print("Use BOTH, then blend — see 04_ensemble_blending.py.")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Sweep keys: lof_k{N}_auc_roc / lof_k{N}_avg_precision / lof_k{N}_n_flagged
+# Integer N is regex-safe.
+
+sweep_metrics: dict[str, float] = {}
+for n_nbrs, stats in nbrs_sweep.items():
+    sweep_metrics[f"lof_k{n_nbrs}_auc_roc"] = _finite(stats["auc_roc"])
+    sweep_metrics[f"lof_k{n_nbrs}_avg_precision"] = _finite(stats["avg_precision"])
+    sweep_metrics[f"lof_k{n_nbrs}_n_flagged"] = stats["n_flagged"]
+
+median_normal = float(np.median(lof_scores[y == 0]))
+median_anomaly = float(np.median(lof_scores[y == 1]))
+
+# TODO: call track_run with run_name="local_outlier_factor". Headline
+# scalars: lof_auc_roc, lof_avg_precision (from lof_metrics — wrap in
+# _finite), lof_n_predicted_anomalies, lof_normal_median (from median_normal),
+# lof_anomaly_median. |-merge with sweep_metrics.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "best_n_neighbors": 20,
+        "contamination": 0.01,
+        "anomaly_rate": float(y.mean()),
+    },
+    scalar_metrics={
+        "lof_auc_roc": _finite(lof_metrics["auc_roc"]),
+        "lof_avg_precision": ____,
+        "lof_n_predicted_anomalies": float(int((lof_labels == -1).sum())),
+        "lof_normal_median": _finite(median_normal),
+        "lof_anomaly_median": _finite(median_anomaly),
+    }
+    | sweep_metrics,
+)
+print(f"\n  [tracked] LOF n_neighbors sweep + final-fit logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect(algorithm='lof')
+# ════════════════════════════════════════════════════════════════════════
+# Same .detect() surface used in lesson 02; only the `algorithm=` string
+# changes. Production stacks blend isolation_forest + lof via the
+# EnsembleEngine in lesson 04.
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=_feature_cols)
+
+# TODO: Instantiate AnomalyDetectionEngine and call .detect on anomaly_df
+# with algorithm='lof' and contamination=0.01.
+det = ____
+fit_result = ____
+fit_metrics = score_metrics(y, np.asarray(fit_result.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(lof, contamination=0.01): "
+    f"AUC-ROC={fit_metrics['auc_roc']:.4f}  "
+    f"AP={fit_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={fit_result.n_anomalies}"
+)
+print(
+    f"  Hand-rolled AUC-ROC (Task 3): {lof_metrics['auc_roc']:.4f} "
+    "— same algorithm, one-line vs ten-line interface.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -143,3 +230,7 @@ print(
   kailash-ml EnsembleEngine.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

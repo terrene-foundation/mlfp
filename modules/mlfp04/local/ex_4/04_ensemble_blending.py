@@ -34,15 +34,22 @@ from kailash_ml import EnsembleEngine
 
 from shared.mlfp04.ex_4 import (
     AnomalyScoreEstimator,
+    _finite,
     load_dataset,
     normalise_scores,
     precision_at_recall,
     print_metrics,
     rank_normalise,
     score_metrics,
+    setup_engines,
+    teardown_engines,
+    track_run,
     write_comparison_chart,
     write_monitoring_chart,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -232,6 +239,74 @@ print(f"Saved monitoring chart: {monitoring_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's leaderboard to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Eight detectors (4 base + 4 blends) plus AUC weights and the monitoring
+# windows. EnsembleEngine.blend() above IS the destination-first close;
+# this section persists the leaderboard so runs 01-04 of m4_anomaly_zoo
+# are comparable via tracker.list_runs().
+
+precision_at_recall_metrics: dict[str, float] = {}
+for tr in (0.50, 0.70, 0.80, 0.90):
+    p, _t = precision_at_recall(y, weighted_blend, tr)
+    label = str(tr).replace(".", "_")
+    precision_at_recall_metrics[f"weighted_p_at_r_{label}"] = _finite(p)
+
+monitoring_metrics: dict[str, float] = {
+    f"monitor_window_{i:02d}_rate": _finite(rate)
+    for i, rate in enumerate(anomaly_rates, start=1)
+}
+
+# TODO: call track_run with run_name="ensemble_blending". Headline scalars:
+# every per-detector AUC-ROC + AP wrapped in _finite(), every blend variant
+# AUC-ROC + AP, the four AUC weights, plus best_single_auc_roc /
+# best_ensemble_auc_roc / ensemble_lift_over_best_single. |-merge with
+# precision_at_recall_metrics and monitoring_metrics.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "n_samples": n_samples,
+        "n_estimators_iso": 200,
+        "n_neighbors_lof": 20,
+        "contamination": 0.01,
+        "anomaly_rate": float(y.mean()),
+        "decision_threshold": float(decision_threshold),
+        "monitoring_windows": len(anomaly_rates),
+    },
+    scalar_metrics={
+        "z_auc_roc": _finite(z_m["auc_roc"]),
+        "z_avg_precision": _finite(z_m["avg_precision"]),
+        "iqr_auc_roc": _finite(iqr_m["auc_roc"]),
+        "iqr_avg_precision": _finite(iqr_m["avg_precision"]),
+        "iso_auc_roc": _finite(iso_m["auc_roc"]),
+        "iso_avg_precision": _finite(iso_m["avg_precision"]),
+        "lof_auc_roc": _finite(lof_m["auc_roc"]),
+        "lof_avg_precision": _finite(lof_m["avg_precision"]),
+        "equal_blend_auc_roc": _finite(equal_m["auc_roc"]),
+        "equal_blend_avg_precision": _finite(equal_m["avg_precision"]),
+        "weighted_blend_auc_roc": _finite(weighted_m["auc_roc"]),
+        "weighted_blend_avg_precision": _finite(weighted_m["avg_precision"]),
+        "rank_blend_auc_roc": _finite(rank_m["auc_roc"]),
+        "rank_blend_avg_precision": _finite(rank_m["avg_precision"]),
+        "engine_blend_auc_roc": _finite(engine_m["auc_roc"]),
+        "engine_blend_avg_precision": _finite(engine_m["avg_precision"]),
+        "weight_z": _finite(weights["z"]),
+        "weight_iqr": _finite(weights["iqr"]),
+        "weight_iso": _finite(weights["iso"]),
+        "weight_lof": _finite(weights["lof"]),
+        "best_single_auc_roc": _finite(best_single_auc),
+        "best_ensemble_auc_roc": ____,
+        "ensemble_lift_over_best_single": _finite(best_ensemble_auc - best_single_auc),
+    }
+    | precision_at_recall_metrics
+    | monitoring_metrics,
+)
+print(f"\n  [tracked] 8-detector leaderboard logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -250,3 +325,7 @@ print(
   Exercise 4 complete. Next: Exercise 5 — association rule mining.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

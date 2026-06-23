@@ -31,8 +31,6 @@ from __future__ import annotations
 from collections import defaultdict
 from itertools import combinations
 
-import polars as pl
-
 from shared.mlfp04.ex_5 import (
     OUTPUT_DIR,
     categorise_rule,
@@ -40,7 +38,14 @@ from shared.mlfp04.ex_5 import (
     generate_transactions,
     print_transaction_summary,
     rules_to_polars,
+    setup_engines,
+    teardown_engines,
+    track_run,
+    transactions_to_onehot,
 )
+
+# ── Kailash-ML ExperimentTracker — every association-rules run logs here ─
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -315,6 +320,104 @@ print(f"\n  Saved: {OUTPUT_DIR / 'top_rules_scatter.csv'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log rule-quality metrics to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Logs the four-metric distribution across all rules + the actionable cut +
+# the cross-vs-within category split. Series = sorted-lift / sorted-conf /
+# sorted-support arrays so the M4 dashboard can plot the rule-quality
+# distribution alongside the other techniques in this experiment.
+
+import math  # noqa: E402
+
+lifts = [float(r["lift"]) for r in rules]
+confs = [float(r["confidence"]) for r in rules]
+supps = [float(r["support"]) for r in rules]
+finite_convs = [
+    float(r["conviction"]) for r in rules if not math.isinf(r["conviction"])
+]
+mean_finite_conv = sum(finite_convs) / len(finite_convs) if finite_convs else 0.0
+n_inf_conv = sum(1 for r in rules if math.isinf(r["conviction"]))
+
+actionable_lifts = [float(r["lift"]) for r in actionable]
+top_lift = max(actionable_lifts) if actionable_lifts else 0.0
+mean_act_lift = (
+    sum(actionable_lifts) / len(actionable_lifts) if actionable_lifts else 0.0
+)
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="rule_evaluation_three_threshold",
+    params={
+        "algorithm": "association_rules",
+        "implementation": "from_scratch",
+        "n_transactions": len(transactions),
+        "min_support_mining": MIN_SUPPORT,
+        "min_confidence_filter": MIN_CONFIDENCE,
+        "actionable_min_support": 0.03,
+        "actionable_min_confidence": 0.4,
+        "actionable_min_lift": 1.5,
+    },
+    scalar_metrics={
+        "n_frequent_itemsets": float(len(frequent)),
+        "n_rules_generated": float(len(rules)),
+        "n_rules_actionable": float(len(actionable)),
+        "actionable_rate": float(len(actionable) / max(len(rules), 1)),
+        "cross_category_rules": float(cross),
+        "within_category_rules": float(within),
+        "top_lift": float(top_lift),
+        "mean_actionable_lift": float(mean_act_lift),
+        "mean_lift_all": float(sum(lifts) / max(len(lifts), 1)),
+        "mean_confidence_all": float(sum(confs) / max(len(confs), 1)),
+        "mean_support_all": float(sum(supps) / max(len(supps), 1)),
+        "n_inf_conviction": float(n_inf_conv),
+        "mean_finite_conviction": float(mean_finite_conv),
+    },
+    series_metrics={
+        "lift_sorted_desc": sorted(lifts, reverse=True)[:50],
+        "confidence_sorted_desc": sorted(confs, reverse=True)[:50],
+        "support_sorted_desc": sorted(supps, reverse=True)[:50],
+    },
+)
+print(f"  [tracked] Rule-quality distribution logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — mlxtend.frequent_patterns.association_rules
+# ════════════════════════════════════════════════════════════════════════
+# This lesson hand-rolled rule generation, all four quality metrics, and
+# the three-threshold filter — ~210 lines of structure to internalise WHY
+# each metric catches a different failure mode. The production destination
+# is the same one you used in lesson 02:
+#
+#   from mlxtend.frequent_patterns import fpgrowth, association_rules
+#
+# It runs FP-Growth + every metric (support, confidence, lift, conviction,
+# leverage, zhang's metric) in two calls and returns a pandas frame ready
+# for the same three-threshold filter you just implemented.
+
+from mlxtend.frequent_patterns import association_rules as mlx_rules  # noqa: E402
+from mlxtend.frequent_patterns import fpgrowth as mlx_fpgrowth  # noqa: E402
+
+onehot_pd = transactions_to_onehot(transactions).to_pandas().astype(bool)
+mlx_freq = mlx_fpgrowth(onehot_pd, min_support=MIN_SUPPORT, use_colnames=True)
+mlx_rules_df = mlx_rules(mlx_freq, metric="confidence", min_threshold=MIN_CONFIDENCE)
+mlx_actionable = mlx_rules_df[
+    (mlx_rules_df["support"] >= 0.03)
+    & (mlx_rules_df["confidence"] >= 0.4)
+    & (mlx_rules_df["lift"] > 1.5)
+]
+print(f"  mlxtend rules : {len(mlx_rules_df)}  hand-rolled : {len(rules)}")
+print(
+    f"  mlxtend actionable: {len(mlx_actionable)}  "
+    f"hand-rolled actionable: {len(actionable)}"
+)
+print()
+print("  Same four metrics, same three-threshold filter — the engine ships")
+print("  what you just built. Take the contract; ship the model card.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -328,6 +431,8 @@ print(
   [x] Separated cross-category rules from within-category rules
   [x] Identified a production scenario (Watsons cart-page recommender)
       where the three-threshold filter IS the product spec
+  [x] Reproduced the entire pipeline via two mlxtend calls — fpgrowth +
+      association_rules — confirming the production destination
 
   KEY INSIGHT: Confidence alone is popularity. Lift alone is noise.
   Support alone is volume. The three together are actionability.
@@ -336,3 +441,6 @@ print(
   supervised classifier and measure whether they beat raw product presence.
 """
 )
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

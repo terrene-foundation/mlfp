@@ -31,7 +31,16 @@ from sklearn.decomposition import PCA
 
 from kailash_ml import ModelVisualizer
 
-from shared.mlfp04.ex_3 import OUTPUT_DIR, load_customer_matrix
+from shared.mlfp04.ex_3 import (
+    OUTPUT_DIR,
+    load_customer_matrix,
+    setup_engines,
+    teardown_engines,
+    track_run,
+)
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -230,6 +239,82 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Every M4 ex_3 lesson logs into the SAME experiment ('m4_dimreduction_zoo')
+# so PCA / Kernel-PCA / t-SNE / UMAP can be compared side-by-side from one
+# SQLite store after the lesson group ends. Sweep series = per-k explained-
+# variance + reconstruction-MSE; scalar metrics = the chosen-k headlines.
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="pca_svd",
+    params={
+        "algorithm": "pca",
+        "method": "svd",
+        "n_features": n_features,
+        "n_samples": n_samples,
+        "n_components_chosen": n_95,
+        "variance_threshold": 0.95,
+    },
+    scalar_metrics={
+        "n_components_80": float(n_80),
+        "n_components_90": float(n_90),
+        "n_components_95": float(n_95),
+        "n_components_kaiser": float(n_kaiser),
+        "n_components_broken_stick": float(n_broken),
+        "compression_ratio_at_95": float(compression_ratio),
+        "variance_kept_at_95": float(cum_evr[n_95 - 1]),
+        "recon_mse_at_95": float(recon_errors[min(n_95 - 1, len(recon_errors) - 1)]),
+        "svd_vs_sklearn_max_diff": float(max_diff),
+    },
+    series_metrics={
+        "explained_variance_ratio": evr.tolist(),
+        "cumulative_explained_variance": cum_evr.tolist(),
+        "reconstruction_mse": recon_errors,
+    },
+)
+print(f"  [tracked] PCA scree + reconstruction series logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — the kailash-ml DimReductionEngine
+# ════════════════════════════════════════════════════════════════════════
+# This lesson hand-rolled the SVD, the explained-variance bookkeeping,
+# the three component-selection criteria, and the reconstruction-error
+# curve — ~140 lines of structure to internalise PCA from first principles.
+#
+# kailash-ml ships a single engine that IS that pipeline. DimReductionEngine.
+# `reduce` runs the whole fit-and-transform on a polars DataFrame and
+# returns a DimReductionResult with the embedding, explained variance, and
+# reconstruction error. One sync call. The engine owns pca, tsne, umap,
+# nmf — the next four lessons all pivot on this same surface.
+
+import polars as pl
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+cust_df = pl.from_numpy(X, schema=feature_cols)
+dimreduce = DimReductionEngine()
+
+reduce_result = dimreduce.reduce(cust_df, algorithm="pca", n_components=n_95)
+print(
+    f"  DimReductionEngine.reduce(pca, n_components={n_95}): "
+    f"embedding shape=({len(reduce_result.transformed)}, "
+    f"{reduce_result.n_components})  "
+    f"recon_mse={reduce_result.reconstruction_error:.4f}"
+)
+if reduce_result.explained_variance_ratio is not None:
+    cum = sum(reduce_result.explained_variance_ratio)
+    print(f"  Explained variance retained: {cum:.2%}")
+print()
+print("  Every metric you computed by hand — explained variance ratio,")
+print("  cumulative variance, reconstruction MSE — is a field on")
+print("  DimReductionResult. The engine IS the destination.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -252,3 +337,7 @@ print(
   kernel trick — same math, richer feature space.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

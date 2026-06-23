@@ -122,26 +122,36 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 
 
 class ActorCritic(nn.Module):
-    """Shared trunk with two heads: policy logits (actor) and state value (critic).
+    """SEPARATE actor and critic networks: policy logits + state value.
 
-    The shared trunk learns a common state representation. The actor head
-    outputs action probabilities; the critic head outputs V(s).
+    We deliberately do NOT share a trunk. With a shared trunk the critic's
+    value-regression gradients (MSE on returns that grow into the hundreds)
+    are far larger than the actor's tiny policy-gradient signal, so they
+    dominate the shared parameters and the policy never moves — on CartPole
+    this leaves the agent stuck at ~random return (~24) with entropy frozen
+    at ln(2). Two independent MLPs let each head learn at its own scale, and
+    PPO then solves CartPole (return climbs past 200) within ~20 iterations.
     """
 
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):
         super().__init__()
-        self.trunk = nn.Sequential(
+        self.actor = nn.Sequential(
             nn.Linear(obs_dim, hidden),
             nn.Tanh(),
             nn.Linear(hidden, hidden),
             nn.Tanh(),
+            nn.Linear(hidden, n_actions),
         )
-        self.policy_head = nn.Linear(hidden, n_actions)  # Actor
-        self.value_head = nn.Linear(hidden, 1)  # Critic
+        self.critic = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = self.trunk(x)
-        return self.policy_head(h), self.value_head(h).squeeze(-1)
+        return self.actor(x), self.critic(x).squeeze(-1)
 
     def act(self, state: np.ndarray) -> tuple[int, torch.Tensor, torch.Tensor]:
         """Select action using current policy. Returns (action, log_prob, value)."""
@@ -612,7 +622,9 @@ pricing_env = RideHailingPricingEnv()
 obs, info = pricing_env.reset(seed=42)
 assert obs.shape == (4,), "Pricing env should have 4-D state"
 obs2, r, term, trunc, info = pricing_env.step(2)
-assert isinstance(r, (int, float)) or hasattr(r, "__float__"), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
+assert isinstance(r, (int, float)) or hasattr(
+    r, "__float__"
+), f"Reward should be numeric, got {type(r).__name__}: {r!r}"
 print(f"  RideHailingPricing env: obs={obs.shape}, actions=5, sample_reward={r:.3f}")
 
 # ── Train PPO on pricing environment ─────────────────────────────────
@@ -809,6 +821,7 @@ def _diag_loss(m, batch):
         x, y = batch, None
     out = m(x)
     import torch.nn.functional as F
+
     if y is None:
         return F.mse_loss(out, x)
     return F.cross_entropy(out, y)
@@ -852,4 +865,3 @@ except Exception as exc:
 #     baked in.
 #     >> Prescription: raise entropy coefficient from 0.01 → 0.05
 #        to encourage exploration.
-

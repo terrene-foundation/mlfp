@@ -127,9 +127,13 @@ print("\n✓ Checkpoint 1 passed — all three datasets loaded and inspected\n")
 # differences, extra spaces, and abbreviations all break joins silently.
 
 # --- 2a: Compare town names across datasets ---
+# HDB stores towns UPPERCASE ("BISHAN") while MRT/schools use Title Case
+# ("Bishan"). Intersecting the RAW values matches nothing — the #1 silent
+# join bug. The fix (and the lesson) is to normalise both sides to a common
+# case BEFORE comparing or joining.
 hdb_towns = set(hdb["town"].unique().to_list())
-mrt_towns = set(mrt_stations["town"].unique().to_list())
-school_towns = set(schools["town"].unique().to_list())
+mrt_towns = {t.upper() for t in mrt_stations["town"].unique().to_list()}
+school_towns = {t.upper() for t in schools["town"].unique().to_list()}
 
 matched_mrt = hdb_towns & mrt_towns
 unmatched_hdb_mrt = hdb_towns - mrt_towns
@@ -174,13 +178,14 @@ print(f"  Drop rate:  {unmatched_hdb_txns / hdb.height:.1%}")
 # quality issue", consider inner join to keep only clean records.
 
 # --- 2c: Case sensitivity check ---
-hdb_sample_town = list(hdb_towns)[0]
-mrt_sample_town = list(mrt_towns)[0] if mrt_towns else "N/A"
-print(f"\n  HDB town format: {hdb_sample_town!r}")
-print(f"  MRT town format: {mrt_sample_town!r}")
-print(
-    f"  Same case?       {hdb_sample_town == mrt_sample_town.upper() if mrt_sample_town != 'N/A' else 'N/A'}"
-)
+# Demonstrate why the normalisation above was necessary: the RAW values
+# differ only in case, so a naive join silently matches nothing.
+hdb_sample_town = hdb["town"][0]
+mrt_sample_town = mrt_stations["town"][0]
+print(f"\n  HDB town format (raw): {hdb_sample_town!r}")
+print(f"  MRT town format (raw): {mrt_sample_town!r}")
+print(f"  Same case (raw)?       {hdb_sample_town == mrt_sample_town}")
+print(f"  Match after .upper()?  {hdb_sample_town == mrt_sample_town.upper()}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(matched_mrt) > 0, "At least some towns should match between HDB and MRT"
@@ -203,7 +208,15 @@ print("\n✓ Checkpoint 2 passed — join key analysis complete\n")
 # --- 3a: Select specific columns from the right table ---
 # .select() on the right table prevents duplicate columns and limits
 # which columns are brought across — always explicit about what you join.
-mrt_join_cols = mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km")
+mrt_join_cols = (
+    mrt_stations.with_columns(pl.col("town").str.to_uppercase())
+    .sort("distance_to_mrt_km")
+    .group_by("town")
+    .agg(
+        pl.col("nearest_mrt").first(),
+        pl.col("distance_to_mrt_km").first(),
+    )
+)
 print(f"MRT columns to join: {mrt_join_cols.columns}")
 print(mrt_join_cols.head(3))
 
@@ -263,9 +276,13 @@ print("\n✓ Checkpoint 3 passed — left join with MRT preserved all rows\n")
 
 # --- 4a: Aggregate schools to town level ---
 # TODO: Group schools by "town" and count school names, alias as "school_count"
-school_counts = schools.group_by("town").agg(
-    pl.col("school_name").count().alias(____),  # Hint: "school_count"
-    pl.col("school_name").first().alias("sample_school"),
+school_counts = (
+    schools.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town")
+    .agg(
+        pl.col("school_name").count().alias(____),  # Hint: "school_count"
+        pl.col("school_name").first().alias("sample_school"),
+    )
 )
 print(f"=== School Counts by Town ===")
 print(f"Shape: {school_counts.shape}")
@@ -520,7 +537,7 @@ print(f"None:   {classify_mrt_proximity(None)}")
 # --- Apply classification to the DataFrame ---
 hdb_enriched = hdb_enriched.with_columns(
     pl.col("distance_to_mrt_km")
-    .map_elements(classify_mrt_proximity, return_dtype=pl.String)
+    .map_elements(classify_mrt_proximity, return_dtype=pl.String, skip_nulls=False)
     .alias("mrt_proximity"),
     pl.col("school_count")
     .map_elements(classify_school_density, return_dtype=pl.String)
@@ -580,9 +597,18 @@ print(f"Log prices: {[round(lp, 3) for lp in log_prices]}")
 # because many statistical models assume normal (bell-curve) distributions.
 
 # --- 8b: Apply log transform to the full dataset ---
+# log() is only meaningful for valid positive prices. This dataset carries a
+# few corrupt rows (e.g. a S$10 "sale") — taking log of those produces an
+# extreme left-tail that would make the transform look WORSE than the raw
+# skew. Guard with a sane floor so invalid prices become null (and are
+# ignored by .skew()), which is the realistic clean-before-transform step.
 hdb_enriched = hdb_enriched.with_columns(
-    pl.col("resale_price").log().alias("log_price"),
-    pl.col("price_per_sqm").log().alias("log_price_sqm"),
+    pl.when(pl.col("resale_price") >= 1000)
+    .then(pl.col("resale_price").log())
+    .alias("log_price"),
+    pl.when(pl.col("price_per_sqm") >= 1)
+    .then(pl.col("price_per_sqm").log())
+    .alias("log_price_sqm"),
 )
 
 # Compare skewness before and after log transform

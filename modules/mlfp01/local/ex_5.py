@@ -436,7 +436,7 @@ monthly_prices = monthly_prices.with_columns(
 # --- 6b: Cumulative mean price (expanding mean) ---
 # The expanding mean is the average of all values from the start to now.
 monthly_prices = monthly_prices.with_columns(
-    pl.col("median_price_sqm").cum_mean().over("town").alias("expanding_mean_psm"),
+    (pl.col("median_price_sqm").cum_sum().over("town") / pl.col("median_price_sqm").cum_count().over("town")).alias("expanding_mean_psm"),
 )
 
 # --- 6c: Cumulative max and min ---

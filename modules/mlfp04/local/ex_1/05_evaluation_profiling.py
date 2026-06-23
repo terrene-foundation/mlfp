@@ -50,11 +50,23 @@ from shared.mlfp04.ex_1 import (
     out_path,
     print_metric_row,
     score_partition,
+    setup_engines,
     standardise,
     subsample,
+    teardown_engines,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — clustering zoo shared store ───────────
+tracker, exp_name = setup_engines()
+
+
+def _finite(x: float) -> float:
+    """Tracker rejects NaN/inf; coerce to 0.0 for collapsed partitions."""
+    return float(x) if x == x and x not in (float("inf"), float("-inf")) else 0.0
+
 
 try:
     import hdbscan as hdbscan_lib
@@ -268,6 +280,78 @@ print("\n  [ok] Checkpoint 4 passed — selection guide delivered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log the leaderboard to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Method names (K-means / GMM / Ward / DBSCAN / HDBSCAN / Spectral) all
+# match the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]* — no _slug() is
+# needed. silhouette CAN be NaN on a collapsed partition, so guard with
+# the _finite() helper above.
+
+per_method_scalars: dict[str, float] = {}
+for name, m in results.items():
+    # TODO: For each method, write three scalar entries — silhouette,
+    # calinski_harabasz, davies_bouldin — wrapped in _finite(). Use keys
+    # f"{name}_silhouette", f"{name}_calinski_harabasz",
+    # f"{name}_davies_bouldin".
+    per_method_scalars[f"{name}_silhouette"] = ____
+    per_method_scalars[f"{name}_calinski_harabasz"] = ____
+    per_method_scalars[f"{name}_davies_bouldin"] = ____
+
+# TODO: call track_run with run_name="evaluation_profiling". Headline
+# scalars: winner_silhouette (_finite of the best method's silhouette)
+# and n_methods_scored. |-merge with per_method_scalars.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "best_k": BEST_K,
+        "n_methods": len(results),
+        "n_samples": n_samples,
+        "automl_strategy": config.search_strategy,
+        "automl_max_trials": config.max_trials,
+        "automl_agent": config.agent,
+    },
+    scalar_metrics={
+        "winner_silhouette": ____,
+        "n_methods_scored": float(len(results)),
+    }
+    | per_method_scalars,
+)
+print(
+    f"  [tracked] {len(results)}-method leaderboard logged to {exp_name} "
+    f"(winner: {best_name})\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='kmeans')
+# ════════════════════════════════════════════════════════════════════════
+# The engine wraps every algorithm you fitted by hand in Task 2. The
+# AutoMLEngine config from Task 3 generalises this to a search across
+# the same .fit() surface — same engine, one strategy switch.
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+cluster_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: Instantiate ClusteringEngine and call .fit on cluster_df with
+# algorithm='kmeans' and n_clusters=BEST_K.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(kmeans, K={BEST_K}): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    f"  Hand-rolled K-means silhouette (Task 2): "
+    f"{results['K-means']['silhouette']:.4f} "
+    f"— same algorithm, one-line vs ten-line interface.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
@@ -288,3 +372,7 @@ print(
   Next: Exercise 2 — implement the EM algorithm behind GMM by hand.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -31,10 +31,17 @@ import numpy as np
 from scipy.stats import skew
 
 from shared.mlfp04.ex_4 import (
+    _finite,
     load_dataset,
     print_metrics,
     score_metrics,
+    setup_engines,
+    teardown_engines,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — anomaly zoo shared store ──────────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -280,6 +287,74 @@ print(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Method names (zscore_max / iqr_count / queue) are simple snake_case so
+# they match the tracker key regex [a-zA-Z_][a-zA-Z0-9_.\-]* directly —
+# no _slug() needed. AUC-ROC/AP can be NaN if the sweep ever produces a
+# single-class slice; _finite() guards every emit.
+
+track_run(
+    tracker,
+    exp_name,
+    run_name="statistical_zscore_iqr",
+    params={
+        "n_samples": n_samples,
+        "n_features": n_features,
+        "anomaly_rate": float(y.mean()),
+        "reviewer_budget": reviewer_budget,
+        "n_winsorised": n_clipped,
+    },
+    scalar_metrics={
+        "zscore_auc_roc": _finite(z_metrics["auc_roc"]),
+        "zscore_avg_precision": _finite(z_metrics["avg_precision"]),
+        "iqr_auc_roc": _finite(iqr_metrics["auc_roc"]),
+        "iqr_avg_precision": _finite(iqr_metrics["avg_precision"]),
+        "queue_precision": _finite(queue_precision),
+        "queue_recall": _finite(queue_recall),
+        "skew_before": _finite(skew_before),
+        "skew_after": _finite(skew_after),
+    },
+)
+print(
+    f"\n  [tracked] zscore + IQR + queue prioritisation logged to "
+    f"{exp_name} run='statistical_zscore_iqr'\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's AnomalyDetectionEngine.detect() does NOT support
+# zscore/IQR (those are pure statistical primitives — too simple to
+# merit an engine). It does support isolation_forest / lof / one_class_svm.
+# This close shows where the engine path begins — Lesson 02 onwards uses
+# the same engine surface for the harder algorithms this lesson's
+# statistical rules cannot catch (coordinated outliers, density-based
+# anomalies in feature subspaces).
+
+import polars as pl
+
+from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
+
+anomaly_df = pl.from_numpy(X, schema=feature_cols)
+det = AnomalyDetectionEngine()
+preview = det.detect(anomaly_df, algorithm="isolation_forest", contamination=0.01)
+preview_metrics = score_metrics(y, np.asarray(preview.scores))
+print(
+    f"  AnomalyDetectionEngine.detect(isolation_forest): "
+    f"AUC-ROC={preview_metrics['auc_roc']:.4f}  "
+    f"AP={preview_metrics['avg_precision']:.4f}  "
+    f"n_anomalies={preview.n_anomalies}"
+)
+print(
+    f"  Hand-rolled Z-score AUC-ROC (Task 3): {z_metrics['auc_roc']:.4f}  "
+    f"— statistical is the cheap-and-explainable primitive layer; the engine"
+    " path begins next lesson with isolation_forest.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -301,3 +376,7 @@ print(
   that Z-score and IQR miss because it considers feature interactions.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from kaizen import InputField, OutputField, Signature
 from kaizen.core.base_agent import BaseAgent
@@ -115,6 +115,9 @@ class RefinedAnalysisSignature(Signature):
 # so the critic loop can meter each step's budget independently.
 
 
+# kaizen 2.28 LLM wiring (provided on every config): run_async() requires
+# use_async_llm, and json_object response_format + explicit mode make the typed
+# Signature fields parse out of the model reply.
 @dataclass
 class DataAnalysisConfig:
     llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
@@ -122,6 +125,9 @@ class DataAnalysisConfig:
     base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
     model: str = MODEL
     temperature: float = 0.2
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
     budget_limit_usd: float = 1.0
 
 
@@ -132,6 +138,9 @@ class CriticConfig:
     base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
     model: str = MODEL
     temperature: float = 0.2
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
     # TODO: Set budget_limit_usd = 1.0
     budget_limit_usd: float = ____
 
@@ -143,6 +152,9 @@ class RefinedAnalysisConfig:
     base_url: str = os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
     model: str = MODEL
     temperature: float = 0.2
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
     # TODO: Set budget_limit_usd = 1.0
     budget_limit_usd: float = ____
 

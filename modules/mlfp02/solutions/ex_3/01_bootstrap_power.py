@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from scipy import stats
 
 from shared.mlfp02.ex_3 import (
@@ -148,6 +149,10 @@ bca_result = stats.bootstrap(
     confidence_level=0.95,
     method="BCa",
     random_state=RANDOM_SEED,
+    # Process resamples in chunks. Without this, SciPy builds one
+    # (n_resamples × n_samples) array — with 500K users that is tens of GB
+    # and the process is OOM-killed. batch caps peak memory; results are identical.
+    batch=100,
 )
 bca_ci = (bca_result.confidence_interval.low, bca_result.confidence_interval.high)
 
@@ -273,9 +278,9 @@ viz = ModelVisualizer()
 
 # Plot 1: Bootstrap distribution of conversion rate difference
 fig1 = viz.histogram(
-    boot_diffs,
+    pl.DataFrame({"Treatment - Control": boot_diffs}),
+    "Treatment - Control",
     title="Bootstrap Distribution: Conversion Rate Difference",
-    x_label="Treatment - Control",
 )
 fig1.add_vline(x=observed_diff, line_dash="dash", annotation_text="Observed")
 fig1.add_vline(x=0, line_dash="dot", line_color="red", annotation_text="H0: no effect")

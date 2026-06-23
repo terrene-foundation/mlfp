@@ -34,6 +34,9 @@ from sklearn.metrics import silhouette_score
 
 from kailash_ml import ModelVisualizer
 
+# Cross-exercise import: tracker helpers live in ex_1.shared so every M4
+# unsupervised technique logs to the same `m4_clustering_zoo` experiment.
+from shared.mlfp04.ex_1 import setup_engines, teardown_engines, track_run
 from shared.mlfp04.ex_2 import (
     N_SYNTH,
     TRUE_COVS,
@@ -43,6 +46,9 @@ from shared.mlfp04.ex_2 import (
     out_path,
     safe_silhouette,
 )
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -301,6 +307,71 @@ print("Hard clustering would lose the between-segment signal on every one.")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# The from-scratch EM joins the m4_clustering_zoo experiment alongside
+# the ex_1 clustering runs. series_metrics captures the log-likelihood
+# staircase for the convergence proof.
+
+# TODO: call track_run with run_name "em_from_scratch". scalar_metrics
+# include final_log_likelihood (em["final_ll"]), n_iter (em["n_iter"]),
+# true_param_assignment_accuracy (accuracy_true), recovered_silhouette
+# (sil with NaN guard: float(sil) if sil == sil else 0.0), ambiguous_count,
+# ambiguous_pct. series_metrics is {"log_likelihood_per_iter": em["log_likelihoods"]}.
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "n_components": 3,
+        "n_synth": N_SYNTH,
+        "max_iter": 100,
+        "tol": 1e-4,
+        "init": "random",
+    },
+    scalar_metrics={
+        "final_log_likelihood": float(em["final_ll"]),
+        "n_iter": float(em["n_iter"]),
+        "true_param_assignment_accuracy": float(accuracy_true),
+        "recovered_silhouette": ____,
+        "ambiguous_count": float(n_ambiguous),
+        "ambiguous_pct": float(n_ambiguous) / float(N_SYNTH),
+    },
+    series_metrics={"log_likelihood_per_iter": ____},
+)
+print(f"  [tracked] EM convergence + assignment metrics logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
+# ════════════════════════════════════════════════════════════════════════
+# You built EM from scratch — E-step responsibilities, M-step weighted MLE,
+# the log-likelihood staircase, the convergence proof. kailash-ml 1.5.1
+# ships the same EM in its ClusteringEngine: one sync call returns labels +
+# silhouette/CH/inertia.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+synth_df = pl.from_numpy(X_synth, schema=["x0", "x1"])
+
+# TODO: instantiate ClusteringEngine and call .fit on synth_df with
+# algorithm='gmm' and n_clusters=3.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(gmm, K=3): "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}  "
+    f"n_clusters={fit_result.n_clusters}"
+)
+print(
+    "  Same EM you derived by hand — encapsulated under the same fit()"
+    " surface that backs kmeans/dbscan/spectral.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -318,3 +389,7 @@ print(
   your from-scratch EM matches the library, and select K via BIC/AIC.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

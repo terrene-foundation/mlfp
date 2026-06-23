@@ -54,6 +54,7 @@ import torch.nn.functional as F
 
 import gymnasium as gym
 import polars as pl
+from gymnasium import spaces
 
 from shared.mlfp05.ex_8 import (
     DQN,

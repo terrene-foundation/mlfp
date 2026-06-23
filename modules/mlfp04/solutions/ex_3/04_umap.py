@@ -35,8 +35,14 @@ from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
     evaluate_embedding_silhouette,
     load_customer_matrix,
+    setup_engines,
     subsample_indices,
+    teardown_engines,
+    track_run,
 )
+
+# ── Kailash-ML ExperimentTracker — every dim-reduction run logs here ─────
+tracker, exp_name = setup_engines()
 
 # UMAP is an optional extra — fall back gracefully so the exercise stays
 # runnable on machines without umap-learn installed (e.g. Colab cold
@@ -81,11 +87,19 @@ n_samples, n_features = X.shape
 pca_pre = PCA(n_components=min(10, n_features), random_state=42)
 X_pca = pca_pre.fit_transform(X)
 
-# Fit subsample; transform the full dataset to showcase OOS.
+# Fit subsample; transform a 10K out-of-sample slice to showcase OOS.
+# Transforming all 50K rows × 6 configs would push runtime past 9 minutes;
+# 10K still demonstrates the OOS workflow at a tractable cost.
 fit_idx = subsample_indices(n_samples, n_target=3000)
+TRANSFORM_TARGET = 10_000
+transform_idx = subsample_indices(n_samples, n_target=TRANSFORM_TARGET)
+n_transform = len(transform_idx)
+X_pca_transform = X_pca[transform_idx]
 print(f"=== UMAP inputs ===")
 print(f"  fit on  : {len(fit_idx):,} rows")
-print(f"  transform: {n_samples:,} rows (full dataset, out-of-sample)")
+print(
+    f"  transform: {n_transform:,} rows (out-of-sample, sub-sampled from {n_samples:,})"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -96,8 +110,6 @@ umap_configs = [
     {"n_neighbors": 5, "min_dist": 0.1, "label": "local (n=5, d=0.1)"},
     {"n_neighbors": 15, "min_dist": 0.1, "label": "default (n=15, d=0.1)"},
     {"n_neighbors": 30, "min_dist": 0.1, "label": "broad (n=30, d=0.1)"},
-    {"n_neighbors": 15, "min_dist": 0.0, "label": "tight (n=15, d=0.0)"},
-    {"n_neighbors": 15, "min_dist": 0.5, "label": "spread (n=15, d=0.5)"},
     {"n_neighbors": 50, "min_dist": 0.5, "label": "global (n=50, d=0.5)"},
 ]
 
@@ -118,7 +130,7 @@ if UMAP_AVAILABLE:
             metric="euclidean",
         )
         reducer.fit(X_pca[fit_idx])
-        embedding_full = reducer.transform(X_pca)  # out-of-sample for all rows
+        embedding_full = reducer.transform(X_pca_transform)  # out-of-sample
         elapsed = time.time() - t0
 
         sil = evaluate_embedding_silhouette(embedding_full)
@@ -131,7 +143,7 @@ if UMAP_AVAILABLE:
 else:
     # PCA 2D fallback — keeps the exercise runnable in minimal envs.
     pca_2d = PCA(n_components=2, random_state=42)
-    embedding_full = pca_2d.fit_transform(X_pca)
+    embedding_full = pca_2d.fit_transform(X_pca_transform)
     sil = evaluate_embedding_silhouette(embedding_full)
     umap_results["PCA-2D-fallback"] = {
         "embedding": embedding_full,
@@ -144,11 +156,11 @@ else:
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert len(umap_results) >= 1, "Must produce at least one UMAP result"
 for label, res in umap_results.items():
-    assert res["embedding"].shape == (n_samples, 2), (
-        f"UMAP {label} must return full-dataset 2D embedding "
-        f"(out-of-sample transform)"
+    assert res["embedding"].shape == (n_transform, 2), (
+        f"UMAP {label} must return ({n_transform}, 2) 2D embedding "
+        f"(out-of-sample transform on a {n_transform}-row slice)"
     )
-print("\n[ok] Checkpoint 1 — out-of-sample transform produced full-dataset 2D")
+print(f"\n[ok] Checkpoint 1 — out-of-sample transform produced {n_transform}-row 2D")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -221,6 +233,95 @@ else:
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Per-config silhouette + wall-time scalars + parallel series go into the
+# m4_dimreduction_zoo experiment for side-by-side comparison.
+
+config_labels = list(umap_results.keys())
+best_label_for_run = (
+    max(umap_results.items(), key=lambda kv: kv[1]["silhouette"])[0]
+    if umap_results
+    else "none"
+)
+
+
+def _finite(x: float) -> float:
+    """NaN-guard: tracker rejects non-finite metric values. Silhouette can
+    return NaN when the embedding collapses to a single cluster."""
+    return float(x) if x == x else 0.0
+
+
+track_run(
+    tracker,
+    exp_name,
+    run_name=f"umap_{best_label_for_run.split()[0].replace('-', '_')}",
+    params={
+        "algorithm": "umap",
+        "n_components": 2,
+        "n_fit_subsample": int(len(fit_idx)),
+        "n_transform_oos": int(n_transform),
+        "pca_pre_components": int(X_pca.shape[1]),
+        "umap_available": str(UMAP_AVAILABLE),
+        "best_config": best_label_for_run,
+    },
+    scalar_metrics={
+        "best_silhouette": (
+            _finite(umap_results[best_label_for_run]["silhouette"])
+            if umap_results
+            else 0.0
+        ),
+    }
+    | {
+        f"cfg{i}_silhouette": _finite(umap_results[label]["silhouette"])
+        for i, label in enumerate(config_labels)
+    }
+    | {
+        f"cfg{i}_time_s": float(umap_results[label]["time_s"])
+        for i, label in enumerate(config_labels)
+    },
+    series_metrics={
+        "sweep_silhouette": [
+            _finite(umap_results[label]["silhouette"]) for label in config_labels
+        ],
+        "sweep_time_s": [
+            float(umap_results[label]["time_s"]) for label in config_labels
+        ],
+    },
+)
+print(f"  [tracked] UMAP sweep logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — DimReductionEngine.reduce(algorithm='umap')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's DimReductionEngine wraps UMAP under the same `reduce`
+# surface that backed PCA in lesson 01 and t-SNE in lesson 03. The engine
+# handles polars→numpy and returns a DimReductionResult — embedding +
+# n_neighbors + min_dist surfaced on the metrics dict.
+
+import polars as pl
+
+from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+cust_df = pl.from_numpy(X[fit_idx], schema=feature_cols)
+dimreduce = DimReductionEngine()
+
+reduce_result = dimreduce.reduce(cust_df, algorithm="umap", n_components=2)
+print(
+    f"  DimReductionEngine.reduce(umap, n_components=2): "
+    f"embedding shape=({len(reduce_result.transformed)}, "
+    f"{reduce_result.n_components})  "
+    f"n_neighbors={reduce_result.metrics.get('n_neighbors', 'n/a')}  "
+    f"min_dist={reduce_result.metrics.get('min_dist', 'n/a')}"
+)
+print()
+print("  Same UMAP you swept by hand — wrapped under the engine surface")
+print("  that backs pca / tsne / umap / nmf. The leaderboard now compares")
+print("  this fit with the PCA + t-SNE runs from lessons 01 and 03.\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
@@ -244,3 +345,7 @@ print(
   of the customer feature space.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

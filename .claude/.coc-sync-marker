@@ -1,37 +1,19 @@
-# MLFP COC Sync Marker
-synced_at: 2026-04-28T07:35:56Z
-template: kailash-coc-claude-py
-template_version: 3.5.25
-loom_version: 2.9.4
-sdk_pins:
-  kailash: 2.11.3
-  kailash-ml: 1.5.1
-  kailash-dataflow: 2.3.2
-  kailash-nexus: 2.3.0
-  kailash-kaizen: 2.13.1
-  kailash-pact: 0.11.0
-  kailash-mcp: 0.2.10
-  kailash-align: 0.7.0
-  kaizen-agents: 0.9.4
-delta_from: 3.5.23
-delta_summary: |
-  Template 3.5.23 → 3.5.25 (loom 2.9.3 → 2.9.4) — large artifact sweep:
-    • 169 modified files (rules/agents.md + rules/testing.md slimmed to ≤200 lines per
-      rule-authoring.md MUST NOT cap; 6 framework specialists, 5 commands, 1 guide, ~157
-      skills under 01-core-sdk through 29-pact)
-    • 6 new files:
-        .claude/commands/autonomize.md   (renamed from decisive.md per loom 2.9.4)
-        .claude/commands/sweep.md        (NEW — outstanding-work audit before /wrapup)
-        .claude/bin/compose.mjs          (loom emit pipeline)
-        .claude/bin/emit.mjs             (loom emit pipeline)
-        .claude/bin/emit-cli-artifacts.mjs (loom emit pipeline)
-        .claude/bin/repin-downstream.mjs (loom emit pipeline)
-    • SDK pins UNCHANGED — already at PyPI-live tips from prior re-sync
-      (kailash-ml 1.5.1, kailash-dataflow 2.3.2 et al)
+# COC downstream sync marker
+synced_at: 2026-06-22T08:20:12Z
+template: terrene-foundation/kailash-coc-claude-py
+template_version: 3.21.10
+loom_version: 2.45.0
+mode: deps-update + safe-purge (no template overwrite per user)
+sdk_pins: floored at PyPI-live tips (2026-06-22)
 obsoleted_purged:
-  - .claude/commands/decisive.md
-verification:
-  hooks_resolved: 12/12
-  uv_sync: clean (432 resolved, 317 checked)
-  pyproject_floors_match_pypi: 9/9
-  settings_json_stale_refs: 0
+  - .claude/scheduled_tasks.lock
+  - .claude/skills/{07-development-guides,09-workflow-patterns,11-frontend-integration,13-architecture-decisions,14-code-templates,19-flutter-patterns,20-interactive-widgets,21-enterprise-ai-ux,22-conversation-ux,24-value-audit,28-coc-reference}
+  - .claude/skills/30-claude-code-patterns/{anti-patterns,artifact-design,token-budget,sdk-upstream-donation}.md
+  - .claude/agents/{claude-code-architect,open-source-strategist}.md
+  - .claude/rules/documentation.md
+  - .claude/guides/{co-setup,deterministic-quality,automated-maintenance.md}
+obsoleted_preserved_course_critical:
+  - .claude/rules/independence.md
+  - .claude/rules/terrene-naming.md
+  - .claude/agents/management/{gh-manager,todo-manager}.md
+  - .claude/skills/management

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 
@@ -134,6 +134,9 @@ class RefinedAnalysisSignature(Signature):
 # owns its budget so the critic loop can meter each step independently.
 
 
+# kaizen 2.28: run_async() requires use_async_llm=True; json_object
+# response_format + explicit mode make the typed Signature fields parse out of
+# the model reply (otherwise the result is prose, not typed fields).
 @dataclass
 class DataAnalysisConfig:
     llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
@@ -142,6 +145,9 @@ class DataAnalysisConfig:
     model: str = MODEL  # resolved from .env
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -152,6 +158,9 @@ class CriticConfig:
     model: str = MODEL
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
 
 
 @dataclass
@@ -162,6 +171,9 @@ class RefinedAnalysisConfig:
     model: str = MODEL
     temperature: float = 0.2
     budget_limit_usd: float = 1.0
+    use_async_llm: bool = True
+    response_format: dict = field(default_factory=lambda: {"type": "json_object"})
+    structured_output_mode: str = "explicit"
 
 
 class DataAnalysisAgent(BaseAgent):

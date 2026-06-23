@@ -36,10 +36,16 @@ from kailash_ml import ModelVisualizer
 from shared.mlfp04.ex_1 import (
     load_customers,
     out_path,
+    setup_engines,
     standardise,
+    teardown_engines,
+    track_run,
 )
 
 load_dotenv()
+
+# ── Kailash-ML ExperimentTracker — every clustering run logs here ─────────
+tracker, exp_name = setup_engines()
 
 try:
     import hdbscan as hdbscan_lib
@@ -80,9 +86,14 @@ nn.fit(X_scaled)
 distances, _ = nn.kneighbors(X_scaled)
 k_dist = ____
 
-# Find the elbow via maximum second-derivative
-diffs2 = np.diff(np.diff(k_dist))
-elbow_idx = int(np.argmax(diffs2)) + 2
+# Find the elbow via Kneedle: the point on the sorted k-distance curve that
+# is FURTHEST from the chord between (0, k_dist[0]) and (n-1, k_dist[-1])
+# AFTER both axes are normalised to [0, 1]. This locates the true point of
+# maximum curvature — argmax of the 2nd derivative latches onto the steepest
+# tail jump (a single outlier) and over-shoots.
+_x = np.linspace(0.0, 1.0, k_dist.size)
+_y = (k_dist - k_dist.min()) / (k_dist.max() - k_dist.min())
+elbow_idx = int(np.argmax(np.abs(_y - _x)))
 eps_suggested = float(k_dist[elbow_idx])
 
 print(f"\n  k-distance elbow at eps ≈ {eps_suggested:.4f}")
@@ -202,6 +213,76 @@ print("\n  [ok] Checkpoint 4 passed — hotspot partition valid\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
+# ════════════════════════════════════════════════════════════════════════
+# Best DBSCAN epsilon = the one with the highest silhouette in the sweep.
+
+dbscan_best_eps, dbscan_best_stats = max(
+    dbscan_results.items(), key=lambda x: x[1]["sil"]
+)
+
+# TODO: call track_run with run_name "dbscan_hdbscan". scalar_metrics MUST
+# include dbscan_best_eps, dbscan_best_silhouette, dbscan_best_n_clusters,
+# hdbscan_eom_n_clusters (use n_eom), hdbscan_leaf_n_clusters (n_leaf),
+# hdbscan_eom_noise_pct (noise_eom).
+track_run(
+    tracker,
+    exp_name,
+    run_name=____,
+    params={
+        "eps_suggested": eps_suggested,
+        "min_pts": K_NN,
+        "n_samples": n_samples,
+        "hdb_min_cluster_size": 50,
+        "hdb_min_samples": 10,
+    },
+    scalar_metrics={
+        "dbscan_best_eps": float(dbscan_best_eps),
+        "dbscan_best_silhouette": float(dbscan_best_stats["sil"]),
+        "dbscan_best_n_clusters": float(dbscan_best_stats["k"]),
+        "dbscan_best_noise_pct": float(dbscan_best_stats["noise_pct"]),
+        "hdbscan_eom_n_clusters": ____,
+        "hdbscan_leaf_n_clusters": ____,
+        "hdbscan_eom_noise_pct": ____,
+    },
+)
+print(f"  [tracked] DBSCAN sweep + HDBSCAN run logged to {exp_name}\n")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='dbscan')
+# ════════════════════════════════════════════════════════════════════════
+# kailash-ml 1.5.1's ClusteringEngine wraps DBSCAN. The engine handles the
+# polars→numpy conversion, fits, computes silhouette over the non-noise
+# subset, and returns ClusterResult — the same flow this lesson hand-rolled
+# across 60 lines of sklearn glue.
+#
+# HDBSCAN remains an exception: 1.5.1 does not have an HDBSCAN adapter
+# yet. For HDBSCAN, the destination is the ExperimentTracker leaderboard.
+
+import polars as pl
+
+from kailash_ml.engines.clustering import ClusteringEngine
+
+dbscan_df = pl.from_numpy(X_scaled, schema=feature_cols)
+
+# TODO: instantiate ClusteringEngine and call .fit on dbscan_df with
+# algorithm='dbscan', eps=eps_suggested, min_samples=K_NN. The returned
+# ClusterResult exposes .n_clusters and .silhouette_score.
+clustering = ____
+fit_result = ____
+print(
+    f"  ClusteringEngine.fit(dbscan, eps={eps_suggested:.4f}): "
+    f"n_clusters={fit_result.n_clusters}  "
+    f"silhouette={(fit_result.silhouette_score or 0.0):.4f}"
+)
+print(
+    "  ClusteringEngine 1.5.1: kmeans/dbscan/spectral/gmm. HDBSCAN — use the"
+    " hdbscan library + tracker until the engine adapter lands.\n"
+)
+
+
+# ════════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
@@ -218,3 +299,7 @@ print(
   Next: 04_spectral.py — non-convex clusters via the graph Laplacian.
 """
 )
+
+
+# Drain the aiosqlite worker threads so Py_Finalize doesn't hang.
+teardown_engines(tracker)

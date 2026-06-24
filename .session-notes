@@ -1,33 +1,36 @@
-# Session Notes — 2026-06-23
+# Session Notes — 2026-06-24
 
 ## Where we are
 
-Full Kailash-stack bump is complete and verified: all M1–M6 solutions run
-end-to-end. Last change: bumped kailash-align 0.7.3 + kailash-ml 2.2.2
-(upstream fixes for kailash-py#1426), unblocked the 2 M6 fine-tuning
-exercises (M6 now 39/39), committed as `e2c4dc58`. Next session: M1 dry
-run with the human, including coding-environment setup.
+Consolidated end-of-module assessments shipped for all 6 modules: each
+`modules/mlfpNN/assessment/` now has 4 auto-graded task dirs
+(problem.md/starter.py/solution.py/grader.py) + README, replacing the old
+stale `exam.py`. Earlier in the session: deck slide-spacing fix + M1 dry-run
+verification. Both repos pushed. GitHub Classroom `batch-6` is wired to the
+template but has NO assignment yet (UI-only step).
 
 ## Read first
 
-1. `CLAUDE.md` — course directives (framework-first, polars-only, two-format, progressive disclosure)
-2. `modules/mlfp01/solutions/` — M1 exercises (DataExplorer, PreprocessingPipeline, ModelVisualizer); source of truth
-3. `modules/mlfp01/local/` — M1 student scaffolds (~70% provided; what the learner actually opens)
-4. `shared/data_loader.py` + `shared/mlfp01/` — VS Code data loading + M1 helpers
-5. `scripts/generate_selfcontained_notebook.py` — regenerate Colab notebooks after ANY .py/shared change
-6. `specs/_index.md` — curriculum spec manifest; load only the M1-relevant spec
+1. `modules/mlfp01/assessment/task_1/` — canonical 4-file assessment template; every other task mirrors its grader shape (re-derive ground truth, all checks pass)
+2. `scripts/build-student-repo.sh` — builds/syncs student repo; ships problem.md+starter.py only, withholds answer keys + exam.py + registry artifacts
+3. `README-student.md` — becomes the student repo's README.md (upstream = pcml-dscc/mlfp)
+4. `modules/assets/css/theme.css` — deck centering fix (`.reveal .slides section.present` flex) + `scripts/check-deck-overflow.js` / `measure-deck-spacing.js`
+5. `CLAUDE.md` — course directives (framework-first, polars-only, two-format)
 
 ## In-flight state
 
-- PR for `feat/m4-engine-first` → `main` opened/merged this session (see git log).
-- esperie-ai (Tailscale 100.71.125.70) has the bumped venv synced under ~/mlfp; Ollama on :11434. Only needed for M5/M6 GPU work — M1 runs locally.
+- Source `terrene-foundation/mlfp` main + student template `pcml-dscc/mlfp` main both pushed & in sync; working tree clean except pre-existing `.claude/settings.json` (unrelated — leave it).
+- Student repo lives locally at `~/repos/training/pcml-dscc/mlfp` (has its own .venv).
+- Classroom `batch-6` (org pcml-dscc, id 326430): 0 assignments.
 
 ## Traps
 
-- Never hand-edit `.ipynb` under colab-selfcontained{,-solutions}/ — regenerate via the generator, then `scripts/check_notebook_syntax.py`.
-- Use `.venv/bin/python`, never bare `python`. Run from repo root so `shared.` imports resolve.
-- M1 is local-only; do NOT pull in GPU/Ollama setup for the dry run.
+- Answer keys (`solution.py`/`grader.py`) + `exam.py` MUST NOT reach students — the build excludes them; never add to the student build. Re-audit the remote tree after any push.
+- Running solutions/graders writes `.kailash_ml/`, `__pycache__`, `.claude/learning/` into task dirs (gitignored, but clean before committing source).
+- Old `exam.py` files were stale (API drift + missing datasets) — do NOT resurrect; tasks were authored fresh against the current stack.
+- The reported kailash-ml ModelRegistry/DriftMonitor "schema conflict" is NOT a real defect (verified: CREATE+INSERT both use `id`); it was a stale-.db artifact. Don't file it.
+- Never hand-edit colab `.ipynb` — regenerate via `scripts/generate_selfcontained_notebook.py`.
 
 ## Open questions for the human
 
-- M1 dry run scope: which specific exercise(s) to walk through first, and what "coding setup" baseline the learner starts from (fresh clone? VS Code + uv? Colab?).
+- Create the `batch-6` Classroom assignment in the UI, selecting `pcml-dscc/mlfp` as the template repository. This is the only remaining step (no CLI/API for it).

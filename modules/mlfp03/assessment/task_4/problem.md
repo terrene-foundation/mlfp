@@ -39,11 +39,11 @@ Implement `solve() -> dict`.
 
 ### Two databases (MUST)
 
-The `ModelRegistry` and the `DriftMonitor` MUST use **separate SQLite files**.
-The registry's migration framework provisions a `_kml_drift_reports` table whose
-schema collides with the DriftMonitor engine's runtime schema, so a shared
-connection breaks drift persistence. Two files is the realistic production
-posture anyway (registry and monitoring store are distinct systems).
+Give the `ModelRegistry` and the `DriftMonitor` **separate SQLite files** — the
+realistic production posture, since a model registry and a monitoring store are
+distinct systems with independent lifecycles. Using fresh, separate files per
+store also avoids reusing a stale database whose schema predates your installed
+kailash-ml version.
 
 ## Exact return contract
 

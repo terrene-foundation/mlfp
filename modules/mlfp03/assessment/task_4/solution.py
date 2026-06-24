@@ -12,12 +12,13 @@ it and promotes staging -> production in the ``ModelRegistry``, then arms a
 batches: a clean same-distribution slice (no alarm) and an economic-downturn
 shifted slice (drift fires). ``solve()`` wraps the async work in ``asyncio.run``.
 
-NOTE ON TWO DATABASES: the ModelRegistry runs the kailash-ml numbered-migration
-framework, which provisions ``_kml_drift_reports`` with a schema that is
-incompatible with the DriftMonitor engine's own runtime schema. Sharing one
-connection therefore breaks drift persistence. We give the registry and the
-drift monitor separate SQLite files — the realistic production posture anyway
-(a model registry and a monitoring store are distinct systems).
+NOTE ON TWO DATABASES: we give the ModelRegistry and the DriftMonitor separate
+SQLite files — the realistic production posture (a model registry and a
+monitoring store are distinct systems with independent lifecycles). Using fresh,
+separate files per store also sidesteps the "stale .db" gotcha where a database
+created by an older kailash-ml version carries a pre-migration schema. (On
+kailash-ml 2.2.2 a single shared connection works — _kml_drift_reports is
+created and written by the DriftMonitor engine with a consistent ``id`` schema.)
 """
 from __future__ import annotations
 
@@ -197,7 +198,9 @@ def solve() -> dict:
 
 if __name__ == "__main__":
     out = solve()
-    print(f"registered version : {out['registered_version']} ({out['production_stage']})")
+    print(
+        f"registered version : {out['registered_version']} ({out['production_stage']})"
+    )
     print(f"reference AUC      : {out['reference_auc']:.4f}")
     print(
         f"drift  clean={out['clean_drift_detected']} "

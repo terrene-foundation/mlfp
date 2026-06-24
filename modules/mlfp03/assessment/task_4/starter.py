@@ -11,11 +11,10 @@ Your submission is auto-graded against an independent re-derivation.
 
     python grader.py starter.py     # grade your attempt
 
-IMPORTANT — TWO DATABASES: the ModelRegistry and the DriftMonitor must use
-SEPARATE SQLite files. The registry's migration framework provisions a
-`_kml_drift_reports` table whose schema collides with the DriftMonitor engine's
-own, so sharing one connection breaks drift persistence. Two files = the
-realistic production posture anyway.
+IMPORTANT — TWO DATABASES: give the ModelRegistry and the DriftMonitor SEPARATE
+SQLite files. A model registry and a monitoring store are distinct systems with
+independent lifecycles, and using fresh, separate files avoids reusing a stale
+database whose schema predates your installed kailash-ml version.
 """
 from __future__ import annotations
 

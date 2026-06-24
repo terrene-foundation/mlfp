@@ -1,40 +1,33 @@
-# Session Notes — 2026-04-14
+# Session Notes — 2026-06-24 (WORKSPACE CLOSED)
 
-## Where we are
+## Status: COMPLETE & SUPERSEDED
 
-The 9-shard M6 migration is NOW truly complete — teaching materials
-(lesson 05/07/08 HTML + textbook.md + deck.html + speaker-notes.md)
-finished this session. M2 shared package smoke-tested and repaired.
-M3 ex_7/01 + ex_7/04 migrated to TrainingPipeline (rest escalated).
-Full Kailash stack bump 3.4.5 → 3.4.9 / build 2.8.5 → 2.8.6 landed.
-Next session: **smoke-test the whole course against the new stack
-before teaching**, resolve any drift inline per the latest-stack mandate.
+The M6 9-shard migration this workspace tracked is done and has been
+superseded by the 2026-06-23/24 full-Kailash-stack bump (kailash 2.44.1,
+kailash-ml 2.2.2, kaizen 2.28.0, etc.) plus the consolidated-assessment work.
+Nothing here is actionable. Knowledge artifacts below are kept for reference.
 
-## Read first
+## Keep for reference (do NOT delete)
 
-1. `git log --oneline 6623c3f..HEAD` — full session commit series (M2, M3, M6, sync)
-2. `.claude/VERSION` — inherit template 3.4.9 / build 2.8.6
-3. `workspaces/mlfp06-migration/api-cheatsheet.md` — canonical modern imports, still the source of truth
-4. `~/.claude/accounts/term-23492/projects/-Users-esperie-repos-lyceum-courses-mlfp/memory/feedback_latest_stack.md` — MLFP always takes the full stack on /sync
-5. `CLAUDE.md` — framework-first + polars mandates (unchanged)
+- `api-cheatsheet.md` — modern import map (verify any single line against the
+  installed stack before trusting it)
+- `decisions.md`, `journal/0001-DECISION-*.md` — migration rationale
+- `shard-plan.md`, `scoping.md` — historical shard breakdown
 
-## In-flight state
+## Old traps — all now RESOLVED (ignore the pre-2026-06 notes)
 
-- Three follow-up workspaces proposed but not created: `mlfp03-stale-api-refresh`, `mlfp03-two-format-sync`, `mlfp02-ex6-sklearn-review`
-- Worktrees on disk: `agent-a737eb98` + `agent-aaef4cc6` are empty (M2/M6 agents bypassed isolation); `agent-aa519e0b` merged but not removed. All safe to `git worktree remove`.
-- Latest-stack mandate saved to memory; `/sync` now defaults to full stack bump, no pin-current option.
+- M3 ex_7/ex_8 "import-broken on stale API" → FIXED: M3 solutions pass 40/40 on
+  the current stack (verified 2026-06-24); files renamed since
+  (01_workflow_builder … 05_orchestrated_pipeline).
+- kaizen 2.7.4 / nexus 2.0.3 drift → obsolete; now kaizen 2.28.0, M6 verified.
+- Leftover `agent-*` worktrees → already removed (none remain).
+- Runtime pollution (`mlfp02_experiments.db*`, `scripts/pdf-build.log`) → now
+  gitignored and removed from the working tree.
+- Three proposed follow-up workspaces (mlfp03-stale-api-refresh,
+  mlfp03-two-format-sync, mlfp02-ex6-sklearn-review) → not needed; the
+  underlying issues are resolved by the full-stack bump.
 
-## Traps
+## Current entry point for course work
 
-- **kaizen 2.7.3 → 2.7.4 + nexus 2.0.1 → 2.0.3** may re-surface API drift on the just-migrated M6 ex_7/ex_8 files. Smoke-test `modules/mlfp06/solutions/ex_7/{01,04}*.py` + `04_runtime_audit.py` first; open `workspaces/mlfp06-kaizen-274-drift/` if anything breaks.
-- **M3 ex_7/02, 03, 05 + ex_8/02 are import-broken** on pre-existing stale kailash.dataflow (`field`), ParamDistribution (`log=`), HyperparameterSearch signature, DriftSpec kwargs. Only ex_7/01 + ex_7/04 run. Use xfail/--ignore when testing until the API-refresh shard lands.
-- **Scaffolded-file Pyright noise** on `modules/mlfp06/local/ex_7/01_org_compile.py` (`____` placeholders, unused imports) is EXPECTED per `rules/exercise-standards.md`. Do not chase.
-- **Two-format sync pending** for migrated M3 ex_7/01 + 04 — `local/` and `colab/` still reflect pre-migration scaffolds. Run `scripts/py_to_notebook.py modules/mlfp03/local/ex_7/` after hand-syncing local/.
-- **M2 ex_6 sklearn retained** (logistic compare-and-contrast) — flagged for ml-specialist review, not an error yet.
-- **Worktree isolation didn't hold for 2 of 3 parallel agents** — if re-running parallel work, either verify isolation OR skip it and accept serial commits to main.
-- Runtime pollution in working tree: `scripts/__pycache__/`, `scripts/pdf-build.log`, `mlfp02_experiments.db-{wal,shm}` — not in `.gitignore`. Don't `git add -A`.
-
-## Open questions for the human
-
-- Priority order for the three follow-up workspaces? (My earlier suggestion: #2 two-format sync → #1 stale-API refresh → #3 sklearn review)
-- Clean up the 3 leftover worktrees before next session, or wait?
+Use the repo-root `.session-notes` (assessment consolidation + Classroom
+state), not this workspace.

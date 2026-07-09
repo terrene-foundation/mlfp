@@ -242,6 +242,23 @@
   margin-bottom: 0.2em;
 }
 
+/* Full-listing code slides — long API surveys (25–40 lines) that must show
+   every line without an internal scrollbar. Lifts the 420px pre/code cap and
+   drops the font so the whole listing sits inside the 720px canvas. Opt-in;
+   only applies to sections explicitly tagged `code-fit`. */
+.reveal section.code-fit pre,
+.reveal section.code-fit pre code,
+.reveal section.code-fit pre code.hljs {
+  max-height: none;
+  font-size: 0.4em;
+  line-height: 1.28;
+}
+
+.reveal section.code-fit h2 {
+  font-size: 1.25em;
+  margin-bottom: 0.15em;
+}
+
 /* Inline code — dark text on light bg pill */
 .reveal p code, .reveal li code {
   background: var(--mlfp-code-bg);

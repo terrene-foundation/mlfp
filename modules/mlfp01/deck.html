@@ -944,7 +944,7 @@ df = loader.load("mlfp01", "hdb_resale.csv")
     </div>
     <div class="col">
       <h3>Expected Output</h3>
-      <p>A DataFrame with 10 rows showing the most expensive-per-sqm Bishan flats in the $400K-$800K range.</p>
+      <p>A DataFrame with 10 rows showing the most expensive-per-sqm Bishan flats in the <span class="nomath">$400K</span>-<span class="nomath">$800K</span> range.</p>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Assessment:</strong> Correct filters applied. New column computed correctly. Output sorted by price_per_sqm descending.
       </div>
@@ -3173,7 +3173,7 @@ Transition: "Thank you. See you in Module 2."
       slideNumber: true,
       plugins: [RevealHighlight]
     });
-  renderMathInElement(document.body, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] });
+  renderMathInElement(document.body, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], ignoredClasses: ['nomath'] });
   </script>
 </body>
 </html>

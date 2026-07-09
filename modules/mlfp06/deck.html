@@ -125,9 +125,9 @@
       background: var(--mlfp-bg-alt);
       border: 1px solid #E2E8F0;
       border-radius: 8px;
-      padding: 12px 16px;
-      margin: 8px 0;
-      font-size: 0.85em;
+      padding: 8px 16px;
+      margin: 5px 0;
+      font-size: 0.82em;
     }
 
     .proto-box {
@@ -672,7 +672,7 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
 </section>
 
 <!-- SLIDE 6F: Lens 2 — Attention (code) -->
-<section>
+<section class="code-fit">
   <h2>Lens 2: Attention &mdash; Code</h2>
   <span class="marker marker-advanced">Advanced</span>
   <p class="small muted" style="margin-top: 0;">Wraps <code>transformer_lens</code> + <code>sae_lens</code>. Open-weight models only; API models report <code>not_applicable</code>.</p>
@@ -805,7 +805,7 @@ circuit = obs.attention.circuit_trace(
 </section>
 
 <!-- SLIDE 6H: Lens 3 — Retrieval (code) + Lens 4 intro -->
-<section>
+<section class="code-fit">
   <h2>Lens 3: Retrieval &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
   <p class="small muted" style="margin-top: 0;">Backs onto <code>ragas</code> + <code>trulens-eval</code>. Works for any retriever that exposes <code>retrieve(query, k)</code>.</p>
@@ -933,7 +933,7 @@ obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
 </section>
 
 <!-- SLIDE 6J: Lens 4 — Agent Trace (code) -->
-<section>
+<section class="code-fit">
   <h2>Lens 4: Agent Trace &mdash; Code</h2>
   <span class="marker marker-foundations">Foundations</span>
   <p class="small muted" style="margin-top: 0;">Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.</p>
@@ -1613,7 +1613,7 @@ Text: "The quarterly results exceeded..."
 
 
 <!-- SLIDE 14 — Kaizen Delegate & Signature -->
-<section>
+<section class="code-fit">
   <h2>Kaizen: Delegate &amp; Signature</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
@@ -3281,15 +3281,15 @@ server.run(transport="stdio")</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Department / Task / Role</h3>
+      <h3>Department / Team / Role</h3>
       <ul>
         <li><strong>Department (D):</strong> The top-level organisational unit</li>
-        <li><strong>Task (T):</strong> A task nested inside a department or team</li>
+        <li><strong>Team (T):</strong> A team nested inside a department</li>
         <li><strong>Role (R):</strong> The responsible role that owns a D or T leaf</li>
       </ul>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Grammar:</strong> Dash-delimited path. Every <code>D</code> or <code>T</code> MUST be immediately followed by exactly one <code>R</code>.<br>
-        Example: <code>D1-R1-T1-R1</code> (department 1 head owns task 1, delegated to its responsible).
+        Example: <code>D1-R1-T1-R1</code> (department 1 head owns team 1, delegated to its responsible).
       </div>
     </div>
     <div class="col">
@@ -3304,7 +3304,7 @@ engine = GovernanceEngine(loaded.org_definition)
 # Role address grammar: D1-R1-T1-R1
 #   D1    = department 1
 #   R1    = that department's head
-#   T1-R1 = task 1, owned by its responsible
+#   T1-R1 = team 1, owned by its responsible
 addr = Address.parse("D1-R1-T1-R1")
 verdict = engine.verify_action(
     role_address="D1-R1-T1-R1",

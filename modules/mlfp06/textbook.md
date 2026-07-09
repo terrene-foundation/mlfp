@@ -1525,7 +1525,7 @@ The programme is complete. The learning continues.
 
 **Cosine similarity.** A similarity measure between vectors based on the cosine of the angle between them.
 
-**D/T/R addressing.** PACT's three-part access control structure: Domain, Team, Role.
+**D/T/R addressing.** PACT's three-part access control structure: Department, Team, Role.
 
 **Delegate.** Kaizen's API for structured LLM interaction with cost tracking.
 

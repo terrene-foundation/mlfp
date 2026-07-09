@@ -361,7 +361,7 @@
         $$E[X] = \sum_{i} p_i \, x_i$$
         <div class="annotation">Weighted average: each outcome times its probability</div>
       </div>
-      <p style="margin-top: 12px; font-size: 0.85em;"><strong>Example:</strong> A lottery ticket costs $2. You win $100 with probability 0.01, $0 otherwise. $E[X] = 0.01 \times 100 + 0.99 \times 0 = 1.00$. Expected value ($1) is less than cost ($2). Bad bet.</p>
+      <p style="margin-top: 12px; font-size: 0.85em;"><strong>Example:</strong> A lottery ticket costs <span class="nomath">$2</span>. You win <span class="nomath">$100</span> with probability 0.01, <span class="nomath">$0</span> otherwise. $E[X] = 0.01 \times 100 + 0.99 \times 0 = 1.00$. Expected value (<span class="nomath">$1</span>) is less than cost (<span class="nomath">$2</span>). Bad bet.</p>
     </div>
     <div class="col">
       <h3>The Statistics Theme Park</h3>
@@ -1445,7 +1445,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
     </div>
     <div class="col">
       <h3>Example: Salary Model</h3>
-      <div class="equation-box" style="font-size: 0.9em;">
+      <div class="equation-box" style="font-size: 0.72em;">
         $$\text{salary} = \beta_0 + \beta_1 \cdot \text{age} + \beta_2 \cdot \text{age}^2 + \beta_3 \cdot \text{female} + \beta_4 \cdot \text{trans}$$
         <div class="annotation">Base category: male. $\beta_3$ = salary difference for female vs male, holding age constant.</div>
       </div>
@@ -2749,14 +2749,14 @@ viz.coefficient_plot(pipeline)</code></pre>
     <div class="col">
       <h3>Hawker Centre A/B Test</h3>
       <ul>
-        <li><strong>MDE ($\delta$):</strong> 5% drop in revenue ($0.50 on $10 avg)</li>
+        <li><strong>MDE ($\delta$):</strong> 5% drop in revenue (<span class="nomath">$0.50</span> on <span class="nomath">$10</span> avg)</li>
         <li><strong>$\sigma$:</strong> $4.00 (estimated from historical data)</li>
         <li><strong>$\alpha$:</strong> 0.05</li>
         <li><strong>Power ($1-\beta$):</strong> 0.80 &rarr; $z_\beta = 0.84$</li>
       </ul>
     </div>
     <div class="col">
-      <div class="equation-box">
+      <div class="equation-box" style="font-size: 0.82em;">
         $$n = \frac{(1.96 + 0.84)^2 \times 2 \times 16}{0.25} = \frac{7.84 \times 32}{0.25} = 1,003$$
         <div class="annotation">~1,003 customers per group, ~2,006 total</div>
       </div>
@@ -2791,7 +2791,7 @@ viz.coefficient_plot(pipeline)</code></pre>
     </tbody>
   </table>
   <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Reading this table:</strong> Each sqm adds $5,200 to the price. Each additional km from MRT <em>reduces</em> price by $18,500. Mature estates command a $42,000 premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
+    <strong>Reading this table:</strong> Each sqm adds <span class="nomath">$5,200</span> to the price. Each additional km from MRT <em>reduces</em> price by <span class="nomath">$18,500</span>. Mature estates command a <span class="nomath">$42,000</span> premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
@@ -3504,7 +3504,8 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
       delimiters: [
         {left: '$$', right: '$$', display: true},
         {left: '$', right: '$', display: false}
-      ]
+      ],
+      ignoredClasses: ['nomath']
     });
   </script>
 </body>

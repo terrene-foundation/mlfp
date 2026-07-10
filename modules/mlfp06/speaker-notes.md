@@ -823,7 +823,7 @@ This is the final module of MLFP. By the end of today, students will have built,
 **Time**: ~3 min
 **Talking points**:
 
-- D/T/R: Domain, Team, Role. Walk through the structure: finance/risk-analysis/analyst.
+- D/T/R: Department, Team, Role. Walk through the structure: finance/risk-analysis/analyst.
 - "Every agent, every API call, every data access has an address. The GovernanceEngine checks the address against the rules."
 - Walk through the code. compile_org defines the org structure. Address identifies the requester. can_access returns a boolean; explain_access returns a reason.
 - "If beginners look confused": "D/T/R is like a postal address for permissions. The system checks your address to decide what you can access."

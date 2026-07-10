@@ -145,7 +145,7 @@ Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
 <!-- ═══════════════════════════════════════════════════════════════
      MODULE-LEVEL SLIDE 5: TOOLS AND SETUP
      ═══════════════════════════════════════════════════════════════ -->
-<section>
+<section class="code-fit">
   <h2>Tools and Setup</h2>
   <div class="columns">
     <div class="col">
@@ -305,7 +305,7 @@ Transition: "Let us start with the most fundamental building block: variables."
   </aside>
 </section>
 
-<section>
+<section class="code-fit">
   <h2>Variables and Assignment</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
@@ -944,7 +944,7 @@ df = loader.load("mlfp01", "hdb_resale.csv")
     </div>
     <div class="col">
       <h3>Expected Output</h3>
-      <p>A DataFrame with 10 rows showing the most expensive-per-sqm Bishan flats in the $400K-$800K range.</p>
+      <p>A DataFrame with 10 rows showing the most expensive-per-sqm Bishan flats in the <span class="nomath">$400K</span>-<span class="nomath">$800K</span> range.</p>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Assessment:</strong> Correct filters applied. New column computed correctly. Output sorted by price_per_sqm descending.
       </div>
@@ -2816,7 +2816,7 @@ Transition: "Now let us extract data from APIs."
   </aside>
 </section>
 
-<section>
+<section class="code-fit">
   <h2>REST APIs: Extracting Data</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
@@ -2909,7 +2909,7 @@ Transition: "The ETL pattern."
   </aside>
 </section>
 
-<section>
+<section class="code-fit">
   <h2>The ETL Pattern</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
@@ -3173,7 +3173,7 @@ Transition: "Thank you. See you in Module 2."
       slideNumber: true,
       plugins: [RevealHighlight]
     });
-  renderMathInElement(document.body, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] });
+  renderMathInElement(document.body, { delimiters: [{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], ignoredClasses: ['nomath'] });
   </script>
 </body>
 </html>

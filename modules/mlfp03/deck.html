@@ -104,10 +104,11 @@
       background: var(--mlfp-bg-alt);
       border: 1px solid #E2E8F0;
       border-radius: 8px;
-      padding: 10px 14px;
-      margin: 6px 0;
+      padding: 6px 14px;
+      margin: 4px 0;
     }
     .algo-card h4 { color: var(--mlfp-depth); margin: 0 0 4px 0; font-size: 0.9em; }
+    .algo-card .equation-box { margin: 4px 0; padding: 8px 12px; }
     .pipeline-arrow {
       text-align: center;
       font-size: 1.2em;
@@ -433,7 +434,7 @@
 </section>
 
 <!-- SLIDE 13 — Kailash Bridge: FeatureEngineer -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: FeatureEngineer &amp; FeatureStore</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
@@ -593,15 +594,15 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
   <h2>Regularisation &mdash; Controlling Complexity</h2>
   <span class="marker marker-theory">Theory</span>
   <p>Add a <strong>penalty</strong> to the loss function that discourages large coefficients:</p>
-  <div class="equation-box">
+  <div class="equation-box" style="padding:10px 20px; margin:6px 0; font-size:0.9em;">
     <span class="katex-display">\mathcal{L}_{\text{regularised}} = \mathcal{L}_{\text{data}} + \lambda \cdot \Omega(\boldsymbol{\beta})</span>
     <div class="annotation">&lambda; controls the strength of regularisation. Higher &lambda; = simpler model.</div>
   </div>
-  <div class="columns" style="margin-top:12px;">
+  <div class="columns" style="margin-top:4px;">
     <div class="col">
       <div class="algo-card">
         <h4>L1 (Lasso)</h4>
-        <div class="equation-box" style="font-size:0.9em;">
+        <div class="equation-box" style="font-size:0.72em;">
           <span class="katex-display">\Omega = \sum_{i=1}^{p} |\beta_i|</span>
         </div>
         <p style="font-size:0.8em;">Diamond constraint. Drives coefficients to <strong>exactly zero</strong> &mdash; automatic feature selection.</p>
@@ -610,7 +611,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <div class="col">
       <div class="algo-card">
         <h4>L2 (Ridge)</h4>
-        <div class="equation-box" style="font-size:0.9em;">
+        <div class="equation-box" style="font-size:0.72em;">
           <span class="katex-display">\Omega = \sum_{i=1}^{p} \beta_i^2</span>
         </div>
         <p style="font-size:0.8em;">Circle constraint. Shrinks coefficients <strong>toward zero</strong> but never exactly zero.</p>
@@ -619,7 +620,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <div class="col">
       <div class="algo-card">
         <h4>Elastic Net</h4>
-        <div class="equation-box" style="font-size:0.9em;">
+        <div class="equation-box" style="font-size:0.66em;">
           <span class="katex-display">\Omega = \alpha \sum |\beta_i| + (1-\alpha) \sum \beta_i^2</span>
         </div>
         <p style="font-size:0.8em;">Combines L1 and L2. &alpha; mixes sparsity with grouping.</p>
@@ -1438,7 +1439,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
       <p style="font-size:0.85em;">Fit a non-decreasing step function. Non-parametric: more flexible but needs more data.</p>
     </div>
   </div>
-  <div class="equation-box">
+  <div class="equation-box" style="padding:8px 20px; font-size:0.9em;">
     <span class="katex-display">\text{Brier Score} = \frac{1}{N}\sum_{i=1}^{N}(p_i - y_i)^2</span>
     <div class="annotation">Measures calibration quality. Lower is better. 0 = perfect calibration.</div>
   </div>
@@ -1750,7 +1751,7 @@ class FeatureEngineerNode(Node):
 </section>
 
 <!-- SLIDE 64 — HyperparameterSearch -->
-<section>
+<section class="code-fit">
   <h2>Bayesian Hyperparameter Search</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">

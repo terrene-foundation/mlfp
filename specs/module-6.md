@@ -328,7 +328,7 @@ environment. There is no offline fallback that produces fake results
 **Topics**:
 
 - **PACT framework** (engineering focus):
-  - D/T/R addressing: Domain/Team/Role as a positional grammar — every
+  - D/T/R addressing: Department/Team/Role as a positional grammar — every
     Department or Team is immediately followed by exactly one Role.
     Students parse addresses with `Address.parse("D1-R1-T1-R1")`.
   - GovernanceEngine construction: `load_org_yaml("org.yaml")` to load the

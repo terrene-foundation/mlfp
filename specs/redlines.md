@@ -33,7 +33,7 @@ Slides MUST be visually inspected by an automated headless-browser check. Common
 - Tables that overflow horizontally
 - Diagrams added to dense slides pushing existing content out of frame
 
-**Audit test (automated)**: Every slide rendered at 1280×720 in headless Chrome by `scripts/check-deck-overflow.js` (puppeteer). Any `<section>` whose `scrollHeight > 720` is BLOCKING. Run on every PR and before every release:
+**Audit test (automated)**: Every slide is NAVIGATED to (via `Reveal.slide`) and rendered at 1280×720 in headless Chrome by `scripts/check-deck-overflow.js` (puppeteer) — the SINGLE canonical overflow/clip detector. A slide is BLOCKING if EITHER: (A) EXTENT — visible content extends past the 1280×720 frame; or (B) CLIP — any element (including a fixed-height section, a capped table, or a scrollable `<pre>`) has `scrollHeight/Width > clientHeight/Width` under `overflow: hidden/auto/scroll`, i.e. content is silently cut off. The old `scrollHeight > 720` rule is RETIRED: it only caught (A) and was blind to (B), the dominant failure mode (content clipped _inside_ the frame by `overflow:hidden` + `max-height`). KaTeX `.katex-mathml` a11y nodes are ignored and a <15px vertical `.katex` clip is treated as a strut artifact. Run on every PR and before every release:
 
 ```bash
 # Check every deck
@@ -71,11 +71,11 @@ scripts/check-deck-parity.sh
 
 The three guards catch disjoint failure modes:
 
-| Guard                      | Catches                                                                                                        | Origin                             |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `check-deck-overflow.js`   | Slide content clipped below the 720-pixel fold after richness edits                                            | M5 deck, 2026-04-13                |
-| `check_notebook_syntax.py` | Notebooks that ship with orphan tuples / broken cells (e.g. commit `6b28127` shipped 84 unusable student nbs)  | M5 self-contained audit 2026-04-17 |
-| `check-deck-parity.sh`     | KaTeX / rendering regressions invisible to HTML diff (e.g. a broken edit to `modules/assets/js/katex-init.js`) | KaTeX extraction 2026-04-17        |
+| Guard                      | Catches                                                                                                               | Origin                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `check-deck-overflow.js`   | Slide content past the frame OR clipped inside it by `overflow:hidden`/`max-height` (code, tables, columns, formulas) | M5 deck, 2026-04-13; clip-detection 2026-07-10 |
+| `check_notebook_syntax.py` | Notebooks that ship with orphan tuples / broken cells (e.g. commit `6b28127` shipped 84 unusable student nbs)         | M5 self-contained audit 2026-04-17             |
+| `check-deck-parity.sh`     | KaTeX / rendering regressions invisible to HTML diff (e.g. a broken edit to `modules/assets/js/katex-init.js`)        | KaTeX extraction 2026-04-17                    |
 
 Unacknowledged failure in ANY guard BLOCKS `/redteam` convergence.
 

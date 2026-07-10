@@ -434,7 +434,7 @@
 </section>
 
 <!-- SLIDE 13 — Kailash Bridge: FeatureEngineer -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: FeatureEngineer &amp; FeatureStore</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
@@ -602,7 +602,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <div class="col">
       <div class="algo-card">
         <h4>L1 (Lasso)</h4>
-        <div class="equation-box" style="font-size:0.9em;">
+        <div class="equation-box" style="font-size:0.72em;">
           <span class="katex-display">\Omega = \sum_{i=1}^{p} |\beta_i|</span>
         </div>
         <p style="font-size:0.8em;">Diamond constraint. Drives coefficients to <strong>exactly zero</strong> &mdash; automatic feature selection.</p>
@@ -611,7 +611,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <div class="col">
       <div class="algo-card">
         <h4>L2 (Ridge)</h4>
-        <div class="equation-box" style="font-size:0.9em;">
+        <div class="equation-box" style="font-size:0.72em;">
           <span class="katex-display">\Omega = \sum_{i=1}^{p} \beta_i^2</span>
         </div>
         <p style="font-size:0.8em;">Circle constraint. Shrinks coefficients <strong>toward zero</strong> but never exactly zero.</p>
@@ -1439,7 +1439,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
       <p style="font-size:0.85em;">Fit a non-decreasing step function. Non-parametric: more flexible but needs more data.</p>
     </div>
   </div>
-  <div class="equation-box">
+  <div class="equation-box" style="padding:8px 20px; font-size:0.9em;">
     <span class="katex-display">\text{Brier Score} = \frac{1}{N}\sum_{i=1}^{N}(p_i - y_i)^2</span>
     <div class="annotation">Measures calibration quality. Lower is better. 0 = perfect calibration.</div>
   </div>
@@ -1751,7 +1751,7 @@ class FeatureEngineerNode(Node):
 </section>
 
 <!-- SLIDE 64 — HyperparameterSearch -->
-<section>
+<section class="code-fit">
   <h2>Bayesian Hyperparameter Search</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">

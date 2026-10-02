@@ -48,7 +48,9 @@ for m in "${DECKS[@]}"; do
         echo "✓ $m: deck content unchanged ($(wc -l < "$baseline" | tr -d ' ') lines)"
     else
         echo "✗ $m: deck content diverged from baseline"
-        diff "$baseline" "$txt" | head -40
+        # diff exits 1 on any difference; under `set -eo pipefail` that would
+        # abort the loop and skip every remaining deck. Report, then continue.
+        diff "$baseline" "$txt" | head -40 || true
         fail=1
     fi
 done

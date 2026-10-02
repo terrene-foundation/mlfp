@@ -547,30 +547,25 @@
   <h2>Lens 1: Output &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
   <p class="small muted" style="margin-top: 0;">Routes through DeepEval + a Kaizen Delegate judge. No raw <code>openai.chat.completions.create</code>.</p>
-<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+<pre style="font-size: 0.47em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()  # lazy init, no network call here
 
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
     response="Refunds within 14 days, no exceptions.",
-    context=["Refund policy: 30-day window for unused items."],
-)
+    context=["Refund policy: 30-day window for unused items."])
 # df columns: claim, supported, support_source, grounding_score
 
 # ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
 verdict = obs.output.llm_as_judge(
     prompt="Summarise the Q3 earnings call in 3 bullets.",
-    response=draft_answer,
-    criteria="coherence, factual_accuracy, completeness",
-)
+    response=draft_answer, criteria="coherence, factual_accuracy, completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
 
 # ── Hallucination via self-consistency ───────────────────────
 result = obs.output.self_consistency(
-    prompt="What is the SGX listing rule for board independence?",
-    n=5,
-)
+    prompt="What is the SGX listing rule for board independence?", n=5)
 # result.agreement_rate, result.flagged_as_hallucination
 
 # ── Refusal calibration ──────────────────────────────────────
@@ -688,35 +683,23 @@ obs = LLMObservatory()
 
 # ── Attention heatmap for one head ───────────────────────────
 fig = obs.attention.attention_heatmap(
-    prompt="The cat sat on the mat.",
-    model="google/gemma-2-2b",
-    layer=8,
-    head=3,
-)
+    prompt="The cat sat on the mat.", model="google/gemma-2-2b", layer=8, head=3)
 fig.show()
 
 # ── Logit lens: what does each layer predict? ────────────────
 df = obs.attention.logit_lens(
-    prompt="The Eiffel Tower is located in the city of",
-    model="google/gemma-2-2b",
-)
+    prompt="The Eiffel Tower is located in the city of", model="google/gemma-2-2b")
 # df columns: layer, top_token, top_prob  — crystallisation point surfaces
 
 # ── Sparse autoencoder features (Gemma Scope) ────────────────
 features = obs.attention.sae_features(
     prompt="I felt genuinely happy when the result came in.",
-    model="google/gemma-2-2b",
-    layer=12,
-    top_k=10,
-)
+    model="google/gemma-2-2b", layer=12, top_k=10)
 # features: [(feature_id, activation, human_readable_label), ...]
 
 # ── Circuit trace: minimal subgraph for a target token ───────
 circuit = obs.attention.circuit_trace(
-    prompt="Paris is the capital of",
-    target_token=" France",
-    model="google/gemma-2-2b",
-)
+    prompt="Paris is the capital of", target_token=" France", model="google/gemma-2-2b")
 # circuit.nodes: {(layer, component): attribution_score}
 </code></pre>
   <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 4px;">
@@ -821,34 +804,22 @@ obs = LLMObservatory()
 
 # ── Standard IR metrics ──────────────────────────────────────
 df = obs.retrieval.recall_at_k(
-    queries=eval_queries,
-    relevant_ids=gold_chunk_ids,
-    retriever=my_retriever,
-    k=5,
-)
+    queries=eval_queries, relevant_ids=gold_chunk_ids, retriever=my_retriever, k=5)
 
 # ── Retriever bake-off on identical queries ──────────────────
 leaderboard = obs.retrieval.compare_retrievers(
     retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
-    queries=eval_queries,
-    relevant_ids=gold_chunk_ids,
-    k=5,
-)
+    queries=eval_queries, relevant_ids=gold_chunk_ids, k=5)
 # leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
 
 # ── Did the generator actually USE the context? ──────────────
 util = obs.retrieval.context_utilisation(
-    response=generated_answer,
-    context=retrieved_chunks,
-)
+    response=generated_answer, context=retrieved_chunks)
 # util.grounded_claims / util.total_claims, util.unused_chunks
 
 # ── Chunk-size sweep: find the empirical sweet spot ──────────
 sweep = obs.retrieval.chunk_size_sweep(
-    documents=policy_corpus,
-    sizes=[256, 512, 1024, 2048],
-    queries=eval_queries,
-)
+    documents=policy_corpus, sizes=[256, 512, 1024, 2048], queries=eval_queries)
 
 obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
 </code></pre>
@@ -943,7 +914,7 @@ obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
   <h2>Lens 4: Agent Trace &mdash; Code</h2>
   <span class="marker marker-foundations">Foundations</span>
   <p class="small muted" style="margin-top: 0;">Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.</p>
-<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+<pre style="font-size: 0.46em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 from kaizen_agents import ReActAgent
 
 obs = LLMObservatory()
@@ -1471,7 +1442,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
     <div class="col">
       <h3>Zero-shot</h3>
       <p>Task description only. No examples.</p>
-      <pre><code class="language-python">prompt = """Classify the sentiment of this review
+      <pre style="font-size: 0.55em;"><code class="language-python">prompt = """Classify the sentiment of this review
 as 'positive' or 'negative':
 
 Review: "The food was terrible and the service slow."
@@ -1483,7 +1454,7 @@ Sentiment:"""</code></pre>
     <div class="col">
       <h3>Few-shot</h3>
       <p>Provide examples to set the pattern.</p>
-      <pre><code class="language-python">prompt = """Classify sentiment as 'positive' or 'negative':
+      <pre style="font-size: 0.55em;"><code class="language-python">prompt = """Classify sentiment as 'positive' or 'negative':
 
 Review: "Amazing experience!" -> positive
 Review: "Would not recommend." -> negative
@@ -1624,7 +1595,7 @@ Text: "The quarterly results exceeded..."
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>From Raw Prompts to Type-Safe Output</h3>
-    <pre><code class="language-python">import os
+    <pre style="font-size: 0.37em;"><code class="language-python">import os
 from dataclasses import dataclass
 from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
@@ -2938,7 +2909,7 @@ result = await agent.run(
     </div>
     <div class="col">
       <h3>The Solution: max_llm_cost_usd</h3>
-      <pre><code class="language-python">import os
+      <pre style="font-size: 0.55em;"><code class="language-python">import os
 from kaizen_agents.agents.specialized.react import (
     ReActAgent,
 )
@@ -3350,7 +3321,7 @@ verdict = engine.verify_action(
       </div>
     </div>
     <div class="col">
-      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from pact import (
+      <pre style="font-size: 0.44em; line-height: 1.3"><code class="language-python">from pact import (
     ConstraintEnvelopeConfig,
     FinancialConstraintConfig,
     OperationalConstraintConfig,
@@ -3738,7 +3709,7 @@ app.register("analysis", analysis_wf.build())
         <li>Permissions map to Nexus endpoints</li>
         <li>PACT D/T/R addresses map to RBAC roles</li>
       </ul>
-      <pre><code class="language-python"># Nexus owns authentication (JWT); PACT
+      <pre style="font-size: 0.55em;"><code class="language-python"># Nexus owns authentication (JWT); PACT
 # owns authorisation (verify_action).
 from nexus import Nexus
 
@@ -3758,7 +3729,7 @@ app.register("deploy",  deploy_wf.build())
     </div>
     <div class="col">
       <h3>JWT Authentication</h3>
-      <pre><code class="language-python"># Client-side
+      <pre style="font-size: 0.55em;"><code class="language-python"># Client-side
 import requests
 
 token = requests.post(

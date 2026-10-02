@@ -297,21 +297,16 @@ obs = LLMObservatory()
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
 response="Refunds within 14 days, no exceptions.",
-context=["Refund policy: 30-day window for unused items."],
-)
+context=["Refund policy: 30-day window for unused items."])
 # df columns: claim, supported, support_source, grounding_score
 # ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
 verdict = obs.output.llm_as_judge(
 prompt="Summarise the Q3 earnings call in 3 bullets.",
-response=draft_answer,
-criteria="coherence, factual_accuracy, completeness",
-)
+response=draft_answer, criteria="coherence, factual_accuracy, completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
 # ── Hallucination via self-consistency ───────────────────────
 result = obs.output.self_consistency(
-prompt="What is the SGX listing rule for board independence?",
-n=5,
-)
+prompt="What is the SGX listing rule for board independence?", n=5)
 # result.agreement_rate, result.flagged_as_hallucination
 # ── Refusal calibration ──────────────────────────────────────
 obs.output.refusal_rate(harmful_prompts)
@@ -324,7 +319,6 @@ obs.output.plot_output_dashboard().show()
 
 Budget note: each judge call costs money. The observatory caps spend at ~$2 per student per module run via small eval sets
 and result caching.
-
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 9
 
@@ -381,37 +375,24 @@ from shared.mlfp06.diagnostics import LLMObservatory
 obs = LLMObservatory()
 # ── Attention heatmap for one head ───────────────────────────
 fig = obs.attention.attention_heatmap(
-prompt="The cat sat on the mat.",
-model="google/gemma-2-2b",
-layer=8,
-head=3,
-)
+prompt="The cat sat on the mat.", model="google/gemma-2-2b", layer=8, head=3)
 fig.show()
 # ── Logit lens: what does each layer predict? ────────────────
 df = obs.attention.logit_lens(
-prompt="The Eiffel Tower is located in the city of",
-model="google/gemma-2-2b",
-)
+prompt="The Eiffel Tower is located in the city of", model="google/gemma-2-2b")
 # df columns: layer, top_token, top_prob — crystallisation point surfaces
 # ── Sparse autoencoder features (Gemma Scope) ────────────────
 features = obs.attention.sae_features(
 prompt="I felt genuinely happy when the result came in.",
-model="google/gemma-2-2b",
-layer=12,
-top_k=10,
-)
+model="google/gemma-2-2b", layer=12, top_k=10)
 # features: [(feature_id, activation, human_readable_label), ...]
 # ── Circuit trace: minimal subgraph for a target token ───────
 circuit = obs.attention.circuit_trace(
-prompt="Paris is the capital of",
-target_token=" France",
-model="google/gemma-2-2b",
-)
+prompt="Paris is the capital of", target_token=" France", model="google/gemma-2-2b")
 # circuit.nodes: {(layer, component): attribution_score}
 
 Non-goal: we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an
 M6 skill.
-
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 11
 
@@ -483,37 +464,24 @@ from shared.mlfp06.diagnostics import LLMObservatory
 obs = LLMObservatory()
 # ── Standard IR metrics ──────────────────────────────────────
 df = obs.retrieval.recall_at_k(
-queries=eval_queries,
-relevant_ids=gold_chunk_ids,
-retriever=my_retriever,
-k=5,
-)
+queries=eval_queries, relevant_ids=gold_chunk_ids, retriever=my_retriever, k=5)
 # ── Retriever bake-off on identical queries ──────────────────
 leaderboard = obs.retrieval.compare_retrievers(
 retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
-queries=eval_queries,
-relevant_ids=gold_chunk_ids,
-k=5,
-)
+queries=eval_queries, relevant_ids=gold_chunk_ids, k=5)
 # leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
 # ── Did the generator actually USE the context? ──────────────
 util = obs.retrieval.context_utilisation(
-response=generated_answer,
-context=retrieved_chunks,
-)
+response=generated_answer, context=retrieved_chunks)
 # util.grounded_claims / util.total_claims, util.unused_chunks
 # ── Chunk-size sweep: find the empirical sweet spot ──────────
 sweep = obs.retrieval.chunk_size_sweep(
-documents=policy_corpus,
-sizes=[256, 512, 1024, 2048],
-queries=eval_queries,
-)
+documents=policy_corpus, sizes=[256, 512, 1024, 2048], queries=eval_queries)
 obs.retrieval.plot_retrieval_dashboard().show()
 
 # recall + leaderboard + sweep
 
 First use: Exercise 6.4 — Singapore policy RAG leaderboard across four retrievers.
-
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 13
 
@@ -563,9 +531,9 @@ step 4 — loop
 MLFP Module 6 — Terrene Open Academy • LLM Observatory
 14
 
-FOUNDATIONS
+LENS 4: AGENT TRACE — CODE
 
-LENS 4: AGENT TRACE — CODE
+FOUNDATIONS
 
 Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.
 from shared.mlfp06.diagnostics import LLMObservatory
@@ -1178,16 +1146,17 @@ self-consistency only if the cost is justified by the stakes.
 MLFP Module 6 — Terrene Open Academy
 28
 
-FOUNDATIONS
+KAIZEN: DELEGATE & SIGNATURE
 
-KAIZEN: DELEGATE & SIGNATURE
+FOUNDATIONS
+
 FROM RAW PROMPTS TO TYPE-SAFE OUTPUT
 import os
 from dataclasses import dataclass
 from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
 class SentimentSignature(Signature):
-"""Classify sentiment of product review."""
+"""Classify sentiment of a product review."""
 review: str = InputField(description="Product review text")
 sentiment: str = OutputField(description="positive, negative, or neutral")
 confidence: float = OutputField(description="Confidence score 0.0 to 1.0")
@@ -1213,7 +1182,6 @@ print(result["confidence"])
 
 Why Signature? Free-form text output is brittle. Signature enforces a schema: the LLM must return typed fields. If
 it does not, Kaizen retries with corrective prompting.
-
 MLFP Module 6 — Terrene Open Academy
 29
 
@@ -1260,6 +1228,7 @@ the same dataset
 Measure cost and accuracy for each
 approach
 Use Signature for all outputs
+ASSESSMENT CRITERIA
 
 # Skeleton
 import os
@@ -1280,8 +1249,6 @@ signature=ClassificationResult,
 # TODO: Implement few_shot_classify()
 # TODO: Implement cot_classify()
 # TODO: Compare accuracy & cost
-
-ASSESSMENT CRITERIA
 
 All three prompting techniques demonstrated
 Accuracy comparison shows when each
@@ -2520,7 +2487,7 @@ tools=[explore_data, train_model],
 max_llm_cost_usd=0.50,
 )
 # When budget exhausted:
-# -> Agent tops gracefully
+# -> Agent stops gracefully
 # -> Returns partial results
 # -> Emits a budget-exceeded event
 result = await agent.run("Analyse HDB data")
@@ -2528,7 +2495,6 @@ print(result)
 
 Non-negotiable in production: Every agent must have a cost budget. No exceptions. An unbounded agent is a
 financial liability.
-
 MLFP Module 6 — Terrene Open Academy
 63
 
@@ -2834,6 +2800,11 @@ clearance and a delegation-depth cap
 Monotonic tightening: child envelopes must
 be ≤ parent on every dimension; the
 framework catches violations via
+RoleEnvelope.validate_tightening
+
+Fail-closed: If the governance check fails (error,
+timeout), access is denied. Never fail-open. A broken
+guard is not a free pass.
 
 from pact import (
 ConstraintEnvelopeConfig,
@@ -2872,12 +2843,6 @@ RoleEnvelope.validate_tightening(
 parent, child)
 except MonotonicTighteningError as exc:
 print(f"Escalation blocked: {exc}")
-
-RoleEnvelope.validate_tightening
-
-Fail-closed: If the governance check fails (error,
-timeout), access is denied. Never fail-open. A broken
-guard is not a free pass.
 
 MLFP Module 6 — Terrene Open Academy
 74
@@ -3016,7 +2981,6 @@ execute_node=executor)
 assert result.budget_consumed <= 2.00
 
 Red team your own governance. If you cannot write a test that proves your access control works, it does not work.
-
 MLFP Module 6 — Terrene Open Academy
 77
 
@@ -3159,6 +3123,20 @@ app = Nexus()
 # JWT middleware applied
 app.register("analyse", analyse_wf.build())
 app.register("deploy", deploy_wf.build())
+# Inside each node (pseudo-code):
+# caller_role = parameters["auth"]["role_address"]
+# verdict = engine.verify_action(
+#
+role_address=caller_role,
+#
+action="deploy",
+#
+context={"data_classification":
+#
+"restricted"})
+# if not verdict.allowed:
+#
+raise PermissionError(verdict.reason)
 
 JWT AUTHENTICATION
 # Client-side
@@ -3179,21 +3157,6 @@ json={"query": "Analyse Q4 data"}
 
 Unauthenticated requests must be rejected with 401.
 No exceptions.
-
-# Inside each node (pseudo-code):
-# caller_role = parameters["auth"]["role_address"]
-# verdict = engine.verify_action(
-#
-role_address=caller_role,
-#
-action="deploy",
-#
-context={"data_classification":
-#
-"restricted"})
-# if not verdict.allowed:
-#
-raise PermissionError(verdict.reason)
 
 MLFP Module 6 — Terrene Open Academy
 82

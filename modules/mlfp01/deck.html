@@ -156,7 +156,7 @@ Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
         <li><strong>Plotly</strong> &mdash; interactive visualisation</li>
         <li><strong>Kailash ML</strong> &mdash; <code>pip install kailash-ml</code></li>
       </ul>
-      <pre><code class="language-python"># Quick setup
+      <pre style="font-size: 0.55em;"><code class="language-python"># Quick setup
 uv pip install polars plotly kailash-ml python-dotenv requests</code></pre>
     </div>
     <div class="col">
@@ -312,7 +312,7 @@ Transition: "Let us start with the most fundamental building block: variables."
     <div class="col">
       <h3>A Variable Is a Label</h3>
       <p>A variable stores a value so you can use it later. Think of it as a labelled box.</p>
-      <pre><code class="language-python">price = 550000
+      <pre style="font-size: 0.55em;"><code class="language-python">price = 550000
 town = "Queenstown"
 rooms = 4
 is_mature = True
@@ -2822,7 +2822,7 @@ Transition: "Now let us extract data from APIs."
   <div class="columns">
     <div class="col">
       <h3>OneMap Singapore Example</h3>
-      <pre><code class="language-python">import requests
+      <pre style="font-size: 0.55em;"><code class="language-python">import requests
 
 url = "https://www.onemap.gov.sg/api/common/elastic/search"
 params = {
@@ -2835,7 +2835,7 @@ data = response.json()</code></pre>
     </div>
     <div class="col">
       <h3>Parsing the Response</h3>
-      <pre><code class="language-python">results = data["results"]
+      <pre style="font-size: 0.55em;"><code class="language-python">results = data["results"]
 first = results[0]
 lat = float(first["LATITUDE"])
 lng = float(first["LONGITUDE"])
@@ -2843,7 +2843,7 @@ print(f"{first['ADDRESS']}: ({lat}, {lng})")
 
 df_locations = pl.DataFrame(results)</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
-        <pre><code class="language-python">try:
+        <pre style="font-size: 0.55em;"><code class="language-python">try:
     response = requests.get(url, params=params)
     response.raise_for_status()
 except requests.RequestException as e:

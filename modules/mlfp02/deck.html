@@ -1007,7 +1007,7 @@ print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper<
       <div><strong>Engine:</strong> ExperimentTracker runs bootstrap, permutation, and power analysis in one call</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import ExperimentTracker
 
 tracker = ExperimentTracker()
 experiment = tracker.create_experiment(
@@ -1223,7 +1223,7 @@ print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
       <div><strong>Engine:</strong> ExperimentTracker manages the full experiment lifecycle with built-in SRM detection</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import ExperimentTracker
 
 tracker = ExperimentTracker()
 experiment = tracker.create_experiment(
@@ -1540,7 +1540,7 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
       <div><strong>Engine:</strong> TrainingPipeline fits models; ModelVisualizer creates diagnostic plots</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer, FeatureEngineer
+  <pre style="font-size: 0.50em;"><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer, FeatureEngineer
 
 # Engineer features: lat/lon, interaction terms
 fe = FeatureEngineer()
@@ -1850,7 +1850,7 @@ viz.residual_plot(pipeline)</code></pre>
       <div><strong>Engine:</strong> TrainingPipeline fits logistic models; ModelVisualizer plots ROC curves and confusion matrices</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
+  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
 
 pipeline = TrainingPipeline()
 pipeline.fit(df, target="attrition", model="logistic_regression")

@@ -501,7 +501,7 @@
   <h2>Meet <code>DLDiagnostics</code> &mdash; Your Toolkit in One Object</h2>
   <span class="marker marker-foundations">Foundations</span>
   <p class="small muted" style="margin-top: 0;">Every slide in this toolkit section has a corresponding method. You never write raw hooks.</p>
-<pre style="font-size: 0.58em; line-height: 1.45"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+<pre style="font-size: 0.58em; line-height: 1.45"><code class="language-python" style="font-size: 1em;">from kailash_ml.diagnostics import DLDiagnostics
 
 # ── Setup (one line) ─────────────────────────────────────────
 diag = (DLDiagnostics(model)
@@ -518,9 +518,9 @@ diag.record_epoch(val_loss=val)
 
 # ── Diagnose (one line each) ─────────────────────────────────
 diag.plot_training_dashboard().show()   # all 5 instruments, one figure
-diag.report()                           # auto-diagnosis text
-diag.grad_cam(image, target_class)      # for CNN exercises (Lesson 5.2)
-DLDiagnostics.lr_range_test(model, dataloader)   # pre-training LR probe (covered in 5.2 / 5.7)
+diag.report()                           # verdicts: {severity, message} per check
+diag.grad_cam(image, target_class, layer_name="conv3")   # CNN exercises (5.2)
+DLDiagnostics.lr_range_test(model, dataloader, loss_fn=loss_fn)  # LR probe (5.2 / 5.7)
 </code></pre>
   <div class="callout callout-foundations" style="margin-top: 6px; font-size: 0.80em;">
     <strong>Why one object?</strong> Hooks, tensors, and plot logic are fiddly to get right &mdash; and wrong hooks silently break your diagnosis. <code>DLDiagnostics</code> owns the plumbing. You name what to track, call <code>record_batch</code> / <code>record_epoch</code>, and ask for plots.
@@ -686,7 +686,7 @@ DLDiagnostics.lr_range_test(model, dataloader)   # pre-training LR probe (covere
       </div>
     </div>
     <div class="col">
-<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">import plotly.graph_objects as go
+<pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python" style="font-size: 1em;">import plotly.graph_objects as go
 import numpy as np
 
 def plot_losses(train, val, smooth=10):
@@ -696,8 +696,10 @@ def plot_losses(train, val, smooth=10):
     vl = np.convolve(val,   kernel, mode="valid")
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=tr, name="train", line=dict(color="#0D9488")))
-    fig.add_trace(go.Scatter(y=vl, name="val",   line=dict(color="#F59E0B", dash="dash")))
+    fig.add_trace(go.Scatter(y=tr, name="train",
+                             line=dict(color="#0D9488")))
+    fig.add_trace(go.Scatter(y=vl, name="val",
+                             line=dict(color="#F59E0B", dash="dash")))
     fig.update_yaxes(type="log")  # log-scale catches early learning
     fig.update_layout(
         title="Loss curves (smoothed, log-y)",
@@ -874,7 +876,7 @@ fig.write_html("loss_curves.html")
   <span class="marker marker-theory">Theory</span>
   <div class="columns">
     <div class="col">
-<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from kailash_ml.diagnostics import DLDiagnostics
 
 diag = DLDiagnostics(model).track_gradients()
 
@@ -1055,17 +1057,17 @@ diag.report()   # auto-diagnoses vanishing / exploding
   <div class="columns">
     <div class="col">
       <h3>Detecting</h3>
-<pre style="font-size: 0.60em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+<pre style="font-size: 0.60em; line-height: 1.4"><code class="language-python">from kailash_ml.diagnostics import DLDiagnostics
 
-diag = DLDiagnostics(model).track_dead_neurons()
-
+diag = (DLDiagnostics(model)
+        .track_activations()    # report() verdict
+        .track_dead_neurons())  # per-layer plot
 # run 1 warm-up epoch of training here...
-
 diag.plot_dead_neurons().show()
-# Auto-warning in diag.report():
-#   "conv3 has 67% dead neurons &mdash; consider GELU"
+diag.report()["dead_neurons"]
+#   WARNING: 'conv3' (relu): 67% dead neurons
 </code></pre>
-      <p class="small muted" style="margin-top: 4px;">Rule of thumb: any layer &gt; 50% dead is a problem. The library flags it for you.</p>
+      <p class="small muted" style="margin-top: 4px;">Rule of thumb: any layer &gt; 50% dead is a problem. The library flags it for you. (Healthy ReLU already zeroes ~half its inputs.)</p>
       <details style="margin-top: 4px; font-size: 0.72em;">
         <summary style="cursor: pointer; color: #475569;">Under the hood (forward hooks)</summary>
         <pre style="font-size: 0.85em; line-height: 1.3; margin-top: 4px;"><code class="language-python">def hook(_, __, out):
@@ -1510,14 +1512,14 @@ m.register_forward_hook(hook)   # for every ReLU
         <li>Find the divergence point (loss shoots up)</li>
         <li>Pick training LR = <strong>1/3 to 1/10</strong> of the divergence LR</li>
       </ol>
-<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from shared.mlfp05.diagnostics import DLDiagnostics
+<pre style="font-size: 0.55em; line-height: 1.4"><code class="language-python">from kailash_ml.diagnostics import DLDiagnostics
 
 result = DLDiagnostics.lr_range_test(
-    model, dataloader,
+    model, dataloader, loss_fn=nn.CrossEntropyLoss(),
     lr_min=1e-7, lr_max=10, steps=200,
 )
-print(f"Use lr = {result['suggested_lr']:.1e}")
-#   &rarr; rule of thumb: divergence-point LR / 10
+print(f"Use lr = {result['safe_lr']:.1e}")
+#   &rarr; safe_lr = steepest-descent LR / 10
 result["figure"].show()     # the curve below
 </code></pre>
       <p class="small muted" style="margin-top: 4px;">Three lines replace a custom scheduler. The helper handles LR ramp, divergence detection, and plotting.</p>

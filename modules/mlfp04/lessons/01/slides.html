@@ -41,7 +41,7 @@
   </p>
   <div style="margin-top: 2em; padding: 16px 20px; background: #F0FDFA; border-left: 4px solid #0D9488; border-radius: 4px;">
     <strong style="color: #0D9488;">⏱ 90 minutes</strong> &nbsp; · &nbsp;
-    <strong>Outcome:</strong> segment 10K customers without labels
+    <strong>Outcome:</strong> segment 47,500 customers without labels
   </div>
   <div class="slide-footer">MLFP — Module 4</div>
 </section>
@@ -50,7 +50,7 @@
   <h2>From M3 to M4: the no-label problem</h2>
   <ul>
     <li>M3 every exercise had a <code>y</code> column — price, churn, class.</li>
-    <li>M4: the marketing manager hands you 10,000 customers and says "give me three or four segments".</li>
+    <li>M4: the marketing manager hands you 50,000 customers and says "give me three or four segments".</li>
     <li>No labels. No ground truth. No loss function in the supervised sense.</li>
   </ul>
   <div class="callout-slide foundations">
@@ -149,7 +149,7 @@
     <li><strong>Assign:</strong> each point → nearest centroid.</li>
     <li><strong>Update:</strong> each centroid → mean of its points.</li>
   </ol>
-  <p>Both steps strictly decrease the inertia:</p>
+  <p>Neither step can increase the inertia, so it converges (to a <em>local</em> minimum):</p>
   \[ J \;=\; \sum_{k=1}^{K}\ \sum_{\mathbf{x}\in C_k}\ \lVert \mathbf{x} - \boldsymbol{\mu}_k \rVert^2 \]
   <p style="font-size: 0.85em; color: #64748B;">Squared Euclidean distance → K-means assumes spherical clusters.</p>
 </section>
@@ -214,7 +214,7 @@ best_k = 2 + np.argmax(sil_scores)
 <section>
   <h2>Hierarchical clustering: one tree, many cuts</h2>
   <figure style="text-align: center;">
-    <svg viewBox="0 0 680 260" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 680 260" xmlns="http://www.w3.org/2000/svg" style="max-height: 400px;">
       <g font-family="JetBrains Mono" font-size="11" fill="#475569" text-anchor="middle">
         <text x="80" y="240">A</text><text x="140" y="240">B</text><text x="200" y="240">C</text>
         <text x="300" y="240">D</text><text x="360" y="240">E</text>
@@ -233,7 +233,7 @@ best_k = 2 + np.argmax(sil_scores)
       <text x="650" y="103" font-family="Inter" font-size="11" fill="#EF4444">cut → 3 clusters</text>
     </svg>
   </figure>
-  <p style="text-align: center; color: #64748B; font-style: italic;">Cut lower, more clusters. Cut higher, fewer.</p>
+  <p style="font-size: 0.75em; color: #64748B;"><em>Cut lower, more clusters; cut higher, fewer.</em> <strong>Agglomerative</strong> (bottom-up, shown): start with singletons, merge the closest pair. <strong>Divisive</strong> (top-down, e.g. bisecting K-means): start with one cluster, split recursively.</p>
 </section>
 
 <section>
@@ -248,7 +248,7 @@ best_k = 2 + np.argmax(sil_scores)
     </tbody>
   </table>
   <div class="callout-slide theory">
-    <strong>🔵 Theory:</strong> Ward's linkage = hierarchical K-means. Default choice.
+    <strong>🔵 Theory:</strong> Ward greedily minimises the same within-cluster sum of squares K-means minimises — merge by merge, not globally. Default choice.
   </div>
 </section>
 
@@ -299,6 +299,9 @@ labels = hdb.fit_predict(X_scaled)
     <li>Cost: $O(n^3)$ — only for datasets up to ~10K points.</li>
     <li>Rarely needed in business data but essential when topology matters.</li>
   </ul>
+  <div class="callout-slide warning">
+    <strong>⚠ Two moons:</strong> spectral recovers the true moons (ARI = 1.0) while K-means cuts straight across them — yet silhouette <em>prefers</em> K-means, because silhouette rewards convex blobs.
+  </div>
 </section>
 
 <section>
@@ -317,32 +320,77 @@ labels = hdb.fit_predict(X_scaled)
 </section>
 
 <section>
+  <h2>External metrics: ARI and NMI</h2>
+  <ul>
+    <li>Silhouette, DB, CH are <em>internal</em> — they only see the data and one labelling.</li>
+    <li><strong>ARI</strong> (adjusted Rand index) and <strong>NMI</strong> (normalised mutual information) compare <em>two</em> labellings: 1 = identical partitions, ≈ 0 = chance agreement.</li>
+    <li>Use them against ground truth when you have it (two moons), or to ask "do K-means and GMM find the <em>same</em> segments?"</li>
+  </ul>
+  <pre><code class="language-python" data-trim>
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+ari = adjusted_rand_score(labels_kmeans, labels_gmm)   # label names don't matter
+nmi = normalized_mutual_info_score(labels_kmeans, labels_gmm)
+  </code></pre>
+  <aside class="notes">Internal vs external metrics. ARI corrects the Rand index for chance, so random labellings score near 0; it is invariant to how clusters are numbered. In Exercise 1.5 students compute an ARI/NMI agreement matrix across every pair of methods (noise points from DBSCAN/HDBSCAN excluded). High agreement between two very different algorithms is evidence the segments are real.</aside>
+</section>
+
+<section>
   <h2>Gap statistic — does the structure even exist?</h2>
   \[ \text{Gap}(K) \;=\; \mathbb{E}\bigl[\log W_K^\star\bigr] - \log W_K \]
   <ul>
     <li>$W_K$ = within-cluster dispersion on your data.</li>
     <li>$W_K^\star$ = same on a uniform null in the bounding box.</li>
-    <li>If best gap is at $K = 1$, your data has no clusters — an honest answer.</li>
+    <li><strong>1-SE rule:</strong> pick the smallest $K$ with $\text{Gap}(K) \ge \text{Gap}(K{+}1) - s_{K+1}$.</li>
+    <li>If that is $K = 1$, your data has no clusters — an honest answer.</li>
   </ul>
 </section>
 
 <section>
-  <h2>Kailash AutoMLEngine — clustering sweep with guardrails</h2>
+  <h2>Kailash ClusteringEngine — one surface, four algorithms</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
+import polars as pl
+from kailash_ml.engines.clustering import ClusteringEngine
 
-config = AutoMLConfig(
-    task_type="clustering",
-    metric_to_optimize="silhouette",
-    search_strategy="random",
-    search_n_trials=20,
-    agent=False,           # default — no LLM calls
-    max_llm_cost_usd=1.0,  # hard cap if enabled
-)
+X_df = pl.from_numpy(X_scaled, schema=feature_cols)  # standardised, numeric only
+engine = ClusteringEngine()   # algorithm = "kmeans" | "gmm" | "dbscan" | "spectral"
+
+sweep = engine.sweep_k(X_df, k_range=range(2, 11), algorithm="kmeans",
+                       criterion="silhouette")
+result = engine.fit(X_df, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(result.n_clusters, result.silhouette_score, result.calinski_harabasz_score)
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> Double opt-in — must set <code>agent=True</code> <em>and</em> install <code>kailash-ml[agents]</code>. Governance by design.
+    <strong>⚙ Kailash:</strong> the engine does <em>not</em> scale for you — pass standardised features. Ward hierarchical and HDBSCAN stay with scipy / <code>hdbscan</code>.
   </div>
+  <aside class="notes">This is the bridge from the hand-rolled sklearn code to the Kailash engine students use in Exercise 1.5 and the assessment. ClusteringEngine.fit returns a ClusterResult (labels, n_clusters, silhouette_score, calinski_harabasz_score, inertia, metrics); sweep_k returns a KSweepResult with optimal_k chosen by silhouette or calinski_harabasz. It selects numeric columns only and does no scaling, so standardise first.</aside>
+</section>
+
+<section>
+  <h2>Kailash AutoMLEngine — clustering search with guardrails</h2>
+  <pre><code class="language-python" data-trim>
+import asyncio
+from kailash_ml import AutoMLEngine
+from kailash_ml.automl import AutoMLConfig, ParamSpec
+
+config = AutoMLConfig(
+    task_type="clustering", metric_name="silhouette", direction="maximize",
+    search_strategy="grid", max_trials=12,
+    agent=False,           # default — no LLM calls
+    max_llm_cost_usd=1.0,  # hard cap if you ever opt in
+)
+space = [
+    ParamSpec(name="algorithm", kind="categorical", choices=("kmeans", "gmm")),
+    ParamSpec(name="n_clusters", kind="int", low=3, high=8),
+]
+automl = AutoMLEngine(config=config, tenant_id="mlfp04", actor_id="student")
+# clustering_trial(trial) runs one ClusteringEngine.fit and returns a TrialOutcome
+result = asyncio.run(automl.run(space=space, trial_fn=clustering_trial))
+print(result.best_trial.params, result.best_trial.metric_value)
+  </code></pre>
+  <div class="callout-slide kailash">
+    <strong>⚙ Kailash:</strong> you own the trainer (<code>trial_fn</code>); the engine proposes trials, enforces budgets and keeps the audit trail. LLM proposals need a double opt-in: <code>agent=True</code> <em>and</em> <code>kailash-ml[agents]</code>.
+  </div>
+  <aside class="notes">AutoMLEngine is a governed search loop, not a clustering library: it never picks algorithms itself. Exercise 1.5 declares a ParamSpec space over algorithm x K, and each trial calls ClusteringEngine.fit on a 3,000-row subsample (silhouette is O(n^2)). With agent=False no LLM is ever called; max_llm_cost_usd caps spend if a team later opts in.</aside>
 </section>
 
 <section>
@@ -361,19 +409,19 @@ X_scaled = StandardScaler().fit_transform(X)
 <section>
   <h2>Worked example: e-commerce customer segmentation</h2>
   <ol>
-    <li>Load customers, select numeric features.</li>
-    <li>Standardise. Sweep K-means $K=2..10$ by silhouette.</li>
-    <li>Run GMM and HDBSCAN with the chosen $K$.</li>
-    <li>Compare silhouette, DB, CH.</li>
+    <li>Load 47,500 complete customer rows; 7 behavioural features. <code>churned</code> is an <em>outcome</em> — kept out of the features, used only to profile segments afterwards.</li>
+    <li>Standardise. Sweep K-means over $K$ by silhouette and the gap statistic.</li>
+    <li>Ward hierarchical, DBSCAN / HDBSCAN (<code>min_cluster_size</code> — no $K$), spectral.</li>
+    <li>Compare silhouette, DB, CH; ARI / NMI agreement; AutoMLEngine search.</li>
     <li><strong>Profile each cluster</strong> — assign business labels.</li>
   </ol>
-  <p style="font-size: 0.85em; color: #64748B;">See <code>modules/mlfp04/solutions/ex_1.py</code> for the full walkthrough.</p>
+  <p style="font-size: 0.85em; color: #64748B;">See <code>modules/mlfp04/solutions/ex_1/</code> (<code>01_kmeans.py</code> … <code>05_evaluation_profiling.py</code>) for the full walkthrough.</p>
 </section>
 
 <section>
   <h2>From cluster to business meaning</h2>
   <table style="font-size: 0.78em;">
-    <thead><tr><th>Cluster</th><th>Frequency</th><th>Monetary</th><th>Recency</th><th>Label</th></tr></thead>
+    <thead><tr><th>Cluster</th><th>Orders</th><th>Revenue</th><th>Days since last order</th><th>Label</th></tr></thead>
     <tbody>
       <tr><td>0</td><td>+60%</td><td>+40%</td><td>−50%</td><td>Loyal high-value</td></tr>
       <tr><td>1</td><td>+40%</td><td>−30%</td><td>−20%</td><td>Bargain hunters</td></tr>
@@ -381,6 +429,7 @@ X_scaled = StandardScaler().fit_transform(X)
       <tr><td>3</td><td>−10%</td><td>+10%</td><td>+10%</td><td>Steady average</td></tr>
     </tbody>
   </table>
+  <p style="font-size: 0.75em; color: #64748B;">Illustrative profile: % difference from the overall mean. Your run's numbers will differ.</p>
   <p style="font-style: italic; color: #64748B;">The algorithm gave you 0, 1, 2, 3. You gave them meaning.</p>
 </section>
 
@@ -398,9 +447,9 @@ X_scaled = StandardScaler().fit_transform(X)
   <h2>What you can now do</h2>
   <ul>
     <li>✓ Run K-means, hierarchical, DBSCAN, HDBSCAN, spectral, GMM.</li>
-    <li>✓ Pick $K$ using silhouette, DB, CH, and the gap statistic.</li>
+    <li>✓ Pick $K$ using silhouette, DB, CH, and the gap statistic; compare partitions with ARI / NMI.</li>
     <li>✓ Read a dendrogram and cut it at a chosen height.</li>
-    <li>✓ Use AutoMLEngine with governance guardrails.</li>
+    <li>✓ Use ClusteringEngine, and AutoMLEngine with governance guardrails.</li>
     <li>✓ Profile clusters and give them business-meaningful names.</li>
   </ul>
   <div class="callout-slide foundations">

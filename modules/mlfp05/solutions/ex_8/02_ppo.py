@@ -55,6 +55,7 @@ from shared.mlfp05.ex_8 import (
     make_cartpole,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from gymnasium import spaces
@@ -82,7 +83,8 @@ from kailash_ml import ModelVisualizer
 #   (1) ACTOR-CRITIC — "A coach and a scorekeeper"
 #       Actor: the policy network pi(a|s) — decides what to do
 #       Critic: the value network V(s) — estimates how good a state is
-#       They share a neural network trunk (efficient parameter sharing).
+#       Here they are two SEPARATE networks — the ActorCritic docstring
+#       below explains why sharing a trunk stalls learning on CartPole.
 #       The critic's V(s) provides a BASELINE for variance reduction.
 #
 #   (2) GAE (Generalised Advantage Estimation) — "Crediting past actions"
@@ -129,8 +131,7 @@ class ActorCritic(nn.Module):
     are far larger than the actor's tiny policy-gradient signal, so they
     dominate the shared parameters and the policy never moves — on CartPole
     this leaves the agent stuck at ~random return (~24) with entropy frozen
-    at ln(2). Two independent MLPs let each head learn at its own scale, and
-    PPO then solves CartPole (return climbs past 200) within ~20 iterations.
+    at ln(2). Two independent MLPs let each head learn at its own scale.
     """
 
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 64):
@@ -200,6 +201,12 @@ def compute_gae(
       lambda=0: only immediate TD error (high bias, low variance)
       lambda=1: full Monte Carlo return (low bias, high variance)
       lambda=0.95: sweet spot for most environments
+
+    Simplification: after the LAST step of the rollout we bootstrap with
+    V = 0 even if that episode is still running, and a time-limit
+    truncation is treated like a real termination. Full PPO
+    implementations bootstrap both cases with V(s_next); with 1024-step
+    rollouts the bias this introduces is small.
     """
     advantages = [0.0] * len(rewards)
     gae = 0.0
@@ -373,9 +380,39 @@ assert ppo_returns[-1] > 50.0, "PPO should achieve avg return > 50 by final iter
 # given a state), unlike DQN which learns Q-values and derives a policy.
 # The clipped objective prevents the new policy from straying too far from
 # the old one — this is the "proximal" in Proximal Policy Optimization.
-# In M6, RLHF uses PPO to update an LLM's policy (word probabilities)
+# In M6, RLHF uses PPO to update an LLM's policy (next-token probabilities)
 # using human preference as the reward signal.
 print("--- Checkpoint 1 passed --- PPO trained on CartPole\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's RL instrument is RLDiagnostics (what
+# `km.diagnose("ppo", kind="rl")` returns). The helper feeds it the
+# per-iteration history recorded above — each iteration's mean episode
+# return, actor loss, critic loss and policy entropy — and prints
+# report(). Here one "reward" entry = one PPO iteration, not one episode.
+ppo_rl_report = rl_diagnostic_checkpoint(
+    "PPO on CartPole-v1",
+    "ppo",
+    ppo_returns,
+    policy_losses=ppo_actor_losses,
+    value_losses=ppo_critic_losses,
+    entropies=ppo_entropies,
+    window=10,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 10 iterations) vs peak — close together means the
+#     policy kept what it learned; far apart means late instability.
+#   [CRIT] episode_reward_collapse — the last iteration's return fell
+#     below 10% of the peak after a >=50% drop. For PPO the usual causes
+#     are a learning rate or clip range that is too large; lower lr or
+#     clip_eps and retrain.
+#   findings: none — no collapse. Entropy is recorded too: plot it in
+#     Task 4 — a slow decline is healthy; a crash toward 0 within a few
+#     iterations means the policy stopped exploring (raise the 0.01
+#     entropy coefficient).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -412,7 +449,7 @@ print(f"  Saved: {OUTPUT_DIR / '02_ppo_entropy.html'}")
 # DECREASING as the agent becomes more confident, but NOT collapsing to
 # zero (which means it's stuck on one action regardless of state).
 
-# ── Plot 3: Advantage distribution (first vs last iteration) ─────────
+# ── Plot 3: Advantage distribution (trained policy) ──────────────────
 # Re-collect a trajectory to show advantage distribution
 states_final, _, _, values_final, rewards_final, dones_final = collect_trajectory(
     cartpole_env, ppo_model, 1024
@@ -439,11 +476,13 @@ fig3.update_layout(
 )
 fig3.write_html(str(OUTPUT_DIR / "02_ppo_advantage_dist.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_advantage_dist.html'}")
-# INTERPRETATION: The advantage distribution shows how the critic evaluates
-# actions. A distribution centred near zero with thin tails means the policy
-# is well-calibrated — most actions are "about as good as expected." Fat
-# positive tails mean some actions are surprisingly good (opportunities to
-# improve the policy further).
+# INTERPRETATION: An advantage is "how much better did this action turn
+# out than the critic expected?" A distribution centred near zero with
+# thin tails means the CRITIC predicts returns well — most actions are
+# "about as good as expected". Fat tails mean the critic is often
+# surprised (positive tail: actions that did better than predicted, which
+# the next policy update will favour). These are raw GAE values; inside
+# training they are re-normalised to mean 0, std 1 before the PPO update.
 
 # ── Plot 4: Actor loss vs critic loss ────────────────────────────────
 fig4 = viz.training_history(
@@ -457,12 +496,13 @@ fig4 = viz.training_history(
 fig4.write_html(str(OUTPUT_DIR / "02_ppo_actor_critic_loss.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_actor_critic_loss.html'}")
 # INTERPRETATION: Two losses, two learning signals:
-# - Actor loss: how much the policy improved this iteration
-#   (should decrease then stabilise)
-# - Critic loss: how accurate the value function is
-#   (should decrease as V(s) predictions improve)
-# If actor loss increases while return increases, the clipping is working
-# — it's PREVENTING harmful updates.
+# - Actor loss: the clipped surrogate objective (negated). It is NOT a
+#   progress score — advantages are re-normalised every iteration, so its
+#   level is not comparable across iterations and it hovers near zero.
+#   Judge the policy by the return curve, not by this line.
+# - Critic loss: mean squared error of V(s) against the GAE returns. It
+#   can RISE while the agent improves, because longer episodes mean
+#   bigger returns to predict; it should stay finite and not explode.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert Path(OUTPUT_DIR / "02_ppo_reward_curve.html").exists()
@@ -476,9 +516,9 @@ print("--- Checkpoint 2 passed --- all PPO visualisations generated\n")
 # TASK 5 — Apply: Dynamic Pricing for a Singapore Ride-Hailing Platform
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You're the pricing algorithms team at a Singapore ride-hailing
-# platform (think Grab or Gojek). During peak hours (morning commute,
-# evening rush, after-MRT-closure), demand spikes. You need to set a
-# price multiplier that balances:
+# platform (hypothetical; the demand curves are illustrative). During
+# peak hours (morning commute, evening rush, after-MRT-closure), demand
+# spikes. You need to set a price multiplier that balances:
 #   - Revenue: higher prices = more revenue per ride
 #   - Customer satisfaction: too-high prices = riders switch to MRT/bus
 #   - Driver supply: higher prices = more drivers come online
@@ -718,12 +758,20 @@ print("\n  Learned Pricing (evening rush, supply=0.5, clear weather):")
 for dl, dec in zip(demand_levels[::4], pricing_decisions[::4]):
     print(f"    Demand={dl:.2f} -> {dec}")
 
-# INTERPRETATION: PPO learns a pricing policy that adapts to demand-supply
-# dynamics AND customer sensitivity. Unlike fixed rules that only look at
-# the demand-supply gap, PPO considers time of day (commuters tolerate
-# moderate surges, late-night riders are more price-sensitive) and weather
-# (rain increases demand but also increases price sensitivity). The net
-# result: higher revenue with less customer churn.
+# INTERPRETATION (computed from this run, not assumed): the fixed rule
+# looks only at the demand-supply gap; the PPO policy also sees time of
+# day and weather, so it CAN learn pricing the rule cannot express.
+# Whether it did on this simulator is what the comparison shows.
+if revenue_improvement > 0:
+    print(
+        f"  PPO beat the fixed surge rule by {revenue_pct:+.1f}% "
+        "on weekly revenue x satisfaction."
+    )
+else:
+    print(
+        f"  PPO did NOT beat the fixed surge rule ({revenue_pct:+.1f}%). "
+        "More iterations or a tuned entropy bonus may be needed."
+    )
 
 pricing_env.close()
 
@@ -769,32 +817,36 @@ print("  WHAT YOU'VE MASTERED — PPO")
 print("=" * 70)
 print(
     """
-  [x] Built PPO from scratch: actor-critic architecture with shared trunk
+  [x] Built PPO from scratch: actor-critic with separate actor and critic
   [x] Implemented GAE for low-variance advantage estimation
   [x] Implemented the clipped surrogate objective for stable updates
-  [x] Trained PPO on CartPole-v1 — steadier learning than DQN
+  [x] Trained PPO on CartPole-v1 and read its RL diagnostic report
   [x] Visualised the agent's learning:
-      - Reward curve: smoother convergence than DQN
-      - Policy entropy: confidence increasing over training
-      - Advantage distribution: well-calibrated action evaluation
-      - Actor vs critic loss: two learning signals working in tandem
+      - Reward curve: mean episode return per PPO iteration
+      - Policy entropy: how fast the policy became confident
+      - Advantage distribution: how well the critic predicts returns
+      - Actor vs critic loss: two learning signals, read differently
   [x] Applied PPO to Singapore ride-hailing dynamic pricing:
       - Built a custom environment with realistic demand patterns
         (morning rush, evening peak, late-night after MRT closure)
-      - PPO learned to balance revenue and customer satisfaction
+      - Compared PPO's learned pricing with a fixed surge rule
       - Visualised pricing decisions across demand levels
 
   KEY INSIGHT:
   PPO learns WHAT TO DO directly (policy), while DQN learns HOW GOOD
-  each action IS (values). PPO is more stable and handles complex
-  action spaces better. This is exactly why RLHF (in M6) uses PPO —
+  each action IS (values). PPO's clipped updates are typically more
+  stable, and a policy network extends to continuous actions (a Gaussian
+  head instead of our Categorical one). This is why RLHF (in M6) uses PPO —
   it can fine-tune an LLM's "policy" (next-token probabilities) based
   on human preference rewards.
 
   BRIDGE TO M6 (RLHF):
   In RLHF, the "environment" is text generation, the "state" is the
-  prompt + tokens so far, the "action" is the next token, and the
-  "reward" comes from a preference model trained on human rankings.
+  prompt + tokens so far, the "action" is the next token (a discrete
+  choice from the vocabulary), and the "reward" comes from a preference
+  model trained on human rankings. PPO's clip only limits each update
+  relative to the previous policy; a SEPARATE KL penalty to the frozen
+  reference model is what keeps the LLM close to its original language.
   DPO (Direct Preference Optimization) achieves the same goal without
   needing a separate reward model.
 
@@ -802,66 +854,3 @@ print(
   environments that model real Singapore decision problems.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # PPO clipped objective + value loss
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (PPO — Proximal Policy Optimization) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        actor_critic,
-        rollout_loader,
-        _diag_loss,
-        title="PPO — Proximal Policy Optimization",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 2.1e-03 across actor and critic heads.
-#     PPO clipping keeps update ratio in [0.8, 1.2] — stable by design.
-# [!] Policy entropy collapsing at epoch 8 — early sign of premature convergence.
-# [✓] Reward curve: steady climb, no collapse events.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — PPO-SPECIFIC] The clipped objective is what keeps
-#     PPO stable. update_ratio > 1.2 or < 0.8 would mean the policy
-#     is moving too fast — but the clip prevents it. That's WHY
-#     PPO dominates in 2024+ (slide 5.8).
-#
-#  [X-RAY — POLICY ENTROPY] Entropy collapse means the policy is
-#     becoming deterministic — no exploration, no learning new
-#     strategies. Slide 5.8 Prescription Pad: add entropy bonus
-#     (coef ~0.01), or use SAC which has entropy regularisation
-#     baked in.
-#     >> Prescription: raise entropy coefficient from 0.01 → 0.05
-#        to encourage exploration.

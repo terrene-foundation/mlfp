@@ -183,6 +183,19 @@ print("--- Checkpoint 2 passed --- all four architectures defined\n")
 # TASK 3 — Train all four architectures under identical conditions
 # ════════════════════════════════════════════════════════════════════════
 print(f"\n== Training all four on {PRIMARY} (identical conditions) ==")
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
+
 all_results = {}
 for name, model in models.items():
     print(f"\n--- {name} ---")
@@ -197,89 +210,25 @@ for name, model in models.items():
         attn=is_attn[name],
     )
     all_results[name] = results
-    # Per-architecture diagnostic — the comparison is the teaching
-    # moment: VanillaRNN should light up CRITICAL while LSTM/GRU/
-    # Attention stay HEALTHY on the same task and identical data.
-    from kailash_ml import diagnose
+    # Per-architecture diagnostic: same data, same instruments — line the
+    # four pads up side by side.
     print(f"  ── Diagnostic Report ({name}) ──")
-    report = diagnose(
+    diag, findings = run_diagnostic_checkpoint(
         model,
-        kind="dl",
-        data=val_loader,
+        train_loader,
+        _mse_loss,
+        title=name,
+        train_losses=results["train_losses"],
+        val_losses=results["val_losses"],
         show=False,
     )
-    # ══════ EXPECTED OUTPUT (synthesized reference — side-by-side across 4 architectures) ══════
-    # ┌────────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
-    # │ Architecture   │ VanillaRNN   │ GRU          │ LSTM         │ Attention    │
-    # ├────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-    # │ Blood Test     │ [X] CRITICAL │ [✓] HEALTHY  │ [✓] HEALTHY  │ [✓] HEALTHY  │
-    # │   min RMS      │ 8.2e-07      │ 2.7e-04      │ 2.4e-04      │ 4.1e-04      │
-    # ├────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-    # │ Saturation     │ [!] tanh 0.99│ [✓]          │ [✓]          │ [✓]          │
-    # ├────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-    # │ Stethoscope    │ [!] slow/    │ [✓] -3.1e-03 │ [✓] -2.8e-03 │ [✓] -3.6e-03 │
-    # │   slope        │   oscillates │   /epoch     │   /epoch     │   /epoch     │
-    # ├────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-    # │ Final val loss │ ~3.8         │ ~1.3         │ ~1.4         │ ~0.95        │
-    # │ Final val RMSE │ ~28 μg/m³    │ ~10 μg/m³    │ ~10 μg/m³    │ ~8 μg/m³     │
-    # └────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
-    #
-    # STUDENT INTERPRETATION GUIDE — reading the comparison:
-    #
-    #  [BLOOD TEST — THE HISTORICAL ARC] The min RMS column is the
-    #     single most important comparison in the table. 8.2e-07 →
-    #     2.7e-04 is a THOUSAND-FOLD gradient preservation improvement
-    #     between VanillaRNN and GRU. This IS the vanishing-gradient
-    #     fix that Hochreiter posed in 1991 and that Cho (GRU) and
-    #     Bengio (LSTM) solved in 2014. Slide 5T frames it: "1991-2014
-    #     = 23 years between problem identification and scalable
-    #     solution. The diagnostic instruments let you SEE the fix
-    #     happen across architectures in a single afternoon."
-    #     >> Prescription: Any time-series task with sequences >30
-    #        steps MUST start with a gated architecture. VanillaRNN is
-    #        a pedagogical tool, not a production option.
-    #
-    #  [SATURATION — TANH COLLAPSE] Only VanillaRNN shows saturation.
-    #     Gated architectures use sigmoid gates to MODULATE tanh
-    #     rather than to produce final output, so saturation occurs
-    #     only at gate extremes (which is informative, not
-    #     pathological). In contrast, VanillaRNN's output tanh
-    #     saturates because there's no gating — all the hidden state
-    #     flows through one tanh, which drives to ±1 on any strong
-    #     signal.
-    #     >> Prescription: No architectural fix — VanillaRNN
-    #        fundamentally cannot be rescued on PM2.5 sequences.
-    #        Choose GRU or LSTM.
-    #
-    #  [STETHOSCOPE — SLOPE COMPARISON] All three gated architectures
-    #     converge at similar rates (~-3e-3/epoch). Attention is
-    #     fastest (-3.6e-3) because the decoder gets richer per-step
-    #     signal from attending to all timesteps. VanillaRNN's
-    #     OSCILLATING loss (not just slow) is the pattern diagnostic:
-    #     gradient explosions alternating with vanishing means
-    #     gradient clipping is masking, not fixing, the underlying
-    #     issue.
-    #     >> Prescription: An oscillating training curve on a
-    #        sequence task is never a tuning problem — it is an
-    #        architecture problem.
-    #
-    #  [RMSE — BUSINESS IMPACT] For Singapore PM2.5 forecasting:
-    #     28 μg/m³ error (VanillaRNN) means the model predicts
-    #     "moderate air quality" when reality is "unhealthy" and
-    #     vice versa — CLASSIFICATION FAILURES that misinform
-    #     public-health messaging. 8 μg/m³ (Attention) stays WITHIN
-    #     one air-quality band: predictions are actionable.
-    #     >> Prescription: On public-health-adjacent tasks, accuracy
-    #        is a population-health KPI. A 3x RMSE reduction (28 →
-    #        8) means 3x fewer misleading alerts per year.
-    #
-    #  FIVE-INSTRUMENT TAKEAWAY: the comparison table IS the
-    #  pedagogical payload. Four architectures, same data, same
-    #  instruments — the Prescription Pad reveals WHY each wins or
-    #  loses. Use this pattern throughout M5: any time you compare
-    #  architectures, line them up on the five instruments, not just
-    #  on final accuracy.
-    # ═════════════════════════════════════════════════════════════════════
+    print_prescription_pad(findings, name)
+    all_results[name]["findings"] = findings
+    # READING ACROSS ARCHITECTURES (key: see ex_1/01_standard_ae.py): the
+    # pads measure per-layer optimisation health and the loss trend; they
+    # do not measure gradient decay through TIME (see 01/02 for that) and
+    # they do not rank forecast quality — the comparison table below does.
+    # A CRITICAL reading on one architecture only is the thing to explain.
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 for name, res in all_results.items():
     assert len(res["train_losses"]) == EPOCHS, f"{name} should have {EPOCHS} epochs"
@@ -647,25 +596,29 @@ print(
 """
 )
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — one-call diagnostics
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of recurrent architectures — VanillaRNN,
-# LSTM, GRU, LSTM+Attention — each with its own training loop, gradient
-# norm tracking, and benchmark grid. The kailash-ml SDK ships a
-# single-call diagnostic primitive that closes the production loop:
-# km.diagnose inspects a trained model and emits an auto-dashboard
-# (loss curves, gradient flow, dead neurons, activation stats, weight
-# distributions). One cell. Every diagnostic students would otherwise
-# hand-roll, ready to surface in a Plotly dashboard.
-from kailash_ml import diagnose
-# `kind='auto'` dispatches by model type — DLDiagnostics for torch.nn.Module.
-# `data=` accepts any iterable yielding tensors; we reuse val_loader.
-report = diagnose(best_model, kind="auto", data=val_loader, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+# This lesson compared VanillaRNN, LSTM, GRU and LSTM+Attention with
+# hand-written training loops, gradient tracking and benchmarks.
+# kailash-ml's run_diagnostic_checkpoint is the one call behind each
+# pad: it hooks every layer, runs a few probe batches (no weight
+# updates), replays the loss history and returns findings plus a
+# DLDiagnostics session whose plot_training_dashboard() draws the loss,
+# gradient and activation panels. (km.diagnose(model, kind="dl") on its
+# own only builds an un-instrumented session, so it has nothing to
+# report.) It does not replace the gradient-through-time measurements,
+# latency benchmarks or multi-stock tests above.
+diag, findings = run_diagnostic_checkpoint(
+    best_model,
+    train_loader,
+    _mse_loss,
+    title=f"Best architecture ({best_name})",
+    train_losses=all_results[best_name]["train_losses"],
+    val_losses=all_results[best_name]["val_losses"],
+    show=False,
+)
+print_prescription_pad(findings, f"Best architecture ({best_name})")
+dashboard = diag.plot_training_dashboard()  # Plotly figure: dashboard.show()
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
@@ -685,10 +638,10 @@ print(
   [x] Multi-stock generalisation across {len(multi_stock_results)} tickers
   [x] Architecture selection guide for real-world decision making
   [x] Applied to Singapore business scenarios:
-      - Ya Kun Kaya Toast: F&B demand forecasting (RNN)
-      - SGX/DBS: Equity forecasting with prediction intervals (LSTM)
-      - SMRT: Predictive maintenance for trains (GRU)
-      - SGH: Clinical deterioration prediction with explainability (Attention)
+      - F&B chain: demand forecasting (RNN)
+      - Singapore equities: forecasting with prediction intervals (LSTM)
+      - Rail operator: predictive maintenance for trains (GRU)
+      - Hospital ICU: deterioration prediction with explainability (Attention)
   Key insight: There is no single "best" architecture. The right choice
   depends on sequence length, latency requirements, explainability needs,
   and data volume. RNNs fail on long sequences. LSTMs fix this with

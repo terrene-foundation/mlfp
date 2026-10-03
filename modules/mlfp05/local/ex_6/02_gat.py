@@ -7,7 +7,8 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Why not all neighbours are equally important on a graph
-#   - Attention on graphs: learned edge weights instead of fixed Laplacian
+#   - Attention on graphs: learned edge weights instead of fixed
+#     degree-normalised weights
 #   - Build a GAT layer with masked softmax attention over neighbours
 #   - Visualise attention weights to see which citations matter most
 #   - Train a node classifier on Cora and compare to GCN
@@ -48,7 +49,7 @@ import matplotlib.pyplot as plt
 # ════════════════════════════════════════════════════════════════════════
 #
 # GCN treats all neighbours equally — the aggregation weights come from
-# node degrees (the Laplacian), not from the content of the nodes. But
+# node degrees (the normalised adjacency), not from node content. But
 # in real graphs, not all connections carry the same signal:
 #
 # Example: A paper on "Graph Neural Networks for Drug Discovery" cites:
@@ -138,28 +139,32 @@ class GATLayer(nn.Module):
 
     def __init__(self, in_dim: int, out_dim: int):
         super().__init__()
-        # TODO: Create three linear layers:
-        # - self.W: projects features in_dim -> out_dim (no bias)
-        # - self.a_src: projects out_dim -> 1 (source attention, no bias)
-        # - self.a_dst: projects out_dim -> 1 (destination attention, no bias)
-        # Hint: nn.Linear(in_dim, out_dim, bias=False)
-        pass
+        # TODO: three bias-free linear maps — the shared feature projection
+        #       W (in_dim -> out_dim) and one scoring vector each for the
+        #       source and destination side of an edge (out_dim -> 1)
+        self.W = ____
+        self.a_src = ____
+        self.a_dst = ____
         # Store attention weights for visualisation
         self._alpha: torch.Tensor | None = None
 
     def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement GAT forward pass:
-        # 1. Project features: Wh = self.W(h)  -> shape (N, out_dim)
-        # 2. Compute source attention: e_src = self.a_src(Wh)  -> shape (N, 1)
-        # 3. Compute dest attention: e_dst = self.a_dst(Wh)  -> shape (N, 1)
-        # 4. Broadcast scores: scores = LeakyReLU(e_src + e_dst.T, slope=0.2)  -> (N, N)
-        # 5. Mask non-neighbours: add self-loops to adj, set non-edges to -inf
-        #    mask = adj + torch.eye(adj.size(0), device=adj.device)
-        #    scores = scores.masked_fill(mask == 0, float("-inf"))
-        # 6. Normalise: alpha = softmax(scores, dim=1)
-        # 7. Cache alpha: self._alpha = alpha.detach()
-        # 8. Aggregate: return alpha @ Wh
-        pass
+        Wh = self.W(h)  # (N, out_dim)
+        # TODO: per-node source and destination scores, each (N, 1)
+        e_src = ____
+        e_dst = ____
+        # TODO: e_ij = LeakyReLU(e_src_i + e_dst_j) for ALL pairs, shape (N, N)
+        # Hint: a column plus a row broadcasts to a matrix; slope 0.2
+        scores = ____
+        mask = adj + torch.eye(adj.size(0), device=adj.device)
+        # TODO: non-neighbours (mask == 0) must get ZERO weight after softmax
+        # Hint: which score makes exp(score) exactly 0?
+        scores = ____
+        # TODO: normalise over each node's neighbours (one row per node i)
+        alpha = ____
+        self._alpha = alpha.detach()  # cache for visualisation
+        # TODO: attention-weighted sum of the projected neighbour features
+        return ____
 
 
 class GAT(nn.Module):
@@ -167,20 +172,21 @@ class GAT(nn.Module):
 
     def __init__(self, in_dim: int, hidden_dim: int, n_classes: int):
         super().__init__()
-        # TODO: Create two GAT layers
-        # Layer 1: in_dim -> hidden_dim
-        # Layer 2: hidden_dim -> n_classes
-        pass
+        # TODO: two GATLayers — features -> hidden, hidden -> class logits
+        self.l1 = ____
+        self.l2 = ____
 
     def forward(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
-        # TODO: Two-layer forward: ELU after layer 1, dropout(0.5), then layer 2
-        # Hint: Use F.elu (not F.relu) — GAT convention from the original paper
-        pass
+        # TODO: layer 1 + ELU (the GAT paper's choice), dropout(p=0.5) while
+        #       training, then layer 2 with no activation
+        h = ____
+        h = ____
+        return ____
 
     def embed(self, h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """Return the hidden-layer embedding (before classification head)."""
-        # TODO: Return ELU(layer1(h, adj))
-        pass
+        # TODO: the activated output of the first layer (no dropout)
+        return ____
 
     def get_attention_weights(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """Return cached attention weights from both layers."""
@@ -227,18 +233,63 @@ gat_losses, gat_val, gat_test = train_node_classifier(
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(gat_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses for GAT"
 assert gat_losses[-1] < gat_losses[0], "GAT loss should decrease"
-best_val = max(gat_val)
-best_test = max(gat_test)
+# Model selection by VALIDATION accuracy; report test accuracy at that
+# epoch (the harness has already restored that epoch's weights).
+# TODO: epoch by validation accuracy, then that epoch's test accuracy
+best_epoch = ____
+best_val = gat_val[best_epoch]
+best_test = ____
 print(f"\n  GAT Results:")
-print(f"    Best validation accuracy: {best_val:.4f}")
-print(f"    Best test accuracy:       {best_test:.4f}")
+print(f"    Best validation accuracy: {best_val:.4f} (epoch {best_epoch + 1})")
+print(f"    Test accuracy, that epoch: {best_test:.4f}")
 print(f"    Final loss:               {gat_losses[-1]:.4f}")
-# INTERPRETATION: GAT replaces the fixed Laplacian weights with LEARNED
+# INTERPRETATION: GAT replaces GCN's fixed degree-based weights with LEARNED
 # attention scores. Each node decides how much to attend to each neighbour
 # based on the content of both nodes' features. This lets the model
 # assign different importance to different neighbours — a citation from
 # a highly relevant paper gets more weight than a tangential one.
 print("\n--- Train checkpoint passed --- GAT trained successfully\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# run_diagnostic_checkpoint instruments the trained model, replays a few
+# forward/backward passes of the REAL training objective (cross-entropy
+# on the labelled training nodes; no weights are updated) and replays
+# the per-epoch training losses. The whole graph is one "batch", so the
+# loader is the same full-graph tuple repeated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+diag, findings = run_diagnostic_checkpoint(
+    gat,
+    [(X, A, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title="GAT — Graph Attention Network",
+    n_batches=4,
+    train_losses=gat_losses,
+    show=False,
+)
+print_prescription_pad(findings, "GAT — Graph Attention Network")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — a 2-layer GNN rarely vanishes. Exploding readings
+#     usually mean the propagation matrix is not normalised (a raw
+#     adjacency multiplies feature scale by node degree) or the learning
+#     rate is too high.
+#  DEAD NEURONS — this model applies its activation functionally
+#     (F.relu / F.elu), so there is no activation LAYER for the
+#     instrument to hook; an UNKNOWN reading here is expected, not a
+#     fault. Use nn.ReLU modules if you want this reading.
+#  LOSS TREND — this sees only the training loss. Over-fitting shows up
+#     in the gap between the validation and training curves, not here.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -289,13 +340,7 @@ if alpha_l1 is not None:
             top_k=min(15, int(degrees[alt_nodes[0]])),
         )
 
-    # TODO: Plot attention weight distribution across all edges
-    # 1. Collect attention weights for up to 5000 edges from A_np
-    # 2. Create a histogram with 80 bins
-    # 3. Add a vertical line at the median
-    # 4. Save to OUTPUT_DIR / "gat_attention_distribution.png"
-    # Hint: src_idx, dst_idx = np.where(A_np > 0)
-    #        edge_attention = [alpha_l1[s, d] for s, d in zip(src_idx[:5000], dst_idx[:5000])]
+    # Plot 2: Attention weight distribution across all edges
     edge_attention = []
     src_idx, dst_idx = np.where(A_np > 0)
     for s, d in zip(src_idx[:5000], dst_idx[:5000]):
@@ -303,17 +348,29 @@ if alpha_l1 is not None:
     edge_attention = np.array(edge_attention)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    # TODO: Create histogram of edge_attention with 80 bins, color="steelblue"
-    # TODO: Add vertical line at median with color="red", linestyle="--"
-    # TODO: Annotate the median value on the plot
-    # TODO: Set xlabel="Attention Weight", ylabel="Count", title with dataset_name
+    # TODO: histogram of edge_attention (80 bins)
+    ____
+    ax.set_xlabel("Attention Weight", fontsize=12)
+    ax.set_ylabel("Count", fontsize=12)
+    ax.set_title(
+        f"GAT Attention Weight Distribution — {dataset_name}\n"
+        f"(sample of {len(edge_attention):,} edges)",
+        fontsize=13,
+        fontweight="bold",
+    )
+    median_attn = np.median(edge_attention)
+    ax.axvline(median_attn, color="red", linestyle="--", alpha=0.7)
+    ax.annotate(
+        f"Median: {median_attn:.4f}",
+        xy=(median_attn, ax.get_ylim()[1] * 0.9),
+        fontsize=10,
+        color="red",
+    )
     plt.tight_layout()
     filepath = OUTPUT_DIR / "gat_attention_distribution.png"
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {filepath}")
-
-    median_attn = np.median(edge_attention)
 
 print(f"\n  Attention weight analysis:")
 if alpha_l1 is not None:
@@ -370,12 +427,12 @@ print("\n--- Visualise checkpoint passed --- GAT attention + embeddings plotted\
 # PHASE 5 — APPLY: Fraud Detection in Singapore Payment Network
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Fraud Detection in Payment Networks (PayNow/NETS)")
+print("  PHASE 5 — APPLY: Fraud Detection in Payment Networks")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a fraud detection system for a Singapore
-  payment network (PayNow, NETS, or a DBS/OCBC/UOB internal network).
+  SCENARIO (illustrative): You're building a fraud detection system for
+  a Singapore bank's real-time payment network.
 
   THE GRAPH:
   - Nodes = bank accounts (~100K accounts)
@@ -389,31 +446,25 @@ print(
   - A splits and forwards to accounts C, D, E
   - C, D, E withdraw at different ATMs
 
-  GAT's attention mechanism reveals WHICH transaction links the model
-  considers most suspicious:
-  - High attention on A->C edge = "this transfer is a strong fraud signal"
-  - Low attention on A->F edge = "this looks like a normal payment"
+  GAT's attention weights show WHICH transaction links the model leaned
+  on when it scored an account:
+  - High attention on the A->C edge = C's features weighed heavily
+  - Low attention on the A->F edge = F barely influenced the score
 
-  This is interpretable AI: the compliance team can see WHY the model
-  flagged an account, not just THAT it did.
+  That gives the compliance team a STARTING POINT for explaining an
+  alert. Treat it with care: attention says where the model looked, not
+  why the account is suspicious, and attention weights are not a
+  validated explanation on their own — check them against
+  investigators' findings before relying on them.
 """
 )
 
-# TODO: Demonstrate attention-based interpretability using Cora as a proxy
-# For 5 randomly selected nodes, show attention concentration:
-# 1. Pick 5 random nodes using np.random.default_rng(42)
-# 2. For each node, get its neighbours from A_np
-# 3. Get attention weights from alpha_l1[node, neighbours]
-# 4. Compute: max_attn, min_attn, concentration ratio
-# 5. Count how many neighbours capture 80% of attention (cumulative sorted weights)
-# 6. Count same-class neighbours
-# Hint: sorted_weights = np.sort(attn_weights)[::-1]
-#        cumsum = np.cumsum(sorted_weights)
-#        n_for_80pct = int(np.searchsorted(cumsum, 0.8 * cumsum[-1]) + 1)
+# Demonstrate the interpretability advantage using Cora as a proxy
 print("  Demonstrating attention-based interpretability:")
 print("  (Using Cora as proxy — same principle applies to payment graphs)\n")
 
 if alpha_l1 is not None:
+    # For 5 randomly selected nodes, show attention concentration
     rng = np.random.default_rng(42)
     sample_nodes = rng.choice(N, 5, replace=False)
 
@@ -421,28 +472,40 @@ if alpha_l1 is not None:
         neighbours = np.where(A_np[node] > 0)[0]
         if len(neighbours) == 0:
             continue
-        # TODO: Extract attention weights and compute statistics
-        # attn_weights = alpha_l1[node, neighbours]
-        # max_attn = attn_weights.max()
-        # min_attn = attn_weights.min()
-        # concentration = max_attn / (min_attn + 1e-8)
-        # sorted_weights = np.sort(attn_weights)[::-1]
-        # cumsum = np.cumsum(sorted_weights)
-        # n_for_80pct = int(np.searchsorted(cumsum, 0.8 * cumsum[-1]) + 1)
-        # same_class = (y_np[neighbours] == y_np[node]).sum()
-        # print(f"    Node {node:4d} (class {y_np[node]}): ...")
-        pass
+        # TODO: this node's attention weights over its neighbours
+        # Hint: row = the attending node, columns = the neighbours
+        attn_weights = ____
+        max_attn = attn_weights.max()
+        min_attn = attn_weights.min()
+        concentration = max_attn / (min_attn + 1e-8)
+
+        # How many neighbours capture 80% of attention?
+        sorted_weights = np.sort(attn_weights)[::-1]
+        cumsum = np.cumsum(sorted_weights)
+        # TODO: how many of the largest weights reach 80% of the total?
+        # Hint: np.searchsorted on the cumulative sum finds the position
+        n_for_80pct = ____
+
+        same_class = (y_np[neighbours] == y_np[node]).sum()
+        print(
+            f"    Node {node:4d} (class {y_np[node]}): "
+            f"{len(neighbours):3d} neighbours, "
+            f"top-{n_for_80pct} capture 80% attention, "
+            f"{same_class}/{len(neighbours)} same-class"
+        )
 
     print(
         """
   FRAUD DETECTION DEPLOYMENT:
-  1. Build transaction graph from SWIFT/FAST payment logs
+  1. Build the transaction graph from the bank's payment logs
   2. Node features: account age, avg balance, transaction frequency, time patterns
-  3. Train GAT on known fraud cases (SAR filings + manual investigations)
-  4. For flagged accounts: extract attention weights to show compliance officers
-     WHICH transactions triggered the alert — not a black box
-  5. Track with ExperimentTracker — retrain monthly as fraud patterns evolve
-  6. Attention weight visualisations serve as evidence in regulatory reports
+  3. Train GAT on known fraud cases (suspicious-transaction reports +
+     manual investigations)
+  4. For flagged accounts: show investigators the highest-attention
+     transactions as leads to review — not as the verdict
+  5. Track with ExperimentTracker — retrain as fraud patterns evolve
+  6. Measure whether high-attention edges actually match what
+     investigators confirm, before using them in any report
 """
     )
 
@@ -454,7 +517,7 @@ if has_registry:
         model=gat,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val),
-            MetricSpec(name="best_test_accuracy", value=best_test),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test),
             MetricSpec(name="final_loss", value=gat_losses[-1]),
             MetricSpec(name="hidden_dim", value=float(HIDDEN_DIM)),
             MetricSpec(name="epochs", value=float(EPOCHS)),
@@ -480,19 +543,19 @@ print(
   GRAPH ATTENTION NETWORK (Velickovic et al., 2018):
   [x] Learned attention weights: alpha_ij = softmax(LeakyReLU(a^T[Wh_i||Wh_j]))
   [x] Content-dependent aggregation — each node chooses which neighbours matter
-  [x] Attention weights are INTERPRETABLE — see which edges the model uses
+  [x] Attention weights show which edges the model leaned on
   [x] Trained on {dataset_name}: {best_val:.1%} val accuracy, {best_test:.1%} test accuracy
   [x] Visualised attention distributions and per-node attention patterns
-  [x] Applied to fraud detection: attention reveals suspicious transactions
+  [x] Applied to fraud detection: attention as investigation leads
 
   GCN vs GAT TRADE-OFF:
   - GCN: simpler, fewer parameters, fixed weights — good for homogeneous graphs
-  - GAT: more expressive, content-dependent, interpretable — good when
-    edge importance varies and you need to explain model decisions
+  - GAT: more expressive, content-dependent — good when edge importance
+    varies; attention gives a first look at which neighbours mattered
 
-  KEY INSIGHT: Attention weights are free interpretability. In regulated
-  domains (finance, healthcare), the ability to show WHY a model made a
-  decision is as important as the decision itself.
+  KEY INSIGHT: Attention weights come for free, but they are a lens, not
+  a proof. In regulated domains (finance, healthcare) you still have to
+  show that the edges the model attends to are the ones that matter.
 
   Next: Exercise 6.3 — GraphSAGE: when your graph is too large to fit
   in memory, you need neighbour SAMPLING and INDUCTIVE learning...
@@ -501,68 +564,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GAT node classification loss
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GAT — Graph Attention Network) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        gat,
-        [(features, labels)],
-        _diag_loss,
-        title="GAT — Graph Attention Network",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS range 4.1e-04 to 1.2e-02 across 2 GAT layers.
-# [!] Dead neurons  (WARNING): 34% attention-head entropy below threshold
-#     (heads collapsing to uniform attention — losing diversity).
-# [✓] Loss trend    (HEALTHY): train loss → 0.18, val accuracy ~84%.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Gradients healthy. GAT's attention mechanism
-#     gives smoother gradient flow than GCN's fixed weights.
-#
-#  [X-RAY — GAT-SPECIFIC] 34% attention entropy collapse is the
-#     GAT failure mode: when multiple heads learn the SAME
-#     attention pattern, you're wasting capacity. Slide 5.6
-#     (GNN task types) references this.
-#     >> Prescription: add head diversity loss OR reduce num_heads
-#        OR use GATv2 (Brody et al. 2022) which has more expressive
-#        attention. Track head attention entropy during training.
-#
-#  [STETHOSCOPE] GAT beats GCN (84% vs 82%) by learning WHICH
-#     neighbours matter. But over-smoothing still applies at depth.
-
-

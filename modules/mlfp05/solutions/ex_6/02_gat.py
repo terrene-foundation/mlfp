@@ -7,7 +7,8 @@
 #
 # WHAT YOU'LL LEARN:
 #   - Why not all neighbours are equally important on a graph
-#   - Attention on graphs: learned edge weights instead of fixed Laplacian
+#   - Attention on graphs: learned edge weights instead of fixed
+#     degree-normalised weights
 #   - Build a GAT layer with masked softmax attention over neighbours
 #   - Visualise attention weights to see which citations matter most
 #   - Train a node classifier on Cora and compare to GCN
@@ -48,7 +49,7 @@ import matplotlib.pyplot as plt
 # ════════════════════════════════════════════════════════════════════════
 #
 # GCN treats all neighbours equally — the aggregation weights come from
-# node degrees (the Laplacian), not from the content of the nodes. But
+# node degrees (the normalised adjacency), not from node content. But
 # in real graphs, not all connections carry the same signal:
 #
 # Example: A paper on "Graph Neural Networks for Drug Discovery" cites:
@@ -219,18 +220,62 @@ gat_losses, gat_val, gat_test = train_node_classifier(
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(gat_losses) == EPOCHS, f"Expected {EPOCHS} epoch losses for GAT"
 assert gat_losses[-1] < gat_losses[0], "GAT loss should decrease"
-best_val = max(gat_val)
-best_test = max(gat_test)
+# Model selection by VALIDATION accuracy; report test accuracy at that
+# epoch (the harness has already restored that epoch's weights).
+best_epoch = int(np.argmax(gat_val))
+best_val = gat_val[best_epoch]
+best_test = gat_test[best_epoch]
 print(f"\n  GAT Results:")
-print(f"    Best validation accuracy: {best_val:.4f}")
-print(f"    Best test accuracy:       {best_test:.4f}")
+print(f"    Best validation accuracy: {best_val:.4f} (epoch {best_epoch + 1})")
+print(f"    Test accuracy, that epoch: {best_test:.4f}")
 print(f"    Final loss:               {gat_losses[-1]:.4f}")
-# INTERPRETATION: GAT replaces the fixed Laplacian weights with LEARNED
+# INTERPRETATION: GAT replaces GCN's fixed degree-based weights with LEARNED
 # attention scores. Each node decides how much to attend to each neighbour
 # based on the content of both nodes' features. This lets the model
 # assign different importance to different neighbours — a citation from
 # a highly relevant paper gets more weight than a tangential one.
 print("\n--- Train checkpoint passed --- GAT trained successfully\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# run_diagnostic_checkpoint instruments the trained model, replays a few
+# forward/backward passes of the REAL training objective (cross-entropy
+# on the labelled training nodes; no weights are updated) and replays
+# the per-epoch training losses. The whole graph is one "batch", so the
+# loader is the same full-graph tuple repeated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _node_loss(m, batch):
+    feats, graph, labels, mask = batch
+    return F.cross_entropy(m(feats, graph)[mask], labels[mask])
+
+
+diag, findings = run_diagnostic_checkpoint(
+    gat,
+    [(X, A, y, graph_data["train_mask"])] * 4,
+    _node_loss,
+    title="GAT — Graph Attention Network",
+    n_batches=4,
+    train_losses=gat_losses,
+    show=False,
+)
+print_prescription_pad(findings, "GAT — Graph Attention Network")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — a 2-layer GNN rarely vanishes. Exploding readings
+#     usually mean the propagation matrix is not normalised (a raw
+#     adjacency multiplies feature scale by node degree) or the learning
+#     rate is too high.
+#  DEAD NEURONS — this model applies its activation functionally
+#     (F.relu / F.elu), so there is no activation LAYER for the
+#     instrument to hook; an UNKNOWN reading here is expected, not a
+#     fault. Use nn.ReLU modules if you want this reading.
+#  LOSS TREND — this sees only the training loss. Over-fitting shows up
+#     in the gap between the validation and training curves, not here.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -367,12 +412,12 @@ print("\n--- Visualise checkpoint passed --- GAT attention + embeddings plotted\
 # PHASE 5 — APPLY: Fraud Detection in Singapore Payment Network
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Fraud Detection in Payment Networks (PayNow/NETS)")
+print("  PHASE 5 — APPLY: Fraud Detection in Payment Networks")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a fraud detection system for a Singapore
-  payment network (PayNow, NETS, or a DBS/OCBC/UOB internal network).
+  SCENARIO (illustrative): You're building a fraud detection system for
+  a Singapore bank's real-time payment network.
 
   THE GRAPH:
   - Nodes = bank accounts (~100K accounts)
@@ -386,13 +431,16 @@ print(
   - A splits and forwards to accounts C, D, E
   - C, D, E withdraw at different ATMs
 
-  GAT's attention mechanism reveals WHICH transaction links the model
-  considers most suspicious:
-  - High attention on A->C edge = "this transfer is a strong fraud signal"
-  - Low attention on A->F edge = "this looks like a normal payment"
+  GAT's attention weights show WHICH transaction links the model leaned
+  on when it scored an account:
+  - High attention on the A->C edge = C's features weighed heavily
+  - Low attention on the A->F edge = F barely influenced the score
 
-  This is interpretable AI: the compliance team can see WHY the model
-  flagged an account, not just THAT it did.
+  That gives the compliance team a STARTING POINT for explaining an
+  alert. Treat it with care: attention says where the model looked, not
+  why the account is suspicious, and attention weights are not a
+  validated explanation on their own — check them against
+  investigators' findings before relying on them.
 """
 )
 
@@ -430,13 +478,15 @@ if alpha_l1 is not None:
     print(
         """
   FRAUD DETECTION DEPLOYMENT:
-  1. Build transaction graph from SWIFT/FAST payment logs
+  1. Build the transaction graph from the bank's payment logs
   2. Node features: account age, avg balance, transaction frequency, time patterns
-  3. Train GAT on known fraud cases (SAR filings + manual investigations)
-  4. For flagged accounts: extract attention weights to show compliance officers
-     WHICH transactions triggered the alert — not a black box
-  5. Track with ExperimentTracker — retrain monthly as fraud patterns evolve
-  6. Attention weight visualisations serve as evidence in regulatory reports
+  3. Train GAT on known fraud cases (suspicious-transaction reports +
+     manual investigations)
+  4. For flagged accounts: show investigators the highest-attention
+     transactions as leads to review — not as the verdict
+  5. Track with ExperimentTracker — retrain as fraud patterns evolve
+  6. Measure whether high-attention edges actually match what
+     investigators confirm, before using them in any report
 """
     )
 
@@ -448,7 +498,7 @@ if has_registry:
         model=gat,
         metrics=[
             MetricSpec(name="best_val_accuracy", value=best_val),
-            MetricSpec(name="best_test_accuracy", value=best_test),
+            MetricSpec(name="test_accuracy_at_best_val", value=best_test),
             MetricSpec(name="final_loss", value=gat_losses[-1]),
             MetricSpec(name="hidden_dim", value=float(HIDDEN_DIM)),
             MetricSpec(name="epochs", value=float(EPOCHS)),
@@ -474,19 +524,19 @@ print(
   GRAPH ATTENTION NETWORK (Velickovic et al., 2018):
   [x] Learned attention weights: alpha_ij = softmax(LeakyReLU(a^T[Wh_i||Wh_j]))
   [x] Content-dependent aggregation — each node chooses which neighbours matter
-  [x] Attention weights are INTERPRETABLE — see which edges the model uses
+  [x] Attention weights show which edges the model leaned on
   [x] Trained on {dataset_name}: {best_val:.1%} val accuracy, {best_test:.1%} test accuracy
   [x] Visualised attention distributions and per-node attention patterns
-  [x] Applied to fraud detection: attention reveals suspicious transactions
+  [x] Applied to fraud detection: attention as investigation leads
 
   GCN vs GAT TRADE-OFF:
   - GCN: simpler, fewer parameters, fixed weights — good for homogeneous graphs
-  - GAT: more expressive, content-dependent, interpretable — good when
-    edge importance varies and you need to explain model decisions
+  - GAT: more expressive, content-dependent — good when edge importance
+    varies; attention gives a first look at which neighbours mattered
 
-  KEY INSIGHT: Attention weights are free interpretability. In regulated
-  domains (finance, healthcare), the ability to show WHY a model made a
-  decision is as important as the decision itself.
+  KEY INSIGHT: Attention weights come for free, but they are a lens, not
+  a proof. In regulated domains (finance, healthcare) you still have to
+  show that the edges the model attends to are the ones that matter.
 
   Next: Exercise 6.3 — GraphSAGE: when your graph is too large to fit
   in memory, you need neighbour SAMPLING and INDUCTIVE learning...
@@ -495,67 +545,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # GAT node classification loss
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (GAT — Graph Attention Network) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        gat,
-        [(features, labels)],
-        _diag_loss,
-        title="GAT — Graph Attention Network",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS range 4.1e-04 to 1.2e-02 across 2 GAT layers.
-# [!] Dead neurons  (WARNING): 34% attention-head entropy below threshold
-#     (heads collapsing to uniform attention — losing diversity).
-# [✓] Loss trend    (HEALTHY): train loss → 0.18, val accuracy ~84%.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Gradients healthy. GAT's attention mechanism
-#     gives smoother gradient flow than GCN's fixed weights.
-#
-#  [X-RAY — GAT-SPECIFIC] 34% attention entropy collapse is the
-#     GAT failure mode: when multiple heads learn the SAME
-#     attention pattern, you're wasting capacity. Slide 5.6
-#     (GNN task types) references this.
-#     >> Prescription: add head diversity loss OR reduce num_heads
-#        OR use GATv2 (Brody et al. 2022) which has more expressive
-#        attention. Track head attention entropy during training.
-#
-#  [STETHOSCOPE] GAT beats GCN (84% vs 82%) by learning WHICH
-#     neighbours matter. But over-smoothing still applies at depth.
-

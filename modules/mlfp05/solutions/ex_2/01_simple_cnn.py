@@ -241,68 +241,59 @@ simple_losses, simple_accs = train_model(
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — five instruments + Grad-CAM for CNNs
 # ══════════════════════════════════════════════════════════════════
-# First classifier in M5: we use `diagnose_classifier` which wraps
-# `run_diagnostic_checkpoint` with a cross-entropy loss function.
-# For CNNs, Grad-CAM is the sixth instrument — it answers "which
-# pixels drove the prediction?" and surfaces spurious shortcuts
-# (Zech et al. 2018: hospitals' chest-X-ray models latched onto
-# watermarks instead of pathology).
-from kailash_ml import diagnose
+# First classifier in M5: run_diagnostic_checkpoint with a cross-entropy
+# loss. The probe batches come from the TRAINING loader: the probe runs
+# in train mode, so BatchNorm running statistics move with whatever data
+# it sees, and validation data should not leak into them.
+# For CNNs, Grad-CAM is a sixth instrument — "which pixels drove this
+# prediction?" — and it exposes shortcuts (Zech et al., 2018: pneumonia
+# models that failed at new hospitals had learned hospital-specific
+# image markers rather than pathology).
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _ce_loss(m, batch):
+    """Cross-entropy on one (images, labels) batch, on the model's device."""
+    xb, yb = batch
+    dev = next(m.parameters()).device
+    return F.cross_entropy(m(xb.to(dev)), yb.to(dev))
+
 
 print("\n── Diagnostic Report (SimpleCNN) ──")
-report = diagnose(simple_cnn, kind="dl", data=val_loader)
+diag, findings = run_diagnostic_checkpoint(
+    simple_cnn,
+    train_loader,
+    _ce_loss,
+    title="SimpleCNN (CIFAR-10)",
+    train_losses=simple_losses,
+    show=False,
+)
+print_prescription_pad(findings, "SimpleCNN (CIFAR-10)")
 
-# Grad-CAM on the last conv layer: verify the model looks at objects,
-# not backgrounds. Pick a validation batch and a target class.
-try:
-    _vx, _vy = next(iter(val_loader))
-    # Find the last conv layer in the model
-    _last_conv = None
-    for _name, _mod in simple_cnn.named_modules():
-        if isinstance(_mod, nn.Conv2d):
-            _last_conv = _name
-    if _last_conv is not None:
-        cam = diag.grad_cam(
-            _vx[:4].to(DEVICE),
-            target_class=int(_vy[0].item()),
-            layer_name=_last_conv,
-        )
-        print(
-            f"  Grad-CAM computed on layer '{_last_conv}', "
-            f"heatmap shape={tuple(cam.shape)}"
-        )
-        # Students: overlay `cam[i]` onto `_vx[i]` (resize CAM to 32x32)
-        # and inspect — if the hot region is off the object, the model
-        # learned a shortcut (see Zech 2018 hospital-watermark study).
-except Exception as _exc:  # pragma: no cover — visualisation optional
-    print(f"  Grad-CAM skipped ({_exc})")
+# Grad-CAM on the last conv layer. grad_cam() runs on kailash-ml's
+# detected device (diag.device), so the model visits it for this step.
+last_conv = [n for n, mod in simple_cnn.named_modules() if isinstance(mod, nn.Conv2d)][-1]
+cam_x, cam_y = next(iter(val_loader))
+home_device = next(simple_cnn.parameters()).device
+simple_cnn.to(diag.device)
+cam = diag.grad_cam(cam_x[:4], target_class=int(cam_y[0]), layer_name=last_conv)
+simple_cnn.to(home_device)
+print(
+    f"  Grad-CAM on '{last_conv}' for class '{CLASS_NAMES[int(cam_y[0])]}': "
+    f"heatmap shape={tuple(cam.shape)}"
+)
+# Upsample cam[i] to 32x32 and overlay it on cam_x[i]: a hot region off
+# the object means the model is leaning on background or shortcut cues.
 
-# ══════ EXPECTED OUTPUT (reference shape) ══════
-# ══════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ══════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): RMS range ~1e-4 – ~1e-2, uniform
-#       across Conv2d and Linear layers (BatchNorm is keeping flow
-#       healthy — this is WHY BN was invented).
-#   [✓] Dead neurons  (HEALTHY): No ReLU layer above 30% inactive;
-#       weight sharing in Conv2d naturally keeps channels alive.
-#   [✓] Loss trend    (HEALTHY): Training converging, val accuracy
-#       rising monotonically — no overfitting after 8 epochs.
-#   + Grad-CAM: heatmap concentrates on the object, not the corners.
-# ══════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE:
-#   - Healthy CNN signature: uniform gradient RMS + low dead %% +
-#     Grad-CAM on the object. If any of the three fails, investigate
-#     BEFORE trusting val accuracy.
-#   - Zech 2018 lesson: a pneumonia classifier achieved SOTA accuracy
-#     but Grad-CAM revealed it was attending to hospital watermarks
-#     — a dataset-shortcut that would FAIL on any other hospital's
-#     scans. Always visualise attribution; never ship on accuracy
-#     alone.
-#   - If Grad-CAM highlights background/corners, the model is
-#     using spurious features. Fix: data augmentation, balanced
-#     sampling, or a different loss.
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# BatchNorm after every conv is there to keep gradient flow stable, so
+# a CRITICAL gradient reading here is worth investigating before you
+# trust the accuracy. Read the dead-neuron share per ReLU (weight
+# sharing usually keeps conv channels active). The loss trend only
+# sees training loss here; the train/val accuracy curves below show
+# whether the model overfits. Never ship on accuracy alone: check the
+# Grad-CAM overlays for shortcut features.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 3: Training converged ─────────────────────────────────
@@ -441,8 +432,8 @@ for i in range(8):
     axes[1, i].axis("off")
 axes[1, 8].axis("off")
 
-# Row 2: 8 conv2 ReLU feature maps (16x16 after MaxPool)
-conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 8, 8)
+# Row 2: 8 conv2 ReLU feature maps (16x16, captured before the second MaxPool)
+conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 16, 16)
 for i in range(8):
     axes[2, i].imshow(conv2_maps[i].numpy(), cmap="magma")
     axes[2, i].set_title(f"L2 F{i}", fontsize=8)
@@ -500,9 +491,9 @@ print("\n--- Checkpoint 4 passed --- visual proof of model behaviour saved\n")
 # PHASE 5 — APPLY: Singapore E-Commerce Product Categorisation
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You are an ML engineer at a Singapore e-commerce platform
-# (think Shopee, Lazada, or Carousell). The platform receives 500,000+
+# (illustrative figures). The platform receives 500,000+
 # new product listings per day. Sellers often mis-categorise products
-# (a "Nike Air Max" listed under "Electronics" instead of "Shoes"),
+# (a pair of running shoes listed under "Electronics" instead of "Shoes"),
 # leading to:
 #   - Poor search results (customers can't find what they want)
 #   - Incorrect commission rates (different categories have different fees)
@@ -650,7 +641,7 @@ print("\n" + "=" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
-    """
+    f"""
   THEORY:
   [x] Convolutions scan local patches with shared weights -- 3x3 filters
       detect edges at every position with only 9 parameters

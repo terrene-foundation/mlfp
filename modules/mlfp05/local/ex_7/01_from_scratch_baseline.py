@@ -104,13 +104,13 @@ print("\n--- Checkpoint 1 passed --- CIFAR-10 loaded, engines ready\n")
 
 def build_scratch_cnn(n_classes: int = N_CLASSES) -> nn.Module:
     """Baseline: a small CNN trained from random init."""
-    # TODO: Build a nn.Sequential CNN with:
-    #   - Conv2d(3, 32, 3, padding=1) + BatchNorm2d(32) + ReLU + MaxPool2d(2)
-    #   - Conv2d(32, 64, 3, padding=1) + BatchNorm2d(64) + ReLU + MaxPool2d(2)
-    #   - Conv2d(64, 128, 3, padding=1) + BatchNorm2d(128) + ReLU + AdaptiveAvgPool2d(1)
-    #   - Flatten + Dropout(0.3) + Linear(128, n_classes)
-    # Hint: nn.Sequential takes all layers as positional arguments
-    pass  # Replace with your implementation
+    # TODO: Return an nn.Sequential CNN:
+    #   - three conv blocks (3x3 conv with padding 1 -> BatchNorm -> ReLU)
+    #     widening 3 -> 32 -> 64 -> 128 channels; the first two blocks end
+    #     with a 2x2 max-pool, the third with global average pooling
+    #   - then flatten, dropout 0.3, and a linear classifier to n_classes
+    # Hint: Checkpoint 2 expects between 50K and 500K parameters
+    return ____
 
 
 scratch_model = build_scratch_cnn()
@@ -159,6 +159,47 @@ assert (
 print(f"\n  From-scratch best val_acc: {best_scratch:.3f}")
 print("--- Checkpoint 3 passed --- baseline training complete\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (From-scratch CNN baseline (CIFAR-10)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(scratch_model),
+    train_loader,
+    classifier_diag_loss,
+    title="From-scratch CNN baseline (CIFAR-10)",
+    n_batches=8,
+    train_losses=scratch_losses,
+    show=False,
+)
+print_prescription_pad(findings, "From-scratch CNN baseline (CIFAR-10)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — every layer is trainable here, so every layer should
+#     carry gradient. A "vanishing" reading on the early conv layers means
+#     the first filters barely learn from random init — the data
+#     bottleneck this part measures; pretrained features (Part 2) remove
+#     it. An "exploding" reading means the learning rate is too high.
+#  Dead neurons — a high inactive fraction in a ReLU layer means those
+#     channels never fire; Kaiming init or a smoother activation helps.
+#  Loss trend — read from the real per-epoch losses. "Still decreasing"
+#     after 8 epochs means the scratch CNN is under-trained, not that it
+#     has hit its ceiling.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: Learned filters and t-SNE feature space
@@ -177,24 +218,28 @@ print("--- Checkpoint 3 passed --- baseline training complete\n")
 
 # -- Learned filters visualisation --
 print("-- Visualising learned convolutional filters --")
-
-# TODO: Extract first conv layer weights and visualise them
-# Steps:
-#   1. Get weights: scratch_model[0].weight.data.cpu()  -> shape (32, 3, 3, 3)
-#   2. Pick first 16 filters (n_filters = min(16, ...))
-#   3. For each filter: normalise to [0,1], average across RGB channels
-#   4. Create a go.Figure() with go.Heatmap traces for each filter
-#   5. Save to OUTPUT_DIR / "01_scratch_filters.html"
-# Hint: filt_norm = (filt - filt.min()) / (filt.max() - filt.min() + 1e-8)
-# Hint: filt_gray = filt_norm.mean(dim=0).numpy()
-
 conv1_weights = scratch_model[0].weight.data.cpu()  # shape: (32, 3, 3, 3)
 n_filters = min(16, conv1_weights.shape[0])
 
 fig_filters = go.Figure()
-# TODO: Loop through n_filters, normalise each filter, add Heatmap traces
-# Hint: Use np.flipud() for display, colorscale="Greys"
-pass  # Replace with your filter visualisation loop
+for i in range(n_filters):
+    filt = conv1_weights[i]
+    # TODO: Min-max normalise the filter to [0, 1] (guard against a zero
+    #   range with a small epsilon)
+    filt_norm = ____
+    # TODO: Average across the RGB channel dimension -> a 3x3 numpy array
+    filt_gray = ____
+
+    row, col = divmod(i, 4)
+    fig_filters.add_trace(
+        go.Heatmap(
+            z=np.flipud(filt_gray),
+            colorscale="Greys",
+            showscale=False,
+            x0=col * 4,
+            y0=row * 4,
+        )
+    )
 
 fig_filters.update_layout(
     title="From-Scratch CNN: Learned First-Layer Filters (noisy, unstructured)",
@@ -246,9 +291,10 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Small Singapore Startup with Limited Data
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You're the ML engineer at a Singapore startup (like Carro
-# or ShopBack) trying to build an image classifier for product photos.
-# You only have 5,000 labelled images — 10% of CIFAR-10.
+# SCENARIO (illustrative): You're the ML engineer at a small Singapore
+# e-commerce startup building an image classifier for product photos.
+# You only have 5,000 labelled images — we use 10% of CIFAR-10 as the
+# stand-in for that small labelled set.
 #
 # Question: What happens to from-scratch accuracy with limited data?
 
@@ -256,36 +302,23 @@ print("\n" + "=" * 70)
 print("  APPLY: Singapore Startup with 5,000 Labelled Images")
 print("=" * 70)
 
-# TODO: Simulate the startup scenario by training on only 10% of CIFAR-10
-# Steps:
-#   1. Create a random subset of 5,000 indices from train_set
-#   2. Build a Subset and DataLoader from those indices
-#   3. Train a fresh build_scratch_cnn() on the limited data
-#   4. Compare best accuracy with the full-data result
-# Hint: rng = np.random.default_rng(42)
-# Hint: indices = rng.choice(len(train_set), size=5000, replace=False).tolist()
-# Hint: Use Subset(train_set, indices) and DataLoader
-
+# Simulate the startup scenario: train on only 10% of CIFAR-10
 rng = np.random.default_rng(42)
 n_startup = 5000
-# TODO: Create indices, subset, and loader
-# TODO: Build and train a fresh scratch CNN on the limited data
-# TODO: Store the best accuracy in best_startup
+# TODO: Draw n_startup distinct random training indices with rng
+indices = ____
 from torch.utils.data import Subset, DataLoader as DL
 
-indices = (
-    None  # TODO: rng.choice(len(train_set), size=n_startup, replace=False).tolist()
-)
-startup_subset = None  # TODO: Subset(train_set, indices)
-startup_loader = (
-    None  # TODO: DL(startup_subset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-)
+# TODO: Wrap train_set in a Subset of those indices and a shuffled loader
+startup_subset = ____
+startup_loader = ____
 
+# Train a fresh scratch CNN on the limited data
 startup_model = build_scratch_cnn()
-# TODO: Train startup_model using train_model() with startup_loader
-# startup_losses, startup_accs, _ = train_model(...)
-startup_losses, startup_accs = [], []  # Replace with actual training
-best_startup = 0.0  # TODO: max(startup_accs) after training
+# TODO: Train with the shared train_model harness (run name
+#   "scratch_5k_startup", validate on the full val_loader, EPOCHS epochs)
+startup_losses, startup_accs, _ = ____
+best_startup = ____  # TODO: best validation accuracy of the run
 
 print(f"\n  === Startup Scenario Results ===")
 print(f"  Full data (50K):    {best_scratch:.1%} accuracy")
@@ -293,12 +326,18 @@ print(f"  Startup (5K):       {best_startup:.1%} accuracy")
 print(f"  Accuracy drop:      {best_scratch - best_startup:+.1%}")
 print()
 print(f"  BUSINESS IMPACT:")
-print(f"  With only 5,000 labelled images, from-scratch training loses")
-print(f"  significant accuracy. For a product classifier at a Singapore")
-print(f"  startup, this means:")
+print(
+    f"  With only 5,000 labelled images, from-scratch training lost "
+    f"{best_scratch - best_startup:.1%} accuracy in this run."
+)
+print(f"  For a product classifier at a small startup, every lost point means:")
 print(f"    - More misclassified products shown to customers")
 print(f"    - Higher rate of manual review needed")
-print(f"    - Labelling 50K images costs ~S$25,000-50,000 (S$0.50-1.00/label)")
+print(
+    f"    - Closing the gap by labelling 45,000 more images costs "
+    f"~S${45_000 * 0.50:,.0f}-{45_000 * 1.00:,.0f} "
+    f"(illustrative rate of S$0.50-1.00 per label)"
+)
 print(f"  This is exactly the problem transfer learning solves (Part 2).")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
@@ -346,68 +385,3 @@ print(
   shapes) and only needs to learn the final classification layer.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Classification CE on Fashion-MNIST from scratch
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (From-scratch CNN baseline (no pretrain)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="From-scratch CNN baseline (no pretrain)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [!] Gradient flow (WARNING): RMS 2.1e-05 in early conv layers (near vanishing).
-# [!] Dead neurons  (WARNING): 43% inactive in conv1 — classic ReLU-dead-from-scratch.
-# [✓] Loss trend    (HEALTHY): slowly converging, plateau risk.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Training from scratch hits the classic early-layer
-#     vanishing gradient. Without pretrained weights, early conv
-#     filters start random and receive weak gradient signal.
-#     >> This is THE reason transfer learning (ex_7/02) wins —
-#        starting with ImageNet features means first-layer gradients
-#        are already ~10x larger than this.
-#
-#  [X-RAY] 43% dead ReLU on conv1 is the dying-ReLU failure mode
-#     slide 5.7 warns about. Fix: GELU or Kaiming init.
-#     >> Prescription: replace ReLU with GELU, use Kaiming init,
-#        OR apply transfer learning (skip this problem entirely).
-#
-#  [STETHOSCOPE] Slow convergence (< 60% accuracy in 10 epochs)
-#     — expect transfer learning to reach 85%+ in the same time.
-
-

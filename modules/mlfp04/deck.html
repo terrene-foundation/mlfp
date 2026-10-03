@@ -1245,7 +1245,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <table>
     <tr><th></th><th>Apriori</th><th>FP-Growth</th></tr>
     <tr><td>Strategy</td><td>Generate candidates, prune by min support</td><td>Compress into FP-tree, mine directly</td></tr>
-    <tr><td>Passes</td><td>Multiple passes over data</td><td>Two passes (build tree, mine)</td></tr>
+    <tr><td>Passes</td><td>One pass over data per itemset size</td><td>Two passes (count items, build tree); then mine the tree</td></tr>
     <tr><td>Speed</td><td>Slow for large itemsets</td><td>Much faster &mdash; no candidate generation</td></tr>
     <tr><td>Memory</td><td>Many candidates in memory</td><td>Compact tree representation</td></tr>
   </table>
@@ -1309,9 +1309,9 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <h2>Exercise 4.5: Market Basket Analysis</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Analyse Singapore retail transaction data.
+    <strong>Task:</strong> Analyse 2,500 synthetic Singapore retail baskets (planted product bundles + impulse buys).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Implement Apriori and FP-Growth; find top association rules</li>
+      <li>Implement Apriori from scratch; run FP-Growth (mlxtend) and check both find the same itemsets</li>
       <li>Compute support, confidence, and lift for each rule</li>
       <li>Interpret business meaning: which rules are actionable?</li>
       <li>Create binary features from top rules; test if they improve a classification model</li>
@@ -1321,7 +1321,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: rules discovered with appropriate support threshold; business interpretation provided; rules used as features improve supervised model.
+    Timing: 1 min. Assessment: rules discovered with appropriate support threshold; business interpretation provided; rule features tested against a product-presence baseline. In 5.4 the prediction target is a shopper's NEXT trip, so it is not a function of the baseline features (the baseline reaches an AUC of about 0.69, not a trivial 1.0) &mdash; whether rule features add signal on top is a genuine empirical question, and "no lift" is a valid finding.
   </aside>
 </section>
 

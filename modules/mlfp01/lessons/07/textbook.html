@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -59,10 +59,12 @@
 <p>
   The ritual you built in Lesson 1.1 — shape, columns, head, describe —
   catches the obvious problems. But it misses the subtler ones: a column
-  with 12% nulls (bad but not empty), a date column with three formats
-  hidden inside, a feature that is 98% zero, two columns that are 99%
-  correlated and add nothing independent. <code>DataExplorer</code>
-  catches all of those automatically.
+  with 12% nulls (bad but not empty), a feature that is 98% zero, two
+  columns that are 99% correlated and add nothing independent, a category
+  so rare it barely appears. <code>DataExplorer</code> catches those
+  automatically. It does <em>not</em> catch everything: a date column with
+  three formats hidden inside looks to the profiler like ordinary unique
+  text, so that check stays yours.
 </p>
 
 <figure class="diagram">
@@ -76,13 +78,13 @@
   <rect x="20" y="50" width="200" height="180" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
   <text x="120" y="75" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#1E293B">Raw dataset</text>
   <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
-    <text x="35" y="100">date       cpi  emp  fx</text>
-    <text x="35" y="118">2020-01    98   95   1.35</text>
-    <text x="35" y="134">01/2020    NaN  95   NaN</text>
-    <text x="35" y="150">2020-03    99   N/A  1.40</text>
-    <text x="35" y="166">202004     100  96   —</text>
-    <text x="35" y="182">2020-05    99   96   1.41</text>
-    <text x="35" y="200" fill="#F43F5E">(messy: formats, nulls...)</text>
+    <text x="35" y="100">date      all    food</text>
+    <text x="35" y="118">01/2000   70.00  67.22</text>
+    <text x="35" y="134">2000-02   71.45  68.48</text>
+    <text x="35" y="150">200003    72.45  71.72</text>
+    <text x="35" y="166">12/2002   77.69  null</text>
+    <text x="35" y="182">… + employment, FX</text>
+    <text x="35" y="200" fill="#F43F5E">(3 date formats, nulls)</text>
   </g>
 
   <line x1="225" y1="140" x2="330" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arr-pr)"/>
@@ -92,19 +94,19 @@
   <rect x="340" y="30" width="460" height="240" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="2"/>
   <text x="570" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#92400E">DataExplorer profile</text>
   <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
-    <text x="360" y="85" fill="#F59E0B">⚠ high_nulls: cpi (14%)</text>
-    <text x="360" y="103" fill="#F59E0B">⚠ high_nulls: fx (8%)</text>
-    <text x="360" y="121" fill="#F43F5E">🚨 mixed_format: date column</text>
-    <text x="360" y="139" fill="#F43F5E">🚨 constant: employment_rate_pct</text>
-    <text x="360" y="157" fill="#F59E0B">⚠ high_skewness: cpi (3.8)</text>
-    <text x="360" y="175" fill="#F59E0B">⚠ high_correlation: cpi &harr; emp (0.94)</text>
-    <text x="360" y="193" fill="#0D9488">ℹ type: date · str · num · num</text>
-    <text x="360" y="211" fill="#0D9488">ℹ n_rows: 252 · n_cols: 4</text>
-    <text x="360" y="229" fill="#0D9488">ℹ 8 alerts total</text>
+    <text x="360" y="85" fill="#F59E0B">⚠ high_nulls: usd_sgd (80%)</text>
+    <text x="360" y="103" fill="#F59E0B">⚠ high_nulls: eur_sgd (80%)</text>
+    <text x="360" y="121" fill="#F59E0B">⚠ high_correlation: cpi_all_items &harr; cpi_housing (0.998)</text>
+    <text x="360" y="139" fill="#F59E0B">⚠ high_correlation: cpi_all_items &harr; median_income (0.989)</text>
+    <text x="360" y="157" fill="#0D9488">ℹ high_cardinality: date (1.00)</text>
+    <text x="360" y="175" fill="#0D9488">ℹ high_cardinality: cpi_food (0.94)</text>
+    <text x="360" y="193" fill="#0D9488">ℹ n_rows: 300 · n_columns: 13</text>
+    <text x="360" y="211" fill="#0D9488">ℹ 21 alerts with the tuned AlertConfig</text>
+    <text x="360" y="229" fill="#F43F5E">✗ no alert for the 3 date formats</text>
     <text x="360" y="253" fill="#64748B" font-style="italic">One call, every column, eight alert types.</text>
   </g>
 </svg>
-<figcaption>DataExplorer takes a messy DataFrame and produces a structured profile with typed, severity-ranked alerts. Each alert maps to a concrete cleaning action.</figcaption>
+<figcaption>DataExplorer takes a DataFrame and produces a structured profile with typed alerts at two severities, <code>warning</code> and <code>info</code>. The alerts shown are real output from this lesson's worked example. Each alert maps to a concrete decision — and some problems (mixed date formats) never raise an alert at all.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -138,27 +140,39 @@
 <h3>The eight alert types</h3>
 
 <p>
-  <code>DataExplorer</code> runs each of its eight quality checks on every
-  column and returns an alert if any threshold is exceeded. Each alert has
-  a <em>type</em>, a <em>column</em>, a <em>value</em>, and a
-  <em>severity</em>.
+  <code>DataExplorer</code> runs each of its eight quality checks and
+  returns an alert whenever a value is <em>greater than</em> its threshold
+  (for <code>imbalanced</code>, smaller than). Each alert is a dictionary
+  with a <code>type</code>, a <code>column</code> (or <code>columns</code>
+  for a correlated pair), a <code>value</code>, and a
+  <code>severity</code> (<code>"warning"</code> or <code>"info"</code>).
 </p>
 
 <table>
   <thead>
-    <tr><th>Alert</th><th>Meaning</th><th>Fix</th></tr>
+    <tr><th>Alert</th><th>Fires when (default)</th><th>Meaning</th><th>Fix</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>high_nulls</code></td><td>Column has too many missing values</td><td>Impute, drop, or flag</td></tr>
-    <tr><td><code>constant</code></td><td>Column has ≤ 1 unique value (no information)</td><td>Drop the column</td></tr>
-    <tr><td><code>high_cardinality</code></td><td>Near-unique categorical column</td><td>Bin, hash, or treat as ID</td></tr>
-    <tr><td><code>high_skewness</code></td><td>Extreme right or left tail</td><td>Log-transform or winsorise</td></tr>
-    <tr><td><code>high_zeros</code></td><td>Column has many exact zeros</td><td>Check if zero is real or missing-coded</td></tr>
-    <tr><td><code>high_correlation</code></td><td>Pair of columns is near-collinear</td><td>Drop one, or flag for VIF check</td></tr>
-    <tr><td><code>duplicates</code></td><td>Dataset has duplicated rows</td><td>Deduplicate or investigate the pipeline</td></tr>
-    <tr><td><code>imbalanced</code></td><td>Categorical column dominated by one value</td><td>Rebalance, SMOTE, or stratify</td></tr>
+    <tr><td><code>high_nulls</code></td><td>null share &gt; 0.05</td><td>Column has too many missing values</td><td>Impute, drop, or flag</td></tr>
+    <tr><td><code>constant</code></td><td>unique values ≤ 1</td><td>Column carries no information</td><td>Drop the column</td></tr>
+    <tr><td><code>high_cardinality</code></td><td>unique / rows &gt; 0.9</td><td>Near-unique column</td><td>Bin, hash, or treat as ID</td></tr>
+    <tr><td><code>high_skewness</code></td><td>|skew| &gt; 2.0</td><td>Extreme right or left tail</td><td>Log-transform or winsorise</td></tr>
+    <tr><td><code>high_zeros</code></td><td>zero share &gt; 0.5</td><td>Column has many exact zeros</td><td>Check if zero is real or missing-coded</td></tr>
+    <tr><td><code>high_correlation</code></td><td>|r| &gt; 0.9 for a pair</td><td>Pair of columns is near-collinear</td><td>Drop one, or flag for VIF check</td></tr>
+    <tr><td><code>duplicates</code></td><td>duplicate-row share &gt; 0</td><td>Dataset has duplicated rows</td><td>Deduplicate or investigate the pipeline</td></tr>
+    <tr><td><code>imbalanced</code></td><td>rarest category share &lt; 0.1</td><td>A category is very rare</td><td>Stratify splits; collect more data</td></tr>
   </tbody>
 </table>
+
+<div class="callout foundations">
+  <span class="label">🟢 Outliers are not an alert</span>
+  <p>
+    These eight are the complete list. There is no "outlier" alert and no
+    "type mismatch" alert. Outliers are reported per column instead: every
+    numeric <code>ColumnProfile</code> carries <code>outlier_count</code>
+    and <code>outlier_pct</code>. Look there when you want them.
+  </p>
+</div>
 
 <figure class="diagram">
 <svg viewBox="0 0 820 360" class="illustration" xmlns="http://www.w3.org/2000/svg">
@@ -166,7 +180,7 @@
   <g font-family="Inter" font-size="12">
     <rect x="20" y="50" width="180" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
     <text x="110" y="75" text-anchor="middle" font-weight="600" fill="#92400E">high_nulls</text>
-    <text x="110" y="92" text-anchor="middle" font-size="10" fill="#92400E">value ≥ threshold</text>
+    <text x="110" y="92" text-anchor="middle" font-size="10" fill="#92400E">null share &gt; threshold</text>
 
     <rect x="20" y="110" width="180" height="50" rx="6" fill="#FEE2E2" stroke="#EF4444"/>
     <text x="110" y="135" text-anchor="middle" font-weight="600" fill="#991B1B">constant</text>
@@ -174,15 +188,15 @@
 
     <rect x="20" y="170" width="180" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
     <text x="110" y="195" text-anchor="middle" font-weight="600" fill="#92400E">high_skewness</text>
-    <text x="110" y="212" text-anchor="middle" font-size="10" fill="#92400E">|skew| ≥ threshold</text>
+    <text x="110" y="212" text-anchor="middle" font-size="10" fill="#92400E">|skew| &gt; threshold</text>
 
     <rect x="20" y="230" width="180" height="50" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
     <text x="110" y="255" text-anchor="middle" font-weight="600" fill="#92400E">high_correlation</text>
-    <text x="110" y="272" text-anchor="middle" font-size="10" fill="#92400E">|r| ≥ threshold</text>
+    <text x="110" y="272" text-anchor="middle" font-size="10" fill="#92400E">|r| &gt; threshold</text>
 
     <rect x="20" y="290" width="180" height="50" rx="6" fill="#DBEAFE" stroke="#3B82F6"/>
     <text x="110" y="315" text-anchor="middle" font-weight="600" fill="#1E40AF">duplicates</text>
-    <text x="110" y="332" text-anchor="middle" font-size="10" fill="#1E40AF">pct ≥ threshold</text>
+    <text x="110" y="332" text-anchor="middle" font-size="10" fill="#1E40AF">pct &gt; threshold</text>
 
     <!-- arrows -->
     <line x1="205" y1="75" x2="280" y2="75" stroke="#0D9488" stroke-width="2" marker-end="url(#arr-act)"/>
@@ -235,17 +249,25 @@
   thresholds.
 </p>
 
-<pre><code class="language-python">from kailash_ml.engines.data_explorer import AlertConfig
+<pre><code class="language-python">from kailash_ml import AlertConfig, DataExplorer
 
 alert_config = AlertConfig(
-    high_correlation_threshold=0.95,   # raise from 0.80 default
-    high_null_pct_threshold=0.10,      # tighten from 0.15 default
-    skewness_threshold=3.0,            # raise for crisis-era data
-    zero_pct_threshold=0.30,           # relax for sparse trade data
+    high_correlation_threshold=0.95,   # raise from 0.90 default (fires less)
+    high_null_pct_threshold=0.10,      # relax from 0.05 default (fires less)
+    skewness_threshold=3.0,            # raise from 2.0 default (fires less)
+    zero_pct_threshold=0.30,           # lower from 0.5 default (fires more)
 )
 
 explorer = DataExplorer(alert_config=alert_config)
 </code></pre>
+
+<p>
+  The other fields and their defaults: <code>constant_threshold=1</code> (a
+  unique-value <em>count</em>, not a fraction),
+  <code>high_cardinality_ratio=0.9</code>,
+  <code>imbalance_ratio_threshold=0.1</code> and
+  <code>duplicate_pct_threshold=0.0</code>.
+</p>
 
 <p>
   Every threshold should be a <em>deliberate choice</em>, not a default.
@@ -253,43 +275,68 @@ explorer = DataExplorer(alert_config=alert_config)
   picked those numbers.
 </p>
 
-<h3>Async profiling</h3>
+<h3>Running a profile: the sync wrapper</h3>
+
+<p>
+  The quickest way to profile a DataFrame is the course helper
+  <code>run_profile</code>. It works the same in a script, in VS Code and
+  in Jupyter/Colab:
+</p>
+
+<pre><code class="language-python">from shared import MLFPDataLoader, run_profile
+
+cpi = MLFPDataLoader().load("mlfp01", "sg_cpi.csv")
+profile = run_profile(cpi)                            # default thresholds
+profile = run_profile(cpi, alert_config=alert_config) # your thresholds
+
+print(profile.n_rows, profile.n_columns, len(profile.alerts))
+</code></pre>
+
+<h3>Under the hood: async profiling</h3>
 
 <p>
   <code>DataExplorer.profile()</code> is an <strong>async</strong>
-  function. Async is a Python feature for running operations concurrently
-  — while one column is being profiled, Polars can start on the next. For
-  wide DataFrames this is much faster than profiling columns sequentially.
+  function. Async is a Python feature for running operations concurrently:
+  while one task waits, another can make progress. <code>run_profile</code>
+  hides that from you, but you will meet async code in later modules, so
+  here is what it looks like in a plain script:
 </p>
 
 <pre><code class="language-python">import asyncio
 
-async def profile_dataset():
+from kailash_ml import DataExplorer
+
+
+async def profile_dataset(df):
     explorer = DataExplorer(alert_config=alert_config)
     profile = await explorer.profile(df)
     return profile
 
-profile = asyncio.run(profile_dataset())
+profile = asyncio.run(profile_dataset(cpi))   # in a .py script
 </code></pre>
 
 <p>
-  Two pieces of vocabulary: the <code>async def</code> marks the function
-  as asynchronous; the <code>await</code> keyword waits for the result of
+  Two pieces of vocabulary: <code>async def</code> marks the function as
+  asynchronous; the <code>await</code> keyword waits for the result of
   another async operation. <code>asyncio.run(...)</code> creates an event
-  loop, runs the function, and returns the result. You do not need to
-  understand the internals — treat the pattern as a template.
+  loop, runs the function, and returns the result. One catch: Jupyter and
+  Colab already run an event loop, so there <code>asyncio.run</code>
+  raises <code>RuntimeError</code>. In a notebook cell you can write
+  <code>profile = await explorer.profile(df)</code> directly — or simply
+  use <code>run_profile</code>, which handles both cases.
 </p>
 
 <div class="callout theory">
   <span class="label">🔵 Theory: sync vs async</span>
   <p>
-    Synchronous code runs top to bottom, blocking on every I/O or CPU
-    operation. Asynchronous code can suspend at an <code>await</code>
-    point and let other work run in the meantime. For single-CPU work
-    async is rarely faster, but for profiling many columns or files
-    simultaneously it can cut total time by the number of parallel
-    operations. Full async is a chapter of its own — for this lesson,
-    the template above is all you need.
+    Synchronous code runs top to bottom, blocking on every operation.
+    Asynchronous code can suspend at an <code>await</code> point and let
+    other work run in the meantime. Async pays off when tasks spend time
+    <em>waiting</em> — on a network, a disk, a database — for example when
+    profiling several remote files at once. For a single in-memory
+    DataFrame it is not faster; it is simply the interface the engine
+    exposes. Full async is a chapter of its own — for this lesson, the
+    wrapper and the template above are all you need.
   </p>
 </div>
 
@@ -297,13 +344,14 @@ profile = asyncio.run(profile_dataset())
 
 <p>
   Real profiling pipelines fail. The file might not exist. The schema
-  might have changed. A column might have values <code>describe()</code>
-  cannot handle. Python's <code>try / except</code> lets you catch errors
+  might have changed. A column might have values the profiler cannot
+  handle. Python's <code>try / except</code> lets you catch errors
   gracefully and continue — or re-raise with a clearer message.
 </p>
 
 <pre><code class="language-python">try:
-    profile = await explorer.profile(df)
+    df = loader.load("mlfp01", "nonexistent.csv")   # expect-error
+    profile = run_profile(df)
 except FileNotFoundError as e:
     print(f"Dataset not available: {e}")
     profile = None
@@ -311,6 +359,13 @@ except ValueError as e:
     print(f"Bad schema: {e}")
     profile = None
 </code></pre>
+
+<p>
+  Name each exception you expect and handle it explicitly. Never write a
+  bare <code>except: pass</code> — it swallows every error, including the
+  ones you did not anticipate, and the pipeline fails later with no clue
+  why.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>The Kailash Engine: DataExplorer in detail</h2>
@@ -323,9 +378,12 @@ except ValueError as e:
     statistics (type, mean, std, nulls, unique count, skewness), pairwise
     correlations (Pearson and Spearman), duplicate counts, and a list of
     alerts. It also supports <code>compare(df_a, df_b)</code> for
-    distribution drift between two snapshots. Module 4's
-    <code>DriftMonitor</code> uses the same comparison primitive to catch
-    production data drift in deployed models.
+    differences between two snapshots, <code>to_html(df)</code> for a
+    shareable report and <code>visualize(df)</code> for the underlying
+    charts. All four methods are async; <code>shared.run_profile</code>,
+    <code>run_compare</code> and <code>run_report</code> are their sync
+    wrappers. Module 4's <code>DriftMonitor</code> applies the same
+    idea — compare two snapshots — to production data.
   </p>
 </div>
 
@@ -338,18 +396,19 @@ except ValueError as e:
     Load three messy Singapore economic datasets (monthly CPI, quarterly
     employment, daily FX rates), merge them onto a monthly spine, and
     profile the result with <code>DataExplorer</code>. Interpret every
-    alert and decide what to do about it.
+    alert, decide what to do about it, and confirm with
+    <code>compare()</code> that cleaning actually helped. These are
+    synthetic course datasets modelled on published statistics:
+    illustrative values, realistic mess.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
     <p>Load the three datasets and inspect them individually. Notice the
        deliberately different reporting frequencies and date formats.</p>
-    <pre><code class="language-python">import asyncio
-import polars as pl
-from kailash_ml import DataExplorer
-from kailash_ml.engines.data_explorer import AlertConfig
-from shared import MLFPDataLoader
+    <pre><code class="language-python">import polars as pl
+from kailash_ml import AlertConfig
+from shared import MLFPDataLoader, run_compare, run_profile, run_report
 
 loader = MLFPDataLoader()
 cpi = loader.load("mlfp01", "sg_cpi.csv")
@@ -359,13 +418,23 @@ fx_rates = loader.load("mlfp01", "sg_fx_rates.csv")
 print(f"CPI:         {cpi.height:,} rows (monthly)")
 print(f"Employment:  {employment.height:,} rows (quarterly)")
 print(f"FX:          {fx_rates.height:,} rows (daily)")</code></pre>
+    <pre><code class="language-text">CPI:         300 rows (monthly)
+Employment:  93 rows (quarterly)
+FX:          1,305 rows (daily)</code></pre>
+    <p>
+      Three different keys, too: CPI has a text <code>date</code> column,
+      employment has a text <code>quarter</code> column such as
+      <code>"2000 Q1"</code>, and FX has a proper <code>Date</code> column.
+      Each CPI column is exactly 5% null (15 of 300 rows), and FX covers only
+      2020–2024 while CPI runs from 2000 to 2024.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
     <p>Normalise the messy CPI date column. The source has three formats
        in one column: <code>01/2000</code>, <code>2000-02</code>, and
-       <code>200011</code>.</p>
+       <code>200003</code>.</p>
     <pre><code class="language-python">cpi = cpi.with_columns(
     pl.col("date")
     .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")
@@ -373,25 +442,40 @@ print(f"FX:          {fx_rates.height:,} rows (daily)")</code></pre>
     .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")
     .str.to_date("%Y-%m-%d")
     .alias("date")
-)</code></pre>
+)
+print(cpi["date"].min(), cpi["date"].max(), cpi["date"].null_count())
+# → 2000-01-01 2024-12-01 0</code></pre>
     <p>
       Chained <code>str.replace</code> calls walk through the three
       possible formats, converting each to <code>YYYY-MM-01</code>. Then
-      <code>str.to_date</code> parses the clean form. This is the pattern
-      for any "three formats in one column" mess.
+      <code>str.to_date</code> parses the clean form. Zero nulls after
+      parsing proves every row matched one of the three patterns. This is
+      the pattern for any "three formats in one column" mess — and note
+      that <code>DataExplorer</code> will <em>not</em> detect mixed date
+      formats for you; to the profiler they just look like unique text.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Merge to monthly using left joins and forward-fill for the
-       quarterly employment series.</p>
-    <pre><code class="language-python">date_range = pl.date_range(
-    cpi["date"].min(), cpi["date"].max(), interval="1mo", eager=True
-)
-monthly_spine = pl.DataFrame({"date": date_range})
+    <p>Turn each quarter into its first month, then merge everything onto a
+       monthly spine: forward-fill the quarterly employment series and
+       average the daily FX rates per month.</p>
+    <pre><code class="language-python"># "2000 Q1" → 2000-01-01, "2000 Q2" → 2000-04-01, ...
+employment = employment.with_columns(
+    pl.date(
+        pl.col("quarter").str.slice(0, 4).cast(pl.Int32),
+        (pl.col("quarter").str.slice(6, 1).cast(pl.Int32) - 1) * 3 + 1,
+        1,
+    ).alias("date")
+).drop("quarter")
 
-# Forward-fill quarterly employment onto monthly spine
+monthly_spine = pl.DataFrame({
+    "date": pl.date_range(cpi["date"].min(), cpi["date"].max(),
+                          interval="1mo", eager=True)
+})
+
+# Forward-fill quarterly employment onto the monthly spine
 employment_monthly = (
     monthly_spine.join(employment, on="date", how="left")
     .sort("date")
@@ -402,7 +486,7 @@ employment_monthly = (
 
 # Aggregate daily FX to monthly mean
 fx_monthly = (
-    fx_rates.group_by(pl.col("date").dt.truncate("1mo").alias("date"))
+    fx_rates.group_by(pl.col("date").dt.truncate("1mo"))
     .agg([pl.col(c).mean() for c in fx_rates.columns if c != "date"])
 )
 
@@ -410,83 +494,153 @@ economic = (
     cpi.join(employment_monthly, on="date", how="left")
     .join(fx_monthly, on="date", how="left")
     .sort("date")
-)</code></pre>
+)
+print(economic.shape)   # (300, 13)</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4.</span>
     <p>Configure alerts for the specifics of economic data. Structural
-       correlation is expected; crisis-era skew is expected; hard
-       thresholds would fire too many false alarms.</p>
+       correlation is expected, so only near-collinearity should fire.</p>
     <pre><code class="language-python">alert_config = AlertConfig(
-    # Macro indicators are structurally correlated — only flag near-collinearity
+    # Macro indicators move together — raise from the 0.90 default
     high_correlation_threshold=0.95,
-    # Quarterly data forward-filled will have ~0% nulls mid-series, some at edges
+    # Relax from the 0.05 default: a few missing months are tolerable here
     high_null_pct_threshold=0.10,
-    # Constant = pipeline failure
+    # A column with &lt;= 1 distinct value is a pipeline failure (default 1)
     constant_threshold=1,
-    # Crises create extreme skew; only flag severe
+    # Raise from the 2.0 default: only flag severe tails
     skewness_threshold=3.0,
-    # Some trade-flow columns legitimately zero
+    # Stricter than the 0.5 default: flag columns from 30% zeros
     zero_pct_threshold=0.30,
 )</code></pre>
+    <p>
+      Watch the direction of each change. Raising a threshold makes an
+      alert fire <em>less</em> often; lowering it makes it fire more. Moving
+      <code>high_null_pct_threshold</code> from 0.05 to 0.10 relaxes the
+      null check — it does not tighten it.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Run the profiler asynchronously and interpret each alert.</p>
-    <pre><code class="language-python">async def profile_economic():
-    explorer = DataExplorer(alert_config=alert_config)
-    profile = await explorer.profile(economic)
+    <p>Run the profiler and read every alert.</p>
+    <pre><code class="language-python">profile = run_profile(economic, alert_config=alert_config)
 
-    print(f"Rows: {profile.n_rows}  Columns: {profile.n_columns}")
-    print(f"Duplicates: {profile.duplicate_count} "
-          f"({profile.duplicate_pct:.1%})")
+print(f"Rows: {profile.n_rows}  Columns: {profile.n_columns}")
+print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
 
-    print(f"\n--- {len(profile.alerts)} Alerts ---")
-    for alert in profile.alerts:
-        print(f"[{alert['severity']}] {alert['type']}: "
-              f"{alert.get('column', 'N/A')} = {alert.get('value')}")
+print(f"\n--- {len(profile.alerts)} Alerts ---")
+for alert in profile.alerts:
+    where = alert.get("column", alert.get("columns"))  # pairs use "columns"
+    print(f"[{alert['severity']}] {alert['type']}: {where} = {alert['value']:.3f}")</code></pre>
+    <pre><code class="language-text">Rows: 300  Columns: 13
+Duplicates: 0 (0.0%)
 
-    return profile
-
-profile = asyncio.run(profile_economic())</code></pre>
+--- 21 Alerts ---
+[info] high_cardinality: date = 1.000
+[info] high_cardinality: cpi_all_items = 0.943
+[info] high_cardinality: cpi_food = 0.940
+[info] high_cardinality: cpi_transport = 0.937
+[info] high_cardinality: cpi_housing = 0.943
+[warning] high_nulls: usd_sgd = 0.800
+[warning] high_nulls: eur_sgd = 0.800
+[warning] high_nulls: gbp_sgd = 0.800
+[warning] high_nulls: jpy_sgd = 0.800
+[warning] high_correlation: ['cpi_all_items', 'cpi_food'] = 0.995
+[warning] high_correlation: ['cpi_all_items', 'cpi_transport'] = 0.977
+[warning] high_correlation: ['cpi_all_items', 'cpi_housing'] = 0.998
+[warning] high_correlation: ['cpi_all_items', 'median_income'] = 0.989
+[warning] high_correlation: ['cpi_all_items', 'gbp_sgd'] = 0.957
+... and 7 more high_correlation pairs</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
-    <p>Translate each alert into an action. Walk the output and decide.</p>
-    <pre><code class="language-python"># Example alert interpretation loop
-for alert in profile.alerts:
-    alert_type = alert["type"]
-    col = alert.get("column", "N/A")
-    value = alert.get("value")
-
-    if alert_type == "high_nulls":
-        print(f"  {col} has {value:.1%} nulls — "
-              f"forward-fill or drop rows")
-    elif alert_type == "constant":
-        print(f"  {col} is constant — DROP, carries no info")
-    elif alert_type == "high_skewness":
-        print(f"  {col} skew={value:.2f} — log-transform or winsorise")
-    elif alert_type == "high_correlation":
-        print(f"  {col}: r={value:.2f} — drop one or run VIF")
-    else:
-        print(f"  {alert_type} on {col}: {value}")</code></pre>
+    <p>Translate each alert into a decision.</p>
+    <ul>
+      <li><strong>high_nulls on the four FX columns (80%).</strong> Not a
+        quality defect — a <em>coverage</em> gap. FX data starts in 2020,
+        CPI in 2000, so 240 of 300 months have no FX value. Decision:
+        restrict FX analysis to 2020 onwards, or drop FX from the
+        25-year analysis. Imputing 20 years of exchange rates would be
+        fabrication.</li>
+      <li><strong>No high_nulls on the CPI columns.</strong> They are
+        exactly 5% null, and the rule is "null share <em>greater than</em>
+        the threshold" — so they stay silent even at the 0.05 default. A
+        silent profiler is not proof of clean data.</li>
+      <li><strong>high_correlation among CPI components and
+        median_income.</strong> Prices and incomes trend upwards together
+        over 25 years — a domain fact, not a defect. Keep the columns; flag
+        them for a multicollinearity (VIF) check before any regression.</li>
+      <li><strong>high_correlation between CPI and gbp_sgd (0.957).</strong>
+        Computed on only the 60 months where both exist. Two trending
+        series over a short window correlate easily; treat this one as
+        spurious until shown otherwise.</li>
+      <li><strong>high_cardinality (info).</strong> Every date is unique and
+        continuous measurements are nearly unique. Expected; accept.</li>
+    </ul>
+    <p>
+      Notice what is <em>not</em> on the list. With the default
+      <code>AlertConfig</code> the same data produces 28 alerts, including
+      <code>high_skewness</code> on <code>employment_rate</code> (−2.25) and
+      <code>labour_force</code> (−2.13); our 3.0 threshold deliberately
+      silences those. And outliers never appear as an alert: each column
+      profile reports <code>outlier_count</code> and
+      <code>outlier_pct</code> instead (for example
+      <code>profile.columns[1].outlier_count</code>).
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 7.</span>
-    <p>Generate an HTML report with the built-in visualiser.</p>
-    <pre><code class="language-python">async def generate_report():
-    explorer = DataExplorer(alert_config=alert_config)
-    report = await explorer.visualize(economic)
-    # The report is a Plotly figure or dict of figures
-    # Write each to an HTML file
-    return report
+    <p>Compare original vs cleaned. Clean the CPI table (parse dates, sort,
+       interpolate the gaps) and ask <code>compare()</code> whether the
+       cleaning changed what you intended — and nothing else.</p>
+    <pre><code class="language-python">cpi_raw = loader.load("mlfp01", "sg_cpi.csv")
+cpi_clean = (
+    cpi_raw.with_columns(
+        pl.col("date")
+        .str.replace(r"^(\d{2})/(\d{4})$", "$2-$1-01")
+        .str.replace(r"^(\d{4})(\d{2})$", "$1-$2-01")
+        .str.replace(r"^(\d{4})-(\d{2})$", "$1-$2-01")
+        .str.to_date("%Y-%m-%d"))
+    .sort("date")
+    .with_columns(pl.col(pl.Float64).interpolate())   # fill the gaps
+)
 
-asyncio.run(generate_report())
-print("✓ Profile report generated — check ex7_profile_*.html")</code></pre>
+result = run_compare(cpi_raw, cpi_clean)   # a dict
+print(result["shape_comparison"])
+for d in result["column_deltas"]:
+    print(f"  {d['column']:&lt;15} null_pct_delta={d['null_pct_delta']:+.2f}")</code></pre>
+    <pre><code class="language-text">{'rows_a': 300, 'rows_b': 300, 'cols_a': 5, 'cols_b': 5}
+  cpi_all_items   null_pct_delta=-0.05
+  cpi_food        null_pct_delta=-0.05
+  cpi_housing     null_pct_delta=-0.05
+  cpi_transport   null_pct_delta=-0.05
+  date            null_pct_delta=+0.00</code></pre>
+    <p>
+      Same shape, every CPI column 5 percentage points less null, and the
+      numeric deltas (<code>mean_delta</code>, <code>std_delta</code>) are
+      small — interpolation filled the gaps without distorting the
+      distributions. That is the confirmation step of
+      <em>alert → action → re-profile → confirm</em>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 8.</span>
+    <p>Generate a standalone HTML report to share.</p>
+    <pre><code class="language-python">html = run_report(economic, title="Singapore economic indicators",
+                  alert_config=alert_config)
+with open("ex7_profile_report.html", "w", encoding="utf-8") as f:
+    f.write(html)
+print("✓ Profile report written — open ex7_profile_report.html")</code></pre>
+    <p>
+      <code>run_report</code> wraps the async
+      <code>DataExplorer.to_html()</code> and returns the report as one
+      HTML string, charts included.
+    </p>
   </div>
 </div>
 
@@ -526,8 +680,8 @@ print("✓ Profile report generated — check ex7_profile_*.html")</code></pre>
 <p>
   Rules of thumb: $|g_1| &lt; 0.5$ is approximately symmetric; $0.5 \le
   |g_1| &lt; 1$ is moderately skewed; $|g_1| \ge 1$ is highly skewed.
-  A skewness above 3 is the threshold we set above — only severe crises
-  produce tails that extreme.
+  The engine's default alert threshold is $|g_1| &gt; 2$; the worked
+  example raises it to 3 so that only severe tails are flagged.
 </p>
 
 <h3>Pearson correlation</h3>
@@ -577,20 +731,23 @@ print("✓ Profile report generated — check ex7_profile_*.html")</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 3: Fixing correlation alerts by dropping columns automatically</span>
   <p>
-    "CPI is 99% correlated with employment so I'll drop employment" — but
-    which one is your causal driver? Alerts prompt investigation, not
-    automated removal. Understand the relationship first.
+    "<code>cpi_all_items</code> correlates 0.99 with
+    <code>median_income</code>, so I'll drop income" — but both simply trend
+    upwards over 25 years, and they measure different things. Alerts prompt
+    investigation, not automated removal. Understand the relationship
+    first.
   </p>
 </div>
 
 <div class="callout warning">
   <span class="label">⚠ Mistake 4: Using sync <code>profile()</code> in an async context</span>
   <p>
-    <code>profile()</code> is async. You cannot call it directly from
-    synchronous code — wrap it in <code>asyncio.run(...)</code> or the
-    helper <code>shared.run_profile()</code>. Calling an async function
-    without await produces a coroutine object, not a profile, and nothing
-    useful happens.
+    <code>profile()</code> is async. Calling it without <code>await</code>
+    produces a coroutine object, not a profile, and nothing useful happens.
+    In a script, wrap it in <code>asyncio.run(...)</code>; in Jupyter or
+    Colab, <code>asyncio.run</code> raises "cannot be called from a running
+    event loop" — use <code>await</code> directly or, anywhere, the helper
+    <code>shared.run_profile()</code>.
   </p>
 </div>
 
@@ -631,12 +788,33 @@ print("✓ Profile report generated — check ex7_profile_*.html")</code></pre>
   </p>
 </div>
 
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: 7 alerts — <code>high_skewness</code> and <code>high_cardinality</code>
+    on <code>resale_price</code> (skew 11.4), <code>duplicates</code>
+    (0.6% of rows), and <code>imbalanced</code> on <code>town</code>,
+    <code>flat_type</code>, <code>storey_range</code> and
+    <code>flat_model</code>. B: for example
+    <code>AlertConfig(skewness_threshold=15.0)</code> drops the skewness
+    alert (6 left); also lowering <code>imbalance_ratio_threshold</code> to
+    0.05 leaves 3. Whether that is wise is the real question — the skew
+    comes from the planted <span class="nomath">S$9M</span> records. C:
+    <code>run_compare(pre, post)</code> shows 25,246 vs 24,904 rows and
+    tiny mean deltas (resale price about −<span class="nomath">S$2,600,</span> floor area −0.14 sqm):
+    the synthetic data does not drift over time. D: the loader raises
+    <code>FileNotFoundError</code> for an unknown file, so an
+    <code>except FileNotFoundError as e:</code> branch catches it.
+  </p>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
 <p class="xref">
   Lesson 1.1's manual ritual becomes today's automated profile. Lesson
-  1.6's charts are what DataExplorer generates internally. Lesson 1.8
+  1.6's charts are the kind DataExplorer's <code>visualize()</code> and
+  <code>to_html()</code> produce automatically. Lesson 1.8
   uses DataExplorer's alerts as the input to a cleaning pipeline —
   <em>alert → action → re-profile → confirm</em>. Module 2's feature
   engineering uses profiling to decide which columns to transform.

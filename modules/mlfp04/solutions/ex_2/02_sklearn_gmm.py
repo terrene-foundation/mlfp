@@ -6,8 +6,8 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Fit a GaussianMixture through kailash-ml's sklearn bridge
-#   - Verify the library result matches the from-scratch EM from 2.1
+#   - Fit sklearn's GaussianMixture (2.1 checked it against your own EM),
+#     then the same model through kailash-ml's ClusteringEngine
 #   - Sweep K using BIC and AIC to select the number of components
 #   - Explain WHY BIC is more conservative than AIC (different penalties)
 #   - Read a BIC/AIC curve and recognise the elbow
@@ -21,7 +21,7 @@
 #   2. Build — fit_sklearn_gmm helper + bic_aic_sweep
 #   3. Train — fit K=2..8 on Singapore e-commerce customers
 #   4. Visualise — BIC/AIC curves + silhouette overlay
-#   5. Apply — Shopee SEA customer segmentation at enterprise scale
+#   5. Apply — Southeast Asian marketplace customer segmentation at scale
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -169,11 +169,11 @@ print("[ok] Checkpoint 2 passed — BIC/AIC visualisation written")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee SEA customer segmentation at scale
+# TASK 5 — APPLY: Southeast Asian marketplace segmentation at scale
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee (Sea Group, Singapore-HQ) runs the largest e-commerce
-# platform in Southeast Asia — ~80M monthly active users across seven
-# countries. The growth team needs to segment customers for lifecycle
+# SCENARIO: A Singapore-headquartered marketplace runs a large e-commerce
+# platform in Southeast Asia — assume ~80M monthly active users across
+# seven countries. The growth team needs to segment customers for lifecycle
 # campaigns: welcome series, re-engagement, win-back, and retention.
 #
 # Why BIC over "pick K=4 because marketing likes tidy buckets":
@@ -184,12 +184,12 @@ print("[ok] Checkpoint 2 passed — BIC/AIC visualisation written")
 #   - Campaign creative tuned to the merged segment misfires on half
 #     the members, wasting ad spend on irrelevant offers.
 #
-# BUSINESS IMPACT:
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - Monthly email spend across lifecycle campaigns: ~S$420,000
 #   - Historical campaign open rate with K=4 segments: ~18%
-#   - A/B test on a Shopee-size marketplace (Lazada 2024 disclosure)
-#     showed moving from K=4 to a BIC-selected K=6 lifted campaign
-#     engagement by ~23% (better relevance -> better open rate).
+#   - Suppose an A/B test shows moving from K=4 to a BIC-selected K
+#     lifts campaign engagement by ~23% (better relevance -> better open
+#     rate). That lift is an assumption you would have to measure.
 #   - 23% uplift on ~S$420K/month of already-paid campaign spend is
 #     S$97,000/month of "free" lift from recovered ROI — S$1.16M/year
 #     — from a single afternoon of BIC analysis.
@@ -205,7 +205,7 @@ best_gmm = fit_sklearn_gmm(X_scaled, n_components=best_k_bic)
 segment_weights = best_gmm.weights_
 
 print("\n" + "=" * 70)
-print(f"  APPLY — Shopee SEA segmentation (BIC-optimal K={best_k_bic})")
+print(f"  APPLY — Marketplace segmentation (BIC-optimal K={best_k_bic})")
 print("=" * 70)
 for k, w in enumerate(segment_weights):
     print(f"  Segment {k}: weight={w:.3f}  (~{w * 100:.1f}% of customers)")
@@ -252,7 +252,7 @@ print(f"  [tracked] BIC/AIC sweep logged to {exp_name} run='sklearn_gmm_bic_aic'
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='gmm')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1 wraps sklearn's GaussianMixture in ClusteringEngine.
+# kailash-ml wraps sklearn's GaussianMixture in ClusteringEngine.
 # The sweep + BIC selection itself is not yet exposed at engine level —
 # students still drive K via BIC by hand, then hand the chosen K to the
 # engine for the production fit.
@@ -288,8 +288,8 @@ print(
   [x] Compute BIC and AIC to penalise model complexity
   [x] Explain why BIC is more conservative than AIC at large n
   [x] Select K by the BIC elbow (here: K={best_k_bic})
-  [x] Shopee SEA scenario: BIC-guided K turns into S$1.16M/year in
-      recovered campaign ROI, no extra spend required
+  [x] Marketplace scenario: BIC-guided K turns into an illustrative
+      S$1.16M/year in recovered campaign ROI, no extra spend required
 
   KEY INSIGHT: BIC is not a magic oracle — it's a trade-off between
   fit and parsimony. When BIC picks a K that is business-implausible

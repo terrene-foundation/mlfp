@@ -25,3 +25,5 @@ slides 1,917–2,054; textbook 1,743–1,893; raw lenient parse 1,998–2,570. I
 cross-artefact number ONCE from the exercise's canonical (cleaned) output and make deck, lesson pages,
 textbook, notes and exercises agree — or state the claim qualitatively. Start with M1 (hourly demand, r values
 raw 0.47 vs cleaned 0.91), then grep each module's handoff file for numbers quoted in more than one artefact.
+- M1 lesson 1.8 SLIDES use a shorter pipeline (47,547 rows, 7→44 cols, 12/12 alerts, hourly 1,917–2,054) while ex_8 + textbook.md + lesson 1.8 textbook page use 43,934 rows, 12→53 cols, 15→11 alerts. Bring the 1.8 slides (and deck capstone slides) in line with ex_8.
+- M1 1.5 seasonality: page uses town-month medians (0.7% spread); textbook.md raw calendar-month counts (<1%) — both "no seasonality"; harmonise the method.

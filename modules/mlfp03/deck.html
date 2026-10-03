@@ -471,6 +471,7 @@ print(best.selected_columns)</code></pre>
         <h3>FeatureStore &mdash; point-in-time reads</h3>
         <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
 from datetime import datetime
+from pathlib import Path
 from dataflow import DataFlow
 from kailash_ml.features import (FeatureField,
     FeatureGroup, FeatureSchema, FeatureStore)
@@ -482,7 +483,7 @@ schema = FeatureSchema(name="icu_24h_features",
     timestamp_column="prediction_cutoff")
 
 async def as_of(features, when):
-    store = FeatureStore(DataFlow("sqlite:///icu.db"),
+    store = FeatureStore(DataFlow(f"sqlite:///{Path('icu.db').resolve()}"),
                          default_tenant_id="_single")
     await store.materialize(
         FeatureGroup(schema, dataflow=store.dataflow),
@@ -2071,9 +2072,9 @@ async def register(artifact: bytes, cols: list[str], test_auc: float):
     <h3>DataFlow</h3>
     <p>Zero-config database operations for persisting ML results.</p>
     <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from pathlib import Path
 from dataflow import DataFlow
-
-db = DataFlow("sqlite:///mlfp03_results.db")
+db = DataFlow(f"sqlite:///{Path('mlfp03_results.db').resolve()}")
 
 @db.model
 class CreditEvaluation:
@@ -2113,20 +2114,19 @@ async def save_and_review(version: int, metrics: dict[str, float]):
   <div class="columns">
     <div class="col">
       <pre><code class="language-python">import asyncio
+from pathlib import Path
 from dataflow import DataFlow
-
-db = DataFlow("sqlite:///mlfp03_results.db")
+DB = Path("mlfp03_results.db").resolve()
+db = DataFlow(f"sqlite:///{DB}")
 
 async def main():
     await db.initialize()
     try:
-        # await: wait for the database,
-        # let other work run meanwhile
+        # await: others run while we wait
         return await db.express.count(
             "CreditEvaluation")
     finally:
         await db.close_async()
-
 # a plain script starts the event loop once
 n_rows = asyncio.run(main())</code></pre>
     </div>

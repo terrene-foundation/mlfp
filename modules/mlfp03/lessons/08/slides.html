@@ -151,9 +151,11 @@
 <section>
   <h2>DataFlow: zero-config persistence</h2>
   <pre><code class="language-python" data-trim>
+from pathlib import Path
 from dataflow import DataFlow
 
-db = DataFlow("sqlite:///monitoring.db")
+# DataFlow needs an absolute sqlite path
+db = DataFlow(f"sqlite:///{Path('monitoring.db').resolve()}")
 
 @db.model
 class Prediction:

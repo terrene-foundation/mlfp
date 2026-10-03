@@ -37,7 +37,10 @@ setup_environment()
 OUTPUT_DIR = Path("outputs") / "mlfp02_ex8"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-FEATURE_STORE_URL = "sqlite:///mlfp02_ex8_features.db"
+# DataFlow rewrites ``sqlite:///x.db`` to ``/x.db`` (filesystem root), so a
+# relative URL fails with "unable to open database file". Always hand DataFlow
+# an absolute path.
+FEATURE_STORE_URL = f"sqlite:///{(OUTPUT_DIR / 'mlfp02_ex8_features.db').resolve().as_posix()}"
 EXPERIMENT_STORE_URL = "sqlite:///mlfp02_experiments.db"
 EXPERIMENT_NAME = "mlfp02_ex8_hdb_features"
 

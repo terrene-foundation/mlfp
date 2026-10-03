@@ -2328,6 +2328,7 @@ best = fe.select(gen.data, gen, target="resale_price", top_k=3)</code></pre>
       </ul>
       <pre style="margin-top: 8px; font-size: 0.45em;"><code class="language-python">import asyncio
 from datetime import datetime
+from pathlib import Path
 from dataflow import DataFlow
 from kailash_ml.features import (FeatureField,
     FeatureGroup, FeatureSchema, FeatureStore)
@@ -2338,7 +2339,7 @@ schema = FeatureSchema(name="hdb_features",
     timestamp_column="transaction_date")
 
 async def as_of(features, when):
-    store = FeatureStore(DataFlow("sqlite:///hdb.db"),
+    store = FeatureStore(DataFlow(f"sqlite:///{Path('hdb.db').resolve()}"),
                          default_tenant_id="_single")
     await store.materialize(
         FeatureGroup(schema, dataflow=store.dataflow),

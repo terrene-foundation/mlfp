@@ -339,11 +339,11 @@
   <div class="callout callout-warning">
     <strong>Common mistake:</strong> Spending days tuning XGBoost hyperparameters when a single well-engineered feature would have improved the model more than all tuning combined.
   </div>
-  <p><strong>Example:</strong> For HDB price prediction, geocoding an address to latitude/longitude (domain knowledge) is worth more than switching from Random Forest to XGBoost.</p>
+  <p><strong>Example:</strong> For HDB price prediction, geocoding an address to latitude/longitude (domain knowledge) is typically worth more than switching from Random Forest to XGBoost. In Exercise 3.1 the same idea is clinical: <em>shock index</em> = heart rate &divide; systolic BP.</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This hierarchy guides the entire module. We start with features (highest impact), then models, then tuning. The geocoding example is concrete: a street address is useless to a model, but lat/lon enables spatial features like distance to MRT, proximity to schools, etc.</aside>
+  <aside class="notes">Timing: 2 min. This hierarchy guides the entire module. We start with features (highest impact), then models, then tuning. The multipliers are rules of thumb, not measurements. The geocoding example is concrete: a street address is useless to a model, but lat/lon enables spatial features like distance to MRT, proximity to schools, etc. Exercise 3.1 applies the same principle to ICU data: clinicians already know that heart rate divided by systolic blood pressure (the shock index) flags deterioration, so we compute it instead of hoping a model discovers the ratio.</aside>
 </section>
 
 <!-- SLIDE 10 — Feature Engineering Types -->
@@ -378,6 +378,7 @@
     <li><strong>Target leakage:</strong> A column derived from the target (e.g., "loan_was_approved" to predict "loan_default")</li>
     <li><strong>Temporal leakage:</strong> Using future data to predict the past (e.g., next month's sales to predict this month)</li>
     <li><strong>Preprocessing leakage:</strong> Fitting scaler on full dataset before splitting train/test</li>
+    <li><strong>Leak screen:</strong> a column that <em>alone</em> ranks the target almost perfectly is suspect. The credit data from Lesson 3.4 on hides one: <code>future_default_indicator</code> (single-feature AUC 0.99), so every credit exercise drops it</li>
   </ul>
   <div class="callout callout-foundations">
     <strong>Prevention rule:</strong> For every feature, ask: "Would I have this value at the moment I need to make the prediction?" If no, drop it.
@@ -385,7 +386,7 @@
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Leakage is the most common ML bug in production systems. A model with leakage looks like a breakthrough in testing and fails spectacularly live. The prevention rule is simple: time-travel test every feature. If beginners confused: "Imagine predicting tomorrow's weather using tomorrow's actual temperature. Of course it works. But it is cheating."</aside>
+  <aside class="notes">Timing: 2 min. Leakage is the most common ML bug in production systems. A model with leakage looks like a breakthrough in testing and fails spectacularly live. The prevention rule is simple: time-travel test every feature. The leak screen is the mechanical backup: score each column on its own (single-feature ROC AUC). A legitimate credit feature rarely exceeds about 0.75; the planted future_default_indicator scores 0.99 because it is recorded after the outcome (93% of rows with the flag defaulted, versus 0.2% without). Exercise 3.4 runs this screen before modelling; customer_id is dropped too because a row ID is not a feature. If beginners confused: "Imagine predicting tomorrow's weather using tomorrow's actual temperature. Of course it works. But it is cheating."</aside>
 </section>
 
 <!-- SLIDE 12 — Feature Selection Taxonomy -->
@@ -437,28 +438,67 @@
 <section class="code-fit">
   <h2>Kailash Bridge: FeatureEngineer &amp; FeatureStore</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="kailash-bridge">
-    <h3>FeatureEngineer</h3>
-    <p>Generates and selects features automatically. Supports filter, wrapper, and embedded methods through a unified API.</p>
-    <pre style="font-size: 0.45em;"><code class="language-python">from kailash_ml import FeatureEngineer
+  <div class="columns">
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>FeatureEngineer &mdash; generate + select</h3>
+        <pre style="font-size: 0.45em;"><code class="language-python">import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
+from shared.mlfp03.ex_1 import (build_full_feature_frame,
+                                load_icu_tables)
 
-engineer = FeatureEngineer()
-engineer.fit(df, target="resale_price")
-selected = engineer.select_features(method="embedded", threshold=0.01)
-transformed = engineer.transform(df)</code></pre>
-  </div>
-  <div class="kailash-bridge" style="margin-top:8px;">
-    <h3>FeatureStore</h3>
-    <p>Versioned feature storage with point-in-time correctness &mdash; prevents temporal leakage by design.</p>
-    <pre><code class="language-python">from kailash_ml import FeatureStore
+icu = (build_full_feature_frame(load_icu_tables())
+       .with_columns((pl.col("los_days")
+                      &gt; pl.col("los_days").median())
+                     .cast(pl.Int64).alias("long_stay"))
+       .sample(fraction=1.0, shuffle=True, seed=42))
+train = icu.head(int(0.8 * icu.height))  # select on TRAIN only
 
-store = FeatureStore()
-store.register(df, entity="flat", timestamp_col="month")</code></pre>
+schema = FeatureSchema(name="icu_24h",
+    entity_id_column="admission_id",
+    features=[FeatureField("heart_rate_mean", "float64"),
+              FeatureField("systolic_bp_mean", "float64"),
+              FeatureField("n_abnormal_labs", "int64")])
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(train, schema,
+                  strategies=["interactions", "polynomial"])
+best = fe.select(gen.data, gen, target="long_stay", top_k=4)
+print(best.selected_columns)</code></pre>
+      </div>
+    </div>
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>FeatureStore &mdash; point-in-time reads</h3>
+        <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from datetime import datetime
+from dataflow import DataFlow
+from kailash_ml.features import (FeatureField,
+    FeatureGroup, FeatureSchema, FeatureStore)
+
+schema = FeatureSchema(name="icu_24h_features",
+    fields=(FeatureField("heart_rate_mean", "float64"),
+            FeatureField("shock_index", "float64")),
+    entity_id_column="admission_id",
+    timestamp_column="prediction_cutoff")
+
+async def as_of(features, when):
+    store = FeatureStore(DataFlow("sqlite:///icu.db"),
+                         default_tenant_id="_single")
+    await store.materialize(
+        FeatureGroup(schema, dataflow=store.dataflow),
+        features.select("admission_id", "prediction_cutoff",
+                        "heart_rate_mean", "shock_index"))
+    return await store.get_features(schema, timestamp=when)
+
+# icu from the left; rows stamped after 1 Jan 2023 never return
+snap = asyncio.run(as_of(icu, datetime(2023, 1, 1)))</code></pre>
+      </div>
+    </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK. FeatureEngineer wraps all three selection families. FeatureStore ensures point-in-time correctness so temporal leakage is impossible. These two engines handle the feature stage of the pipeline.</aside>
+  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK, on the same ICU data as Exercise 3.1 (one row per admission, features computed from the first 24 hours; long_stay = stay longer than the median). FeatureEngineer has two calls. generate() builds candidate columns from the fields in a FeatureSchema (strategies: interactions, polynomial, binning, temporal); select() ranks originals plus candidates against the target and keeps top_k (default method: tree-based importance, so it is an embedded-style ranking). Fit it on training rows only: ranking features on all rows lets the test set vote on which features you keep, which is leakage. The engine does not replace the filter, wrapper and embedded comparisons: the exercise runs mutual information and chi-squared, RFE, and Lasso by hand so students see why they disagree. FeatureStore persists features through DataFlow; get_features(schema, timestamp=T) returns only rows stamped at or before T, which is point-in-time correctness. Note the two schema classes: the top-level kailash_ml.FeatureSchema (features=[...]) is what FeatureEngineer takes; the store needs kailash_ml.features.FeatureSchema (fields=(...)). The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks.</aside>
 </section>
 
 <!-- SLIDE 14 — Lesson 3.1 Summary -->
@@ -474,12 +514,12 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <li><strong>Engines:</strong> <code>FeatureEngineer</code>, <code>FeatureStore</code></li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.1:</strong> Engineer features for HDB price prediction (geocode, temporal, interactions). Apply 3 selection methods. Compare which features each method selects.
+    <strong>Exercise 3.1:</strong> Predict a long ICU stay from the first 24 hours. Join five ICU tables point-in-time, engineer vital, lab and clinical interaction features, then compare filter (MI, chi-squared), wrapper (RFE) and embedded (L1) selection and log a leakage-audited consensus set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap before moving to Lesson 3.2. The exercise gives hands-on practice with all three selection families on real HDB data.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap before moving to Lesson 3.2. The exercise uses the ICU tables from Module 2 (patients, admissions, vitals, medications, labs). The prediction is made 24 hours after admission, so every event feature may only use records inside that window; the length of stay and discharge time are the label's source and are never features (a leakage audit raises if they slip in). Students build the features by hand in polars, rank them with mutual information and chi-squared, RFE around a random forest, and an L1 path, then validate the matrix against a FeatureSchema and log the consensus set to ExperimentTracker.</aside>
 </section>
 
 
@@ -640,7 +680,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
   <p>L2 regularisation is equivalent to placing a <strong>Gaussian prior</strong> on the coefficients:</p>
   <div class="equation-box">
     <span class="katex-display">\beta_i \sim \mathcal{N}(0, \tau^2) \quad \Rightarrow \quad \text{MAP estimate} = \text{Ridge solution}</span>
-    <div class="annotation">where &tau;&sup2; = &sigma;&sup2; / &lambda;. The prior says "I believe coefficients are small."</div>
+    <div class="annotation">&sigma;&sup2; = noise variance, &tau;&sup2; = prior variance, &lambda; = &sigma;&sup2; / &tau;&sup2;. The prior says "I believe coefficients are small."</div>
   </div>
   <div class="columns">
     <div class="col">
@@ -649,7 +689,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     </div>
     <div class="col">
       <h3>L2 = Gaussian Prior</h3>
-      <p style="font-size:0.85em;">The Gaussian distribution is smooth and round, which is why L2 shrinks uniformly but never reaches zero.</p>
+      <p style="font-size:0.85em;">The Gaussian distribution is smooth and round, which is why L2 shrinks every coefficient (hardest along low-variance directions) but never to exactly zero.</p>
     </div>
   </div>
   <div class="callout callout-advanced">
@@ -673,7 +713,7 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
       <tr><td><strong>Stratified k-Fold</strong></td><td>Preserve class proportions in each fold</td><td>Imbalanced classification</td></tr>
       <tr><td><strong>Time-Series Split</strong></td><td>Walk-forward: train on past, test on future</td><td>Temporal data (never use future to predict past)</td></tr>
       <tr><td><strong>GroupKFold</strong></td><td>Keep grouped observations together</td><td>Same patient, same company, repeated measures</td></tr>
-      <tr><td><strong>Nested CV</strong></td><td>Outer: model selection. Inner: hyperparameters</td><td>Unbiased model comparison (Lesson 3.7)</td></tr>
+      <tr><td><strong>Nested CV</strong></td><td>Outer: estimates performance. Inner: tunes hyperparameters</td><td>Honest score after tuning (Exercises 3.2, 3.3)</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -684,29 +724,33 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
 
 <!-- SLIDE 22 — Kailash Bridge: TrainingPipeline -->
 <section>
-  <h2>Kailash Bridge: TrainingPipeline</h2>
+  <h2>Kailash Bridge: PreprocessingPipeline + Cross-Validation</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline</h3>
-    <p>Unified training interface with built-in cross-validation, regularisation, and metric tracking.</p>
-    <pre><code class="language-python">from kailash_ml import TrainingPipeline
+    <h3>Pick &lambda; by CV on the training rows; touch the test set once</h3>
+    <pre style="font-size: 0.55em;"><code class="language-python">from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import KFold, cross_val_score
+from shared.mlfp03.ex_2 import load_credit_data
 
-pipeline = TrainingPipeline(
-    model="ridge_regression",
-    cv_strategy="stratified_kfold",
-    cv_folds=5,
-    regularisation={"type": "l2", "lambda": 0.1}
-)
-results = pipeline.fit(X_train, y_train)
-print(results.cv_scores)  # per-fold and mean scores</code></pre>
+# target savings_balance; features normalised by PreprocessingPipeline
+X_tr, y_tr, X_te, y_te, names = load_credit_data()  # 300 train rows
+cv = KFold(n_splits=5, shuffle=True, random_state=42)
+cv_mse = {}
+for alpha in [0.1, 1.0, 10.0, 100.0, 1000.0]:   # sklearn's alpha = λ
+    cv_mse[alpha] = -cross_val_score(Ridge(alpha=alpha), X_tr, y_tr,
+        cv=cv, scoring="neg_mean_squared_error").mean()
+best = min(cv_mse, key=cv_mse.get)               # chosen on CV only
+final = Ridge(alpha=best).fit(X_tr, y_tr)
+print(best, mean_squared_error(y_te, final.predict(X_te)))  # test: once</code></pre>
   </div>
   <div class="callout callout-kailash">
-    <strong>Why TrainingPipeline?</strong> It enforces proper CV discipline: the scaler is fitted inside each fold, not on the full dataset. This prevents preprocessing leakage automatically.
+    <strong>Why normalise?</strong> The penalty treats every coefficient alike, so features must share a scale. <code>PreprocessingPipeline.setup()</code> learns its rules from every row it is given &mdash; hold the test rows out first. For a scaler re-fitted inside every fold, wrap it in an sklearn <code>Pipeline</code> before <code>cross_val_score</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. TrainingPipeline is the workhorse engine for M3. It handles the boilerplate of cross-validation correctly. The key selling point: it fits preprocessing inside the CV loop, which most beginners get wrong when doing it manually.</aside>
+  <aside class="notes">Timing: 2 min. This is the pattern Exercise 3.2 uses. The helper loads the Singapore credit data, drops the ID, outcome and leak columns, normalises features with PreprocessingPipeline and standardises the savings_balance target with training statistics, so an MSE of 1.0 means "no better than predicting the mean". Only 300 training rows on purpose: with about 33 correlated features ordinary least squares overfits, which is where Ridge and Lasso earn their keep. On this data cross-validation picks alpha = 100 (CV MSE about 0.77); the single test-set check comes out around 0.84, i.e. R-squared of roughly 0.16 &mdash; savings are hard to predict from the other credit fields, and that is an honest result. Kailash note: TrainingPipeline (Lessons 3.4 and 3.7) trains once and scores ONE validation split &mdash; a holdout, or only the first fold when you ask for kfold or stratified_kfold &mdash; and it does not re-fit preprocessing per fold. Full k-fold scores therefore come from sklearn's cross_val_score, as here. If experts bored: "RidgeCV computes the same leave-one-out choice in closed form."</aside>
 </section>
 
 <!-- SLIDE 23 — Lesson 3.2 Summary -->
@@ -719,15 +763,15 @@ print(results.cv_scores)  # per-fold and mean scores</code></pre>
     <li><strong>L2 (Ridge):</strong> shrinks coefficients &mdash; Gaussian prior</li>
     <li><strong>Elastic Net:</strong> combines L1 + L2 with mixing parameter &alpha;</li>
     <li><strong>Cross-validation:</strong> match CV strategy to data structure</li>
-    <li><strong>Engine:</strong> <code>TrainingPipeline</code> with built-in CV</li>
+    <li><strong>Engine:</strong> <code>PreprocessingPipeline</code> to normalise; sklearn CV to choose &lambda;</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.2:</strong> Demonstrate bias-variance tradeoff by varying polynomial degree on HDB data. Compare L1 vs L2 vs ElasticNet. Implement nested CV for unbiased model selection.
+    <strong>Exercise 3.2:</strong> Bias-variance by refitting polynomials on many synthetic sine-curve samples. Ridge, Lasso and ElasticNet on credit savings. Nested, stratified, time-series and group CV (credit defaults, ICU admissions). Learning curves.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise makes the theory tangible: students see train/test error curves diverge as complexity increases, then see regularisation pull them back together.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise makes the theory tangible. A synthetic sine curve is used for the decomposition because only there do we know the true function, so bias and variance can be measured by refitting on many fresh training sets. Regularisation runs on a small credit sample (savings_balance target) where OLS visibly overfits. Cross-validation strategies use the data structure they are meant for: stratified folds for the rare default outcome, TimeSeriesSplit on admissions sorted by admit time, GroupKFold so a repeat patient never sits on both sides. Learning curves are read the standard way: a large gap between training and validation error means HIGH VARIANCE (more data or more regularisation helps); both errors converged and high means HIGH BIAS.</aside>
 </section>
 
 
@@ -752,7 +796,7 @@ print(results.cv_scores)  # per-fold and mean scores</code></pre>
   <span class="marker marker-theory">Theory</span>
   <p>There is no single model that is best for all problems.</p>
   <div class="callout callout-theory">
-    <strong>Wolpert &amp; Macready (1997):</strong> Averaged over ALL possible data distributions, every learning algorithm performs equally well. Any advantage on one class of problems is paid for by disadvantage on another.
+    <strong>Wolpert (1996), "The Lack of A Priori Distinctions Between Learning Algorithms":</strong> Averaged over ALL possible target functions, every learning algorithm has the same off-training-set error. Any advantage on one class of problems is paid for by disadvantage on another.
   </div>
   <p><strong>What this means in practice:</strong></p>
   <ul>
@@ -761,12 +805,12 @@ print(results.cv_scores)  # per-fold and mean scores</code></pre>
     <li>The best model depends on: data size, feature types, noise level, interpretability needs</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Kailash bridge:</strong> <code>AutoMLEngine</code> systematically compares multiple models so you do not have to guess.
+    <strong>Kailash bridge:</strong> <code>AutoMLEngine</code> runs and records a model sweep on identical folds, so the comparison is auditable rather than guessed.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. No Free Lunch is why this lesson exists. We must know the full zoo to pick the right model for each problem. For experts: in practice, real-world data has structure that some algorithms exploit better than others, so some models do tend to win on tabular data (gradient boosting) and others on images (CNNs).</aside>
+  <aside class="notes">Timing: 2 min. No Free Lunch is why this lesson exists. (The 1997 Wolpert and Macready paper is the separate NFL theorem for optimisation; the learning version is Wolpert 1996.) We must know the full zoo to pick the right model for each problem. For experts: in practice, real-world data has structure that some algorithms exploit better than others, so some models do tend to win on tabular data (gradient boosting) and others on images (CNNs).</aside>
 </section>
 
 <!-- SLIDE 26 — SVM -->
@@ -963,25 +1007,40 @@ print(results.cv_scores)  # per-fold and mean scores</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AutoMLEngine</h3>
-    <p>Systematically trains and compares multiple models with consistent evaluation.</p>
-    <pre><code class="language-python">from kailash_ml import AutoMLEngine
+    <p>You supply the trial function; the engine runs the sweep, records every trial and returns the best.</p>
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from kailash_ml import AutoMLEngine
+from kailash_ml.automl.engine import AutoMLConfig, ParamSpec, TrialOutcome
+from shared.mlfp03.ex_3 import build_train_test_split, cv_scores
 
-auto = AutoMLEngine(
-    task="classification",
-    models=["random_forest", "svm", "knn", "naive_bayes", "decision_tree"],
-    cv_folds=5,
-    metric="f1_weighted"
-)
-leaderboard = auto.fit(X_train, y_train)
-print(leaderboard.ranking())  # sorted by metric</code></pre>
-  </div>
-  <div class="callout callout-kailash">
-    <strong>Why AutoMLEngine?</strong> It enforces consistent evaluation: same CV splits, same preprocessing, same metrics. Human comparison across Jupyter cells often introduces subtle inconsistencies.
+d = build_train_test_split()   # one split, one set of stratified folds
+ZOO = {"svm": SVC(), "knn": KNeighborsClassifier(25), "nb": GaussianNB(),
+       "tree": DecisionTreeClassifier(max_depth=6),
+       "rf": RandomForestClassifier(300, random_state=42)}
+
+async def trial_fn(trial):
+    s = cv_scores(ZOO[trial.params["model"]], d["X_train"], d["y_train"], d["cv"])
+    return TrialOutcome(trial.trial_number, trial.params, s["auc_roc"],
+                        "auc_roc", "maximize", extras=s)
+
+engine = AutoMLEngine(config=AutoMLConfig(metric_name="auc_roc",
+                      search_strategy="grid", max_trials=5),
+                      tenant_id="_single", actor_id="mlfp03")
+result = asyncio.run(engine.run(
+    space=[ParamSpec("model", "categorical", choices=list(ZOO))],
+    trial_fn=trial_fn))
+for t in result.all_trials:
+    print(t.params["model"], round(t.metric_value, 3))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. AutoMLEngine automates the "try every model" step. The key benefit is consistency: same splits, same preprocessing across all models. This prevents the common mistake of comparing models on different data splits. Students use this in the exercise to compare all 5 model families.</aside>
+  <aside class="notes">Timing: 2 min. AutoMLEngine does not choose models or preprocess for you: trial_fn trains and scores, and the engine supplies the sweep strategy, a time and cost budget, and an audit record of every trial. The value is consistency: every family is scored by the same cv_scores helper on the same stratified folds of the same e-commerce churn split, so differences are the models, not the data. With these default settings on this data, cross-validated ROC AUC lands around 0.74 to 0.79 for all five families, and Naive Bayes is not last. That is No Free Lunch in action. Exercise 3.3 does the comparison by hand and goes further: it tunes each family inside nested CV before comparing, so no model is judged with hand-picked settings. Always put the do-nothing row in the table: an "always churn" model scores accuracy 0.745 and churn-class F1 0.854 on the test split with ROC AUC 0.5, because churners are the majority (about 74%). Accuracy and F1 flatter every model; ROC AUC, which the baseline cannot game, is the selection metric.</aside>
 </section>
 
 <!-- SLIDE 33 — Lesson 3.3 Summary -->
@@ -995,15 +1054,15 @@ print(leaderboard.ranking())  # sorted by metric</code></pre>
     <li><strong>Naive Bayes:</strong> Bayesian with independence assumption; fast baseline</li>
     <li><strong>Decision Trees:</strong> Gini / entropy splits; interpretable but overfit</li>
     <li><strong>Random Forest:</strong> Bagging + feature subsampling; robust default</li>
-    <li><strong>Engine:</strong> <code>AutoMLEngine</code> for systematic comparison</li>
+    <li><strong>Engine:</strong> <code>AutoMLEngine</code> to run and record a sweep on identical folds</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.3:</strong> Train all 5 model families on e-commerce customer classification. Compare accuracy, F1, training time. Produce model comparison table.
+    <strong>Exercise 3.3:</strong> Predict e-commerce churn with all 5 families on the same stratified folds; tune each inside nested CV; beat the majority-class baseline; compare ROC AUC (mean &plusmn; spread), fit time and decision boundaries.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to use consistent evaluation (same CV splits) and justify their model selection with data evidence, not opinion.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to use consistent evaluation (same CV splits) and justify their model selection with data evidence, not opinion. One data note worth telling the class: the dataset marks a customer churned exactly when days_since_last_order exceeds 180, so that column defines the label and is removed from the features. With it, a depth-1 tree scores 100%, which is leakage, not learning.</aside>
 </section>
 
 
@@ -1095,13 +1154,17 @@ print(leaderboard.ranking())  # sorted by metric</code></pre>
       <div class="annotation">g_i = first derivative (gradient), h_i = second derivative (Hessian) of loss w.r.t. prediction</div>
     </div>
   </div>
-  <div class="callout callout-advanced">
-    <strong>Why 2nd order?</strong> The Hessian gives curvature information, enabling Newton-like updates. This converges faster than gradient-only methods and naturally adapts the learning rate per sample.
+  <div class="derivation-step">
+    <div class="step-label">With &Omega;(f) = &gamma;T + &frac12;&lambda;&Sigma;w&sup2;, group by leaf j (G_j = &Sigma;g_i, H_j = &Sigma;h_i) and minimise</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">w_j^* = -\frac{G_j}{H_j + \lambda} \qquad \mathcal{L}^* = -\tfrac{1}{2}\sum_{j=1}^{T} \frac{G_j^2}{H_j + \lambda} + \gamma T</span>
+      <div class="annotation">T = number of leaves. Gain (next slide) = loss before the split &minus; loss after it.</div>
+    </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 3 min. This is the core innovation of XGBoost. Most gradient boosting implementations only use the gradient (1st order). XGBoost adds the Hessian, which is like adding Newton's method to gradient descent. For beginners: "XGBoost uses both the slope and the curvature to find the best correction." For experts: note this is why XGBoost supports arbitrary differentiable loss functions.</aside>
+  <aside class="notes">Timing: 3 min. Classic gradient boosting (Friedman's original, sklearn's GradientBoosting) is first-order: each tree fits the negative gradient. XGBoost uses the Hessian too, and so do LightGBM and CatBoost. The Hessian gives curvature, so each leaf takes a Newton step w* = -G/(H+lambda) instead of a fixed-size gradient step. The regulariser Omega charges gamma per leaf and lambda for large leaf weights. Substituting w* back gives the best achievable loss for a given tree structure; the split gain on the next slide is that quantity before minus after the split. For beginners: "XGBoost uses both the slope and the curvature to find the best correction." For experts: note this is why XGBoost supports arbitrary differentiable loss functions.</aside>
 </section>
 
 <!-- SLIDE 38 — XGBoost Split Gain -->
@@ -1173,7 +1236,7 @@ print(leaderboard.ranking())  # sorted by metric</code></pre>
     <tbody>
       <tr><td><strong>Tree growth</strong></td><td>Level-wise</td><td>Leaf-wise</td><td>Symmetric</td></tr>
       <tr><td><strong>Speed</strong></td><td>Moderate</td><td>Fastest</td><td>Moderate</td></tr>
-      <tr><td><strong>Categoricals</strong></td><td>Manual encoding</td><td>Manual encoding</td><td>Native</td></tr>
+      <tr><td><strong>Categoricals</strong></td><td>Native (<code>enable_categorical</code>) or encode</td><td>Native (<code>categorical_feature</code>)</td><td>Native (ordered target stats)</td></tr>
       <tr><td><strong>Overfitting</strong></td><td>&lambda;, &gamma;, depth</td><td>&lambda;, &gamma;, leaves</td><td>Ordered boosting</td></tr>
       <tr><td><strong>Best for</strong></td><td>General tabular</td><td>Large data, speed</td><td>Many categoricals</td></tr>
     </tbody>
@@ -1192,25 +1255,41 @@ print(leaderboard.ranking())  # sorted by metric</code></pre>
   <h2>Kailash Bridge: Gradient Boosting</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline &mdash; Boosting Models</h3>
-    <pre><code class="language-python">from kailash_ml import TrainingPipeline
+    <h3>TrainingPipeline &mdash; one interface, three libraries</h3>
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from kailash_ml import TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from shared.mlfp03.ex_7 import (build_training_registry,
+    credit_feature_schema, prepare_credit_frames)
 
-# Compare all three boosting frameworks
-for model_name in ["xgboost", "lightgbm", "catboost"]:
-    pipeline = TrainingPipeline(
-        model=model_name,
-        cv_strategy="stratified_kfold",
-        cv_folds=5,
-        metric="f1_weighted",
-        hyperparams={"n_estimators": 500, "learning_rate": 0.05}
-    )
-    results = pipeline.fit(X_train, y_train)
-    print(f"{model_name}: {results.mean_score:.4f}")</code></pre>
+dev, test, cols = prepare_credit_frames()  # leak column dropped; test held out
+SPECS = {
+    "xgboost": ModelSpec("xgboost.XGBClassifier",
+        {"n_estimators": 300, "learning_rate": 0.05}),
+    "lightgbm": ModelSpec("lightgbm.LGBMClassifier", {"n_estimators": 300,
+        "learning_rate": 0.05, "verbose": -1}, framework="lightgbm"),
+    "catboost": ModelSpec("catboost.CatBoostClassifier",
+        {"iterations": 300, "learning_rate": 0.05, "verbose": 0}),
+}
+
+async def compare():
+    registry, conn = await build_training_registry()  # ModelRegistry + DB
+    try:
+        pipe = TrainingPipeline(feature_store=None, registry=registry)
+        for name, spec in SPECS.items():
+            r = await pipe.train(data=dev, schema=credit_feature_schema(cols),
+                model_spec=spec, eval_spec=EvalSpec(metrics=["accuracy", "auc"]),
+                experiment_name=f"credit_{name}")
+            print(name, round(r.metrics["auc"], 3))
+    finally:
+        await conn.close()
+
+asyncio.run(compare())</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. TrainingPipeline provides a unified interface for all three boosting libraries. Students do not need to learn three different APIs. The exercise uses this to compare XGBoost, LightGBM, and CatBoost on the same data with the same evaluation.</aside>
+  <aside class="notes">Timing: 1 min. TrainingPipeline gives one train() call for all three libraries: a ModelSpec names the class, train() holds out 20% of the dev frame (a single holdout, not cross-validation), scores it and registers the model. On the leak-free credit data the three land within half a point of each other: holdout ROC AUC about 0.79 each. That is the honest number; with the planted future_default_indicator column left in, AUC jumps to about 0.99 and XGBoost puts most of its importance on that one column. The engine's own evaluation only computes metrics from labels plus ROC AUC; AUC-PR, the primary metric for 13%-positive data, is computed from predict_proba on the test frame. Exercise 3.4 calls the three libraries directly (it needs early stopping and native CatBoost categoricals) on the same leak-free split.</aside>
 </section>
 
 <!-- SLIDE 42 — Lesson 3.4 Summary -->
@@ -1225,7 +1304,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
     <li><strong>In practice:</strong> Try all three; differences are marginal on most datasets</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.4:</strong> Train XGBoost, LightGBM, CatBoost on credit scoring data. Compare accuracy, training time, feature importance. Tune key hyperparameters. Justify selection.
+    <strong>Exercise 3.4:</strong> Boosting from scratch, then XGBoost, LightGBM and CatBoost on Singapore credit data after a leak screen. Compare AUC-PR, log loss and train time; sweep learning rate &times; depth; early-stop on a validation split, never the test set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1246,16 +1325,16 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. This lesson is where theory meets reality. Students learn why accuracy can lie, how to handle imbalanced data, and how to calibrate model confidence. The Credit Suisse AML case from the opening is the running example: 99.9% accuracy was useless because the wrong metric was used.</aside>
+  <aside class="notes">Timing: 1 min. This lesson is where theory meets reality. Students learn why accuracy can lie, how to handle imbalanced data, and how to calibrate model confidence. The running example is an illustrative anti-money-laundering (AML) model, introduced on the next slide: 99.999% accuracy and no use at all, because the wrong metric was used.</aside>
 </section>
 
 <!-- SLIDE 44 — Opening Case Revisited -->
 <section>
-  <h2>Remember the AML Model?</h2>
+  <h2>The 99.999% Accurate AML Model</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="case-stat">99.9% accuracy</div>
-  <div class="case-caption">But the compliance team called it useless.</div>
-  <p>10 million transactions. Only ~100 suspicious. The model said "everything is fine" and was 99.99% accurate.</p>
+  <div class="case-stat">99.999% accuracy</div>
+  <div class="case-caption">An illustrative anti-money-laundering case &mdash; and the compliance team calls it useless.</div>
+  <p>10 million transactions. Only ~100 suspicious. The model says "everything is fine" for every one: 9,999,900 of 10,000,000 correct = 99.999% accurate, and zero launderers caught.</p>
   <div class="callout callout-error">
     <strong>When only 0.001% of data is positive, accuracy is the WRONG metric.</strong> The model needs to find those 100 needles in 10 million haystacks. That requires precision and recall.
   </div>
@@ -1263,7 +1342,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Bring back the opening case. Now students have the vocabulary (from Lessons 3.2-3.4) to understand why accuracy failed. Walk them through: if 0.001% is positive, a "predict all negative" model is 99.999% accurate. Completely useless. We need metrics that penalise missing the positives.</aside>
+  <aside class="notes">Timing: 2 min. Introduce the case; it is a teaching illustration, not a real bank's model. Students now have the vocabulary (from Lessons 3.2-3.4) to understand why accuracy failed. Walk them through: if 0.001% is positive, a "predict all negative" model is 99.999% accurate. Completely useless. We need metrics that penalise missing the positives.</aside>
 </section>
 
 <!-- SLIDE 45 — Classification Metrics -->
@@ -1441,15 +1520,60 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   </div>
   <div class="equation-box" style="padding:8px 20px; font-size:0.9em;">
     <span class="katex-display">\text{Brier Score} = \frac{1}{N}\sum_{i=1}^{N}(p_i - y_i)^2</span>
-    <div class="annotation">Measures calibration quality. Lower is better. 0 = perfect calibration.</div>
+    <div class="annotation">Lower is better; 0 = perfect prediction. Brier mixes calibration and discrimination &mdash; check calibration itself on the reliability diagram.</div>
   </div>
   <div class="callout callout-foundations">
-    <strong>Why calibrate?</strong> When decisions depend on predicted probabilities (lending thresholds, medical triage, insurance pricing), miscalibrated probabilities lead to wrong decisions.
+    <strong>Order matters:</strong> weighted booster &rarr; calibrate on a held-out 20% of train (<code>TrainingPipeline.calibrate(model, X_val, y_val, method="sigmoid")</code>) &rarr; apply <span class="katex-inline">t^* = \frac{c_{FP}}{c_{FP}+c_{FN}} = \frac{1500}{1500+10000} = 0.130</span> to the <em>calibrated</em> probabilities.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Calibration is critical for professionals. A bank that uses model probabilities to set interest rates needs those probabilities to be correct, not just well-ranked. The reliability diagram (calibration plot) shows predicted vs actual probability. A well-calibrated model follows the diagonal.</aside>
+  <aside class="notes">Timing: 2 min. Calibration is critical for professionals. A lender that uses model probabilities to set prices needs those probabilities to be correct, not just well-ranked. The reliability diagram plots predicted probability against observed frequency; a calibrated model follows the diagonal. Points above the diagonal mean the predicted probabilities are too low; below means too high. Brier score is not a pure calibration measure: a perfectly calibrated model that always predicts the base rate of 0.3 scores 0.21. Brier decomposes into reliability minus resolution plus uncertainty. Platt scaling ("sigmoid") and isotonic regression are both fitted on data the model did not train on: Exercise 3.5 holds out 20% and calls TrainingPipeline.calibrate. The cost threshold t* = c_FP/(c_FP + c_FN) assumes calibrated probabilities. With the course's costs (a missed default, FN, costs S$10,000; a wrongly declined good applicant, FP, costs S$1,500) t* = 1,500 / 11,500 = 0.130. The order is: train the class-weighted booster, recalibrate it on a held-out 20% of the training rows, then apply t* to the calibrated probabilities. This is not double counting: class weights inflate the raw scores, and recalibration maps them back to true default rates, removing the weight's shift before the cost ratio is applied. What WOULD double count is applying t* to the raw weighted scores. Check the chosen threshold on out-of-fold predictions and report it once on the test set.</aside>
+</section>
+
+<!-- SLIDE 50b — Stacking and Blending -->
+<section class="code-fit">
+  <h2>Stacking and Blending</h2>
+  <span class="marker marker-theory">Theory</span>
+  <div class="columns">
+    <div class="col">
+      <ul style="font-size:0.8em;">
+        <li><strong>Blending:</strong> weighted average of the base models' probabilities (soft) or majority vote (hard)</li>
+        <li><strong>Stacking:</strong> a meta-model (logistic regression) learns how to combine base models from their <em>out-of-fold</em> predictions</li>
+        <li>Pays off when base models make <strong>different</strong> mistakes; near-identical boosters gain little</li>
+        <li>Score the ensemble on rows no base model saw</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.45em;"><code class="language-python">from lightgbm import LGBMClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from kailash_ml import EnsembleEngine
+from shared.mlfp03.ex_7 import prepare_credit_frames
+
+dev, test, cols = prepare_credit_frames()  # test untouched
+dev = dev.drop("application_id")
+fit_part, ens_part = dev.head(40_000), dev.tail(40_000)
+X = fit_part.drop("default").to_numpy()
+y = fit_part["default"].to_numpy()
+base = [m.fit(X, y) for m in (       # engine expects fitted models
+    LGBMClassifier(n_estimators=300, learning_rate=0.05, verbose=-1),
+    RandomForestClassifier(200, min_samples_leaf=20, random_state=42),
+    GaussianNB())]
+
+ens = EnsembleEngine()
+stacked = ens.stack(base, ens_part, target="default", fold=5)
+blended = ens.blend(base, ens_part, target="default",
+                    weights=[0.6, 0.3, 0.1])
+print(stacked.metrics["auc"], blended.metrics["auc"])
+for c in stacked.component_contributions:
+    print(c["model_class"], round(c["metrics"]["auc"], 3))</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">Timing: 2 min. Spec 3.5 asks for a brief look at combining models; M4 uses EnsembleEngine to blend anomaly scores. EnsembleEngine.blend and .stack take a polars frame, split it 80/20 themselves, fit the ensemble on the 80% and report metrics on the 20%. They also score each base model on that 20% for comparison, which is why the base models must already be fitted, and fitted on DIFFERENT rows (fit_part) so the comparison is not on rows they memorised. On the leak-free credit data the result is instructive: ROC AUC is about 0.79 for the stack, about 0.79 for the blend, 0.79 for the random forest, 0.79 for LightGBM and 0.73 for Naive Bayes. Stacking matched the best single model rather than beating it, because the strong base models agree. Stacking is also slow: it refits every base model once per fold. If experts bored: "the meta-model must be trained on out-of-fold predictions; training it on in-sample predictions rewards whichever base model overfits most."</aside>
 </section>
 
 <!-- SLIDE 51 — Lesson 3.5 Summary -->
@@ -1461,15 +1585,16 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
     <li><strong>Regression:</strong> R&sup2;, RMSE, MAE, MAPE &mdash; use RMSE as default</li>
     <li><strong>Imbalance:</strong> Class weights and focal loss over SMOTE</li>
     <li><strong>Focal loss:</strong> <span class="katex-inline">-\alpha_t(1-p_t)^\gamma \log(p_t)</span></li>
-    <li><strong>Calibration:</strong> Platt scaling or isotonic regression; Brier score to measure</li>
+    <li><strong>Calibration:</strong> Platt or isotonic on held-out rows; reliability diagram + Brier</li>
+    <li><strong>Combining models:</strong> blending and stacking (<code>EnsembleEngine</code>)</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.5:</strong> Train on imbalanced credit scoring data. Compare accuracy vs F1 vs AUC. Apply SMOTE and cost-sensitive approaches. Calibrate with Platt scaling. Show improvement on calibration plot.
+    <strong>Exercise 3.5:</strong> Imbalanced credit data (~13% default): metrics taxonomy vs an all-negative baseline; SMOTE vs cost-sensitive weights; real focal loss as a LightGBM objective; cost threshold tuned out-of-fold; Platt and isotonic via <code>TrainingPipeline.calibrate</code> on a 20% holdout.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to confront imbalanced data and discover why accuracy lies. They calibrate the model and see the Brier score improve.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to confront imbalanced data and discover why accuracy lies. Focal loss is implemented as a true custom objective (gradient and Hessian) and the gamma = 0 run must reproduce the plain baseline, which is how the code is tested. The threshold is tuned on out-of-fold predictions and reported once on the test set. Calibration is fitted on a held-out 20% split, and students read the reliability diagram rather than trusting the Brier score alone. Cost-sensitive weighting improves ranking for the minority class but distorts probabilities; calibration is what repairs them.</aside>
 </section>
 
 
@@ -1485,7 +1610,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Interpretability is not optional in regulated industries (finance, healthcare). This lesson covers SHAP, LIME, and fairness metrics. For professionals: regulators increasingly require model explainability. The EU AI Act and MAS FEAT are real compliance requirements.</aside>
+  <aside class="notes">Timing: 1 min. Interpretability is not optional in regulated industries (finance, healthcare). This lesson covers SHAP, LIME, and fairness metrics. For professionals: explainability is increasingly expected. The EU AI Act sets binding requirements for high-risk systems; Singapore's FEAT principles are supervisory guidance that calls for fairness and transparency assessment, not a binding rule.</aside>
 </section>
 
 <!-- SLIDE 53 — Why Interpretability -->
@@ -1494,10 +1619,10 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Regulatory Requirements</h3>
+      <h3>Regulation and Guidance</h3>
       <ul>
         <li>EU AI Act: "right to explanation" for high-risk AI</li>
-        <li>MAS FEAT: Fairness, Ethics, Accountability, Transparency (Singapore)</li>
+        <li>FEAT principles (Singapore, non-binding guidance): Fairness, Ethics, Accountability, Transparency</li>
         <li>ECOA (US): Cannot deny credit without explanation</li>
       </ul>
     </div>
@@ -1514,7 +1639,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. For a professional audience, the regulatory angle is the strongest motivator. MAS FEAT is directly relevant for Singapore-based professionals. The practical benefits are equally important: SHAP values have caught data leakage bugs that no other technique revealed.</aside>
+  <aside class="notes">Timing: 2 min. For a professional audience, the regulatory angle is the strongest motivator. The FEAT principles are directly relevant for Singapore-based professionals; they are principles, not prescriptive rules, so they do not mandate a particular method such as SHAP. The practical benefits are equally important: SHAP values have caught data leakage bugs that no other technique revealed.</aside>
 </section>
 
 <!-- SLIDE 54 — SHAP: Shapley Values -->
@@ -1603,17 +1728,17 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
       <tr>
         <td><strong>Disparate Impact</strong></td>
         <td><span class="katex-inline">\frac{P(\hat{Y}=1 \mid G=\text{minority})}{P(\hat{Y}=1 \mid G=\text{majority})}</span></td>
-        <td>Should be &gt; 0.8 (80% rule)</td>
+        <td>&ge; 0.8 (four-fifths rule, from US employment guidance)</td>
       </tr>
       <tr>
         <td><strong>Equalized Odds</strong></td>
         <td>TPR and FPR equal across groups</td>
-        <td>Difference &lt; 0.05</td>
+        <td>Gap &lt; 0.05 (team-set rule of thumb)</td>
       </tr>
       <tr>
         <td><strong>Calibration Parity</strong></td>
         <td>Predicted probabilities equally reliable across groups</td>
-        <td>Brier score difference &lt; 0.02</td>
+        <td>Brier gap &lt; 0.02 (team-set rule of thumb)</td>
       </tr>
     </tbody>
   </table>
@@ -1628,7 +1753,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <h2>The Fairness Impossibility Theorem</h2>
   <span class="marker marker-advanced">Advanced</span>
   <div class="callout callout-error">
-    <strong>Chouldechova (2017) / Kleinberg et al. (2016):</strong> A classifier CANNOT simultaneously satisfy demographic parity, equalized odds, AND calibration &mdash; except in trivial cases (perfect prediction or equal base rates).
+    <strong>Chouldechova (2017) / Kleinberg et al. (2016):</strong> When groups have different base rates, demographic parity, equalized odds and calibration are <em>pairwise</em> incompatible &mdash; no useful classifier satisfies even two of them, except in trivial cases (perfect prediction or an uninformative model).
   </div>
   <p><strong>What this means in practice:</strong></p>
   <ul>
@@ -1643,7 +1768,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This is one of the most important results in ML fairness. It means every deployed model makes a fairness tradeoff, whether the team acknowledges it or not. The responsible approach: choose the criterion that matches the use case, measure it, document it, and justify the choice to stakeholders.</aside>
+  <aside class="notes">Timing: 2 min. This is one of the most important results in ML fairness. Do not teach it as "pick two": with unequal base rates, parity plus equalized odds forces an uninformative classifier, parity plus calibration forces equal base rates, and equalized odds plus calibration forces perfect prediction. Exercise 3.6 works the theorem with this model's real base rates. It means every deployed model makes a fairness tradeoff, whether the team acknowledges it or not. The responsible approach: choose the criterion that matches the use case, measure it, document it, and justify the choice to stakeholders.</aside>
 </section>
 
 <!-- SLIDE 59 — ALE Plots -->
@@ -1653,7 +1778,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <p><strong>Problem with Partial Dependence Plots (PDP):</strong> When features are correlated, PDP creates unrealistic data points.</p>
   <p><strong>ALE solution:</strong> Only consider how predictions change within small windows of the feature, avoiding extrapolation to unrealistic feature combinations.</p>
   <div class="callout callout-advanced">
-    <strong>When to prefer ALE over PDP:</strong> Always, when features are correlated (which is almost always). ALE is unbiased; PDP can show spurious effects from impossible feature combinations. See Apley &amp; Zhu (2020).
+    <strong>When to prefer ALE over PDP:</strong> Always, when features are correlated (which is almost always). ALE avoids the extrapolation that lets PDP show spurious effects from impossible feature combinations. See Apley &amp; Zhu (2020).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1668,17 +1793,17 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <ul>
     <li><strong>SHAP:</strong> Game-theoretic attribution with 4 axioms and Shapley value formula</li>
     <li><strong>LIME:</strong> Local linear approximation &mdash; fast but less rigorous</li>
-    <li><strong>ALE:</strong> Unbiased alternative to partial dependence for correlated features</li>
+    <li><strong>ALE:</strong> Alternative to partial dependence that avoids impossible rows when features correlate</li>
     <li><strong>Fairness:</strong> Disparate impact, equalized odds, calibration parity</li>
     <li><strong>Impossibility:</strong> Cannot satisfy all fairness criteria simultaneously</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.6:</strong> Compute SHAP values for the credit scoring model. Generate summary and waterfall plots. Measure disparate impact across demographic groups. Document findings.
+    <strong>Exercise 3.6:</strong> On a <code>TrainingPipeline</code> LightGBM credit model: TreeSHAP with additivity checked in log-odds, permutation importance + ALE, LIME vs SHAP reason codes, SHAP interactions, and a fairness audit on race, gender and age.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to move from "the model is accurate" to "the model is accurate, interpretable, and fair." This is the professional standard for deployed ML systems.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. The exercise forces students to move from "the model is accurate" to "the model is accurate, interpretable, and fair." Two details to stress. SHAP values for LightGBM are in log-odds, so the additivity check compares base value plus SHAP sum against the raw (log-odds) output, not the probability. The fairness audit's four-fifths result: race (ratio about 0.94) and gender (about 0.96) pass, but the age bands fail badly (about 0.02), because the model's approvals concentrate in some age bands. A failing ratio is not a code bug to hide: it is routed to a human risk-committee decision, with the impossibility theorem explaining why no threshold fixes every criterion at once.</aside>
 </section>
 
 
@@ -1703,25 +1828,33 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>WorkflowBuilder</h3>
-    <p>Build ML pipelines as directed acyclic graphs (DAGs) of nodes.</p>
-    <pre><code class="language-python">from kailash import WorkflowBuilder, Runtime
+    <p>Build ML pipelines as directed acyclic graphs (DAGs) of named nodes. Edges map one node's output to another's input.</p>
+    <pre style="font-size: 0.5em;"><code class="language-python">from kailash.runtime import LocalRuntime
+from kailash.workflow.builder import WorkflowBuilder
 
-wf = WorkflowBuilder("ml-pipeline")
-wf.add_node("load", data_loader_node)
-wf.add_node("preprocess", preprocessing_node)
-wf.add_node("train", training_node)
-wf.add_node("evaluate", evaluation_node)
-wf.connect("load", "preprocess")
-wf.connect("preprocess", "train")
-wf.connect("train", "evaluate")
+wf = WorkflowBuilder()
+wf.add_node("CreditLoadNode", "load", {"min_rows": 50_000})  # custom: next slide
+wf.add_node("PythonCodeNode", "check", {"code":
+    "result = {'rate': default_rate, 'ok': 0.05 &lt;= default_rate &lt;= 0.30}"})
+wf.add_node("SwitchNode", "gate",
+            {"condition_field": "ok", "operator": "==", "value": True})
+wf.add_node("PythonCodeNode", "go", {"code": "result = dict(payload, next='train')"})
+wf.add_node("PythonCodeNode", "stop",
+            {"code": "result = dict(payload, next='investigate')"})
+# add_connection(from_node, from_output, to_node, to_input)
+wf.add_connection("load", "default_rate", "check", "default_rate")
+wf.add_connection("check", "result", "gate", "input_data")
+wf.add_connection("gate", "true_output", "go", "payload")
+wf.add_connection("gate", "false_output", "stop", "payload")
 
-runtime = Runtime()
-results = runtime.execute(wf.build())</code></pre>
+with LocalRuntime(conditional_execution="skip_branches") as runtime:
+    results, run_id = runtime.execute(wf.build())
+print(run_id, results["go"]["result"])  # the branch not taken has no entry</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. WorkflowBuilder is from the core Kailash SDK (not kailash-ml). It handles node connections, execution order, error handling, and parallelism. Think of it as a factory assembly line: each node does one job and passes the result to the next.</aside>
+  <aside class="notes">Timing: 2 min. WorkflowBuilder is from the core Kailash SDK (not kailash-ml). add_node takes the node type, a node id and its config; add_connection wires a named output to a named input. LocalRuntime validates the DAG, runs nodes in dependency order and returns the results per node plus a run id for the audit trail; if a node fails, execute raises (there is no silent fallback). PythonCodeNode runs a few inline lines: its inputs arrive as variables and whatever you assign to result is its output. SwitchNode routes input_data to true_output or false_output; with skip_branches, only the taken branch runs. On the credit data the default rate is about 13%, so the gate routes to "go". Node outputs must be JSON-serialisable, so Exercise 3.7 passes parquet paths and registry name plus version between nodes, not DataFrames or model objects.</aside>
 </section>
 
 <!-- SLIDE 63 — Custom Nodes -->
@@ -1731,56 +1864,78 @@ results = runtime.execute(wf.build())</code></pre>
   <p>Every workflow step is a node. Kailash provides built-in nodes and lets you create custom ones.</p>
   <div class="kailash-bridge">
     <h3>Custom Node Example</h3>
-    <pre><code class="language-python">from kailash import Node, register_node
+    <pre style="font-size: 0.48em;"><code class="language-python">from typing import Any
+from kailash.nodes.base import Node, NodeParameter, register_node
+from shared.mlfp03.ex_7 import load_credit_frame
 
-@register_node("feature_engineer")
-class FeatureEngineerNode(Node):
-    def execute(self, inputs):
-        df = inputs["data"]
-        df = df.with_columns(
-            (pl.col("floor_area") * pl.col("storey")).alias("size_score"),
-            pl.col("month").dt.month().alias("sale_month"),
-        )
-        return {"data": df, "feature_count": len(df.columns)}</code></pre>
+@register_node()
+class CreditLoadNode(Node):  # leak-free credit table -> JSON-safe summary
+    def get_parameters(self) -&gt; dict[str, NodeParameter]:
+        return {"min_rows": NodeParameter(name="min_rows", type=int,
+                                          required=False, default=1000)}
+    def run(self, **kwargs: Any) -&gt; dict[str, Any]:
+        df = load_credit_frame()
+        if df.height &lt; kwargs.get("min_rows", 1000):
+            raise ValueError(f"only {df.height} rows")
+        return {"rows": df.height,
+                "default_rate": float(df["default"].mean())}</code></pre>
   </div>
-  <p><strong>Also available:</strong> <code>PythonCodeNode</code> (inline code), <code>ConditionalNode</code> (branching logic).</p>
+  <p><strong>Also available:</strong> <code>PythonCodeNode</code> (inline code), <code>SwitchNode</code> (branching), <code>AsyncNode</code> (<code>async_run</code>, for engines such as <code>TrainingPipeline</code>).</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Custom nodes encapsulate each step of the pipeline. The decorator registers the node so WorkflowBuilder can find it. PythonCodeNode is for quick prototyping. ConditionalNode enables branching: if model accuracy above threshold, proceed to registration; otherwise, retrain with different parameters.</aside>
+  <aside class="notes">Timing: 2 min. A custom node is a class decorated with @register_node() so WorkflowBuilder can find it by its class name. get_parameters declares the inputs the node accepts (name, type, required, default); run receives them as keyword arguments and returns a dict whose keys are the outputs other nodes can connect to. Raise on bad input: a raised error stops the workflow and surfaces in the run, which is the point. Nodes that call async engines (TrainingPipeline, ModelRegistry) subclass AsyncNode and implement async_run instead. In Exercise 3.7 the DAG is load, preprocess, train (TrainingPipeline), evaluate on the untouched test frame, then a PythonCodeNode quality gate and a SwitchNode that either promotes the model or holds it in staging.</aside>
 </section>
 
 <!-- SLIDE 64 — HyperparameterSearch -->
 <section class="code-fit">
   <h2>Bayesian Hyperparameter Search</h2>
   <span class="marker marker-theory">Theory</span>
-  <div class="kailash-bridge">
-    <h3>HyperparameterSearch</h3>
-    <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig
+  <div class="columns">
+  <div class="col" style="flex:2.4;">
+  <div class="kailash-bridge" style="padding:10px 14px;">
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from kailash_ml import HyperparameterSearch, TrainingPipeline
+from kailash_ml.engines.hyperparameter_search import (
+    ParamDistribution as P, SearchConfig, SearchSpace)
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from shared.mlfp03.ex_7 import (build_training_registry,
+    credit_feature_schema, prepare_credit_frames)
 
-space = SearchSpace({
-    "n_estimators": (100, 1000),
-    "max_depth": (3, 12),
-    "learning_rate": (0.01, 0.3, "log"),
-    "subsample": (0.6, 1.0),
-})
+dev, test, cols = prepare_credit_frames()   # search on dev; test used once
+space = SearchSpace(params=[P("n_estimators", "int_uniform", low=100, high=800),
+    P("learning_rate", "log_uniform", low=0.01, high=0.3),
+    P("num_leaves", "int_uniform", low=15, high=127)])
 
-search = HyperparameterSearch(
-    model="xgboost",
-    search_space=space,
-    config=SearchConfig(strategy="bayesian", n_trials=50, cv_folds=5),
-    metric="f1_weighted"
-)
-best = search.run(X_train, y_train)
-print(best.params, best.score)</code></pre>
+async def search():
+    registry, conn = await build_training_registry()
+    try:
+        return await HyperparameterSearch(pipeline=TrainingPipeline(
+            feature_store=None, registry=registry)).search(
+            data=dev, schema=credit_feature_schema(cols),
+            base_model_spec=ModelSpec("lightgbm.LGBMClassifier",
+                {"verbose": -1}, framework="lightgbm"),
+            search_space=space, config=SearchConfig(strategy="bayesian",
+                n_trials=20, metric_to_optimize="auc"),
+            eval_spec=EvalSpec(metrics=["auc"]),  # holdout carved from dev
+            experiment_name="credit_hp_search")
+    finally:
+        await conn.close()
+
+best = asyncio.run(search())
+print(best.best_params, best.best_metrics["auc"])</code></pre>
   </div>
-  <div class="callout callout-theory">
+  </div>
+  <div class="col" style="flex:1;">
+  <div class="callout callout-theory" style="font-size:0.8em;">
     <strong>Why Bayesian?</strong> Grid search is exhaustive (too slow). Random search is better but uninformed. Bayesian optimisation builds a surrogate model of the objective and samples where improvement is most likely.
+  </div>
+  </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. HyperparameterSearch wraps Bayesian optimisation with a clean API. The search space uses tuples for ranges and "log" for log-scale parameters (learning rate). 50 trials with Bayesian is typically better than 1000 trials with random search. Connects to nested CV: the inner loop of nested CV is hyperparameter search.</aside>
+  <aside class="notes">Timing: 2 min. HyperparameterSearch drives TrainingPipeline: each trial is one train() call on the dev frame, scored on a holdout carved from dev. The space is a list of ParamDistribution objects: int_uniform, uniform, log_uniform (use it for learning rates) and categorical with choices. strategy="bayesian" uses Optuna's TPE sampler; the other strategies are grid, random and successive_halving. There is no cross-validation inside the search: each trial scores one holdout, so the winner is re-checked once on the untouched test frame. Bayesian search usually finds good settings in fewer trials than random search because it concentrates trials where past trials scored well; how much it helps depends on the problem. Exercise 3.7 compares 20 Bayesian trials with a 4-point grid on the same dev frame and validation rows. Connects to nested CV: the inner loop of nested CV is hyperparameter search.</aside>
 </section>
 
 <!-- SLIDE 65 — ModelRegistry -->
@@ -1789,33 +1944,40 @@ print(best.params, best.score)</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>ModelRegistry</h3>
-    <pre><code class="language-python">from kailash_ml import ModelRegistry, ModelSignature, MetricSpec
+    <pre style="font-size: 0.5em;"><code class="language-python">from kailash_ml.types import MetricSpec, ModelSignature
+from shared.mlfp03.ex_7 import build_training_registry, credit_feature_schema
 
-registry = ModelRegistry()
-registry.register(
-    model=best_model,
-    name="credit-scorer-v2",
-    signature=ModelSignature(
-        inputs={"age": "float", "income": "float", "credit_history": "int"},
-        output={"default_probability": "float"}
-    ),
-    metrics={"f1": 0.87, "auc": 0.93, "brier": 0.12},
-    stage="staging"
-)</code></pre>
+async def register(artifact: bytes, cols: list[str], test_auc: float):
+    registry, conn = await build_training_registry()
+    try:
+        v = await registry.register_model(
+            "credit_default", artifact,              # pickled model bytes
+            metrics=[MetricSpec("auc_roc", test_auc, split="test")],
+            signature=ModelSignature(
+                input_schema=credit_feature_schema(cols),
+                output_columns=["default_probability", "default_label"],
+                output_dtypes=["float64", "int64"],
+                model_type="classifier"))
+        # every new version starts in "staging"; promotion needs a reason
+        await registry.promote_model("credit_default", v.version,
+            "production", reason=f"test AUC {test_auc:.3f} passed the gate")
+        return v.version
+    finally:
+        await conn.close()</code></pre>
   </div>
-  <div style="margin-top:12px;">
-    <span class="lifecycle-stage stage-experiment">Experiment</span>
-    <span style="font-size:1.2em;">&rarr;</span>
+  <div style="margin-top:8px;">
     <span class="lifecycle-stage stage-staging">Staging</span>
+    <span style="font-size:1.2em;">&rarr;</span>
+    <span class="lifecycle-stage stage-experiment">Shadow</span>
     <span style="font-size:1.2em;">&rarr;</span>
     <span class="lifecycle-stage stage-production">Production</span>
     <span style="font-size:1.2em;">&rarr;</span>
-    <span class="lifecycle-stage stage-retired">Retired</span>
+    <span class="lifecycle-stage stage-retired">Archived</span>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. ModelRegistry tracks every model version with its signature, metrics, and lifecycle stage. The signature defines the contract: what goes in, what comes out. This prevents the "works on my laptop" problem. The lifecycle stages map to real deployment: experiment (dev), staging (testing), production (live), retired (archived).</aside>
+  <aside class="notes">Timing: 2 min. ModelRegistry tracks every model version with its signature, metrics, and lifecycle stage. register_model stores the artefact bytes, MetricSpec rows (name, value, split, higher_is_better) and a ModelSignature: the input FeatureSchema plus the output columns and dtypes, the contract a serving layer can check requests against. TrainingPipeline already registers each model it trains with an automatic one-column signature; Exercise 3.7 registers a production entry with the richer contract. The registry's stages are staging, shadow, production and archived, and only some moves are allowed: promoting a new version to production archives the previous production version automatically, and an archived version cannot jump straight back to production; it goes archived to staging to production. That route is the rollback Exercise 3.8 rehearses. There is no registry.promote; the call is promote_model.</aside>
 </section>
 
 <!-- SLIDE 66 — Model Lifecycle -->
@@ -1824,15 +1986,16 @@ registry.register(
   <span class="marker marker-foundations">Foundations</span>
   <div class="flowchart-box">
     <p style="text-align:center; font-size:0.9em;">
-      <strong>Experiment</strong> &rarr; <strong>Register</strong> &rarr; <strong>Stage</strong> &rarr; <strong>Validate</strong> &rarr; <strong>Promote</strong> &rarr; <strong>Serve</strong> &rarr; <strong>Monitor</strong> &rarr; <strong>Retire</strong>
+      <strong>Experiment</strong> &rarr; <strong>Register (staging)</strong> &rarr; <strong>Validate</strong> &rarr; <strong>Shadow</strong> &rarr; <strong>Promote (production)</strong> &rarr; <strong>Serve</strong> &rarr; <strong>Monitor</strong> &rarr; <strong>Archive</strong>
     </p>
   </div>
   <table>
-    <thead><tr><th>Stage</th><th>Gate</th><th>Who Decides</th></tr></thead>
+    <thead><tr><th>Transition</th><th>Gate</th><th>Who Decides</th></tr></thead>
     <tbody>
-      <tr><td>Experiment &rarr; Stage</td><td>Metrics meet minimum thresholds</td><td>Automated (pipeline)</td></tr>
-      <tr><td>Stage &rarr; Production</td><td>A/B test on shadow traffic passes</td><td>Human (model owner)</td></tr>
-      <tr><td>Production &rarr; Retired</td><td>Drift detected or new model promoted</td><td>Automated + human review</td></tr>
+      <tr><td>Experiment &rarr; staging</td><td>Metrics meet minimum thresholds</td><td>Automated (pipeline)</td></tr>
+      <tr><td>Staging/shadow &rarr; production</td><td>Test-set gates + shadow traffic pass</td><td>Human (model owner)</td></tr>
+      <tr><td>Production &rarr; archived</td><td>Drift detected or new version promoted</td><td>Automated + human review</td></tr>
+      <tr><td>Rollback</td><td>archived &rarr; staging &rarr; production</td><td>Human (on incident)</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -1854,9 +2017,9 @@ registry.register(
       <li>Result: unbiased estimate of how well a tuned model generalises</li>
     </ul>
   </div>
-  <p>Expensive (25 total fits for 5x5) but the gold standard for model comparison.</p>
+  <p>Expensive &mdash; 5 &times; (5 &times; K + 1) fits for K candidate settings &mdash; but the gold standard for model comparison.</p>
   <div class="callout callout-kailash">
-    <strong>Kailash bridge:</strong> <code>TrainingPipeline</code> supports nested CV natively: <code>cv_strategy="nested"</code> with separate inner and outer fold counts.
+    <strong>Build it with sklearn:</strong> <code>cross_val_score(GridSearchCV(model, grid, cv=inner), X, y, cv=outer)</code>, as in Exercises 3.2 and 3.3. <code>TrainingPipeline</code> and <code>HyperparameterSearch</code> score a single holdout, so they have no nested mode.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1873,10 +2036,10 @@ registry.register(
     <li><strong>HyperparameterSearch:</strong> Bayesian optimisation &gt; grid search &gt; random search</li>
     <li><strong>ModelRegistry:</strong> Version, sign, and lifecycle-manage models</li>
     <li><strong>Nested CV:</strong> Unbiased model selection (outer) + tuning (inner)</li>
-    <li><strong>Model lifecycle:</strong> Experiment &rarr; Stage &rarr; Production &rarr; Retire</li>
+    <li><strong>Model lifecycle:</strong> staging &rarr; shadow &rarr; production &rarr; archived</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.7:</strong> Build automated ML workflow: data loading &rarr; preprocessing &rarr; training &rarr; evaluation &rarr; conditional promotion. Register best model with signature.
+    <strong>Exercise 3.7:</strong> Credit-default workflow: load &rarr; preprocess &rarr; train (<code>TrainingPipeline</code>) &rarr; evaluate &rarr; <code>PythonCodeNode</code> gate &rarr; <code>SwitchNode</code> promote/hold. Plus DataFlow persistence, Bayesian search vs grid, and a registry entry with a signature.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1907,28 +2070,39 @@ registry.register(
   <div class="kailash-bridge">
     <h3>DataFlow</h3>
     <p>Zero-config database operations for persisting ML results.</p>
-    <pre><code class="language-python">from kailash_dataflow import DataFlow, field
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from dataflow import DataFlow
 
-db = DataFlow()
+db = DataFlow("sqlite:///mlfp03_results.db")
 
 @db.model
-class PredictionResult:
-    customer_id: str = field(primary_key=True)
-    score: float = field()
-    model_version: str = field()
-    predicted_at: str = field()
+class CreditEvaluation:
+    id: int                      # primary key, generated on insert
+    model_name: str
+    model_version: int
+    auc_roc: float
+    auc_pr: float
+    review_status: str = "pending"
 
-# CRUD operations
-await db.express.create(PredictionResult,
-    customer_id="C001", score=0.73,
-    model_version="v2.1", predicted_at="2024-03-15"
-)
-results = await db.express.list(PredictionResult)</code></pre>
+async def save_and_review(version: int, metrics: dict[str, float]):
+    await db.initialize()
+    try:
+        await db.express.create("CreditEvaluation", {
+            "model_name": "credit_default", "model_version": version,
+            "auc_roc": metrics["auc_roc"], "auc_pr": metrics["auc_pr"]})
+        row = await db.express.find_one(
+            "CreditEvaluation", {"model_version": version})
+        await db.express.update("CreditEvaluation", row["id"],
+                                {"review_status": "approved"})
+        return await db.express.list(
+            "CreditEvaluation", filter={"model_name": "credit_default"})
+    finally:
+        await db.close_async()</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. DataFlow handles the "where do predictions go?" question. In production, predictions must be stored for audit, monitoring, and business use. The decorator-based schema makes it simple. For beginners: "DataFlow is how the model's predictions get saved to a database so other systems can use them."</aside>
+  <aside class="notes">Timing: 2 min. DataFlow handles the "where do results go?" question. In production, evaluations and predictions must be stored for audit, monitoring, and business use. The plain class annotations ARE the schema (there is no field() helper); id: int becomes the auto-generated primary key, and created_at / updated_at are added for you. db.express takes the model name as a string: create, read (by id), find_one (by filter), list, update, delete and count. Pass in the metrics you actually measured; Exercise 3.7 writes TrainingPipeline's test-set metrics. For beginners: "DataFlow is how the model's predictions get saved to a database so other systems can use them."</aside>
 </section>
 
 <!-- SLIDE 71 — Async Primer -->
@@ -1938,13 +2112,23 @@ results = await db.express.list(PredictionResult)</code></pre>
   <p>DataFlow uses <code>async/await</code> for database operations. Here is all you need to know:</p>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># Synchronous (blocking)
-result = db.query("SELECT ...")
-# Python waits. Nothing else runs.
+      <pre><code class="language-python">import asyncio
+from dataflow import DataFlow
 
-# Asynchronous (non-blocking)
-result = await db.query("SELECT ...")
-# Python can do other work while waiting.</code></pre>
+db = DataFlow("sqlite:///mlfp03_results.db")
+
+async def main():
+    await db.initialize()
+    try:
+        # await: wait for the database,
+        # let other work run meanwhile
+        return await db.express.count(
+            "CreditEvaluation")
+    finally:
+        await db.close_async()
+
+# a plain script starts the event loop once
+n_rows = asyncio.run(main())</code></pre>
     </div>
     <div class="col">
       <h3>Why Async?</h3>
@@ -1956,7 +2140,7 @@ result = await db.query("SELECT ...")
     </div>
   </div>
   <div class="callout callout-foundations">
-    <strong>Rule of thumb:</strong> If you see <code>await</code>, the function must be <code>async def</code>. That is the only syntax difference.
+    <strong>Rule of thumb:</strong> If you see <code>await</code>, the function must be <code>async def</code>; a script runs it with <code>asyncio.run(...)</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -1970,24 +2154,25 @@ result = await db.query("SELECT ...")
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
     <h3>Connection Lifecycle</h3>
-    <pre><code class="language-python">from kailash_dataflow import DataFlow, ConnectionManager
+    <pre><code class="language-python">from kailash.db import ConnectionManager
+from kailash_ml import ModelRegistry
 
-db = DataFlow()
-
-# Context manager ensures clean connection lifecycle
-async with ConnectionManager(db) as conn:
-    await conn.create_tables()
-    await db.express.create(PredictionResult, ...)
-    results = await db.express.list(PredictionResult)
-# Connection automatically closed on exit</code></pre>
+async def latest_versions(name: str):
+    conn = ConnectionManager("sqlite:///mlfp03_models.db")
+    await conn.initialize()          # open the connection
+    try:
+        registry = ModelRegistry(conn)
+        return await registry.get_model_versions(name)
+    finally:
+        await conn.close()           # always runs, even on error</code></pre>
   </div>
   <div class="callout callout-warning">
-    <strong>Always use ConnectionManager as a context manager.</strong> Forgetting to close connections causes resource leaks in production. The <code>async with</code> pattern guarantees cleanup.
+    <strong>Always close in a <code>finally</code> block.</strong> <code>ConnectionManager</code> (used by ModelRegistry, DriftMonitor, ExperimentTracker) is not a context manager: <code>initialize()</code> &rarr; work &rarr; <code>close()</code>. DataFlow follows the same shape: <code>initialize()</code> &rarr; <code>close_async()</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Connection management is a production concern. In a notebook, leaked connections are annoying. In a production server handling thousands of requests, they cause crashes. The context manager pattern is the safe default.</aside>
+  <aside class="notes">Timing: 2 min. Connection management is a production concern. In a notebook, leaked connections are annoying. In a production server handling thousands of requests, they cause crashes. ConnectionManager comes from kailash.db and takes a database URL; it has no async-with support, so the try/finally pattern is the safe default. One practical trap from Exercise 3.8: give DriftMonitor its OWN database file. The registry's database already contains a drift-reports table with a different layout, so pointing both at the same file fails.</aside>
 </section>
 
 <!-- SLIDE 73 — DriftMonitor Overview -->
@@ -2016,7 +2201,7 @@ async with ConnectionManager(db) as conn:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Drift is why ML is not "deploy and forget." COVID-19 broke every model trained on pre-pandemic data. For financial models: interest rate changes, regulatory changes, and economic cycles all cause drift. The DriftMonitor detects this automatically.</aside>
+  <aside class="notes">Timing: 2 min. Drift is why ML is not "deploy and forget." COVID-19 broke many models trained on pre-pandemic data. For financial models: interest rate changes, regulatory changes, and economic cycles all cause drift. The DriftMonitor detects this automatically.</aside>
 </section>
 
 <!-- SLIDE 74 — PSI and KS Test -->
@@ -2032,7 +2217,7 @@ async with ConnectionManager(db) as conn:
       <ul style="font-size:0.8em;">
         <li>PSI &lt; 0.1: no significant change</li>
         <li>0.1 &le; PSI &lt; 0.25: moderate change</li>
-        <li>PSI &ge; 0.25: significant drift</li>
+        <li>PSI &ge; 0.25: significant drift (DriftMonitor's default alert: 0.2)</li>
       </ul>
     </div>
     <div class="col">
@@ -2042,7 +2227,7 @@ async with ConnectionManager(db) as conn:
       </div>
       <ul style="font-size:0.8em;">
         <li>Measures max distance between CDFs</li>
-        <li>p-value indicates significance</li>
+        <li>p-value indicates significance &mdash; tighten it when testing many features (Bonferroni)</li>
         <li>Distribution-free (no assumptions)</li>
       </ul>
     </div>
@@ -2059,28 +2244,37 @@ async with ConnectionManager(db) as conn:
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>DriftMonitor</h3>
-    <pre><code class="language-python">from kailash_ml import DriftMonitor, DriftSpec
+    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+import polars as pl
+from kailash.db import ConnectionManager
+from kailash_ml import DriftMonitor
+from shared.mlfp03.ex_7 import prepare_credit_frames
 
-monitor = DriftMonitor(
-    reference_data=X_train,
-    spec=DriftSpec(
-        features=["age", "income", "credit_history"],
-        methods=["psi", "ks"],
-        thresholds={"psi": 0.25, "ks_pvalue": 0.01},
-        frequency="daily"
-    )
-)
+dev, test, cols = prepare_credit_frames()
+batches = {"clean": test,
+           "income_x1.5": test.with_columns(pl.col("income_sgd") * 1.5)}
 
-# Check new production data for drift
-report = monitor.check(X_production)
-if report.has_drift:
-    print(f"Drift detected: {report.drifted_features}")
-    # Trigger retraining pipeline</code></pre>
+async def check(reference, batches, features):
+    conn = ConnectionManager("sqlite:///mlfp03_drift.db")  # its OWN file
+    await conn.initialize()
+    try:
+        monitor = DriftMonitor(conn, tenant_id="_single",
+                               psi_threshold=0.2, ks_threshold=0.001)
+        await monitor.set_reference_data("credit_default", reference, features)
+        for name, batch in batches.items():
+            r = await monitor.check_drift("credit_default", batch)
+            flagged = [f.feature_name for f in r.feature_results
+                       if f.drift_detected]
+            print(name, r.overall_drift_detected, r.overall_severity, flagged)
+    finally:
+        await conn.close()
+
+asyncio.run(check(dev, batches, cols))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. DriftMonitor wraps PSI and KS into a monitoring framework. The reference data is the training set. Production data is compared against it on the configured schedule. When drift is detected, the system can trigger automatic retraining or alert a human.</aside>
+  <aside class="notes">Timing: 2 min. DriftMonitor takes a ConnectionManager and stores the reference distribution (the training data the model learned from) under the model name; check_drift computes PSI and KS (plus Jensen-Shannon) per feature and returns a report with per-feature results, an overall flag and a severity. On the credit data the untouched test batch raises no alert, and the batch with incomes scaled by 1.5 is flagged "severe" on income_sgd alone. The KS p-value threshold is 0.001 rather than 0.05 because 33 features are tested at once: at 0.05, one or two features would be flagged by chance in every clean batch (Bonferroni: 0.05 / 33 is about 0.0015). Give the monitor its own database file; sharing the registry's file fails. Scheduled checks (schedule_monitoring with a DriftSpec) exist for production; Exercise 3.8 runs the checks explicitly and records each one as a DataFlow DriftCheck row, then acknowledges alerts and deletes a smoke-test row.</aside>
 </section>
 
 <!-- SLIDE 76 — Model Cards -->
@@ -2121,7 +2315,7 @@ if report.has_drift:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Model cards are the "nutrition label" for ML models. They document performance, limitations, and fairness for anyone who uses or governs the model. For regulated industries, model cards are increasingly mandatory. The exercise requires students to create one for their credit scoring model.</aside>
+  <aside class="notes">Timing: 2 min. Model cards are the "nutrition label" for ML models. They document performance, limitations, and fairness for anyone who uses or governs the model. In regulated industries this kind of documentation is increasingly expected by model-risk reviewers. kailash-ml has no model-card generator; Exercise 3.8 writes the card itself, and every number in it, including the fairness results by race, gender and age band, is measured, not typed in as prose.</aside>
 </section>
 
 <!-- SLIDE 77 — Conformal Prediction -->
@@ -2130,19 +2324,19 @@ if report.has_drift:
   <span class="marker marker-advanced">Advanced</span>
   <p><strong>Problem:</strong> Most models give point predictions. Decision-makers need to know how uncertain the prediction is.</p>
   <div class="callout callout-advanced">
-    <strong>Conformal prediction (Vovk et al. 2005):</strong> Distribution-free prediction intervals with guaranteed coverage. If you request 90% coverage, the true value falls within the interval at least 90% of the time &mdash; regardless of the underlying distribution.
+    <strong>Conformal prediction (Vovk et al. 2005):</strong> Distribution-free prediction intervals or sets. If calibration and test data are <strong>exchangeable</strong> (e.g. i.i.d.), a 90% set contains the true value at least 90% of the time <em>on average over cases</em> (marginal coverage) &mdash; with no assumption about the distribution itself.
   </div>
-  <p><strong>How it works:</strong></p>
+  <p><strong>How it works (split conformal):</strong></p>
   <ol style="font-size:0.85em;">
     <li>Train model on training set</li>
-    <li>Compute nonconformity scores on calibration set</li>
-    <li>For new prediction: interval = prediction &plusmn; quantile of calibration scores</li>
+    <li>Compute nonconformity scores on n calibration rows</li>
+    <li><span class="katex-inline">\hat{q}</span> = the <span class="katex-inline">\lceil (n+1)(1-\alpha) \rceil / n</span> quantile of the scores; regression: prediction &plusmn; <span class="katex-inline">\hat{q}</span>; classification: every class whose score &le; <span class="katex-inline">\hat{q}</span></li>
   </ol>
-  <p style="font-size:0.85em; color:#64748B;">No distributional assumptions. Works with any model. Connects to calibration (Lesson 3.5).</p>
+  <p style="font-size:0.85em; color:#64748B;">Works with any model. Drift breaks exchangeability, and with it the guarantee. Connects to calibration (Lesson 3.5).</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Conformal prediction is the modern approach to uncertainty quantification. Unlike Bayesian methods, it makes no distributional assumptions. The guarantee is finite-sample and distribution-free. For professionals: "Instead of saying the HDB price is S$580,000, the model says S$550,000 to S$610,000 with 90% coverage."</aside>
+  <aside class="notes">Timing: 2 min. Conformal prediction is the modern approach to uncertainty quantification. Unlike Bayesian methods, it makes no distributional assumptions. The guarantee is finite-sample, but it is marginal (on average over applicants, not for each applicant) and it needs exchangeable data, which drift violates. Exercise 3.8 uses the classification version on credit default: an applicant whose prediction set holds both classes is ambiguous and is routed to a human reviewer. The ceil((n+1)(1-alpha))/n quantile (taken with method="higher") is the finite-sample correction; a plain 90th percentile slightly under-covers. For professionals: "Instead of saying the HDB price is S$580,000, the model says S$550,000 to S$610,000 with 90% coverage."</aside>
 </section>
 
 <!-- SLIDE 78 — Full Production Pipeline -->
@@ -2159,7 +2353,7 @@ if report.has_drift:
     <table style="font-size:0.78em;">
       <thead><tr><th>Stage</th><th>Engine</th></tr></thead>
       <tbody>
-        <tr><td>Train + Evaluate</td><td><code>TrainingPipeline</code>, <code>AutoMLEngine</code></td></tr>
+        <tr><td>Train + Evaluate + Calibrate</td><td><code>TrainingPipeline</code> (<code>.train</code>, <code>.calibrate</code>)</td></tr>
         <tr><td>Tune</td><td><code>HyperparameterSearch</code></td></tr>
         <tr><td>Register + Promote</td><td><code>ModelRegistry</code></td></tr>
         <tr><td>Persist</td><td><code>DataFlow</code></td></tr>
@@ -2213,16 +2407,16 @@ if report.has_drift:
     <li><strong>DataFlow:</strong> Persist predictions with schema validation and connection management</li>
     <li><strong>DriftMonitor:</strong> PSI + KS test for feature drift detection</li>
     <li><strong>Model cards:</strong> Document performance, fairness, and limitations</li>
-    <li><strong>Conformal prediction:</strong> Distribution-free uncertainty intervals</li>
+    <li><strong>Conformal prediction:</strong> Distribution-free sets with marginal coverage (needs exchangeability)</li>
     <li><strong>MLOps:</strong> CI/CD for ML &mdash; code AND data trigger deployment</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.8:</strong> Deploy credit scoring model as full production pipeline. Persist to DataFlow. Set up DriftMonitor. Generate model card. Simulate drift and verify detection.
+    <strong>Exercise 3.8:</strong> Calibrated credit model &rarr; conformal sets &rarr; DriftMonitor on injected gradual/sudden drift with DataFlow alert rows &rarr; measured model card &rarr; registry promotion and rollback &rarr; 11 computed readiness gates + human sign-off.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. This exercise is the capstone: students build the full pipeline from training to monitoring. If they can do this, they can productionise ML models.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. This exercise is the capstone. The model is trained and calibrated through TrainingPipeline; the decision threshold is 0.130, the cost-optimal t* from Lesson 3.5. Drift is checked with DriftMonitor (PSI 0.2, KS p-value 0.001) and every check is persisted and acknowledged through DataFlow. Promotion uses promote_model, and the rollback is rehearsed by moving the archived version back through staging to production and verifying the restored model is the same one. The readiness check computes 11 gates from the real artefacts left by earlier steps; what code cannot judge (for example the age-band fairness failure) goes to a human sign-off, not a hard-coded pass.</aside>
 </section>
 
 
@@ -2265,10 +2459,10 @@ if report.has_drift:
     <thead><tr><th>Engine</th><th>Lesson</th><th>Purpose</th></tr></thead>
     <tbody>
       <tr><td><code>FeatureEngineer</code></td><td>3.1</td><td>Generate and select features</td></tr>
-      <tr><td><code>FeatureStore</code></td><td>3.1</td><td>Versioned features with point-in-time correctness</td></tr>
-      <tr><td><code>TrainingPipeline</code></td><td>3.2-3.4</td><td>Unified training with CV and regularisation</td></tr>
-      <tr><td><code>AutoMLEngine</code></td><td>3.3</td><td>Systematic model comparison</td></tr>
-      <tr><td><code>EnsembleEngine</code></td><td>3.5</td><td>Stacking and blending (preview for M4)</td></tr>
+      <tr><td><code>FeatureStore</code></td><td>3.1</td><td>Point-in-time feature storage (via DataFlow)</td></tr>
+      <tr><td><code>TrainingPipeline</code></td><td>3.4-3.8</td><td>Train, score one holdout, register; calibrate</td></tr>
+      <tr><td><code>AutoMLEngine</code></td><td>3.3</td><td>Run and record a model sweep</td></tr>
+      <tr><td><code>EnsembleEngine</code></td><td>3.5</td><td>Stacking and blending (used again in M4)</td></tr>
       <tr><td><code>HyperparameterSearch</code></td><td>3.7</td><td>Bayesian hyperparameter optimisation</td></tr>
       <tr><td><code>ModelRegistry</code></td><td>3.7</td><td>Model versioning and lifecycle</td></tr>
       <tr><td><code>WorkflowBuilder</code></td><td>3.7</td><td>DAG-based pipeline orchestration</td></tr>
@@ -2324,35 +2518,21 @@ if report.has_drift:
 <section>
   <h2>Module 3 &mdash; Assessment</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="columns">
-    <div class="col">
-      <h3>Quiz (40%)</h3>
-      <ul>
-        <li>Bias-variance decomposition</li>
-        <li>Regularisation (L1 vs L2 behaviour)</li>
-        <li>Model selection rationale</li>
-        <li>Metric selection for given scenarios</li>
-        <li>XGBoost split gain formula</li>
-        <li>Fairness impossibility theorem</li>
-      </ul>
-    </div>
-    <div class="col">
-      <h3>ML Pipeline Project (60%)</h3>
-      <ul>
-        <li>Full pipeline from raw data to monitored model</li>
-        <li>Feature engineering with domain rationale</li>
-        <li>Model comparison (minimum 3 algorithms)</li>
-        <li>Proper evaluation with appropriate metrics</li>
-        <li>SHAP-based interpretability</li>
-        <li>DataFlow persistence + DriftMonitor setup</li>
-        <li>Model card</li>
-      </ul>
-    </div>
-  </div>
+  <p>4 auto-graded coding tasks, <strong>100 marks</strong>, 3 hours, open-book, no AI assistants. One e-commerce dataset (50,000 customers); target <code>premium_response</code> (~25% positive).</p>
+  <table>
+    <thead><tr><th>Task</th><th>Focus</th><th>Marks</th></tr></thead>
+    <tbody>
+      <tr><td>1. Feature engineering &amp; leakage-free selection</td><td>Six engineered features ranked with <code>FeatureEngineer</code>, fitted on the train split only</td><td>20</td></tr>
+      <tr><td>2. The model zoo</td><td>Six algorithms trained and compared through <code>TrainingPipeline</code></td><td>25</td></tr>
+      <tr><td>3. Evaluation, imbalance &amp; interpretability</td><td>Baseline vs class weights; per-class recall; SHAP</td><td>25</td></tr>
+      <tr><td>4. Production pipeline</td><td><code>TrainingPipeline</code> &rarr; <code>ModelRegistry</code> (promote) &rarr; <code>DriftMonitor</code></td><td>30</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.8em; color:#64748B;">Marked on outcomes (held-out AUC floors, recall lift, promotion, drift caught on the shifted batch and not the clean one), not code style. Each task's <code>problem.md</code> states the exact contract.</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. The project is the capstone. It requires every skill from M3: features, models, evaluation, interpretation, and production deployment. The quiz tests conceptual understanding. Together they assess both the science and the engineering.</aside>
+  <aside class="notes">Timing: 2 min. There is no separate quiz and no free-form project in this module's assessment. Students complete solve() in each task's starter.py; an independent reference implementation re-derives the expected values from the data, and a task's marks are awarded only when all of its checks pass. Point out why the target is derived: the dataset's own churned column is a near-deterministic function of recency (the same leak removed from Exercise 3.3), so it is useless for modelling practice. Task 1 rewards exactly the discipline of Lesson 3.1: rank features on training rows only.</aside>
 </section>
 
 <!-- SLIDE 85 — Exercise Summary Table -->
@@ -2362,20 +2542,20 @@ if report.has_drift:
   <table>
     <thead><tr><th>Exercise</th><th>Dataset</th><th>Key Skills</th></tr></thead>
     <tbody>
-      <tr><td>3.1</td><td>HDB resale prices</td><td>Feature engineering, 3 selection methods</td></tr>
-      <tr><td>3.2</td><td>HDB resale prices</td><td>Bias-variance demo, regularisation comparison</td></tr>
-      <tr><td>3.3</td><td>E-commerce customers</td><td>5 model families, consistent comparison</td></tr>
-      <tr><td>3.4</td><td>Credit scoring</td><td>XGBoost vs LightGBM vs CatBoost</td></tr>
-      <tr><td>3.5</td><td>Credit scoring (imbalanced)</td><td>Metrics, SMOTE vs class weights, calibration</td></tr>
-      <tr><td>3.6</td><td>Credit scoring</td><td>SHAP, LIME, fairness metrics</td></tr>
-      <tr><td>3.7</td><td>Credit scoring</td><td>WorkflowBuilder, hyperparameter search, registry</td></tr>
-      <tr><td>3.8</td><td>Credit scoring</td><td>DataFlow, DriftMonitor, model card</td></tr>
+      <tr><td>3.1</td><td>ICU admissions (5 tables)</td><td>Point-in-time features, filter / wrapper / embedded selection</td></tr>
+      <tr><td>3.2</td><td>Synthetic sine; credit; ICU admissions</td><td>Bias-variance, Ridge / Lasso / ElasticNet, CV strategies</td></tr>
+      <tr><td>3.3</td><td>E-commerce churn</td><td>5 model families on the same folds, nested CV</td></tr>
+      <tr><td>3.4</td><td>Credit scoring (leak screened)</td><td>XGBoost vs LightGBM vs CatBoost, tuning</td></tr>
+      <tr><td>3.5</td><td>Credit scoring (imbalanced)</td><td>Metrics, SMOTE vs weights, focal loss, threshold, calibration</td></tr>
+      <tr><td>3.6</td><td>Credit scoring</td><td>SHAP, LIME, permutation, fairness audit</td></tr>
+      <tr><td>3.7</td><td>Credit scoring</td><td>WorkflowBuilder, DataFlow, Bayesian search, registry</td></tr>
+      <tr><td>3.8</td><td>Credit scoring</td><td>Conformal, DriftMonitor, model card, rollout gates</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick reference for exercises. Notice the progression: HDB data for features and bias-variance (familiar from M2), then credit scoring for the full pipeline. Credit scoring is the running case study from 3.4 through 3.8.</aside>
+  <aside class="notes">Timing: 1 min. Quick reference for exercises. Notice the progression: ICU data for point-in-time feature engineering, a synthetic sine curve where the true function is known (so bias and variance can be measured), e-commerce churn for the model zoo, then the Singapore credit data as the running case study from 3.4 through 3.8. Every credit exercise drops customer_id and the planted future_default_indicator leak, leaving 33 features.</aside>
 </section>
 
 <!-- SLIDE 86 — Common Mistakes -->
@@ -2386,9 +2566,9 @@ if report.has_drift:
     <thead><tr><th>Mistake</th><th>Why It Fails</th><th>What to Do Instead</th></tr></thead>
     <tbody>
       <tr><td>Using accuracy on imbalanced data</td><td>Hides poor minority-class performance</td><td>Use F1, PR-AUC, or custom cost matrix</td></tr>
-      <tr><td>Fitting scaler before splitting</td><td>Preprocessing leakage</td><td>Fit inside CV loop (TrainingPipeline does this)</td></tr>
+      <tr><td>Fitting scaler before splitting</td><td>Preprocessing leakage</td><td>Split first; fit preprocessing on train only (sklearn <code>Pipeline</code> inside CV)</td></tr>
       <tr><td>Using future data for temporal features</td><td>Temporal leakage</td><td>Time-travel test every feature</td></tr>
-      <tr><td>Only trying one model</td><td>No Free Lunch &mdash; one model is not best</td><td>AutoMLEngine to compare 3+ models</td></tr>
+      <tr><td>Only trying one model</td><td>No Free Lunch &mdash; one model is not best</td><td>Compare 3+ models on the same CV folds</td></tr>
       <tr><td>Tuning then reporting same CV score</td><td>Optimistic performance estimate</td><td>Nested CV for unbiased estimate</td></tr>
       <tr><td>Deploying without drift monitoring</td><td>Model silently degrades</td><td>DriftMonitor with alerting thresholds</td></tr>
     </tbody>
@@ -2396,7 +2576,7 @@ if report.has_drift:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. These are the mistakes professionals actually make in production. Every item on this list has caused a real-world ML failure. The Kailash engines are designed to prevent several of them automatically (TrainingPipeline prevents preprocessing leakage, DriftMonitor prevents silent degradation).</aside>
+  <aside class="notes">Timing: 2 min. These are the mistakes professionals actually make in production. Every item on this list is a common real-world failure. No engine prevents them automatically: PreprocessingPipeline.setup() learns from every row you pass it, so hold the test rows out first; DriftMonitor only helps if someone is alerted and acts.</aside>
 </section>
 
 <!-- SLIDE 87 — Model Selection Decision Tree -->
@@ -2416,12 +2596,12 @@ if report.has_drift:
     </ul>
     <p><strong>Is data primarily text?</strong> &rarr; Start with Naive Bayes, then boosting</p>
     <p><strong>Is there extreme imbalance?</strong> &rarr; Use focal loss + class weights with any model</p>
-    <p><strong>Always:</strong> Compare 3+ models with AutoMLEngine. Evaluate with the metric that matches business cost.</p>
+    <p><strong>Always:</strong> Compare 3+ models on the same CV folds. Evaluate with the metric that matches business cost.</p>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This is the practical decision framework students can use in their projects. Not a rigid algorithm, but a starting point. The key message: always try multiple models, always use the right metric, always validate with proper CV.</aside>
+  <aside class="notes">Timing: 2 min. This is the practical decision framework students can use in their projects. Not a rigid algorithm, but a starting point: interpretability first decides between transparent models (regularised linear, a single tree) and the rest; then size decides between gradient boosting (LightGBM for speed, CatBoost for many categoricals) and random forest or a kernel SVM on smaller data. The key message: always try multiple models, always use the right metric, always validate with proper CV.</aside>
 </section>
 
 <!-- SLIDE 88 — The Complete Supervised Pipeline Diagram -->
@@ -2474,10 +2654,10 @@ if report.has_drift:
 
       <!-- Engine labels -->
       <text x="70" y="90" text-anchor="middle" font-size="9" fill="#0D9488" font-weight="600">FeatureEngineer</text>
-      <text x="215" y="90" text-anchor="middle" font-size="9" fill="#3B82F6" font-weight="600">TrainingPipeline</text>
+      <text x="215" y="90" text-anchor="middle" font-size="9" fill="#3B82F6" font-weight="600">PreprocessingPipeline</text>
       <text x="360" y="90" text-anchor="middle" font-size="9" fill="#0D9488" font-weight="600">AutoMLEngine</text>
       <text x="505" y="90" text-anchor="middle" font-size="9" fill="#F59E0B" font-weight="600">TrainingPipeline</text>
-      <text x="650" y="90" text-anchor="middle" font-size="9" fill="#8B5CF6" font-weight="600">ModelVisualizer</text>
+      <text x="650" y="90" text-anchor="middle" font-size="9" fill="#8B5CF6" font-weight="600">SHAP + LIME</text>
       <text x="805" y="90" text-anchor="middle" font-size="9" fill="#10B981" font-weight="600">WorkflowBuilder</text>
       <text x="732" y="178" text-anchor="middle" font-size="9" fill="#10B981" font-weight="600">DataFlow + DriftMonitor + ModelRegistry</text>
 
@@ -2498,30 +2678,30 @@ if report.has_drift:
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Module 4 &mdash; Unsupervised ML, Anomaly Detection &amp; NLP</h3>
-      <ul>
-        <li><strong>Clustering:</strong> K-means, DBSCAN, hierarchical</li>
-        <li><strong>Dimensionality reduction:</strong> PCA, t-SNE, UMAP</li>
-        <li><strong>Anomaly detection:</strong> Isolation Forest, autoencoders</li>
-        <li><strong>NLP:</strong> Text preprocessing, embeddings, topic modelling</li>
-        <li><strong>New engines:</strong> EnsembleEngine, InferenceServer</li>
+      <h3>Module 4 &mdash; Unsupervised ML and Advanced Techniques</h3>
+      <ul style="font-size:0.85em;">
+        <li><strong>Clustering:</strong> K-means, hierarchical, DBSCAN/HDBSCAN, spectral</li>
+        <li><strong>Mixtures:</strong> EM algorithm, Gaussian mixture models</li>
+        <li><strong>Dimensionality reduction:</strong> PCA, kernel PCA, t-SNE, UMAP</li>
+        <li><strong>Anomaly detection:</strong> z-score, Isolation Forest, LOF, blended scores</li>
+        <li><strong>Association rules</strong>, <strong>NLP topics</strong> (TF-IDF, NMF, LDA, BERTopic), <strong>recommenders</strong></li>
+        <li><strong>DL foundations:</strong> a neural network from scratch, then the training toolkit</li>
       </ul>
     </div>
     <div class="col">
       <h3>What Carries Forward</h3>
-      <ul>
-        <li>Everything from M3: feature engineering, evaluation, workflows</li>
-        <li>TrainingPipeline for unsupervised models</li>
-        <li>WorkflowBuilder for orchestration</li>
-        <li>DriftMonitor for production</li>
-        <li>SHAP for interpretation</li>
+      <ul style="font-size:0.85em;">
+        <li>Feature engineering &mdash; unsupervised learning is automated feature engineering</li>
+        <li>Honest evaluation &mdash; without labels the metrics change (silhouette, reconstruction error)</li>
+        <li><code>EnsembleEngine</code> to blend anomaly scores; <code>AutoMLEngine</code> and <code>ModelVisualizer</code></li>
       </ul>
+      <div class="callout callout-foundations"><strong>Module 4 completes the Foundation Certificate</strong> (Modules 1&ndash;4).</div>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Brief preview. M4 extends from labelled data (supervised) to unlabelled data (unsupervised). The tools from M3 carry forward. Evaluation changes (no labels means different metrics), but the pipeline thinking stays the same.</aside>
+  <aside class="notes">Timing: 1 min. Brief preview. M4 extends from labelled data (supervised) to unlabelled data (unsupervised): clustering on retail customers, EM and mixtures, PCA through UMAP, anomaly detection on financial transactions, market-basket rules, topics from news text, recommender systems, and finally a neural network built from scratch as the bridge to the Advanced Certificate (Modules 5 and 6: deep learning and vision, then language models and agents). kailash-ml's clustering, dimensionality-reduction and anomaly-detection engines are used alongside EnsembleEngine. Evaluation changes (no labels means different metrics), but the pipeline thinking stays the same.</aside>
 </section>
 
 <!-- SLIDE 90 — Closing -->
@@ -2534,7 +2714,7 @@ if report.has_drift:
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
     <span>Terrene Foundation &bull; Kailash Python SDK</span>
   </div>
-  <aside class="notes">Timing: 1 min. Thank the class. Remind them of the assessment schedule (quiz + project). Point to the exercise schedule. If beginners confused: "You just completed the supervised ML module. Review the formula reference slide and engine map." If experts bored: "The exercises have depth. Push yourself on 3.7 and 3.8 with nested CV and conformal prediction."</aside>
+  <aside class="notes">Timing: 1 min. Thank the class. Remind them of the assessment (four auto-graded tasks, 100 marks). Point to the exercise schedule. If beginners confused: "You just completed the supervised ML module. Review the formula reference slide and engine map." If experts bored: "The exercises have depth. Push yourself on nested CV in 3.2 and 3.3, and on conformal prediction and the readiness gates in 3.8."</aside>
 </section>
 
 </div><!-- .slides -->

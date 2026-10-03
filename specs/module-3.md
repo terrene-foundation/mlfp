@@ -3,6 +3,7 @@
 **Description**: The ML pipeline — from feature engineering to production deployment. Builds on M2's regression foundation. Following R5 Deck 4A: focus on the PIPELINE and advanced models, not re-teaching basic regression.
 
 **Module Learning Objectives**: By the end of M3, students can:
+
 - Engineer features and select the most predictive ones
 - Explain bias-variance tradeoff and apply regularisation
 - Train and evaluate the complete supervised model zoo (linear, SVM, KNN, Naive Bayes, trees, forests, gradient boosting)
@@ -21,6 +22,7 @@
 **Spectrum Position**: Manual feature engineering — human designs features from domain knowledge
 
 **Topics**:
+
 - Feature engineering philosophy from Deck 4A: "Data > Models > Hyperparameter Tuning"
   - Geocoding example: address -> lat/lon via OneMap API
   - Domain knowledge drives feature creation
@@ -38,6 +40,7 @@
 **Key Concepts**: Domain-driven feature engineering, ML pipeline stages, feature selection taxonomy, leakage
 
 **Learning Objectives**: Students can:
+
 - Engineer features from domain knowledge (not just data manipulation)
 - Identify and prevent feature leakage
 - Apply filter, wrapper, and embedded feature selection methods
@@ -57,6 +60,7 @@
 **Spectrum Position**: Model complexity control — the fundamental ML tradeoff
 
 **Topics**:
+
 - Bias-variance decomposition: E[(y - y_hat)^2] = Bias^2 + Variance + sigma^2
   - Intuition: darts at a target (bias = aim, variance = spread)
   - Underfitting (high bias) vs overfitting (high variance)
@@ -73,12 +77,14 @@
   - GroupKFold: when observations are grouped (e.g., same patient, same company)
 
 **Key Formulas**:
+
 - Bias-variance: E[(y - y_hat)^2] = Bias^2(y_hat) + Var(y_hat) + sigma^2
 - L1 penalty: lambda * Sum(|beta_i|)
 - L2 penalty: lambda * Sum(beta_i^2)
 - Elastic Net: alpha * L1 + (1-alpha) * L2
 
 **Learning Objectives**: Students can:
+
 - Derive the bias-variance decomposition for squared loss
 - Apply L1, L2, and Elastic Net regularisation
 - Explain the Bayesian interpretation of L2
@@ -99,6 +105,7 @@
 **Spectrum Position**: Model breadth — knowing when to use what
 
 **Topics**:
+
 - **SVM (Support Vector Machines)**: margin maximisation, kernel trick (linear, RBF, polynomial), soft margin (C parameter). When to use: high-dimensional, clear margin of separation.
 - **KNN (K-Nearest Neighbors)**: instance-based learning, distance metrics (Euclidean, Manhattan, cosine), curse of dimensionality, k selection. When to use: small data, interpretable boundaries.
 - **Naive Bayes**: GaussianNB, MultinomialNB, BernoulliNB. Naive independence assumption. When to use: text classification, fast baseline. Connects to M2.1 Bayesian thinking.
@@ -107,12 +114,14 @@
 - **Model comparison framework**: accuracy vs interpretability vs speed vs data size
 
 **Key Formulas**:
+
 - SVM: maximise 2/||w|| subject to y_i(w x x_i + b) >= 1
 - Gini impurity: G = 1 - Sum(p_i^2)
 - Information gain: IG = H(parent) - Sum(w_i * H(child_i))
 - OOB error: ~36.8% of samples not in each bootstrap sample
 
 **Learning Objectives**: Students can:
+
 - Explain the mathematical basis of SVM, KNN, Naive Bayes, decision trees, and random forests
 - Select the appropriate algorithm for a given problem based on data characteristics
 - Tune key hyperparameters for each algorithm
@@ -132,6 +141,7 @@
 **Spectrum Position**: Model depth — mastering the dominant tabular algorithm
 
 **Topics**:
+
 - **Boosting theory**: sequential ensemble, bias reduction (vs bagging's variance reduction)
 - **AdaBoost**: as conceptual warmup — reweight misclassified samples
 - **XGBoost**:
@@ -143,11 +153,13 @@
 - Model comparison across the boosting family
 
 **Key Formulas**:
+
 - XGBoost objective: Sum(L(y_i, y_hat_i)) + Sum(Omega(f_k))
 - XGBoost split gain (see above)
 - LightGBM GOSS: keep top-a% gradient samples, randomly sample b% of small gradients
 
 **Learning Objectives**: Students can:
+
 - Explain how boosting reduces bias (vs bagging reducing variance)
 - Derive the XGBoost split gain formula
 - Compare XGBoost, LightGBM, and CatBoost on the same dataset
@@ -167,6 +179,7 @@
 **Spectrum Position**: Model assessment — knowing how good your model really is
 
 **Topics**:
+
 - **Complete Metrics Taxonomy**:
   - Classification: accuracy, precision, recall, F1-score, ROC-AUC, log loss, confusion matrix, precision-recall curve, specificity, sensitivity
   - Regression: R-squared, adjusted R-squared, MAE, MSE, RMSE, MAPE
@@ -184,6 +197,7 @@
 - **Stacking and blending**: combining model predictions (brief, connects to EnsembleEngine in M4)
 
 **Key Formulas**:
+
 - Precision: TP / (TP + FP)
 - Recall: TP / (TP + FN)
 - F1: 2 * (Precision * Recall) / (Precision + Recall)
@@ -192,6 +206,7 @@
 - Brier Score: BS = 1/N * Sum((p_i - y_i)^2)
 
 **Learning Objectives**: Students can:
+
 - Select appropriate metrics for classification and regression tasks
 - Handle class imbalance with cost-sensitive learning (not just SMOTE)
 - Calibrate model probabilities using Platt scaling
@@ -211,6 +226,7 @@
 **Spectrum Position**: Model transparency — explaining predictions and checking for bias
 
 **Topics**:
+
 - **SHAP (SHapley Additive exPlanations)**:
   - Shapley axioms: efficiency, symmetry, dummy, linearity
   - TreeSHAP: efficient computation for tree-based models
@@ -228,10 +244,12 @@
   - Fairness as engineering: measure it, report it, mitigate where possible
 
 **Key Formulas**:
+
 - Shapley value: phi_i = Sum over S of [|S|!(|F|-|S|-1)!/|F|!] * [f(S u {i}) - f(S)]
 - Disparate impact ratio: P(Y=1|G=minority) / P(Y=1|G=majority) (should be > 0.8)
 
 **Learning Objectives**: Students can:
+
 - Compute and interpret SHAP values for individual and global explanations
 - Apply LIME for local interpretability
 - Measure fairness using disparate impact and equalized odds
@@ -251,8 +269,9 @@
 **Spectrum Position**: ML engineering — automating the training pipeline
 
 **Topics**:
+
 - **WorkflowBuilder**: nodes, connections, runtime, `runtime.execute(workflow.build())`
-- **Custom Nodes**: `@register_node`, `Node` subclass, `PythonCodeNode`, `ConditionalNode`
+- **Custom Nodes**: `@register_node`, `Node` subclass, `PythonCodeNode`, `SwitchNode` (conditional routing; `kailash.nodes.logic` — there is no `ConditionalNode`)
 - **Logic nodes**: branching, merging, conditional execution
 - **HyperparameterSearch**: Bayesian optimisation, SearchSpace, ParamDistribution, SearchConfig
 - **ModelRegistry**: model versioning, metadata, staging -> production promotion
@@ -262,6 +281,7 @@
 **Key Concepts**: Workflow orchestration, node-based pipelines, Bayesian hyperparameter optimisation, model versioning
 
 **Learning Objectives**: Students can:
+
 - Build ML workflows using WorkflowBuilder with custom nodes
 - Implement Bayesian hyperparameter search
 - Register, version, and promote models through the lifecycle
@@ -281,7 +301,8 @@
 **Spectrum Position**: Production ML — from training to serving and monitoring
 
 **Topics**:
-- **DataFlow**: `@db.model`, `field()`, `db.express.create/list/get/update/delete`, `ConnectionManager`
+
+- **DataFlow**: `@db.model` (plain class annotations are the schema; DataFlow has no `field()` helper), `db.express.create/read/find_one/list/update/delete`, `ConnectionManager` (`kailash.db`; `initialize()` / `close()`)
   - Schema design for ML results
   - Async/await primer for database operations
 - **DriftMonitor**: monitor deployed models for distribution shift
@@ -298,6 +319,7 @@
 **Key Concepts**: Database persistence, drift monitoring, model documentation, production deployment
 
 **Learning Objectives**: Students can:
+
 - Persist ML results to a database using DataFlow
 - Monitor deployed models for drift using PSI and KS tests
 - Create model cards documenting performance and limitations

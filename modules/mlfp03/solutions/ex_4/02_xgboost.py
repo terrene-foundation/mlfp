@@ -72,10 +72,11 @@ load_dotenv()
 #     colsample_bytree    → fraction of columns sampled per tree. Another
 #                           stochastic regulariser.
 #
-# The XGBoost defaults (learning_rate=0.3, max_depth=6) are aggressive —
-# they're tuned to win Kaggle competitions where speed of convergence
-# matters. For credit scoring you typically move to learning_rate=0.05
-# and rely on early stopping for the final round count.
+# The XGBoost library defaults (learning_rate=0.3, max_depth=6) take
+# large steps, which converge quickly but give noisier fits. For credit
+# scoring you typically move to a smaller learning rate (e.g. 0.05) and
+# let early stopping on a validation split pick the round count
+# (04_boosting_tuning.py).
 
 
 # ════════════════════════════════════════════════════════════════════════

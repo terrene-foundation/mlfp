@@ -339,11 +339,11 @@
   <div class="callout callout-warning">
     <strong>Common mistake:</strong> Spending days tuning XGBoost hyperparameters when a single well-engineered feature would have improved the model more than all tuning combined.
   </div>
-  <p><strong>Example:</strong> For HDB price prediction, geocoding an address to latitude/longitude (domain knowledge) is worth more than switching from Random Forest to XGBoost.</p>
+  <p><strong>Example:</strong> For HDB price prediction, geocoding an address to latitude/longitude (domain knowledge) is typically worth more than switching from Random Forest to XGBoost. In Exercise 3.1 the same idea is clinical: <em>shock index</em> = heart rate &divide; systolic BP.</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. This hierarchy guides the entire module. We start with features (highest impact), then models, then tuning. The geocoding example is concrete: a street address is useless to a model, but lat/lon enables spatial features like distance to MRT, proximity to schools, etc.</aside>
+  <aside class="notes">Timing: 2 min. This hierarchy guides the entire module. We start with features (highest impact), then models, then tuning. The multipliers are rules of thumb, not measurements. The geocoding example is concrete: a street address is useless to a model, but lat/lon enables spatial features like distance to MRT, proximity to schools, etc. Exercise 3.1 applies the same principle to ICU data: clinicians already know that heart rate divided by systolic blood pressure (the shock index) flags deterioration, so we compute it instead of hoping a model discovers the ratio.</aside>
 </section>
 
 <!-- SLIDE 10 — Feature Engineering Types -->
@@ -378,6 +378,7 @@
     <li><strong>Target leakage:</strong> A column derived from the target (e.g., "loan_was_approved" to predict "loan_default")</li>
     <li><strong>Temporal leakage:</strong> Using future data to predict the past (e.g., next month's sales to predict this month)</li>
     <li><strong>Preprocessing leakage:</strong> Fitting scaler on full dataset before splitting train/test</li>
+    <li><strong>Leak screen:</strong> a column that <em>alone</em> ranks the target almost perfectly is suspect. The credit data from Lesson 3.4 on hides one: <code>future_default_indicator</code> (single-feature AUC 0.99), so every credit exercise drops it</li>
   </ul>
   <div class="callout callout-foundations">
     <strong>Prevention rule:</strong> For every feature, ask: "Would I have this value at the moment I need to make the prediction?" If no, drop it.
@@ -385,7 +386,7 @@
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Leakage is the most common ML bug in production systems. A model with leakage looks like a breakthrough in testing and fails spectacularly live. The prevention rule is simple: time-travel test every feature. If beginners confused: "Imagine predicting tomorrow's weather using tomorrow's actual temperature. Of course it works. But it is cheating."</aside>
+  <aside class="notes">Timing: 2 min. Leakage is the most common ML bug in production systems. A model with leakage looks like a breakthrough in testing and fails spectacularly live. The prevention rule is simple: time-travel test every feature. The leak screen is the mechanical backup: score each column on its own (single-feature ROC AUC). A legitimate credit feature rarely exceeds about 0.75; the planted future_default_indicator scores 0.99 because it is recorded after the outcome (93% of rows with the flag defaulted, versus 0.2% without). Exercise 3.4 runs this screen before modelling; customer_id is dropped too because a row ID is not a feature. If beginners confused: "Imagine predicting tomorrow's weather using tomorrow's actual temperature. Of course it works. But it is cheating."</aside>
 </section>
 
 <!-- SLIDE 12 — Feature Selection Taxonomy -->
@@ -437,28 +438,67 @@
 <section class="code-fit">
   <h2>Kailash Bridge: FeatureEngineer &amp; FeatureStore</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="kailash-bridge">
-    <h3>FeatureEngineer</h3>
-    <p>Generates and selects features automatically. Supports filter, wrapper, and embedded methods through a unified API.</p>
-    <pre style="font-size: 0.45em;"><code class="language-python">from kailash_ml import FeatureEngineer
+  <div class="columns">
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>FeatureEngineer &mdash; generate + select</h3>
+        <pre style="font-size: 0.45em;"><code class="language-python">import polars as pl
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
+from shared.mlfp03.ex_1 import (build_full_feature_frame,
+                                load_icu_tables)
 
-engineer = FeatureEngineer()
-engineer.fit(df, target="resale_price")
-selected = engineer.select_features(method="embedded", threshold=0.01)
-transformed = engineer.transform(df)</code></pre>
-  </div>
-  <div class="kailash-bridge" style="margin-top:8px;">
-    <h3>FeatureStore</h3>
-    <p>Versioned feature storage with point-in-time correctness &mdash; prevents temporal leakage by design.</p>
-    <pre><code class="language-python">from kailash_ml import FeatureStore
+icu = (build_full_feature_frame(load_icu_tables())
+       .with_columns((pl.col("los_days")
+                      &gt; pl.col("los_days").median())
+                     .cast(pl.Int64).alias("long_stay"))
+       .sample(fraction=1.0, shuffle=True, seed=42))
+train = icu.head(int(0.8 * icu.height))  # select on TRAIN only
 
-store = FeatureStore()
-store.register(df, entity="flat", timestamp_col="month")</code></pre>
+schema = FeatureSchema(name="icu_24h",
+    entity_id_column="admission_id",
+    features=[FeatureField("heart_rate_mean", "float64"),
+              FeatureField("systolic_bp_mean", "float64"),
+              FeatureField("n_abnormal_labs", "int64")])
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(train, schema,
+                  strategies=["interactions", "polynomial"])
+best = fe.select(gen.data, gen, target="long_stay", top_k=4)
+print(best.selected_columns)</code></pre>
+      </div>
+    </div>
+    <div class="col">
+      <div class="kailash-bridge">
+        <h3>FeatureStore &mdash; point-in-time reads</h3>
+        <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from datetime import datetime
+from dataflow import DataFlow
+from kailash_ml.features import (FeatureField,
+    FeatureGroup, FeatureSchema, FeatureStore)
+
+schema = FeatureSchema(name="icu_24h_features",
+    fields=(FeatureField("heart_rate_mean", "float64"),
+            FeatureField("shock_index", "float64")),
+    entity_id_column="admission_id",
+    timestamp_column="prediction_cutoff")
+
+async def as_of(features, when):
+    store = FeatureStore(DataFlow("sqlite:///icu.db"),
+                         default_tenant_id="_single")
+    await store.materialize(
+        FeatureGroup(schema, dataflow=store.dataflow),
+        features.select("admission_id", "prediction_cutoff",
+                        "heart_rate_mean", "shock_index"))
+    return await store.get_features(schema, timestamp=when)
+
+# icu from the left; rows stamped after 1 Jan 2023 never return
+snap = asyncio.run(as_of(icu, datetime(2023, 1, 1)))</code></pre>
+      </div>
+    </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK. FeatureEngineer wraps all three selection families. FeatureStore ensures point-in-time correctness so temporal leakage is impossible. These two engines handle the feature stage of the pipeline.</aside>
+  <aside class="notes">Timing: 2 min. The Kailash bridge shows how the theory maps to the SDK, on the same ICU data as Exercise 3.1 (one row per admission, features computed from the first 24 hours; long_stay = stay longer than the median). FeatureEngineer has two calls. generate() builds candidate columns from the fields in a FeatureSchema (strategies: interactions, polynomial, binning, temporal); select() ranks originals plus candidates against the target and keeps top_k (default method: tree-based importance, so it is an embedded-style ranking). Fit it on training rows only: ranking features on all rows lets the test set vote on which features you keep, which is leakage. The engine does not replace the filter, wrapper and embedded comparisons: the exercise runs mutual information and chi-squared, RFE, and Lasso by hand so students see why they disagree. FeatureStore persists features through DataFlow; get_features(schema, timestamp=T) returns only rows stamped at or before T, which is point-in-time correctness. Note the two schema classes: the top-level kailash_ml.FeatureSchema (features=[...]) is what FeatureEngineer takes; the store needs kailash_ml.features.FeatureSchema (fields=(...)). The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks.</aside>
 </section>
 
 <!-- SLIDE 14 — Lesson 3.1 Summary -->
@@ -474,12 +514,12 @@ store.register(df, entity="flat", timestamp_col="month")</code></pre>
     <li><strong>Engines:</strong> <code>FeatureEngineer</code>, <code>FeatureStore</code></li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.1:</strong> Engineer features for HDB price prediction (geocode, temporal, interactions). Apply 3 selection methods. Compare which features each method selects.
+    <strong>Exercise 3.1:</strong> Predict a long ICU stay from the first 24 hours. Join five ICU tables point-in-time, engineer vital, lab and clinical interaction features, then compare filter (MI, chi-squared), wrapper (RFE) and embedded (L1) selection and log a leakage-audited consensus set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap before moving to Lesson 3.2. The exercise gives hands-on practice with all three selection families on real HDB data.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap before moving to Lesson 3.2. The exercise uses the ICU tables from Module 2 (patients, admissions, vitals, medications, labs). The prediction is made 24 hours after admission, so every event feature may only use records inside that window; the length of stay and discharge time are the label's source and are never features (a leakage audit raises if they slip in). Students build the features by hand in polars, rank them with mutual information and chi-squared, RFE around a random forest, and an L1 path, then validate the matrix against a FeatureSchema and log the consensus set to ExperimentTracker.</aside>
 </section>
 
 

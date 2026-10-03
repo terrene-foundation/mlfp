@@ -104,11 +104,11 @@
     <div class="col">
       <div class="kailash-bridge">
         <h3>ExperimentTracker</h3>
-        <p>Your lab notebook: logs the parameters, metrics and decision of every analysis run. You compute the statistics; it records them.</p>
+        <p>Your lab notebook: logs each run&rsquo;s parameters, metrics and decision. You compute; it records.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureEngineer</h3>
-        <p>Generates candidate interaction, polynomial, binned and temporal features from a schema, then selects the strongest.</p>
+        <p>Builds interaction, polynomial, binned and temporal candidates, then selects the best.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureStore</h3>
@@ -118,14 +118,14 @@
     <div class="col">
       <div class="kailash-bridge">
         <h3>TrainingPipeline</h3>
-        <p>Trains and registers ML models from a feature schema (used in depth in M3). It reports metrics, not coefficient p-values.</p>
+        <p>Trains and registers models from a feature schema (M3). Reports metrics, not coefficient p-values.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>ModelVisualizer</h3>
         <p>Histograms, residual, ROC, calibration and confusion-matrix plots (Plotly).</p>
       </div>
       <div class="callout callout-foundations" style="margin-top:12px;">
-        <strong>Pattern:</strong> Learn the statistics manually first, then see how the engines automate it. Understanding both means you can debug when results surprise you.
+        <strong>Pattern:</strong> Learn the statistics by hand first, then let the engines record, store and plot. Knowing both lets you debug surprises.
       </div>
     </div>
   </div>
@@ -1066,19 +1066,15 @@ from kailash_ml import ModelVisualizer
 from shared import MLFPDataLoader
 
 df = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
-rev = {g: df.filter(pl.col("experiment_group") == g)["revenue"].to_numpy()
-       for g in ["control", "treatment_a"]}
+rev = {g: df.filter(pl.col("experiment_group") == g)["revenue"].to_numpy() for g in ["control", "treatment_a"]}
 
 rng = np.random.default_rng(42)
-reps = np.array([
-    rng.choice(rev["treatment_a"], len(rev["treatment_a"])).mean()
-    - rng.choice(rev["control"], len(rev["control"])).mean()
-    for _ in range(1_000)])
+reps = np.array([rng.choice(rev["treatment_a"], len(rev["treatment_a"])).mean()
+                 - rng.choice(rev["control"], len(rev["control"])).mean() for _ in range(1_000)])
 lo, hi = np.percentile(reps, [2.5, 97.5])  # about [2.84, 3.50]
 
-fig = ModelVisualizer().histogram(
-    pl.DataFrame({"lift": reps}), "lift",
-    title=f"Bootstrap revenue lift, 95% CI [{lo:.2f}, {hi:.2f}]")</code></pre>
+fig = ModelVisualizer().histogram(pl.DataFrame({"lift": reps}), "lift",
+                                  title=f"Bootstrap revenue lift, 95% CI [{lo:.2f}, {hi:.2f}]")</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
     <strong>Exercise 3 preview:</strong> Percentile and BCa bootstrap CIs, power and MDE, z / Welch / Mann-Whitney tests with effect sizes, Bonferroni vs BH-FDR, a permutation test.
   </div>
@@ -1292,12 +1288,9 @@ p_srm = stats.chisquare([n_c, n_t], f_exp=exp).pvalue  # about 0.62
 decision = "STOP: investigate SRM" if p_srm < 0.01 else "analyse"
 
 async def log_design():
-    tracker = await ExperimentTracker.create(
-        store_url="sqlite:///mlfp02_experiments.db")
-    async with tracker.track(experiment="mlfp02_ab",
-                             run_name="design_and_srm") as run:
-        await run.log_params({"alpha": 0.05, "power": 0.80,
-                              "decision": decision})
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab", run_name="design_and_srm") as run:
+        await run.log_params({"alpha": 0.05, "power": 0.80, "decision": decision})
         await run.log_metrics({"srm_p": float(p_srm)})
     await tracker.close()
 
@@ -1602,13 +1595,12 @@ asyncio.run(log_design())</code></pre>
     <div class="theory-to-engine">
       <div><strong>Manual:</strong> Solve the normal equations; compute t-stats, R-squared, F</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> FeatureEngineer generates polynomial and interaction terms; ModelVisualizer plots the residuals</div>
+      <div><strong>Engine:</strong> FeatureEngineer builds the extra terms; ModelVisualizer plots residuals</div>
     </div>
   </div>
-  <pre style="font-size: 0.48em;"><code class="language-python">import numpy as np
+  <pre style="font-size: 0.45em;"><code class="language-python">import numpy as np
 import polars as pl
-from kailash_ml import (FeatureEngineer, FeatureField, FeatureSchema,
-                        ModelVisualizer)
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema, ModelVisualizer
 from shared import MLFPDataLoader
 
 df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
@@ -1616,16 +1608,12 @@ df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
       .with_row_index("txn_id")
       .with_columns(age=pl.col("month").str.slice(0, 4).cast(pl.Float64)
                         - pl.col("lease_commence_date")))
-schema = FeatureSchema(name="hdb", entity_id_column="txn_id",
-    features=[FeatureField("floor_area_sqm", "float64"),
-              FeatureField("age", "float64")])
-gen = FeatureEngineer().generate(
-    df, schema, strategies=["interactions", "polynomial"])
+schema = FeatureSchema(name="hdb", entity_id_column="txn_id", features=[
+    FeatureField("floor_area_sqm", "float64"), FeatureField("age", "float64")])
+gen = FeatureEngineer().generate(df, schema, strategies=["interactions", "polynomial"])
 
-cols = ["floor_area_sqm", "age", "floor_area_sqm_squared",
-        "floor_area_sqm_x_age"]
-X = np.column_stack([np.ones(gen.data.height),
-                     gen.data.select(cols).to_numpy()])
+cols = ["floor_area_sqm", "age", "floor_area_sqm_squared", "floor_area_sqm_x_age"]
+X = np.column_stack([np.ones(gen.data.height), gen.data.select(cols).to_numpy()])
 y = gen.data["resale_price"].to_numpy().astype(float)
 beta = np.linalg.solve(X.T @ X, X.T @ y)  # OLS normal equations
 fig = ModelVisualizer().residuals(y, X @ beta)</code></pre>
@@ -1917,20 +1905,19 @@ fig = ModelVisualizer().residuals(y, X @ beta)</code></pre>
   <div class="kailash-bridge">
     <h3>ModelVisualizer &mdash; ROC Curve and Confusion Matrix</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Sigmoid, Bernoulli log-likelihood, MLE with scipy, odds ratios</div>
+      <div><strong>Manual:</strong> sigmoid, Bernoulli MLE, odds ratios</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ModelVisualizer plots the ROC curve and confusion matrix from your predictions</div>
+      <div><strong>Engine:</strong> ModelVisualizer draws the ROC and confusion matrix</div>
     </div>
   </div>
-  <pre style="font-size: 0.48em;"><code class="language-python">import numpy as np
+  <pre style="font-size: 0.45em;"><code class="language-python">import numpy as np
 import polars as pl
 from scipy.optimize import minimize
 from scipy.special import expit
 from kailash_ml import ModelVisualizer
 from shared import MLFPDataLoader
 
-df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
-      .filter(pl.col("month") >= "2020-01"))
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet").filter(pl.col("month") >= "2020-01")
 y = (df["resale_price"] > df["resale_price"].median()).cast(pl.Int8).to_numpy()
 area = df["floor_area_sqm"].to_numpy()
 X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])
@@ -1938,13 +1925,11 @@ X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])
 def nll(b):  # Bernoulli negative log-likelihood
     p = np.clip(expit(X @ b), 1e-12, 1 - 1e-12)
     return -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
-
 beta = minimize(nll, np.zeros(2), method="BFGS").x
 odds_ratio = np.exp(beta[1])  # per 1 SD of floor area
 p_hat = expit(X @ beta)
 viz = ModelVisualizer()
-fig_roc = viz.roc_curve(y, p_hat)
-fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
+fig_roc, fig_cm = viz.roc_curve(y, p_hat), viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
     <strong>Exercise 6 preview:</strong> Logistic regression from scratch on HDB "above-median price", odds ratios and cost-based thresholds, ROC/PR curves, calibration, one-way ANOVA with Tukey's HSD.
   </div>
@@ -2167,12 +2152,12 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
   <div class="kailash-bridge">
     <h3>ExperimentTracker &mdash; Record the Adjustment You Computed</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Compute theta from a PRE-experiment covariate, adjust the metric, measure the variance reduction</div>
+      <div><strong>Manual:</strong> theta from a pre-period covariate</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker logs theta and the reduction so the analysis can be audited and repeated</div>
+      <div><strong>Engine:</strong> the tracker logs theta and the reduction</div>
     </div>
   </div>
-  <pre style="font-size: 0.48em;"><code class="language-python">import asyncio
+  <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
 import numpy as np
 import polars as pl
 from kailash_ml import ExperimentTracker
@@ -2180,19 +2165,15 @@ from shared import MLFPDataLoader
 
 df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
       .filter(pl.col("experiment_group").is_in(["control", "treatment_a"])))
-y = df["revenue"].to_numpy()
-x = df["pre_metric_value"].to_numpy()  # measured BEFORE the experiment
+y, x = df["revenue"].to_numpy(), df["pre_metric_value"].to_numpy()  # x measured BEFORE the experiment
 theta = np.cov(y, x)[0, 1] / np.var(x, ddof=1)
 y_adj = y - theta * (x - x.mean())
 reduction = 1 - np.var(y_adj, ddof=1) / np.var(y, ddof=1)  # = rho^2
 
 async def log_cuped():
-    tracker = await ExperimentTracker.create(
-        store_url="sqlite:///mlfp02_experiments.db")
-    async with tracker.track(experiment="mlfp02_cuped",
-                             run_name="control_vs_treatment_a") as run:
-        await run.log_metrics({"theta": float(theta),
-                               "variance_reduction": float(reduction)})
+    tracker = await ExperimentTracker.create(store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_cuped", run_name="control_vs_treatment_a") as run:
+        await run.log_metrics({"theta": float(theta), "variance_reduction": float(reduction)})
     await tracker.close()
 
 asyncio.run(log_cuped())</code></pre>
@@ -2280,29 +2261,27 @@ asyncio.run(log_cuped())</code></pre>
       <h3>What Is Feature Engineering?</h3>
       <ul>
         <li><strong>Features</strong> are the inputs to your model</li>
-        <li><strong>Feature engineering</strong> is creating new, more informative features from raw data</li>
-        <li>Good features matter more than complex models</li>
+        <li><strong>Feature engineering</strong> derives better ones</li>
+        <li>Good features beat complex models</li>
       </ul>
       <h3 style="margin-top: 12px;">Types of Engineered Features</h3>
       <ul>
-        <li><strong>Temporal:</strong> Day of week, month, quarter, time since last event</li>
+        <li><strong>Temporal:</strong> month, day of week, recency</li>
         <li><strong>Interaction:</strong> area &times; town, age &times; income</li>
-        <li><strong>Polynomial:</strong> $x^2$, $x^3$ for non-linear relationships</li>
+        <li><strong>Polynomial:</strong> $x^2$, $x^3$ for curvature</li>
         <li><strong>Aggregation:</strong> Rolling means, counts, ratios</li>
       </ul>
       <div class="callout callout-foundations" style="margin-top: 8px;">
-        <strong>Domain knowledge drives feature engineering.</strong> Knowing that HDB prices depend on remaining lease, location and floor area beats any algorithm.
+        <strong>Domain knowledge drives feature engineering.</strong> Knowing HDB prices depend on lease, location and area beats any algorithm.
       </div>
     </div>
     <div class="col">
       <pre style="font-size: 0.45em;"><code class="language-python">import polars as pl
-from kailash_ml import (FeatureEngineer,
-                        FeatureField, FeatureSchema)
+from kailash_ml import FeatureEngineer, FeatureField, FeatureSchema
 from shared.mlfp02.ex_8 import load_hdb_resale
 
-df = (load_hdb_resale().with_row_index("id")
-      .with_columns(pl.col("transaction_date")
-                    .cast(pl.Datetime)))
+df = load_hdb_resale().with_row_index("id").with_columns(
+    pl.col("transaction_date").cast(pl.Datetime))
 schema = FeatureSchema(
     name="hdb", entity_id_column="id",
     features=[
@@ -2310,12 +2289,10 @@ schema = FeatureSchema(
         FeatureField("lease_commence_date", "int64"),
         FeatureField("transaction_date", "datetime")])
 fe = FeatureEngineer(max_features=10)
-gen = fe.generate(df, schema,
-          strategies=["temporal", "interactions"])
+gen = fe.generate(df, schema, strategies=["temporal", "interactions"])
 # + transaction_date_month / _dow / _hour,
 #   floor_area_sqm_x_lease_commence_date
-best = fe.select(gen.data, gen,
-                 target="resale_price", top_k=3)</code></pre>
+best = fe.select(gen.data, gen, target="resale_price", top_k=3)</code></pre>
     </div>
   </div>
   <div class="slide-footer">
@@ -2345,11 +2322,11 @@ best = fe.select(gen.data, gen,
     <div class="col">
       <h3>FeatureStore Lifecycle</h3>
       <ul>
-        <li><strong>Define:</strong> a typed <code>FeatureSchema</code> with entity id and timestamp</li>
-        <li><strong>Materialise:</strong> write timestamped values (returns a lineage hash)</li>
+        <li><strong>Define:</strong> a typed <code>FeatureSchema</code></li>
+        <li><strong>Materialise:</strong> write rows; get a lineage hash</li>
         <li><strong>Retrieve:</strong> <code>get_features(schema, timestamp=T)</code></li>
       </ul>
-      <pre style="margin-top: 8px; font-size: 0.48em;"><code class="language-python">import asyncio
+      <pre style="margin-top: 8px; font-size: 0.45em;"><code class="language-python">import asyncio
 from datetime import datetime
 from dataflow import DataFlow
 from kailash_ml.features import (FeatureField,
@@ -2366,8 +2343,7 @@ async def as_of(features, when):
     await store.materialize(
         FeatureGroup(schema, dataflow=store.dataflow),
         features)
-    return await store.get_features(schema,
-                                    timestamp=when)
+    return await store.get_features(schema, timestamp=when)
 
 # rows stamped after 1 Jan 2023 never come back
 snap = asyncio.run(as_of(features, datetime(2023, 1, 1)))</code></pre>

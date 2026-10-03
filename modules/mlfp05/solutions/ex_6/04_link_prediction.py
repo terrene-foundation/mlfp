@@ -9,6 +9,7 @@
 #   - Why link prediction matters (knowledge graphs, social networks, recs)
 #   - Encoder-decoder architecture: GNN encoder + dot-product decoder
 #   - Positive vs negative edge sampling for training
+#   - Splitting EDGES into train/val/test so the score measures unseen links
 #   - AUC metric for ranking quality evaluation
 #   - Train a link predictor on the Cora citation network
 #   - Track training with kailash-ml ExperimentTracker
@@ -20,6 +21,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 
 import numpy as np
 import torch
@@ -30,6 +32,7 @@ from shared.mlfp05.ex_6 import (
     OUTPUT_DIR,
     device,
     load_graph_data,
+    normalise_adjacency,
     plot_training_curves,
     register_model,
     setup_engines,
@@ -83,10 +86,14 @@ print(
   - High similarity in embedding space -> predict edge exists
 
   TRAINING DATA:
-  - Positive samples: real edges from the graph (label = 1)
-  - Negative samples: random non-edges (label = 0)
+  - Split the real edges: 85% train / 5% validation / 10% test
+  - The encoder passes messages over TRAINING edges only — a held-out
+    edge must not be visible in the graph it is asked to predict
+  - Positive samples: training edges (label = 1)
+  - Negative samples: random non-edges, re-drawn every epoch (label = 0)
   - Loss: binary cross-entropy on edge predictions
-  - Metric: AUC — how well do we rank real edges above non-edges?
+  - Metric: AUC on HELD-OUT edges — how well do we rank unseen real
+    edges above non-edges?
 """
 )
 
@@ -104,7 +111,6 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 
 X = graph_data["X"]
 A = graph_data["A"]
-A_norm = graph_data["A_norm"]
 A_np = graph_data["A_np"]
 y_np = graph_data["y_np"]
 edge_index_np = graph_data["edge_index_np"]
@@ -199,47 +205,95 @@ print("=" * 70)
 print(f"  PHASE 3 — TRAIN: Link Prediction on {dataset_name}")
 print("=" * 70)
 
-# Prepare positive and negative edge samples
-# Positive: real edges from the graph
-pos_src = torch.from_numpy(edge_index_np[0]).to(device)
-pos_dst = torch.from_numpy(edge_index_np[1]).to(device)
+# ── Split the EDGES before training ─────────────────────────────────
+# The question is "can we predict links we have NOT seen?", so some real
+# edges are hidden from training AND from the graph the encoder passes
+# messages over. Scoring on training edges that also sit in A_norm would
+# measure memorisation plus leakage, not link prediction.
+und_src, und_dst = np.where(np.triu(A_np, k=1) > 0)  # each undirected edge once
+rng_link = np.random.default_rng(42)
+perm = rng_link.permutation(len(und_src))
+n_val_edges = int(0.05 * len(perm))
+n_test_edges = int(0.10 * len(perm))
+val_idx = perm[:n_val_edges]
+test_idx = perm[n_val_edges : n_val_edges + n_test_edges]
+train_idx = perm[n_val_edges + n_test_edges :]
+
+
+def _edge_tensors(idx: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+    return (
+        torch.from_numpy(und_src[idx]).to(device),
+        torch.from_numpy(und_dst[idx]).to(device),
+    )
+
+
+pos_src, pos_dst = _edge_tensors(train_idx)  # training positives
+val_src, val_dst = _edge_tensors(val_idx)
+test_src, test_dst = _edge_tensors(test_idx)
 n_pos = len(pos_src)
 
-# Negative: sample random node pairs that are NOT connected
-neg_src_list = []
-neg_dst_list = []
-rng_link = np.random.default_rng(42)
-neg_count = 0
-while neg_count < n_pos:
-    s = rng_link.integers(0, N)
-    d = rng_link.integers(0, N)
-    if s != d and A_np[s, d] == 0:
-        neg_src_list.append(s)
-        neg_dst_list.append(d)
-        neg_count += 1
-neg_src = torch.tensor(neg_src_list, dtype=torch.long, device=device)
-neg_dst = torch.tensor(neg_dst_list, dtype=torch.long, device=device)
+# Message passing uses the TRAINING edges only
+A_train = torch.zeros(N, N, device=device)
+A_train[pos_src, pos_dst] = 1.0
+A_train[pos_dst, pos_src] = 1.0
+A_norm_train = normalise_adjacency(A_train)
+A_train_np = A_train.cpu().numpy()
 
-print(f"  Positive edges (real connections): {n_pos:,}")
-print(f"  Negative edges (random non-edges): {len(neg_src):,}")
-print(f"  Ratio: 1:1 (balanced)")
+
+def sample_non_edges(
+    n: int, adjacency: np.ndarray, rng: np.random.Generator
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Draw n random node pairs (s != d) that are NOT edges of `adjacency`."""
+    src: list[int] = []
+    dst: list[int] = []
+    while len(src) < n:
+        s = rng.integers(0, N, size=2 * n)
+        d = rng.integers(0, N, size=2 * n)
+        keep = (s != d) & (adjacency[s, d] == 0)
+        src.extend(s[keep].tolist())
+        dst.extend(d[keep].tolist())
+    return (
+        torch.tensor(src[:n], dtype=torch.long, device=device),
+        torch.tensor(dst[:n], dtype=torch.long, device=device),
+    )
+
+
+# Fixed evaluation negatives: pairs that are not edges ANYWHERE in the graph
+val_neg_src, val_neg_dst = sample_non_edges(len(val_src), A_np, rng_link)
+test_neg_src, test_neg_dst = sample_non_edges(len(test_src), A_np, rng_link)
+
+
+def auc(pos_scores: torch.Tensor, neg_scores: torch.Tensor) -> float:
+    """ROC AUC: P(a random real edge outscores a random non-edge); ties = 0.5."""
+    diff = pos_scores[:, None] - neg_scores[None, :]
+    return ((diff > 0).float().mean() + 0.5 * (diff == 0).float().mean()).item()
+
+
+print(f"  Undirected edges: {len(perm):,}")
+print(f"    train: {n_pos:,}  (positives + message passing)")
+print(f"    val:   {len(val_src):,}  (model selection)")
+print(f"    test:  {len(test_src):,}  (reported once, at the end)")
+print(f"  Negatives: {n_pos:,} fresh non-edges of the training graph per epoch;")
+print(f"    fixed non-edges of the full graph for val ({len(val_neg_src)}) and test")
 
 # Train
 link_opt = torch.optim.Adam(link_model.parameters(), lr=1e-2, weight_decay=1e-4)
 link_losses: list[float] = []
-link_aucs: list[float] = []
+link_aucs: list[float] = []  # VALIDATION AUC per epoch
+best = {"auc": -1.0, "epoch": 0, "state": {}}
 
 
-async def _train_link_predictor_async():
-    """Train the link predictor under a tracker.track(...) context."""
+async def _train_link_predictor_async() -> float:
+    """Train under a tracker.track(...) context; return the held-out test AUC."""
     async with tracker.track(experiment=exp_name, run_name="link_prediction") as run:
         await run.log_params(
             {
                 "task": "link_prediction",
                 "hidden_dim": str(HIDDEN_DIM),
                 "epochs": str(LINK_EPOCHS),
-                "n_pos_edges": str(n_pos),
-                "n_neg_edges": str(len(neg_src)),
+                "n_train_edges": str(n_pos),
+                "n_val_edges": str(len(val_src)),
+                "n_test_edges": str(len(test_src)),
             }
         )
 
@@ -247,10 +301,10 @@ async def _train_link_predictor_async():
             link_model.train()
             link_opt.zero_grad()
 
-            # Positive scores
-            pos_scores = link_model(X, A_norm, pos_src, pos_dst)
-            # Negative scores
-            neg_scores = link_model(X, A_norm, neg_src, neg_dst)
+            # Fresh negatives every epoch: non-edges of the TRAINING graph
+            neg_src, neg_dst = sample_non_edges(n_pos, A_train_np, rng_link)
+            pos_scores = link_model(X, A_norm_train, pos_src, pos_dst)
+            neg_scores = link_model(X, A_norm_train, neg_src, neg_dst)
 
             # Binary cross-entropy loss
             scores = torch.cat([pos_scores, neg_scores])
@@ -265,57 +319,120 @@ async def _train_link_predictor_async():
             link_opt.step()
             link_losses.append(loss.item())
 
-            # Compute AUC-like metric: fraction of positive scores > negative scores
+            # Validation AUC: held-out edges vs held-out non-edges
             link_model.eval()
             with torch.no_grad():
-                p_scores = link_model(X, A_norm, pos_src, pos_dst)
-                n_scores = link_model(X, A_norm, neg_src, neg_dst)
-                # Pairwise comparison: how often does a positive edge
-                # score higher than a negative edge?
-                n_sample = min(1000, n_pos, len(neg_src))
-                p_sample = p_scores[:n_sample]
-                n_sample_scores = n_scores[:n_sample]
-                auc_approx = (p_sample > n_sample_scores).float().mean().item()
-            link_aucs.append(auc_approx)
+                z = link_model.encode(X, A_norm_train)
+                val_auc = auc(
+                    link_model.decode(z, val_src, val_dst),
+                    link_model.decode(z, val_neg_src, val_neg_dst),
+                )
+            link_aucs.append(val_auc)
+            if val_auc > best["auc"]:
+                best.update(
+                    auc=val_auc,
+                    epoch=epoch,
+                    state=copy.deepcopy(link_model.state_dict()),
+                )
 
             await run.log_metrics(
-                {"link_loss": loss.item(), "link_auc_approx": auc_approx},
+                {"link_loss": loss.item(), "val_auc": val_auc},
                 step=epoch + 1,
             )
 
             if (epoch + 1) % 20 == 0:
                 print(
                     f"  [LinkPred] epoch {epoch+1:3d}  "
-                    f"loss={loss.item():.4f}  auc_approx={auc_approx:.3f}"
+                    f"loss={loss.item():.4f}  val_auc={val_auc:.3f}"
                 )
 
+        # Restore the best-validation weights; score the test edges ONCE
+        link_model.load_state_dict(best["state"])
+        link_model.eval()
+        with torch.no_grad():
+            z = link_model.encode(X, A_norm_train)
+            test_auc = auc(
+                link_model.decode(z, test_src, test_dst),
+                link_model.decode(z, test_neg_src, test_neg_dst),
+            )
         await run.log_metrics(
             {
-                "final_link_loss": link_losses[-1],
-                "final_link_auc": link_aucs[-1],
+                "best_val_auc": best["auc"],
+                "best_val_epoch": float(best["epoch"] + 1),
+                "test_auc": test_auc,
             }
         )
+    return test_auc
 
 
-asyncio.run(_train_link_predictor_async())
+test_auc = asyncio.run(_train_link_predictor_async())
 
 # ── Train Checkpoint ────────────────────────────────────────────────
 assert len(link_losses) == LINK_EPOCHS, "Link prediction should train for all epochs"
 assert link_losses[-1] < link_losses[0], "Link prediction loss should decrease"
+best_val_auc = best["auc"]
 assert (
-    link_aucs[-1] > 0.55
-), f"Link prediction AUC {link_aucs[-1]:.3f} should exceed random (0.5)"
-final_auc = link_aucs[-1]
+    best_val_auc > 0.55
+), f"Validation AUC {best_val_auc:.3f} should exceed random (0.5)"
 print(f"\n  Link Prediction Results:")
-print(f"    Final loss:      {link_losses[-1]:.4f}")
-print(f"    Final AUC:       {final_auc:.4f}")
-print(f"    Best AUC:        {max(link_aucs):.4f}")
-print(f"    Random baseline: 0.5000")
-# INTERPRETATION: The link predictor learns that connected papers have
-# similar GNN embeddings. The dot-product decoder measures embedding
-# similarity — high similarity predicts a citation link. An AUC > 0.5
-# means the model ranks real edges higher than random non-edges.
+print(f"    Final training loss:  {link_losses[-1]:.4f}")
+print(f"    Best validation AUC:  {best_val_auc:.4f} (epoch {best['epoch'] + 1})")
+print(f"    TEST AUC (unseen):    {test_auc:.4f}")
+print(f"    Random baseline:      0.5000")
+# INTERPRETATION: The test AUC is the probability that a citation the
+# model has never seen — not as a training label and not as a message-
+# passing edge — scores above a random non-citation. That is the honest
+# link-prediction number. Scoring the TRAINING edges instead (with them
+# also inside A_norm) gives a much rosier figure that only measures how
+# well the model memorised edges it could already see.
 print("\n--- Train checkpoint passed --- link prediction trained\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — Prescription Pad before Visualise
+# ══════════════════════════════════════════════════════════════════
+# Replays the REAL training objective — BCE over training edges vs fresh
+# non-edges, message passing over training edges only — in batches of
+# training edges. No weights are updated.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _link_loss(m, batch):
+    src, dst = batch
+    neg_s, neg_d = sample_non_edges(len(src), A_train_np, rng_link)
+    z = m.encode(X, A_norm_train)
+    scores = torch.cat([m.decode(z, src, dst), m.decode(z, neg_s, neg_d)])
+    labels = torch.cat(
+        [torch.ones(len(src), device=device), torch.zeros(len(neg_s), device=device)]
+    )
+    return F.binary_cross_entropy_with_logits(scores, labels)
+
+
+edge_batches = [
+    (pos_src[i : i + 1024], pos_dst[i : i + 1024]) for i in range(0, n_pos, 1024)
+]
+diag, findings = run_diagnostic_checkpoint(
+    link_model,
+    edge_batches,
+    _link_loss,
+    title="Link Prediction — GCN encoder",
+    n_batches=4,
+    train_losses=link_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Link Prediction — GCN encoder")
+# HOW TO READ IT (your readings depend on your run):
+#  GRADIENT FLOW — the dot-product decoder can push embedding norms up
+#     to sharpen scores; exploding readings in the GCN layers suggest
+#     lowering the learning rate or adding weight decay.
+#  DEAD NEURONS — the encoder MLP's ReLU is an nn.ReLU module, so this
+#     reading is live: a large inactive fraction means many hidden units
+#     never fire for these papers.
+#  LOSS TREND — training loss only. Over-fitting shows up as the
+#     validation AUC (Phase 4 plot) stalling or falling while this keeps
+#     improving — the reason we select the epoch by validation AUC.
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -327,14 +444,16 @@ print("=" * 70)
 
 link_model.eval()
 with torch.no_grad():
-    # Get node embeddings
-    z = link_model.encode(X, A_norm).cpu().numpy()
+    # Node embeddings from the TRAINING graph (what the model can see)
+    z = link_model.encode(X, A_norm_train).cpu().numpy()
 
-    # Score distributions for positive vs negative edges
-    pos_final_scores = link_model(X, A_norm, pos_src, pos_dst).cpu().numpy()
-    neg_final_scores = link_model(X, A_norm, neg_src, neg_dst).cpu().numpy()
+    # Score distributions for HELD-OUT test edges vs test non-edges
+    pos_final_scores = link_model(X, A_norm_train, test_src, test_dst).cpu().numpy()
+    neg_final_scores = link_model(
+        X, A_norm_train, test_neg_src, test_neg_dst
+    ).cpu().numpy()
 
-# Plot 1: Score distributions — positive vs negative edges
+# Plot 1: Score distributions — held-out real edges vs non-edges
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 axes[0].hist(
@@ -343,7 +462,7 @@ axes[0].hist(
     alpha=0.7,
     color="green",
     edgecolor="white",
-    label="Real edges",
+    label="Held-out real edges",
     density=True,
 )
 axes[0].hist(
@@ -358,11 +477,13 @@ axes[0].hist(
 axes[0].set_xlabel("Edge Score (before sigmoid)", fontsize=11)
 axes[0].set_ylabel("Density", fontsize=11)
 axes[0].set_title(
-    "Score Distribution: Real vs Non-Edges", fontsize=13, fontweight="bold"
+    "Test Score Distribution: Held-out Edges vs Non-Edges",
+    fontsize=13,
+    fontweight="bold",
 )
 axes[0].legend(fontsize=10)
 
-# Plot 2: AUC and loss over training
+# Plot 2: training loss and VALIDATION AUC over training
 epochs_range = list(range(1, LINK_EPOCHS + 1))
 ax_loss = axes[1]
 ax_loss.plot(epochs_range, link_losses, color="steelblue", label="Loss")
@@ -371,8 +492,8 @@ ax_loss.set_ylabel("BCE Loss", fontsize=11, color="steelblue")
 ax_loss.tick_params(axis="y", labelcolor="steelblue")
 
 ax_auc = ax_loss.twinx()
-ax_auc.plot(epochs_range, link_aucs, color="coral", label="AUC (approx)")
-ax_auc.set_ylabel("AUC (approx)", fontsize=11, color="coral")
+ax_auc.plot(epochs_range, link_aucs, color="coral", label="Validation AUC")
+ax_auc.set_ylabel("Validation AUC", fontsize=11, color="coral")
 ax_auc.tick_params(axis="y", labelcolor="coral")
 axes[1].set_title("Link Prediction Training Progress", fontsize=13, fontweight="bold")
 
@@ -420,7 +541,7 @@ print(f"  Saved: {filepath}")
 plot_training_curves(
     metrics_dict={
         "Link pred loss": link_losses,
-        "Link pred AUC (approx)": link_aucs,
+        "Link pred validation AUC": link_aucs,
     },
     title="Link Prediction Training",
     y_label="Value",
@@ -431,14 +552,14 @@ plot_training_curves(
 pos_mean = pos_final_scores.mean()
 neg_mean = neg_final_scores.mean()
 print(f"\n  Score analysis:")
-print(f"    Real edges   — mean score: {pos_mean:+.4f}")
-print(f"    Non-edges    — mean score: {neg_mean:+.4f}")
+print(f"    Held-out real edges — mean score: {pos_mean:+.4f}")
+print(f"    Non-edges           — mean score: {neg_mean:+.4f}")
 print(f"    Separation:  {pos_mean - neg_mean:.4f}")
-print(f"    -> Good separation means the model can distinguish real from fake edges")
+print(f"    -> Separation on UNSEEN edges is what a link predictor is for")
 
 # ── Visualise Checkpoint ────────────────────────────────────────────
 assert z.shape == (N, HIDDEN_DIM), f"Embedding shape should be ({N}, {HIDDEN_DIM})"
-assert pos_mean > neg_mean, "Positive edges should score higher on average"
+assert pos_mean > neg_mean, "Held-out real edges should score higher on average"
 print("\n--- Visualise checkpoint passed --- link prediction analysis plotted\n")
 
 
@@ -446,12 +567,12 @@ print("\n--- Visualise checkpoint passed --- link prediction analysis plotted\n"
 # PHASE 5 — APPLY: Knowledge Graph Completion for a Hospital
 # ════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("  PHASE 5 — APPLY: Knowledge Graph Completion at SGH")
+print("  PHASE 5 — APPLY: Knowledge Graph Completion for a Hospital")
 print("=" * 70)
 print(
     """
-  SCENARIO: You're building a drug-disease interaction predictor for
-  Singapore General Hospital (SGH) using a medical knowledge graph.
+  SCENARIO (illustrative): You're building a drug-disease interaction
+  predictor for a Singapore public hospital using a medical knowledge graph.
 
   THE KNOWLEDGE GRAPH:
   - Drug nodes: ~5K approved drugs (features: molecular weight, targets, ATC code)
@@ -463,7 +584,8 @@ print(
   LINK PREDICTION TASK: Discover new drug-disease edges
   - Known: drug X treats disease Y (from clinical trials)
   - Unknown: does drug X also treat disease Z? (drug repurposing)
-  - Validation: withhold 20% of known edges, predict them
+  - Validation: withhold known edges (and keep them out of the graph the
+    encoder sees), then check the model ranks them highly
 
   HOW IT WORKS:
   1. Encode all nodes with GNN: each drug gets an embedding that
@@ -474,47 +596,49 @@ print(
 """
 )
 
-# Demonstrate with Cora: withhold edges and see if the model rediscovers them
-print("  Demonstration: edge rediscovery experiment")
-print("  (Withholding 100 real edges, checking if the model scores them highly)\n")
+# Demonstrate with Cora: rank EVERY candidate pair, as the lab would, and
+# check how many of the top-k are held-out real citations.
+TOP_K = 100
+print("  Demonstration: candidate ranking")
+print(f"  (Score every unlinked pair; how many of the top {TOP_K} are real")
+print("   held-out test citations the model never saw?)\n")
 
-# Randomly select 100 real edges to withhold
-rng_demo = np.random.default_rng(123)
-n_test_edges = min(100, n_pos)
-test_edge_indices = rng_demo.choice(n_pos, n_test_edges, replace=False)
-
-withheld_src = pos_src[test_edge_indices]
-withheld_dst = pos_dst[test_edge_indices]
-
-# Score withheld edges and compare to random non-edges
 with torch.no_grad():
-    withheld_scores = link_model(X, A_norm, withheld_src, withheld_dst)
+    z_all = link_model.encode(X, A_norm_train)
+    pair_scores = z_all @ z_all.T  # (N, N) dot-product scores
 
-    # Random non-edges for comparison
-    rand_src = torch.randint(0, N, (n_test_edges,), device=device)
-    rand_dst = torch.randint(0, N, (n_test_edges,), device=device)
-    random_scores = link_model(X, A_norm, rand_src, rand_dst)
+# Candidates: pairs i < j that are neither training nor validation edges
+candidates = torch.triu(torch.ones(N, N, dtype=torch.bool, device=device), diagonal=1)
+candidates &= A_train == 0
+candidates[val_src, val_dst] = False
+is_test_edge = torch.zeros(N, N, dtype=torch.bool, device=device)
+is_test_edge[test_src, test_dst] = True
 
-withheld_mean = withheld_scores.mean().item()
-random_mean = random_scores.mean().item()
-rediscovery_auc = (withheld_scores > random_scores).float().mean().item()
+cand_scores = pair_scores[candidates]
+cand_is_test = is_test_edge[candidates]
+top = torch.topk(cand_scores, TOP_K).indices
+hits = int(cand_is_test[top].sum().item())
+precision_at_k = hits / TOP_K
+base_rate = cand_is_test.float().mean().item()
+lift = precision_at_k / base_rate
 
-print(f"    Withheld real edges — mean score: {withheld_mean:+.4f}")
-print(f"    Random non-edges   — mean score: {random_mean:+.4f}")
-print(f"    Rediscovery AUC:                  {rediscovery_auc:.4f}")
-print(f"    (1.0 = perfectly ranks real edges above non-edges)")
-
-if rediscovery_auc > 0.6:
-    print("    -> Model successfully rediscovers withheld edges!")
-    print(
-        "    -> In a hospital setting: these would be drug-disease candidates for trials"
-    )
+print(f"    Candidate pairs scored:          {int(candidates.sum()):,}")
+print(f"    Held-out real edges among them:  {int(cand_is_test.sum())}")
+print(f"    Real edges in the top {TOP_K}:       {hits}  (precision@{TOP_K} = {precision_at_k:.2f})")
+print(f"    Expected by random picking:      {base_rate * TOP_K:.3f}")
+print(f"    Lift over random:                {lift:,.0f}x")
+print(
+    "    -> In a hospital setting the top-k list is what the pharmacology\n"
+    "       team reviews; precision@k says how much of their time is well spent."
+)
 
 print(
     """
   CLINICAL DEPLOYMENT:
-  1. Build KG from DrugBank, OMIM, STRING databases + SGH clinical records
-  2. Train link predictor on known drug-disease edges
+  1. Build the KG from public drug-target, disease-gene and protein-
+     interaction databases plus the hospital's own records
+  2. Split known drug-disease edges into train / val / test and train the
+     link predictor with message passing over the training edges only
   3. Score all (drug, disease) pairs without known interactions
   4. Top-k candidates reviewed by pharmacology team for literature evidence
   5. Promising candidates enter pre-clinical or retrospective cohort studies
@@ -530,17 +654,20 @@ if has_registry:
         name="m5_gnn_link_predictor",
         model=link_model,
         metrics=[
-            MetricSpec(name="final_link_auc", value=final_auc),
+            MetricSpec(name="best_val_auc", value=best_val_auc),
+            MetricSpec(name="test_auc", value=test_auc),
             MetricSpec(name="final_link_loss", value=link_losses[-1]),
-            MetricSpec(name="rediscovery_auc", value=rediscovery_auc),
+            MetricSpec(name=f"precision_at_{TOP_K}", value=precision_at_k),
         ],
     )
     print(
-        f"  Registered link_predictor: version={version.version}, auc={final_auc:.4f}"
+        f"  Registered link_predictor: version={version.version}, "
+        f"test_auc={test_auc:.4f}"
     )
 
 # ── Apply Checkpoint ────────────────────────────────────────────────
-assert rediscovery_auc > 0.5, "Rediscovery AUC should beat random"
+assert test_auc > 0.5, "Held-out test AUC should beat random"
+assert 0 <= hits <= TOP_K, "Hits must be a count within the top-k list"
 print("\n--- Apply checkpoint passed --- knowledge graph completion demonstrated\n")
 
 
@@ -556,8 +683,10 @@ print(
   [x] Encoder: GCN layers produce node embeddings from features + structure
   [x] Decoder: dot-product similarity — score(i,j) = z_i^T z_j
   [x] Training: positive edges (real) vs negative edges (sampled non-edges)
-  [x] AUC metric: {final_auc:.1%} — ranks real edges above non-edges
-  [x] Rediscovery experiment: {rediscovery_auc:.1%} AUC on withheld edges
+  [x] Edge split: train / val / test edges; the encoder sees train edges only
+  [x] Held-out test AUC: {test_auc:.1%} — ranks UNSEEN real edges above non-edges
+  [x] Candidate ranking: {hits}/{TOP_K} top-ranked pairs were held-out real
+      edges ({lift:,.0f}x random)
   [x] Visualised score distributions and similarity heatmaps
 
   LINK PREDICTION vs NODE CLASSIFICATION:
@@ -579,62 +708,3 @@ print(
 
 # Clean up
 asyncio.run(conn.close())
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Link prediction BCE over node pair dot products
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Link Prediction with GNN) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        link_model,
-        edge_loader,
-        _diag_loss,
-        title="Link Prediction with GNN",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 5.1e-04 to 7.3e-03.
-# [!] Loss trend    (WARNING): train loss → 0.12 but val AUC plateaus at 0.89.
-#     Signature of train-val gap — model memorising specific edges.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [STETHOSCOPE] Link prediction overfits fast because the task
-#     is effectively "memorise these specific edges". The val AUC
-#     plateau while train loss keeps dropping is the canonical
-#     overfit signature slide 5.3's Stethoscope teaches.
-#     >> Prescription: add negative sampling diversity, use dropout
-#        on edges (DropEdge), or reduce embedding dimensionality.
-#
-#  [BLOOD TEST] Healthy gradients. The issue is data-side (limited
-#     positive edges), not optimisation-side.
-

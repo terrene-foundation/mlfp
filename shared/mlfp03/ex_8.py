@@ -237,6 +237,23 @@ def train_calibrated_model(
     return calibrated
 
 
+# ════════════════════════════════════════════════════════════════════════
+# DECISION THRESHOLD + PRODUCTION ARTEFACTS shared by 8.3 - 8.5
+# ════════════════════════════════════════════════════════════════════════
+# An applicant is FLAGGED (predicted default — the adverse outcome) when
+# p(default) >= DECISION_THRESHOLD. With calibrated probabilities the
+# cost-minimising cut-off is c_FP / (c_FP + c_FN) (Exercise 5). The costs
+# are ILLUSTRATIVE, the same as Exercise 5: a missed default (FN) costs
+# S$10,000, wrongly declining a good applicant (FP) costs S$1,500.
+COST_FN_SGD = 10_000.0
+COST_FP_SGD = 1_500.0
+DECISION_THRESHOLD = COST_FP_SGD / (COST_FP_SGD + COST_FN_SGD)
+
+PRODUCTION_MODEL_NAME = "credit_default_production"  # registered by 8.4
+CARD_PATH = OUTPUT_DIR / "ex8_03_model_card.md"  # written by 8.3
+CARD_EVIDENCE_PATH = OUTPUT_DIR / "ex8_03_model_card_evidence.json"  # written by 8.3
+
+
 def evaluate_classification(
     y_true: np.ndarray, y_proba: np.ndarray, threshold: float = 0.5
 ) -> dict[str, float]:
@@ -303,6 +320,16 @@ def conformal_summary(
         "both_rate": float((size == 2).mean()),
         "empty_rate": float((size == 0).mean()),
     }
+
+
+def conformal_on_test(
+    y_test: np.ndarray, p_test: np.ndarray, alpha: float = 0.10
+) -> dict[str, float]:
+    """8.1's protocol in one call: q̂ from the first half of the test rows,
+    coverage and set sizes measured on the second half."""
+    n_cal = len(y_test) // 2
+    q_hat = conformal_qhat(nonconformity_scores(y_test[:n_cal], p_test[:n_cal]), alpha)
+    return {"alpha": alpha, "q_hat": q_hat, **conformal_summary(y_test[n_cal:], p_test[n_cal:], q_hat)}
 
 
 # ════════════════════════════════════════════════════════════════════════

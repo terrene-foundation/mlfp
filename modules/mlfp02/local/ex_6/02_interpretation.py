@@ -123,6 +123,11 @@ for feat, units, factor in [
         f"({(or_change-1)*100:+.1f}% change)"
     )
 
+# INTERPRETATION: An odds ratio of 1.5 for floor_area_sqm means each
+# extra sqm multiplies the odds of being "high price" by 1.5. Odds
+# ratios are multiplicative, not additive — they compound with each
+# unit increase. A 10 sqm increase multiplies odds by 1.5^10 ≈ 57x.
+
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert np.exp(beta_original[1]) > 1, "Larger area should increase odds of high price"
 print("\n[ok] Checkpoint 1 passed — odds ratios computed\n")
@@ -178,6 +183,11 @@ print(f"\nDefault threshold (0.5):")
 print(f"  Cost: ${total_costs[40]:,.0f}")
 print(f"  Accuracy: {accuracies[40]:.4f}")
 
+# INTERPRETATION: When FN costs more than FP, the optimal threshold
+# is below 0.5 — we'd rather predict "high price" more aggressively
+# to avoid missing expensive flats. The threshold should reflect the
+# business cost of each type of error, not just accuracy.
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert 0 < optimal_threshold < 1, "Optimal threshold must be valid"
 assert optimal_cost <= total_costs[40], "Optimal cost must be <= default cost"
@@ -217,7 +227,7 @@ fig2 = go.Figure()
 fig2.add_trace(
     go.Scatter(
         x=thresholds,
-        y=[c / 1e6 for c in total_costs],
+        y=____,  # Hint: total_costs in $M, one value per threshold
         name="Total Cost ($M)",
     )
 )
@@ -264,42 +274,104 @@ print("\n[ok] Checkpoint 3 passed — odds ratios + cost curve visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: HDB valuation risk — asymmetric error costs
+# TASK 5 — APPLY: HDB valuation risk — a DIFFERENT cost matrix
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Singapore Land Authority (SLA) monitors HDB resale
-# transactions for valuation anomalies.
+# SCENARIO: A mortgage lender's valuation-audit team screens HDB resale
+# transactions it is financing. A transaction flagged "high-price"
+# triggers a detailed review by a licensed valuer.
+#
+# Two types of errors carry different (ILLUSTRATIVE) costs:
 #   - FP (flagged but normal): unnecessary review costs S$800/case
-#   - FN (missed anomaly): average overpayment of S$45,000
+#   - FN (missed overpriced deal): average over-lending exposure of
+#     S$45,000 per case
+#
+# This is NOT the cost matrix of Task 3 (S$30K vs S$50K). A threshold
+# is only "cost-optimal" for the costs it was optimised under, so the
+# sweep must be re-run with the audit team's own costs.
 
-y_pred_opt = (p_scratch >= optimal_threshold).astype(int)
-cm_opt = confusion_matrix(y, y_pred_opt)
-tn_opt, fp_opt, fn_opt, tp_opt = cm_opt.ravel()
+review_cost = 800  # S$ per unnecessary review (illustrative)
+missed_cost = 45_000  # S$ exposure per missed case (illustrative)
 
-review_cost = 800
-missed_cost = 45_000
+# Re-optimise on a finer grid: steep cost ratios push the optimum low
+apply_thresholds = np.round(np.linspace(0.01, 0.99, 99), 2)
+apply_costs = []
+for t in apply_thresholds:
+    y_pred_t = (p_scratch >= t).astype(int)
+    tn_t, fp_t, fn_t, tp_t = confusion_matrix(y, y_pred_t).ravel()
+    # TODO: Total audit cost at this threshold with the NEW cost matrix.
+    # Hint: same formula as Task 3, using review_cost and missed_cost.
+    apply_costs.append(____)
+apply_idx = int(np.argmin(apply_costs))
+apply_threshold = float(apply_thresholds[apply_idx])
 
-annual_transactions = n_obs
-# TODO: Compute annual FP cost and FN cost at the optimal threshold.
-# Hint: annual cost = (count / n_obs) * annual_transactions * per-case cost.
-annual_fp_cost = ____
-annual_fn_cost = ____
+# For perfectly calibrated probabilities the optimum is the Bayes
+# threshold c_FP / (c_FP + c_FN); a gap from it signals miscalibration
+# TODO: Bayes threshold for these costs.
+# Hint: c_FP / (c_FP + c_FN)
+bayes_threshold = ____
 
-# Compare with default threshold
-y_pred_default = (p_scratch >= 0.5).astype(int)
-cm_default = confusion_matrix(y, y_pred_default)
-tn_d, fp_d, fn_d, tp_d = cm_default.ravel()
-annual_fp_cost_d = int(annual_transactions * fp_d / n_obs) * review_cost
-annual_fn_cost_d = int(annual_transactions * fn_d / n_obs) * missed_cost
 
-print(f"\n=== Real-World Application: SLA Valuation Anomaly Detection ===")
-print(f"  Annual transactions: {annual_transactions:,}")
-print(f"\n  Default threshold (0.5):")
-print(f"    Unnecessary reviews: {fp_d:,} -> S${annual_fp_cost_d:,.0f}")
-print(f"    Missed anomalies:    {fn_d:,} -> S${annual_fn_cost_d:,.0f}")
-print(f"    Total risk:          S${annual_fp_cost_d + annual_fn_cost_d:,.0f}")
-print(f"\n  Cost-optimal threshold ({optimal_threshold:.3f}):")
-print(f"    Unnecessary reviews: {fp_opt:,} -> S${annual_fp_cost:,.0f}")
-print(f"    Missed anomalies:    {fn_opt:,} -> S${annual_fn_cost:,.0f}")
-print(f"    Total risk:          S${annual_fp_cost + annual_fn_cost:,.0f}")
-savings = (annual_fp_cost_d + annual_fn_cost_d) - (annual_fp_cost + annual_fn_cost)
-print(f"    Annual saving:       S${savings:,.0f}")
+def audit_cost(threshold: float) -> tuple[int, int, float]:
+    """Return (unnecessary reviews, missed cases, total S$) at a threshold."""
+    y_pred_t = (p_scratch >= threshold).astype(int)
+    tn_t, fp_t, fn_t, tp_t = confusion_matrix(y, y_pred_t).ravel()
+    return int(fp_t), int(fn_t), float(fp_t * review_cost + fn_t * missed_cost)
+
+
+print(f"\n=== Real-World Application: Valuation-Audit Screening ===")
+print(f"  Transactions scored (2020+ dataset): {n_obs:,}")
+print(f"  Bayes threshold for these costs: {bayes_threshold:.3f}")
+rows = [
+    ("Default", 0.5),
+    ("Task 3 optimum (other costs)", float(optimal_threshold)),
+    ("Re-optimised for audit costs", apply_threshold),
+]
+print(f"\n  {'Threshold rule':<30} {'t':>5} {'Reviews':>9} {'Missed':>8} {'Total S$':>15}")
+audit_totals = {}
+for label, t in rows:
+    fp_t, fn_t, total_t = audit_cost(t)
+    audit_totals[label] = total_t
+    print(f"  {label:<30} {t:>5.2f} {fp_t:>9,} {fn_t:>8,} {total_t:>15,.0f}")
+saving_vs_default = audit_totals["Default"] - audit_totals["Re-optimised for audit costs"]
+print(f"\n  Saving vs the default threshold: S${saving_vs_default:,.0f}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert audit_totals["Re-optimised for audit costs"] <= audit_totals["Default"], (
+    "Re-optimised threshold must not cost more than the default"
+)
+assert audit_totals["Re-optimised for audit costs"] <= audit_totals[
+    "Task 3 optimum (other costs)"
+], "A threshold tuned for other costs cannot beat one tuned for these costs"
+print("\n[ok] Checkpoint 4 passed — threshold re-optimised for the audit costs\n")
+
+# BUSINESS IMPACT: Missing an overpriced deal (FN) costs ~56x an
+# unnecessary review (FP), so the cost-minimising threshold sits well
+# below 0.5: the team accepts many more reviews to miss fewer
+# overpriced deals. Reusing a threshold tuned for a different cost
+# matrix leaves money on the table — compare the rows above.
+#
+# LIMITATIONS:
+#   - Cost estimates are simplified. Real costs include legal fees,
+#     dispute resolution time, and reputational damage that are hard
+#     to quantify precisely.
+#   - The cost matrix assumes stationarity. In a rising market, FN
+#     costs increase; in a falling market, FP costs increase. The
+#     threshold should be recalibrated quarterly.
+#   - "High-price" (above median) is a proxy for "overpriced"; a real
+#     audit model would target price relative to a fair-value estimate.
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print("""
+What you've mastered in this technique:
+  ✓ Converting standardised logistic coefficients to per-unit odds ratios
+  ✓ Reading odds ratios multiplicatively over multi-unit changes
+  ✓ Sweeping the decision threshold under a cost matrix
+  ✓ Re-optimising the threshold whenever the cost matrix changes, and
+    comparing it with the Bayes threshold c_FP / (c_FP + c_FN)
+
+Next: In 03_classification_metrics.py you'll measure the classifier
+with confusion matrices, precision/recall, ROC and PR curves.
+""")

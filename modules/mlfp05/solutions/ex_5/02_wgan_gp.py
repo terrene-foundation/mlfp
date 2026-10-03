@@ -700,7 +700,7 @@ print("  │                                training + memorisation test│")
 print("  └────────────────────────────────────────────────────────────┘")
 print(
     "  Note: the synthetic labels come from the real-data model (pseudo-\n"
-    "  labels), so the synthetic model is capped by the teacher's accuracy;\n"
+    "  labels), so the synthetic model inherits the teacher's mistakes;\n"
     "  in a real project clinicians would label a synthetic subset."
 )
 

@@ -388,7 +388,7 @@ cross = sample_left.join(sample_right, how="cross")
 print(f"\n=== Cross Join Demo (2 x 3 = 6 rows) ===")
 print(cross)
 # INTERPRETATION: Cross join produces len(left) * len(right) rows.
-# On real data, this would be catastrophic: 50k * 150 = 7.5 million rows.
+# On the full tables this would be catastrophic: 50k * 150 = 7.5 million rows.
 # This is why you always need a join key — it restricts which rows pair up.
 
 # --- 5d: When to use which join ---

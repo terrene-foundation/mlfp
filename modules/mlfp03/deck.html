@@ -2074,28 +2074,39 @@ async def register(artifact: bytes, cols: list[str], test_auc: float):
   <div class="kailash-bridge">
     <h3>DataFlow</h3>
     <p>Zero-config database operations for persisting ML results.</p>
-    <pre><code class="language-python">from kailash_dataflow import DataFlow, field
+    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+from dataflow import DataFlow
 
-db = DataFlow()
+db = DataFlow("sqlite:///mlfp03_results.db")
 
 @db.model
-class PredictionResult:
-    customer_id: str = field(primary_key=True)
-    score: float = field()
-    model_version: str = field()
-    predicted_at: str = field()
+class CreditEvaluation:
+    id: int                      # primary key, generated on insert
+    model_name: str
+    model_version: int
+    auc_roc: float
+    auc_pr: float
+    review_status: str = "pending"
 
-# CRUD operations
-await db.express.create(PredictionResult,
-    customer_id="C001", score=0.73,
-    model_version="v2.1", predicted_at="2024-03-15"
-)
-results = await db.express.list(PredictionResult)</code></pre>
+async def save_and_review(version: int, metrics: dict[str, float]):
+    await db.initialize()
+    try:
+        await db.express.create("CreditEvaluation", {
+            "model_name": "credit_default", "model_version": version,
+            "auc_roc": metrics["auc_roc"], "auc_pr": metrics["auc_pr"]})
+        row = await db.express.find_one(
+            "CreditEvaluation", {"model_version": version})
+        await db.express.update("CreditEvaluation", row["id"],
+                                {"review_status": "approved"})
+        return await db.express.list(
+            "CreditEvaluation", filter={"model_name": "credit_default"})
+    finally:
+        await db.close_async()</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. DataFlow handles the "where do predictions go?" question. In production, predictions must be stored for audit, monitoring, and business use. The decorator-based schema makes it simple. For beginners: "DataFlow is how the model's predictions get saved to a database so other systems can use them."</aside>
+  <aside class="notes">Timing: 2 min. DataFlow handles the "where do results go?" question. In production, evaluations and predictions must be stored for audit, monitoring, and business use. The plain class annotations ARE the schema (there is no field() helper); id: int becomes the auto-generated primary key, and created_at / updated_at are added for you. db.express takes the model name as a string: create, read (by id), find_one (by filter), list, update, delete and count. Pass in the metrics you actually measured; Exercise 3.7 writes TrainingPipeline's test-set metrics. For beginners: "DataFlow is how the model's predictions get saved to a database so other systems can use them."</aside>
 </section>
 
 <!-- SLIDE 71 — Async Primer -->
@@ -2105,13 +2116,23 @@ results = await db.express.list(PredictionResult)</code></pre>
   <p>DataFlow uses <code>async/await</code> for database operations. Here is all you need to know:</p>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># Synchronous (blocking)
-result = db.query("SELECT ...")
-# Python waits. Nothing else runs.
+      <pre><code class="language-python">import asyncio
+from dataflow import DataFlow
 
-# Asynchronous (non-blocking)
-result = await db.query("SELECT ...")
-# Python can do other work while waiting.</code></pre>
+db = DataFlow("sqlite:///mlfp03_results.db")
+
+async def main():
+    await db.initialize()
+    try:
+        # await: wait for the database,
+        # let other work run meanwhile
+        return await db.express.count(
+            "CreditEvaluation")
+    finally:
+        await db.close_async()
+
+# a plain script starts the event loop once
+n_rows = asyncio.run(main())</code></pre>
     </div>
     <div class="col">
       <h3>Why Async?</h3>
@@ -2123,7 +2144,7 @@ result = await db.query("SELECT ...")
     </div>
   </div>
   <div class="callout callout-foundations">
-    <strong>Rule of thumb:</strong> If you see <code>await</code>, the function must be <code>async def</code>. That is the only syntax difference.
+    <strong>Rule of thumb:</strong> If you see <code>await</code>, the function must be <code>async def</code>; a script runs it with <code>asyncio.run(...)</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -2137,24 +2158,25 @@ result = await db.query("SELECT ...")
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
     <h3>Connection Lifecycle</h3>
-    <pre><code class="language-python">from kailash_dataflow import DataFlow, ConnectionManager
+    <pre><code class="language-python">from kailash.db import ConnectionManager
+from kailash_ml import ModelRegistry
 
-db = DataFlow()
-
-# Context manager ensures clean connection lifecycle
-async with ConnectionManager(db) as conn:
-    await conn.create_tables()
-    await db.express.create(PredictionResult, ...)
-    results = await db.express.list(PredictionResult)
-# Connection automatically closed on exit</code></pre>
+async def latest_versions(name: str):
+    conn = ConnectionManager("sqlite:///mlfp03_models.db")
+    await conn.initialize()          # open the connection
+    try:
+        registry = ModelRegistry(conn)
+        return await registry.get_model_versions(name)
+    finally:
+        await conn.close()           # always runs, even on error</code></pre>
   </div>
   <div class="callout callout-warning">
-    <strong>Always use ConnectionManager as a context manager.</strong> Forgetting to close connections causes resource leaks in production. The <code>async with</code> pattern guarantees cleanup.
+    <strong>Always close in a <code>finally</code> block.</strong> <code>ConnectionManager</code> (used by ModelRegistry, DriftMonitor, ExperimentTracker) is not a context manager: <code>initialize()</code> &rarr; work &rarr; <code>close()</code>. DataFlow follows the same shape: <code>initialize()</code> &rarr; <code>close_async()</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Connection management is a production concern. In a notebook, leaked connections are annoying. In a production server handling thousands of requests, they cause crashes. The context manager pattern is the safe default.</aside>
+  <aside class="notes">Timing: 2 min. Connection management is a production concern. In a notebook, leaked connections are annoying. In a production server handling thousands of requests, they cause crashes. ConnectionManager comes from kailash.db and takes a database URL; it has no async-with support, so the try/finally pattern is the safe default. One practical trap from Exercise 3.8: give DriftMonitor its OWN database file. The registry's database already contains a drift-reports table with a different layout, so pointing both at the same file fails.</aside>
 </section>
 
 <!-- SLIDE 73 — DriftMonitor Overview -->
@@ -2183,7 +2205,7 @@ async with ConnectionManager(db) as conn:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Drift is why ML is not "deploy and forget." COVID-19 broke every model trained on pre-pandemic data. For financial models: interest rate changes, regulatory changes, and economic cycles all cause drift. The DriftMonitor detects this automatically.</aside>
+  <aside class="notes">Timing: 2 min. Drift is why ML is not "deploy and forget." COVID-19 broke many models trained on pre-pandemic data. For financial models: interest rate changes, regulatory changes, and economic cycles all cause drift. The DriftMonitor detects this automatically.</aside>
 </section>
 
 <!-- SLIDE 74 — PSI and KS Test -->
@@ -2199,7 +2221,7 @@ async with ConnectionManager(db) as conn:
       <ul style="font-size:0.8em;">
         <li>PSI &lt; 0.1: no significant change</li>
         <li>0.1 &le; PSI &lt; 0.25: moderate change</li>
-        <li>PSI &ge; 0.25: significant drift</li>
+        <li>PSI &ge; 0.25: significant drift (DriftMonitor's default alert: 0.2)</li>
       </ul>
     </div>
     <div class="col">
@@ -2209,7 +2231,7 @@ async with ConnectionManager(db) as conn:
       </div>
       <ul style="font-size:0.8em;">
         <li>Measures max distance between CDFs</li>
-        <li>p-value indicates significance</li>
+        <li>p-value indicates significance &mdash; tighten it when testing many features (Bonferroni)</li>
         <li>Distribution-free (no assumptions)</li>
       </ul>
     </div>
@@ -2226,28 +2248,37 @@ async with ConnectionManager(db) as conn:
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>DriftMonitor</h3>
-    <pre><code class="language-python">from kailash_ml import DriftMonitor, DriftSpec
+    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+import polars as pl
+from kailash.db import ConnectionManager
+from kailash_ml import DriftMonitor
+from shared.mlfp03.ex_7 import prepare_credit_frames
 
-monitor = DriftMonitor(
-    reference_data=X_train,
-    spec=DriftSpec(
-        features=["age", "income", "credit_history"],
-        methods=["psi", "ks"],
-        thresholds={"psi": 0.25, "ks_pvalue": 0.01},
-        frequency="daily"
-    )
-)
+dev, test, cols = prepare_credit_frames()
+batches = {"clean": test,
+           "income_x1.5": test.with_columns(pl.col("income_sgd") * 1.5)}
 
-# Check new production data for drift
-report = monitor.check(X_production)
-if report.has_drift:
-    print(f"Drift detected: {report.drifted_features}")
-    # Trigger retraining pipeline</code></pre>
+async def check(reference, batches, features):
+    conn = ConnectionManager("sqlite:///mlfp03_drift.db")  # its OWN file
+    await conn.initialize()
+    try:
+        monitor = DriftMonitor(conn, tenant_id="_single",
+                               psi_threshold=0.2, ks_threshold=0.001)
+        await monitor.set_reference_data("credit_default", reference, features)
+        for name, batch in batches.items():
+            r = await monitor.check_drift("credit_default", batch)
+            flagged = [f.feature_name for f in r.feature_results
+                       if f.drift_detected]
+            print(name, r.overall_drift_detected, r.overall_severity, flagged)
+    finally:
+        await conn.close()
+
+asyncio.run(check(dev, batches, cols))</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. DriftMonitor wraps PSI and KS into a monitoring framework. The reference data is the training set. Production data is compared against it on the configured schedule. When drift is detected, the system can trigger automatic retraining or alert a human.</aside>
+  <aside class="notes">Timing: 2 min. DriftMonitor takes a ConnectionManager and stores the reference distribution (the training data the model learned from) under the model name; check_drift computes PSI and KS (plus Jensen-Shannon) per feature and returns a report with per-feature results, an overall flag and a severity. On the credit data the untouched test batch raises no alert, and the batch with incomes scaled by 1.5 is flagged "severe" on income_sgd alone. The KS p-value threshold is 0.001 rather than 0.05 because 33 features are tested at once: at 0.05, one or two features would be flagged by chance in every clean batch (Bonferroni: 0.05 / 33 is about 0.0015). Give the monitor its own database file; sharing the registry's file fails. Scheduled checks (schedule_monitoring with a DriftSpec) exist for production; Exercise 3.8 runs the checks explicitly and records each one as a DataFlow DriftCheck row, then acknowledges alerts and deletes a smoke-test row.</aside>
 </section>
 
 <!-- SLIDE 76 — Model Cards -->
@@ -2288,7 +2319,7 @@ if report.has_drift:
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Model cards are the "nutrition label" for ML models. They document performance, limitations, and fairness for anyone who uses or governs the model. For regulated industries, model cards are increasingly mandatory. The exercise requires students to create one for their credit scoring model.</aside>
+  <aside class="notes">Timing: 2 min. Model cards are the "nutrition label" for ML models. They document performance, limitations, and fairness for anyone who uses or governs the model. In regulated industries this kind of documentation is increasingly expected by model-risk reviewers. kailash-ml has no model-card generator; Exercise 3.8 writes the card itself, and every number in it, including the fairness results by race, gender and age band, is measured, not typed in as prose.</aside>
 </section>
 
 <!-- SLIDE 77 — Conformal Prediction -->
@@ -2297,19 +2328,19 @@ if report.has_drift:
   <span class="marker marker-advanced">Advanced</span>
   <p><strong>Problem:</strong> Most models give point predictions. Decision-makers need to know how uncertain the prediction is.</p>
   <div class="callout callout-advanced">
-    <strong>Conformal prediction (Vovk et al. 2005):</strong> Distribution-free prediction intervals with guaranteed coverage. If you request 90% coverage, the true value falls within the interval at least 90% of the time &mdash; regardless of the underlying distribution.
+    <strong>Conformal prediction (Vovk et al. 2005):</strong> Distribution-free prediction intervals or sets. If calibration and test data are <strong>exchangeable</strong> (e.g. i.i.d.), a 90% set contains the true value at least 90% of the time <em>on average over cases</em> (marginal coverage) &mdash; with no assumption about the distribution itself.
   </div>
-  <p><strong>How it works:</strong></p>
+  <p><strong>How it works (split conformal):</strong></p>
   <ol style="font-size:0.85em;">
     <li>Train model on training set</li>
-    <li>Compute nonconformity scores on calibration set</li>
-    <li>For new prediction: interval = prediction &plusmn; quantile of calibration scores</li>
+    <li>Compute nonconformity scores on n calibration rows</li>
+    <li><span class="katex-inline">\hat{q}</span> = the <span class="katex-inline">\lceil (n+1)(1-\alpha) \rceil / n</span> quantile of the scores; regression: prediction &plusmn; <span class="katex-inline">\hat{q}</span>; classification: every class whose score &le; <span class="katex-inline">\hat{q}</span></li>
   </ol>
-  <p style="font-size:0.85em; color:#64748B;">No distributional assumptions. Works with any model. Connects to calibration (Lesson 3.5).</p>
+  <p style="font-size:0.85em; color:#64748B;">Works with any model. Drift breaks exchangeability, and with it the guarantee. Connects to calibration (Lesson 3.5).</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Conformal prediction is the modern approach to uncertainty quantification. Unlike Bayesian methods, it makes no distributional assumptions. The guarantee is finite-sample and distribution-free. For professionals: "Instead of saying the HDB price is S$580,000, the model says S$550,000 to S$610,000 with 90% coverage."</aside>
+  <aside class="notes">Timing: 2 min. Conformal prediction is the modern approach to uncertainty quantification. Unlike Bayesian methods, it makes no distributional assumptions. The guarantee is finite-sample, but it is marginal (on average over applicants, not for each applicant) and it needs exchangeable data, which drift violates. Exercise 3.8 uses the classification version on credit default: an applicant whose prediction set holds both classes is ambiguous and is routed to a human reviewer. The ceil((n+1)(1-alpha))/n quantile (taken with method="higher") is the finite-sample correction; a plain 90th percentile slightly under-covers. For professionals: "Instead of saying the HDB price is S$580,000, the model says S$550,000 to S$610,000 with 90% coverage."</aside>
 </section>
 
 <!-- SLIDE 78 — Full Production Pipeline -->
@@ -2326,7 +2357,7 @@ if report.has_drift:
     <table style="font-size:0.78em;">
       <thead><tr><th>Stage</th><th>Engine</th></tr></thead>
       <tbody>
-        <tr><td>Train + Evaluate</td><td><code>TrainingPipeline</code>, <code>AutoMLEngine</code></td></tr>
+        <tr><td>Train + Evaluate + Calibrate</td><td><code>TrainingPipeline</code> (<code>.train</code>, <code>.calibrate</code>)</td></tr>
         <tr><td>Tune</td><td><code>HyperparameterSearch</code></td></tr>
         <tr><td>Register + Promote</td><td><code>ModelRegistry</code></td></tr>
         <tr><td>Persist</td><td><code>DataFlow</code></td></tr>
@@ -2380,16 +2411,16 @@ if report.has_drift:
     <li><strong>DataFlow:</strong> Persist predictions with schema validation and connection management</li>
     <li><strong>DriftMonitor:</strong> PSI + KS test for feature drift detection</li>
     <li><strong>Model cards:</strong> Document performance, fairness, and limitations</li>
-    <li><strong>Conformal prediction:</strong> Distribution-free uncertainty intervals</li>
+    <li><strong>Conformal prediction:</strong> Distribution-free sets with marginal coverage (needs exchangeability)</li>
     <li><strong>MLOps:</strong> CI/CD for ML &mdash; code AND data trigger deployment</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.8:</strong> Deploy credit scoring model as full production pipeline. Persist to DataFlow. Set up DriftMonitor. Generate model card. Simulate drift and verify detection.
+    <strong>Exercise 3.8:</strong> Calibrated credit model &rarr; conformal sets &rarr; DriftMonitor on injected gradual/sudden drift with DataFlow alert rows &rarr; measured model card &rarr; registry promotion and rollback &rarr; 11 computed readiness gates + human sign-off.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. Quick recap. This exercise is the capstone: students build the full pipeline from training to monitoring. If they can do this, they can productionise ML models.</aside>
+  <aside class="notes">Timing: 1 min. Quick recap. This exercise is the capstone. The model is trained and calibrated through TrainingPipeline; the decision threshold is 0.130, the cost-optimal t* from Lesson 3.5. Drift is checked with DriftMonitor (PSI 0.2, KS p-value 0.001) and every check is persisted and acknowledged through DataFlow. Promotion uses promote_model, and the rollback is rehearsed by moving the archived version back through staging to production and verifying the restored model is the same one. The readiness check computes 11 gates from the real artefacts left by earlier steps; what code cannot judge (for example the age-band fairness failure) goes to a human sign-off, not a hard-coded pass.</aside>
 </section>
 
 

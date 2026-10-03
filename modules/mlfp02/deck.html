@@ -403,7 +403,7 @@
     <div class="col">
       <h3>HDB Price Example</h3>
       <ul>
-        <li>Prior belief: mean HDB resale price is $\text{Beta}$ distributed around $500K (weak prior)</li>
+        <li>Prior belief: mean HDB resale price $\mu \sim N(\mu_0, \sigma_0^2)$ with $\mu_0$ = <span class="nomath">$500K</span>, $\sigma_0$ = <span class="nomath">$25K</span> (Normal-Normal)</li>
         <li>Observe 50 transactions</li>
         <li>Posterior shifts toward the observed mean, weighted by how much data we have vs how strong our prior was</li>
       </ul>
@@ -881,7 +881,7 @@ fig = ModelVisualizer().histogram(
           <tr><td>0.10</td><td>Lenient</td><td>Exploratory research</td></tr>
           <tr><td>0.05</td><td>Standard</td><td>Social science, business</td></tr>
           <tr><td>0.01</td><td>Strict</td><td>Medical, regulatory</td></tr>
-          <tr><td>0.0005</td><td>5-sigma</td><td>Particle physics</td></tr>
+          <tr><td>0.0005</td><td>Very strict</td><td>Hard sciences (5-sigma is stricter still, about 3 &times; 10<sup>&minus;7</sup>)</td></tr>
         </tbody>
       </table>
       <div class="callout callout-foundations" style="margin-top: 8px;">
@@ -1186,7 +1186,7 @@ fig = ModelVisualizer().histogram(
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. SRM is the first check in any A/B test analysis. If the split is off, stop &mdash; your results are unreliable. Walk through the chi-squared calculation step by step. If beginners confused: "If you ordered 50 red balls and 50 blue balls but received 52 red and 48 blue, is that the factory's fault or just random? The chi-squared test answers this." If experts bored: "Microsoft runs SRM checks on every experiment. Kohavi et al. (2020) 'Trustworthy Online Controlled Experiments' is the reference."
+    Timing: 3 min. SRM is the first check in any A/B test analysis. If the split is off, stop &mdash; your results are unreliable. Walk through the chi-squared calculation step by step. If beginners confused: "If you ordered 50 red balls and 50 blue balls but received 52 red and 48 blue, is that the factory's fault or just random? The chi-squared test answers this." If experts bored: "Mature experimentation platforms run an SRM check on every experiment. Kohavi et al. (2020) 'Trustworthy Online Controlled Experiments' is the reference."
   </aside>
 </section>
 
@@ -1226,7 +1226,7 @@ fig = ModelVisualizer().histogram(
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through each pitfall with a concrete example. Peeking: "If you check your experiment every day and stop when it looks significant, your false positive rate is not 5% but closer to 30%." If beginners confused: "These are the ways experiments can give you wrong answers even when the math is correct." If experts bored: "Sequential testing (always-valid p-values) solves the peeking problem. Interaction effects require multi-armed bandit approaches."
+    Timing: 3 min. Walk through each pitfall with a concrete example. Peeking: "If you check your experiment every day and stop when it looks significant, your false positive rate is not 5%: with 20 daily looks it is roughly 25% (Exercise 7.3 simulates this)." If beginners confused: "These are the ways experiments can give you wrong answers even when the math is correct." If experts bored: "Sequential testing (always-valid p-values) solves the peeking problem. Overlapping experiments need interaction checks or mutually exclusive traffic layers."
   </aside>
 </section>
 
@@ -1394,9 +1394,9 @@ asyncio.run(log_design())</code></pre>
       <table>
         <thead><tr><th>Confidence</th><th>$|t|$ Cutoff</th><th>Stars</th></tr></thead>
         <tbody>
-          <tr><td>90%</td><td>&gt; 1.6</td><td>*</td></tr>
-          <tr><td>95%</td><td>&gt; 1.8</td><td>**</td></tr>
-          <tr><td>99%</td><td>&gt; 1.97</td><td>***</td></tr>
+          <tr><td>90%</td><td>&gt; 1.645</td><td>*</td></tr>
+          <tr><td>95%</td><td>&gt; 1.960</td><td>**</td></tr>
+          <tr><td>99%</td><td>&gt; 2.576</td><td>***</td></tr>
         </tbody>
       </table>
       <div class="callout callout-theory" style="margin-top: 12px;">
@@ -1449,7 +1449,7 @@ asyncio.run(log_design())</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 4 min. Walk through with the HDB example: "Our model explains 82% of price variance (R^2 = 0.82). The F-statistic is 450 with p < 0.001, meaning the model as a whole is highly significant." If beginners confused: "R-squared is the percentage of the data's variation that your model captures. Higher is better. F-statistic tells you if the model is better than just guessing the average." If experts bored: "Adjusted R-squared = 1 - (1 - R^2)(n - 1)/(n - k - 1). It can decrease when you add a useless predictor. Always report adjusted R^2 for multivariate models."
+    Timing: 4 min. Walk through with the HDB example: on the course data (sentinel prices removed, about 49,900 sales), floor area and building age together explain about 83% of price variance (R^2 = 0.83); the F-statistic is about 120,000 with p < 0.001, so the model as a whole is highly significant. With n this large, almost any F is significant, which is why R^2 and effect sizes matter. If beginners confused: "R-squared is the percentage of the data's variation that your model captures. Higher is better. F-statistic tells you if the model is better than just guessing the average." If experts bored: "Adjusted R-squared = 1 - (1 - R^2)(n - 1)/(n - k - 1). It can decrease when you add a useless predictor. Always report adjusted R^2 for multivariate models."
   </aside>
 </section>
 
@@ -1521,7 +1521,7 @@ asyncio.run(log_design())</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Key insight: "linear regression" is linear in the coefficients, not the features. You can model curves and interactions. Walk through the area-times-central interaction. If beginners confused: "An interaction term says: the effect of one feature depends on the value of another feature. Living in the centre makes each square metre worth more." If experts bored: "Feature engineering with polynomial and interaction terms is a preview of M3.1 FeatureEngineer. In M3 we automate this."
+    Timing: 3 min. Key insight: "linear regression" is linear in the coefficients, not the features. You can model curves and interactions. Walk through the area-times-central interaction. If beginners confused: "An interaction term says: the effect of one feature depends on the value of another feature. Living in the centre makes each square metre worth more." If experts bored: "FeatureEngineer.generate creates these polynomial and interaction terms from a schema (Lesson 2.8); M3.1 goes deeper into feature selection."
   </aside>
 </section>
 
@@ -1541,7 +1541,7 @@ asyncio.run(log_design())</code></pre>
     <div class="col">
       <h3>Simpson's Paradox Warning</h3>
       <div class="callout callout-advanced">
-        <strong>Example:</strong> A simple regression shows area has a <em>negative</em> coefficient for price (larger flats cost less). But when you add "town" to the model, the coefficient flips to positive. Why? Larger flats are in cheaper towns. Town confounds the area-price relationship.
+        <strong>Hypothetical example:</strong> suppose a simple regression gave area a <em>negative</em> coefficient (larger flats cost less), and adding "town" flipped it to positive, because larger flats sit in cheaper towns. Town would be confounding the area-price relationship. (In the course data the raw area-price correlation is positive, about 0.47.)
       </div>
       <p style="font-size: 0.85em; margin-top: 8px;">Multivariate regression "controls for" confounders, but only the ones you include. Omitted variable bias is always a risk.</p>
     </div>
@@ -1550,7 +1550,7 @@ asyncio.run(log_design())</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Advanced slide. Simpson's paradox is a powerful teaching moment. Use the HDB example: larger flats tend to be in suburban towns (Woodlands, Jurong) where prices are lower. A simple regression attributes the low price to large area. Multivariate regression separates area from town. If beginners confused: "Multivariate regression lets you ask: what is the effect of size ALONE, separate from location?" If experts bored: "Omitted variable bias formally: E[b] = beta + (X^T X)^{-1} X^T Z gamma, where Z is the omitted variable and gamma is its true coefficient."
+    Timing: 3 min. Advanced slide. Simpson's paradox is a powerful teaching moment. Present the example as hypothetical: if larger flats were concentrated in cheaper towns, a simple regression would blame the low prices on large area, and multivariate regression would separate area from town. Students who check the course data will find the raw area-price correlation is positive (about 0.47), so do not present the reversal as an HDB fact. If beginners confused: "Multivariate regression lets you ask: what is the effect of size ALONE, separate from location?" If experts bored: "Omitted variable bias formally: E[b] = beta + (X^T X)^{-1} X^T Z gamma, where Z is the omitted variable and gamma is its true coefficient."
   </aside>
 </section>
 
@@ -1826,7 +1826,7 @@ fig = ModelVisualizer().residuals(y, X @ beta)</code></pre>
       <h3>Singapore HDB Example</h3>
       <ul>
         <li>Compare resale prices across flat types: 3-room, 4-room, 5-room, executive</li>
-        <li>$F = 342.5$, $p < 0.001$ &rarr; prices differ significantly across flat types</li>
+        <li>On the course data $F$ runs into the thousands, $p < 0.001$ &rarr; prices differ significantly across flat types</li>
         <li>But <em>which</em> types differ? ANOVA does not tell you</li>
       </ul>
       <h3 style="margin-top: 12px;">Post-Hoc Tests</h3>
@@ -1938,7 +1938,7 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Bridge: "In 2.4 you designed A/B tests. In 2.5 you learned regression. Now we combine both: CUPED uses regression to make your experiments more powerful, and DiD uses regression to draw causal conclusions from observational data." If beginners confused: "This lesson is about making your experiments better and finding causes even when you cannot run an experiment." If experts bored: "CUPED is the single most impactful A/B test technique. Every major tech company uses it."
+    Timing: 1 min. Bridge: "In 2.4 you designed A/B tests. In 2.5 you learned regression. Now we combine both: CUPED uses regression to make your experiments more powerful, and DiD uses regression to draw causal conclusions from observational data." If beginners confused: "This lesson is about making your experiments better and finding causes even when you cannot run an experiment." If experts bored: "CUPED is one of the highest-leverage A/B test techniques: free variance reduction whenever a strong pre-period covariate exists."
   </aside>
 </section>
 
@@ -1963,14 +1963,14 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
       <div class="callout callout-foundations">
         <strong>CUPED solution:</strong> You have pre-experiment data &mdash; each user's revenue last month. Adjust the post-experiment metric using the pre-experiment metric. The noise drops, the signal emerges, and now $p = 0.03$.
       </div>
-      <p style="font-size: 0.85em; margin-top: 12px; color: #64748B;">CUPED = <strong>C</strong>ontrolled-experiment <strong>U</strong>sing <strong>P</strong>re-<strong>E</strong>xperiment <strong>D</strong>ata. Introduced by Microsoft (Deng et al., 2013).</p>
+      <p style="font-size: 0.85em; margin-top: 12px; color: #64748B;">CUPED = <strong>C</strong>ontrolled-experiment <strong>U</strong>sing <strong>P</strong>re-<strong>E</strong>xperiment <strong>D</strong>ata. Introduced by Deng et al. (2013).</p>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. This case motivates CUPED with a tangible business scenario. The 2% lift is real but hidden in noise. CUPED reveals it without extending the experiment. Ask: "What if you could make your experiment twice as powerful without collecting more data?" If beginners confused: "Imagine your experiment has static noise. CUPED removes that noise by looking at how each person behaved BEFORE the experiment." If experts bored: "CUPED typically reduces variance by 30-50%, which is equivalent to doubling sample size."
+    Timing: 3 min. This case motivates CUPED with a tangible business scenario. The 2% lift is real but hidden in noise. CUPED reveals it without extending the experiment. Ask: "What if you could make your experiment twice as powerful without collecting more data?" If beginners confused: "Imagine your experiment has static noise. CUPED removes that noise by looking at how each person behaved BEFORE the experiment." If experts bored: "The reduction is rho squared: rho = 0.7 removes 49% of the variance, roughly the same as doubling the sample size."
   </aside>
 </section>
 
@@ -1986,8 +1986,8 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
         <div class="annotation">$\rho$ = correlation between pre- and post-experiment metrics</div>
       </div>
       <ul style="margin-top: 12px; font-size: 0.85em;">
-        <li>If $\rho = 0.7$, variance reduction = $1 - 0.49 = 51\%$</li>
-        <li>If $\rho = 0.5$, variance reduction = $1 - 0.25 = 75\%$ remaining (25% reduction)</li>
+        <li>If $\rho = 0.7$: remaining variance $= 1 - 0.49 = 51\%$ (a 49% reduction)</li>
+        <li>If $\rho = 0.5$: remaining variance $= 1 - 0.25 = 75\%$ (a 25% reduction)</li>
         <li>Higher correlation = more variance removed</li>
       </ul>
     </div>
@@ -2023,8 +2023,8 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
       <table>
         <thead><tr><th>Scenario</th><th>$\rho$</th><th>Variance Reduction</th></tr></thead>
         <tbody>
-          <tr><td>Revenue: last month vs this month</td><td>0.7&ndash;0.9</td><td>50&ndash;80%</td></tr>
-          <tr><td>Session count: last week vs this week</td><td>0.6&ndash;0.8</td><td>35&ndash;65%</td></tr>
+          <tr><td>Revenue: last month vs this month</td><td>0.7&ndash;0.9</td><td>49&ndash;81%</td></tr>
+          <tr><td>Session count: last week vs this week</td><td>0.6&ndash;0.8</td><td>36&ndash;64%</td></tr>
           <tr><td>New feature adoption (no history)</td><td>0.0&ndash;0.2</td><td>0&ndash;4%</td></tr>
         </tbody>
       </table>
@@ -2066,9 +2066,9 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
     <div class="col">
       <h3>Singapore Cooling Measures</h3>
       <ul>
-        <li><strong>Treatment:</strong> HDB resale market (ABSD applied)</li>
-        <li><strong>Control:</strong> Comparable market without the policy change</li>
-        <li>Compare price trends before/after the cooling measure</li>
+        <li><strong>Treatment:</strong> Central-region flats, subject to a (hypothetical) cooling measure</li>
+        <li><strong>Control:</strong> Non-Central flats, not subject to it</li>
+        <li>Compare price changes before/after the measure (Exercise 7.4 simulates this panel)</li>
         <li>The "second difference" removes confounders that affect both groups equally</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 8px;">
@@ -2080,7 +2080,7 @@ fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 4 min. DiD is the workhorse of policy evaluation. Walk through the cooling measures example. The ATT formula computes two differences: treatment group change minus control group change. If both groups were trending the same way before the policy, then the "extra" change in the treatment group is attributable to the policy. If beginners confused: "DiD compares two groups over time. If both were on the same path, and then one group got a policy change, the difference in their paths IS the policy effect." If experts bored: "Parallel trends can be tested with pre-period event-study plots. Violations require synthetic control methods."
+    Timing: 4 min. DiD is the workhorse of policy evaluation. Walk through the cooling measures example; it is a hypothetical measure on simulated data, not an evaluation of a real policy. The ATT formula computes two differences: treatment group change minus control group change. If both groups were trending the same way before the policy, then the "extra" change in the treatment group is attributable to the policy. If beginners confused: "DiD compares two groups over time. If both were on the same path, and then one group got a policy change, the difference in their paths IS the policy effect." If experts bored: "Parallel trends can be tested with pre-period event-study plots. Violations require synthetic control methods."
   </aside>
 </section>
 
@@ -2820,18 +2820,18 @@ asyncio.run(log_run())</code></pre>
       <h3>Hawker Centre A/B Test</h3>
       <ul>
         <li><strong>MDE ($\delta$):</strong> 5% drop in revenue (<span class="nomath">$0.50</span> on <span class="nomath">$10</span> avg)</li>
-        <li><strong>$\sigma$:</strong> $4.00 (estimated from historical data)</li>
+        <li><strong>$\sigma$:</strong> <span class="nomath">$4.00</span> (estimated from historical data)</li>
         <li><strong>$\alpha$:</strong> 0.05</li>
         <li><strong>Power ($1-\beta$):</strong> 0.80 &rarr; $z_\beta = 0.84$</li>
       </ul>
     </div>
     <div class="col">
       <div class="equation-box" style="font-size: 0.82em;">
-        $$n = \frac{(1.96 + 0.84)^2 \times 2 \times 16}{0.25} = \frac{7.84 \times 32}{0.25} = 1,003$$
-        <div class="annotation">~1,003 customers per group, ~2,006 total</div>
+        $$n = \frac{(1.96 + 0.84)^2 \times 2 \times 16}{0.25} = \frac{7.84 \times 32}{0.25} = 1{,}003.5$$
+        <div class="annotation">Always round up: 1,004 customers per group, 2,008 total</div>
       </div>
       <div class="callout callout-warning" style="margin-top: 12px;">
-        <strong>At 100 customers/day:</strong> you need ~20 days of data. Running for only 1 week (700 customers total) would be underpowered.
+        <strong>At 100 customers/day:</strong> you need about 21 days of data. Running for only 1 week (700 customers total) would be underpowered.
       </div>
     </div>
   </div>
@@ -2861,13 +2861,13 @@ asyncio.run(log_run())</code></pre>
     </tbody>
   </table>
   <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Reading this table:</strong> Each sqm adds <span class="nomath">$5,200</span> to the price. Each additional km from MRT <em>reduces</em> price by <span class="nomath">$18,500</span>. Mature estates command a <span class="nomath">$42,000</span> premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
+    <strong>Reading this table (illustrative numbers, not fitted on the course data):</strong> Each sqm adds <span class="nomath">$5,200</span> to the price. Each additional km from MRT <em>reduces</em> price by <span class="nomath">$18,500</span>. Mature estates command a <span class="nomath">$42,000</span> premium. All coefficients are highly significant ($p < 0.001$). $R^2 = 0.82$, $F = 450$ ($p < 0.001$).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. This is the most practical slide in Lesson 2.5. Walk through each row. Ask: "Which feature has the strongest effect on price?" (Mature estate at $42K, but per-unit it is dist_to_mrt at -$18.5K/km). Emphasise: the sign tells direction, magnitude tells size, p-value tells confidence. If beginners confused: "Read it column by column: coefficient = how much, t-stat = how sure, p-value = how surprised." If experts bored: "Discuss practical vs statistical significance. A $10 coefficient with p < 0.001 is significant but irrelevant."
+    Timing: 3 min. This is the most practical slide in Lesson 2.5. The table is an invented teaching example (the course HDB file has no MRT-distance or mature-estate columns); students produce a real one in Exercise 5.1. Walk through each row. Ask: "Which feature has the strongest effect on price?" (Mature estate at $42K, but per-unit it is dist_to_mrt at -$18.5K/km). Emphasise: the sign tells direction, magnitude tells size, p-value tells confidence. If beginners confused: "Read it column by column: coefficient = how much, t-stat = how sure, p-value = how surprised." If experts bored: "Discuss practical vs statistical significance. A $10 coefficient with p < 0.001 is significant but irrelevant."
   </aside>
 </section>
 
@@ -2989,28 +2989,27 @@ asyncio.run(log_run())</code></pre>
       </ol>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import polars as pl
-import numpy as np
+      <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-# Compute theta (regression coefficient)
-cov = df.select(
-    pl.corr("revenue_post", "revenue_pre")
-    * pl.col("revenue_post").std()
-    * pl.col("revenue_pre").std()
-).item()
-var_pre = df["revenue_pre"].var()
-theta = cov / var_pre
+df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+      .filter(pl.col("experiment_group")
+              .is_in(["control", "treatment_a"])))
 
-# Adjust metric
-mean_pre = df["revenue_pre"].mean()
+# theta = Cov(Y, X_pre) / Var(X_pre), pooled over both arms
+theta = df.select(
+    pl.cov("revenue", "pre_metric_value")
+    / pl.col("pre_metric_value").var()).item()
+
+# Adjust the metric
+mean_pre = df["pre_metric_value"].mean()
 df = df.with_columns(
-    (pl.col("revenue_post")
-     - theta * (pl.col("revenue_pre") - mean_pre)
-    ).alias("revenue_adj")
-)
+    (pl.col("revenue")
+     - theta * (pl.col("pre_metric_value") - mean_pre)
+    ).alias("revenue_adj"))
 
-# Variance reduction
-print(f"Original var: {df['revenue_post'].var():.2f}")
+# Variance reduction (= rho^2, about 4% here)
+print(f"Original var: {df['revenue'].var():.2f}")
 print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     </div>
   </div>
@@ -3018,7 +3017,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through the code step by step. This is what students will implement in the exercise. Emphasise: theta is just the OLS slope from Lesson 2.5. CUPED is regression applied to experiments. If beginners confused: "We compute one number (theta), use it to adjust the metric, and then run the same test we already know." If experts bored: "The code uses Polars expressions for efficiency. In production, this runs on millions of users."
+    Timing: 3 min. Walk through the code step by step. This is what students will implement in the exercise. Emphasise: theta is just the OLS slope from Lesson 2.5. CUPED is regression applied to experiments. On the course experiment (control vs treatment_a) pre_metric_value is only weakly correlated with revenue (rho about 0.21), so the variance falls by about 4%: an honest demonstration that CUPED is only as good as its covariate. If beginners confused: "We compute one number (theta), use it to adjust the metric, and then run the same test we already know." If experts bored: "Theta is estimated on both arms pooled; because the covariate is pre-experiment, the adjustment cannot absorb the treatment effect."
   </aside>
 </section>
 
@@ -3195,7 +3194,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through each cause with a concrete example. SRM is a data engineering problem, not a statistics problem. If beginners confused: "SRM means your groups are not balanced. Something in the system is sending more users to one group than the other." If experts bored: "Microsoft's experimentation platform (ExP) automatically halts experiments with SRM. Kohavi et al. catalog 20+ SRM causes."
+    Timing: 2 min. Walk through each cause with a concrete example. SRM is a data engineering problem, not a statistics problem. If beginners confused: "SRM means your groups are not balanced. Something in the system is sending more users to one group than the other." If experts bored: "Well-run experimentation platforms halt or flag experiments automatically when SRM fires. Kohavi et al. catalog 20+ SRM causes."
   </aside>
 </section>
 
@@ -3299,7 +3298,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
         <strong>FeatureStore enforces this:</strong> When you request features "as of January 1, 2025", the store only returns feature values that were computed and available on that date. No future data leaks in.
       </div>
       <div class="callout callout-error" style="margin-top: 12px;">
-        <strong>Real-world consequence:</strong> A model with data leakage shows $R^2 = 0.95$ in backtesting but $R^2 = 0.40$ in production. The gap is the leaked signal.
+        <strong>Typical consequence (illustrative):</strong> a leaky model can show $R^2 = 0.95$ in backtesting but $R^2 = 0.40$ in production. The gap is the leaked signal.
       </div>
     </div>
   </div>
@@ -3307,7 +3306,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Advanced slide on a production-critical topic. Point-in-time correctness is one of the hardest bugs to catch because the model looks great in backtesting. If beginners confused: "When predicting the past, make sure your features only use data that was actually available at that past time. FeatureStore does this for you." If experts bored: "Uber, Airbnb, and Stripe all use feature stores with point-in-time retrieval. This is the state of the art in ML infrastructure."
+    Timing: 3 min. Advanced slide on a production-critical topic. Point-in-time correctness is one of the hardest bugs to catch because the model looks great in backtesting. If beginners confused: "When predicting the past, make sure your features only use data that was actually available at that past time. FeatureStore does this for you." If experts bored: "Point-in-time retrieval is a standard feature of production feature stores; building the training set any other way invites leakage."
   </aside>
 </section>
 
@@ -3378,10 +3377,10 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <div class="col">
       <h3>The Problem</h3>
       <ul>
-        <li>Marketing tracks clicks in Google Analytics</li>
-        <li>Sales tracks revenue in Salesforce</li>
-        <li>Product tracks usage in Mixpanel</li>
-        <li>Finance tracks costs in SAP</li>
+        <li>Marketing tracks clicks in a web-analytics tool</li>
+        <li>Sales tracks revenue in a CRM</li>
+        <li>Product tracks usage in a product-analytics tool</li>
+        <li>Finance tracks costs in an ERP system</li>
         <li><strong>Nobody can join these datasets</strong> without manual export/import</li>
       </ul>
     </div>
@@ -3402,7 +3401,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Advanced slide on DataOps. Most experiment failures are data engineering failures, not statistics failures. If beginners confused: "Before you can do statistics, you need clean, unified data. This slide is about getting the data house in order." If experts bored: "DataFlow integrates with FeatureStore for automated feature computation pipelines. The modern data stack: ingestion, transformation, serving."
+    Timing: 2 min. Advanced slide on DataOps. Most experiment failures are data engineering failures, not statistics failures. If beginners confused: "Before you can do statistics, you need clean, unified data. This slide is about getting the data house in order." If experts bored: "FeatureStore persists its feature tables through DataFlow: the FeatureStore(DataFlow(...)) call in Lesson 2.8. The modern data stack: ingestion, transformation, serving."
   </aside>
 </section>
 
@@ -3470,14 +3469,14 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <div class="col">
       <h3>M3: Supervised ML &mdash; Theory to Production</h3>
       <ul>
-        <li><strong>3.1</strong> Feature Engineering (deep dive with FeatureEngineer)</li>
-        <li><strong>3.2</strong> Cross-Validation and Model Selection</li>
-        <li><strong>3.3</strong> Decision Trees and Random Forests</li>
-        <li><strong>3.4</strong> Gradient Boosting (XGBoost, LightGBM)</li>
-        <li><strong>3.5</strong> Classification Metrics and Evaluation</li>
-        <li><strong>3.6</strong> Hyperparameter Tuning</li>
-        <li><strong>3.7</strong> Model Registry and Deployment</li>
-        <li><strong>3.8</strong> Capstone: Full ML Pipeline</li>
+        <li><strong>3.1</strong> Feature Engineering, ML Pipeline, and Feature Selection</li>
+        <li><strong>3.2</strong> Bias-Variance, Regularisation, and Cross-Validation</li>
+        <li><strong>3.3</strong> The Complete Supervised Model Zoo</li>
+        <li><strong>3.4</strong> Gradient Boosting Deep Dive</li>
+        <li><strong>3.5</strong> Model Evaluation, Imbalance, and Calibration</li>
+        <li><strong>3.6</strong> Interpretability and Fairness</li>
+        <li><strong>3.7</strong> Workflow Orchestration, Model Registry, and Hyperparameter Search</li>
+        <li><strong>3.8</strong> Production Pipeline &mdash; DataFlow, Drift, and Deployment</li>
       </ul>
     </div>
     <div class="col">
@@ -3507,12 +3506,12 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
   <h2>End of Module Assessment</h2>
   <div class="columns">
     <div class="col">
-      <h3>Quiz (Individual)</h3>
+      <h3>Module Assessment (Individual)</h3>
       <ul>
-        <li>Covers all 8 lessons</li>
-        <li>Mix of conceptual and computational questions</li>
-        <li>Expect: Bayes' theorem calculation, CI interpretation, p-value interpretation, regression output reading, odds ratio computation</li>
-        <li>No code required, but understanding of Kailash engine outputs</li>
+        <li>Practical <strong>coding tasks</strong> on the course datasets &mdash; no multiple choice</li>
+        <li>Auto-graded on outcomes: exact answers and strict numeric tolerances</li>
+        <li>Expect: Bayes and SRM, bootstrap CIs and multiple-testing corrections, CUPED, OLS and logistic inference, a point-in-time feature table</li>
+        <li>Open book; AI assistants not allowed. Details in the module's <code>assessment/README.md</code></li>
       </ul>
     </div>
     <div class="col">
@@ -3521,7 +3520,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
         <li>5-minute presentation of capstone findings</li>
         <li>Audience: non-technical stakeholders</li>
         <li>Must include: business question, methodology summary, key findings, recommendations, limitations</li>
-        <li>Rubric: technical correctness (40%), communication clarity (30%), code quality (20%), FeatureStore usage (10%)</li>
+        <li>Marked with the capstone project rubric from Lesson 2.8</li>
       </ul>
     </div>
   </div>
@@ -3529,7 +3528,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Set expectations for the assessment. Emphasise: the quiz tests understanding, not memorisation. The capstone tests application and communication. If beginners confused: "The quiz checks that you understand the concepts. The capstone checks that you can apply them." If experts bored: "The presentation component is where you differentiate yourself. Technical people who can communicate clearly are rare and valuable."
+    Timing: 2 min. Set expectations for the assessment. The module assessment is a set of auto-graded coding tasks: the grader checks the numbers a correct analysis produces, so choosing the right population, covariate and correction matters more than syntax. The capstone tests application and communication. If beginners confused: "The coding tasks check that you can do the statistics correctly. The capstone checks that you can apply them and explain them." If experts bored: "The presentation component is where you differentiate yourself. Technical people who can communicate clearly are rare and valuable."
   </aside>
 </section>
 
@@ -3550,7 +3549,7 @@ print(f"Adjusted var: {df['revenue_adj'].var():.2f}")</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Thank the class. Remind them of the capstone deadline and the quiz date. Point to the M3 preview. If beginners confused: "You just completed a formula-heavy statistics module. Well done." If experts bored: "The exercises have stretch goals. Push yourself on 2.7 (CUPED implementation) and 2.8 (FeatureStore integration)."
+    Timing: 1 min. Thank the class. Remind them of the capstone deadline and the assessment date. Point to the M3 preview. If beginners confused: "You just completed a formula-heavy statistics module. Well done." If experts bored: "The exercises have stretch goals. Push yourself on 2.7 (CUPED implementation) and 2.8 (FeatureStore integration)."
   </aside>
 </section>
 

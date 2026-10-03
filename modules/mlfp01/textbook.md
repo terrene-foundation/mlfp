@@ -1612,7 +1612,7 @@ Notice we wrote `format_sgd` five times. Because it is a function, changing the 
 
 ## Cross-References
 
-- **Lesson 1.4** will join the district statistics table to MRT station proximity data and school density data, letting you ask questions like "do flats near MRT cost more per sqm?"
+- **Lesson 1.4** will join the HDB data to MRT station and school data, letting you ask questions like "do towns closer to the city centre, or with more MRT stations, cost more?"
 - **Lesson 1.5** will replace `group_by` with *window functions* for calculations that need to keep the row-level detail, such as rolling averages and YoY changes per town.
 - **Lesson 1.6** will visualise the district statistics as a bar chart ranked by median price — the same data, communicated visually.
 - **Module 2** will use `group_by` for feature engineering: computing per-user aggregates, per-category means for target encoding, and per-cohort statistics for feature stores.
@@ -1682,11 +1682,11 @@ You should now be able to:
 
 ## Why This Matters
 
-Real questions rarely fit inside a single table. "Are HDB flats near an MRT station more expensive?" requires the HDB transactions table plus a table of MRT station locations. "Do districts with more schools command higher prices?" requires the HDB table plus a schools table. "What is the correlation between a district's median price and its distance to the CBD?" requires the HDB table plus a reference table of distances-to-CBD.
+Real questions rarely fit inside a single table. "Do towns with more MRT stations command higher prices?" requires the HDB transactions table plus a table of MRT stations. "Do districts with more schools command higher prices?" requires the HDB table plus a schools table. "What is the correlation between a district's median price and its distance to the CBD?" requires the HDB table plus station locations from which to compute that distance.
 
 The operation that combines two tables on a shared key is called a *join*. Joins are the workhorse of relational data work; every SQL database has them, every DataFrame library has them, and the same mental model — match rows based on a shared key, decide what to do with the non-matches — applies everywhere. In this lesson you will learn what a join is, the four types you actually need (left, inner, right, outer), how to choose between them, and how to handle the nulls that arise when a join misses.
 
-You will also meet your first `import` statement for a third-party package beyond Polars, and your first `if` statement in pure Python (as distinct from `pl.when` inside a Polars expression). These are small additions to the Python vocabulary but they unlock a lot.
+You will also meet your first `import` of a module from Python's standard library (`math`, used to compute distances), and your first `if` statement in pure Python (as distinct from `pl.when` inside a Polars expression). These are small additions to the Python vocabulary but they unlock a lot.
 
 ## Core Concepts
 
@@ -1703,26 +1703,28 @@ YISHUN      4 ROOM      420000
 PUNGGOL     4 ROOM      485000
 ```
 
-**Table B: MRT station data** (key column: `town`)
+**Table B: town MRT data** (key column: `town`)
 ```
-town        nearest_mrt     distance_km
-BISHAN      Bishan          0.3
-YISHUN      Yishun          0.5
-PUNGGOL     Punggol         0.4
-SEMBAWANG   Sembawang       0.2
+town        station_count   km_to_cbd
+BISHAN      5               7.9
+YISHUN      2               15.7
+PUNGGOL     3               13.5
+SEMBAWANG   3               18.3
 ```
+
+(These two small tables are made up to illustrate the idea. The worked example uses the real course files.)
 
 A *join on `town`* produces a new table where rows from A and B that share the same `town` value are combined into a single row:
 
 ```
-town        flat_type   price    nearest_mrt   distance_km
-BISHAN      4 ROOM      580000   Bishan        0.3
-BISHAN      5 ROOM      720000   Bishan        0.3
-YISHUN      4 ROOM      420000   Yishun        0.5
-PUNGGOL     4 ROOM      485000   Punggol       0.4
+town        flat_type   price    station_count   km_to_cbd
+BISHAN      4 ROOM      580000   5               7.9
+BISHAN      5 ROOM      720000   5               7.9
+YISHUN      4 ROOM      420000   2               15.7
+PUNGGOL     4 ROOM      485000   3               13.5
 ```
 
-Each row from Table A is augmented with the matching columns from Table B. If Table A has multiple rows with the same key (as BISHAN does above), each of them gets the same right-hand columns. If Table A has a key that does not appear in Table B, or vice versa, what happens depends on the *join type*.
+Each row from Table A is augmented with the matching columns from Table B. If Table A has multiple rows with the same key (as BISHAN does above), each of them gets the same right-hand columns. The reverse is the dangerous case: if Table B had *two* BISHAN rows, each Bishan sale would be copied twice — a join multiplies rows whenever the key is not unique on the right. You will hit exactly this in the worked example. If Table A has a key that does not appear in Table B, or vice versa, what happens depends on the *join type*.
 
 ### FOUNDATIONS: The four join types
 
@@ -1730,9 +1732,9 @@ There are four standard join types. They differ only in what happens to non-matc
 
 **Inner join.** Keep only rows where the key exists in *both* tables. Rows with no match on either side are dropped. In our example, an inner join of HDB with MRT drops the SEMBAWANG row from Table B (because there are no HDB transactions for Sembawang in our example A) and would drop any HDB row whose town does not appear in Table B.
 
-Use an inner join when you *require* the data from both sides — for example, "give me only HDB transactions for which we know the nearest MRT". If a town has no MRT data, you cannot answer the question for that town, so dropping is the right choice.
+Use an inner join when you *require* the data from both sides — for example, "give me only HDB transactions for towns where we have MRT data". If a town has no MRT data, you cannot answer the question for that town, so dropping is the right choice.
 
-**Left join.** Keep all rows from the left (first) table. For rows where the key is not found in the right table, fill the right-hand columns with NULL. In our example, a left join of HDB with MRT keeps every HDB row. If there were an HDB row with town "JURONG ISLAND" (a real edge case — there are no HDB flats on Jurong Island, but bear with the hypothetical) and no matching row in Table B, the resulting row would have `nearest_mrt = null` and `distance_km = null`.
+**Left join.** Keep all rows from the left (first) table. For rows where the key is not found in the right table, fill the right-hand columns with NULL. In our example, a left join of HDB with MRT keeps every HDB row. If there were an HDB row with town "JURONG ISLAND" (a real edge case — there are no HDB flats on Jurong Island, but bear with the hypothetical) and no matching row in Table B, the resulting row would have `station_count = null` and `km_to_cbd = null`.
 
 Use a left join when the left table is the "primary" dataset and the right table is "enrichment" — you want to add information where available without losing any original rows. This is by far the most common join type in practice.
 
@@ -1767,7 +1769,9 @@ If the tables share multiple key columns, pass a list:
 hdb.join(monthly_stats, on=["year", "town"], how="left")
 ```
 
-After a join, the resulting DataFrame has all the columns from the left table plus the columns from the right table (except the join key, which is not duplicated). If both tables happen to have a column with the same name other than the join key, Polars will rename the right-side version with a suffix (default: `_right`), or you can specify your own suffix with the `suffix=` parameter.
+After a join, the resulting DataFrame has all the columns from the left table plus the columns from the right table (except the join key, which is not duplicated — for `how="full"`, pass `coalesce=True` to get the same single key column).
+
+Joining does not check that the key values are spelled the same way, and it does not check that the right-hand key is unique. Both are your job — that is what the next two sections are for. If both tables happen to have a column with the same name other than the join key, Polars will rename the right-side version with a suffix (default: `_right`), or you can specify your own suffix with the `suffix=` parameter.
 
 ### FOUNDATIONS: Always check the null count after a left join
 
@@ -1775,12 +1779,12 @@ A left join never drops rows, but it can silently introduce NULLs wherever a mat
 
 ```python
 enriched = hdb.join(mrt_stations, on="town", how="left")
-print(f"Nulls in distance_km: {enriched['distance_km'].null_count()}")
+print(f"Nulls in station_count: {enriched['station_count'].null_count()}")
 ```
 
 If the null count is zero, every row matched and you can proceed. If the null count is non-trivial (say, more than 1% of the rows), you have a choice to make:
 
-1. **Fill the nulls with a sensible default** — for example, `.fill_null(0)` for a count column, or `.fill_null(999)` for a distance column where you want "far away" to be the default.
+1. **Fill the nulls with a sensible default** — for example, `.fill_null(0)` for a count column. Be careful: a fill value is a claim about the world ("0 stations"), and it is wrong whenever the null only means "not found in the other table".
 2. **Drop the rows** — if the downstream analysis cannot cope with nulls and the missing data are a small fraction.
 3. **Investigate** — the nulls might indicate a data pipeline bug where the right-side dataset is incomplete or the join keys are misaligned (e.g., case mismatch: `"BISHAN"` vs `"Bishan"`).
 
@@ -1843,7 +1847,7 @@ Modern databases (and Polars) do not compute the Cartesian product literally; th
 
 ## The Kailash Context
 
-The joins you will do in this lesson produce an enriched HDB table with spatial context (distance to MRT, school count). In Module 2 you will meet `FeatureStore`, the Kailash engine for versioning and retrieving feature sets. Feature stores are essentially long-lived joined tables: you compute your enriched dataset once, version it, store it, and retrieve it during training and serving. The join patterns you are learning here are exactly the ones a feature store applies under the hood when it materialises a feature group. This is why you are learning them first — everything that comes later is a specialised form of what you can do manually today.
+The joins you will do in this lesson produce an enriched HDB table with town-level context (MRT station count, distance to the CBD, school count). In Module 2 you will meet `FeatureStore`, the Kailash engine for versioning and retrieving feature sets. Feature stores are essentially long-lived joined tables: you compute your enriched dataset once, version it, store it, and retrieve it during training and serving. The join patterns you are learning here are exactly the ones a feature store applies under the hood when it materialises a feature group. This is why you are learning them first — everything that comes later is a specialised form of what you can do manually today.
 
 ## Worked Example: Enriching HDB with MRT and School Data
 
@@ -1851,6 +1855,8 @@ The joins you will do in this lesson produce an enriched HDB table with spatial 
 
 ```python
 from __future__ import annotations
+
+import math
 
 import polars as pl
 
@@ -1867,157 +1873,270 @@ print(f"MRT: {mrt_stations.shape}")
 print(f"Schools: {schools.shape}")
 ```
 
-The MRT table has one row per town with a pre-computed nearest station and distance. The schools table has one row per school, not per town — so it is at a different grain from the HDB table and will need aggregating before the join.
+Expected output:
+
+```text
+HDB: (50150, 11)
+MRT: (150, 7)
+Schools: (242, 4)
+```
+
+Before any code, ask what one row of each table *is* — its grain. One HDB row is one sale. One MRT row is one **station** (150 stations spread over 32 towns, so most towns have several rows), with columns `station_name, town, line, latitude, longitude, nearest_mrt, distance_to_mrt_km`. One schools row is one school (`school_name, town, type, zone`). Neither right-hand table is one row per town, so neither can be joined onto the HDB table as it stands.
+
+Read the column meanings too. `distance_to_mrt_km` sounds like "how far a flat is from the MRT", but it is the distance from each *station* to its nearest *neighbouring* station (Bukit Batok to Bukit Gombak is 1.145 km). The HDB table has no flat coordinates, so the distance from a flat to its MRT station cannot be computed from this data at all. What we *can* build honestly are town-level features: how many stations a town has, the typical spacing between them, and where the town's stations sit — which gives each town's distance to the city centre.
 
 ### Step 2: Inspect each table before joining
 
-Never join blindly. Look at each table first:
+Never join blindly. Look at each table first — and especially at the join key:
 
 ```python
-print(hdb.head(3))
-print(mrt_stations.head(5))
-print(schools.head(5))
+print(hdb["town"].unique().sort().head(3).to_list())
+print(mrt_stations["town"].unique().sort().head(3).to_list())
+print(schools["town"].unique().sort().head(3).to_list())
 ```
 
-Check the join keys — in this case, the `town` column — appear in both and have the same casing. The HDB table uses `"ANG MO KIO"` all-caps; the MRT table should also use all-caps. If it does not, you need a `.str.to_uppercase()` step on one side before joining.
+```text
+['ANG MO KIO', 'BEDOK', 'BISHAN']
+['Ang Mo Kio', 'Bedok', 'Bishan']
+['Ang Mo Kio', 'Bedok', 'Bishan']
+```
+
+The HDB table uses `"ANG MO KIO"` in capitals; the MRT and schools tables use `"Ang Mo Kio"` in title case. To a computer these are different strings. Joined as they are, *nothing* would match.
 
 ### Step 3: Predict nulls
 
 ```python
 hdb_towns = set(hdb["town"].unique().to_list())
 mrt_towns = set(mrt_stations["town"].unique().to_list())
-matched = hdb_towns & mrt_towns
-unmatched = hdb_towns - mrt_towns
+print(f"Matched as-is: {len(hdb_towns & mrt_towns)}")
+
+mrt_towns_upper = {t.upper() for t in mrt_towns}
+matched = hdb_towns & mrt_towns_upper
+unmatched = hdb_towns - mrt_towns_upper
 
 print(f"HDB towns: {len(hdb_towns)}")
-print(f"MRT towns: {len(mrt_towns)}")
-print(f"Matched: {len(matched)}")
-print(f"Unmatched: {len(unmatched)}")
-if unmatched:
-    print(f"Unmatched towns: {sorted(unmatched)}")
+print(f"MRT towns: {len(mrt_towns_upper)}")
+print(f"Matched after upper-casing: {len(matched)}")
+print(f"Unmatched: {sorted(unmatched)}")
 ```
 
-If all 26 HDB towns appear in the MRT table, the output says "Unmatched: 0" and you can proceed confidently. If there are unmatched towns, you will know exactly which ones before you join.
+Expected output:
 
-### Step 4: The left join itself
+```text
+Matched as-is: 0
+HDB towns: 27
+MRT towns: 32
+Matched after upper-casing: 21
+Unmatched: ['BOON LAY', 'CENTRAL AREA', 'HOUGANG', 'KALLANG/WHAMPOA', 'PUNGGOL', 'SENGKANG']
+```
+
+As-is, zero towns match: a left join would run without error and give you 50,150 rows with every MRT column null. Upper-casing fixes 21 of the 27 towns. The other six genuinely have no entry in the station table under that name (the station table uses its own town names, such as `Kallang` and `Downtown`, which do not line up with HDB's `KALLANG/WHAMPOA` and `CENTRAL AREA`). You now know, before joining, exactly which towns will be null.
+
+### Step 4: Fix the grain, then the left join
+
+First, see what happens if you fix the casing but forget the grain:
 
 ```python
-hdb_enriched = hdb.join(
-    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
-    on="town",
-    how="left",
-)
+mrt_upper = mrt_stations.with_columns(pl.col("town").str.to_uppercase())
+naive = hdb.join(mrt_upper.select("town", "station_name"), on="town", how="left")
+print(f"HDB rows: {hdb.height:,}  ->  after naive join: {naive.height:,}")
 ```
 
-Two details worth pointing out. First, we `.select(...)` the right-hand table to bring only the columns we need. Without this, every column in the MRT table would be joined into the result, cluttering the output. Always select down the right-hand table to the columns you actually want.
+```text
+HDB rows: 50,150  ->  after naive join: 186,997
+```
 
-Second, the result has the same number of rows as `hdb` (left join preserves left-side rows), but three extra columns: `nearest_mrt`, `distance_to_mrt_km`, and `town` which already existed. The join key `town` is not duplicated — Polars is smart about that.
+The left join did not "preserve the left row count" — it multiplied it by 3.7. Every sale in a town with five stations was copied five times, once per station. This is the many-to-many trap: a left join preserves row count *only* when the key is unique on the right-hand side. Any average you computed from `naive` would silently weight towns by their number of stations.
+
+The fix is to aggregate the station table to one row per town *before* joining:
+
+```python
+mrt_by_town = (
+    mrt_upper.group_by("town")
+    .agg(
+        pl.len().alias("station_count"),
+        pl.col("distance_to_mrt_km").median().alias("station_spacing_km"),
+        pl.col("latitude").mean().alias("town_lat"),
+        pl.col("longitude").mean().alias("town_lng"),
+    )
+)
+print(f"MRT by town: {mrt_by_town.shape}")
+
+hdb_enriched = hdb.join(mrt_by_town, on="town", how="left")
+print(f"Rows after join: {hdb_enriched.height:,}")
+```
+
+```text
+MRT by town: (32, 5)
+Rows after join: 50,150
+```
+
+Now the right-hand key is unique (32 rows, 32 towns), and the row count is preserved. The four new columns are honest town-level features: `station_count` (MRT access), `station_spacing_km` (how far apart the town's stations are), and `town_lat` / `town_lng` (the centre of the town's stations, used in Step 8). Note that we did not bring `nearest_mrt` across — it names a station that may be in a different town, and it means nothing at town level.
 
 ### Step 5: Pre-aggregate the schools table
 
-The schools table has one row per school, but we want one row per town for the join. Aggregate first:
+The schools table has the same two problems — title-case towns and one row per school — and the same two-step fix:
 
 ```python
-school_counts = schools.group_by("town").agg(
-    pl.col("school_name").count().alias("school_count")
+school_counts = (
+    schools.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town")
+    .agg(pl.col("school_name").count().alias("school_count"))
 )
 
 hdb_enriched = hdb_enriched.join(school_counts, on="town", how="left")
 ```
 
-This is a common pattern: if the right-hand table is at a finer grain than the left (many schools per town, one row per transaction), aggregate the right-hand table up to the left table's grain first, then join.
+This is the general pattern: if the right-hand table is at a finer grain than the left (many schools per town, one row per transaction), normalise the key, aggregate the right-hand table up to the left table's grain, then join.
 
-### Step 6: Fill the nulls
+### Step 6: Fill the nulls — deliberately
 
-After the left join, any town without a matching school count gets NULL. Fill with zero (meaning "no schools recorded"):
+Three HDB towns (BOON LAY, CENTRAL AREA, KALLANG/WHAMPOA) have no entry in the schools table, so 2,970 rows get a null `school_count`. Fill it with zero, and write down what zero means:
 
 ```python
+# 0 = "no school in this table for this town", not "the town has no schools"
 hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(0))
 ```
 
-`.fill_null(0)` is a method on a column expression that replaces any null with the given value. Use it whenever you have a post-join null that you want to turn into a meaningful default. For counts, 0 is usually right. For distances where a null means "we did not find a match", a large sentinel like `999` makes "far away" the default. Always document what the fill value means.
+`.fill_null(0)` replaces every null with the given value. For counts, 0 is the usual default — but it is a modelling choice, and here it is partly wrong: Central Area certainly has schools; they are just not in this table under that name. For `station_count` we do *not* fill. Writing 0 would assert "this town has no MRT station", which is false for Hougang, Punggol and Sengkang; leaving it null says, truthfully, "we don't know". Investigate before you fill, and document every fill value.
 
-### Step 7: Verify and inspect
+### Step 7: Verify, and compare join types
 
 ```python
-for col in ("nearest_mrt", "distance_to_mrt_km", "school_count"):
+for col in ("station_count", "station_spacing_km", "school_count"):
     nc = hdb_enriched[col].null_count()
     pct = nc / hdb_enriched.height
     print(f"  {col} nulls: {nc:,} ({pct:.1%})")
 ```
 
-Expected: if the join keys matched cleanly, all three lines show 0 nulls (after `fill_null` on `school_count`). If `distance_to_mrt_km` shows a non-zero null count, the MRT table is missing some towns — time to investigate.
+```text
+  station_count nulls: 11,032 (22.0%)
+  station_spacing_km nulls: 11,032 (22.0%)
+  school_count nulls: 0 (0.0%)
+```
+
+22% of sales are in the six towns the station table does not cover — exactly what Step 3 predicted. Now see what each join type would have done with them:
+
+```python
+hdb_inner = hdb.join(mrt_by_town, on="town", how="inner")
+print(f"Left join:  {hdb_enriched.height:,} rows")
+print(f"Inner join: {hdb_inner.height:,} rows")
+
+town_coverage = (
+    hdb.group_by("town").agg(pl.len().alias("hdb_rows"))
+    .join(mrt_by_town.select("town", "station_count"), on="town", how="full", coalesce=True)
+)
+print(f"Towns in either table: {town_coverage.height}")
+print(f"  HDB only: {town_coverage.filter(pl.col('station_count').is_null()).height}")
+print(f"  MRT only: {town_coverage.filter(pl.col('hdb_rows').is_null()).height}")
+```
+
+```text
+Left join:  50,150 rows
+Inner join: 39,118 rows
+Towns in either table: 38
+  HDB only: 6
+  MRT only: 11
+```
+
+The inner join silently drops 11,032 sales — every sale in the six unmatched towns, including two of the most expensive towns in the dataset. That is why left is the safe default for enrichment. The outer join (Polars calls it `how="full"`; `coalesce=True` merges the two `town` key columns into one) is the reconciliation view: 38 towns appear in at least one table, 6 only in HDB and 11 only in the station table (such as `ORCHARD` and `TUAS`, which have stations but no HDB sales in this file). An outer join is how you audit two sources against each other.
 
 ### Step 8: Build a district-level summary with spatial context
 
-Add `price_per_sqm`, then group by town with both price statistics and first-value spatial features:
+Group by town and pull through the town-level columns, then compute each town's straight-line (haversine) distance to the CBD from the centre of its stations. `math` is Python's built-in maths module — this is the third-party-free `import` mentioned at the start of the lesson:
 
 ```python
-hdb_enriched = hdb_enriched.with_columns(
-    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm")
-)
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two (lat, lon) points in degrees."""
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+CBD_LAT, CBD_LNG = 1.2830, 103.8513   # Raffles Place MRT
 
 district_summary = (
     hdb_enriched.group_by("town")
     .agg(
         pl.len().alias("total_transactions"),
         pl.col("resale_price").median().alias("median_price"),
-        pl.col("resale_price").mean().alias("mean_price"),
-        pl.col("price_per_sqm").median().alias("median_price_sqm"),
-        pl.col("floor_area_sqm").median().alias("median_area_sqm"),
-        # Spatial columns — same for every row in a town, so .first() is correct
-        pl.col("nearest_mrt").first().alias("nearest_mrt"),
-        pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
+        # Town-level columns — same for every row in a town, so .first() is correct
+        pl.col("station_count").first().alias("station_count"),
+        pl.col("town_lat").first().alias("town_lat"),
+        pl.col("town_lng").first().alias("town_lng"),
         pl.col("school_count").first().alias("school_count"),
     )
     .sort("median_price", descending=True)
 )
+
+km_to_cbd = [
+    haversine_km(lat, lng, CBD_LAT, CBD_LNG) if lat is not None else None
+    for lat, lng in zip(district_summary["town_lat"], district_summary["town_lng"])
+]
+district_summary = district_summary.with_columns(
+    pl.Series("km_to_cbd", km_to_cbd, dtype=pl.Float64)
+)
+print(district_summary.select("town", "median_price", "station_count", "km_to_cbd").head(5))
 ```
 
-Why `.first()` for the spatial columns? Because every transaction in a given town has the *same* value for those columns (they were joined from a town-level table). If we used `.mean()` it would give the same answer, but `.first()` is clearer — it says "just grab one". `.mean()` would also be wasted computation.
+```text
+shape: (5, 4)
+┌─────────────────┬──────────────┬───────────────┬───────────┐
+│ town            ┆ median_price ┆ station_count ┆ km_to_cbd │
+│ ---             ┆ ---          ┆ ---           ┆ ---       │
+│ str             ┆ f64          ┆ u32           ┆ f64       │
+╞═════════════════╪══════════════╪═══════════════╪═══════════╡
+│ TOA PAYOH       ┆ 973887.0     ┆ 2             ┆ 5.936218  │
+│ KALLANG/WHAMPOA ┆ 964675.0     ┆ null          ┆ null      │
+│ BUKIT TIMAH     ┆ 961182.0     ┆ 10            ┆ 7.717159  │
+│ QUEENSTOWN      ┆ 960422.0     ┆ 7             ┆ 6.044103  │
+│ CENTRAL AREA    ┆ 955722.5     ┆ null          ┆ null      │
+└─────────────────┴──────────────┴───────────────┴───────────┘
+```
+
+Why `.first()` for the town-level columns? Because every transaction in a given town has the *same* value for them (they were joined from a town-level table). `.mean()` would give the same answer, but `.first()` says what you mean: "just grab one". The towns without station data have no position, so their `km_to_cbd` is `None` — the list comprehension checks for that rather than crashing.
 
 ### Step 9: Compute correlations between price and spatial features
 
 ```python
-corr_mrt_price = district_summary.select(
-    pl.corr("distance_to_mrt_km", "median_price")
-).item()
-
-corr_school_price = district_summary.select(
-    pl.corr("school_count", "median_price")
-).item()
-
-print(f"Correlation: MRT distance ↔ median price: {corr_mrt_price:.3f}")
-print(f"Correlation: school count ↔ median price: {corr_school_price:.3f}")
+for feature in ("km_to_cbd", "station_count", "school_count"):
+    r = district_summary.select(pl.corr(feature, "median_price")).item()
+    print(f"Correlation: {feature:<13} <-> median price: {r:+.3f}")
 ```
 
-`pl.corr(a, b)` computes the Pearson correlation between two columns. `.item()` on the result extracts the single scalar value out of the one-row, one-column DataFrame that Polars returns.
+`pl.corr(a, b)` computes the Pearson correlation between two columns, skipping towns where either value is null (so the CBD and station correlations use the 21 matched towns). `.item()` extracts the single scalar from the one-row, one-column DataFrame Polars returns.
 
-Typical output:
+Expected output:
 
+```text
+Correlation: km_to_cbd     <-> median price: -0.552
+Correlation: station_count <-> median price: +0.256
+Correlation: school_count  <-> median price: -0.189
 ```
-Correlation: MRT distance ↔ median price: -0.58
-Correlation: school count ↔ median price: 0.42
-```
 
-Negative correlation with distance-to-MRT means "closer MRT → higher price" — exactly what intuition suggests. Positive correlation with school count means "more schools → higher price". Neither is huge (an $|r|$ around 0.5 is "moderate"), and neither is causal. Both signals exist because the same underlying variable — how desirable the neighbourhood is — drives all three of price, MRT proximity, and school density. The deck discussion slide on Slide 77 makes this point: if you built a school in an undesirable town, you would not make it desirable; you would just have a school in an undesirable town. Correlation is information, not causation. We will cover causal inference properly in Module 2.
+Distance to the CBD has a moderate negative correlation with price: towns nearer the city centre sell for more. That is the feature that actually tracks price in this data. Station count is weakly positive, and school count is weakly *negative* — the opposite of the "good schools raise prices" story you might have expected. Three cautions before you tell anyone. First, these are 21–27 towns, so a single town can swing a correlation. Second, `school_count` includes the three towns we filled with 0, which pulls the correlation around. Third, none of this is causal: the same underlying variable — how central and desirable a town is — drives price, station density and everything else. Building a school in a town would not make it central. Correlation is information, not causation; Module 2 covers how to reason about causes properly.
 
 ## Try It Yourself
 
-**Drill 1.** Without running a join, predict how many rows an inner join of HDB and MRT would produce if there are 3 HDB towns missing from the MRT table. (Assume 487,293 HDB rows and that the missing towns account for 5% of them.)
+**Drill 1.** Without running the inner join, predict how many rows an inner join of `hdb` and `mrt_by_town` will produce. Use only the `unmatched` set from Step 3 and a filter on `hdb`. Then check your prediction against Step 7.
 
-**Drill 2.** Write an `if` statement that prints `"Most HDB rows matched"` if `matched / len(hdb_towns) > 0.95`, `"Some rows missing"` if between 0.8 and 0.95, and `"Many rows missing — investigate"` otherwise.
+**Drill 2.** Write an `if` statement that prints `"Most towns matched"` if `len(matched) / len(hdb_towns) > 0.95`, `"Some towns missing"` if between 0.8 and 0.95, and `"Many towns missing — investigate"` otherwise. Which message does the MRT join produce?
 
-**Drill 3.** Join `district_summary` (from Step 8) with itself using `how="cross"` (Polars' Cartesian product). Filter the result to pairs where town_a comes alphabetically before town_b (`pl.col("town") < pl.col("town_right")`). For each pair, compute the absolute difference in `median_price`. What is the largest difference?
+**Drill 3.** Join `district_summary` (from Step 8) with itself using `how="cross"` (Polars' Cartesian product). Filter the result to pairs where town_a comes alphabetically before town_b (`pl.col("town") < pl.col("town_right")`). For each pair, compute the absolute difference in `median_price`. What is the largest difference, and between which towns?
 
-**Drill 4.** Pre-aggregate the schools table to compute the number of *primary schools only* per town (assume there's a `level` column with values like `"primary"`, `"secondary"`). Then left-join onto the HDB data. Fill nulls with 0.
+**Drill 4.** Pre-aggregate the schools table to count *primary schools only* per town (the `type` column holds `"primary"`, `"secondary"` or `"JC"`). Remember the casing. Then left-join onto the HDB data and fill nulls with 0.
 
-**Drill 5.** Use `set` operations to find towns that appear in the schools table but not in the HDB table (there should be none — every Singapore town with a school should have HDB flats, unless it is a fully private district).
+**Drill 5.** Use `set` operations to find towns that appear in the schools table but not in the HDB table (after upper-casing). Are there any? What does that tell you about using a town name as a join key across two independently-built tables?
 
 ## Cross-References
 
 - **Lesson 1.5** will move into time-series analysis with window functions, which operate on the enriched joined dataset you built here.
-- **Lesson 1.6** will visualise the relationship between MRT distance and price as a scatter plot.
+- **Lesson 1.6** will visualise relationships between numeric columns as scatter plots and a correlation heatmap.
 - **Lesson 1.8** will perform a more complex multi-source merge when aligning monthly CPI, quarterly employment, and daily FX-rate data onto a common monthly spine.
 - **Module 2**'s FeatureStore uses joins under the hood to materialise feature groups. The join semantics are exactly what you learned today.
 
@@ -2031,20 +2150,28 @@ You should now be able to:
 - Use `.fill_null()` to replace post-join NULLs with a sensible default.
 - Pre-aggregate a right-hand table to the left table's grain before joining.
 - Explain why `.first()` is the right aggregation for a column that was joined from a coarser-grained table.
-- Compute a Pearson correlation between two columns with `pl.corr(a, b).item()`.
+- Compute a Pearson correlation between two columns with `df.select(pl.corr(a, b)).item()`.
+- Explain why a left join can *increase* the row count, and fix it by aggregating the right-hand table to a unique key first.
+- Normalise join keys (casing, naming) before joining, and use an outer (`how="full"`) join to reconcile two sources.
 
 ### Drill answers
 
-1. Inner join produces rows where both sides have a match. If 5% of HDB rows are for unmatched towns, they are dropped, leaving 95% × 487,293 ≈ 462,928 rows.
+1. Every sale in an unmatched town is dropped by an inner join, so the prediction is the HDB row count minus the rows in those towns:
+   ```python
+   lost = hdb.filter(pl.col("town").is_in(sorted(unmatched))).height
+   print(f"Predicted inner join rows: {hdb.height - lost:,}")   # 39,118 (11,032 lost)
+   ```
+   This matches Step 7 exactly — because `mrt_by_town` has one row per town. Had you joined the raw station table, the inner join would also have multiplied rows, and no prediction from `unmatched` alone would hold.
 2. ```python
    match_rate = len(matched) / len(hdb_towns)
    if match_rate > 0.95:
-       print("Most HDB rows matched")
+       print("Most towns matched")
    elif match_rate > 0.80:
-       print("Some rows missing")
+       print("Some towns missing")
    else:
-       print("Many rows missing — investigate")
+       print("Many towns missing — investigate")
    ```
+   21 / 27 = 0.78, so it prints `"Many towns missing — investigate"`. (Before upper-casing, the rate was 0.)
 3. ```python
    pairs = (
        district_summary.select("town", "median_price")
@@ -2057,9 +2184,11 @@ You should now be able to:
    )
    print(pairs.head(1))
    ```
+   The largest gap is BOON LAY vs TOA PAYOH: S$153,906.50, the cheapest and most expensive town medians.
 4. ```python
    primary_counts = (
-       schools.filter(pl.col("level") == "primary")
+       schools.filter(pl.col("type") == "primary")
+       .with_columns(pl.col("town").str.to_uppercase())
        .group_by("town")
        .agg(pl.len().alias("primary_school_count"))
    )
@@ -2067,12 +2196,14 @@ You should now be able to:
        pl.col("primary_school_count").fill_null(0)
    )
    ```
+   Without `.str.to_uppercase()` nothing matches and every row gets 0 after `fill_null` — a silent, plausible-looking wrong answer.
 5. ```python
-   school_towns = set(schools["town"].unique().to_list())
+   school_towns = {t.upper() for t in schools["town"].unique().to_list()}
    hdb_towns = set(hdb["town"].unique().to_list())
    only_in_schools = school_towns - hdb_towns
-   print(only_in_schools)
+   print(sorted(only_in_schools))   # ['BUONA VISTA', 'KALLANG', 'LITTLE INDIA']
    ```
+   Three. The schools table uses neighbourhood names (`Kallang`, `Little India`) where the HDB table uses planning-town names (`KALLANG/WHAMPOA`, `CENTRAL AREA`). Matching casing is not enough: two tables built by different people rarely agree on what a "town" is. A proper fix is a mapping table from one naming scheme to the other.
 
 ---
 

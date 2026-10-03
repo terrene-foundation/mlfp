@@ -18,9 +18,10 @@
 # TASKS:
 #   1. Theory — the kernel trick in one paragraph
 #   2. Build — fit Kernel PCA with linear, RBF, polynomial kernels
-#   3. Train — sweep gamma for RBF, record silhouette per config
-#   4. Visualise — silhouette bar chart across kernel configurations
-#   5. Apply — Grab Singapore driver-behaviour fraud screening
+#   3. Train — sweep gamma for RBF, record neighbourhood preservation
+#      (trustworthiness) and clusterability (silhouette) per config
+#   4. Visualise — quality bar chart across kernel configurations
+#   5. Apply — driver-behaviour fraud screening at a ride-hailing platform
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -31,9 +32,11 @@ from sklearn.decomposition import KernelPCA
 
 from kailash_ml import ModelVisualizer
 
+import numpy as np
+
 from shared.mlfp04.ex_3 import (
     OUTPUT_DIR,
-    evaluate_embedding_silhouette,
+    evaluate_embedding,
     load_customer_matrix,
     setup_engines,
     subsample_indices,
@@ -77,6 +80,10 @@ print(f"=== E-commerce customers ===  n={n_samples:,}, p={n_features}")
 # Kernel PCA is O(n^2) in memory — subsample to a manageable size.
 idx = subsample_indices(n_samples, n_target=3000)
 X_sub = X[idx]
+# Compress the 7 behavioural features to 3 components. (Keeping all 7
+# would make linear PCA a pure rotation with perfect neighbourhood
+# preservation, leaving nothing to compare.)
+N_COMPONENTS = 3
 print(f"Subsampled for kernel PCA: {X_sub.shape[0]:,} rows")
 
 
@@ -85,7 +92,10 @@ print(f"Subsampled for kernel PCA: {X_sub.shape[0]:,} rows")
 # ════════════════════════════════════════════════════════════════════════
 # For each kernel config we measure:
 #   - wall time (kernel PCA is expensive; students should see this)
-#   - silhouette in the embedding space (4-cluster KMeans)
+#   - trustworthiness: are embedding neighbours genuine original-space
+#     neighbours? (structure preservation — the ranking metric)
+#   - silhouette of 4-cluster KMeans in the embedding (clusterability
+#     only — a blob-shaped picture is not proof of preserved structure)
 
 kernel_configs = [
     {"kernel": "linear", "params": {}, "label": "linear"},
@@ -100,14 +110,14 @@ kernel_configs = [
 
 kernel_results: dict[str, dict] = {}
 
-print(f"\n=== Kernel PCA sweep ===")
-print(f"{'kernel':<20}{'silhouette':>14}{'time (s)':>12}")
-print("-" * 46)
+print("\n=== Kernel PCA sweep ===")
+print(f"{'kernel':<20}{'trust':>10}{'silhouette':>14}{'time (s)':>12}")
+print("-" * 56)
 
 for cfg in kernel_configs:
     t0 = time.time()
     kpca = KernelPCA(
-        n_components=8,
+        n_components=N_COMPONENTS,
         kernel=cfg["kernel"],
         random_state=42,
         **cfg["params"],
@@ -115,16 +125,22 @@ for cfg in kernel_configs:
     X_embed = kpca.fit_transform(X_sub)
     elapsed = time.time() - t0
 
-    sil = evaluate_embedding_silhouette(X_embed)
-    kernel_results[cfg["label"]] = {"silhouette": sil, "time_s": elapsed}
-    print(f"{cfg['label']:<20}{sil:>14.4f}{elapsed:>12.2f}")
+    quality = evaluate_embedding(X_sub, X_embed)
+    kernel_results[cfg["label"]] = {**quality, "time_s": elapsed}
+    print(
+        f"{cfg['label']:<20}{quality['trustworthiness']:>10.4f}"
+        f"{quality['silhouette']:>14.4f}{elapsed:>12.2f}"
+    )
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert len(kernel_results) == 4, "Must evaluate all 4 kernel configurations"
+for label, res in kernel_results.items():
+    assert 0.0 <= res["trustworthiness"] <= 1.0, f"{label}: trust out of range"
+linear_trust = kernel_results["linear"]["trustworthiness"]
 linear_sil = kernel_results["linear"]["silhouette"]
 print(
-    "\n[ok] Checkpoint 1 — linear silhouette="
-    f"{linear_sil:.4f} establishes the PCA baseline to beat"
+    "\n[ok] Checkpoint 1 — linear trustworthiness="
+    f"{linear_trust:.4f} establishes the PCA baseline to beat"
 )
 
 
@@ -134,9 +150,16 @@ print(
 
 viz = ModelVisualizer()
 fig = viz.metric_comparison(
-    {label: {"Silhouette": res["silhouette"]} for label, res in kernel_results.items()}
+    {
+        label: {
+            "Trustworthiness": res["trustworthiness"],
+            "kNN overlap": res["knn_overlap"],
+            "Silhouette": res["silhouette"],
+        }
+        for label, res in kernel_results.items()
+    }
 )
-fig.update_layout(title="Kernel PCA: cluster quality across kernels")
+fig.update_layout(title="Kernel PCA: structure preservation vs clusterability")
 kernel_path = OUTPUT_DIR / "02_kernel_pca_silhouette.html"
 fig.write_html(str(kernel_path))
 print(f"\nSaved: {kernel_path}")
@@ -146,58 +169,63 @@ print("  - Linear is your baseline: if nothing beats it, use ordinary PCA.")
 print("  - RBF with small gamma (wide kernel) = smooth global manifold.")
 print("  - RBF with large gamma (narrow kernel) = local, more complex fit.")
 print("  - Poly captures feature interactions at the cost of instability.")
-print("  - Kernel PCA has no inverse_transform — you cannot reconstruct X.")
+print("  - Rank by trustworthiness (structure kept); silhouette only says")
+print("    how blob-like the embedding is.")
+print("  - Kernel PCA has no EXACT inverse. KernelPCA(fit_inverse_transform=True)")
+print("    learns an APPROXIMATE pre-image by regression — unlike PCA's exact")
+print("    linear reconstruction.")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Singapore driver-behaviour fraud screening
+# TASK 5 — APPLY: Driver-Behaviour Fraud Screening at a Ride-Hailing Platform
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Grab's risk team in Singapore screens ride-hailing drivers for
-# collusive behaviour (fake trips, rating manipulation, ghost cancellations).
-# Each driver has ~50 behavioural features per week — trip counts, time-of-
-# day distributions, rating patterns, cancellation geography, payment
-# method mix. The problem: fraud rings form CURVED clusters in this space
-# (a small group of accounts whose behaviour deforms smoothly into the
-# legitimate majority). Linear PCA cannot separate them — the fraud ring
-# shows up as a thin crescent along a diagonal of PC1/PC2.
+# SCENARIO (illustrative): a ride-hailing platform's risk team in Singapore
+# screens drivers for collusive behaviour (fake trips, rating manipulation,
+# ghost cancellations). Each driver has ~50 behavioural features per week —
+# trip counts, time-of-day distributions, rating patterns, cancellation
+# geography, payment method mix. Suppose fraud rings form CURVED clusters
+# in this space (a small group whose behaviour deforms smoothly into the
+# legitimate majority) that linear PCA flattens into a thin crescent.
 #
-# WHY KERNEL PCA:
-#   - RBF kernel captures the curved boundary without explicit feature
-#     engineering. A narrow gamma (~1.0) isolates tight fraud clusters;
-#     a wider gamma (~0.1) catches broader collusive networks.
-#   - Subsampling is tolerable here because fraud is rare — 5K drivers
-#     per weekly batch gives enough coverage for the kernel eigenbasis.
-#   - Polynomial kernels surface the interaction "high cancellation rate
-#     AND short trip time AND uncommon payment method" that defines one
-#     specific ring type.
+# WHY KERNEL PCA COULD HELP:
+#   - An RBF kernel can follow a curved boundary without hand-built
+#     features. Gamma sets the kernel width: large gamma = narrow, local
+#     fit; small gamma = smooth, global fit.
+#   - Subsampling is tolerable when the eigenbasis only needs to cover the
+#     shape of normal behaviour.
+#   - Polynomial kernels express interactions such as "high cancellation
+#     rate AND short trip time AND uncommon payment method".
 #
-# BUSINESS IMPACT: Grab's internal reporting (2025 safety report) puts
-# the average verified fraud ring at ~S$45K/week in fake incentive
-# payouts before detection. Catching rings 1 week earlier — moving from
-# 6-week to 5-week median detection — saves ~S$45K per ring, times
-# ~30 rings/year, = S$1.35M/year in avoided payout leakage. The
-# Kernel PCA stage costs ~15 minutes of CPU per weekly batch on the
-# subsampled data, against compute cost of well under S$50/week.
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): if a
+# ring costs about S$45K a week in fake incentive payouts and the kernel
+# view lets analysts catch rings one week earlier, each ring caught saves
+# ~S$45K; at 30 rings a year that is ~S$1.35M against a few CPU-minutes per
+# weekly batch. Whether the kernel view actually helps is an empirical
+# question — compare its trustworthiness with linear PCA first (below).
 #
 # LIMITATIONS:
-#   - No inverse transform means risk officers can't "see" what drove
-#     the classification in feature space. Downstream SHAP is needed.
-#   - The kernel matrix is O(n^2); rollout beyond SG requires per-city
-#     subsampling or fall back to UMAP (Exercise 3.4).
+#   - Only an approximate, learned pre-image back to feature space, so
+#     risk officers need another explanation tool (e.g. SHAP) downstream.
+#   - The kernel matrix is O(n^2); scaling up requires per-city
+#     subsampling or a switch to UMAP (Exercise 3.4).
 
-print(f"\n=== Grab-style fraud-screening projection ===")
-print(f"  Linear PCA silhouette : {linear_sil:.4f}")
-best_label, best = max(kernel_results.items(), key=lambda kv: kv[1]["silhouette"])
+print("\n=== Fraud-screening projection (ranked by trustworthiness) ===")
+print(f"  Linear PCA trust      : {linear_trust:.4f}")
+best_label, best = max(
+    kernel_results.items(), key=lambda kv: kv[1]["trustworthiness"]
+)
 print(f"  Best kernel           : {best_label}")
-print(f"  Best silhouette       : {best['silhouette']:.4f}")
-lift = best["silhouette"] - linear_sil
+print(f"  Best trustworthiness  : {best['trustworthiness']:.4f}")
+lift = best["trustworthiness"] - linear_trust
 print(f"  Lift over linear PCA  : {lift:+.4f}")
+if best_label == "linear" or lift < 0.005:
+    print("  -> No kernel beats linear PCA here: stay linear (see KEY INSIGHT).")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TRACK — Log this lesson's run to the kailash-ml ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
-# Per-kernel silhouette + wall time scalars + parallel series go into the
+# Per-kernel trustworthiness, silhouette and wall-time scalars + series go into the
 # m4_dimreduction_zoo experiment for side-by-side comparison with PCA
 # (lesson 01) and t-SNE / UMAP (lessons 03-04).
 
@@ -216,15 +244,21 @@ track_run(
     run_name=f"kernel_pca_{_slug(best_label.split()[0])}",
     params={
         "algorithm": "kernel_pca",
-        "n_components": 8,
+        "n_components": N_COMPONENTS,
         "n_subsample": int(X_sub.shape[0]),
         "n_features": n_features,
         "best_kernel": best_label,
     },
     scalar_metrics={
+        "linear_trustworthiness": float(linear_trust),
         "linear_silhouette": float(linear_sil),
+        "best_trustworthiness": float(best["trustworthiness"]),
         "best_silhouette": float(best["silhouette"]),
         "lift_over_linear": float(lift),
+    }
+    | {
+        f"{_slug(k)}_trustworthiness": float(v["trustworthiness"])
+        for k, v in kernel_results.items()
     }
     | {
         f"{_slug(k)}_silhouette": float(v["silhouette"])
@@ -232,6 +266,9 @@ track_run(
     }
     | {f"{_slug(k)}_time_s": float(v["time_s"]) for k, v in kernel_results.items()},
     series_metrics={
+        "kernel_trustworthiness": [
+            float(kernel_results[k]["trustworthiness"]) for k in kernel_labels
+        ],
         "kernel_silhouettes": [
             float(kernel_results[k]["silhouette"]) for k in kernel_labels
         ],
@@ -244,33 +281,32 @@ print(f"  [tracked] kernel sweep logged to {exp_name}\n")
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — engine surface honesty for kernel PCA
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's DimReductionEngine ships pca, tsne, umap, nmf — but
-# NOT kernel_pca. The kernel-trick variant remains an explicit sklearn
-# fallback in the engine's algorithm enum. The engine-first surface for
-# THIS lesson is therefore the ExperimentTracker we just used: every
-# kernel/gamma combination, every silhouette, every wall-time — already
-# in mlfp04_ex3_dimreduction.db next to the PCA run from 01.
-#
-# When kailash-ml adds a kernel_pca adapter, the four-line `dimreduce.reduce`
-# call from 01_pca becomes the destination. Until then, the leaderboard IS
-# the destination — open the SQLite store to compare every kernel config
-# side-by-side with linear PCA.
+# kailash-ml's DimReductionEngine supports pca, tsne, umap and nmf — NOT
+# kernel_pca, so the nonlinear kernels in this lesson stay on sklearn's
+# KernelPCA with the ExperimentTracker as the record. What the engine CAN
+# confirm is the baseline: a LINEAR-kernel Kernel PCA is ordinary PCA, so
+# the engine's pca embedding should preserve neighbourhoods exactly as
+# well as the "linear" row above.
+
+import polars as pl
 
 from kailash_ml.engines.dim_reduction import DimReductionEngine
 
+engine_pca = DimReductionEngine().reduce(
+    pl.from_numpy(X_sub, schema=feature_cols),
+    algorithm="pca",
+    n_components=N_COMPONENTS,
+)
+engine_quality = evaluate_embedding(X_sub, np.asarray(engine_pca.transformed))
 print(
-    "  DimReductionEngine 1.5.1 algorithms:",
-    "pca, tsne, umap, nmf",
+    f"  DimReductionEngine.reduce(pca) trustworthiness = "
+    f"{engine_quality['trustworthiness']:.4f}  vs  linear-kernel KernelPCA = "
+    f"{linear_trust:.4f}"
 )
 print(
-    "    Kernel PCA: use sklearn.decomposition.KernelPCA + tracker until"
-    " a future kailash-ml release adds the adapter."
-)
-_ = DimReductionEngine  # keep the engine import live for the leaderboard story
-print(
-    "\n  Engine-first take-away: the tracker leaderboard IS the destination —"
-    " open mlfp04_ex3_dimreduction.db to compare every kernel/gamma run"
-    " against the PCA baseline from lesson 01.\n"
+    "  Engine-first take-away: linear kernel == PCA, which the engine owns;"
+    " the nonlinear kernels are compared against it in"
+    " mlfp04_ex3_dimreduction.db.\n"
 )
 
 
@@ -284,9 +320,10 @@ print(
     """
   [x] Applied the kernel trick to lift PCA into nonlinear feature spaces
   [x] Compared linear, RBF, polynomial kernels on the same data
+  [x] Ranked embeddings by trustworthiness, not by K-means silhouette
   [x] Swept the RBF gamma hyperparameter (narrow vs wide)
   [x] Measured the O(n^2) kernel-matrix cost firsthand
-  [x] Sized Kernel PCA for a production fraud-screening pipeline
+  [x] Framed Kernel PCA for a fraud-screening pipeline (illustrative)
 
   KEY INSIGHT: Kernel PCA gives you a curved coordinate system, but you
   pay for it in memory. Before reaching for the kernel trick, ask: does

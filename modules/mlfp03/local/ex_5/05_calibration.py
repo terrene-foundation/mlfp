@@ -18,7 +18,7 @@
 #
 # 5-PHASE STRUCTURE:
 #   Theory   — calibration intuition + why it matters for loan pricing
-#   Build    — wrap the cost-sensitive model in CalibratedClassifierCV
+#   Build    — calibrate the cost-sensitive model with TrainingPipeline.calibrate
 #   Train    — fit Platt and Isotonic variants
 #   Visualise — reliability diagrams + final comparison table
 #   Apply    — illustrative risk-based personal-loan pricing
@@ -26,13 +26,17 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 import lightgbm as lgb
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss
+from sklearn.model_selection import train_test_split
+
+from kailash_ml import TrainingPipeline
 
 from shared.mlfp03.ex_5 import (
     ANNUAL_APPLICATIONS,
@@ -90,9 +94,10 @@ load_dotenv()
 #     non-monotone one — and it never changes the ranking (AUC stays put,
 #     apart from ties created by its flat steps).
 #
-#   Both are fitted on held-out folds (cv=5): calibrating on the same
-#   rows the booster trained on would learn its over-confidence on
-#   training data, not its behaviour on new applicants.
+#   Both are fitted on a held-out CALIBRATION slice (20% of the training
+#   rows the booster never saw): calibrating on the same rows the booster
+#   trained on would learn its over-confidence on training data, not its
+#   behaviour on new applicants.
 #
 # RULE OF THUMB: small calibration set -> Platt; large -> Isotonic;
 # always check with a reliability diagram.
@@ -105,28 +110,37 @@ load_dotenv()
 X_train, y_train, X_test, y_test, pos_rate = load_credit_splits()
 
 scale_weight = (1 - pos_rate) / pos_rate
+# 80% of the training rows fit the weighted booster; the other 20% are
+# kept back to fit the calibration maps.
+X_fit, X_cal, y_fit, y_cal = train_test_split(
+    X_train, y_train, test_size=0.2, stratify=y_train, random_state=42
+)
 base_estimator = lgb.LGBMClassifier(
     n_estimators=300,
     scale_pos_weight=scale_weight,
     random_state=42,
     verbose=-1,
 )
+base_estimator.fit(X_fit, y_fit)
 
-# TODO: Wrap base_estimator in CalibratedClassifierCV — Platt scaling, 5 folds
-# Hint: Platt is method="sigmoid"
-platt = ____
-# TODO: Same wrapper with isotonic regression, 5 folds
-isotonic = ____
+# kailash-ml's TrainingPipeline.calibrate wraps an already-fitted model
+# (frozen — it is not re-trained) and fits the calibration map on the
+# held-out rows. No registry is needed for calibration alone.
+pipeline = TrainingPipeline(feature_store=None, registry=None)
+X_cal_frame = pl.DataFrame(X_cal, schema=[f"f{i}" for i in range(X_cal.shape[1])], orient="row")
+y_cal_series = pl.Series("default", y_cal)
 
 print("\n" + "=" * 70)
 print("  Exercise 5.5 — Calibration (Platt + Isotonic)")
 print("=" * 70)
-print("  Fitting Platt scaling (5-fold CV)...")
-# TODO: Fit the Platt calibrator on the training data
-____
-print("  Fitting Isotonic regression (5-fold CV)...")
-# TODO: Fit the isotonic calibrator on the training data
-____
+print(f"  Fitting Platt scaling on {len(y_cal):,} held-out rows...")
+# TODO: Calibrate base_estimator with Platt scaling on the held-out rows
+# Hint: asyncio.run(pipeline.calibrate(<fitted model>, <X frame>, <y series>,
+#       method=...)) — Platt is method="sigmoid"
+platt = ____
+print(f"  Fitting Isotonic regression on {len(y_cal):,} held-out rows...")
+# TODO: The same call with isotonic regression
+isotonic = ____
 
 y_proba_platt = platt.predict_proba(X_test)[:, 1]
 y_proba_iso = isotonic.predict_proba(X_test)[:, 1]
@@ -303,7 +317,7 @@ print(f"  Best Brier:  {best_brier['strategy']} (Brier={best_brier['brier']:.4f}
 #
 # Production recipe:
 #   1. Train a strong ranker (LightGBM, optionally class-weighted)
-#   2. Post-calibrate on held-out folds (Isotonic with plenty of data,
+#   2. Post-calibrate on held-out data (Isotonic with plenty of data,
 #      Platt with little)
 #   3. Apply the Bayes threshold t* = cost_FP / (cost_FP + cost_FN) to
 #      the CALIBRATED probabilities
@@ -362,7 +376,8 @@ print(
 from kailash_ml import diagnose
 
 # `kind="classical_classifier"` dispatches to the sklearn ClassifierMixin
-# adapter. CalibratedClassifierCV implements the ClassifierMixin interface.
+# adapter. TrainingPipeline.calibrate returns an sklearn
+# CalibratedClassifierCV, which implements the ClassifierMixin interface.
 # Use the isotonic variant — typically the better calibrator for >1k samples.
 report = diagnose(
     isotonic, kind="classical_classifier", data=(X_test, y_test), show=False

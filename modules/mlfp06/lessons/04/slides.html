@@ -48,7 +48,7 @@
       <!-- Documents -->
       <rect x="15" y="30" width="100" height="80" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
       <text x="65" y="50" text-anchor="middle" font-family="Inter" font-weight="600" font-size="10">Documents</text>
-      <text x="65" y="66" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Ex 6.4 corpus:</text>
+      <text x="65" y="66" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">Ex 4 corpus:</text>
       <text x="65" y="78" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">1,000 web passages</text>
       <text x="65" y="90" text-anchor="middle" font-family="Inter" font-size="8" fill="#64748B">+ Q&amp;A pairs</text>
 
@@ -162,7 +162,7 @@
       <tr><td>Hybrid</td><td>Reciprocal rank fusion: $\sum_r 1/(k + \text{rank}_r)$, $k=60$</td><td>Best of both</td></tr>
     </tbody>
   </table>
-  <div class="callout-slide theory"><strong>🔵 Theory:</strong> hybrid retrieval plus a re-ranking pass is the common production pattern. RRF fuses <em>ranks</em>, so BM25 and cosine scores never need a common scale. Exercise 6.4 scores all of them with hit@k against each question's source document.</div>
+  <div class="callout-slide theory"><strong>🔵 Theory:</strong> hybrid retrieval plus a re-ranking pass is the common production pattern. RRF fuses <em>ranks</em>, so BM25 and cosine scores never need a common scale. Exercise 4 scores all of them with hit@k against each question's source document.</div>
 </section>
 
 <section>
@@ -176,7 +176,7 @@
       <tr><td>Context recall</td><td>Did we retrieve all relevant chunks?</td></tr>
     </tbody>
   </table>
-  <p style="font-size:.75em">Exercise 6.4.5 computes these with the local LLM as the judge — so judge parse failures must raise, never default to a score.</p>
+  <p style="font-size:.75em">Exercise 4.5 computes these with the local LLM as the judge — so judge parse failures must raise, never default to a score.</p>
 </section>
 
 <section>
@@ -226,8 +226,8 @@ answer, usage, secs = await run_delegate_text(make_delegate(), prompt)
     <li><strong>Multi-hop retrieval:</strong> retrieve, let the LLM name the missing fact, retrieve again — for questions whose answer spans two documents.</li>
     <li><strong>Document summarisation:</strong> index a summary per document alongside its chunks; route broad questions to summaries, narrow ones to chunks.</li>
   </ul>
-  <p style="font-size:.78em">Typical Singapore use: question answering over public regulatory texts (MAS notices, PDPA guidance) — swap them in for the Exercise 6.4 corpus.</p>
-  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> Kaizen also ships ready-made <code>RAGResearchAgent</code> (retrieve + answer over a vector store) and <code>MemoryAgent</code> (conversation memory) in <code>kaizen_agents.agents</code>; Exercise 6.4 builds the pipeline by hand so every stage is visible.</div>
+  <p style="font-size:.78em">Typical Singapore use: question answering over public regulatory texts (MAS notices, PDPA guidance) — swap them in for the Exercise 4 corpus.</p>
+  <div class="callout-slide kailash"><strong>⚙ Kailash:</strong> Kaizen also ships ready-made <code>RAGResearchAgent</code> (retrieve + answer over a vector store) and <code>MemoryAgent</code> (conversation memory) in <code>kaizen_agents.agents</code>; Exercise 4 builds the pipeline by hand so every stage is visible.</div>
   <aside class="notes">Spec 6.4 advanced patterns. Metadata filtering: cheapest precision win. Multi-hop: HotpotQA-style questions (we meet that dataset in 6.5). Summaries: hierarchical retrieval. Mention the Kaizen RAG agents as the packaged alternative.</aside>
 </section>
 

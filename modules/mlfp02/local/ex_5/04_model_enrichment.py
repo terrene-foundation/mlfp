@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import plotly.graph_objects as go
 from scipy import stats
 
 from shared.mlfp02.ex_5 import (
@@ -43,6 +44,7 @@ from shared.mlfp02.ex_5 import (
     load_hdb_clean,
     build_design_matrix,
     fit_ols,
+    format_p_value,
     print_coef_table,
     save_actual_vs_predicted,
     save_residual_diagnostics,
@@ -135,9 +137,7 @@ adj_r2_enriched = 1 - (1 - r2_enriched) * (n_obs - 1) / (n_obs - k_enriched)
 f_improvement = ((SSR - ssr_enriched) / (k_enriched - k)) / (
     ssr_enriched / (n_obs - k_enriched)
 )
-f_p_improvement = 1 - stats.f.cdf(
-    f_improvement, dfn=k_enriched - k, dfd=n_obs - k_enriched
-)
+f_p_improvement = stats.f.sf(f_improvement, dfn=k_enriched - k, dfd=n_obs - k_enriched)
 
 print(f"{'Feature':<20} {'Coefficient':>14}")
 print("-" * 38)
@@ -148,7 +148,10 @@ print(f"\nSimple model:   R-squared={r_squared:.6f}, Adj R-squared={adj_r_square
 print(
     f"Enriched model: R-squared={r2_enriched:.6f}, Adj R-squared={adj_r2_enriched:.6f}"
 )
-print(f"F-test (enriched vs simple): F={f_improvement:.2f}, p={f_p_improvement:.2e}")
+print(
+    f"F-test (enriched vs simple): F={f_improvement:.2f}, "
+    f"p {format_p_value(f_p_improvement)}"
+)
 print(
     f"Enriched model is "
     f"{'significantly better' if f_p_improvement < 0.05 else 'NOT significantly better'}"
@@ -177,6 +180,12 @@ print(f"\n=== Dummy Variable Encoding ===")
 flat_types_in_data = sorted(hdb_clean["flat_type"].unique().to_list())
 print(f"Flat types: {flat_types_in_data}")
 
+# BASE_FLAT_TYPE (3 ROOM) is the base: a familiar reference point that
+# makes each coefficient read as "premium over a 3-room flat". It is NOT
+# the most common type (4 ROOM is) — any category works as the base; the
+# choice only changes what the coefficients are measured against.
+type_counts = hdb_clean["flat_type"].value_counts().sort("count", descending=True)
+print(f"Most common type: {type_counts['flat_type'][0]} ({type_counts['count'][0]:,} sales)")
 # TODO: Create list of dummy categories (all flat types except base)
 # Hint: [ft for ft in flat_types_in_data if ft != BASE_FLAT_TYPE]
 dummy_categories = ____
@@ -335,52 +344,153 @@ path = save_actual_vs_predicted(
 )
 print(f"Saved: {path}")
 
+# --- Polynomial fit curve: price vs floor area with linear + quadratic ---
+# Both curves hold storey and lease at their medians, so the only
+# difference between them is the shape in area — a like-for-like view.
+area_sorted_idx = np.argsort(area)
+area_sorted = area[area_sorted_idx]
+med_storey = float(np.median(storey))
+med_lease = float(np.median(lease))
+# Linear model: intercept + beta_area * area + storey/lease at medians
+beta_baseline = fit_baseline["beta"]
+# TODO: Linear-model curve with storey and lease held at their medians
+# Hint: beta_baseline[0] + beta_baseline[1] * area_sorted + (storey and
+#       lease coefficients times med_storey / med_lease)
+y_linear = ____
+# Enriched model at the same storey/lease medians
+y_poly = (
+    beta_enriched[0]
+    + beta_enriched[1] * area_sorted
+    + beta_enriched[2] * med_storey
+    + beta_enriched[3] * med_lease
+    + beta_enriched[4] * area_sorted**2
+    + beta_enriched[5] * med_storey * area_sorted
+    + beta_enriched[6] * med_lease * area_sorted
+)
+
+sample = min(3000, n_obs)
+fig_poly = go.Figure()
+fig_poly.add_trace(
+    go.Scatter(
+        x=area[:sample].tolist(),
+        y=y[:sample].tolist(),
+        mode="markers",
+        marker={"size": 2, "opacity": 0.2, "color": "#94A3B8"},
+        name="Data",
+    )
+)
+fig_poly.add_trace(
+    go.Scatter(
+        x=area_sorted.tolist(),
+        y=y_linear.tolist(),
+        mode="lines",
+        line={"color": "#2563EB", "width": 2},
+        name="Linear",
+    )
+)
+fig_poly.add_trace(
+    go.Scatter(
+        x=area_sorted.tolist(),
+        y=y_poly.tolist(),
+        mode="lines",
+        line={"color": "#DC2626", "width": 2, "dash": "dash"},
+        name="Polynomial + Interactions",
+    )
+)
+fig_poly.update_layout(
+    title="Price vs Floor Area — Does a Curve Fit Better Than a Line?",
+    xaxis_title="Floor Area (sqm)",
+    yaxis_title="Predicted Price (SGD)",
+    height=450,
+)
+path_poly = OUTPUT_DIR / "04_polynomial_fit_curves.html"
+fig_poly.write_html(str(path_poly))
+print(f"Saved: {path_poly}")
+
+# --- Train/test comparison bar chart: R-squared, RMSE, MAE ---
+metrics = ["R-squared", "RMSE ($K)", "MAE ($K)"]
+train_vals = [r2_train, rmse_train / 1000, mae_train / 1000]
+# TODO: Test-set values in the same order and units as train_vals
+test_vals = ____
+
+fig_tt = go.Figure()
+fig_tt.add_trace(
+    go.Bar(
+        x=metrics,
+        y=train_vals,
+        name="Train",
+        marker_color="#2563EB",
+    )
+)
+fig_tt.add_trace(
+    go.Bar(
+        x=metrics,
+        y=test_vals,
+        name="Test",
+        marker_color="#DC2626",
+    )
+)
+fig_tt.update_layout(
+    title="Train vs Test Performance — Is the Model Overfitting?",
+    yaxis_title="Value",
+    barmode="group",
+    height=400,
+)
+path_tt = OUTPUT_DIR / "04_train_test_comparison.html"
+fig_tt.write_html(str(path_tt))
+print(f"Saved: {path_tt}")
+
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Property Developer Portfolio Decision
+# APPLY — Property Developer Unit-Mix Decision
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A property developer in Singapore is deciding between two
-# sites for a new HDB-style development. Site A allows 100 3-room
-# flats (67 sqm each). Site B allows 50 5-room flats (110 sqm each).
+# SCENARIO: A Singapore developer is choosing the unit mix for a site,
+# using HDB resale prices as a demand proxy. Option A: 100 small units
+# (67 sqm, 3-room-like). Option B: 50 large units (110 sqm, 5-room-like).
 # Construction cost is similar per sqm.
 #
-# Using the dummy-encoded model, the developer can estimate:
-# - Revenue from 100 x 3-room flats (base category)
-# - Revenue from 50 x 5-room flats (base + dummy coefficient)
-#
-# The interaction terms tell the developer whether high floors
-# command a bigger premium for large flats (the penthouse effect).
-# The train/test gap tells the developer how reliable these
-# estimates are for properties not in the training data.
-#
-# BUSINESS IMPACT: A 0.01 difference in R-squared translates to
-# millions of dollars in aggregate valuation uncertainty across
-# a 50-unit development. The model comparison table directly
-# informs which features the developer should market (floor area,
-# storey, flat type) and which add noise.
+# The dummy-encoded model prices each unit type at the median storey
+# and lease: base price + area effect + the flat-type premium. The
+# out-of-sample RMSE says how far a single unit's price can miss.
 
-# Find the 5-ROOM dummy coefficient
-five_room_idx = None
-for i, name in enumerate(dummy_names):
-    if "5_ROOM" in name:
-        five_room_idx = i
-        break
+dummy_index = {name: i for i, name in enumerate(dummy_names)}
 
-print(f"\n--- Business Application: Developer Portfolio Decision ---")
-if five_room_idx is not None:
-    five_room_premium = beta_dummy[five_room_idx]
-    print(f"  5-ROOM premium over 3-ROOM (base): ${five_room_premium:,.0f}")
-    print(f"  Site A (100 x 3-room): revenue driven by base price")
-    print(f"  Site B (50 x 5-room):  each unit commands ${five_room_premium:,.0f} more")
-    print(f"  But 50 units vs 100 units — the developer must weigh volume vs premium")
-else:
-    print(f"  5-ROOM flat type not found in data")
+
+def price_unit(area_sqm: float, flat_type: str) -> float:
+    """Predicted price from the dummy model at median storey and lease."""
+    x_new = np.zeros(k_dummy)
+    x_new[0] = 1.0
+    x_new[1:4] = [area_sqm, med_storey, med_lease]
+    dummy_name = f"flat_{flat_type.replace(' ', '_')}"
+    if dummy_name in dummy_index:  # the base category has no dummy
+        x_new[dummy_index[dummy_name]] = 1.0
+    # TODO: Predicted price = design row times the dummy-model coefficients
+    # Hint: matrix product of x_new and beta_dummy, as a float
+    return float(____)
+
+
+print(f"\n--- Business Application: Developer Unit-Mix Decision ---")
+unit_a = price_unit(67.0, "3 ROOM")
+unit_b = price_unit(110.0, "5 ROOM")
+revenue_a = 100 * unit_a
+revenue_b = 50 * unit_b
+print(f"  5-ROOM premium over 3-ROOM at equal area: ${beta_dummy[dummy_index['flat_5_ROOM']]:,.0f}")
+print(f"  Option A: 100 x ${unit_a:,.0f} = ${revenue_a:,.0f}  (6,700 sqm)")
+print(f"  Option B:  50 x ${unit_b:,.0f} = ${revenue_b:,.0f}  (5,500 sqm)")
+print(
+    f"  Revenue per sqm built: A ${revenue_a / 6_700:,.0f}  vs  B ${revenue_b / 5_500:,.0f}"
+)
+better = "A (many small units)" if revenue_a / 6_700 > revenue_b / 5_500 else "B (fewer large units)"
+print(f"  On this model, option {better} earns more per sqm built.")
 
 print(f"\n  Model reliability:")
 print(f"  Train-test R-squared gap: {gap:.4f}")
-print(f"  Out-of-sample RMSE: ${rmse_test:,.0f}")
-print(f"  These estimates can be off by +/- ${rmse_test:,.0f} per unit")
-
+print(f"  Out-of-sample RMSE: ${rmse_test:,.0f} per unit")
+print(
+    f"  The model explains only {r2_test:.0%} of out-of-sample price variation —\n"
+    f"  town, MRT access and condition are missing, so treat the comparison as\n"
+    f"  a first screen, not a valuation."
+)
 
 # ════════════════════════════════════════════════════════════════════════
 # REFLECTION
@@ -395,7 +505,7 @@ print(
   - Dummy encoding with base category to avoid the dummy trap
   - Train/test split: out-of-sample R-squared, RMSE, MAE
   - Model complexity trade-off: more features != better prediction
-  - Business reasoning: how model choice affects portfolio decisions
+  - Business reasoning: pricing a unit-mix decision with dummy coefficients
 """
 )
 

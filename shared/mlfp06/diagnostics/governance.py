@@ -446,8 +446,10 @@ class GovernanceDiagnostics:
         results: list[_DrillResult] = []
         for i, sc in enumerate(scenarios):
             label = sc.get("label") or sc.get("action") or f"drill_{i}"
+            # ``label`` is ours, not a verify_action argument — strip it.
+            kwargs = {k: v for k, v in sc.items() if k != "label"}
             try:
-                outcome = verify(**sc) if isinstance(sc, dict) else verify(sc)
+                outcome = verify(**kwargs)
             except Exception as exc:
                 logger.exception(
                     "governance.drill.error",
@@ -463,8 +465,10 @@ class GovernanceDiagnostics:
                 )
                 continue
 
+            # pact's GovernanceVerdict carries the decision in ``.level``
+            # (auto_approved | flagged | held | blocked).
             verdict = _extract_field(
-                outcome, ("verdict", "decision"), default="unknown"
+                outcome, ("level", "verdict", "decision"), default="unknown"
             )
             reason = _extract_field(outcome, ("reason", "rationale"), default="")
             results.append(
@@ -633,12 +637,16 @@ class GovernanceDiagnostics:
             )
 
         out: list[str] = []
+        snap: pl.DataFrame | None
         try:
             snap = self.audit_snapshot(last_n=200)
-        except Exception as exc:
-            return f"governance-lens: snapshot error — {exc}"
+        except (TypeError, AttributeError) as exc:
+            # e.g. a bare GovernanceEngine exposes no audit list — report
+            # it and still show the drill results below.
+            snap = None
+            out.append(f"audit: unavailable — {exc}")
 
-        if snap.height:
+        if snap is not None and snap.height:
             verdict_counts = (
                 snap.group_by("verdict")
                 .agg(pl.len().alias("n"))
@@ -680,7 +688,9 @@ class GovernanceDiagnostics:
 
         if self._drill_results:
             blocked = sum(
-                1 for r in self._drill_results if r.verdict in {"block", "escalate"}
+                1
+                for r in self._drill_results
+                if r.verdict in {"block", "blocked", "escalate", "held"}
             )
             total = len(self._drill_results)
             out.append(

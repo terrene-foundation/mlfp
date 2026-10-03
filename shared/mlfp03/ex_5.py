@@ -87,6 +87,14 @@ ANNUAL_APPLICATIONS = 100_000
 # The dataset is loaded through the MLFPDataLoader so it works identically
 # in local (.data_cache) and Colab (Drive + gdown) formats.
 
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer (Exercise 4 screens for it).
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
+
 
 def load_credit_splits(
     seed: int = 42,
@@ -97,7 +105,9 @@ def load_credit_splits(
     every technique file. Returns numpy arrays ready for sklearn-style fit.
     """
     loader = MLFPDataLoader()
-    credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
+    credit = loader.load("mlfp02", "sg_credit_scoring.parquet").drop(
+        CREDIT_NON_FEATURE_COLUMNS
+    )
 
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(

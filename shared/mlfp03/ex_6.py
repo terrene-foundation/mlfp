@@ -54,6 +54,14 @@ DATASET_FILE = "sg_credit_scoring.parquet"
 TARGET_COLUMN = "default"
 RANDOM_SEED = 42
 
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer (Exercise 4 screens for it).
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
+
 # Protected attribute candidates we audit for disparate impact.
 PROTECTED_CANDIDATES: list[str] = ["age", "gender", "ethnicity", "marital_status"]
 
@@ -77,7 +85,9 @@ def load_credit_scoring() -> dict[str, Any]:
         return _CACHE
 
     loader = MLFPDataLoader()
-    credit: pl.DataFrame = loader.load(DATASET_MODULE, DATASET_FILE)
+    credit: pl.DataFrame = loader.load(DATASET_MODULE, DATASET_FILE).drop(
+        CREDIT_NON_FEATURE_COLUMNS
+    )
 
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(

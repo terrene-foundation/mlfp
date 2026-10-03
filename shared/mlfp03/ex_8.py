@@ -53,6 +53,14 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 RANDOM_SEED = 42
 
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer (Exercise 4 screens for it).
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
+
 
 def load_credit_split() -> dict[str, Any]:
     """Load Singapore credit scoring data, preprocess, and return a split.
@@ -65,14 +73,9 @@ def load_credit_split() -> dict[str, Any]:
     loader = MLFPDataLoader()
     credit = loader.load("mlfp02", "sg_credit_scoring.parquet")
 
-    # Drop identifier columns before preprocessing — `customer_id` is a row
-    # key, not a feature. Leaving it in the matrix causes drift noise to
-    # dominate the top-variance feature list AND inflates AUC against the
-    # model's pattern-recognition capability on IDs. Both are data-leakage
-    # symptoms; the fix is to exclude the identifier at load time.
-    id_columns = [c for c in ("customer_id", "application_id") if c in credit.columns]
-    if id_columns:
-        credit = credit.drop(id_columns)
+    # Drop the row identifier and the post-outcome leak column BEFORE
+    # preprocessing — see CREDIT_NON_FEATURE_COLUMNS above.
+    credit = credit.drop(CREDIT_NON_FEATURE_COLUMNS)
 
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(

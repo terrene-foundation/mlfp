@@ -48,6 +48,14 @@ TARGET_COLUMN: str = "default"
 DATASET_NAME: str = "sg_credit_scoring"
 DATASET_FILE: str = "sg_credit_scoring.parquet"
 
+# Columns that MUST NOT be model inputs (Lesson 3.1 leakage rule):
+#   customer_id              — a row identifier, not a property of the applicant
+#   future_default_indicator — recorded AFTER the loan outcome is known; it
+#                              agrees with ``default`` on ~99% of rows, so a
+#                              model that sees it "predicts" default by
+#                              reading the answer (Exercise 4 screens for it).
+CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
+
 # Output directory for artefacts (audit trails, evaluation tables)
 OUTPUT_DIR = Path("outputs") / "mlfp03_ex7"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -74,9 +82,11 @@ def load_credit_frame() -> pl.DataFrame:
     """Load the Singapore credit scoring dataset as a polars DataFrame.
 
     Columns: demographic + bureau features, with ``default`` (0/1) target.
+    ``CREDIT_NON_FEATURE_COLUMNS`` (row ID + post-outcome leak) are dropped
+    here so every downstream split, schema and pipeline inherits the fix.
     """
     loader = MLFPDataLoader()
-    return loader.load("mlfp02", DATASET_FILE)
+    return loader.load("mlfp02", DATASET_FILE).drop(CREDIT_NON_FEATURE_COLUMNS)
 
 
 @dataclass

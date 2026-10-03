@@ -849,14 +849,14 @@ obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
   <div class="columns">
     <div class="col">
       <ul style="font-size: 0.78em; margin: 4px 0;">
-        <li><strong>ReAct capture</strong>: structured Thought / Action / Observation / Done events as JSONL</li>
-        <li><strong>Tool usage</strong>: per-tool call count, success rate, p50/p99 latency, cost share</li>
-        <li><strong>Loop detection</strong>: repeated (thought, action) pairs flagged as cycles</li>
-        <li><strong>Budget timeline</strong>: cumulative cost vs wall clock &mdash; where did the money go?</li>
-        <li><strong>Context utilisation</strong>: tokens consumed vs model window over time</li>
+        <li><strong>Run capture</strong>: every token, tool_start, tool_end and error event, timestamped (JSONL-ready)</li>
+        <li><strong>Tool usage</strong>: per-tool call count, errors, mean latency, cost</li>
+        <li><strong>Loop detection</strong>: repeated (tool, arguments) actions flagged as cycles</li>
+        <li><strong>Cost timeline</strong>: tool calls on a time axis + cumulative cost &mdash; where did the turns go?</li>
+        <li><strong>Across runs</strong>: cost per captured run, side by side</li>
       </ul>
       <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
-        <strong>Backend:</strong> <strong>Langfuse self-hosted</strong> for production (OTEL-native, Foundation-independence compliant). Colab falls back to a <strong>Plotly-based viewer</strong> because Docker is unavailable.
+        <strong>Backend:</strong> in-memory traces plotted with <strong>Plotly</strong> (works in Colab). Optional export to a <strong>self-hosted, open-source Langfuse</strong> when <code>LANGFUSE_HOST</code> is set.
       </div>
     </div>
     <div class="col">
@@ -907,8 +907,8 @@ obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Without this lens an agent failure is &lsquo;it got stuck&rsquo;. With it, failure is &lsquo;step 4 opened a loop that burned 78% of budget in 10 seconds&rsquo;. Same bug, two reports, one actionable.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does the course default to Langfuse self-hosted over LangSmith?&rdquo; &rarr; expected wrong answer: &ldquo;features&rdquo; &rarr; right answer: &ldquo;independence &mdash; LangSmith is a hosted SaaS; Langfuse self-hosted keeps the trace data inside the Foundation's stack.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip context utilisation; loop detection is the highest-value single capability.<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why is the optional trace backend a self-hosted, open-source one?&rdquo; &rarr; expected wrong answer: &ldquo;features&rdquo; &rarr; right answer: &ldquo;independence and data custody &mdash; a self-hosted backend keeps agent traces (which contain prompts and tool outputs) inside your own infrastructure.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip the across-runs view; loop detection is the highest-value single capability. (The $ figures on the diagram are illustrative &mdash; on local Ollama every call prices at $0, so watch turns and tokens.)<br/>
     <strong>Transition</strong>: &ldquo;Lens 4 reads what an agent DID. Lens 5 reads whether training TAUGHT it the right thing.&rdquo;
   </aside>
 </section>
@@ -917,49 +917,42 @@ obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
 <section class="code-fit">
   <h2>Lens 4: Agent Trace &mdash; Code</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <p class="small muted" style="margin-top: 0;">Wraps Kaizen agent event streams into OpenTelemetry-compatible JSONL.</p>
-<pre style="font-size: 0.46em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
-from kaizen_agents import ReActAgent
+  <p class="small muted" style="margin-top: 0;">Wraps a Kaizen Delegate's event stream into a timestamped, OpenTelemetry-compatible trace.</p>
+<pre style="font-size: 0.46em; line-height: 1.35"><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate
+from shared.mlfp06.diagnostics import LLMObservatory
+from shared.mlfp06.ex_5 import build_tool_registry
 
 obs = LLMObservatory()
-agent = ReActAgent(tools=[search, calculator, summarise])
+# Tools must live in a ToolRegistry — a bare list of functions registers nothing
+agent = make_delegate(tools=build_tool_registry([search, calculator, summarise]),
+                      max_turns=8)       # model comes from OLLAMA_CHAT_MODEL
 
-# ── Capture a run with full trace ────────────────────────────
-with obs.agent.capture(agent, run_id="q3_summary_v1") as trace:
-    result = agent.run("Summarise Q3 filings for SGX listed banks.")
+# ── Capture a run with full trace (async) ────────────────────
+trace = await obs.agent.capture_run(
+    agent, "Summarise the Q3 filings in the corpus.", run_id="q3_summary_v1")
+# trace.events: token / tool_start / tool_end / error, each timestamped
 
-# trace is a JSONL file under runs/&lt;agent&gt;/&lt;timestamp&gt;.jsonl
-
-# ── Per-tool cost / latency / success breakdown ──────────────
-usage = obs.agent.tool_usage_summary(trace)
-# Polars DataFrame: tool, calls, success_rate, p50_ms, p99_ms, cost_usd_total
+# ── Per-tool breakdown ───────────────────────────────────────
+usage = obs.agent.tool_usage("q3_summary_v1")
+# columns: tool, calls, errors, mean_latency_ms, total_cost_usd
 
 # ── Loop detection ───────────────────────────────────────────
-loops = obs.agent.loop_detection(trace)
-# loops: [{"start_step": 4, "length": 10, "signature": "search,observe"}]
+loops = obs.agent.detect_loops("q3_summary_v1")
+# columns include tool, signature, repeats, first_idx
 
-# ── Budget timeline plot ─────────────────────────────────────
-obs.agent.budget_timeline(trace).show()
-
-# ── Counterfactual replay: what if step 3 returned differently?
-replay = obs.agent.replay(
-    trace,
-    step=3,
-    modified_output="0 results",
-)
-# replay.diverged_at_step, replay.new_total_cost, replay.new_outcome
-
-# ── Optional: export to Langfuse for the UI ──────────────────
-obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
+# ── Timeline + per-event cost ────────────────────────────────
+obs.agent.plot_trace("q3_summary_v1").show()
+costs = obs.agent.cost_breakdown("q3_summary_v1")
+print(obs.agent.report("q3_summary_v1"))
 </code></pre>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;<code>capture</code> is a context manager &mdash; you wrap the agent run, it writes the trace. No bespoke logging.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why is <code>replay</code> valuable when the agent has already run?&rdquo; &rarr; expected wrong answer: &ldquo;for testing&rdquo; &rarr; right answer: &ldquo;because it lets you attribute blame &mdash; if swapping step 3's observation fixes the outcome, step 3 was the failure point, not the model.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip <code>replay</code>; it recurs in 6.5.<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>capture_run</code> runs the agent for you and records every event. No bespoke logging.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why look at <code>detect_loops</code> when the agent already returned an answer?&rdquo; &rarr; expected wrong answer: &ldquo;it finished, so it is fine&rdquo; &rarr; right answer: &ldquo;a run can finish AND waste most of its turns repeating the same tool call &mdash; the trace tells you where the turns went, the answer does not.&rdquo;<br/>
+    <strong>If behind schedule</strong>: skip <code>cost_breakdown</code>; it recurs in 6.5.<br/>
     <strong>Transition</strong>: &ldquo;Now the lens for training: did our fine-tuning reward the right thing?&rdquo;
   </aside>
 </section>
@@ -1113,7 +1106,7 @@ obs.agent.export_to_langfuse(trace, project="mlfp06-dev")
       <tr>
         <td><strong>Agent trace</strong></td>
         <td>Langfuse (self-hosted), LangSmith, Phoenix</td>
-        <td>TAOD capture, OTEL spans, replay; Plotly viewer fallback for Colab</td>
+        <td>Event capture, OTEL-compatible spans; Plotly viewer for Colab</td>
       </tr>
       <tr>
         <td><strong>Alignment</strong></td>

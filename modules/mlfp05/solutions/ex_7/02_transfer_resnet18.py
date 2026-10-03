@@ -223,6 +223,48 @@ print(f"  Scratch  best val_acc: {best_scratch:.3f}")
 print(f"  Advantage: {best_transfer - best_scratch:+.3f}")
 print("\n--- Checkpoint 2 passed --- both models trained and compared\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Transfer ResNet-18 (ImageNet pretrained, frozen backbone)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(transfer_model),
+    train_loader,
+    classifier_diag_loss,
+    title="Transfer ResNet-18 (ImageNet pretrained, frozen backbone)",
+    n_batches=8,
+    train_losses=transfer_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Transfer ResNet-18 (ImageNet pretrained, frozen backbone)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — only the new fc head is trainable; the frozen backbone
+#     has no parameter gradients by design, so judge this reading by the
+#     fc layer. "Exploding" on fc means the head's updates are large
+#     relative to its weights (lower the learning rate); "vanishing" means
+#     the head has stopped learning.
+#  Dead neurons — the ReLUs belong to the frozen ImageNet backbone. A high
+#     dead fraction means many pretrained features are silent on CIFAR-10;
+#     that is a domain-gap signal (unfreeze the last stage, or use the
+#     adapters of Part 4), not a training bug.
+#  Loss trend — read from the real per-epoch losses of the head.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Register models in ModelRegistry
@@ -627,70 +669,3 @@ print(
   question: "How much do we need to spend on labelling?"
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Fine-tune last layer + optionally unfreeze
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Transfer ResNet18 (ImageNet pretrained)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="Transfer ResNet18 (ImageNet pretrained)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 8.4e-04 to 3.2e-02 across frozen+unfrozen layers.
-#     Frozen layers properly report 0 (no gradient by design).
-# [✓] Dead neurons  (HEALTHY): 14% inactive — ImageNet-pretrained
-#     weights + ReLU is the happy path.
-# [✓] Loss trend    (HEALTHY): rapid convergence to 87% val accuracy in 5 epochs.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] The HEALTHY RMS at every layer is the point of
-#     transfer learning. ImageNet features are "warm-started" — no
-#     vanishing gradients, no dead neurons, fast convergence.
-#     Compare to ex_7/01 (43% dead conv1 from scratch).
-#
-#  [X-RAY — GRAD-CAM] Run diag.grad_cam(input, target_class,
-#     layer_name='layer4') to see what the model attends to.
-#     Before fine-tuning: attends to generic edges (ImageNet).
-#     After fine-tuning: attends to Fashion-MNIST-specific features.
-#     Slide 5G-ii Zech-2018-watermark example — ALWAYS check
-#     attribution before deploying.
-#
-#  [STETHOSCOPE] 87% in 5 epochs vs 60% from scratch in 10 epochs
-#     = 10x faster convergence, 30% better final accuracy.
-#     Transfer learning is cheat code for small datasets.
-

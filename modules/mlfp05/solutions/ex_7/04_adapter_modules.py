@@ -327,6 +327,47 @@ print(
 )
 print("\n--- Checkpoint 3 passed --- all three methods compared\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Adapter ResNet-18 (frozen backbone + bottleneck adapters)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(adapter_model),
+    train_loader,
+    classifier_diag_loss,
+    title="Adapter ResNet-18 (frozen backbone + bottleneck adapters)",
+    n_batches=8,
+    train_losses=adapter_losses,
+    show=False,
+)
+print_prescription_pad(findings, "Adapter ResNet-18 (frozen backbone + bottleneck adapters)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — only the adapter bottlenecks and the fc head are
+#     trainable; the frozen backbone has no parameter gradients by design.
+#     Read this as: do the adapter layers carry gradient? A "vanishing"
+#     reading on the adapters' up-projections means they are still near
+#     their zero init and barely changing the backbone's features.
+#  Dead neurons — the adapters use ReLU inside the bottleneck; a high
+#     inactive fraction there wastes adapter capacity (try a smaller
+#     bottleneck or GELU).
+#  Loss trend — read from the real per-epoch losses of the adapter run.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Visualise: Parameter count vs performance Pareto chart
@@ -539,63 +580,3 @@ print(
   and InferenceServer — the full pipeline from experiment to serving.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Frozen backbone + small adapter layers
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Adapter modules — parameter-efficient fine-tuning) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="Adapter modules — parameter-efficient fine-tuning",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): Only adapter layers receive gradient —
-#     RMS 2.3e-03 on adapter params, 0 on frozen backbone (expected).
-# [✓] 0.5% of parameters trainable, 85% val accuracy — same as full fine-tune.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — ADAPTER-SPECIFIC] The "0 gradient on backbone"
-#     is by design, not a bug. Diagnostic correctly shows frozen
-#     layers as inactive. Only adapter bottlenecks receive gradient.
-#
-#  [PRESCRIPTION] Adapters = 200x fewer params to store per task.
-#     For production deployment: one frozen backbone + many
-#     per-task adapters. Training cost: fraction of full fine-tune.
-#     Quality: typically within 1% of full fine-tune.
-#     Slide 5.7 references this as the modern 2024+ approach
-#     (HuggingFace PEFT library, LoRA).
-

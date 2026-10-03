@@ -159,6 +159,48 @@ assert (
 print(f"\n  From-scratch best val_acc: {best_scratch:.3f}")
 print("--- Checkpoint 3 passed --- baseline training complete\n")
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (From-scratch CNN baseline (CIFAR-10)) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(scratch_model),
+    train_loader,
+    classifier_diag_loss,
+    title="From-scratch CNN baseline (CIFAR-10)",
+    n_batches=8,
+    train_losses=scratch_losses,
+    show=False,
+)
+print_prescription_pad(findings, "From-scratch CNN baseline (CIFAR-10)")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  Gradient flow — every layer is trainable here, so every layer should
+#     carry gradient. A "vanishing" reading on the early conv layers means
+#     the first filters barely learn from random init — the data
+#     bottleneck this part measures; pretrained features (Part 2) remove
+#     it. An "exploding" reading means the learning rate is too high.
+#  Dead neurons — a high inactive fraction in a ReLU layer means those
+#     channels never fire; Kaiming init or a smoother activation helps.
+#  Loss trend — read from the real per-epoch losses. "Still decreasing"
+#     after 8 epochs means the scratch CNN is under-trained, not that it
+#     has hit its ceiling.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
+
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: Learned filters and t-SNE feature space
@@ -346,68 +388,3 @@ print(
   shapes) and only needs to learn the final classification layer.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Classification CE on Fashion-MNIST from scratch
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (From-scratch CNN baseline (no pretrain)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        model,
-        train_loader,
-        _diag_loss,
-        title="From-scratch CNN baseline (no pretrain)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [!] Gradient flow (WARNING): RMS 2.1e-05 in early conv layers (near vanishing).
-# [!] Dead neurons  (WARNING): 43% inactive in conv1 — classic ReLU-dead-from-scratch.
-# [✓] Loss trend    (HEALTHY): slowly converging, plateau risk.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST] Training from scratch hits the classic early-layer
-#     vanishing gradient. Without pretrained weights, early conv
-#     filters start random and receive weak gradient signal.
-#     >> This is THE reason transfer learning (ex_7/02) wins —
-#        starting with ImageNet features means first-layer gradients
-#        are already ~10x larger than this.
-#
-#  [X-RAY] 43% dead ReLU on conv1 is the dying-ReLU failure mode
-#     slide 5.7 warns about. Fix: GELU or Kaiming init.
-#     >> Prescription: replace ReLU with GELU, use Kaiming init,
-#        OR apply transfer learning (skip this problem entirely).
-#
-#  [STETHOSCOPE] Slow convergence (< 60% accuracy in 10 epochs)
-#     — expect transfer learning to reach 85%+ in the same time.
-
-

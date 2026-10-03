@@ -118,6 +118,7 @@ EFF_EPOCHS = 4  # Shorter training for sub-experiments
 
 transfer_results: dict[float, float] = {}
 scratch_results: dict[float, float] = {}
+transfer_models: dict[float, nn.Module] = {}  # kept for the diagnostic checkpoint
 
 rng = np.random.default_rng(42)
 
@@ -126,25 +127,24 @@ async def _run_efficiency_trial(
     frac: float,
     model_builder,
     model_name: str,
-) -> tuple[float, int]:
-    """Train one model on a fraction of data, return (accuracy, n_samples)."""
+) -> tuple[float, int, nn.Module]:
+    """Train one model on a fraction of data, return (accuracy, n_samples, model)."""
     # TODO: Implement the efficiency trial
     # Steps:
-    #   1. Compute n_samples = int(len(train_set) * frac)
-    #   2. Sample random indices: rng.choice(len(train_set), size=n_samples, replace=False).tolist()
-    #   3. Create Subset(train_set, indices) and DataLoader
-    #   4. Build model, move to device, get trainable params
-    #   5. Create Adam optimizer with lr=1e-3
-    #   6. Log to ExperimentTracker with run_name=f"{model_name}_{int(frac*100)}pct"
-    #   7. Train for EFF_EPOCHS: forward -> cross_entropy -> backward -> step
-    #   8. Evaluate on full val_loader: count correct/total
-    #   9. Return (accuracy, n_samples)
-    # Hint: async with tracker.track(experiment=exp_name, run_name=run_name) as run:
-    # Hint: await run.log_params({...}), await run.log_metric("val_acc", acc)
+    #   1. Draw n_samples distinct random indices with the shared `rng`
+    #      (no replacement) and wrap train_set in a Subset + DataLoader
+    #   2. Build the model with model_builder, move it to device, and give
+    #      Adam (lr=1e-3) only the parameters that require gradients
+    #   3. Open an ExperimentTracker run named "<model_name>_<pct>pct",
+    #      log the trial's parameters
+    #   4. Train for EFF_EPOCHS with cross-entropy
+    #   5. Evaluate accuracy on the full val_loader and log it as "val_acc"
+    # Hint: the tracker run is an async context manager; logging calls
+    #   are awaited
     n_samples = int(len(train_set) * frac)
     ____
 
-    return ____, n_samples
+    return ____, n_samples, ____  # TODO: accuracy, n_samples, trained model
 
 
 print("\n" + "=" * 70)
@@ -153,13 +153,16 @@ print("=" * 70)
 
 for frac in DATA_FRACTIONS:
     # Transfer model
-    t_acc, n_samples = asyncio.run(
+    t_acc, n_samples, t_model = asyncio.run(
         _run_efficiency_trial(frac, build_transfer_resnet, "transfer")
     )
     transfer_results[frac] = t_acc
+    transfer_models[frac] = t_model
 
     # From-scratch model
-    s_acc, _ = asyncio.run(_run_efficiency_trial(frac, build_scratch_cnn, "scratch"))
+    s_acc, _, _ = asyncio.run(
+        _run_efficiency_trial(frac, build_scratch_cnn, "scratch")
+    )
     scratch_results[frac] = s_acc
 
     print(
@@ -178,11 +181,60 @@ assert len(scratch_results) == len(
 assert (
     transfer_results[0.10] > 0.15
 ), f"Transfer with 10% data should beat random (acc={transfer_results[0.10]:.3f})"
-# INTERPRETATION: Transfer learning shows diminishing returns as data
-# increases — the gap between 10% and 100% is smaller than the scratch
-# model's gap. Pre-trained features already capture general visual
-# patterns, so additional data helps but isn't as critical.
+# INTERPRETATION: Compare how much each model gains from 10% to 100% of
+# the data. If pre-trained features already capture general visual
+# patterns, the transfer model gains LESS from extra data than the
+# scratch model does — additional labels help, but are less critical.
+transfer_gain = transfer_results[1.0] - transfer_results[0.10]
+scratch_gain = scratch_results[1.0] - scratch_results[0.10]
+print(
+    f"  Gain from 10% -> 100% data: transfer {transfer_gain:+.4f}, "
+    f"scratch {scratch_gain:+.4f} "
+    f"({'transfer depends less on data volume' if transfer_gain < scratch_gain else 'transfer did NOT depend less on data volume in this run'})"
+)
 print("\n--- Checkpoint 1 passed --- efficiency experiment complete\n")
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's run_diagnostic_checkpoint runs a few real forward/backward
+# passes (no optimiser step) with gradient, activation and dead-neuron
+# hooks attached, and replays the real per-epoch training losses. It
+# RETURNS the findings; print_prescription_pad prints them. The pass
+# puts the model in train mode, which updates BatchNorm running
+# statistics, so we diagnose a COPY and leave the trained model intact.
+import copy
+
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+
+from shared.mlfp05.diagnostics import print_prescription_pad
+from shared.mlfp05.ex_7 import classifier_diag_loss
+
+print("\n── Diagnostic Report (Transfer ResNet-18 trained on 10% of the data) ──")
+diag, findings = run_diagnostic_checkpoint(
+    copy.deepcopy(transfer_models[0.10]),
+    train_loader,
+    classifier_diag_loss,
+    title="Transfer ResNet-18 trained on 10% of the data",
+    n_batches=8,
+    train_losses=None,
+    show=False,
+)
+print_prescription_pad(findings, "Transfer ResNet-18 trained on 10% of the data")
+# HOW TO READ THE PRESCRIPTION PAD FOR THIS MODEL:
+#  This diagnoses the transfer model from the smallest-data trial (10%).
+#  No per-epoch losses were kept for the trials, so the loss-trend
+#  reading only sees the 8 diagnostic batches.
+#  Gradient flow — only the fc head is trainable; frozen layers carry no
+#     parameter gradients by design. "Exploding" on fc with so little
+#     data means the head is being pushed hard by few examples — lower the
+#     learning rate or add weight decay before collecting more labels.
+#  Dead neurons — silent pretrained ReLUs signal a domain gap between
+#     ImageNet and CIFAR-10, not a small-data problem; more labels will
+#     not fix it, unfreezing or adapters (Part 4) can.
+#  If any reading is UNKNOWN, the library could not compute it from this
+#  run; the message says why.
+
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -360,66 +412,3 @@ print(
   alternative to full fine-tuning that bridges to M6's LoRA technique.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Training at 10%, 25%, 50%, 100% of data
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Data efficiency — how small can we go?) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        models_by_frac[1.0],
-        train_loader,
-        _diag_loss,
-        title="Data efficiency — how small can we go?",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [Cross-run comparison — all 4 data fractions]
-# 100% data: RMS healthy, 87% val accuracy
-#  50% data: RMS healthy, 84% val accuracy
-#  25% data: train-val gap widening (overfit)
-#  10% data: [CRITICAL] 52% val accuracy — too little data to generalise
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [STETHOSCOPE] The data-efficiency curve shows transfer
-#     learning's power: 50% of data still gives ~97% of full
-#     performance. Below 25%, diminishing returns kick in.
-#     >> Decision rule: if you have >1000 labelled examples,
-#        transfer learning + fine-tune works. If <500, try
-#        adapter modules (ex_7/04) or few-shot methods.
-#
-#  [SCALING LAWS] This is the practical flipside of slide 5M
-#     (scaling laws) — for downstream tasks with small data,
-#     pretrained features + small fine-tune data = best ROI.
-
-

@@ -20,7 +20,7 @@
 #   2. Build — fit IsolationForest with a contamination sweep
 #   3. Train — score every row with the best-performing fit
 #   4. Visualise — ROC curve (written to outputs/)
-#   5. Apply — GrabPay merchant risk scoring for ride-hailing payouts
+#   5. Apply — synthetic-identity screening at a digital lender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -31,6 +31,7 @@ from sklearn.ensemble import IsolationForest
 from shared.mlfp04.ex_4 import (
     _finite,
     load_dataset,
+    print_auc_by_type,
     print_metrics,
     score_metrics,
     setup_engines,
@@ -74,7 +75,7 @@ sweep_results: dict[float, dict[str, float]] = {}
 # TASK 2 — BUILD: contamination sweep
 # ════════════════════════════════════════════════════════════════════════
 
-X, y, _feature_cols, _frame = load_dataset()
+X, y, _feature_cols, frame = load_dataset()
 n_samples, n_features = X.shape
 print("\n" + "=" * 70)
 print("  Isolation Forest Anomaly Detection")
@@ -110,10 +111,11 @@ for contam in contamination_grid:
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: fit the best-performing contamination
 # ════════════════════════════════════════════════════════════════════════
-# We pin contamination at 0.01 because it matches the 1% rare-return rate
-# the dataset was constructed around. In production you would set this
-# from domain knowledge, not from the label (which is unavailable at
-# train time in a true anomaly detection setting).
+# We pin contamination at 0.01 because ~1% of rows are injected anomalies.
+# In production you would set this from domain knowledge of the expected
+# anomaly rate, not from the label (which is unavailable at train time in
+# a true anomaly detection setting). Note that contamination only moves
+# the flag THRESHOLD — the anomaly scores (and so AUC) do not depend on it.
 
 iso_forest = IsolationForest(
     n_estimators=200,
@@ -131,6 +133,12 @@ print("\nFinal Isolation Forest (contamination=0.01):")
 iso_metrics = print_metrics("Isolation Forest", y, iso_scores)
 print(f"  Predicted anomalies: {int((iso_labels == -1).sum()):,}")
 print(f"  True anomalies:      {int(y.sum()):,}")
+
+# Compare against the per-feature Z-score rule from 4.1, per anomaly type
+z_scores = np.abs(X).max(axis=1)
+print("\nPer anomaly type (1.0 = perfect, 0.5 = chance):")
+iso_by_type = print_auc_by_type("Isolation Forest", frame, iso_scores)
+z_by_type = print_auc_by_type("Z-score (4.1)", frame, z_scores)
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
@@ -151,44 +159,52 @@ roc_path = write_roc_chart(
 )
 print(f"Saved ROC chart: {roc_path}")
 
-# Interpretation: Isolation Forest shines on tabular data with 10+ features
-# where pairwise interactions matter. A point can be "normal" on every
-# single feature in isolation but land in an empty corner when all
-# features are considered together — Z-score and IQR miss that; path
-# length catches it because the random splits eventually separate the
-# corner from the crowd.
+print("\nInterpretation (computed from the per-type AUCs above):")
+for t in iso_by_type:
+    diff = iso_by_type[t] - z_by_type[t]
+    verdict = "better than" if diff > 0.02 else (
+        "worse than" if diff < -0.02 else "about the same as"
+    )
+    print(
+        f"  {t:<11} IF={iso_by_type[t]:.3f}  Z={z_by_type[t]:.3f}  "
+        f"-> Isolation Forest is {verdict} the Z-score rule"
+    )
+print(
+    "  Random splits use all features jointly, so IF can rank some"
+    " 'dependency' rows (normal per feature, odd in combination) above"
+    " chance where a per-feature rule cannot. On heavy-tailed real"
+    " features, though, many genuine applications are also easy to"
+    " isolate, so a single extreme field is not always ranked first."
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: GrabPay Merchant Payout Risk Scoring
+# TASK 5 — APPLY: Synthetic-Identity Screening at a Digital Lender
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: GrabPay (Singapore, operating across SEA) runs a nightly
-# payout batch for merchants integrated into the ride-hailing, food
-# delivery, and mart ecosystems. Some merchants attempt to game the
-# refund flow — booking rides, claiming driver cancellations, and
-# pocketing the refund. The pattern LOOKS normal on any individual
-# feature (trip count is fine, refund ratio is fine in isolation,
-# payout amount is fine) but the joint combination is unusual.
+# SCENARIO (illustrative): a Singapore digital lender screens every new
+# credit application overnight before approval. A known attack is the
+# "synthetic identity" — an application assembled from fragments of
+# several real people. Each field looks normal on its own (age, tenure,
+# balances are all in range), but the joint combination is unusual
+# (e.g. 30 years employed at age 25). That is exactly the 'dependency'
+# anomaly type in this exercise's data.
 #
-# Why Isolation Forest is the right tool here:
-#   - Merchants have 40+ features each (volumes, ratios, timing, device)
-#   - Anomalous merchants are rare (<0.5% of the merchant base)
-#   - The suspicious pattern is a multi-feature combination, not any
-#     single extreme value — so Z-score and IQR miss it entirely
-#   - The model scales to 300K+ merchants across SEA with a 30-second fit
+# Why Isolation Forest is a reasonable first tool here:
+#   - It scores every application on all 20 fields jointly, not one at
+#     a time, so it can pick up some combination-level oddities
+#   - Anomalous applications are rare (~1% here)
+#   - It is fast: 200 trees on 20,000 rows fit in seconds on a laptop
 #
-# BUSINESS IMPACT: GrabPay publicly disclosed ~S$2M/year in merchant
-# refund-ring fraud pre-2024. A nightly Isolation Forest run that
-# pre-filters merchants to the top 1% most anomalous ones lets the risk
-# team review ~3,000 merchants instead of 300,000, catching the bulk
-# of the fraud within a half-day review cycle. Conservative impact:
-# catching 60% of the disclosed loss = ~S$1.2M/year recovered, against
-# an IT cost well under S$20K/year. 60x ROI, and the review queue is
-# small enough that a human CAN inspect every flagged merchant.
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): if
+# the lender reviews the top 1% most anomalous applications each night,
+# the review load drops from every application to a few hundred, and
+# each synthetic identity stopped before disbursement avoids the full
+# loan amount. Use the per-type AUC above to judge how much of that
+# benefit IF actually delivers on THIS data before promising it.
 #
-# LIMITATIONS: Isolation Forest is GLOBAL — it finds points far from
-# every cluster. If the fraud merchants form their OWN cluster, LOF
-# (Exercise 4.3) does better because it compares local densities.
+# LIMITATIONS: Isolation Forest is GLOBAL — it asks how easy a point is
+# to separate from everything else. Points that are only odd relative
+# to their LOCAL neighbourhood are LOF's territory (Exercise 4.3).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -232,7 +248,7 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect()
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's AnomalyDetectionEngine.detect() wraps Isolation
+# kailash-ml's AnomalyDetectionEngine.detect() wraps Isolation
 # Forest with the same sklearn machinery this lesson hand-built. The
 # engine handles polars→numpy conversion and emits an AnomalyResult
 # (labels + scores + n_anomalies + algorithm-specific metrics) in one
@@ -268,14 +284,16 @@ print(
     """
   [x] Explained path-length isolation without opening the sklearn source
   [x] Ran a contamination sweep and read the precision trade-off
-  [x] Fit IsolationForest on 40+ feature tabular data with 1% anomalies
+  [x] Fit IsolationForest on 20-feature tabular data with ~1% anomalies
+  [x] Compared IF with the Z-score rule per anomaly type
   [x] Generated an ROC chart from ModelVisualizer
-  [x] Framed a GrabPay merchant fraud scenario with SEA-scale dollar impact
+  [x] Framed a synthetic-identity screening scenario (illustrative figures)
 
-  KEY INSIGHT: Isolation Forest catches anomalies that statistical rules
-  miss because it considers FEATURE INTERACTIONS. A point that looks
-  normal on every feature can still be isolated quickly when its
-  joint position is unusual.
+  KEY INSIGHT: Isolation Forest scores points on all features JOINTLY,
+  so it can see some combination-level anomalies that per-feature rules
+  cannot. It is not uniformly better: on heavy-tailed real features a
+  simple Z-score can rank single extreme values more sharply. Measure
+  per anomaly type before choosing.
 
   Next: 03_local_outlier_factor.py — LOF compares LOCAL density, catching
   anomalies embedded in varying-density clusters.

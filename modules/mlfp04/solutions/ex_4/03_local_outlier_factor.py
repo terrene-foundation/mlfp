@@ -9,7 +9,8 @@
 #   - Explain LOF as a ratio of neighbour density to point density
 #   - Sweep n_neighbors and explain the "locality" trade-off
 #   - Fit LOF and turn negative_outlier_factor_ into an anomaly score
-#   - Explain when LOF beats Isolation Forest (varying-density clusters)
+#   - Explain when LOF beats Isolation Forest, and when a group of
+#     anomalies MASKS itself from LOF
 #
 # PREREQUISITES: 4.2 (Isolation Forest).
 #
@@ -20,17 +21,20 @@
 #   2. Build — sweep n_neighbors and pick the best value
 #   3. Train — fit LOF and extract negative_outlier_factor_
 #   4. Visualise — ROC curve (written to outputs/)
-#   5. Apply — Shopee return-fraud cluster detection in SEA marketplaces
+#   5. Apply — application-ring screening at a Singapore lender
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
+from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 
 from shared.mlfp04.ex_4 import (
     _finite,
+    auc_by_type,
     load_dataset,
+    print_auc_by_type,
     print_metrics,
     score_metrics,
     setup_engines,
@@ -68,7 +72,15 @@ nbrs_sweep: dict[int, dict[str, float]] = {}
 # WHY IT BEATS ISOLATION FOREST SOMETIMES: in data with varying cluster
 # densities (some clusters dense, others sparse), a single global rule
 # ("far from everything = outlier") fails. LOF is the right tool when
-# anomalies live AT THE EDGE of a cluster they don't belong to.
+# anomalies sit in a SPARSE POCKET next to a dense cluster they don't
+# belong to.
+#
+# THE MASKING TRAP: a point INSIDE a tight group has LOF ~ 1 (its density
+# matches its neighbours') — and if the group is DENSER than its
+# surroundings, LOF < 1, i.e. "more normal than normal". So a coordinated
+# group of anomalies with at least n_neighbors members is invisible to
+# LOF: the members are each other's neighbours. n_neighbors must exceed
+# the size of the largest anomalous group you want to catch.
 #
 # COST: LOF is O(n^2) at worst because it needs nearest-neighbour queries.
 # For n > 200K rows, sub-sample or switch to an approximate NN backend.
@@ -78,7 +90,7 @@ nbrs_sweep: dict[int, dict[str, float]] = {}
 # TASK 2 — BUILD: sweep n_neighbors
 # ════════════════════════════════════════════════════════════════════════
 
-X, y, _feature_cols, _frame = load_dataset()
+X, y, _feature_cols, frame = load_dataset()
 n_samples, n_features = X.shape
 print("\n" + "=" * 70)
 print("  Local Outlier Factor (LOF)")
@@ -88,8 +100,8 @@ print(
     f"Anomalies: {int(y.sum()):,} ({y.mean():.2%})"
 )
 
-print("\nn_neighbors sweep:")
-for n_nbrs in [10, 20, 30, 50]:
+print("\nn_neighbors sweep (clustered = AUC on the 40-member injected group):")
+for n_nbrs in [10, 20, 30, 50, 80]:
     lof_test = LocalOutlierFactor(
         n_neighbors=n_nbrs,
         contamination=0.01,
@@ -98,35 +110,60 @@ for n_nbrs in [10, 20, 30, 50]:
     labels_test = lof_test.fit_predict(X)
     scores_test = -lof_test.negative_outlier_factor_
     m = score_metrics(y, scores_test)
+    clustered_auc = auc_by_type(frame, scores_test)["clustered"]
     n_flagged = int((labels_test == -1).sum())
     nbrs_sweep[n_nbrs] = {
         "auc_roc": m["auc_roc"],
         "avg_precision": m["avg_precision"],
+        "clustered_auc": clustered_auc,
         "n_flagged": float(n_flagged),
     }
     print(
         f"  n_neighbors={n_nbrs:<3}  AUC-ROC={m['auc_roc']:.4f}  "
-        f"AP={m['avg_precision']:.4f}  flagged={n_flagged:,}"
+        f"AP={m['avg_precision']:.4f}  clustered={clustered_auc:.3f}  "
+        f"flagged={n_flagged:,}"
+    )
+
+masked_ks = [k for k, v in nbrs_sweep.items() if v["clustered_auc"] < 0.5]
+if masked_ks:
+    print(
+        f"  -> At n_neighbors in {masked_ks} the 40-member group scores BELOW"
+        " chance: its members are each other's neighbours, so the group"
+        " looks dense (LOF < 1) — the masking trap from the theory above."
     )
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 3 — TRAIN: fit LOF with the chosen n_neighbors
 # ════════════════════════════════════════════════════════════════════════
-# n_neighbors=20 is a robust default for tabular data <100K rows. Smaller
-# values hypersensitise to local noise; larger values drift toward a
-# global density estimate and lose the "local" advantage.
+# n_neighbors=20 is the textbook default, but the choice is a DOMAIN
+# decision: it must exceed the largest coordinated group you want to
+# catch. Suppose the fraud team expects application rings of up to ~40
+# near-identical submissions — then k=50. (We choose k from that domain
+# assumption, not from the label-based AUCs above, which a real
+# unsupervised deployment would not have.) Larger k also drifts toward a
+# global density estimate, so do not raise it further than needed.
 
-lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01, novelty=False)
+LOF_K = 50
+lof = LocalOutlierFactor(n_neighbors=LOF_K, contamination=0.01, novelty=False)
 lof_labels = lof.fit_predict(X)
-# negative_outlier_factor_ is negated so that "more negative = more normal"
-# in sklearn's convention. Negate AGAIN so "higher = more anomalous".
+# sklearn's negative_outlier_factor_ is -LOF: more negative = MORE
+# anomalous. Negate it so "higher = more anomalous".
 lof_scores = -lof.negative_outlier_factor_
 
-print("\nFinal LOF (n_neighbors=20):")
+print(f"\nFinal LOF (n_neighbors={LOF_K}):")
 lof_metrics = print_metrics("LOF", y, lof_scores)
 print(f"  Predicted anomalies: {int((lof_labels == -1).sum()):,}")
 print(f"  True anomalies:      {int(y.sum()):,}")
+
+iso_scores = -(
+    IsolationForest(n_estimators=200, random_state=42, n_jobs=-1)
+    .fit(X)
+    .score_samples(X)
+)
+print("\nPer anomaly type (1.0 = perfect, 0.5 = chance):")
+lof_by_type = print_auc_by_type(f"LOF (k={LOF_K})", frame, lof_scores)
+iso_by_type = print_auc_by_type("Isolation Forest (4.2)", frame, iso_scores)
 
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
@@ -184,9 +221,12 @@ fig_scatter.add_trace(
     )
 )
 fig_scatter.update_layout(
-    title="LOF Scores: Feature 0 vs Feature 1 (colour = LOF score)",
-    xaxis_title="Feature 0 (standardised)",
-    yaxis_title="Feature 1 (standardised)",
+    title=(
+        f"LOF Scores: {_feature_cols[0]} vs {_feature_cols[1]} "
+        "(colour = LOF score)"
+    ),
+    xaxis_title=f"{_feature_cols[0]} (standardised)",
+    yaxis_title=f"{_feature_cols[1]} (standardised)",
 )
 scatter_path = out_dir / "03_lof_scatter.html"
 fig_scatter.write_html(str(scatter_path))
@@ -236,46 +276,50 @@ dist_path = out_dir / "03_lof_score_distribution.html"
 fig_dist.write_html(str(dist_path))
 print(f"[viz] LOF score distribution: {dist_path}")
 
-print("\nLOF vs Isolation Forest on this dataset:")
-print("  LOF catches anomalies that live inside a cluster they don't")
-print("  belong to (sparse pocket surrounded by denser cluster).")
-print("  Isolation Forest catches anomalies that are far from EVERY")
-print("  cluster. Use BOTH, then blend — see 04_ensemble_blending.py.")
+print("\nLOF vs Isolation Forest on this dataset (computed):")
+for t in lof_by_type:
+    winner = "LOF" if lof_by_type[t] > iso_by_type[t] else "Isolation Forest"
+    print(
+        f"  {t:<11} LOF={lof_by_type[t]:.3f}  IF={iso_by_type[t]:.3f}"
+        f"  -> {winner} ranks this type higher"
+    )
+print("  A 'dependency' row (stitched from several real applications)")
+print("  sits in a sparse pocket next to the dense mass of consistent")
+print("  applications — exactly what a LOCAL density ratio detects.")
+print("  Use BOTH detectors, then blend — see 04_ensemble_blending.py.")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Shopee Return-Fraud Cluster Detection
+# TASK 5 — APPLY: Application-Ring Screening at a Singapore Lender
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Shopee (SEA marketplace HQ'd in Singapore) operates buyer
-# protection on returned items. A known fraud pattern is the "friends-
-# and-family refund ring" — a cluster of buyer accounts with shared
-# devices, similar behavioural features, all filing identical refund
-# claims against the same seller. Individually each account is
-# unremarkable; collectively they form a tight cluster in feature space
-# that's distinct from the broader legitimate-buyer population.
+# SCENARIO (illustrative): a Singapore lender's fraud team screens credit
+# applications for two LOCAL patterns:
+#   1. Stitched applications that sit in a SPARSE POCKET beside the dense
+#      mass of consistent applications (individually plausible fields,
+#      inconsistent combination). LOF > 1 — this is LOF's home ground.
+#   2. Application RINGS — dozens of near-identical submissions. Inside
+#      the ring every point's neighbours are other ring members, so the
+#      local density ratio is ~1 or below: LOF calls them NORMAL unless
+#      n_neighbors is larger than the ring. The sweep above shows this
+#      directly; a ring-size assumption (k=50 for rings up to ~40) is
+#      what makes LOF usable for pattern 2.
 #
-# Why LOF is the right tool here:
-#   - The fraud cluster is TIGHT — it has high LOCAL density
-#   - Surrounding legitimate buyers have LOWER local density (more
-#     spread out, diverse features)
-#   - Isolation Forest MISSES this because the fraud cluster is NOT far
-#     from the data; it's embedded in the middle
-#   - LOF catches it because the ratio of cluster density to
-#     neighbourhood density is extreme
+# Why LOF is the right tool for pattern 1:
+#   - The suspicious applications are not far from the data globally;
+#     they are odd only relative to their LOCAL neighbourhood
+#   - Isolation Forest asks a global question and ranks them lower (see
+#     the per-type comparison above)
 #
-# BUSINESS IMPACT: Shopee's 2023 APAC trust report disclosed ~S$14M/year
-# in refund-ring losses across SEA marketplaces. A weekly LOF run on
-# account embeddings, pre-filtering to the top 0.5% of the buyer base
-# (about 5,000 suspects in a 1M-buyer market), lets the trust team send
-# every suspect through a step-up verification flow. If LOF catches 40%
-# of the ring behaviour (matched against ground-truth fraud labels from
-# subsequent chargebacks), recovered loss = ~S$5.6M/year against an
-# infrastructure cost of ~S$40K/year for the weekly batch job.
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): if
+# the team reviews the top 0.5% of applications by LOF score each week,
+# the review load is a few hundred cases instead of the whole book, and
+# every stitched or ring application stopped before disbursement avoids
+# the full loan amount. Check the per-type AUCs before relying on it.
 #
-# LIMITATIONS: LOF is O(n^2) at scale. For a 50M-row marketplace, use
-# a HDBSCAN + density-ratio approximation, or sub-sample to 200K rows
-# per run. Exercise 4.4 (Ensemble Engine) shows how blending LOF with
-# Isolation Forest raises recall further without raising cost much.
+# LIMITATIONS: LOF needs nearest-neighbour queries — roughly O(n^2) in
+# high dimensions without an index. For tens of millions of rows,
+# sub-sample per run or use an approximate-NN backend. Exercise 4.4
+# blends LOF with the other detectors.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -288,6 +332,7 @@ sweep_metrics: dict[str, float] = {}
 for n_nbrs, stats in nbrs_sweep.items():
     sweep_metrics[f"lof_k{n_nbrs}_auc_roc"] = _finite(stats["auc_roc"])
     sweep_metrics[f"lof_k{n_nbrs}_avg_precision"] = _finite(stats["avg_precision"])
+    sweep_metrics[f"lof_k{n_nbrs}_clustered_auc"] = _finite(stats["clustered_auc"])
     sweep_metrics[f"lof_k{n_nbrs}_n_flagged"] = stats["n_flagged"]
 
 track_run(
@@ -297,7 +342,7 @@ track_run(
     params={
         "n_samples": n_samples,
         "n_features": n_features,
-        "best_n_neighbors": 20,
+        "best_n_neighbors": LOF_K,
         "contamination": 0.01,
         "anomaly_rate": float(y.mean()),
     },
@@ -319,10 +364,10 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — AnomalyDetectionEngine.detect(algorithm='lof')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's AnomalyDetectionEngine wraps LOF under the same
-# .detect() surface used in lesson 02 for isolation_forest. Same engine,
-# different `algorithm=` string. Production stacks blend both via the
-# EnsembleEngine in lesson 04.
+# kailash-ml's AnomalyDetectionEngine wraps LOF under the same .detect()
+# surface used in lesson 02 for isolation_forest. Same engine, different
+# `algorithm=` string; extra keyword arguments (n_neighbors) are passed
+# to the underlying LocalOutlierFactor. Lesson 04 blends the detectors.
 
 import polars as pl
 
@@ -330,10 +375,12 @@ from kailash_ml.engines.anomaly_detection import AnomalyDetectionEngine
 
 anomaly_df = pl.from_numpy(X, schema=_feature_cols)
 det = AnomalyDetectionEngine()
-fit_result = det.detect(anomaly_df, algorithm="lof", contamination=0.01)
+fit_result = det.detect(
+    anomaly_df, algorithm="lof", contamination=0.01, n_neighbors=LOF_K
+)
 fit_metrics = score_metrics(y, np.asarray(fit_result.scores))
 print(
-    f"  AnomalyDetectionEngine.detect(lof, contamination=0.01): "
+    f"  AnomalyDetectionEngine.detect(lof, n_neighbors={LOF_K}): "
     f"AUC-ROC={fit_metrics['auc_roc']:.4f}  "
     f"AP={fit_metrics['avg_precision']:.4f}  "
     f"n_anomalies={fit_result.n_anomalies}"
@@ -355,14 +402,16 @@ print(
     """
   [x] LOF as a density-ratio test, not a distance test
   [x] n_neighbors as the "locality" knob
-  [x] How LOF finds cluster-embedded anomalies that IF misses
+  [x] How LOF finds sparse-pocket anomalies beside dense clusters
+  [x] The masking trap: groups with >= n_neighbors members look normal
   [x] The O(n^2) scalability limit and when to sub-sample
-  [x] Framed a Shopee refund-ring detection scenario with recovered-loss impact
+  [x] Framed an application-ring screening scenario (illustrative figures)
 
   KEY INSIGHT: Different anomaly detectors answer different questions.
   LOF asks a LOCAL question ("is this point in a sparser pocket than
-  its neighbours?"). Isolation Forest asks a GLOBAL question ("is this
-  point far from everything?"). You need BOTH in a real pipeline.
+  its neighbours?"). Isolation Forest asks a GLOBAL question ("how easy
+  is this point to separate from everything?"). Neither sees every
+  anomaly type, which is why real pipelines combine them.
 
   Next: 04_ensemble_blending.py — combine Z-score + IQR + IF + LOF into
   a single ensemble score using kailash-ml EnsembleEngine.

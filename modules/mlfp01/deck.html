@@ -1774,7 +1774,7 @@ Transition: "Let us start with over(), the heart of window operations."
 town_avg = df.group_by("town").agg(
     pl.col("resale_price").mean()
       .alias("avg_price")
-)  # 26 rows
+)  # 27 rows (one per town)
 
 # over(): result on EVERY row
 df_with_avg = df.with_columns(
@@ -1816,22 +1816,21 @@ Transition: "Now let us apply this to time-series data with rolling averages."
 <section>
   <h2>Rolling Averages</h2>
   <span class="marker marker-theory">THEORY</span>
-  <pre><code class="language-python">monthly = (
-    df
-    .group_by("town", "month")
-    .agg(pl.col("resale_price").mean().alias("avg_price"))
-    .sort("town", "month")
-)
+  <pre><code class="language-python">monthly = (df.group_by("town", "month")
+    .agg(pl.col("resale_price").mean().alias("avg_price")))  # 3,236 rows
+
+# Make the calendar complete: every town x every month (27 x 120)
+grid = (df.select("town").unique()
+    .join(df.select("month").unique(), how="cross"))
+monthly = (grid.join(monthly, on=["town", "month"], how="left")
+    .sort("town", "month"))  # 3,240 rows: 4 missing months are now null
 
 # 3-month rolling average per town
 monthly = monthly.with_columns(
-    pl.col("avg_price")
-      .rolling_mean(window_size=3)
-      .over("town")
-      .alias("rolling_3m_avg")
-)</code></pre>
+    pl.col("avg_price").rolling_mean(window_size=3)
+      .over("town").alias("rolling_3m_avg"))</code></pre>
   <div class="callout callout-theory">
-    <strong>Rolling Window:</strong> For each row, the rolling average looks at the current row and the previous N-1 rows. With window_size=3, it averages the current month and two preceding months. The first two rows will be <code>null</code> (not enough history).
+    <strong>Rolling Window:</strong> Windows count <em>rows</em>, not months. With window_size=3 the average covers the current row and the two before it &mdash; that is "the last 3 months" only if no month is missing. The first two rows per town are <code>null</code> (not enough history).
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -1839,6 +1838,7 @@ Time: ~3 min
 Talking points:
 - Rolling averages smooth noisy data. Essential for spotting trends in property prices.
 - The over("town") ensures the rolling average resets for each town.
+- The course data has 3,236 of the 3,240 town-month cells: BUKIT TIMAH has no sales in 2015-10, 2017-02 and 2022-07, CENTRAL AREA none in 2015-08. Without the grid, a 3-row window would silently span 4 months there.
 - If beginners confused: draw a sliding window on the whiteboard.
 - If experts bored: discuss exponentially weighted moving averages.
 Transition: "Let us compute year-on-year changes."
@@ -1887,7 +1887,8 @@ print(growth.head(5))</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- shift(12) moves the column down by 12 rows, giving you the value from 12 months ago.
+- shift(12) moves the column down by 12 rows. That equals "same month last year" ONLY because we completed the calendar on the previous slide. Without the grid, 40 rows compare against the wrong month (e.g. CENTRAL AREA 2016-03 vs 2015-02).
+- With the grid, a missing month gives a null YoY instead of a wrong one.
 - The YoY formula: (current - previous) / previous * 100.
 - If beginners confused: YoY asks "compared to the same month last year, did the price go up or down?"
 - If experts bored: discuss CAGR as an alternative metric.
@@ -1923,12 +1924,12 @@ print(seasonal)</code></pre>
       <h3>What to Look For</h3>
       <ul>
         <li><strong>Trend:</strong> Long-term direction (up or down over years)</li>
-        <li><strong>Seasonality:</strong> Repeating pattern within each year (e.g., CNY dip in Feb)</li>
+        <li><strong>Seasonality:</strong> Repeating pattern within each year (e.g., a holiday-month dip)</li>
         <li><strong>Cyclicality:</strong> Multi-year patterns (property cooling measures)</li>
         <li><strong>Noise:</strong> Random month-to-month variation</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Singapore Context:</strong> HDB resale volumes typically dip in February (Chinese New Year) and spike in July-August (school-year timing for families with children).
+        <strong>Test, don't assume:</strong> In the course's synthetic HDB data the 12 calendar-month averages sit within about &plusmn;2% of each other (S$875k&ndash;908k) &mdash; no real seasonal pattern. A hypothesis like "a Chinese New Year dip" must show up in your output before you claim it.
       </div>
     </div>
   </div>
@@ -1937,7 +1938,8 @@ print(seasonal)</code></pre>
 Time: ~3 min
 Talking points:
 - Trend, seasonality, cyclicality, and noise are the four components of any time series.
-- The Singapore-specific seasonal patterns are real: CNY slows transactions, mid-year accelerates them.
+- Seasonality is a hypothesis you test with this group-by. On the course data the answer is "no seasonal pattern": calendar-month averages range only from about S$875k (October) to S$908k (September), and transaction counts are similar every month (about 4,000-4,300).
+- The HDB file is synthetic, so it carries no real market seasonality; with real data the same code is how you would find it.
 - If beginners confused: trend is "going up or down overall", seasonality is "same pattern every year".
 - If experts bored: discuss decomposition methods (additive vs multiplicative) which come in Module 2.
 Transition: "Now let us look at lazy frames for performance."
@@ -1949,8 +1951,10 @@ Transition: "Now let us look at lazy frames for performance."
   <span class="marker marker-advanced">ADVANCED</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># Eager: executes immediately
-df = pl.read_csv("data/hdb_resale.csv")
+      <pre><code class="language-python">path = MLFPDataLoader().load_raw("mlfp01", "hdb_resale.parquet")
+
+# Eager: executes immediately
+df = pl.read_parquet(path)
 result = (
     df
     .filter(pl.col("town") == "BISHAN")
@@ -1958,7 +1962,7 @@ result = (
 )
 
 # Lazy: builds query plan, executes on collect()
-lf = pl.scan_csv("data/hdb_resale.csv")
+lf = pl.scan_parquet(path)
 result = (
     lf
     .filter(pl.col("town") == "BISHAN")
@@ -1983,6 +1987,7 @@ result = (
 Time: ~3 min
 Talking points:
 - Lazy frames do NOT load data until .collect(). This lets Polars optimise the query.
+- loader.load_raw() returns the local file path (downloading it first if needed), which is what scan_parquet needs.
 - This is ADVANCED. Students can complete all exercises with eager mode.
 - If beginners confused: skip this slide entirely.
 - If experts bored: show the query plan with lf.explain().
@@ -1994,7 +1999,7 @@ Transition: "Let us inspect the query plan."
   <h2>Inspecting the Query Plan</h2>
   <span class="marker marker-advanced">ADVANCED</span>
   <pre><code class="language-python">lf = (
-    pl.scan_csv("data/hdb_resale.csv")
+    pl.scan_parquet(path)
     .filter(pl.col("town") == "BISHAN")
     .select("month", "resale_price")
     .sort("month")
@@ -2002,12 +2007,12 @@ Transition: "Let us inspect the query plan."
 
 print(lf.explain())
 # SORT BY [col("month")]
-#   FAST_PROJECT: [month, resale_price]
-#     FILTER col("town") == "BISHAN"
-#       CSV SCAN data/hdb_resale.csv
-#       PROJECT 3/12 COLUMNS   &lt;-- only reads 3 columns!</code></pre>
+#   simple π 2/2 ["month", "resale_price"]
+#     Parquet SCAN [.../data/mlfp01/hdb_resale.parquet]
+#     PROJECT 3/11 COLUMNS              &lt;-- only reads 3 columns!
+#     SELECTION: [(col("town")) == ("BISHAN")]   &lt;-- filter pushed into the scan</code></pre>
   <div class="callout callout-advanced">
-    <strong>Performance:</strong> "PROJECT 3/12 COLUMNS" means Polars only reads 3 of the 12 columns from disk. For large files, lazy can be 2-5x faster than eager.
+    <strong>Performance:</strong> "PROJECT 3/11 COLUMNS" means Polars only reads 3 of the 11 columns from disk, and SELECTION shows the filter runs during the scan. For large files, lazy can be several times faster than eager.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -2027,7 +2032,7 @@ Transition: "Time for the exercise."
   <div class="columns">
     <div class="col">
       <ol>
-        <li>Compute monthly average prices per district</li>
+        <li>Compute monthly average prices per district on a complete town &times; month grid</li>
         <li>Add a 3-month rolling average per district</li>
         <li>Calculate YoY price change percentage</li>
         <li>Identify top 5 highest-growth districts</li>
@@ -2045,7 +2050,8 @@ Transition: "Time for the exercise."
 Time: ~2 min
 Talking points:
 - This exercise combines group_by, rolling_mean, shift, and sorting.
-- Key pitfall: ensure rolling_mean and shift use over("town").
+- Key pitfall 1: ensure rolling_mean and shift use over("town").
+- Key pitfall 2: shift(12) counts rows. Complete the calendar first, or YoY compares the wrong months (this is what "proper time alignment" in the assessment means).
 - If beginners confused: do steps 1-3 first, then tackle ranking.
 - If experts bored: challenge them to use lazy frames for the entire pipeline.
 Transition: "Lesson 1.5 recap."
@@ -2061,14 +2067,14 @@ Transition: "Lesson 1.5 recap."
       <ul>
         <li><code>.over("col")</code> &mdash; compute per group, keep all rows</li>
         <li><code>.rolling_mean(N)</code> &mdash; N-period moving average</li>
-        <li><code>.shift(N)</code> &mdash; look back N periods</li>
+        <li><code>.shift(N)</code> &mdash; look back N <em>rows</em> (complete the calendar first)</li>
         <li>YoY = (current - prior) / prior * 100</li>
       </ul>
     </div>
     <div class="col">
       <h3>Lazy Evaluation</h3>
       <ul>
-        <li><code>pl.scan_csv()</code> &mdash; lazy load</li>
+        <li><code>pl.scan_parquet()</code> / <code>pl.scan_csv()</code> &mdash; lazy load</li>
         <li><code>.collect()</code> &mdash; trigger execution</li>
         <li><code>.explain()</code> &mdash; inspect query plan</li>
         <li>Optional: not needed for correctness</li>

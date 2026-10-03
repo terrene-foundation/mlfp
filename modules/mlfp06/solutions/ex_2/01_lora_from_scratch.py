@@ -186,7 +186,7 @@ class LoRALinear(nn.Module):
 # TASK 3 — TRAIN: verify LoRA identity-at-init + parameter count
 # ════════════════════════════════════════════════════════════════════════
 # LoRA's training loop runs inside kailash-align's AlignmentPipeline
-# (see 05_sft_alignment_pipeline.py).  Here we verify that the
+# (see 06_sft_alignment_pipeline.py).  Here we verify that the
 # mathematical structure behaves as claimed: B=0 means zero delta at
 # init, and the trainable count matches 2*d*r exactly.
 
@@ -286,14 +286,15 @@ print("✓ Checkpoint 3 passed — rank sweep visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore law-firm assistant — rank selection
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore law firm wants to adapt a 7B open-source base
+# SCENARIO (illustrative): A Singapore law firm wants to adapt a 7B open-source base
 # model to draft first-pass contracts in Singlish-aware business English,
 # cite local statutes correctly, and handle the firm's preferred clause
 # boilerplate.  They have 800 historical contracts for training and a
 # single 24 GB GPU.
 #
-# DECISION: Full fine-tuning of a 7B model needs ~56 GB for gradients
-# and optimiser state -> impossible on one 24 GB card.  LoRA is the only
+# DECISION: Full fine-tuning of a 7B model with Adam needs ~16 bytes per
+# parameter (weights + gradients + two optimiser moments) ≈ 112 GB ->
+# impossible on one 24 GB card.  LoRA is the only
 # path.  The question is: what rank?
 #
 # RANK SELECTION GUIDE:
@@ -302,12 +303,12 @@ print("✓ Checkpoint 3 passed — rank sweep visualised\n")
 #   r=16:  ~2% params — complex domains (legal, medical, financial)
 #   r=32+: diminishing returns; consider full FT if budget allows
 #
-# BUSINESS IMPACT: junior associates at the firm currently spend ~6
+# BUSINESS IMPACT (illustrative figures): junior associates currently spend ~6
 # hours/week drafting first-pass contracts at a fully-loaded cost of
 # ~S$120/hour (S$720/week per associate, 12 associates = S$8,640/week).
 # A LoRA r=16 assistant trained overnight on the 800 contracts reduces
 # that to ~1.5 hours/week of review-only work, saving ~S$6,480/week or
-# roughly S$335k/year.  Cloud GPU training cost: ~S$80 per run.
+# ~S$324k/year over 50 working weeks.  Cloud GPU training cost: ~S$80 per run.
 #
 # RISK: a rank that is too low (r=2) underfits the firm's house style;
 # a rank that is too high (r=128) starts to memorise individual contracts
@@ -348,7 +349,7 @@ print(
   [x] Verified identity-at-init: LoRA starts as W_new = W
   [x] Visualised the parameter reduction curve across ranks 2..128
   [x] Applied LoRA rank selection to a Singapore law-firm scenario
-      (S$335k/year saving at r=16, ~S$80 training cost)
+      (illustrative ~S$324k/year saving at r=16, ~S$80 training cost)
 
   KEY INSIGHT: LoRA is SVD applied to the UPDATE, not the weight.
   A handful of "directions" in weight space is usually enough to

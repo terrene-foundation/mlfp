@@ -55,8 +55,7 @@ print("\n" + "=" * 70)
 print("TASK 1: Load SFT Dataset — IMDB instruction/response pairs")
 print("=" * 70)
 
-# TODO: Call load_imdb_sft() and unpack into (sft_data, train_data, eval_data)
-sft_data, train_data, eval_data = ____
+sft_data, train_data, eval_data = load_imdb_sft()
 
 print(f"Sample instruction:\n  {sft_data['instruction'][0][:200]}...")
 print(f"Sample response:\n  {sft_data['response'][0]}")
@@ -228,9 +227,10 @@ print("✓ Checkpoint 3 passed — rank sweep visualised\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — APPLY: Singapore law-firm assistant — rank selection
 # ════════════════════════════════════════════════════════════════════════
-# A Singapore law firm wants to adapt a 7B base model to draft
-# first-pass contracts. Full fine-tuning needs ~56 GB for optimiser
-# state (impossible on one 24 GB card), so LoRA is the only path.
+# (Illustrative) A Singapore law firm wants to adapt a 7B base model to
+# draft first-pass contracts. Full fine-tuning with Adam needs ~16 bytes
+# per parameter ≈ 112 GB (impossible on one 24 GB card), so LoRA is the
+# only path.
 # Rank guide: r=4 light stylistic / r=8 default / r=16 complex
 # domains (legal, medical) / r=32+ diminishing returns.
 
@@ -270,7 +270,7 @@ print(
   [x] Verified identity-at-init: LoRA starts as W_new = W
   [x] Visualised the parameter reduction curve across ranks 2..128
   [x] Applied LoRA rank selection to a Singapore law-firm scenario
-      (S$335k/year saving at r=16, ~S$80 training cost)
+      (illustrative ~S$324k/year saving at r=16, ~S$80 training cost)
 
   KEY INSIGHT: LoRA is SVD applied to the UPDATE, not the weight.
   A handful of "directions" in weight space is usually enough to

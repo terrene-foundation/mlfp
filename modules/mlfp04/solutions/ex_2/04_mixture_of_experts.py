@@ -21,7 +21,7 @@
 #   2. Build — soft_vs_hard analysis + simple MoE gate demo
 #   3. Train — fit the BIC-optimal GMM and extract soft responsibilities
 #   4. Visualise — confidence histogram + segment profile
-#   5. Apply — Carousell personalised listing ranking (Singapore)
+#   5. Apply — Singapore C2C marketplace personalised listing ranking
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -66,14 +66,14 @@ tracker, exp_name = setup_engines()
 # the current gate, the M-step fits the experts AND the gate.
 #
 # MODERN RELEVANCE — Sparse MoE in LLMs:
-#   - Mixtral 8x7B has 8 experts of 7B params each, but the router
-#     picks only the top-2 per token. Effective compute is ~14B
-#     active params, not 56B.
-#   - GPT-4 is widely believed to use a Sparse MoE routing scheme
-#     for the same reason: decouple model capacity from compute cost.
-#   - The gating network in Mixtral is a tiny MLP that reads the
-#     token hidden state and outputs 8 routing logits — exactly the
-#     g_k(x) from the equation above, just learned end-to-end.
+#   - Mixtral 8x7B replaces each feed-forward block with 8 experts and
+#     routes every token to the top-2. Attention weights are shared, so
+#     the model has ~46.7B parameters in total (not 8 x 7B = 56B) and
+#     uses ~12.9B active parameters per token.
+#   - The router in each Mixtral layer is a single linear layer that
+#     maps the token's hidden state to 8 logits, then a softmax over the
+#     top-2 — exactly the g_k(x) from the equation above, learned
+#     end-to-end. Sparse routing decouples capacity from compute.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -217,10 +217,9 @@ print("[ok] Checkpoint 3 passed — MoE gate produces a valid softmax distributi
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Carousell Personalised Listing Ranking (Singapore)
+# TASK 5 — APPLY: C2C Marketplace Personalised Listing Ranking (Singapore)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Carousell (Singapore) is the region's largest C2C
-# marketplace with ~35M users. When a shopper opens the app, the feed
+# SCENARIO: A Singapore-based C2C marketplace has (assume) ~35M users. When a shopper opens the app, the feed
 # ranker has ~80ms to produce a personalised ordering from ~10M live
 # listings. Pure classification is too slow at that scale — and the
 # shopper's intent is rarely one-dimensional.
@@ -236,24 +235,25 @@ print("[ok] Checkpoint 3 passed — MoE gate produces a valid softmax distributi
 #
 # The MoE pattern generalises: replace the k Gaussians with k ranking
 # "experts" (each specialised for an intent vertical) and the gating
-# network with a tiny MLP over session features. That is exactly what
-# YouTube, Pinterest, and Carousell's own production rankers use.
+# network with a small model over session features. Multi-gate
+# mixture-of-experts rankers are a published industry pattern (e.g.
+# Zhao et al., "Recommending What Video to Watch Next", RecSys 2019).
 #
-# BUSINESS IMPACT:
+# BUSINESS IMPACT (illustrative assumptions, not reported figures):
 #   - Feed impressions/day: ~900M
-#   - Baseline click-through rate: ~6.2% (Carousell public disclosures)
-#   - Internal A/B tests on Southeast Asian marketplaces have lifted
-#     CTR by ~8% when switching from hard-segment ranking to soft
-#     intent-vector ranking at the same serving cost.
+#   - Baseline click-through rate: ~6.2%
+#   - Assume switching from hard-segment ranking to soft intent-vector
+#     ranking lifts CTR by ~8% at the same serving cost (a figure you
+#     would have to measure with your own A/B test).
 #   - 8% CTR lift on 900M impressions/day = ~4.5M extra clicks/day.
-#     At Carousell's ~S$0.018 average monetisation per click, that is
+#     At an assumed ~S$0.018 average monetisation per click, that is
 #     ~S$81,000/day = S$29.6M/year in additional take-rate revenue.
 #   - Zero marginal infra cost — the GMM is fitted offline nightly
 #     and the soft responsibilities are materialised into the same
 #     feature store the existing ranker already reads.
 
 print("\n" + "=" * 70)
-print("  APPLY — Carousell personalised listing ranking")
+print("  APPLY — C2C marketplace personalised listing ranking")
 print("=" * 70)
 print(
     f"Out of {X_scaled.shape[0]} customers, {n_boundary} ({n_boundary / X_scaled.shape[0]:.1%}) "
@@ -261,8 +261,8 @@ print(
     "of every applicable segment ranker, instead of burying them in one."
 )
 print(
-    "At Carousell's scale, blending intents with soft responsibilities "
-    "recovers ~S$29.6M/year in feed monetisation — from the same GMM "
+    "At the assumed scale, blending intents with soft responsibilities "
+    "is worth an illustrative ~S$29.6M/year in feed monetisation — from the same GMM "
     "you just fitted, read in a different way."
 )
 
@@ -310,12 +310,14 @@ print(
 #   - hierarchical_<linkage>     (ex_1/02)
 #   - dbscan_hdbscan             (ex_1/03)
 #   - spectral_rbf               (ex_1/04)
+#   - evaluation_profiling       (ex_1/05)
 #   - em_from_scratch            (ex_2/01)
 #   - sklearn_gmm_bic_aic        (ex_2/02)
 #   - gmm_cov_<best>             (ex_2/03)
 #   - gmm_soft_assignment_moe    (this lesson)
 #
-# The leaderboard is the unifying surface across nine clustering runs on
+# The leaderboard is the unifying surface across these nine runs (five
+# clustering families: centroid, hierarchical, density, spectral, mixture) on
 # the same Singapore e-commerce dataset. ClusteringEngine.fit returns the
 # hard labels in one call; soft `predict_proba` still routes through
 # sklearn's GaussianMixture for the responsibility matrix.
@@ -334,7 +336,7 @@ print(
 )
 print(
     "  Open mlfp04_ex1_clustering.db for the full m4_clustering_zoo"
-    " leaderboard — eight runs across four clustering families on the"
+    " leaderboard — nine runs across five clustering families on the"
     " same dataset, ready for cross-method comparison.\n"
 )
 
@@ -350,13 +352,14 @@ print(
   [x] Soft GMM responsibilities carry uncertainty hard labels destroy
   [x] Max-probability and entropy diagnose boundary customers
   [x] MoE = GMM with input-dependent gating g_k(x)
-  [x] Sparse MoE in Mixtral/GPT-4 is the same idea at LLM scale
-  [x] Carousell scenario: soft intent vectors unlock S$29.6M/year
-      in feed revenue without extra serving cost
+  [x] Sparse MoE in LLMs such as Mixtral is the same idea at LLM scale
+  [x] C2C marketplace scenario: soft intent vectors are worth an
+      illustrative S$29.6M/year in feed revenue without extra serving
+      cost
 
   KEY INSIGHT: the GMM you just fitted is already a personalisation
   engine. You don't need a new model — you need a new way to READ the
-  responsibility matrix. Hard argmax throws away 80% of the signal.
+  responsibility matrix. Hard argmax throws away all of the uncertainty.
 
   Exercise 2 complete. Next: Exercise 3 introduces PCA and
   dimensionality reduction on the same customer data.

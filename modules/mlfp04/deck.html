@@ -1427,12 +1427,13 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <li>Generative model: assumes documents were produced by sampling topics, then words</li>
     <li>Inference: reverse the process to discover topics</li>
     <li>Output: per-document topic proportions &mdash; these are <strong>features</strong></li>
+    <li>Fit on raw word <strong>counts</strong> (not TF-IDF); choose $K$ by <strong>held-out</strong> perplexity</li>
   </ul>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. "LDA is like a probabilistic clustering of documents. Each document belongs to multiple topics with probabilities &mdash; exactly like GMM's soft assignments."
+    Timing: 3 min. "LDA is like a probabilistic clustering of documents. Each document belongs to multiple topics with probabilities &mdash; exactly like GMM's soft assignments." LDA's generative story draws whole word tokens, so it expects integer counts; feeding it TF-IDF weights breaks that assumption. Perplexity measured on the training documents always improves with more topics &mdash; measure it on held-out documents. Inference: collapsed Gibbs sampling integrates out the topic and word distributions and samples each word's topic; variational inference instead fits factorised approximate posteriors (sklearn uses variational Bayes).
   </aside>
 </section>
 
@@ -1451,9 +1452,9 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <div class="col">
       <h3>BERTopic</h3>
       <ul style="font-size: 0.85em;">
-        <li>Transformer embeddings + UMAP + HDBSCAN + c-TF-IDF</li>
+        <li>Transformer embeddings + UMAP (~5-D) + HDBSCAN + c-TF-IDF</li>
         <li>Captures semantic meaning, not just word counts</li>
-        <li>State of the art for topic modelling</li>
+        <li>Strong modern default; one topic per document</li>
       </ul>
     </div>
   </div>
@@ -1464,7 +1465,7 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. NMF is matrix factorisation applied to text &mdash; same idea as PCA and collaborative filtering. BERTopic combines everything from this module into one pipeline.
+    Timing: 3 min. NMF is matrix factorisation applied to text &mdash; same idea as PCA and collaborative filtering. BERTopic combines everything from this module into one pipeline. BERTopic's UMAP step reduces to about 5 dimensions by default (2-D is only for plotting), and HDBSCAN assigns each document to one topic (or to noise) &mdash; unlike LDA's mixed membership. The sentence-embedding model is a configuration choice; the exercise reads it from the TOPIC_EMBED_MODEL environment variable.
   </aside>
 </section>
 
@@ -1497,13 +1498,13 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
     <li>Common targets: positive/negative/neutral, 1-5 star ratings</li>
   </ul>
   <div class="callout callout-kailash" style="margin-top: 12px;">
-    <strong>USML connection:</strong> Topic proportions from LDA/BERTopic become <em>features</em> for sentiment classification. Unsupervised topic discovery feeds supervised prediction.
+    <strong>USML connection:</strong> word vectors learned from <em>unlabelled</em> text (co-occurrence &rarr; PPMI &rarr; SVD) are averaged into document <em>features</em> for a supervised sentiment classifier. Unsupervised discovery feeds supervised prediction.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Quick overview. Sentiment analysis is the supervised side of NLP. The USML topics become input features for the classifier.
+    Timing: 2 min. Quick overview. Sentiment analysis is the supervised side of NLP. In Exercise 6.5 the unsupervised part learns word vectors from the training sentences' text alone, ignoring their labels (PPMI + SVD &mdash; the factorisation Word2Vec implicitly performs); the supervised part then trains on the human labels of those movie-review sentences (SST-2) and is tested on unseen sentences against a word-list lexicon and a TF-IDF baseline. Labels must come from people, not from a lexicon applied to the same text &mdash; otherwise the classifier just relearns the lexicon. Topic proportions can play the same role as features.
   </aside>
 </section>
 
@@ -1511,12 +1512,12 @@ top = blend.combined_scores          # normalised scores, averaged</code></pre>
   <h2>Exercise 4.6: Topic Modelling &amp; Sentiment</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Extract topics from Singapore news articles.
+    <strong>Task:</strong> Extract topics from a deduplicated AG News corpus (world, sports, business, sci/tech).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Apply TF-IDF + NMF, LDA, and BERTopic</li>
-      <li>Compare topic quality using NPMI coherence</li>
+      <li>6.1 TF-IDF and BM25 retrieval; 6.2 NMF on TF-IDF; 6.3 LDA on counts (held-out perplexity); 6.4 BERTopic</li>
+      <li>Compare topic quality with NPMI coherence and against the human section labels</li>
       <li>Assign human-readable labels to discovered topics</li>
-      <li>Classify customer review sentiment using topic features</li>
+      <li>6.5 Sentiment: PPMI + SVD word vectors, trained on human-labelled SST-2 sentences</li>
     </ul>
   </div>
   <div class="slide-footer">

@@ -703,13 +703,13 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <li>Soft assignments = posterior responsibilities $r_{nk}$</li>
   </ul>
   <div class="callout callout-advanced" style="margin-top: 12px;">
-    <strong>EM as a general template:</strong> EM works for ANY latent variable model, not just Gaussians. It is the backbone of LDA (4.6), matrix factorisation (4.7), and the training of neural networks (4.8).
+    <strong>EM as a general template:</strong> EM applies to latent-variable models beyond Gaussians &mdash; e.g. LDA (4.6, via variational EM). ALS in 4.7 shares the <em>alternating</em> structure but is not EM; neural networks (4.8) are trained by gradient descent.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. This is the big picture: EM is not specific to GMMs. It is a universal optimisation algorithm for models with hidden variables. We will see it again in LDA and implicitly in backpropagation.
+    Timing: 2 min. This is the big picture: EM is not specific to GMMs. It is a template for maximum-likelihood fitting when some variables are hidden: guess the hidden variables (E), refit the parameters (M), repeat. We will see a variational version in LDA. Be careful with the analogies: ALS (4.7) also alternates between two easy sub-problems, but it is block-coordinate least squares, not EM; and backpropagation is gradient descent, not EM.
   </aside>
 </section>
 
@@ -721,7 +721,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <ul style="font-size: 0.85em;">
       <li>GMM: each component is a Gaussian &rarr; soft assignment</li>
       <li>MoE: each component is a <strong>neural network expert</strong> &rarr; gating network selects which expert processes which input</li>
-      <li>Modern LLM architectures (e.g., GPT-4 class) use Sparse MoE</li>
+      <li>Sparse MoE in LLMs: e.g. the open-weight Mixtral 8x7B routes each token to 2 of 8 experts per layer</li>
     </ul>
   </div>
   <div class="callout callout-advanced" style="margin-top: 8px;">
@@ -731,7 +731,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Advanced layer only. The connection: GMMs assign each point to components probabilistically. MoE assigns each token to expert networks probabilistically. Same math, different scale.
+    Timing: 2 min. Advanced layer only. The connection: GMMs assign each point to components probabilistically. MoE assigns each token to expert networks probabilistically. Same math, different scale. Use an open model with a published architecture as the example (Mixtral 8x7B: 8 experts, top-2 routing, so only part of the weights is active per token); the architectures of closed models are not disclosed, so do not state them as fact.
   </aside>
 </section>
 
@@ -742,9 +742,9 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <strong>Task:</strong> Implement the EM algorithm in ~20 lines on 2D synthetic data (3 Gaussians).
     <ul style="font-size: 0.85em; margin-top: 8px;">
       <li>Implement E-step and M-step from the formulas</li>
-      <li>Verify: responsibilities sum to 1 for each point</li>
-      <li>Compare your implementation with GMM on real e-commerce data</li>
-      <li>Visualise soft assignments (colour by max responsibility, opacity by confidence)</li>
+      <li>Verify: responsibilities sum to 1; log-likelihood never decreases; matches sklearn's GMM on the same data</li>
+      <li>On real e-commerce customers: choose K by BIC/AIC, compare covariance types</li>
+      <li>Read soft assignments: boundary customers, confidence, Mixture-of-Experts gating</li>
     </ul>
   </div>
   <div class="slide-footer">

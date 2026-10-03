@@ -281,7 +281,6 @@ print_prescription_pad(findings, "Transfer ResNet-18 trained on 10% of the data"
 #  run; the message says why.
 
 
-
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: Data efficiency curves
 # ════════════════════════════════════════════════════════════════════════

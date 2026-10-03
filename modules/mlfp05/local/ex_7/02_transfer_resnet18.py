@@ -253,7 +253,6 @@ print_prescription_pad(findings, "Transfer ResNet-18 (ImageNet pretrained, froze
 #  run; the message says why.
 
 
-
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Register models in ModelRegistry
 # ════════════════════════════════════════════════════════════════════════

@@ -370,7 +370,6 @@ print_prescription_pad(findings, "Adapter ResNet-18 (frozen backbone + bottlenec
 #  run; the message says why.
 
 
-
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Visualise: Parameter count vs performance Pareto chart
 # ════════════════════════════════════════════════════════════════════════

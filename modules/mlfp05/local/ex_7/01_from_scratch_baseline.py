@@ -201,7 +201,6 @@ print_prescription_pad(findings, "From-scratch CNN baseline (CIFAR-10)")
 #  run; the message says why.
 
 
-
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: Learned filters and t-SNE feature space
 # ════════════════════════════════════════════════════════════════════════

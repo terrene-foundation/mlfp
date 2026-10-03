@@ -2787,7 +2787,7 @@ print(reply["response"])</code></pre>
   <span class="marker marker-theory">Theory</span>
   <div class="columns">
     <div class="col">
-      <h3>The ReAct Loop</h3>
+      <h3>The ReAct Loop <span class="small muted">(illustrative trace)</span></h3>
       <div class="step-box"><strong>Thought:</strong> I need to find the average HDB price in 2024.</div>
       <div class="step-box"><strong>Action:</strong> <code>data_explorer.describe(df.filter(pl.col("year") == 2024))</code></div>
       <div class="step-box"><strong>Observation:</strong> Mean price: $523,000. Median: $480,000. Count: 12,345.</div>
@@ -2804,7 +2804,7 @@ print(reply["response"])</code></pre>
         <li>The trace is debuggable: you can see <em>why</em> the agent did what it did</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Yao et al. (2023):</strong> ReAct outperforms act-only agents on HotpotQA by 6% and reduces hallucination rate by 40%. The "Thought" step is not overhead; it is the mechanism.
+        <strong>Yao et al. (ICLR 2023):</strong> on HotpotQA, ReAct beat act-only prompting (27.4 vs 25.7 exact match, PaLM-540B), and in their error analysis hallucination drove most chain-of-thought failures but almost none of ReAct's. The "Thought" step is not overhead; it is the mechanism.
       </div>
     </div>
   </div>
@@ -2910,35 +2910,44 @@ print(reply["response"])</code></pre>
   <h2>Kaizen: Building Agents</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
-    <h3>BaseAgent &mdash; Custom Agent with Tools</h3>
-    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import os
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_ml import DataExplorer, TrainingPipeline
+    <h3>Tool-Using Delegate &mdash; Tools Registered in a ToolRegistry</h3>
+    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import polars as pl
+from kailash_ml import DataExplorer
+from kaizen_agents.delegate.loop import ToolRegistry
+from shared import MLFPDataLoader
+from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
 
-def explore_data(dataset: str) -> dict:
-    """Profile a dataset and return summary statistics."""
-    return DataExplorer().profile(dataset).to_dict()
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
 
-def train_model(dataset: str, target: str) -> dict:
-    """Train a classification model on the given dataset."""
-    pipeline = TrainingPipeline(task="classification")
-    result = pipeline.fit(dataset, target=target)
-    return {"accuracy": result.accuracy, "model_id": result.model_id}
+async def explore_data() -> str:
+    """Profile the HDB resale table (a Kailash engine as a tool)."""
+    profile = await DataExplorer().profile(df)
+    return str(profile.to_dict())[:2000]
 
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data, train_model],
-    max_llm_cost_usd=1.00,   # $1 budget cap; agent halts when exceeded
-)
-result = await agent.run(
-    "Analyse the HDB resale dataset and predict price categories."
-)</code></pre>
+async def mean_price_by(column: str) -> str:
+    out = df.group_by(column).agg(pl.col("resale_price").mean())
+    return str(out.sort("resale_price", descending=True).head(10))
+
+tools = ToolRegistry()   # a bare list of functions registers NOTHING
+tools.register(name="explore_data", description="Profile the HDB resale data",
+               parameters={"type": "object", "properties": {}},
+               executor=explore_data)
+tools.register(name="mean_price_by",
+               description="Mean resale price grouped by one column",
+               parameters={"type": "object", "required": ["column"],
+                           "properties": {"column": {"type": "string"}}},
+               executor=mean_price_by)
+
+agent = make_delegate(tools=tools, max_turns=8)  # model from OLLAMA_CHAT_MODEL
+answer, usage, secs = await run_delegate_text(
+    agent, "Which flat type has the highest mean resale price?")</code></pre>
   </div>
+  <p class="small muted" style="margin-top:4px;">Ready-made: <code>kaizen_agents.agents.ReActAgent</code> and <code>ChainOfThoughtAgent</code> (step-by-step reasoning before answering) &mdash; both take <code>llm_provider=&quot;ollama&quot;</code>, and their <code>run()</code> is synchronous.</p>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Kailash bridge: BaseAgent wraps the ReAct pattern. The @tool decorator registers methods as tools the agent can call. The max_cost parameter is the engineering safety net: the agent stops when it hits the budget. Students should notice: the tools wrap Kailash engines. The agent can use DataExplorer and TrainingPipeline as tools.
+    Time: ~3 min. Kailash bridge: a Kaizen Delegate runs the Thought &rarr; Action &rarr; Observation loop itself; you supply tools. Three API facts to stress: (1) tools must be registered in a <code>ToolRegistry</code> with a name, description, JSON-schema parameters and an async executor &mdash; passing a plain list of functions silently registers nothing; (2) build the Delegate with <code>make_delegate()</code> and no <code>model=</code>, so the model comes from <code>OLLAMA_CHAT_MODEL</code>; (3) <code>max_turns</code> is the hard ceiling on loop length. Students should notice the tools wrap a Kailash engine (DataExplorer). Wrapping TrainingPipeline works the same way, but its constructor needs a feature store and model registry (M3), so keep that tool for the capstone. ChainOfThoughtAgent is the packaged &ldquo;reason step by step, then answer&rdquo; agent &mdash; no tools, a structured reasoning trace.
   </aside>
 </section>
 
@@ -2953,41 +2962,46 @@ result = await agent.run(
       <ul>
         <li>Agents make LLM calls in a loop</li>
         <li>A confused agent can make hundreds of calls before realising it is stuck</li>
-        <li>At $0.003/call, 500 calls = $1.50 per request</li>
-        <li>Production system with 10K daily users = $15,000/day</li>
+        <li>Illustrative hosted pricing: at $0.003/call, 500 calls = $1.50 per request</li>
+        <li>With 10K daily requests = $15,000/day</li>
+      </ul>
+      <h3 style="margin-top:8px;">Three ceilings</h3>
+      <ul style="font-size:0.8em;">
+        <li><strong>Turns</strong> &mdash; <code>max_turns</code>: works on every provider, incl. local Ollama</li>
+        <li><strong>Dollars</strong> &mdash; <code>budget_limit_usd</code>: only bites on a priced provider (Ollama prices at $0)</li>
+        <li><strong>Tokens</strong> &mdash; reported per run; tokens &times; price = real spend</li>
       </ul>
     </div>
     <div class="col">
-      <h3>The Solution: max_llm_cost_usd</h3>
-      <pre style="font-size: 0.55em;"><code class="language-python">import os
-from kaizen_agents.agents.specialized.react import (
-    ReActAgent,
-)
+      <h3>The Solution: set the cap at construction</h3>
+      <pre style="font-size: 0.5em;"><code class="language-python">from kaizen.core.base_agent import BaseAgent, BaseAgentConfig
+from shared.mlfp06._ollama_bootstrap import (
+    DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL, make_delegate)
 
-# Budget lives on the agent itself — no
-# separate LLMCostTracker class in 2.7.
-agent = ReActAgent(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data, train_model],
-    max_llm_cost_usd=0.50,
-)
+# 1. Turn ceiling on a tool-using Delegate
+agent = make_delegate(tools=tools, max_turns=8)
 
-# When budget exhausted:
-# -> Agent stops gracefully
-# -> Returns partial results
-# -> Emits a budget-exceeded event
-result = await agent.run("Analyse HDB data")
-print(result)</code></pre>
+# 2. Dollar cap: pass it AT CONSTRUCTION
+capped = BaseAgent(
+    config=BaseAgentConfig(
+        llm_provider="ollama", model=DEFAULT_CHAT_MODEL,
+        base_url=OLLAMA_BASE_URL, use_async_llm=True,
+        budget_limit_usd=0.50),
+    signature=BriefingSignature())
+assert capped.execution_context.budget_limit == 0.50
+
+# Trap: setting capped.config.budget_limit_usd LATER
+# changes the config object, not the enforcement.</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
-    <strong>Non-negotiable in production:</strong> Every agent must have a cost budget. No exceptions. An unbounded agent is a financial liability.
+    <strong>Non-negotiable in production:</strong> every agent gets a turn ceiling, and on a priced provider a dollar cap set at construction. An unbounded agent is a financial liability.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Cost tracking is not optional. In production, an agent without a budget is a blank cheque. The numbers are real: a stuck agent can burn through dollars in minutes. If beginners confused: "It is like giving a contractor a budget. They can spend up to that amount, then they stop and report what they accomplished."
+    Time: ~2 min. Cost tracking is not optional. In production, an agent without a budget is a blank cheque. The dollar figures are illustrative hosted prices, but the shape is real: a stuck agent can burn through money in minutes. Be explicit about the course stack: Kaizen prices local Ollama calls at $0, so a dollar cap can never trip here &mdash; which is why Exercise 6.5 (ex_5/02) bounds the loop with <code>max_turns</code> and reports tokens, and shows the dollar cap configured correctly for when you move to a priced provider. If beginners confused: "It is like giving a contractor a budget. They can spend up to that amount, then they stop and report what they accomplished."
   </aside>
 </section>
 
@@ -3000,10 +3014,10 @@ print(result)</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build ReAct agent wrapping DataExplorer, TrainingPipeline, and ModelVisualizer as tools</li>
-        <li>Agent autonomously: explores data, selects model, trains, reports</li>
-        <li>Implement cost budget enforcement</li>
-        <li>Debug agent reasoning chain</li>
+        <li>ReAct agent: register four tools over HotpotQA multi-hop questions in a <code>ToolRegistry</code>; capture and read the real trace (<code>ex_5/01</code>)</li>
+        <li>Bound the loop: <code>max_turns</code> ceilings, a dollar cap set at construction, token accounting (<code>02</code>)</li>
+        <li>Structured agent: <code>BaseAgent</code> + <code>Signature</code> with typed, validated outputs (<code>03</code>)</li>
+        <li>Critic agent: Analyse &rarr; Critique &rarr; Refine loop (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
@@ -3011,7 +3025,7 @@ print(result)</code></pre>
       <ul>
         <li>Agent reasons through steps (not random tool calls)</li>
         <li>Tools correctly invoked with valid parameters</li>
-        <li>Cost budget respected &mdash; agent stops gracefully</li>
+        <li>Loop bounded &mdash; the turn ceiling stops a stuck agent; tokens reported</li>
         <li>Results interpretable and correct</li>
       </ul>
     </div>
@@ -3020,7 +3034,7 @@ print(result)</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This exercise wraps existing Kailash engines as agent tools. Students have already used DataExplorer and TrainingPipeline manually; now they let an agent orchestrate them. The reasoning chain is the key deliverable: students must demonstrate the agent thinks before it acts.
+    Time: ~1 min. This exercise gives an agent real tools and lets it choose the order. The tools in ex_5/01 search and summarise a HotpotQA sample; the slide before showed the same pattern wrapping a Kailash engine (DataExplorer), which students can try as an extension. The reasoning chain is the key deliverable: students must demonstrate, from the captured trace, that the agent thinks before it acts.
   </aside>
 </section>
 

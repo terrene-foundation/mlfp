@@ -450,25 +450,27 @@ Transition: "We have been working with single values. Data analysis needs collec
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <h3>Loading Data with Polars</h3>
   <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-# Load Singapore weather data
-df = pl.read_csv("data/singapore_weather.csv")
+# Load Singapore monthly weather data
+df = MLFPDataLoader().load("mlfp01", "sg_weather.csv")
 
 # What do we have?
-print(f"Shape: {df.shape}")           # (1095, 8) = 1095 rows, 8 columns
-print(f"Columns: {df.columns}")       # ['date', 'station', 'rainfall_mm', ...]
+print(f"Shape: {df.shape}")      # (12, 3) = 12 rows, 3 columns
+print(f"Columns: {df.columns}")  # ['month', 'mean_temperature_c', 'total_rainfall_mm']
 
 # First 5 rows
-print(df.head())</code></pre>
+print(df.head())                 # January 26.5 167 / February 27.1 108 / ...</code></pre>
   <div class="callout callout-foundations">
-    <strong>Key Insight:</strong> A DataFrame is a table. Rows are observations (one per day). Columns are variables (temperature, rainfall). This structure is the foundation of all data analysis.
+    <strong>Key Insight:</strong> A DataFrame is a table. Rows are observations (one per month). Columns are variables (temperature, rainfall). This structure is the foundation of all data analysis.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - import polars as pl is the convention, like import numpy as np.
-- read_csv returns a DataFrame, the central data structure for the entire course.
+- MLFPDataLoader finds the course file for you (locally or in Colab); under the hood it calls pl.read_csv and returns a DataFrame, the central data structure for the entire course.
+- The file is 12 monthly climate averages prepared for this course (illustrative, not official station records).
 - shape gives (rows, columns). columns gives the list of column names. head() shows the first 5 rows.
 - If beginners confused: compare DataFrame to a spreadsheet where every column has a name and a type.
 - If experts bored: mention Polars uses Apache Arrow memory format, which is why it is faster than pandas.
@@ -486,17 +488,12 @@ Transition: "Let us dig deeper into what the data actually contains."
 print(df.describe())
 
 # Output (abridged):
-# +-----------+----------+----------+
-# | statistic | temp_max | rainfall |
-# | ---       | ---      | ---      |
-# | str       | f64      | f64      |
-# +===========+==========+==========+
-# | count     | 1095.0   | 1095.0   |
-# | mean      | 31.4     | 6.2      |
-# | std       | 1.3      | 15.8     |
-# | min       | 26.1     | 0.0      |
-# | max       | 36.2     | 138.4    |
-# +-----------+----------+----------+</code></pre>
+# statistic   month      mean_temperature_c  total_rainfall_mm
+# count       12         12.0                12.0
+# mean        null       27.47               171.75
+# std         null       0.62                40.10
+# min         April      26.5                108.0
+# max         September  28.3                254.0</code></pre>
     </div>
     <div class="col">
       <h3>What describe() Tells You</h3>
@@ -507,7 +504,7 @@ print(df.describe())
         <li><strong>min / max</strong> &mdash; range (any extreme outliers?)</li>
       </ul>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Why std matters:</strong> If mean rainfall is 6.2 mm but std is 15.8 mm, the data is highly skewed. Most days have zero rainfall, but when it rains, it pours.
+        <strong>Why std matters:</strong> Temperature std is 0.62&deg;C &mdash; every month is warm. Rainfall std is 40 mm on a mean of 172 mm: monthly rain varies far more (Feb 108 mm vs Nov 254 mm).<br><strong>Careful:</strong> min/max of the text column <code>month</code> are <em>alphabetical</em> (April, September) &mdash; not the coolest or hottest month.
       </div>
     </div>
   </div>
@@ -516,7 +513,8 @@ print(df.describe())
 Time: ~3 min
 Talking points:
 - describe() is the single most important function in EDA. Always run it first.
-- Point out that std being larger than mean is a red flag for skewness.
+- Compare spread to the mean: temperature barely moves (std 0.62 on 27.47, CV ~2%), rainfall moves a lot (std 40.1 on 171.75, CV ~23%).
+- For a string column, describe() min/max are alphabetical, unrelated to the other columns. April and September are NOT the coolest and hottest months; May (28.3) is the hottest.
 - If beginners confused: focus on count, mean, min, max. Standard deviation can wait.
 - If experts bored: mention Polars describe() also shows 25th, 50th, 75th percentiles.
 Transition: "Let us see how Polars tells us about column types."
@@ -531,16 +529,13 @@ Transition: "Let us see how Polars tells us about column types."
       <h3>Checking Column Types</h3>
       <pre><code class="language-python"># Schema shows every column's type
 print(df.schema)
-# {'date': String,
-#  'station': String,
-#  'rainfall_mm': Float64,
-#  'temp_max': Float64,
-#  'temp_min': Float64,
-#  'humidity': Int64}
+# Schema({'month': String,
+#         'mean_temperature_c': Float64,
+#         'total_rainfall_mm': Int64})
 
 # Single column access
-print(df["rainfall_mm"].dtype)
-# Float64</code></pre>
+print(df["total_rainfall_mm"].dtype)
+# Int64</code></pre>
     </div>
     <div class="col">
       <h3>Polars Type System</h3>
@@ -581,7 +576,7 @@ Transition: "Let us put it all together with the exercise."
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp01", "singapore_weather.csv")
+df = loader.load("mlfp01", "sg_weather.csv")
 
 # 1. Print the shape
 print(f"Rows: {df.shape[0]}, Cols: {df.shape[1]}")
@@ -599,9 +594,9 @@ print(stats)</code></pre>
     <div class="col">
       <h3>Answer These Questions</h3>
       <ol>
-        <li>How many days of data do we have?</li>
-        <li>What is the hottest temperature ever recorded?</li>
-        <li>What is the average daily rainfall in mm?</li>
+        <li>How many months of data do we have?</li>
+        <li>What is the highest monthly mean temperature?</li>
+        <li>What is the average monthly rainfall in mm?</li>
       </ol>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Assessment:</strong> Code runs without error. All 3 questions answered correctly with evidence from <code>describe()</code> output.
@@ -615,7 +610,9 @@ Talking points:
 - Walk through the exercise requirements. Emphasise that answers must cite specific numbers from describe().
 - The shared data loader handles file paths so students do not need to worry about absolute paths.
 - If beginners confused: demonstrate loading the file live and running describe() step by step.
-- If experts bored: challenge them to also compute the coefficient of variation for rainfall.
+- Answers from describe(): count = 12 months; max mean_temperature_c = 28.3 C; mean total_rainfall_mm = 171.75 mm.
+- describe() gives the hottest value but not which month it was; filtering for it (May) is Task 8 of the exercise.
+- If experts bored: challenge them to also compute the coefficient of variation for rainfall (40.10 / 171.75 = ~23%).
 Transition: "You can now load data and inspect it. Next, we learn to filter and transform it."
   </aside>
 </section>
@@ -636,7 +633,7 @@ Transition: "You can now load data and inspect it. Next, we learn to filter and 
     <div class="col">
       <h3>Polars Essentials</h3>
       <ul>
-        <li><code>pl.read_csv()</code> &mdash; load data</li>
+        <li><code>loader.load()</code> / <code>pl.read_csv()</code> &mdash; load data</li>
         <li><code>df.shape</code> &mdash; (rows, columns)</li>
         <li><code>df.columns</code> &mdash; column names</li>
         <li><code>df.head()</code> &mdash; first N rows</li>

@@ -6806,24 +6806,24 @@ cfg = RLTrainingConfig(algorithm="PPO",
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Quiz Component</h3>
+      <h3>Quiz (coding, 5 questions)</h3>
       <ul>
-        <li>Formula derivations (VAE ELBO, attention scaling, LSTM gates)</li>
-        <li>Architecture selection (given a problem, choose and justify)</li>
-        <li>Concept explanations (reparameterisation trick, skip connections, mode collapse)</li>
+        <li>MLP and CNN from scratch on MNIST; LSTM on a sequential signal</li>
+        <li>Diagnose a broken CNN &mdash; name the failure, apply the fix</li>
+        <li>Train-and-prescribe on Fashion-MNIST with the DL Diagnostics toolkit</li>
       </ul>
+      <p class="small muted">Pass / fail per question against a stated threshold. No multiple choice.</p>
     </div>
     <div class="col">
-      <h3>DL Architecture Project</h3>
+      <h3>Four Graded Coding Tasks (25% each)</h3>
       <ol>
-        <li>Choose a problem (image, text, graph, or RL)</li>
-        <li>Select and justify the architecture</li>
-        <li>Train the model with appropriate enhancements</li>
-        <li>Evaluate with proper metrics</li>
-        <li>Export to ONNX and deploy with InferenceServer</li>
+        <li><strong>Autoencoder</strong> anomaly detection on sensor telemetry (ROC-AUC)</li>
+        <li><strong>CNN</strong> from scratch on 8&times;8 digits (test accuracy)</li>
+        <li><strong>GRU</strong> forecast that beats a naive last-value baseline (MSE)</li>
+        <li><strong>Transformer</strong> text classifier on an AG News slice (accuracy)</li>
       </ol>
       <div class="callout callout-kailash" style="margin-top: 8px;">
-        <strong>Full pipeline:</strong> Problem &rarr; Architecture &rarr; Train &rarr; Evaluate &rarr; Export &rarr; Serve. End to end.
+        <strong>CPU-sized:</strong> small models, bundled or generated data, graded on the outcome your model reaches. ONNX export and serving are practised in Exercises 5.2 and 5.7.
       </div>
     </div>
   </div>
@@ -6831,7 +6831,7 @@ cfg = RLTrainingConfig(algorithm="PPO",
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. The project is open-ended but structured. Students choose their domain, apply the architecture decision tree, and build a complete pipeline. The ONNX export and InferenceServer deployment ensure production readiness.
+    Time: ~2 min. Describe what exists in the module's quiz/ and assessment/ folders. The quiz is a 90-minute coding notebook: four build questions and one prescribe question that uses the DL Diagnostics toolkit; each is pass/fail against a threshold. The assessment is four auto-graded tasks, one per pillar (autoencoders, CNNs, sequences, transformers), each worth 25 marks and passed only when every grader check is true. They are deliberately CPU-sized: synthetic or bundled data, small models, no pretrained backbones. The export-and-serve pipeline (OnnxBridge, ModelRegistry, InferenceServer) is exercised in Exercises 5.2 and 5.7 rather than graded here.
   </aside>
 </section>
 

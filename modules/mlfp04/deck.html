@@ -839,8 +839,8 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
   <h2>Reconstruction Error</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="equation-box">
-    $$\|\mathbf{X} - \hat{\mathbf{X}}\|^2 = \sum_{i=k+1}^{p} \lambda_i$$
-    <div class="annotation">Information lost = sum of discarded eigenvalues</div>
+    $$\|\mathbf{X} - \hat{\mathbf{X}}\|_F^2 = \sum_{i=k+1}^{p} \sigma_i^2 = (n-1)\sum_{i=k+1}^{p} \lambda_i$$
+    <div class="annotation">Centred $\mathbf{X}$ ($n$ rows): $\sigma_i$ = singular values, $\lambda_i$ = covariance eigenvalues. Information lost = the discarded variance.</div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 12px;">
     <strong>Trade-off:</strong> fewer components = more compression but more information loss. Choose $k$ to retain (e.g.) 95% of total variance.
@@ -863,7 +863,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <li>Captures nonlinear structure that PCA misses</li>
   </ul>
   <div class="callout callout-theory" style="margin-top: 12px;">
-    <strong>Limitation:</strong> No explicit loadings &mdash; harder to interpret. No inverse transform. Use when visualisation or downstream accuracy matters more than interpretability.
+    <strong>Limitation:</strong> No explicit loadings &mdash; harder to interpret. Only an approximate, learned inverse (pre-image; sklearn <code>fit_inverse_transform=True</code>). Kernel matrix is $O(n^2)$ memory. Use when visualisation or downstream accuracy matters more than interpretability.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
@@ -892,7 +892,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
         <li>Preserves local structure well</li>
         <li>Distorts global structure</li>
         <li>Non-deterministic</li>
-        <li><strong>NOT for feature extraction</strong> (no inverse transform)</li>
+        <li><strong>NOT for feature extraction</strong> (cannot embed new points)</li>
       </ul>
     </div>
   </div>
@@ -909,10 +909,10 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <table>
     <tr><th></th><th>t-SNE</th><th>UMAP</th></tr>
-    <tr><td>Speed</td><td>Slow ($O(n^2)$)</td><td>Fast ($O(n \log n)$)</td></tr>
-    <tr><td>Global structure</td><td>Distorted</td><td>Better preserved</td></tr>
-    <tr><td>Deterministic</td><td>No</td><td>Yes (with seed)</td></tr>
-    <tr><td>Feature extraction</td><td>No inverse</td><td>Has inverse &mdash; can be used as features</td></tr>
+    <tr><td>Speed</td><td>Slow (Barnes-Hut $O(n \log n)$, large constant)</td><td>Fast (approx. $O(n \log n)$)</td></tr>
+    <tr><td>Global structure</td><td>Distorted</td><td>Better layout &mdash; but sizes / gaps still not metric</td></tr>
+    <tr><td>Deterministic</td><td>Only with a fixed seed</td><td>Only with a fixed seed</td></tr>
+    <tr><td>Feature extraction</td><td>No transform for new points</td><td><code>.transform()</code> embeds new points &mdash; usable as features</td></tr>
     <tr><td>Scalability</td><td>~10k points</td><td>~1M+ points</td></tr>
   </table>
   <div class="callout callout-kailash" style="margin-top: 8px;">
@@ -922,7 +922,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. UMAP is the clear winner in practice. It is faster, more scalable, and preserves more global structure. It also appears in BERTopic (4.6) as a preprocessing step.
+    Timing: 2 min. UMAP is the usual default in practice. It is faster, more scalable, gives a more faithful global layout than t-SNE, and can embed new rows with .transform(). But warn students: in a UMAP plot, cluster sizes and the distances BETWEEN clusters are still not quantitatively meaningful &mdash; read neighbourhoods, not gaps. Exact t-SNE is O(n&sup2;); sklearn's default Barnes-Hut is O(n log n) but still much slower than UMAP. Both are stochastic; fix random_state to reproduce a plot. UMAP also appears in BERTopic (4.6) as a preprocessing step.
   </aside>
 </section>
 
@@ -956,7 +956,7 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
     <li>Methods: scree plot (variance threshold), correlation dimension, MLE estimators</li>
   </ul>
   <div class="callout callout-foundations" style="margin-top: 12px;">
-    <strong>Practical heuristic:</strong> Choose $k$ components that explain $\geq$ 95% cumulative variance. This gives a good estimate of intrinsic dimensionality.
+    <strong>Practical heuristic:</strong> Choose $k$ components that explain $\geq$ 95% cumulative variance. This is a <em>linear</em> estimate &mdash; a curved manifold may need fewer dimensions (nearest-neighbour MLE estimators catch this).
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
@@ -967,22 +967,54 @@ print(result.best_trial.params, result.best_trial.metric_value)</code></pre>
 </section>
 
 <section>
+  <h2>Kailash Bridge: DimReductionEngine</h2>
+  <span class="marker marker-foundations">Foundations</span>
+  <div class="kailash-bridge">
+    <h3>Theory &rarr; Engine</h3>
+    <div class="theory-to-engine">
+      <span>PCA, NMF, t-SNE, UMAP</span>
+      <span class="arrow">&rarr;</span>
+      <span><code>DimReductionEngine</code></span>
+    </div>
+  </div>
+  <pre style="font-size: 0.55em; line-height: 1.3"><code class="language-python">from kailash_ml.engines.dim_reduction import DimReductionEngine
+
+# X: the standardised customer features from the 4.1 bridge slide
+reducer = DimReductionEngine()  # algorithms: pca | nmf | tsne | umap
+pca = reducer.reduce(X, algorithm="pca", n_components=5)
+print(pca.explained_variance_ratio)   # the scree plot's numbers
+print(pca.reconstruction_error)       # what the dropped components cost
+
+emb = reducer.reduce(X, algorithm="umap", n_components=2, seed=42)
+xy = emb.transformed                  # 2-D coordinates to plot</code></pre>
+  <div class="callout callout-warning" style="margin-top: 4px; font-size: 0.75em;">
+    Kernel PCA, Isomap and LLE are not in the engine &mdash; use scikit-learn for those (Exercise 3.2 / 3.5).
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Timing: 2 min. "One reduce() call, four algorithms. The result object carries the embedding, the explained-variance ratio and the reconstruction error you computed by hand from the SVD." On the 3,000-customer sample the first five PCs explain about 26%, 23%, 15%, 14% and 14% of the variance &mdash; there is no single dominant axis, so do not expect a sharp scree elbow. The same engine with algorithm="nmf" does topic extraction in 4.6. The assessment's dimensionality-reduction and topic tasks use this engine.
+  </aside>
+</section>
+
+<section>
   <h2>Exercise 4.3: PCA, t-SNE &amp; UMAP</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="callout callout-kailash">
-    <strong>Task:</strong> Apply PCA to e-commerce data. Compare t-SNE vs UMAP.
+    <strong>Task:</strong> Reduce Singapore e-commerce customer features (<code>churned</code> excluded).
     <ul style="font-size: 0.85em; margin-top: 8px;">
-      <li>Compute PCA, interpret first 3 components via loadings</li>
-      <li>Plot scree curve; choose $k$ for 95% variance</li>
-      <li>Compare t-SNE (perplexity 5, 30, 50) vs UMAP (n_neighbours 5, 15, 50)</li>
-      <li>Demonstrate reconstruction error trade-off</li>
+      <li>3.1 PCA via SVD: scree, loadings for the first components, reconstruction trade-off</li>
+      <li>3.2 Kernel PCA: linear vs RBF vs polynomial, sweep RBF gamma</li>
+      <li>3.3 t-SNE at perplexity 5, 15, 30, 50; 3.4 UMAP at four (n_neighbors, min_dist) settings + <code>.transform()</code> on held-out rows</li>
+      <li>3.5 Rank every reducer by <strong>trustworthiness</strong> (neighbourhood preservation) and estimate intrinsic dimension</li>
     </ul>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Assessment: scree plot shows variance explained; loadings interpreted with domain meaning; hyperparameter sensitivity explored.
+    Timing: 1 min. Assessment: scree plot shows variance explained; loadings interpreted with domain meaning; hyperparameter sensitivity explored. Why trustworthiness and not silhouette? Clustering an embedding and scoring the clusters rewards methods that tear the data into blobs (t-SNE does this by design); trustworthiness asks the right question &mdash; are a point's neighbours in the embedding also its neighbours in the original space? The intrinsic-dimension estimator (Levina&ndash;Bickel nearest-neighbour MLE) returns about 8 on 8-dimensional synthetic data, a useful sanity check before using it on the customers.
   </aside>
 </section>
 

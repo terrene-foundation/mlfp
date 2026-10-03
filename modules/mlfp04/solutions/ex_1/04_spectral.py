@@ -6,10 +6,11 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Build an RBF affinity graph between points
-#   - Embed points using the top-k eigenvectors of the graph Laplacian
+#   - Build an RBF affinity graph between points and its normalised Laplacian
+#   - Embed points using the SMALLEST-k eigenvectors of the graph Laplacian
 #   - Cluster in the spectral embedding space with K-means
-#   - Recognise non-convex cluster shapes that K-means cannot separate
+#   - Recognise non-convex cluster shapes that K-means cannot separate, and
+#     why Euclidean silhouette cannot be the judge of that
 #
 # PREREQUISITES: 01_kmeans.py (K-means as the embedding-space learner).
 #
@@ -17,10 +18,11 @@
 #
 # TASKS:
 #   1. Theory — affinity, Laplacian, eigenvectors, embedding
-#   2. Build — subsample, fit spectral for a few K values
+#   2. Build — hand-built affinity → Laplacian → eigenvectors on two moons,
+#      then sklearn spectral on a customer subsample for a few K values
 #   3. Train — score partitions and pick the best K
 #   4. Visualise — silhouette vs K
-#   5. Apply — Singapore SMRT train-line community detection, $ impact
+#   5. Apply — Singapore rail-network community detection, $ impact
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -29,8 +31,9 @@ import time
 
 import numpy as np
 from dotenv import load_dotenv
-from sklearn.cluster import SpectralClustering
-from sklearn.metrics import silhouette_score
+from sklearn.cluster import KMeans, SpectralClustering
+from sklearn.datasets import make_moons
+from sklearn.metrics import adjusted_rand_score, silhouette_score
 
 from kailash_ml import ModelVisualizer
 
@@ -77,8 +80,70 @@ tracker, exp_name = setup_engines()
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD: Subsample aggressively, fit spectral for K in {3,4,5}
+# TASK 2 — BUILD: Spectral by hand on two moons, then on customers
 # ════════════════════════════════════════════════════════════════════════
+# 2a. Build the pipeline yourself on data whose true groups we KNOW: two
+# interlocking half-moons. They are non-convex, so K-means (which draws a
+# straight boundary between two centroids) cannot separate them.
+
+X_moons, y_moons = make_moons(n_samples=400, noise=0.06, random_state=RANDOM_STATE)
+GAMMA_MOONS = 20.0
+
+
+def spectral_embedding(
+    X: np.ndarray, k: int, gamma: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """RBF affinity → normalised Laplacian → k smallest eigenvectors.
+
+    Returns (U, eigenvalues) where U is the row-normalised n×k embedding
+    (Ng-Jordan-Weiss) and eigenvalues are the k+1 smallest of L_sym.
+    """
+    sq_dists = ((X[:, None, :] - X[None, :, :]) ** 2).sum(axis=-1)
+    A = np.exp(-gamma * sq_dists)  # 1. affinity
+    np.fill_diagonal(A, 0.0)
+    d = A.sum(axis=1)  # 2. degrees
+    d_inv_sqrt = 1.0 / np.sqrt(d)
+    L_sym = np.eye(X.shape[0]) - d_inv_sqrt[:, None] * A * d_inv_sqrt[None, :]
+    eigvals, eigvecs = np.linalg.eigh(L_sym)  # 3. ascending eigenvalues
+    U = eigvecs[:, :k]  # SMALLEST k eigenvectors
+    U = U / np.linalg.norm(U, axis=1, keepdims=True)
+    return U, eigvals[: k + 1]
+
+
+U_moons, moon_eigvals = spectral_embedding(X_moons, k=2, gamma=GAMMA_MOONS)
+moons_spectral = KMeans(n_clusters=2, random_state=RANDOM_STATE, n_init=10).fit_predict(
+    U_moons
+)
+moons_kmeans = KMeans(n_clusters=2, random_state=RANDOM_STATE, n_init=10).fit_predict(
+    X_moons
+)
+ari_spectral = adjusted_rand_score(y_moons, moons_spectral)
+ari_kmeans = adjusted_rand_score(y_moons, moons_kmeans)
+sil_moons_spectral = silhouette_score(X_moons, moons_spectral)
+sil_moons_kmeans = silhouette_score(X_moons, moons_kmeans)
+
+print("=" * 70)
+print("  Spectral by hand on two moons (true labels known)")
+print("=" * 70)
+print(f"  Smallest Laplacian eigenvalues: {np.round(moon_eigvals, 5)}")
+print("  (a near-zero eigenvalue per well-separated component, then a gap)")
+print(f"  {'Method':<22} {'ARI vs truth':>13} {'Euclid. silhouette':>19}")
+print(f"  {'Spectral (by hand)':<22} {ari_spectral:>13.3f} {sil_moons_spectral:>19.3f}")
+print(f"  {'K-means on raw X':<22} {ari_kmeans:>13.3f} {sil_moons_kmeans:>19.3f}")
+if ari_spectral > ari_kmeans and sil_moons_spectral < sil_moons_kmeans:
+    print(
+        "  Spectral recovers the moons far better (ARI), yet Euclidean silhouette\n"
+        "  prefers K-means: silhouette rewards compact, convex blobs, so it\n"
+        "  PENALISES a correct non-convex partition."
+    )
+else:
+    print(
+        "  Compare the two columns: ARI measures agreement with the truth;\n"
+        "  Euclidean silhouette measures convex compactness. They need not agree."
+    )
+
+# 2b. On the real customers, sklearn's SpectralClustering runs the same
+# pipeline. Subsample aggressively — the affinity matrix is n×n.
 
 customers, feature_cols = load_customers()
 X_scaled, _ = standardise(customers, feature_cols)
@@ -114,6 +179,9 @@ for k in K_CANDIDATES:
 
 
 # ── Checkpoint 1 ──────────────────────────────────────────────────────────
+assert U_moons.shape == (400, 2), "Task 2: moons embedding should be n x k"
+assert moon_eigvals[0] < 1e-8, "Task 2: smallest L_sym eigenvalue should be ~0"
+assert ari_spectral > ari_kmeans, "Task 2: spectral should beat K-means on the moons"
 assert len(spectral_results) == len(K_CANDIDATES), "Task 2: spectral sweep incomplete"
 print("\n  [ok] Checkpoint 1 passed — spectral embeddings fitted\n")
 
@@ -123,22 +191,31 @@ print("\n  [ok] Checkpoint 1 passed — spectral embeddings fitted\n")
 # ════════════════════════════════════════════════════════════════════════
 # Spectral has no training loop in the gradient-descent sense — the
 # "training" is the eigendecomposition followed by a tiny K-means on the
-# embedding. We pick K by silhouette in the SPECTRAL embedding space.
+# embedding. We score each K by silhouette in the ORIGINAL standardised
+# feature space (not the spectral embedding) — and the moons above showed
+# that this ruler is biased toward convex, K-means-like partitions.
 
 best_k_spec, best_stats = max(spectral_results.items(), key=lambda x: x[1]["sil"])
 print(f"  Best spectral K: {best_k_spec}  (silhouette={best_stats['sil']:.4f})")
 print(f"  Compare with K-means silhouette on the SAME subsample:")
 
-from sklearn.cluster import KMeans
-
 km_compare = KMeans(n_clusters=best_k_spec, random_state=RANDOM_STATE, n_init=10)
 km_labels_sub = km_compare.fit_predict(X_spec)
 km_sil = silhouette_score(X_spec, km_labels_sub)
 print(f"    K-means silhouette: {km_sil:.4f}")
-print(
-    f"    Δ (spectral − kmeans) = {best_stats['sil'] - km_sil:+.4f}  "
-    "(positive = spectral wins; expected on non-convex structure)"
-)
+delta_sil = best_stats["sil"] - km_sil
+print(f"    Δ (spectral − kmeans) = {delta_sil:+.4f}")
+if delta_sil < 0:
+    print(
+        "    K-means scores higher — expected: it optimises (almost) what\n"
+        "    Euclidean silhouette rewards. This is NOT evidence that spectral\n"
+        "    is wrong; without ground truth, judge it on the business profile."
+    )
+else:
+    print(
+        "    Spectral scores higher even on a convex-biased ruler — the\n"
+        "    customer groups are separated by more than straight-line distance."
+    )
 
 spec_labels = best_stats["labels"]
 
@@ -171,12 +248,12 @@ print("\n  [ok] Checkpoint 3 passed — spectral visualisation rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: SMRT Singapore Train-Line Community Detection
+# TASK 5 — APPLY: Singapore Rail-Network Community Detection
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: SMRT Corporation operates Singapore's MRT and LRT network.
+# SCENARIO: A Singapore rail operator runs part of the MRT and LRT network.
 # Station-to-station passenger flows form a natural graph: each station
 # is a node, each tap-in→tap-out pair is an edge weighted by rider count.
-# SMRT's capacity planning team wants to discover "passenger communities"
+# The operator's capacity planning team wants to discover "passenger communities"
 # — groups of stations that trade riders densely with each other (CBD
 # commuter cluster, Woodlands→Marina Bay commuter corridor, Orchard
 # tourist cluster).
@@ -190,27 +267,29 @@ print("\n  [ok] Checkpoint 3 passed — spectral visualisation rendered\n")
 #   - Normalised-cut (what spectral optimises) is the textbook community-
 #     detection objective
 #
-# BUSINESS IMPACT: SMRT's disclosed 2024 rail revenue was ~S$850M. A
-# data-driven community taxonomy feeds three concrete operations:
+# BUSINESS IMPACT (illustrative assumptions, not reported figures): assume
+# ~S$850M annual rail revenue. A data-driven community taxonomy feeds
+# three concrete operations:
 #   1. Peak-hour train assignment — extra cars on the dense commute
-#      corridor identified by the top eigenvector. Typical capacity-
+#      corridor separated by the Fiedler vector (the eigenvector of the
+#      second-smallest Laplacian eigenvalue). Assumed capacity-
 #      matching lift: 3-5% ridership recovered from passengers who
 #      currently cannot board during peak (~S$25M/year revenue recovery).
 #   2. Advertising revenue — station-group media packages priced on
-#      actual community co-occurrence, not geographic adjacency. Typical
+#      actual community co-occurrence, not geographic adjacency. Assumed
 #      yield uplift 8-12% on ~S$40M ad revenue = ~S$4M/year.
 #   3. Incident rerouting — when a line fails, the community graph tells
 #      ops which bus bridges to prioritise.
 # Total annual benefit ≈ S$29M vs. one-time modelling cost of a few
 # engineer-hours (spectral on 200 nodes is 3 seconds).
 
-print("  APPLY — SMRT Train-Line Community Detection")
+print("  APPLY — Rail-Network Community Detection")
 print("  ─────────────────────────────────────────────────────────────────")
 sizes = np.bincount(spec_labels)
 for i, n in enumerate(sizes):
     print(f"    Community {i}: {n:>5,} customers ({n/n_spec:6.1%})")
-print("    (In the SMRT scenario each node is a STATION, not a customer.)")
-print("    Estimated annual benefit: S$29M (capacity + ads + rerouting).")
+print("    (In the rail scenario each node is a STATION, not a customer.)")
+print("    Illustrative annual benefit: S$29M (capacity + ads + rerouting).")
 
 
 # ── Checkpoint 4 ──────────────────────────────────────────────────────────
@@ -237,6 +316,8 @@ track_run(
         "spectral_best_silhouette": float(best_stats["sil"]),
         "kmeans_baseline_silhouette": float(km_sil),
         "spectral_minus_kmeans_delta": float(best_stats["sil"] - km_sil),
+        "moons_ari_spectral": float(ari_spectral),
+        "moons_ari_kmeans": float(ari_kmeans),
     }
     | {
         f"spectral_k{k}_silhouette": float(r["sil"])
@@ -252,9 +333,11 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — ClusteringEngine.fit(algorithm='spectral')
 # ════════════════════════════════════════════════════════════════════════
-# kailash-ml 1.5.1's ClusteringEngine wraps spectral clustering with the
-# same RBF-affinity + Laplacian-embedding + KMeans-on-embedding pipeline
-# this lesson just hand-built. The engine handles polars→numpy and
+# kailash-ml's ClusteringEngine wraps sklearn's SpectralClustering — the
+# same affinity + Laplacian-embedding + KMeans-on-embedding pipeline this
+# lesson hand-built on the moons. One difference: the engine builds a
+# k-nearest-neighbour affinity graph (affinity="nearest_neighbors")
+# instead of the RBF kernel, so its labels can differ from the sweep above. The engine handles polars→numpy and
 # returns ClusterResult — silhouette, CH, inertia, labels — in one call.
 
 import polars as pl
@@ -285,13 +368,14 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Build an RBF affinity matrix and the graph Laplacian
+  [x] Build an RBF affinity matrix and the normalised graph Laplacian
   [x] Embed points via the smallest k eigenvectors of L
   [x] Run K-means on the spectral embedding instead of the raw features
   [x] Recognise when spectral beats K-means (non-convex shapes, graph-
-      structured data)
-  [x] Mapped the method onto SMRT MRT community detection for a
-      ~S$29M / year capacity + ads + rerouting benefit
+      structured data) — measured with ARI against known labels, because
+      Euclidean silhouette is biased toward convex partitions
+  [x] Mapped the method onto rail-network community detection for an
+      illustrative ~S$29M / year capacity + ads + rerouting benefit
 
   KEY INSIGHT: When your data is NATURALLY a graph (stations, users,
   molecules), spectral is the default. When the similarity you care

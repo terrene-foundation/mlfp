@@ -24,8 +24,10 @@
 # THEORY:
 #   OLS assumes: (1) linearity, (2) no perfect multicollinearity,
 #   (3) homoscedastic errors, (4) normally distributed errors.
-#   When assumptions break, estimates are still unbiased but SEs
-#   are wrong — making t-tests and CIs unreliable.
+#   If errors are heteroscedastic or non-normal, the coefficients stay
+#   unbiased but the SEs are wrong — t-tests and CIs become unreliable.
+#   If linearity fails or a relevant variable is omitted, the
+#   coefficients themselves are BIASED.
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -71,13 +73,17 @@ print(f"  Residual sigma_hat = ${fit['sigma_hat']:,.0f}")
 # THEORY — Why Diagnostics Matter
 # ════════════════════════════════════════════════════════════════════════
 # OLS gives you numbers regardless of whether its assumptions hold.
-# The coefficients might be unbiased even if assumptions fail, but the
-# standard errors — and therefore every t-test, p-value, and confidence
-# interval — can be wrong.
+# Which assumption fails decides the damage. Heteroscedastic or
+# non-normal errors leave the coefficients unbiased but make the
+# standard errors — and so every t-test, p-value and confidence
+# interval — wrong. A misspecified functional form (true curve, fitted
+# line) or an omitted variable biases the coefficients themselves.
 #
 # Analogy: Imagine measuring the height of buildings with a ruler that
-# stretches when it gets warm. Your measurements (coefficients) might
-# still be centred on the truth, but your error bars (SEs) are wrong.
+# stretches when it gets warm. If it stretches as often as it shrinks,
+# your measurements (coefficients) are still centred on the truth but
+# your error bars (SEs) are wrong. If the ruler is simply the wrong
+# length (misspecification), every measurement is off — that is bias.
 # You think you know a building is 50.0 +/- 0.1 metres, but really
 # it is 50.0 +/- 2.0 metres. Diagnostics check the ruler.
 #
@@ -179,8 +185,9 @@ print(
     f"{'Homoscedastic' if bp_p > 0.05 else 'HETEROSCEDASTIC — variance depends on predictors'}"
 )
 
-# INTERPRETATION: If residuals are heteroscedastic, OLS estimates are
-# still unbiased but the standard errors are wrong — making t-tests
+# INTERPRETATION: If residuals are heteroscedastic (and the model is
+# otherwise correctly specified), OLS estimates are still unbiased but
+# the standard errors are wrong — making t-tests
 # and confidence intervals unreliable. Remedies: WLS (next file),
 # heteroscedasticity-consistent (HC) standard errors, or log transform.
 

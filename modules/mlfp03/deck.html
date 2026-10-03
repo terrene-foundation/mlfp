@@ -1154,13 +1154,17 @@ for t in result.all_trials:
       <div class="annotation">g_i = first derivative (gradient), h_i = second derivative (Hessian) of loss w.r.t. prediction</div>
     </div>
   </div>
-  <div class="callout callout-advanced">
-    <strong>Why 2nd order?</strong> The Hessian gives curvature information, enabling Newton-like updates. This converges faster than gradient-only methods and naturally adapts the learning rate per sample.
+  <div class="derivation-step">
+    <div class="step-label">With &Omega;(f) = &gamma;T + &frac12;&lambda;&Sigma;w&sup2;, group by leaf j (G_j = &Sigma;g_i, H_j = &Sigma;h_i) and minimise</div>
+    <div class="equation-box" style="margin:8px 0;">
+      <span class="katex-display">w_j^* = -\frac{G_j}{H_j + \lambda} \qquad \mathcal{L}^* = -\tfrac{1}{2}\sum_{j=1}^{T} \frac{G_j^2}{H_j + \lambda} + \gamma T</span>
+      <div class="annotation">T = number of leaves. Gain (next slide) = loss before the split &minus; loss after it.</div>
+    </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 3 min. This is the core innovation of XGBoost. Most gradient boosting implementations only use the gradient (1st order). XGBoost adds the Hessian, which is like adding Newton's method to gradient descent. For beginners: "XGBoost uses both the slope and the curvature to find the best correction." For experts: note this is why XGBoost supports arbitrary differentiable loss functions.</aside>
+  <aside class="notes">Timing: 3 min. Classic gradient boosting (Friedman's original, sklearn's GradientBoosting) is first-order: each tree fits the negative gradient. XGBoost uses the Hessian too, and so do LightGBM and CatBoost. The Hessian gives curvature, so each leaf takes a Newton step w* = -G/(H+lambda) instead of a fixed-size gradient step. The regulariser Omega charges gamma per leaf and lambda for large leaf weights. Substituting w* back gives the best achievable loss for a given tree structure; the split gain on the next slide is that quantity before minus after the split. For beginners: "XGBoost uses both the slope and the curvature to find the best correction." For experts: note this is why XGBoost supports arbitrary differentiable loss functions.</aside>
 </section>
 
 <!-- SLIDE 38 — XGBoost Split Gain -->
@@ -1232,7 +1236,7 @@ for t in result.all_trials:
     <tbody>
       <tr><td><strong>Tree growth</strong></td><td>Level-wise</td><td>Leaf-wise</td><td>Symmetric</td></tr>
       <tr><td><strong>Speed</strong></td><td>Moderate</td><td>Fastest</td><td>Moderate</td></tr>
-      <tr><td><strong>Categoricals</strong></td><td>Manual encoding</td><td>Manual encoding</td><td>Native</td></tr>
+      <tr><td><strong>Categoricals</strong></td><td>Native (<code>enable_categorical</code>) or encode</td><td>Native (<code>categorical_feature</code>)</td><td>Native (ordered target stats)</td></tr>
       <tr><td><strong>Overfitting</strong></td><td>&lambda;, &gamma;, depth</td><td>&lambda;, &gamma;, leaves</td><td>Ordered boosting</td></tr>
       <tr><td><strong>Best for</strong></td><td>General tabular</td><td>Large data, speed</td><td>Many categoricals</td></tr>
     </tbody>
@@ -1251,25 +1255,44 @@ for t in result.all_trials:
   <h2>Kailash Bridge: Gradient Boosting</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline &mdash; Boosting Models</h3>
-    <pre><code class="language-python">from kailash_ml import TrainingPipeline
+    <h3>TrainingPipeline &mdash; one interface, three libraries</h3>
+    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+from kailash.db import ConnectionManager
+from kailash_ml import ModelRegistry, TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from shared.mlfp03.ex_7 import credit_feature_schema, prepare_credit_frames
 
-# Compare all three boosting frameworks
-for model_name in ["xgboost", "lightgbm", "catboost"]:
-    pipeline = TrainingPipeline(
-        model=model_name,
-        cv_strategy="stratified_kfold",
-        cv_folds=5,
-        metric="f1_weighted",
-        hyperparams={"n_estimators": 500, "learning_rate": 0.05}
-    )
-    results = pipeline.fit(X_train, y_train)
-    print(f"{model_name}: {results.mean_score:.4f}")</code></pre>
+dev, test, cols = prepare_credit_frames()  # leak column dropped; test held out
+SPECS = {
+    "xgboost": ModelSpec("xgboost.XGBClassifier",
+                         {"n_estimators": 300, "learning_rate": 0.05}),
+    "lightgbm": ModelSpec("lightgbm.LGBMClassifier",
+                          {"n_estimators": 300, "learning_rate": 0.05,
+                           "verbose": -1}, framework="lightgbm"),
+    "catboost": ModelSpec("catboost.CatBoostClassifier",
+                          {"iterations": 300, "learning_rate": 0.05,
+                           "verbose": 0}),
+}
+
+async def compare():
+    conn = ConnectionManager("sqlite:///mlfp03_models.db")
+    await conn.initialize()
+    try:
+        pipe = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
+        for name, spec in SPECS.items():
+            r = await pipe.train(data=dev, schema=credit_feature_schema(cols),
+                model_spec=spec, eval_spec=EvalSpec(metrics=["accuracy", "auc"]),
+                experiment_name=f"credit_{name}")
+            print(name, round(r.metrics["auc"], 3))
+    finally:
+        await conn.close()
+
+asyncio.run(compare())</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 1 min. TrainingPipeline provides a unified interface for all three boosting libraries. Students do not need to learn three different APIs. The exercise uses this to compare XGBoost, LightGBM, and CatBoost on the same data with the same evaluation.</aside>
+  <aside class="notes">Timing: 1 min. TrainingPipeline gives one train() call for all three libraries: a ModelSpec names the class, train() holds out 20% of the dev frame (a single holdout, not cross-validation), scores it and registers the model. On the leak-free credit data the three land within half a point of each other: holdout ROC AUC about 0.79 each. That is the honest number; with the planted future_default_indicator column left in, AUC jumps to about 0.99 and XGBoost puts most of its importance on that one column. The engine's own evaluation only computes metrics from labels plus ROC AUC; AUC-PR, the primary metric for 13%-positive data, is computed from predict_proba on the test frame. Exercise 3.4 calls the three libraries directly (it needs early stopping and native CatBoost categoricals) on the same leak-free split.</aside>
 </section>
 
 <!-- SLIDE 42 — Lesson 3.4 Summary -->
@@ -1284,7 +1307,7 @@ for model_name in ["xgboost", "lightgbm", "catboost"]:
     <li><strong>In practice:</strong> Try all three; differences are marginal on most datasets</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.4:</strong> Train XGBoost, LightGBM, CatBoost on credit scoring data. Compare accuracy, training time, feature importance. Tune key hyperparameters. Justify selection.
+    <strong>Exercise 3.4:</strong> Boosting from scratch, then XGBoost, LightGBM and CatBoost on Singapore credit data after a leak screen. Compare AUC-PR, log loss and train time; sweep learning rate &times; depth; early-stop on a validation split, never the test set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -103,7 +103,7 @@
   <text x="400" y="318" font-family="Inter" font-size="10" fill="#64748B">Jul</text>
   <text x="730" y="318" font-family="Inter" font-size="10" fill="#64748B">Dec</text>
 </svg>
-<figcaption>Raw data bounces month-to-month (red). A 3-month rolling mean (blue) reacts quickly but still wobbles. A 12-month rolling mean (teal) reveals the underlying trend. Windows are how you choose the balance between responsiveness and smoothness.</figcaption>
+<figcaption>Illustrative series. Raw data bounces month-to-month (red). A 3-month rolling mean (blue) reacts quickly but still wobbles. A 12-month rolling mean (teal) reveals the underlying trend. Windows are how you choose the balance between responsiveness and smoothness.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -157,7 +157,7 @@
     </g>
   </g>
 </svg>
-<figcaption>Group-by collapses Bishan's three rows into one; a window broadcasts the aggregation back to every row, preserving the original shape.</figcaption>
+<figcaption>Illustrative values. Group-by collapses Bishan's three rows into one; a window broadcasts the aggregation back to every row, preserving the original shape.</figcaption>
 </figure>
 
 <h3>The <code>.over(...)</code> modifier</h3>
@@ -202,6 +202,9 @@
 </div>
 
 <p>
+  A window counts <em>rows</em>, not months: "the last 12 rows" means "the
+  last 12 months" only if every month is present exactly once. The worked
+  example builds a complete town × month calendar for exactly this reason.
   The first $w - 1$ rows do not have enough history, so Polars fills them
   with <code>null</code>. That is correct behaviour — there was no prior
   data to average. Do not try to fix it with zeros; the nulls are telling
@@ -219,7 +222,9 @@
 <p>
   <code>shift(n)</code> moves every value $n$ positions forward, filling the
   first $n$ rows with null. Combined with <code>over("town")</code>, each
-  town shifts independently.
+  town shifts independently. <code>shift(12)</code> means "same month last
+  year" <em>only</em> when the series has no missing months — on the course
+  data, skipping the calendar step misaligns 40 rows.
 </p>
 
 <pre><code class="language-python">monthly_prices = monthly_prices.with_columns(
@@ -250,11 +255,12 @@ monthly_prices = monthly_prices.with_columns(
 <div class="callout theory">
   <span class="label">🔵 Theory: Why YoY and not MoM?</span>
   <p>
-    Month-over-month change is dominated by seasonality. Singapore HDB
-    transactions peak in certain months (post-Chinese New Year, pre-year-end).
-    A MoM change mixes genuine appreciation with calendar effects. A
-    year-over-year change compares the same calendar month, so seasonal
-    effects cancel and you see the underlying market movement.
+    If a series has seasonality — a pattern that repeats at the same point
+    each year, such as holiday-month dips — month-over-month change mixes
+    genuine movement with calendar effects. A year-over-year change compares
+    the same calendar month, so seasonal effects cancel. Whether a series
+    actually <em>has</em> seasonality is something you test, not assume:
+    Step 5 of the worked example shows the course's HDB data has none.
   </p>
 </div>
 
@@ -269,8 +275,10 @@ monthly_prices = monthly_prices.with_columns(
   <strong>lazy frame</strong> gives Polars that permission.
 </p>
 
-<pre><code class="language-python">result = (
-    pl.scan_parquet("hdb_resale.parquet")        # lazy: no data loaded yet
+<pre><code class="language-python">path = MLFPDataLoader().load_raw("mlfp01", "hdb_resale.parquet")
+result = (
+    pl.scan_parquet(path)                         # lazy: no data loaded yet
+    .with_columns(pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"))
     .filter(pl.col("year") >= 2020)
     .group_by("town")
     .agg(pl.col("resale_price").median().alias("median"))
@@ -280,12 +288,16 @@ monthly_prices = monthly_prices.with_columns(
 </code></pre>
 
 <p>
+  <code>load_raw</code> returns the path of the data file (the raw parquet
+  has no <code>year</code> column, so we derive it first).
   <code>scan_parquet</code> returns a lazy frame — a <em>plan</em>, not
   data. The chain records your intentions without doing any work. When you
-  call <code>collect()</code>, Polars looks at the whole plan, optimises it
-  (pushes the filter into the scan, fuses operations, parallelises where
-  possible), and executes it in one shot. For big data, the speedup is
-  dramatic — often 5× or more.
+  call <code>collect()</code>, Polars looks at the whole plan, optimises it,
+  and executes it in one shot. For this query the optimiser reads only the
+  3 columns it needs (month, town, resale_price) out of 11 and applies the
+  filter before grouping; with filters on stored columns it can also skip
+  whole blocks of the file. On large files the saving is substantial; on
+  our 50,000-row file both versions finish in well under a second.
 </p>
 
 <div class="callout foundations">
@@ -306,16 +318,16 @@ monthly_prices = monthly_prices.with_columns(
   <g transform="translate(20, 20)">
     <text x="180" y="20" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#F43F5E">Eager (default)</text>
     <rect x="20" y="30" width="330" height="30" rx="4" fill="#FFF1F2"/>
-    <text x="40" y="50" font-family="JetBrains Mono" font-size="11">load → 500,000 rows in memory</text>
+    <text x="40" y="50" font-family="JetBrains Mono" font-size="11">load → 50,150 rows × 11 cols</text>
     <rect x="20" y="70" width="330" height="30" rx="4" fill="#FFF1F2"/>
-    <text x="40" y="90" font-family="JetBrains Mono" font-size="11">filter(year≥2020) → 180k rows</text>
+    <text x="40" y="90" font-family="JetBrains Mono" font-size="11">filter(year≥2020) → 24,904 rows</text>
     <rect x="20" y="110" width="330" height="30" rx="4" fill="#FFF1F2"/>
     <text x="40" y="130" font-family="JetBrains Mono" font-size="11">group_by(town).agg(median)</text>
     <rect x="20" y="150" width="330" height="30" rx="4" fill="#FFF1F2"/>
-    <text x="40" y="170" font-family="JetBrains Mono" font-size="11">sort → 26 rows</text>
-    <text x="20" y="210" font-family="Inter" font-size="12" fill="#F43F5E">Each step executes immediately</text>
-    <text x="20" y="228" font-family="Inter" font-size="12" fill="#F43F5E">even if the filter could have</text>
-    <text x="20" y="246" font-family="Inter" font-size="12" fill="#F43F5E">been pushed into the scan</text>
+    <text x="40" y="170" font-family="JetBrains Mono" font-size="11">sort → 27 rows</text>
+    <text x="20" y="210" font-family="Inter" font-size="12" fill="#F43F5E">Each step executes immediately,</text>
+    <text x="20" y="228" font-family="Inter" font-size="12" fill="#F43F5E">loading all 11 columns even though</text>
+    <text x="20" y="246" font-family="Inter" font-size="12" fill="#F43F5E">the query uses only 3</text>
   </g>
 
   <!-- Lazy -->
@@ -329,9 +341,9 @@ monthly_prices = monthly_prices.with_columns(
     <text x="40" y="130" font-family="JetBrains Mono" font-size="11">group_by → plan node</text>
     <rect x="20" y="150" width="330" height="30" rx="4" fill="#E0F2F1" stroke="#0D9488"/>
     <text x="40" y="170" font-family="JetBrains Mono" font-size="11" fill="#0D9488">collect() → optimise + run once</text>
-    <text x="20" y="210" font-family="Inter" font-size="12" fill="#0D9488">Polars pushes the filter into</text>
-    <text x="20" y="228" font-family="Inter" font-size="12" fill="#0D9488">the scan: never loads the 320k</text>
-    <text x="20" y="246" font-family="Inter" font-size="12" fill="#0D9488">rows outside the date range</text>
+    <text x="20" y="210" font-family="Inter" font-size="12" fill="#0D9488">The optimiser reads only the 3</text>
+    <text x="20" y="228" font-family="Inter" font-size="12" fill="#0D9488">columns used and filters before</text>
+    <text x="20" y="246" font-family="Inter" font-size="12" fill="#0D9488">grouping (see .explain())</text>
   </g>
 </svg>
 <figcaption>Eager mode runs each step immediately. Lazy mode builds a plan, optimises it globally, and executes once. For a long pipeline on large data, lazy is much faster.</figcaption>
@@ -360,13 +372,15 @@ monthly_prices = monthly_prices.with_columns(
   <h3>📝 Goal</h3>
   <p>
     Compute monthly median price per square metre for every HDB town, add
-    a 12-month rolling mean and year-over-year change, and rank the top 5
-    fastest-growing districts over the last 12 months.
+    a 12-month rolling mean and year-over-year change, rank the fastest- and
+    slowest-growing towns in the latest month, and test whether the data
+    has a seasonal pattern.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
-    <p>Load, parse dates, and build the monthly series.</p>
+    <p>Load, parse dates, and build the monthly series — on a
+       <strong>complete calendar</strong>.</p>
     <pre><code class="language-python">import polars as pl
 from shared import MLFPDataLoader
 
@@ -376,17 +390,36 @@ hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
 )
 
-monthly_prices = (
+monthly = (
     hdb.group_by("town", "transaction_date")
     .agg(
         pl.col("price_per_sqm").median().alias("median_price_sqm"),
         pl.len().alias("transaction_count"),
     )
+)
+print(f"Town-months with sales: {monthly.height:,}")
+
+# Windows count ROWS, not months. Give every town every month first.
+grid = (
+    monthly.select("town").unique()
+    .join(monthly.select("transaction_date").unique(), how="cross")
+)
+monthly_prices = (
+    grid.join(monthly, on=["town", "transaction_date"], how="left")
     .sort("town", "transaction_date")
-)</code></pre>
+)
+print(f"Complete town x month grid: {monthly_prices.height:,}")</code></pre>
+    <pre><code class="language-text">Town-months with sales: 3,236
+Complete town x month grid: 3,240</code></pre>
     <p>
-      Note the sort — rolling windows depend on row order. A window on
-      unsorted data is nonsense.
+      27 towns × 120 months is 3,240, but only 3,236 town-months had a
+      sale: Bukit Timah has none in 2015-10, 2017-02 and 2022-07, and
+      Central Area none in 2015-08. Without the grid, those towns' rows
+      skip a month, so "12 rows back" is no longer "12 months back". The
+      cross join builds every (town, month) pair; the left join leaves the
+      four missing months as explicit nulls. Then the sort — rolling
+      windows depend on row order, and a window on unsorted data is
+      nonsense.
     </p>
   </div>
 
@@ -401,7 +434,28 @@ monthly_prices = (
     .alias("rolling_12m"),
 )
 
-print(monthly_prices.filter(pl.col("town") == "BISHAN").tail(15))</code></pre>
+print(
+    monthly_prices.filter(pl.col("town") == "BISHAN")
+    .select("transaction_date", "median_price_sqm", "rolling_12m")
+    .tail(5)
+)</code></pre>
+    <pre><code class="language-text">┌──────────────────┬──────────────────┬──────────────┐
+│ transaction_date ┆ median_price_sqm ┆ rolling_12m  │
+╞══════════════════╪══════════════════╪══════════════╡
+│ 2024-08-01       ┆ 9261.993409      ┆ 10001.230668 │
+│ 2024-09-01       ┆ 9721.681655      ┆ 9947.184918  │
+│ 2024-10-01       ┆ 9667.921825      ┆ 9929.246414  │
+│ 2024-11-01       ┆ 10159.469388     ┆ 9931.13272   │
+│ 2024-12-01       ┆ 9596.785964      ┆ 9891.822792  │
+└──────────────────┴──────────────────┴──────────────┘</code></pre>
+    <p>
+      The monthly median swings by <span class="nomath">S$900</span> per sqm from one month to the next;
+      the rolling mean moves by tens. A window that contains one of the four
+      null months returns null (by default every value in the window must
+      be present), so Bukit Timah has 45 null rolling values rather than
+      the usual 11. If you would rather tolerate a few gaps, pass
+      <code>min_samples=9</code> to <code>rolling_mean</code>.
+    </p>
   </div>
 
   <div class="step">
@@ -416,8 +470,12 @@ print(monthly_prices.filter(pl.col("town") == "BISHAN").tail(15))</code></pre>
     ).alias("yoy_change_pct"),
 )</code></pre>
     <p>
-      The first 12 rows of every town will have null YoY — no 12-month
-      history. That is expected.
+      The first 12 rows of every town have null YoY — no 12-month history.
+      That is expected. Because the calendar is complete, 12 rows back is
+      exactly the same month last year. Run the same <code>shift(12)</code>
+      on the gappy <code>monthly</code> table instead and 40 rows compare
+      against the wrong month — Central Area's 2016-03 would be compared
+      with 2015-02.
     </p>
   </div>
 
@@ -438,13 +496,73 @@ print("=== TOP 5 FASTEST GROWING ===")
 print(latest_rankings.head(5))
 print("\n=== BOTTOM 5 ===")
 print(latest_rankings.tail(5))</code></pre>
+    <pre><code class="language-text">=== TOP 5 FASTEST GROWING ===
+┌───────────────┬──────────────────┬──────────────┬────────────────┐
+│ town          ┆ median_price_sqm ┆ rolling_12m  ┆ yoy_change_pct │
+╞═══════════════╪══════════════════╪══════════════╪════════════════╡
+│ BUKIT TIMAH   ┆ 10935.628415     ┆ 10051.135237 ┆ 12.003131      │
+│ BOON LAY      ┆ 8715.323741      ┆ 8319.308666  ┆ 10.87643       │
+│ PUNGGOL       ┆ 9001.991465      ┆ 8574.282444  ┆ 5.556368       │
+│ CHOA CHU KANG ┆ 8984.486146      ┆ 8799.877941  ┆ 4.416787       │
+│ QUEENSTOWN    ┆ 10117.093842     ┆ 9965.744397  ┆ 3.86183        │
+└───────────────┴──────────────────┴──────────────┴────────────────┘
+
+=== BOTTOM 5 ===
+┌─────────────┬──────────────────┬─────────────┬────────────────┐
+│ town        ┆ median_price_sqm ┆ rolling_12m ┆ yoy_change_pct │
+╞═════════════╪══════════════════╪═════════════╪════════════════╡
+│ SEMBAWANG   ┆ 8607.29771       ┆ 8634.601894 ┆ -5.304307      │
+│ PASIR RIS   ┆ 8336.685083      ┆ 8723.903518 ┆ -5.738279      │
+│ YISHUN      ┆ 8498.147561      ┆ 8535.608003 ┆ -6.632264      │
+│ GEYLANG     ┆ 8192.15444       ┆ 8523.430852 ┆ -7.59563       │
+│ JURONG WEST ┆ 8142.980132      ┆ 8675.148306 ┆ -8.768573      │
+└─────────────┴──────────────────┴─────────────┴────────────────┘</code></pre>
+    <p>
+      Read this with suspicion before you report it. Bukit Timah tops the
+      list at +12%, but it averages only about four sales a month, so one
+      month's median is very noisy. Across all 2,910 town-months with a YoY
+      value, the changes are centred on 0% (median +0.1%) with a standard
+      deviation of about 6 percentage points — this table is mostly showing
+      noise. A sturdier ranking would compare the <code>rolling_12m</code>
+      column with its value a year earlier.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Rewrite as a lazy pipeline for production speed.</p>
-    <pre><code class="language-python">rankings = (
-    pl.scan_parquet(loader.path("mlfp01", "hdb_resale.parquet"))
+    <p>Trend or seasonality? Test it rather than assume it. A
+       <em>trend</em> is a long-run direction across years; a
+       <em>seasonal</em> pattern repeats at the same point every year.
+       Average each calendar month across all towns and years:</p>
+    <pre><code class="language-python">seasonal = (
+    monthly_prices
+    .with_columns(pl.col("transaction_date").dt.month().alias("month_num"))
+    .group_by("month_num")
+    .agg(pl.col("median_price_sqm").mean().alias("seasonal_avg"))
+    .sort("month_num")
+)
+print(seasonal)   # 12 rows: one average per calendar month</code></pre>
+    <p>
+      The twelve averages run from about <span class="nomath">S$8,937</span> per sqm (May) to <span class="nomath">S$8,997</span>
+      (October) — within 0.7% of each other. The yearly median resale price
+      is just as flat: between <span class="nomath">S$839,409</span> (2020) and <span class="nomath">S$853,241</span> (2018) in every
+      year from 2015 to 2024. The course's synthetic HDB data has
+      <strong>no trend and no seasonality</strong>. That is a finding, not a
+      failure: a seasonal story ("prices dip in holiday months") is a
+      hypothesis, and you claim it only when this table shows it.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 6.</span>
+    <p>Rewrite the first stage as a lazy pipeline.
+       <code>load_raw</code> returns the file's path, and
+       <code>pl.scan_parquet</code> builds a plan over it instead of loading
+       it.</p>
+    <pre><code class="language-python">path = loader.load_raw("mlfp01", "hdb_resale.parquet")
+
+monthly_lazy = (
+    pl.scan_parquet(path)                          # lazy: nothing loaded yet
     .with_columns(
         pl.col("month").str.to_date("%Y-%m").alias("date"),
         (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("psm"),
@@ -452,19 +570,15 @@ print(latest_rankings.tail(5))</code></pre>
     .group_by("town", "date")
     .agg(pl.col("psm").median().alias("median_psm"))
     .sort("town", "date")
-    .with_columns(
-        pl.col("median_psm").shift(12).over("town").alias("psm_12m_ago"),
-    )
-    .with_columns(
-        ((pl.col("median_psm") - pl.col("psm_12m_ago"))
-         / pl.col("psm_12m_ago") * 100).alias("yoy_pct"),
-    )
-    .collect()
-)</code></pre>
+    .collect()                                     # NOW execute the plan
+)
+print(monthly_lazy.shape)   # (3236, 3) — then build the grid as in Step 1</code></pre>
     <p>
-      The whole chain runs in one pass once <code>collect()</code> is
-      called. Polars optimises the plan before executing — filter pushdown,
-      predicate fusion, and parallel scan all happen behind the scenes.
+      The chain runs in one pass once <code>collect()</code> is called.
+      Polars optimises the plan first — here it reads only the four columns
+      the query uses (month, town, floor area, price) out of eleven.
+      Calling <code>.explain()</code> instead of <code>.collect()</code>
+      prints the optimised plan so you can see this for yourself.
     </p>
   </div>
 </div>
@@ -515,12 +629,15 @@ print(latest_rankings.tail(5))</code></pre>
 <h2>Common Mistakes</h2>
 
 <div class="callout warning">
-  <span class="label">⚠ Mistake 1: Forgetting to sort before rolling</span>
+  <span class="label">⚠ Mistake 1: Forgetting to sort — or to complete the calendar — before rolling</span>
   <p>
     A rolling window operates on rows in their current order. If the data
     is not sorted by date (and by partition if you are using
     <code>over</code>), the "rolling mean" becomes a random scramble of
-    unrelated values. Always <code>sort(partition, date)</code> first.
+    unrelated values. Always <code>sort(partition, date)</code> first. And
+    because windows count rows, a missing month silently stretches the
+    window: join to a complete town × month grid before
+    <code>rolling_*</code> or <code>shift</code>.
   </p>
 </div>
 
@@ -589,6 +706,34 @@ print(latest_rankings.tail(5))</code></pre>
     Rewrite your pipeline from Exercise C using <code>pl.scan_parquet</code>
     and <code>.collect()</code>. Time both versions with Python's
     <code>time.time()</code> and report which is faster.
+  </p>
+</div>
+
+<div class="try-it">
+  <h3>🎯 Exercise E — Seasonality by flat type</h3>
+  <p>
+    Repeat Step 5 for 4-room flats only (filter <code>hdb</code> before
+    building the monthly series). Is there a calendar month whose average
+    differs from the others by more than 2%? What would you need to see
+    before telling a client "4-room prices dip in month X"?
+  </p>
+</div>
+
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: on the complete calendar, Toa Payoh's 3-month rolling mean runs
+    from about <span class="nomath">S$10,064</span> (2024-07) to <span class="nomath">S$9,759</span> (2024-12). B: Woodlands'
+    latest YoY (2024-12) is +3.1%. C: top 3 — Bukit Timah (+12.0%), Boon
+    Lay (+10.9%), Punggol (+5.6%); bottom 3 — Yishun (−6.6%), Geylang
+    (−7.6%), Jurong West (−8.8%). D: timings depend on your machine; on
+    50,000 rows both finish in well under a second, and the lazy version's
+    advantage only shows on much larger files. E: the 4-room averages spread
+    wider (about 4% between the lowest and highest month, one month about
+    2.8% from the mean) because each town-month median rests on fewer
+    sales. That is not yet seasonality: before telling a client "prices dip
+    in month X" you would need the same month to stand out in most
+    individual years, not just in the ten-year average.
   </p>
 </div>
 

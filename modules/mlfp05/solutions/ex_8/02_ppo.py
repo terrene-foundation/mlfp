@@ -83,7 +83,8 @@ from kailash_ml import ModelVisualizer
 #   (1) ACTOR-CRITIC — "A coach and a scorekeeper"
 #       Actor: the policy network pi(a|s) — decides what to do
 #       Critic: the value network V(s) — estimates how good a state is
-#       They share a neural network trunk (efficient parameter sharing).
+#       Here they are two SEPARATE networks — the ActorCritic docstring
+#       below explains why sharing a trunk stalls learning on CartPole.
 #       The critic's V(s) provides a BASELINE for variance reduction.
 #
 #   (2) GAE (Generalised Advantage Estimation) — "Crediting past actions"
@@ -201,6 +202,12 @@ def compute_gae(
       lambda=0: only immediate TD error (high bias, low variance)
       lambda=1: full Monte Carlo return (low bias, high variance)
       lambda=0.95: sweet spot for most environments
+
+    Simplification: after the LAST step of the rollout we bootstrap with
+    V = 0 even if that episode is still running, and a time-limit
+    truncation is treated like a real termination. Full PPO
+    implementations bootstrap both cases with V(s_next); with 1024-step
+    rollouts the bias this introduces is small.
     """
     advantages = [0.0] * len(rewards)
     gae = 0.0
@@ -470,11 +477,13 @@ fig3.update_layout(
 )
 fig3.write_html(str(OUTPUT_DIR / "02_ppo_advantage_dist.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_advantage_dist.html'}")
-# INTERPRETATION: The advantage distribution shows how the critic evaluates
-# actions. A distribution centred near zero with thin tails means the policy
-# is well-calibrated — most actions are "about as good as expected." Fat
-# positive tails mean some actions are surprisingly good (opportunities to
-# improve the policy further).
+# INTERPRETATION: An advantage is "how much better did this action turn
+# out than the critic expected?" A distribution centred near zero with
+# thin tails means the CRITIC predicts returns well — most actions are
+# "about as good as expected". Fat tails mean the critic is often
+# surprised (positive tail: actions that did better than predicted, which
+# the next policy update will favour). These are raw GAE values; inside
+# training they are re-normalised to mean 0, std 1 before the PPO update.
 
 # ── Plot 4: Actor loss vs critic loss ────────────────────────────────
 fig4 = viz.training_history(
@@ -488,12 +497,13 @@ fig4 = viz.training_history(
 fig4.write_html(str(OUTPUT_DIR / "02_ppo_actor_critic_loss.html"))
 print(f"  Saved: {OUTPUT_DIR / '02_ppo_actor_critic_loss.html'}")
 # INTERPRETATION: Two losses, two learning signals:
-# - Actor loss: how much the policy improved this iteration
-#   (should decrease then stabilise)
-# - Critic loss: how accurate the value function is
-#   (should decrease as V(s) predictions improve)
-# If actor loss increases while return increases, the clipping is working
-# — it's PREVENTING harmful updates.
+# - Actor loss: the clipped surrogate objective (negated). It is NOT a
+#   progress score — advantages are re-normalised every iteration, so its
+#   level is not comparable across iterations and it hovers near zero.
+#   Judge the policy by the return curve, not by this line.
+# - Critic loss: mean squared error of V(s) against the GAE returns. It
+#   can RISE while the agent improves, because longer episodes mean
+#   bigger returns to predict; it should stay finite and not explode.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert Path(OUTPUT_DIR / "02_ppo_reward_curve.html").exists()
@@ -749,12 +759,20 @@ print("\n  Learned Pricing (evening rush, supply=0.5, clear weather):")
 for dl, dec in zip(demand_levels[::4], pricing_decisions[::4]):
     print(f"    Demand={dl:.2f} -> {dec}")
 
-# INTERPRETATION: PPO learns a pricing policy that adapts to demand-supply
-# dynamics AND customer sensitivity. Unlike fixed rules that only look at
-# the demand-supply gap, PPO considers time of day (commuters tolerate
-# moderate surges, late-night riders are more price-sensitive) and weather
-# (rain increases demand but also increases price sensitivity). The net
-# result: higher revenue with less customer churn.
+# INTERPRETATION (computed from this run, not assumed): the fixed rule
+# looks only at the demand-supply gap; the PPO policy also sees time of
+# day and weather, so it CAN learn pricing the rule cannot express.
+# Whether it did on this simulator is what the comparison shows.
+if revenue_improvement > 0:
+    print(
+        f"  PPO beat the fixed surge rule by {revenue_pct:+.1f}% "
+        "on weekly revenue x satisfaction."
+    )
+else:
+    print(
+        f"  PPO did NOT beat the fixed surge rule ({revenue_pct:+.1f}%). "
+        "More iterations or a tuned entropy bonus may be needed."
+    )
 
 pricing_env.close()
 
@@ -800,25 +818,26 @@ print("  WHAT YOU'VE MASTERED — PPO")
 print("=" * 70)
 print(
     """
-  [x] Built PPO from scratch: actor-critic architecture with shared trunk
+  [x] Built PPO from scratch: actor-critic with separate actor and critic
   [x] Implemented GAE for low-variance advantage estimation
   [x] Implemented the clipped surrogate objective for stable updates
-  [x] Trained PPO on CartPole-v1 — steadier learning than DQN
+  [x] Trained PPO on CartPole-v1 and read its RL diagnostic report
   [x] Visualised the agent's learning:
-      - Reward curve: smoother convergence than DQN
-      - Policy entropy: confidence increasing over training
-      - Advantage distribution: well-calibrated action evaluation
-      - Actor vs critic loss: two learning signals working in tandem
+      - Reward curve: mean episode return per PPO iteration
+      - Policy entropy: how fast the policy became confident
+      - Advantage distribution: how well the critic predicts returns
+      - Actor vs critic loss: two learning signals, read differently
   [x] Applied PPO to Singapore ride-hailing dynamic pricing:
       - Built a custom environment with realistic demand patterns
         (morning rush, evening peak, late-night after MRT closure)
-      - PPO learned to balance revenue and customer satisfaction
+      - Compared PPO's learned pricing with a fixed surge rule
       - Visualised pricing decisions across demand levels
 
   KEY INSIGHT:
   PPO learns WHAT TO DO directly (policy), while DQN learns HOW GOOD
-  each action IS (values). PPO is more stable and handles complex
-  action spaces better. This is exactly why RLHF (in M6) uses PPO —
+  each action IS (values). PPO's clipped updates are typically more
+  stable, and a policy network extends to continuous actions (a Gaussian
+  head instead of our Categorical one). This is why RLHF (in M6) uses PPO —
   it can fine-tune an LLM's "policy" (next-token probabilities) based
   on human preference rewards.
 

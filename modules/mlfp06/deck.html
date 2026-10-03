@@ -3332,32 +3332,31 @@ server.run()            # serves until the client disconnects</code></pre>
       </ul>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Grammar:</strong> Dash-delimited path. Every <code>D</code> or <code>T</code> MUST be immediately followed by exactly one <code>R</code>.<br>
-        Example: <code>D1-R1-T1-R1</code> (department 1 head owns team 1, delegated to its responsible).
+        Example: <code>D1-R1-T1-R1</code> = Department 1 &rarr; its head Role R1 &rarr; Team 1 &rarr; that team's head Role R1. (Who <em>delegates</em> an envelope to whom is a separate concept &mdash; next slide.)
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>GovernanceEngine</h3>
-        <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from pact import (
-    GovernanceEngine, load_org_yaml, Address)
+        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash.trust.pact.yaml_resolvers import (
+    apply_governance_specs)
+from pact import (
+    Address, GovernanceEngine, load_org_yaml)
+from shared.mlfp06.ex_7 import write_org_yaml
 
-loaded = load_org_yaml("finance_org.yaml")
+loaded = load_org_yaml(write_org_yaml())  # course org
+# Structure only: departments, teams, roles
 engine = GovernanceEngine(loaded.org_definition)
+# Apply the YAML clearances + envelopes
+apply_governance_specs(engine, loaded)
 
-# Role address grammar: D1-R1-T1-R1
-#   D1    = department 1
-#   R1    = that department's head
-#   T1-R1 = team 1, owned by its responsible
 addr = Address.parse("D1-R1-T1-R1")
 verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="read_pii",
-    context={
-        "data_classification": "confidential"},
-)
-# verdict.allowed, verdict.reason,
-# verdict.level ∈ {allowed, blocked,
-#                 warn, audit}</code></pre>
+    "D1-R1-T1-R1", "read_data",
+    context={"cost": 0.10})
+# verdict.allowed, verdict.reason, verdict.level
+# level: auto_approved | flagged | held | blocked
+# allowed is True for auto_approved and flagged</code></pre>
       </div>
     </div>
   </div>
@@ -3365,7 +3364,7 @@ verdict = engine.verify_action(
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. D/T/R addressing is how PACT identifies who is requesting what. Every agent, every API call, every data access has an address. The GovernanceEngine checks the address against the rules. If beginners confused: "D/T/R is like a postal address for permissions. The system checks your address to decide what you can access."
+    Time: ~3 min. D/T/R = Department / Team / Role &mdash; never anything else. Addressing is how PACT identifies who is requesting what. Every agent, every API call, every data access has an address. Stress the two-step build: <code>GovernanceEngine(loaded.org_definition)</code> compiles only the org structure; the YAML's clearances and envelopes take effect only after <code>apply_governance_specs</code> (the course helper <code>compile_governance()</code> does both). <code>verify_action</code> is the single decision call; its four levels are auto_approved, flagged, held and blocked. If beginners confused: "D/T/R is like a postal address for permissions. The system checks your address to decide what you can access."
   </aside>
 </section>
 
@@ -3383,7 +3382,7 @@ verdict = engine.verify_action(
         <li><strong>Monotonic tightening:</strong> child envelopes must be ≤ parent on every dimension; the framework catches violations via <code>RoleEnvelope.validate_tightening</code></li>
       </ul>
       <div class="callout callout-warning" style="margin-top:10px;">
-        <strong>Fail-closed:</strong> If the governance check fails (error, timeout), access is <strong>denied</strong>. Never fail-open. A broken guard is not a free pass.
+        <strong>Know the default:</strong> the installed PACT (0.14) is <strong>fail-open</strong> for roles with no envelope and for addresses not in the org &mdash; <code>verify_action</code> auto-approves them. Attach an envelope to every role (<code>engine.set_role_envelope(...)</code>); deny paths only exist where an envelope is attached.
       </div>
     </div>
     <div class="col">
@@ -3422,16 +3421,25 @@ parent = ConstraintEnvelopeConfig(
 # on every dimension.
 try:
     RoleEnvelope.validate_tightening(
-        parent, child)
+        parent_envelope=parent,
+        child_envelope=child)   # keyword-only
 except MonotonicTighteningError as exc:
-    print(f"Escalation blocked: {exc}")</code></pre>
+    print(f"Escalation blocked: {exc}")
+
+# Attach: the head (D1-R1) defines the envelope
+# for its team role (D1-R1-T1-R1)
+engine.set_role_envelope(RoleEnvelope(
+    id="analyst_env",
+    defining_role_address="D1-R1",
+    target_role_address="D1-R1-T1-R1",
+    envelope=parent))</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Operating envelopes are the key safety mechanism. Monotonic tightening is critical: a child agent can never have MORE permissions than its parent. This prevents privilege escalation attacks. If beginners confused: "An operating envelope is like a job description with hard limits. The agent can do anything within the envelope, but nothing outside it."
+    Time: ~3 min. Operating envelopes are the key safety mechanism. Say the default out loud: in pact 0.14 a role WITHOUT an envelope is auto-approved (&ldquo;No envelope constraints &mdash; action permitted&rdquo;), so the envelope is what creates the deny path. <code>validate_tightening</code> is keyword-only; a positional call raises TypeError, not MonotonicTighteningError. Monotonic tightening is critical: a child agent can never have MORE permissions than its parent. This prevents privilege escalation attacks. If beginners confused: "An operating envelope is like a job description with hard limits. The agent can do anything within the envelope, but nothing outside it."
   </aside>
 </section>
 
@@ -3444,11 +3452,10 @@ except MonotonicTighteningError as exc:
     <div class="col">
       <h3>How It Works</h3>
       <ul>
-        <li>Parent agent has a total budget: $10.00</li>
-        <li>Parent allocates portions to child agents</li>
-        <li>Child agents cannot exceed their allocation</li>
-        <li>When a child's budget runs out, it stops and reports partial results</li>
-        <li>Parent can reallocate remaining budget dynamically</li>
+        <li>Parent role's envelope caps spend: <code>max_spend_usd=10.00</code></li>
+        <li>Each child envelope's cap must be &le; the parent's &mdash; <code>validate_tightening</code> rejects a wider child</li>
+        <li><code>verify_action(..., context={"cost": c})</code> blocks an action whose cost exceeds the role's cap</li>
+        <li>Cumulative spend per child is tracked by a ledger (Exercise 6.7 part 3 builds one: allocate, spend, overspend denied)</li>
       </ul>
     </div>
     <div class="col">
@@ -3485,16 +3492,16 @@ supervisor_env = ConstraintEnvelopeConfig(
 )
 # Child envelopes follow the same shape with
 # max_spend_usd ∈ {3.00, 2.00, 4.00, 1.00}.
-# The framework halts a child when its cap
-# is exhausted; the supervisor's remaining
-# budget is never touched.</code></pre>
+# A child at 12.00 fails validate_tightening;
+# an action costing more than the child's cap
+# gets verdict.level == "blocked".</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Budget cascading prevents any single agent from consuming the entire budget. The dynamic reallocation pattern is important: if one agent finishes under budget, the surplus can be redirected to another that needs more.
+    Time: ~2 min. Budget cascading prevents any single agent from consuming the entire budget. Two layers: the envelope caps (checked structurally and per action by PACT) and a running ledger of what each child has actually spent (ex_7/03). Reallocation &mdash; moving one child's unused allocation to another &mdash; is a ledger operation the supervisor performs; it can never lift a child above the parent's cap. On local Ollama the dollar amounts are notional, so the exercise uses them as a teaching currency.
   </aside>
 </section>
 
@@ -3505,45 +3512,36 @@ supervisor_env = ConstraintEnvelopeConfig(
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Agent + Governance = GovernedSupervisor</h3>
-    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from pact import GovernanceEngine, load_org_yaml
-from kaizen_agents import GovernedSupervisor
+    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">from kaizen_agents import GovernedSupervisor
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL
+from shared.mlfp06.ex_7 import compile_governance, make_llm_executor
 
-loaded = load_org_yaml("finance_org.yaml")
-engine = GovernanceEngine(loaded.org_definition)
+engine, org = compile_governance()  # org structure + YAML envelopes applied
 
 governed = GovernedSupervisor(
-    model="gpt-4o-mini",
+    model=DEFAULT_CHAT_MODEL,        # from OLLAMA_CHAT_MODEL
     budget_usd=2.00,
     tools=["data_analysis"],
-    data_clearance="restricted",
+    data_clearance="confidential",
 )
 
-async def executor(spec, inputs):
-    # Real LLM call or offline stub.
-    return {"result": "...", "cost": 0.01,
-            "prompt_tokens": 100,
-            "completion_tokens": 50}
-
-# Governed run — supervisor plans, executor runs.
+# The supervisor plans and governs; YOUR executor runs each step
+# on the local model (returns result, cost, token counts)
 result = await governed.run(
     objective="Analyse Q4 revenue data",
-    execute_node=executor,
+    execute_node=make_llm_executor(),
 )
 # result.success, result.budget_consumed, result.audit_trail
 
-# Asking for an action outside the envelope:
-verdict = engine.verify_action(
-    role_address="D1-R1-T1-R1",
-    action="delete_all_records",
-    context={"data_classification": "restricted"},
-)
-assert not verdict.allowed   # blocked + reason in verdict.reason</code></pre>
+# Organisation-level check on a role WITH an envelope attached:
+verdict = engine.verify_action("D1-R1-T1-R1", "delete_all_records")
+assert not verdict.allowed   # level "blocked"; reason names the rule</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. GovernedSupervisor is the modern pact agent entry point: it has a role address (D/T/R), an envelope (what it can do, budget, clearance), and a two-layer run contract where the supervisor plans the task and your execute_node callback runs the real LLM. The governance check happens before every step. To show a blocked action, call engine.verify_action on an action outside the envelope and read verdict.reason.
+    Time: ~3 min. GovernedSupervisor is the governed agent entry point: three knobs (budget, tool allow-list, data clearance) become its envelope, and it runs a two-layer contract &mdash; the supervisor plans the task and your <code>execute_node</code> callback runs the real LLM. It does not wrap an existing BaseAgent; the callback is where your model call lives. The governance check happens before every step and every step is written to its audit chain. The <code>verify_action</code> line is the organisation-level check from the engine; it blocks here only because <code>compile_governance()</code> attached the YAML envelopes &mdash; on a bare engine the same call is auto-approved.
   </aside>
 </section>
 
@@ -3564,38 +3562,41 @@ assert not verdict.allowed   # blocked + reason in verdict.reason</code></pre>
       </ul>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import pytest
+      <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import pytest
 from pact import (
-    RoleEnvelope, MonotonicTighteningError)
+    MonotonicTighteningError, RoleEnvelope)
+from shared.mlfp06.ex_7 import compile_governance
 
-def test_analyst_can_read_data():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",
-        action="read_data",
-        context={"data_classification":
-                 "restricted"})
-    assert verdict.allowed
+@pytest.fixture
+def engine():
+    eng, _ = compile_governance()  # envelopes ATTACHED
+    return eng
 
-def test_analyst_cannot_delete():
-    verdict = engine.verify_action(
-        role_address="D1-R1-T1-R1",
-        action="delete_customer_data",
-        context={"data_classification":
-                 "restricted"})
-    assert not verdict.allowed
+def test_analyst_can_read_data(engine):
+    assert engine.verify_action(
+        "D1-R1-T1-R1", "read_data").allowed
+
+def test_analyst_cannot_delete(engine):
+    v = engine.verify_action(
+        "D1-R1-T1-R1", "delete_customer_data")
+    assert not v.allowed and v.level == "blocked"
+
+def test_unknown_address_is_auto_approved(engine):
+    # Pins pact 0.14's fail-open default: if an
+    # upgrade changes it, this test tells you.
+    assert engine.verify_action(
+        "D99-R99-T99-R99", "read_data").allowed
 
 def test_envelope_tightening():
-    # Loosening raises structurally:
-    with pytest.raises(
-            MonotonicTighteningError):
+    with pytest.raises(MonotonicTighteningError):
         RoleEnvelope.validate_tightening(
-            parent_env, loosened_child_env)
+            parent_envelope=parent_env,
+            child_envelope=loosened_child_env)
 
-def test_zero_budget_stops_agent():
+async def test_budget_is_respected():  # pytest-asyncio
     result = await governed.run(
-        objective="Analyse data",
-        execute_node=executor)
-    assert result.budget_consumed <= 2.00</code></pre>
+        objective="Analyse data", execute_node=executor)
+    assert result.budget_consumed <= result.budget_allocated</code></pre>
     </div>
   </div>
   <div class="callout callout-warning">
@@ -3605,7 +3606,7 @@ def test_zero_budget_stops_agent():
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the engineering differentiator. Many AI governance frameworks are just policy documents. PACT is code that is tested. If the test for "analyst cannot delete data" fails, you have a security vulnerability. If beginners confused: "We write tests to prove the locks on the doors actually work."
+    Time: ~3 min. This is the engineering differentiator. Many AI governance frameworks are just policy documents. PACT is code that is tested. Note the fixture: every deny test runs on an engine whose roles HAVE envelopes &mdash; on a bare engine &ldquo;analyst cannot delete&rdquo; would fail, because pact 0.14 auto-approves envelope-less roles. The third test deliberately pins that fail-open default so the team notices if it changes; production code should reject unknown addresses itself before calling the engine. If the test for "analyst cannot delete data" fails, you have a security vulnerability. If beginners confused: "We write tests to prove the locks on the doors actually work."
   </aside>
 </section>
 
@@ -3627,11 +3628,11 @@ def test_zero_budget_stops_agent():
 # hash-chained audit trail:
 trail = governed.audit.to_list()
 for entry in trail[-10:]:
-    print(f"{entry['timestamp']}: "
-          f"{entry['action']} -> "
-          f"{entry['verdict']}: "
-          f"{entry['reason']}")
-# Tamper-evidence check:
+    print(entry["record_type"],
+          entry["action"],
+          entry["record_hash"][:12])
+# Tamper-evidence check (False if any
+# record was altered):
 assert governed.audit.verify_chain()</code></pre>
     </div>
     <div class="col">
@@ -3640,14 +3641,15 @@ assert governed.audit.verify_chain()</code></pre>
         <thead><tr><th>Level</th><th>Access</th></tr></thead>
         <tbody>
           <tr><td>Public</td><td>Public data, read-only tools</td></tr>
-          <tr><td>Internal*</td><td>Internal data, analysis tools</td></tr>
+          <tr><td>Restricted (&ldquo;internal&rdquo;)</td><td>Internal data, analysis tools</td></tr>
           <tr><td>Confidential</td><td>PII, financial data</td></tr>
-          <tr><td>Restricted</td><td>System admin, model deployment</td></tr>
+          <tr><td>Secret</td><td>Department heads; model deployment, admin</td></tr>
+          <tr><td>Top secret</td><td>Rare: keys, regulator-sensitive material</td></tr>
         </tbody>
       </table>
       <div class="callout callout-theory" style="margin-top:8px;">
         Clearance levels map to role addresses. A role at <code>D1-R1-T1-R1</code> might carry "Confidential" clearance; a public support bot carries "Public".<br>
-        *In pact 0.8.1 the canonical five-level ladder is <code>PUBLIC &lt; RESTRICTED &lt; CONFIDENTIAL &lt; SECRET &lt; TOP_SECRET</code>. The course's "Internal" label is a historical alias that maps to <code>RESTRICTED</code> at the same tier as "Restricted" in the course ladder.
+        PACT's ladder, lowest to highest: <code>PUBLIC &lt; RESTRICTED &lt; CONFIDENTIAL &lt; SECRET &lt; TOP_SECRET</code>. &ldquo;Restricted&rdquo; is the <em>second-lowest</em> tier, not the top; <code>data_clearance="internal"</code> is an alias for it.
       </div>
     </div>
   </div>
@@ -3655,7 +3657,7 @@ assert governed.audit.verify_chain()</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Audit trails are the compliance mechanism. If something goes wrong, the audit trail tells you exactly what happened, who did it, and why the system allowed it. If beginners confused: "An audit trail is like CCTV for your AI system. It records every decision for review."
+    Time: ~2 min. Common trap: students read &ldquo;restricted&rdquo; as the most secret level. In PACT it sits just above public &mdash; giving your most privileged role &ldquo;restricted&rdquo; gives it LESS access than &ldquo;confidential&rdquo;. The course org gives department heads <code>secret</code>, and an escalation test asks for secret or top_secret. Audit trails are the compliance mechanism. If something goes wrong, the audit trail tells you exactly what happened, who did it, and why the system allowed it. If beginners confused: "An audit trail is like CCTV for your AI system. It records every decision for review."
   </aside>
 </section>
 
@@ -3668,11 +3670,10 @@ assert governed.audit.verify_chain()</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Define D/T/R organisational structure</li>
-        <li>Set operating envelopes (task and role)</li>
-        <li>Implement budget cascading across agent hierarchy</li>
-        <li>Write governance tests (allow + deny)</li>
-        <li>Generate and inspect audit trail</li>
+        <li>Define the D/T/R org in YAML and compile it (<code>ex_7/01</code>)</li>
+        <li>Operating envelopes + monotonic tightening (<code>02</code>)</li>
+        <li>Budget cascading ledger + 10 allow/deny <code>verify_action</code> cases, envelopes attached first (<code>03</code>)</li>
+        <li>GovernedSupervisor at three clearance tiers; deny paths; audit chain (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
@@ -3690,7 +3691,7 @@ assert governed.audit.verify_chain()</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This exercise combines everything from 6.5-6.7: agents, multi-agent coordination, and governance. The governance tests are the most important deliverable: if the tests pass, the system is safe.
+    Time: ~1 min. This exercise combines everything from 6.5-6.7: agents, multi-agent coordination, and governance. The governance tests are the most important deliverable &mdash; and they only prove something if every deny case runs against a role that has an envelope attached.
   </aside>
 </section>
 

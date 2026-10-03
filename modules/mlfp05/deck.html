@@ -5186,6 +5186,56 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
   </aside>
 </section>
 
+<!-- SLIDE 66b: GIN + graph classification with torch_geometric (spec 5.6) -->
+<section>
+  <h2>GIN: Graph Isomorphism Network</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <div class="equation-box">
+        <span class="katex-display">h_v^{(k)} = \text{MLP}^{(k)}\Big((1+\epsilon)\, h_v^{(k-1)} + \sum_{u \in \mathcal{N}(v)} h_u^{(k-1)}\Big)</span>
+        <div class="annotation">Sum the neighbours, add yourself, then an MLP (Xu et al., 2019)</div>
+      </div>
+      <ul style="font-size: 0.8em;">
+        <li><strong>Sum, not mean or max:</strong> mean cannot tell neighbours {a, a} from {a}; sum can. Sum + MLP is injective on neighbour multisets.</li>
+        <li><strong>As expressive as the 1-WL test</strong> for graph isomorphism &mdash; the most a message-passing GNN can be.</li>
+        <li><strong>Best for graph-level tasks</strong> (molecules, proteins), with a sum readout.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <pre style="font-size: 0.44em; line-height: 1.3"><code class="language-python">from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GINConv, global_add_pool
+
+# MUTAG: 188 molecules, 7 atom features, 2 classes
+ds = TUDataset("data/TUDataset", name="MUTAG")
+loader = DataLoader(ds, batch_size=32, shuffle=True)
+
+def mlp(i, o):
+    return nn.Sequential(nn.Linear(i, o), nn.ReLU(),
+                         nn.Linear(o, o))
+
+class GIN(nn.Module):
+    def __init__(self, d_in, d, n_classes):
+        super().__init__()
+        self.conv1 = GINConv(mlp(d_in, d))
+        self.conv2 = GINConv(mlp(d, d))
+        self.head = nn.Linear(d, n_classes)
+
+    def forward(self, x, edge_index, batch):
+        x = self.conv1(x, edge_index).relu()
+        x = self.conv2(x, edge_index).relu()
+        return self.head(global_add_pool(x, batch))</code></pre>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. GIN completes the four architectures in the spec: GCN (normalised averaging), GraphSAGE (sampling), GAT (attention), GIN (sum aggregation). The key idea is expressiveness: mean and max aggregators lose information about how MANY neighbours share a feature, so two different neighbourhoods can map to the same vector. Summing and passing through an MLP keeps them apart, which makes GIN as discriminative as the Weisfeiler-Lehman test &mdash; the theoretical ceiling for message-passing GNNs. The code is the standard torch_geometric graph-classification pattern: TUDataset for a benchmark of many small graphs, the PyG DataLoader that batches graphs into one big disconnected graph plus a batch vector, conv layers, then a readout (global_add_pool) giving one row per graph. Exercise 5.6 itself does node classification on Cora with layers written from scratch; this graph-classification pattern is the extension.
+  </aside>
+</section>
+
 <!-- SLIDE 67: GNN Tasks -->
 <section>
   <h2>GNN Task Types</h2>
@@ -5304,19 +5354,20 @@ x = global_mean_pool(x, batch)
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement GCN for graph classification on TUDataset</li>
-        <li>Compare GCN vs GAT on the same task</li>
-        <li>Visualise learned node embeddings (t-SNE)</li>
-        <li>Examine GAT attention weights &mdash; which edges matter?</li>
+        <li>Write a GCN layer from scratch; node classification on Cora (2,708 papers)</li>
+        <li>GAT with masked attention &mdash; which citations matter?</li>
+        <li>GraphSAGE neighbour sampling (inductive)</li>
+        <li>Link prediction on held-out edges (AUC)</li>
+        <li>Compare GCN vs GAT vs GraphSAGE; register the best</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>GCN implemented correctly with torch_geometric</li>
+        <li>GCN implemented correctly (<span class="katex-inline">\sigma(\hat{A} H W)</span>)</li>
         <li>GAT comparison shows attention weight distribution</li>
-        <li>Node embeddings visualised and interpreted</li>
-        <li>Message passing concept explained in own words</li>
+        <li>Node embeddings visualised (2-D PCA) and interpreted</li>
+        <li>Model chosen on validation, not test, accuracy</li>
       </ul>
     </div>
   </div>
@@ -5324,7 +5375,7 @@ x = global_mean_pool(x, batch)
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. torch_geometric handles the graph data loading and batching. Students focus on building the GNN architecture and interpreting results. The attention weight visualisation is the highlight &mdash; it shows which molecular bonds or social connections the model considers important.
+    Time: ~1 min. Exercise 5.6 is five files on the Cora citation network (torch_geometric only loads the data): GCN, GAT and GraphSAGE layers written from scratch for node classification, link prediction scored on held-out edges, and a three-way comparison. Students focus on building the layers and interpreting results. The attention weight visualisation is the highlight &mdash; it shows which citations the model considers important. Selection discipline: pick the epoch by VALIDATION accuracy and report test accuracy at that epoch. Graph classification on TUDataset with GINConv/GCNConv + global pooling (previous slides) is the extension.
   </aside>
 </section>
 
@@ -5367,21 +5418,21 @@ x = global_mean_pool(x, batch)
     <div class="col">
       <div class="callout callout-applications">
         <strong>Pharma &amp; Biotech &mdash; Drug Discovery</strong>
-        <p class="small">Molecules are graphs: atoms are nodes, bonds are edges. GNNs predict solubility, toxicity, and drug-target binding affinity from the graph structure alone &mdash; no hand-crafted molecular descriptors. A*STAR's Bioinformatics Institute uses GNN-based virtual screening to narrow 10M-compound libraries down to 1,000 candidates for wet-lab testing.</p>
+        <p class="small">Molecules are graphs: atoms are nodes, bonds are edges. GNNs predict solubility, toxicity, and drug-target binding affinity from the graph structure alone &mdash; no hand-crafted molecular descriptors. A research institute can use GNN-based virtual screening to narrow a multi-million-compound library to a shortlist for wet-lab testing.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Finance &mdash; Anti-Money Laundering at MAS-Regulated Banks</strong>
-        <p class="small">Transactions form a graph: accounts are nodes, transfers are edges. AML teams at DBS and OCBC run GNN classifiers over the transaction graph to spot layering and smurfing patterns a rules engine would miss. A single account looks clean; its 3-hop neighbourhood reveals it is the hub of a mule network.</p>
+        <strong>Finance &mdash; Anti-Money Laundering at a Bank</strong>
+        <p class="small">Transactions form a graph: accounts are nodes, transfers are edges. A bank's AML team can run GNN classifiers over the transaction graph to spot layering and smurfing patterns a rules engine would miss. A single account looks clean; its 3-hop neighbourhood reveals it is the hub of a mule network.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Telecom &mdash; 5G Network Optimisation</strong>
-        <p class="small">Cell towers form a graph with geographic adjacency edges. Singtel and StarHub use GNNs to predict which towers will congest during Formula 1 weekend or the Lunar New Year commute crush &mdash; the GAT attention mechanism tells the ops team <em>which neighbouring tower</em> is about to offload traffic to the one in question.</p>
+        <p class="small">Cell towers form a graph with geographic adjacency edges. A telco can use GNNs to predict which towers will congest during a major race weekend or the Lunar New Year commute crush &mdash; the GAT attention mechanism tells the ops team <em>which neighbouring tower</em> is about to offload traffic to the one in question.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Logistics &mdash; PSA Port Cargo Network</strong>
-        <p class="small">Container flows through PSA Singapore are a directed graph: origin port &rarr; Singapore &rarr; destination port. GNNs predict dwell times and transhipment bottlenecks 48 hours ahead. The GraphSAGE inductive property matters: new ports and new routes can be scored without retraining the full model.</p>
+        <strong>Logistics &mdash; Port Cargo Network</strong>
+        <p class="small">Container flows through a transhipment port are a directed graph: origin port &rarr; hub &rarr; destination port. GNNs can predict dwell times and transhipment bottlenecks ahead of time. The GraphSAGE inductive property matters: new ports and new routes can be scored without retraining the full model.</p>
       </div>
     </div>
   </div>
@@ -5392,7 +5443,7 @@ x = global_mean_pool(x, batch)
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The AML example is the strongest business case for a finance audience &mdash; rules engines are expensive and brittle, GNNs generalise across new laundering typologies. The drug discovery example is the strongest ROI case generally: narrowing 10M compounds to 1,000 at 1% of the cost of wet-lab screening is an order-of-magnitude improvement. The PSA example grounds the lesson in Singapore's largest logistics operator.
+    Time: ~3 min. The AML example is the strongest business case for a finance audience &mdash; rules engines are expensive and brittle, GNNs generalise across new laundering typologies. The drug discovery example is the strongest ROI case generally: shrinking the wet-lab shortlist by orders of magnitude is where the money is. The port example grounds the lesson in Singapore's role as a transhipment hub. All organisations here are generic illustrations; the figures are not reported results. Note also that GraphSAGE is not the only inductive option &mdash; GAT is inductive too.
   </aside>
 </section>
 

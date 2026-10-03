@@ -201,6 +201,16 @@ def compute_metrics(results: list[dict], name: str) -> dict[str, Any]:
         "total_tokens": total_tokens,
         "avg_latency_s": avg_latency,
         "ref_cost_usd": reference_cost_usd(total_tokens),
+        # Per-document record so later files can compare rungs on the SAME
+        # documents (e.g. self-consistency evaluates only the first 10).
+        "per_doc": [
+            {
+                "correct": bool(r["correct"]),
+                "tokens": int(r.get("tokens", 0)),
+                "elapsed": float(r.get("elapsed", 0.0)),
+            }
+            for r in results
+        ],
     }
 
 
@@ -234,16 +244,31 @@ def save_technique_metrics(metrics: dict[str, Any]) -> Path:
     return METRICS_FILE
 
 
-def load_technique_metrics(strategies: list[str]) -> list[dict[str, Any]]:
+def load_technique_metrics(
+    strategies: list[str], n_docs: int | None = None
+) -> list[dict[str, Any]]:
     """Return measured metrics for ``strategies`` saved by earlier files.
 
     Strategies whose file has not been run yet are reported and skipped —
-    no placeholder numbers are substituted.
+    no placeholder numbers are substituted. With ``n_docs``, each saved
+    run is re-scored on its first ``n_docs`` documents so that a technique
+    evaluated on a smaller subset is compared on the same documents.
     """
     store: dict[str, Any] = {}
     if METRICS_FILE.exists():
         store = json.loads(METRICS_FILE.read_text())
-    found = [store[s] for s in strategies if s in store]
+    found = []
+    for name in strategies:
+        if name not in store:
+            continue
+        saved = store[name]
+        if n_docs is not None:
+            subset = [
+                {"correct": d["correct"], "tokens": d["tokens"], "elapsed": d["elapsed"]}
+                for d in saved["per_doc"][:n_docs]
+            ]
+            saved = compute_metrics(subset, name)
+        found.append(saved)
     missing = [s for s in strategies if s not in store]
     if missing:
         print(
@@ -259,7 +284,9 @@ def load_technique_metrics(strategies: list[str]) -> list[dict[str, Any]]:
 
 def build_comparison_df(all_metrics: list[dict[str, Any]]) -> pl.DataFrame:
     """Turn a list of compute_metrics() dicts into a polars DataFrame."""
-    return pl.DataFrame(all_metrics)
+    return pl.DataFrame(
+        [{k: v for k, v in m.items() if k != "per_doc"} for m in all_metrics]
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════

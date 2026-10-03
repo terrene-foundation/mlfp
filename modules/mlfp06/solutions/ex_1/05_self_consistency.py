@@ -9,7 +9,7 @@
 #   - Sample multiple INDEPENDENT CoT paths for the same input
 #   - Aggregate them with majority vote
 #   - Understand when variance across paths beats single-path accuracy
-#   - See the linear cost scaling (N samples = N x cost)
+#   - See the linear token scaling (N samples = N x tokens)
 #
 # PREREQUISITES: 03_chain_of_thought.py (reuses the CoT classifier)
 # ESTIMATED TIME: ~30 min
@@ -17,9 +17,9 @@
 # TASKS:
 #   1. Theory — why independent samples help
 #   2. Build — the sampling loop + vote aggregator
-#   3. Train — evaluate on a small subset for cost reasons
+#   3. Train — evaluate on a small subset (N x the tokens per document)
 #   4. Visualise — vote distributions + majority outcomes
-#   5. Apply — PACT ethics-review ensemble for legal research
+#   5. Apply — privilege screening of discovery documents at a law firm
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -29,20 +29,24 @@ from collections import Counter
 
 from dotenv import load_dotenv
 
+from shared.mlfp06.diagnostics import LLMObservatory
 from shared.mlfp06.ex_1 import (
     CATEGORIES,
     compute_metrics,
     get_eval_docs,
+    load_technique_metrics,
     normalise_label,
     plot_tokens_vs_accuracy,
     plot_vote_agreement,
     print_summary,
     run_delegate,
+    save_technique_metrics,
 )
 
 load_dotenv()
 
 N_SAMPLES = 3  # independent CoT paths per query; production uses 5-9
+N_DOCS = 10  # subset — self-consistency spends N_SAMPLES x the tokens per doc
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -74,9 +78,11 @@ N_SAMPLES = 3  # independent CoT paths per query; production uses 5-9
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def cot_once(text: str) -> tuple[str, float, float]:
-    """One CoT sample. (We inline the prompt so this file is independently
-    runnable without importing from 03_chain_of_thought.py.)"""
+async def cot_once(text: str) -> tuple[str, str, float, float]:
+    """One CoT sample -> (label, raw_response, tokens, elapsed).
+
+    (We inline the prompt so this file is independently runnable without
+    importing from 03_chain_of_thought.py.)"""
     prompt = f"""Classify the sentiment of this movie review as positive or negative.
 
 Think step by step about the opinion words, tone, and any sarcasm.
@@ -86,36 +92,41 @@ Review: "{text[:800]}"
 
 Step-by-step reasoning:"""
     response, tokens, elapsed = await run_delegate(prompt)
-    return normalise_label(response), tokens, elapsed
+    return normalise_label(response), response, tokens, elapsed
 
 
-async def self_consistency_classify(text: str) -> tuple[str, list[str], float, float]:
-    """Sample N_SAMPLES CoT paths, return (majority_label, votes, total_tokens, total_elapsed).
+async def self_consistency_classify(
+    text: str,
+) -> tuple[str, list[str], list[str], float, float]:
+    """Sample N_SAMPLES CoT paths in parallel, return majority vote.
 
-    Samples run in parallel via asyncio.gather to avoid N x latency.
+    Returns (majority_label, votes, raw_responses, total_tokens, max_elapsed).
     """
     tasks = [cot_once(text) for _ in range(N_SAMPLES)]
     results = await asyncio.gather(*tasks)
     votes = [r[0] for r in results]
-    total_tokens = sum(r[1] for r in results)
+    responses = [r[1] for r in results]
+    total_tokens = sum(r[2] for r in results)
     # Parallel max latency, not sum — gather runs concurrently
-    max_elapsed = max(r[2] for r in results)
+    max_elapsed = max(r[3] for r in results)
     majority = Counter(votes).most_common(1)[0][0]
-    return majority, votes, total_tokens, max_elapsed
+    return majority, votes, responses, total_tokens, max_elapsed
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN (evaluate on a small subset for cost reasons)
+# TASK 3 — TRAIN (evaluate on a small subset — N x the tokens per document)
 # ════════════════════════════════════════════════════════════════════════
 
 
 async def evaluate() -> list[dict]:
-    docs = get_eval_docs().head(10)  # subset — self-consistency is N times expensive
+    docs = get_eval_docs().head(N_DOCS)
     results: list[dict] = []
     for i, (text, true_label) in enumerate(
         zip(docs["text"].to_list(), docs["label"].to_list())
     ):
-        pred, votes, tokens, elapsed = await self_consistency_classify(text)
+        pred, votes, responses, tokens, elapsed = await self_consistency_classify(
+            text
+        )
         correct = pred == true_label
         results.append(
             {
@@ -126,6 +137,7 @@ async def evaluate() -> list[dict]:
                 "tokens": tokens,
                 "elapsed": elapsed,
                 "votes": votes,
+                "responses": responses,
             }
         )
         if i < 5:
@@ -168,7 +180,7 @@ print(
     "the majority vote saved us from a bad single-sample answer."
 )
 
-# R9A: visual proof — vote agreement histogram + cost-vs-accuracy curve
+# R9A: visual proof — vote agreement histogram + tokens-vs-accuracy scatter
 plot_vote_agreement(
     sc_results,
     N_SAMPLES,
@@ -176,71 +188,70 @@ plot_vote_agreement(
     filename="ex1_05_vote_agreement.png",
 )
 
-# N-samples vs accuracy: show how the prompting ladder scales with cost
-zero_shot_expected = {
-    "strategy": "Zero-Shot",
-    "accuracy": 0.80,
-    "total_tokens": 1500,
-    "avg_latency_s": 1.0,
-    "n": 20,
-}
-few_shot_expected = {
-    "strategy": "Few-Shot",
-    "accuracy": 0.85,
-    "total_tokens": 5400,
-    "avg_latency_s": 1.2,
-    "n": 20,
-}
-cot_expected = {
-    "strategy": "CoT",
-    "accuracy": 0.90,
-    "total_tokens": 10500,
-    "avg_latency_s": 3.5,
-    "n": 20,
-}
+# Tokens vs accuracy across the ladder. Self-consistency only ran on the
+# first N_DOCS documents, so the earlier rungs (from YOUR saved runs of
+# 01-04) are re-scored on those SAME documents for a fair comparison.
 sc_metrics = compute_metrics(sc_results, f"SC (N={N_SAMPLES})")
+save_technique_metrics(sc_metrics)
+ladder = load_technique_metrics(
+    ["Zero-Shot", "Few-Shot", "CoT", "ZS-CoT"], n_docs=N_DOCS
+) + [sc_metrics]
 plot_tokens_vs_accuracy(
-    [zero_shot_expected, few_shot_expected, cot_expected, sc_metrics],
-    title="Cost vs Accuracy — Self-Consistency on the Pareto Frontier",
-    filename="ex1_05_cost_vs_accuracy.png",
+    ladder,
+    title=f"Tokens vs Accuracy — Self-Consistency vs Single-Path (first {N_DOCS} docs)",
+    filename="ex1_05_tokens_vs_accuracy.png",
 )
+
+# Output lens of the LLM Observatory: how much do the N raw reasoning
+# paths for one document agree with each other? This runs locally on the
+# responses you already collected — no extra LLM calls.
+obs = LLMObservatory(run_id="ex_1_5_self_consistency")
+hardest = min(sc_results, key=lambda r: max(r["votes"].count(v) for v in r["votes"]))
+consistency_df = obs.output.self_consistency(
+    hardest["responses"], prompt=hardest["text"][:120]
+)
+print("\n  Observatory — path agreement on the least-unanimous document:")
+print(consistency_df)
 
 # INTERPRETATION: The vote-agreement histogram is the confidence signal.
 # Unanimous votes (1 distinct label) are high confidence. Split votes
 # (2+ labels) flag hard cases. In production, route split-vote items
 # to a human reviewer — the model is telling you it's unsure.
+# The Observatory table scores each reasoning path's textual agreement with
+# the other paths; an "is_outlier" path is the one that argued differently.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: PACT Ethics Review for Legal Research
+# TASK 5 — APPLY: Privilege Screening of Discovery Documents at a Law Firm
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A Singapore Big-4 law firm uses an LLM to screen discovery
-# documents for "potentially privileged" content. Each document passes
-# through a CoT classifier. Misclassification is extremely expensive:
-#   - False negative: privileged material leaked to opposing counsel,
-#     leading to malpractice exposure (~S$500K+ per incident)
-#   - False positive: non-privileged material withheld, court
-#     sanctions for obstruction (~S$50K per incident)
+# SCENARIO (illustrative): a Singapore law firm uses an LLM to screen
+# discovery documents for "potentially privileged" content. Each
+# document passes through a CoT classifier. Misclassification is
+# expensive on both sides:
+#   - False negative: privileged material disclosed to opposing counsel
+#     (malpractice exposure)
+#   - False positive: non-privileged material withheld (court sanctions
+#     and re-review cost)
 #
-# Why self-consistency is mandatory here:
-#   - The stakes are catastrophic on one side of the error distribution
-#   - Single CoT paths have ~3% error rate on ambiguous legal text —
-#     that's 30 errors per 1,000 documents, unacceptable
-#   - Self-consistency at N=7 drops that to <0.5% — a 6x improvement
-#   - The firm's PACT governance policy REQUIRES multi-sample consensus
-#     for any action with >S$100K downside risk (see rules/tenant-isolation
-#     and Exercise 6 governance)
+# Why self-consistency fits here:
+#   - The stakes are lopsided — one kind of error is far costlier
+#   - Split votes are a built-in "unsure" flag: route them to a lawyer,
+#     auto-process only the unanimous ones
+#   - The firm's governance policy can REQUIRE multi-sample consensus
+#     for any action above a risk threshold (Exercise 7 shows how PACT
+#     encodes that kind of rule)
 #
-# BUSINESS IMPACT: At 12,000 discovery documents per matter and
-# ~3 matters/month, that's 36,000 classifications/month. Moving from
-# single CoT (3% error) to N=7 self-consistency (<0.5%) avoids ~900
-# errors/month. Even at the lower-bound S$5K expected-value cost per
-# error (blended FN/FP), that's S$4.5M/month in avoided exposure.
-# LLM cost at 7x CoT rate: ~S$28K/month. 160x ROI.
+# BUSINESS IMPACT (illustrative figures): suppose a single CoT path is
+# wrong on 3% of documents and majority-of-7 brings that to 0.5%. At
+# 36,000 documents/month that is 1,080 - 180 = ~900 fewer errors. Even
+# at a blended S$5,000 expected cost per error, that is ~S$4.5M/month
+# of avoided exposure against 7x the single-path token bill. Your own
+# split-vote rate above tells you how many documents would go to a
+# human reviewer instead.
 #
-# Note: the cost is only justified because the downside is catastrophic.
-# For the SingPost triage task (Ex 1.4), self-consistency would be
-# overkill and you'd waste 6x the inference budget for <1% accuracy gain.
+# Note: the extra tokens are only justified because the downside is
+# severe. For the postal triage task (Ex 1.4), self-consistency would
+# spend ~N x the tokens for little accuracy gain.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -252,9 +263,9 @@ print("=" * 70)
 print(
     """
   [x] Sampled N independent CoT paths and aggregated with majority vote
-  [x] Parallelised sampling with asyncio.gather (N x cost, 1x latency)
+  [x] Parallelised sampling with asyncio.gather (N x tokens, ~1x latency)
   [x] Observed vote agreement as a confidence signal
-  [x] Sized the N x cost against a catastrophic-downside legal scenario
+  [x] Sized the N x tokens against a high-downside legal scenario
 
   KEY INSIGHT: Self-consistency is the ensemble method for LLMs. Like
   every ensemble, the right question is: "does the downside of being

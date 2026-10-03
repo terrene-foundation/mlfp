@@ -27,3 +27,13 @@ textbook, notes and exercises agree — or state the claim qualitatively. Start 
 raw 0.47 vs cleaned 0.91), then grep each module's handoff file for numbers quoted in more than one artefact.
 - M1 lesson 1.8 SLIDES use a shorter pipeline (47,547 rows, 7→44 cols, 12/12 alerts, hourly 1,917–2,054) while ex_8 + textbook.md + lesson 1.8 textbook page use 43,934 rows, 12→53 cols, 15→11 alerts. Bring the 1.8 slides (and deck capstone slides) in line with ex_8.
 - M1 1.5 seasonality: page uses town-month medians (0.7% spread); textbook.md raw calendar-month counts (<1%) — both "no seasonality"; harmonise the method.
+
+## X-DF: kailash-dataflow turns a RELATIVE sqlite URL into a path at filesystem ROOT
+Verified in dataflow/core/engine.py (~l.9272): `file_path = db_url.replace("sqlite:///", "/")`, so
+`sqlite:///x.db` (relative) becomes `/x.db` → "unable to open database file". Absolute URLs work.
+- Course fix (integration): every URL passed to `DataFlow(...)` (FeatureStore, DriftCheck CRUD, governance, …)
+  must be absolute — one helper (e.g. `shared.kailash_helpers.sqlite_url(path)` → f"sqlite:///{Path(path).resolve()}")
+  used at every DataFlow call site; deck/textbook snippets showing `DataFlow("sqlite:///hdb.db")` must use an
+  absolute path too (M2 2.8 slide). Known sites: shared/mlfp02/ex_8.py FEATURE_STORE_URL; grep `DataFlow(` repo-wide.
+- Upstream: kailash-dataflow bug (relative sqlite paths).
+- Also: the data loader finds data/ only when run from the repo root — integration runs start at the root.

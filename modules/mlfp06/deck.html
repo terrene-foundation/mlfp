@@ -4192,7 +4192,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span class="katex-display">\mathcal{L}_{\text{DPO}} = -\mathbb{E}\!\left[\log \sigma\!\left(\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right)\right]</span>
   </div>
   <div class="equation-box" style="margin-top:8px;">
-    <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r})} \quad \text{(GRPO advantage)}</span>
+    <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r}) + \epsilon} \quad \text{(GRPO advantage)}</span>
   </div>
   <div class="equation-box" style="margin-top:8px;">
     <span class="katex-display">\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_k}}\right)V</span>
@@ -4231,12 +4231,12 @@ python -m vllm.entrypoints.openai.api_server \
       <tr><th>Package</th><th>M6 Role</th><th>Key APIs Used</th></tr>
     </thead>
     <tbody>
-      <tr><td>kaizen / kaizen_agents</td><td>LLM calls, agent framework</td><td>BaseAgent, Signature, Delegate, ReActAgent, GovernedSupervisor</td></tr>
+      <tr><td>kaizen / kaizen_agents</td><td>LLM calls, agent framework</td><td>BaseAgent, Signature, Delegate + ToolRegistry, GovernedSupervisor</td></tr>
       <tr><td>kailash-align</td><td>Fine-tuning, alignment</td><td>AlignmentPipeline, AlignmentConfig, AdapterRegistry</td></tr>
-      <tr><td>pact</td><td>Governance, access control</td><td>GovernanceEngine, load_org_yaml, ConstraintEnvelopeConfig, RoleEnvelope</td></tr>
-      <tr><td>nexus</td><td>Multi-channel deployment</td><td>Nexus, app.register(name, built_workflow), JWT middleware</td></tr>
-      <tr><td>kailash-ml</td><td>Training, monitoring</td><td>TrainingPipeline, DriftMonitor, DataExplorer</td></tr>
-      <tr><td>kailash-mcp</td><td>Tool protocol server</td><td>MCPServer, @tool decorator</td></tr>
+      <tr><td>pact</td><td>Governance, access control</td><td>GovernanceEngine, load_org_yaml, verify_action, ConstraintEnvelopeConfig, RoleEnvelope</td></tr>
+      <tr><td>nexus</td><td>Multi-channel deployment</td><td>Nexus, handler_extract / register, NexusAuthPlugin (JWT, rate limit), cors_origins</td></tr>
+      <tr><td>kailash-ml</td><td>Profiling, monitoring</td><td>DataExplorer, DriftMonitor</td></tr>
+      <tr><td>kailash-mcp</td><td>Tool protocol server</td><td>MCPServer, @server.tool(), MCPClient</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -4368,8 +4368,8 @@ python -m vllm.entrypoints.openai.api_server \
     </thead>
     <tbody>
       <tr><td>Fine-tuning when RAG would work</td><td>Expensive, slow, model goes stale</td><td>Try RAG first; fine-tune only if insufficient</td></tr>
-      <tr><td>Agent without cost budget</td><td>Runaway API spending</td><td>Always set max_cost on every agent</td></tr>
-      <tr><td>No governance on agents</td><td>Security liability</td><td>GovernedSupervisor with pact operating envelopes</td></tr>
+      <tr><td>Agent without bounds</td><td>Runaway calls and spending</td><td>Always set <code>max_turns</code>; on priced providers also <code>budget_limit_usd</code> at construction</td></tr>
+      <tr><td>Roles without envelopes</td><td>PACT auto-approves them (fail-open default)</td><td>Attach an envelope to every role; test the deny path</td></tr>
       <tr><td>Testing LLM exact output</td><td>Non-deterministic; tests flake</td><td>Test tool selection, governance, budget</td></tr>
       <tr><td>Deploying without monitoring</td><td>Model degrades silently</td><td>DriftMonitor on every deployed model</td></tr>
       <tr><td>Using agents for simple tasks</td><td>Adds cost and latency</td><td>Pipeline first; agent only if reasoning needed</td></tr>
@@ -4473,7 +4473,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li>Use Kaizen Delegate for structured output?</li>
         <li>Build a RAG pipeline?</li>
         <li>Create a ReAct agent with tools?</li>
-        <li>Set cost budgets on agents?</li>
+        <li>Bound agents (turn ceiling, cost budget)?</li>
         <li>Implement PACT access controls?</li>
         <li>Deploy via Nexus?</li>
       </ul>
@@ -4511,21 +4511,21 @@ python -m vllm.entrypoints.openai.api_server \
   <span class="marker marker-foundations">Foundations</span>
   <div class="columns">
     <div class="col">
-      <h3>Capstone Project</h3>
+      <h3>Four auto-graded tasks &mdash; 100 marks</h3>
       <ul>
-        <li>Deploy a complete governed AI system</li>
-        <li>Must include: prompting, fine-tuning, RAG, agents, governance, deployment</li>
-        <li>Presentation: 15 minutes + 5 minutes Q&amp;A</li>
-        <li>Demo: live queries via API, CLI, and MCP</li>
+        <li><strong>Task 1</strong> (20): prompt engineering &amp; structured output &mdash; <code>Signature</code> + <code>BaseAgent</code></li>
+        <li><strong>Task 2</strong> (25): RAG pipeline with evaluation &mdash; Ollama embeddings + <code>Delegate</code></li>
+        <li><strong>Task 3</strong> (25): tool-using agent over a real dataset &mdash; <code>Delegate</code> + <code>ToolRegistry</code></li>
+        <li><strong>Task 4</strong> (30): governance for a production agent fleet &mdash; PACT <code>GovernanceEngine</code></li>
       </ul>
     </div>
     <div class="col">
-      <h3>Comprehensive Quiz</h3>
+      <h3>Format</h3>
       <ul>
-        <li>Covers all 8 lessons</li>
-        <li>Mix of: conceptual, code interpretation, formula application</li>
-        <li>Open-book: you may reference your exercises</li>
-        <li>Duration: 60 minutes</li>
+        <li>Duration: 3 hours</li>
+        <li>Open-book; no AI assistants</li>
+        <li>Runs on local Ollama &mdash; no API keys, no internet</li>
+        <li>Complete each <code>starter.py</code>; graders check the return contract in each <code>problem.md</code></li>
       </ul>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Assessment focus:</strong> Can you build it, deploy it, govern it, and explain why your design decisions are correct? The code IS the answer.
@@ -4536,7 +4536,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Explain the assessment format. The capstone is the main assessment. The quiz covers breadth. Both are open-book because the skill is engineering, not memorisation.
+    Time: ~2 min. Explain the assessment format exactly as shipped in <code>assessment/README.md</code>: four auto-graded coding tasks, 100 marks, 3 hours, open-book, no AI assistants. Fine-tuning (6.2&ndash;6.3), multi-agent/MCP (6.6) and deployment (6.8) are assessed through their exercises, not the timed tasks. Make sure Ollama is running with both models pulled before the session starts.
   </aside>
 </section>
 
@@ -4552,7 +4552,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li>Hu et al. (2021) &mdash; LoRA: Low-Rank Adaptation</li>
         <li>Houlsby et al. (2019) &mdash; Parameter-Efficient Transfer Learning</li>
         <li>Rafailov et al. (2023) &mdash; DPO: Direct Preference Optimization</li>
-        <li>Shao et al. (2024) &mdash; DeepSeek-R1 (GRPO)</li>
+        <li>Shao et al. (2024) &mdash; DeepSeekMath (introduces GRPO; later used in DeepSeek-R1, 2025)</li>
         <li>Yao et al. (2023) &mdash; ReAct: Reasoning and Acting</li>
         <li>Wei et al. (2022) &mdash; Chain-of-Thought Prompting</li>
         <li>Kojima et al. (2022) &mdash; Zero-shot CoT</li>
@@ -4593,7 +4593,7 @@ python -m vllm.entrypoints.openai.api_server \
     <div class="col">
       <ol>
         <li><strong>Prompting is an engineering skill.</strong> Start simple, escalate by measured need.</li>
-        <li><strong>LoRA democratised fine-tuning.</strong> 256x fewer parameters, same quality.</li>
+        <li><strong>LoRA democratised fine-tuning.</strong> Hundreds of times fewer trainable parameters, often near full fine-tuning quality.</li>
         <li><strong>DPO eliminated the reward model.</strong> Alignment is now accessible.</li>
         <li><strong>RAG is the production default.</strong> Ground LLMs in facts, not memory.</li>
       </ol>
@@ -4603,7 +4603,7 @@ python -m vllm.entrypoints.openai.api_server \
         <li><strong>Agents need tools, not just prompts.</strong> ReAct = reasoning + action.</li>
         <li><strong>Multi-agent systems need coordination protocols.</strong> MCP for tools, A2A for agents.</li>
         <li><strong>Governance is engineering, not philosophy.</strong> Code it. Test it. Ship it.</li>
-        <li><strong>Deploy with monitoring.</strong> A model without DriftMonitor is a liability.</li>
+        <li><strong>Deploy with monitoring.</strong> A model without DriftMonitor is a liability. And know your defaults: un-enveloped roles are auto-approved.</li>
       </ol>
     </div>
   </div>
@@ -4639,7 +4639,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Instructor-only slide. Total: ~23.5 hours across 8 lessons. The biggest risk is 6.2 (from-scratch implementations) and 6.8 (integration). Allocate buffer time for debugging in both. If running behind, the fine-tuning landscape survey (slide 22) can be assigned as reading.
+    Instructor-only slide. Total: ~23.5 hours across 8 lessons (round to ~24 h, the figure the textbook uses). The biggest risk is 6.2 (from-scratch implementations) and 6.8 (integration). Allocate buffer time for debugging in both. If running behind, the fine-tuning landscape survey (slide 22) can be assigned as reading.
   </aside>
 </section>
 

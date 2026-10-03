@@ -9,7 +9,7 @@
 #   - Build a contractive AE with a Jacobian penalty on the encoder
 #   - Understand WHY smoothness in latent space matters
 #   - Visualise latent interpolation proving smooth transitions
-#   - Apply to medical image anomaly detection at SGH
+#   - Apply to medical image anomaly detection at a Singapore hospital
 #   - Quantify workload reduction for radiologists
 #
 # PREREQUISITES: 04_sparse_ae.py
@@ -19,7 +19,7 @@
 #   1. Build Contractive AE with explicit encoder weight access
 #   2. Train with Frobenius norm penalty on encoder Jacobian
 #   3. Visualise reconstruction + latent interpolation
-#   4. Apply: chest X-ray anomaly screening at SGH
+#   4. Apply: chest X-ray anomaly screening at a Singapore hospital
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -210,10 +210,10 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Medical Image Anomaly Detection at SGH
+# APPLY — Medical Image Anomaly Detection at a Singapore Hospital
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are an ML engineer at Singapore General
-# Hospital (SGH) building a screening tool for chest X-rays.
+# BUSINESS SCENARIO: You are an ML engineer at a large Singapore
+# public hospital building a screening tool for chest X-rays.
 # Radiologists are overwhelmed — 500 scans/day, each needing 5-10
 # minutes of expert review. Your goal: automatically flag scans that
 # look "abnormal" so radiologists focus on the hardest cases.
@@ -224,7 +224,7 @@ if has_registry:
 # signals with pixel-level error heatmaps.
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Medical Image Anomaly Detection at SGH")
+print("  APPLICATION: Medical Image Anomaly Detection (hospital)")
 print("=" * 70)
 
 # --- Generate synthetic medical images ---
@@ -356,7 +356,7 @@ plt.savefig(OUTPUT_DIR / "ex1_medical_roc_curve.png", dpi=150, bbox_inches="tigh
 plt.show()
 
 # --- Business Impact ---
-SGH_DAILY_SCANS = 500
+DAILY_SCANS = 500  # illustrative scenario figures
 MINUTES_PER_REVIEW = 7.5
 RADIOLOGIST_HOURLY_RATE = 250
 target_tpr = 0.90
@@ -366,23 +366,23 @@ operating_tpr = tpr_arr[best_idx]
 
 # TODO: Compute workload reduction metrics
 anomaly_rate = 0.15
-daily_anomalous = int(SGH_DAILY_SCANS * anomaly_rate)
-daily_normal = SGH_DAILY_SCANS - daily_anomalous
+daily_anomalous = int(DAILY_SCANS * anomaly_rate)
+daily_normal = DAILY_SCANS - daily_anomalous
 flagged_true = int(daily_anomalous * operating_tpr)
 flagged_false = int(daily_normal * operating_fpr)
 total_flagged = flagged_true + flagged_false
-scans_saved = SGH_DAILY_SCANS - total_flagged
+scans_saved = DAILY_SCANS - total_flagged
 time_saved_hours = scans_saved * MINUTES_PER_REVIEW / 60
 cost_saved_annual = time_saved_hours * RADIOLOGIST_HOURLY_RATE * 260
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SGH Chest X-Ray Screening")
+print("BUSINESS IMPACT SUMMARY — Chest X-Ray Screening (illustrative)")
 print("=" * 64)
-print(f"\nSGH daily scan volume:           {SGH_DAILY_SCANS:>12}")
+print(f"\nDaily scan volume:               {DAILY_SCANS:>12}")
 print(f"Conv AE detection AUC:           {auc:>12.3f}")
 print(f"At {operating_tpr:.0%} sensitivity:")
 print(f"  Scans auto-cleared/day:        {scans_saved:>12}")
-print(f"  Workload reduction:            {scans_saved/SGH_DAILY_SCANS:>11.0%}")
+print(f"  Workload reduction:            {scans_saved/DAILY_SCANS:>11.0%}")
 print(f"  Hours saved/day:               {time_saved_hours:>12.1f}")
 print(f"  Cost saved/year:               {'S$' + f'{cost_saved_annual:,.0f}':>12}")
 print("=" * 64)
@@ -398,7 +398,7 @@ print(
     """
   [x] Built a contractive AE with a per-sample Jacobian penalty ||dz/dx||_F^2
   [x] Visualised smooth latent interpolation — gradual morphing
-  [x] Applied to medical image anomaly detection at SGH
+  [x] Applied to medical image anomaly detection at a Singapore hospital
   [x] Generated pixel-level error heatmaps showing WHERE anomalies are
   [x] Computed ROC curve with AUC metric
   [x] Quantified radiologist workload reduction in hours and S$

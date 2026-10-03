@@ -12,7 +12,8 @@
 #   - Build sinusoidal positional encoding (giving transformers order)
 #   - Construct a full Transformer encoder classifier with nn.TransformerEncoder
 #   - Train the Transformer on AG News and log metrics with ExperimentTracker
-#   - Apply the model to regulatory document classification
+#   - Check whether a trained classifier's labels fit a new task
+#     (routing regulatory filings) before using it
 #
 # PREREQUISITES: ex_4/01_self_attention_from_scratch.py
 # ESTIMATED TIME: ~30 min
@@ -394,33 +395,31 @@ print("\n--- Checkpoint 4 passed --- multi-head attention visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: Regulatory Compliance Classification at MAS
+# TASK 6 — Apply: Routing Regulatory Filings (and the Label-Space Trap)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Monetary Authority of Singapore (MAS) oversees compliance
-# across banking, insurance, securities, and payments. Financial institutions
-# submit thousands of regulatory filings monthly. MAS compliance officers
-# need to classify each document by the regulation it pertains to:
+# SCENARIO: A financial regulator's compliance team receives thousands of
+# filings a month and wants each one routed by the regulation it concerns:
 #   - Banking Act (Cap. 19)
 #   - Securities and Futures Act (Cap. 289)
 #   - Payment Services Act 2019
 #   - Insurance Act (Cap. 142)
 #
-# BUSINESS VALUE: Manual classification by compliance officers takes
-# 15-20 minutes per document. With ~3,000 submissions/month across
-# 200+ licensed institutions, that is 750-1,000 officer-hours/month.
-# A Transformer classifier automates the first-pass classification,
-# routing documents to the correct regulatory team in seconds.
+# The Transformer you trained answers a different question: its labels
+# are AG News topics (World, Sports, Business, Sci/Tech). Run on finance
+# headlines it can only say "Business" or similar — never "Insurance
+# Act". Routing by regulation needs the same architecture trained on
+# filings labelled by Act. What this section CAN show is how to inspect
+# which words the trained attention focused on — with the caveat that
+# attention weights are a view into the model, not a faithful,
+# audit-grade explanation of its decision.
 #
-# DOLLAR IMPACT: At S$80-120/hour for compliance officers, automating
-# first-pass classification saves S$720K-1.44M annually. More importantly,
-# the attention mechanism shows WHICH paragraphs triggered each
-# classification -- providing audit trail transparency that regulators
-# require under MAS Notice on Technology Risk Management.
-print("\n== Application: Regulatory Compliance at MAS ==")
+# BUSINESS VALUE (illustrative assumptions): at 15-20 minutes of manual
+# triage per filing and ~3,000 filings/month, first-pass routing costs
+# 750-1,000 officer-hours a month — savings that only exist once a
+# classifier is trained on the regulator's own routing labels.
+print("\n== Application: routing filings with a news-topic model ==")
 
-# Use the trained Transformer to classify financial headlines (proxy for
-# regulatory documents). In production, this would use MAS-specific
-# regulatory text with fine-tuned classification categories.
+# Finance headlines stand in for filings; the model returns NEWS topics.
 financial_headlines = [
     "Banks report higher profits amid rising interest rates",
     "New technology startups attract venture capital funding",
@@ -440,8 +439,8 @@ with torch.no_grad():
     fin_probs = F.softmax(fin_logits, dim=-1)
     fin_preds = fin_logits.argmax(dim=-1).cpu().tolist()
 
-print(f"\n  Regulatory document classification (Transformer):")
-print(f"  {'Headline':<55} {'Classification':<12} {'Confidence':>10}")
+print(f"\n  Finance headlines through the AG News Transformer (topics, not Acts):")
+print(f"  {'Headline':<55} {'Topic':<12} {'Confidence':>10}")
 print("  " + "-" * 79)
 for text, pred, probs in zip(financial_headlines, fin_preds, fin_probs.cpu().tolist()):
     cls_name = CLASS_NAMES[pred]
@@ -468,18 +467,12 @@ for word, imp in sorted(zip(fin_words, token_importance), key=lambda x: -x[1])[:
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 assert len(fin_preds) == len(financial_headlines), "Should classify all headlines"
-# INTERPRETATION: The Transformer classifies financial documents and the
-# attention weights provide an audit trail showing which words drove each
-# classification. For MAS compliance, this transparency is critical --
-# regulators need to understand WHY a document was classified as it was,
-# not just the classification itself.
-#
-# BUSINESS IMPACT for MAS:
-#   - 3,000 regulatory submissions/month
-#   - 15-20 min manual classification per document -> seconds with Transformer
-#   - Annual saving: S$720K-1.44M in compliance officer time
-#   - Attention audit trail satisfies MAS Technology Risk Management Notice
-print("\n--- Checkpoint 5 passed --- MAS regulatory application complete\n")
+# INTERPRETATION: Every prediction above is a news topic, so none of them
+# routes a filing to a regulation team. The token-importance list shows
+# where the trained first layer's attention went; treat it as a debugging
+# view, not as an explanation a regulator could audit (attention weights
+# are not guaranteed to reflect what drove the output).
+print("\n--- Checkpoint 5 passed --- routing check complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -496,7 +489,7 @@ print(
   [x] Built a full TransformerClassifier with nn.TransformerEncoder
   [x] Trained on full AG News (120K headlines), best acc: {max(transformer_accs):.1%}
   [x] Visualised per-head attention patterns
-  [x] Applied to MAS regulatory compliance with attention-based explanations
+  [x] Checked a regulatory-routing use case against the model's label space
 
   KEY INSIGHT:
     Multi-head attention is like having multiple specialists read the same

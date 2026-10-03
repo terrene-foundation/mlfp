@@ -373,8 +373,8 @@ print("--- Checkpoint 7 passed --- model registered\n")
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a data analyst at Ya Kun Kaya Toast, one of Singapore's
-#   most beloved F&B chains with 100+ outlets across the island.
+#   You are a data analyst at a Singapore kopitiam-style F&B chain
+#   with 100+ outlets across the island.
 #   Management wants to predict daily sales volume per outlet to
 #   optimise ingredient ordering and staff scheduling.
 #
@@ -386,14 +386,14 @@ print("--- Checkpoint 7 passed --- model registered\n")
 #   30+ days ago.
 #
 # BUSINESS INTERPRETATION:
-#   - Predicting 3 days ahead lets Ya Kun order kaya, bread, and eggs
-#     with the right lead time for their supplier (Gardenia, local farms)
+#   - Predicting 3 days ahead lets the chain order kaya, bread, and eggs
+#     with the right lead time for its bakery and egg suppliers
 #   - Overprediction: wasted ingredients (kaya toast bread has 2-day shelf life)
 #   - Underprediction: stockouts during peak hours, lost revenue + customer churn
 #   - At ~$8 average transaction across 100 outlets, even a 5% improvement
 #     in demand forecasting accuracy saves ~$146K/year in waste reduction
 print("=" * 70)
-print("  APPLY: Ya Kun Kaya Toast — Daily Demand Forecasting")
+print("  APPLY: Singapore F&B Chain — Daily Demand Forecasting")
 print("=" * 70)
 
 # TODO: Generate realistic F&B sales data with weekly seasonality
@@ -424,11 +424,11 @@ CAFE_HORIZON = 3
 
 # TODO: Plot cafe demand forecast vs actual (60-day window)
 #   - Actual as solid blue line, predicted as dashed orange
-#   - Save to OUTPUT_DIR / "01_rnn_yakun_demand_forecast.png"
+#   - Save to OUTPUT_DIR / "01_rnn_fnb_demand_forecast.png"
 
 # ── Checkpoint 8 (Apply) ────────────────────────────────────────────
 assert mae_day1 < 200, "Day-1 MAE should be reasonable for F&B demand"
-assert (OUTPUT_DIR / "01_rnn_yakun_demand_forecast.png").exists()
+assert (OUTPUT_DIR / "01_rnn_fnb_demand_forecast.png").exists()
 print("--- Checkpoint 8 passed --- Singapore F&B application complete\n")
 
 
@@ -445,7 +445,7 @@ print(
   [x] Hidden state evolution: how the RNN's memory changes across timesteps
   [x] Predicted vs actual time-series overlay (visual proof of model behaviour)
   [x] Tracked training with ExperimentTracker (loss + gradient norms)
-  [x] Applied RNN to Singapore F&B demand forecasting (Ya Kun Kaya Toast)
+  [x] Applied RNN to Singapore F&B demand forecasting (synthetic sales)
   [x] Quantified business impact: S${annual_savings:,.0f}/year savings
 
   Key insight: Vanilla RNNs work for SHORT sequences (5-10 steps) where

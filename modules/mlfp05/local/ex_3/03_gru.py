@@ -413,11 +413,11 @@ register_best_model(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SMRT Predictive Maintenance: Real-Time Sensor Monitoring
+# APPLY — Rail Predictive Maintenance: Real-Time Sensor Monitoring
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a data engineer at SMRT Corporation, which operates
+#   You are a data engineer at a Singapore rail operator, which runs
 #   Singapore's MRT (Mass Rapid Transit) network carrying ~3.4 million
 #   trips per day. Train wheels, bearings, and axles generate vibration
 #   data captured by accelerometers at 1-second intervals.
@@ -435,7 +435,7 @@ register_best_model(
 #   - Latency comparison: can GRU serve all sensors in real-time?
 #   - Maintenance alert: "bearing X shows increasing vibration trend"
 print("\n" + "=" * 70)
-print("  APPLY: SMRT Predictive Maintenance — Vibration Monitoring")
+print("  APPLY: Rail Predictive Maintenance — Vibration Monitoring")
 print("=" * 70)
 
 # TODO: Generate realistic vibration sensor data
@@ -465,13 +465,13 @@ ANOMALY_THRESHOLD = 3.5  # mm/s^2 — bearing replacement recommended above this
 #     - Fill anomaly zone in red
 #   Bottom: Daily average vibration bar chart (last 7 days)
 #     - Color green if below threshold, red if above
-#   Save to OUTPUT_DIR / "03_gru_smrt_vibration.png"
+#   Save to OUTPUT_DIR / "03_gru_rail_vibration.png"
 
 # ── Checkpoint 7 (Apply) ────────────────────────────────────────────
 assert gru_mae < 1.0, "GRU vibration MAE should be reasonable"
 assert abs(gru_mae - lstm_mae) < 0.5, "GRU and LSTM should have similar accuracy"
-assert (OUTPUT_DIR / "03_gru_smrt_vibration.png").exists()
-print("--- Checkpoint 7 passed --- SMRT predictive maintenance application complete\n")
+assert (OUTPUT_DIR / "03_gru_rail_vibration.png").exists()
+print("--- Checkpoint 7 passed --- rail predictive maintenance application complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -486,7 +486,7 @@ print(
   [x] Head-to-head: GRU val={gru_results['final_val_loss']:.4f} vs LSTM val={lstm_results['final_val_loss']:.4f}
   [x] Latency: GRU is {speedup:.2f}x faster than LSTM on stock data
   [x] Hidden state dynamics: GRU's update gate creates sharper transitions
-  [x] Applied GRU to SMRT predictive maintenance (vibration monitoring)
+  [x] Applied GRU to rail predictive maintenance (vibration monitoring)
   [x] Real-time capacity: GRU serves {sensor_speedup:.1f}x more sensors per second
   [x] Anomaly detection: {n_alerts_gru} alerts for bearing degradation
 

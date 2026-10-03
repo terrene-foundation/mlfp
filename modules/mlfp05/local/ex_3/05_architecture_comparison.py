@@ -481,10 +481,10 @@ print(
   [x] Multi-stock generalisation across {len(multi_stock_results)} tickers
   [x] Architecture selection guide for real-world decision making
   [x] Applied to Singapore business scenarios:
-      - Ya Kun Kaya Toast: F&B demand forecasting (RNN)
-      - SGX/DBS: Equity forecasting with prediction intervals (LSTM)
-      - SMRT: Predictive maintenance for trains (GRU)
-      - SGH: Clinical deterioration prediction with explainability (Attention)
+      - F&B chain: demand forecasting (RNN)
+      - Singapore equities: forecasting with prediction intervals (LSTM)
+      - Rail operator: predictive maintenance for trains (GRU)
+      - Hospital ICU: deterioration prediction with explainability (Attention)
   Key insight: There is no single "best" architecture. The right choice
   depends on sequence length, latency requirements, explainability needs,
   and data volume. RNNs fail on long sequences. LSTMs fix this with

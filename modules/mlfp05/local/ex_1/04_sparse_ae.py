@@ -9,7 +9,7 @@
 #   - Build a sparse AE with L1 penalty on hidden activations
 #   - Understand WHY sparsity forces specialist neurons
 #   - Visualise activation histograms proving sparsity
-#   - Apply to semiconductor wafer defect detection at GlobalFoundries
+#   - Apply to semiconductor wafer defect detection at a Singapore fab
 #   - Quantify business impact: defect detection rate + cost savings
 #
 # PREREQUISITES: 03_denoising_ae.py
@@ -179,16 +179,16 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Semiconductor Wafer Defect Detection (GlobalFoundries)
+# APPLY — Semiconductor Wafer Defect Detection (Singapore fab)
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are an ML engineer at a semiconductor fab in
-# Singapore (GlobalFoundries/SSMC). Visual inspection of silicon wafers
+# Singapore. Visual inspection of silicon wafers
 # is the quality bottleneck — manual inspection catches 82% of defects
 # at 15 seconds per wafer. A missed defect costs S$5,000 in downstream
 # rework. Your plant manager asks: "Can we automate inspection?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Wafer Defect Detection (GlobalFoundries)")
+print("  APPLICATION: Wafer Defect Detection (Singapore fab)")
 print("=" * 70)
 
 # --- Generate synthetic wafer images ---

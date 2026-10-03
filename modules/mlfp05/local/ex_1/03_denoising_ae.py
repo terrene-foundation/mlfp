@@ -9,7 +9,7 @@
 #   - Build a denoising autoencoder (DAE) with noise injection training
 #   - Understand WHY noise acts as implicit regularisation
 #   - Visualise the 3-row grid: original -> noisy -> cleaned
-#   - Apply to SMRT MRT sensor signal cleaning
+#   - Apply to rail-network sensor signal cleaning
 #   - Quantify business impact: reduced false alerts, fewer missed faults
 #
 # PREREQUISITES: 02_undercomplete_ae.py
@@ -19,7 +19,7 @@
 #   1. Build DAE architecture (same as undercomplete, different training)
 #   2. Train with noise injection on Fashion-MNIST
 #   3. Visualise denoising with 3-row comparison grid
-#   4. Apply: SMRT sensor data cleaning with SNR improvement analysis
+#   4. Apply: rail sensor data cleaning with SNR improvement analysis
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -182,16 +182,16 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SMRT MRT Sensor Signal Cleaning
+# APPLY — Rail Network Sensor Signal Cleaning
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are an IoT engineer at SMRT (Singapore MRT).
+# BUSINESS SCENARIO: You are an IoT engineer at a Singapore rail operator.
 # Vibration and temperature sensors on MRT trains generate readings
 # every second. Sensor noise — electrical interference, sensor drift,
 # dust on contacts — corrupts the signal. Noisy signals trigger false
 # maintenance alerts (costly) or mask real faults (dangerous).
 
 print("\n" + "=" * 70)
-print("  APPLICATION: SMRT Sensor Data Cleaning")
+print("  APPLICATION: Rail Sensor Data Cleaning")
 print("=" * 70)
 
 # --- Generate realistic MRT sensor time-series data ---
@@ -361,7 +361,7 @@ plt.savefig(
 plt.show()
 
 # --- Business Impact ---
-SMRT_TRAINS = 150
+FLEET_TRAINS = 150  # illustrative scenario figures
 SENSORS_PER_TRAIN = 40
 FALSE_ALERT_RATE_NOISY = 0.05
 FALSE_ALERT_RATE_CLEAN = 0.008
@@ -372,7 +372,7 @@ COST_PER_MISSED_FAULT = 200_000
 COST_PER_FALSE_ALERT = 5_000
 
 # TODO: Compute quarterly savings
-# false_alerts_noisy_q = SMRT_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_NOISY
+# false_alerts_noisy_q = FLEET_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_NOISY
 # savings_false_alerts = (noisy - clean) * COST_PER_FALSE_ALERT
 # savings_missed_faults = (missed_noisy - missed_clean) * COST_PER_MISSED_FAULT
 false_alerts_noisy_q = ____
@@ -384,9 +384,9 @@ savings_missed_faults = ____
 total_quarterly_savings = ____
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SMRT Predictive Maintenance")
+print("BUSINESS IMPACT SUMMARY — Rail Predictive Maintenance (illustrative)")
 print("=" * 64)
-print(f"\nSMRT fleet: {SMRT_TRAINS} trains x {SENSORS_PER_TRAIN} sensors")
+print(f"\nFleet: {FLEET_TRAINS} trains x {SENSORS_PER_TRAIN} sensors")
 print(f"DAE signal improvement: +{snr_improvement:.1f} dB average")
 print(f"\nFalse maintenance alerts per quarter:")
 print(f"  With noisy data:    {false_alerts_noisy_q:>10,}")
@@ -420,7 +420,7 @@ print(
   [x] Built a denoising autoencoder with Gaussian noise injection
   [x] Understood noise as implicit regularisation (can't memorise pixels)
   [x] Visualised the 3-row proof: original -> noisy -> cleaned
-  [x] Applied DAE to SMRT sensor data cleaning (10 sensor types)
+  [x] Applied DAE to rail sensor data cleaning (10 sensor types)
   [x] Measured SNR improvement per sensor
   [x] Quantified business impact: false alert reduction + missed fault prevention
 

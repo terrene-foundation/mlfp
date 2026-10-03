@@ -9,7 +9,7 @@
 #   - Build an LSTM-based autoencoder for time-series data
 #   - Understand WHY recurrent architecture preserves temporal order
 #   - Visualise original vs reconstructed time-series overlays
-#   - Apply to SGX financial anomaly / regime change detection
+#   - Apply to equity-market regime change detection
 #   - Quantify portfolio drawdown reduction in S$ for a S$100M fund
 #
 # PREREQUISITES: 07_stacked_ae.py
@@ -19,7 +19,7 @@
 #   1. Generate synthetic sensor vibration data
 #   2. Build LSTM encoder-decoder architecture
 #   3. Train and visualise time-series reconstruction
-#   4. Apply: SGX regime change detection with portfolio impact
+#   4. Apply: equity regime change detection with portfolio impact
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -220,21 +220,21 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SGX Financial Regime Change Detection
+# APPLY — Equity Market Regime Change Detection
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are a quantitative analyst at a Singapore
-# hedge fund monitoring SGX equities for regime changes. Markets shift
+# hedge fund monitoring Singapore-listed equities for regime changes. Markets shift
 # between calm and crisis states. Your PM asks: "Can we detect regime
 # changes early enough to reduce portfolio drawdown?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: SGX Regime Change Detection (S$100M Fund)")
+print("  APPLICATION: Regime Change Detection (S$100M Fund)")
 print("=" * 70)
 
-# --- Generate SGX equity data ---
+# --- Generate SYNTHETIC equity data (simulated, not real prices) ---
 N_DAYS = 1500
 N_STOCKS = 5
-STOCK_NAMES = ["DBS", "OCBC", "Singtel", "CapitaLand", "Keppel"]
+STOCK_NAMES = ["Bank A", "Bank B", "Telco C", "Property D", "Industrial E"]
 fin_rng = np.random.default_rng(42)
 
 base_returns = np.array([0.08, 0.07, 0.04, 0.06, 0.05])
@@ -386,11 +386,11 @@ print(f"Separation: {crisis_errors.mean() / normal_errors.mean():.1f}x")
 # --- Visualisation 1: Price with anomaly overlay ---
 fig, axes = plt.subplots(2, 1, figsize=(16, 10), gridspec_kw={"height_ratios": [2, 1]})
 days = np.arange(N_DAYS)
-axes[0].plot(days, prices[:, 0], color="#1565C0", linewidth=1.2, label="DBS Price")
+axes[0].plot(days, prices[:, 0], color="#1565C0", linewidth=1.2, label="Bank A Price (simulated)")
 for start, end, name in crisis_periods:
     axes[0].axvspan(start, end, alpha=0.15, color="#F44336", label=name)
 axes[0].set_ylabel("Price (S$)")
-axes[0].set_title("DBS Group — Price with Market Regime Detection", fontsize=14)
+axes[0].set_title("Simulated Bank A — Price with Market Regime Detection", fontsize=14)
 axes[0].legend(fontsize=9, loc="upper left", ncol=2)
 axes[0].grid(True, alpha=0.3)
 
@@ -498,7 +498,7 @@ axes[0].plot(
     label=f"Adjusted (S${adjusted_cum[-1]/1e6:.1f}M)",
 )
 axes[0].set_ylabel("Portfolio Value (S$M)")
-axes[0].set_title("S$100M SGX Portfolio: Passive vs Anomaly-Adjusted", fontsize=14)
+axes[0].set_title("S$100M Simulated Portfolio: Passive vs Anomaly-Adjusted", fontsize=14)
 axes[0].legend(fontsize=11)
 axes[0].grid(True, alpha=0.3)
 axes[1].fill_between(
@@ -524,7 +524,7 @@ adjusted_worst_loss = PORTFOLIO_VALUE * abs(adjusted_dd.min())
 dollar_saved = passive_worst_loss - adjusted_worst_loss
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SGX Regime Detection (S$100M Fund)")
+print("BUSINESS IMPACT SUMMARY — Regime Detection (S$100M Fund, simulated)")
 print("=" * 64)
 print(f"\nEvents detected: {sum(event_detected)}/{len(crisis_periods)}")
 for i, (_, _, name) in enumerate(crisis_periods):
@@ -550,7 +550,7 @@ print(
   [x] Built an LSTM encoder-decoder for time-series data
   [x] Understood temporal order preservation via recurrent architecture
   [x] Visualised original vs reconstructed vibration patterns
-  [x] Applied to SGX regime change detection with early warning
+  [x] Applied to equity regime change detection with early warning
   [x] Built portfolio anomaly-adjusted strategy
   [x] Quantified S$ capital preserved at worst drawdown
 

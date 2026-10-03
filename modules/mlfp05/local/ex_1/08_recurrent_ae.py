@@ -9,7 +9,7 @@
 #   - Build an LSTM-based autoencoder for time-series data
 #   - Understand WHY recurrent architecture preserves temporal order
 #   - Visualise original vs reconstructed time-series overlays
-#   - Apply to SGX financial anomaly / regime change detection
+#   - Apply to equity-market regime change detection
 #   - Quantify portfolio drawdown reduction in S$ for a S$100M fund
 #
 # PREREQUISITES: 07_stacked_ae.py
@@ -19,7 +19,7 @@
 #   1. Generate synthetic sensor vibration data
 #   2. Build LSTM encoder-decoder architecture
 #   3. Train and visualise time-series reconstruction
-#   4. Apply: SGX regime change detection with portfolio impact
+#   4. Apply: equity regime change detection with portfolio impact
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -204,24 +204,24 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SGX Financial Regime Change Detection
+# APPLY — Equity Market Regime Change Detection
 # ════════════════════════════════════════════════════════════════════════
 # BUSINESS SCENARIO: You are a quantitative analyst at a Singapore
-# hedge fund monitoring SGX equities for regime changes. Markets shift
+# hedge fund monitoring Singapore-listed equities for regime changes. Markets shift
 # between calm and crisis states. Your PM asks: "Can we detect regime
 # changes early enough to reduce portfolio drawdown?"
 
 print("\n" + "=" * 70)
-print("  APPLICATION: SGX Regime Change Detection (S$100M Fund)")
+print("  APPLICATION: Regime Change Detection (S$100M Fund)")
 print("=" * 70)
 
-# --- Generate SGX equity data ---
+# --- Generate SYNTHETIC equity data (simulated, not real prices) ---
 N_DAYS = 1500
 N_STOCKS = 5
-STOCK_NAMES = ["DBS", "OCBC", "Singtel", "CapitaLand", "Keppel"]
+STOCK_NAMES = ["Bank A", "Bank B", "Telco C", "Property D", "Industrial E"]
 fin_rng = np.random.default_rng(42)
 
-# TODO: Generate correlated daily returns for 5 SGX stocks
+# TODO: Generate correlated daily returns for 5 SIMULATED stocks
 # base_returns, base_vols, correlation matrix, Cholesky decomposition
 # Include 4 crisis periods with regime_labels
 # Crisis: higher vol, negative drift
@@ -373,7 +373,7 @@ print(f"\nNormal error: {normal_errors.mean():.4f}, Crisis: {crisis_errors.mean(
 print(f"Separation: {crisis_errors.mean() / normal_errors.mean():.1f}x")
 
 # --- Visualisation 1: Price with anomaly overlay ---
-# TODO: 2-row figure: DBS price with crisis shading, anomaly score with threshold
+# TODO: 2-row figure: Bank A (simulated) price with crisis shading, anomaly score with threshold
 # Save to OUTPUT_DIR / "ex1_timeseries_anomaly_overlay.png"
 fig, axes = plt.subplots(2, 1, figsize=(16, 10), gridspec_kw={"height_ratios": [2, 1]})
 ____
@@ -444,7 +444,7 @@ adjusted_worst_loss = PORTFOLIO_VALUE * abs(adjusted_dd.min())
 dollar_saved = passive_worst_loss - adjusted_worst_loss
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — SGX Regime Detection (S$100M Fund)")
+print("BUSINESS IMPACT SUMMARY — Regime Detection (S$100M Fund, simulated)")
 print("=" * 64)
 print(f"\nEvents detected: {sum(event_detected)}/{len(crisis_periods)}")
 for i, (_, _, name) in enumerate(crisis_periods):
@@ -470,7 +470,7 @@ print(
   [x] Built an LSTM encoder-decoder for time-series data
   [x] Understood temporal order preservation via recurrent architecture
   [x] Visualised original vs reconstructed vibration patterns
-  [x] Applied to SGX regime change detection with early warning
+  [x] Applied to equity regime change detection with early warning
   [x] Built portfolio anomaly-adjusted strategy
   [x] Quantified S$ capital preserved at worst drawdown
 

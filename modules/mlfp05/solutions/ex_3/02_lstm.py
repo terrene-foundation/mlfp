@@ -511,7 +511,7 @@ print("  APPLY: SGX Equity Forecasting — DBS Group (D05.SI)")
 print("=" * 70)
 
 # Use DBS data if available, else primary
-dbs_symbol = "DBS.SI"
+dbs_symbol = "D05.SI"  # DBS Group Holdings on SGX (public price data)
 if dbs_symbol in stock_data:
     dbs_df = stock_data[dbs_symbol]
     print(f"\n  Using DBS Group data: {len(dbs_df)} trading days")

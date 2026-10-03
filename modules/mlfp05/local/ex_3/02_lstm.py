@@ -456,7 +456,7 @@ print("  APPLY: SGX Equity Forecasting — DBS Group (D05.SI)")
 print("=" * 70)
 
 # TODO: Use DBS data if available in stock_data, else fall back to primary
-dbs_symbol = "DBS.SI"
+dbs_symbol = "D05.SI"  # DBS Group Holdings on SGX (public price data)
 # TODO: Build dataset for DBS using build_dataset()
 # TODO: Create train/val tensors and DataLoader
 # TODO: Train a dedicated LSTMRegressor on DBS data for EPOCHS

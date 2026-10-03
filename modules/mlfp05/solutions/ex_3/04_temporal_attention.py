@@ -80,8 +80,8 @@ from shared.mlfp05.ex_3 import (
 #   The attention weights ARE the highlighter marks.
 #
 # WHY THIS MATTERS:
-#   Attention is THE foundational idea behind Transformers (GPT, BERT,
-#   Claude) — but Transformers use SELF-attention (each timestep attends
+#   Attention is THE foundational idea behind Transformer language models
+#   such as BERT — but Transformers use SELF-attention (each timestep attends
 #   to all others) instead of this simpler form. This exercise gives you
 #   the intuition that makes Transformers click in Exercise 4.
 # ════════════════════════════════════════════════════════════════════════
@@ -399,13 +399,12 @@ register_best_model(
     has_registry,
 )
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Clinical Event Prediction at Singapore General Hospital (SGH)
+# APPLY — Clinical Event Prediction at a Singapore Hospital
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a clinical data scientist at Singapore General Hospital
-#   (SGH), the largest acute tertiary hospital in Singapore. ICU nurses
-#   monitor vital signs (heart rate, blood pressure, SpO2, temperature,
+#   You are a clinical data scientist at a large Singapore public
+#   hospital. ICU nurses monitor vital signs (heart rate, blood pressure, SpO2, temperature,
 #   respiratory rate) every 5 minutes. You need to predict patient
 #   deterioration 30 minutes ahead.
 #
@@ -428,7 +427,7 @@ register_best_model(
 #   - Per-patient attention analysis: which vital signs matter when
 #   - Clinical alert with interpretable explanation
 print("\n" + "=" * 70)
-print("  APPLY: SGH Clinical Event Prediction — ICU Vital Signs")
+print("  APPLY: Hospital Clinical Event Prediction — ICU Vital Signs")
 print("=" * 70)
 # Generate realistic ICU vital signs data
 np.random.seed(42)
@@ -596,7 +595,7 @@ annual_savings = (
     icu_beds * avg_icu_cost_per_day * 365 * recall * early_intervention_savings * 0.3
 )
 print(f"\n  Business Impact:")
-print(f"    ICU beds at SGH: ~{icu_beds}")
+print(f"    ICU beds (illustrative hospital): ~{icu_beds}")
 print(f"    Average ICU cost: S${avg_icu_cost_per_day:,}/day")
 print(f"    Early detection recall: {recall:.0%} of deteriorating patients caught")
 print(f"    With early intervention (15% shorter ICU stay):")
@@ -615,7 +614,7 @@ else:
     print(f"  F1 = {f1:.3f} (below 0.3 — random-init drift; full training would converge higher)")
 if len(degrade_indices) > 0:
     assert (OUTPUT_DIR / "04_attention_clinical_patient.png").exists()
-print("--- Checkpoint 6 passed --- SGH clinical application complete\n")
+print("--- Checkpoint 6 passed --- clinical application complete\n")
 # ══════════════════════════════════════════════════════════════════════
 # REFLECTION
 # ══════════════════════════════════════════════════════════════════════
@@ -628,7 +627,7 @@ print(
   [x] LSTM+Attention vs plain LSTM: {improvement:+.1f}% val loss improvement
   [x] Attention heatmaps: visualised which timesteps the model focuses on
   [x] Recency bias: recent days get {recency_ratio:.1f}x more attention than early days
-  [x] Applied to SGH clinical deterioration prediction (F1={f1:.3f})
+  [x] Applied to clinical deterioration prediction (synthetic ICU data) (F1={f1:.3f})
   [x] Attention provides EXPLAINABILITY: which past readings drove the alert
   [x] Quantified business impact: S${annual_savings:,.0f}/year in ICU savings
   Key insight: Attention is a LEARNED HIGHLIGHTING mechanism. Instead of

@@ -9,7 +9,7 @@
 #   - Build an undercomplete AE with bottleneck (784 -> 16 = 49:1 compression)
 #   - Understand WHY forced compression solves the identity risk
 #   - Visualise blurry but meaningful reconstructions
-#   - Apply to credit card fraud detection at DBS Singapore
+#   - Apply to credit card fraud detection at a Singapore bank
 #   - Quantify business impact in S$ with precision-recall analysis
 #
 # PREREQUISITES: 01_standard_ae.py (identity risk understanding)
@@ -18,7 +18,7 @@
 # TASKS:
 #   1. Build undercomplete AE (784 -> 256 -> 64 -> 16)
 #   2. Train on Fashion-MNIST and visualise reconstructions
-#   3. Apply: fraud detection at DBS using anomaly reconstruction error
+#   3. Apply: fraud detection at a Singapore bank using anomaly reconstruction error
 #   4. Business impact analysis with S$ projections
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -183,9 +183,9 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Credit Card Fraud Detection at DBS Singapore
+# APPLY — Credit Card Fraud Detection at a Singapore Bank
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are a fraud analyst at DBS Bank. 99.8% of
+# BUSINESS SCENARIO: You are a fraud analyst at a Singapore retail bank. 99.8% of
 # daily transactions are legitimate. You have NO labelled fraud
 # examples — only a gut feeling that "unusual" transactions deserve
 # investigation. Your manager asks: "Can we catch more fraud without
@@ -197,7 +197,7 @@ if has_registry:
 # because the encoder never learned their patterns.
 
 print("\n" + "=" * 70)
-print("  APPLICATION: Credit Card Fraud Detection at DBS")
+print("  APPLICATION: Credit Card Fraud Detection (Singapore bank)")
 print("=" * 70)
 
 # --- Generate realistic Singapore bank transaction data ---
@@ -469,10 +469,10 @@ plt.savefig(OUTPUT_DIR / "ex1_fraud_top_anomalies.png", dpi=150, bbox_inches="ti
 plt.show()
 
 # --- Business Impact Analysis ---
-DBS_DAILY_TRANSACTIONS = 2_000_000
+BANK_DAILY_TRANSACTIONS = 2_000_000  # illustrative scenario figures
 AVG_FRAUD_VALUE_SGD = 800
 RULE_BASED_RECALL = 0.67
-DAILY_FRAUD_COUNT = int(DBS_DAILY_TRANSACTIONS * FRAUD_RATE)
+DAILY_FRAUD_COUNT = int(BANK_DAILY_TRANSACTIONS * FRAUD_RATE)
 FPR_AT_BEST = np.sum((errors > best_threshold) & (test_labels == 0)) / np.sum(
     test_labels == 0
 )
@@ -489,9 +489,9 @@ daily_value_saved = ____
 annual_value_saved = ____
 
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — DBS Singapore Card Fraud Detection")
+print("BUSINESS IMPACT SUMMARY — Card Fraud Detection (illustrative bank)")
 print("=" * 64)
-print(f"\nDBS daily card transactions:     {DBS_DAILY_TRANSACTIONS:>12,}")
+print(f"\nDaily card transactions:         {BANK_DAILY_TRANSACTIONS:>12,}")
 print(f"Estimated daily fraud events:    {DAILY_FRAUD_COUNT:>12,}")
 print(f"Average fraud value:             {'S$' + str(AVG_FRAUD_VALUE_SGD):>12}")
 print(f"\nCurrent rule-based system:")
@@ -519,7 +519,7 @@ print(
     """
   [x] Built an undercomplete AE with 49:1 compression (784 -> 16)
   [x] Observed blurry but meaningful reconstructions — structure preserved
-  [x] Applied bottleneck AE to credit card fraud detection at DBS
+  [x] Applied bottleneck AE to credit card fraud detection at a Singapore bank
   [x] Computed precision-recall curves for threshold selection
   [x] Quantified business impact: S$ value of additional fraud prevented
 

@@ -40,7 +40,7 @@ OUTPUT_DIR = REPO_ROOT / "outputs" / "mlfp05" / "ex_3"
 
 TICKERS = {
     "^STI": "Straits Times Index",
-    "DBS.SI": "DBS Group",
+    "D05.SI": "DBS Group Holdings",
     "9988.HK": "Alibaba HK",
     "AAPL": "Apple",
     "005930.KS": "Samsung",

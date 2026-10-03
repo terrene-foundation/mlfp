@@ -10,7 +10,8 @@
 #   - Understand the ELBO loss: reconstruction + KL divergence
 #   - Generate BRAND NEW images by sampling z ~ N(0, I)
 #   - Visualise latent traversal to see what each dimension controls
-#   - Apply to privacy-preserving synthetic patient data at NUH
+#   - Apply to synthetic patient data for a hospital research team, and
+#     measure what a distance check can (and cannot) say about privacy
 #   - Verify synthetic data quality with statistical tests + privacy checks
 #
 # PREREQUISITES: 08_recurrent_ae.py
@@ -20,7 +21,7 @@
 #   1. Build VAE with mu/logvar heads and reparameterisation
 #   2. Train with ELBO loss (reconstruction + KL divergence)
 #   3. Visualise: reconstruction, generation, latent traversal
-#   4. Apply: synthetic patient data for NUH PDPA compliance
+#   4. Apply: synthetic patient data for hospital researchers
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -212,16 +213,24 @@ if has_registry:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Privacy-Preserving Synthetic Patient Data (NUH)
+# APPLY — Synthetic Patient Data for Hospital Researchers
 # ════════════════════════════════════════════════════════════════════════
-# BUSINESS SCENARIO: You are a data scientist at National University
-# Hospital (NUH). Researchers need patient data to study diabetes risk
-# factors, but Singapore's PDPA prohibits sharing identifiable records.
-# Your director asks: "Can we give researchers statistically useful
-# data without exposing any real patient?"
+# BUSINESS SCENARIO: You are a data scientist at a Singapore public
+# hospital. Researchers need patient data to study diabetes risk factors,
+# but Singapore's PDPA restricts sharing identifiable records. Your
+# director asks: "Can we give researchers statistically useful data
+# without exposing any real patient?"
+#
+# Be precise about what this section shows. Sampling from a VAE does NOT
+# by itself make data anonymous or PDPA-compliant: a generator can
+# memorise and reproduce rare records. The nearest-neighbour distance
+# check below is one screening heuristic, not a privacy guarantee —
+# release still needs a formal privacy assessment (e.g. membership-
+# inference testing or differential privacy) and data-governance sign-off.
+# The patient records here are themselves SYNTHETIC, generated below.
 
 print("\n" + "=" * 70)
-print("  APPLICATION: PDPA-Compliant Synthetic Patient Data (NUH)")
+print("  APPLICATION: Synthetic Patient Data for Hospital Researchers")
 print("=" * 70)
 
 # --- Generate realistic patient data ---
@@ -390,23 +399,22 @@ for i in range(N_FEATURES):
 
 # --- Business Impact ---
 print("\n" + "=" * 64)
-print("BUSINESS IMPACT SUMMARY — NUH PDPA-Compliant Synthetic Data")
+print("BUSINESS IMPACT SUMMARY — Synthetic Patient Data (illustrative)")
 print("=" * 64)
 print(f"\nDataset: {N_PATIENTS:,} real -> {N_PATIENTS:,} synthetic records")
 print(
     f"Statistical utility: {tests_passed}/{N_FEATURES} features pass ({tests_passed/N_FEATURES*100:.0f}%)"
 )
 print(f"Correlation MAE: {corr_mae:.4f}")
-print(f"\nPrivacy assessment:")
+print(f"\nNearest-neighbour distance screen (a heuristic, NOT a privacy guarantee):")
 print(f"  Mean synth-to-real NN distance: {nn_distances.mean():.4f}")
 print(f"  Mean real-to-real NN distance:  {self_nn.mean():.4f}")
 print(f"  Ratio (>1.0 = good):            {nn_distances.mean()/self_nn.mean():.3f}")
-print(f"  Privacy safe: {'YES' if privacy_safe else 'NO'}")
-print(f"\nResearch impact:")
-print(f"  Before: 6-12 month ethics approval per data request")
-print(f"  After: Instant access to synthetic data, ethics-exempt")
-print(f"  Estimated: 3-5 research projects/year unblocked")
-print(f"  Value: ~S$500K in grant revenue (S$100K avg per project)")
+print(f"  Screen passed (synthetic records not closer to real ones than real\n  records are to each other): {'YES' if privacy_safe else 'NO'}")
+print(f"\nResearch impact (illustrative):")
+print(f"  Synthetic data that passes utility checks AND a formal privacy")
+print(f"  assessment can shorten data-access requests; it does not remove")
+print(f"  the need for ethics and governance review.")
 print("=" * 64)
 
 
@@ -422,8 +430,9 @@ print(
   [x] Trained with ELBO loss (reconstruction + KL divergence)
   [x] Generated BRAND NEW images from the learned prior N(0,I)
   [x] Explored latent traversal — each dimension controls one aspect
-  [x] Applied to synthetic patient data generation for NUH
-  [x] Verified statistical utility AND privacy preservation
+  [x] Applied to synthetic patient data for hospital researchers
+  [x] Checked statistical utility, and ran a distance screen that is
+      NOT a privacy guarantee
 
   KEY INSIGHT: The VAE trades reconstruction sharpness for a regular
   latent space. The KL term pushes q(z|x) toward N(0,I), which means

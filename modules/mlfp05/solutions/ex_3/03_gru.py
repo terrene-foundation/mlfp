@@ -476,11 +476,11 @@ register_best_model(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — SMRT Predictive Maintenance: Real-Time Sensor Monitoring
+# APPLY — Rail Predictive Maintenance: Real-Time Sensor Monitoring
 # ════════════════════════════════════════════════════════════════════════
 #
 # BUSINESS SCENARIO:
-#   You are a data engineer at SMRT Corporation, which operates
+#   You are a data engineer at a Singapore rail operator, which runs
 #   Singapore's MRT (Mass Rapid Transit) network carrying ~3.4 million
 #   trips per day. Train wheels, bearings, and axles generate vibration
 #   data captured by accelerometers at 1-second intervals.
@@ -493,7 +493,7 @@ register_best_model(
 #     - LSTM: ~{lstm_latency:.3f}ms per inference
 #     - GRU:  ~{gru_latency:.3f}ms per inference ({speedup:.1f}x faster)
 #   At 200 sensors x 200 trains x 60 readings/min = 2.4M inferences/min.
-#   The {speedup:.1f}x speedup means SMRT can run prediction on 40K sensors
+#   The {speedup:.1f}x speedup means the operator can run prediction on 40K sensors
 #   that LSTM cannot serve within the 1-second window.
 #
 # DELIVERABLES:
@@ -501,7 +501,7 @@ register_best_model(
 #   - Latency comparison: can GRU serve all sensors in real-time?
 #   - Maintenance alert: "bearing X shows increasing vibration trend"
 print("\n" + "=" * 70)
-print("  APPLY: SMRT Predictive Maintenance — Vibration Monitoring")
+print("  APPLY: Rail Predictive Maintenance — Vibration Monitoring")
 print("=" * 70)
 
 # Generate realistic vibration sensor data
@@ -599,7 +599,7 @@ print(
 print(f"    These correspond to the last ~5 days where bearing degradation occurs")
 print(f"\n  Business Decision: GRU achieves similar accuracy to LSTM with")
 print(
-    f"  {sensor_speedup:.1f}x lower latency — critical for SMRT's real-time monitoring"
+    f"  {sensor_speedup:.1f}x lower latency — critical for real-time rail monitoring"
 )
 print(f"  of {sensors_per_train * n_trains:,} sensors across {n_trains} trains.")
 
@@ -642,7 +642,7 @@ ax1.fill_between(
 )
 ax1.set_xlabel("Time (minutes)")
 ax1.set_ylabel("Vibration (mm/s^2)")
-ax1.set_title("SMRT Train Bearing Vibration: GRU Prediction vs Actual")
+ax1.set_title("Train Bearing Vibration (synthetic): GRU Prediction vs Actual")
 ax1.legend(loc="upper left")
 ax1.grid(True, alpha=0.3)
 
@@ -666,15 +666,15 @@ ax2.set_title("Bearing Degradation Trend — Maintenance Alert")
 ax2.grid(True, alpha=0.3, axis="y")
 
 fig.tight_layout()
-fig.savefig(str(OUTPUT_DIR / "03_gru_smrt_vibration.png"), dpi=150)
+fig.savefig(str(OUTPUT_DIR / "03_gru_rail_vibration.png"), dpi=150)
 plt.close(fig)
-print("  Saved: 03_gru_smrt_vibration.png")
+print("  Saved: 03_gru_rail_vibration.png")
 
 # ── Checkpoint 7 (Apply) ────────────────────────────────────────────
 assert gru_mae < 1.0, "GRU vibration MAE should be reasonable"
 assert abs(gru_mae - lstm_mae) < 0.5, "GRU and LSTM should have similar accuracy"
-assert (OUTPUT_DIR / "03_gru_smrt_vibration.png").exists()
-print("--- Checkpoint 7 passed --- SMRT predictive maintenance application complete\n")
+assert (OUTPUT_DIR / "03_gru_rail_vibration.png").exists()
+print("--- Checkpoint 7 passed --- rail predictive maintenance application complete\n")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -689,7 +689,7 @@ print(
   [x] Head-to-head: GRU val={gru_results['final_val_loss']:.4f} vs LSTM val={lstm_results['final_val_loss']:.4f}
   [x] Latency: GRU is {speedup:.2f}x faster than LSTM on stock data
   [x] Hidden state dynamics: GRU's update gate creates sharper transitions
-  [x] Applied GRU to SMRT predictive maintenance (vibration monitoring)
+  [x] Applied GRU to rail predictive maintenance (vibration monitoring)
   [x] Real-time capacity: GRU serves {sensor_speedup:.1f}x more sensors per second
   [x] Anomaly detection: {n_alerts_gru} alerts for bearing degradation
 

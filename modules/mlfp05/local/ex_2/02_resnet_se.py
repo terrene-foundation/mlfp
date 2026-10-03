@@ -32,7 +32,7 @@
 #   2. BUILD   — ResBlock, SEBlock, and ResNetSE architecture
 #   3. TRAIN   — Train and compare against SimpleCNN
 #   4. VISUALISE — Grad-CAM heatmaps showing model attention
-#   5. APPLY   — Semiconductor wafer inspection at GlobalFoundries SG
+#   5. APPLY   — Semiconductor wafer inspection at a Singapore fab
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -622,9 +622,9 @@ print("\n--- Checkpoint 3 passed --- Grad-CAM and SE analysis complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Semiconductor Wafer Inspection at GlobalFoundries SG
+# PHASE 5 — APPLY: Semiconductor Wafer Inspection at a Singapore Fab
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You are an ML engineer at GlobalFoundries' Singapore fab
+# SCENARIO: You are an ML engineer at a Singapore semiconductor fab
 # (Woodlands). The fab produces 300mm wafers for automotive, IoT, and
 # 5G chips. Each wafer goes through 500+ processing steps over 3 months.
 # Defects at ANY step can scrap the entire wafer ($5,000-$50,000 each).
@@ -659,7 +659,7 @@ print("\n--- Checkpoint 3 passed --- Grad-CAM and SE analysis complete\n")
 #   in avoided scrap per year
 
 print("=" * 70)
-print("  PHASE 5 — APPLY: Semiconductor Wafer Inspection (GlobalFoundries SG)")
+print("  PHASE 5 — APPLY: Semiconductor Wafer Inspection (Singapore fab)")
 print("=" * 70)
 
 # TODO: Build the wafer inspection simulation
@@ -731,7 +731,7 @@ print(
     False alarms:              {false_alarm:>5,} / {actual_passes:,} ({false_alarm_rate:.1%} false alarm rate)
     Correct passes:            {correct_pass:>5,} / {actual_passes:,}
 
-  Financial Impact (scaled to GlobalFoundries production volume):
+  Financial Impact (illustrative fab production volume):
     Monthly wafer throughput:         ~10,000 wafers
     Monthly inspection images:        ~200,000
 
@@ -804,7 +804,7 @@ print(
   [x] Overlay visualisation: heatmap on original for instant verification
 
   APPLY:
-  [x] GlobalFoundries Singapore semiconductor wafer inspection
+  [x] Singapore-fab semiconductor wafer inspection
   [x] Detection rate: {detection_rate:.0%} of defects caught automatically
   [x] Grad-CAM enables 83% faster inspector verification (30s -> 5s)
   [x] Projected annual savings: $930K + $2-5M avoided scrap

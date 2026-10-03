@@ -4266,7 +4266,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
       <tr><td>GPT</td><td>Decoder only</td><td>Autoregressive next-token</td><td>Generation (text, code)</td></tr>
       <tr><td>T5</td><td>Encoder-decoder</td><td>Text-to-text (unified)</td><td>Any NLP task</td></tr>
       <tr><td>Transformer-XL</td><td>Decoder + recurrence</td><td>Segment-level memory</td><td>Long contexts</td></tr>
-      <tr><td>Reformer</td><td>Efficient attention</td><td>LSH attention + reversible layers</td><td>Very long sequences</td></tr>
+      <tr><td>Reformer / Longformer</td><td>Efficient attention</td><td>LSH attention + reversible layers / sliding-window + global attention</td><td>Very long sequences</td></tr>
     </tbody>
   </table>
   <div class="callout callout-advanced" style="margin-top: 8px;">
@@ -4316,10 +4316,11 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Derive scaled dot-product attention from scratch (pen and paper + code)</li>
-        <li>Implement single-head attention in PyTorch</li>
-        <li>Fine-tune BERT for text classification (TREC-6 dataset)</li>
-        <li>Compare BERT vs LSTM baseline from 5.3 (accuracy, training time)</li>
+        <li>Derive scaled dot-product attention from scratch (<code>torch.einsum</code>) &mdash; heatmaps</li>
+        <li>Multi-head attention + positional encoding &rarr; Transformer encoder on AG News (4 news topics)</li>
+        <li>Bidirectional LSTM baseline on the same data</li>
+        <li>Fine-tune pre-trained BERT with layer-wise freezing</li>
+        <li>Three-way comparison (LSTM vs Transformer vs BERT), register, export to ONNX</li>
       </ol>
     </div>
     <div class="col">
@@ -4327,7 +4328,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
       <ul>
         <li>Self-attention implemented correctly from scratch</li>
         <li>BERT fine-tuning produces strong classification accuracy</li>
-        <li>BERT vs LSTM comparison quantified</li>
+        <li>Three-way comparison quantified (accuracy, training time)</li>
         <li>Can explain why <span class="katex-inline">\sqrt{d_k}</span> scaling is necessary</li>
       </ul>
     </div>
@@ -4336,7 +4337,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The from-scratch implementation is crucial. Students should be able to write the attention function without looking at a reference. The BERT fine-tuning uses HuggingFace Transformers library. The LSTM comparison quantifies the transformer advantage.
+    Time: ~1 min. Exercise 5.4 is five files, all on AG News (120K news headlines, 4 topic classes: World, Sports, Business, Sci/Tech): attention from scratch, a Transformer encoder, a BiLSTM baseline, BERT fine-tuning (bert-base-uncased, HuggingFace Transformers) and a three-way comparison. The from-scratch implementation is crucial &mdash; students should be able to write the attention function without a reference. Two reading traps to flag: report test accuracy for the checkpoint chosen on the validation split, not the best epoch on test; and a news-TOPIC classifier cannot score sentiment &mdash; high softmax confidence on out-of-domain text is not evidence of signal.
   </aside>
 </section>
 
@@ -4419,17 +4420,17 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Healthcare &mdash; Clinical Note Summarisation</strong>
-        <p class="small">Fine-tuned T5 and BART models at public hospitals convert 2,000-word admission notes into 200-word discharge summaries. The clinician edits the summary instead of writing it from scratch &mdash; saving 15 minutes per patient across 2M admissions a year. The self-attention mechanism is the same one you derived by hand.</p>
+        <p class="small">Fine-tuned T5 and BART models at a hospital can draft 200-word discharge summaries from 2,000-word admission notes. The clinician edits the draft instead of writing it from scratch &mdash; the time saving per patient is the business case. The self-attention mechanism is the same one you derived by hand.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Customer Service &mdash; IRAS Tax Query Routing</strong>
-        <p class="small">A public-sector contact centre fine-tunes BERT on historical tickets to classify incoming queries into 40+ tax-topic buckets and route them to the right specialist. Accuracy on the first 20 classes exceeds the human baseline; the remaining 20 are human-in-the-loop. That is the <em>exact</em> 4-class AG News fine-tune you just ran, scaled up and domain-swapped.</p>
+        <strong>Customer Service &mdash; Tax Query Routing</strong>
+        <p class="small">A public-sector contact centre fine-tunes BERT on its own labelled tickets to route incoming queries into 40+ tax-topic buckets; low-confidence classes stay human-in-the-loop. Same <em>recipe</em> as your AG News fine-tune &mdash; new labels, retrained. The AG News model itself cannot route tax queries: its 4 labels are news topics.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Legal &mdash; Contract Review Assistance</strong>
-        <p class="small">Singapore law firms use fine-tuned transformers to extract obligations, liabilities, and termination clauses from draft contracts. The model highlights the spans; the associate reviews a ranked list. Multi-head attention visualisations are the interpretability layer &mdash; the partner wants to see <em>why</em> the model flagged a clause.</p>
+        <p class="small">A law firm can use fine-tuned transformers to extract obligations, liabilities, and termination clauses from draft contracts. The model highlights the spans; the associate reviews a ranked list. Multi-head attention visualisations are the interpretability layer &mdash; the partner wants to see <em>why</em> the model flagged a clause.</p>
       </div>
     </div>
   </div>
@@ -4440,7 +4441,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The IRAS example is the cleanest "you could deliver this on Monday" case &mdash; every organisation has a pile of customer tickets or emails that need routing. Emphasise the data-requirement drop: "A BERT fine-tune needs a few thousand labelled examples, not a few million. That is the difference between a six-month project and a six-week project."
+    Time: ~3 min. The tax-query routing example is the cleanest "you could deliver this on Monday" case (all organisations here are illustrative) &mdash; every organisation has a pile of customer tickets or emails that need routing. Emphasise the data-requirement drop: "A BERT fine-tune needs a few thousand labelled examples, not a few million. That is the difference between a six-month project and a six-week project."
   </aside>
 </section>
 

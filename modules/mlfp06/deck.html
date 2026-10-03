@@ -3090,6 +3090,7 @@ assert capped.execution_context.budget_limit == 0.50
   <div class="callout callout-foundations" style="margin-top:12px;">
     <strong>Decision rule:</strong> Start with sequential (simplest). Add parallelism if sub-tasks are independent. Use supervisor-worker only when task decomposition is dynamic.
   </div>
+  <p style="font-size:0.72em; margin-top:6px;"><strong>Architecture checklist:</strong> <em>modularity</em> (one specialist = one Signature, swappable) &middot; <em>load balancing</em> (spread requests across agent replicas behind a router) &middot; <em>dynamic agent creation</em> (spawn a specialist per sub-task, inside a budget and depth limit) &middot; <em>isolation</em> (no data leaks between agents &mdash; 6.7).</p>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
@@ -3104,35 +3105,36 @@ assert capped.execution_context.budget_limit == 0.50
   <h2>Multi-Agent: Supervisor-Worker in Kaizen</h2>
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
-    <h3>Kaizen Multi-Agent Orchestration</h3>
-    <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">import os
-from kaizen_agents import Delegate, Pipeline
+    <h3>Fan-out to specialists, fan-in at the supervisor (Exercise 6.6, <code>ex_6/01</code>)</h3>
+    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import asyncio
+import json
+from shared.mlfp06.ex_6 import build_specialists, build_synthesis, run_checked
 
-data_scientist = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[explore_data],
-    budget_usd=2.00,
-)
-feature_engineer = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    tools=[engineer_features],
-    budget_usd=2.00,
-)
+# Each specialist is a BaseAgent with its OWN typed Signature,
+# running on the course Ollama model (OLLAMA_CHAT_MODEL)
+factual, semantic, structural = build_specialists()
+supervisor = build_synthesis()
 
-# Supervisor orchestrates specialists via kaizen_agents.Pipeline —
-# the router selects the best specialist based on A2A capability cards.
-supervisor = Pipeline.router(
-    agents=[data_scientist, feature_engineer],
-)
-result = await supervisor.run(
-    objective="Profile the HDB dataset and engineer features",
-)</code></pre>
+async def supervisor_worker(doc: str, question: str) -> dict:
+    # Fan-out: independent specialists run concurrently
+    f, s, st = await asyncio.gather(
+        run_checked(factual, document=doc, question=question),
+        run_checked(semantic, document=doc, question=question),
+        run_checked(structural, document=doc, question=question),
+    )
+    # Fan-in: the supervisor reads three STRUCTURED outputs, not chat
+    return await run_checked(
+        supervisor, document=doc, question=question,
+        factual_analysis=json.dumps(f, default=str),
+        semantic_analysis=json.dumps(s, default=str),
+        structural_analysis=json.dumps(st, default=str),
+    )   # -> unified_answer, confidence, reasoning_chain</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The supervisor treats other agents as tools. It reasons about which specialist to call, passes the task, and processes the result. This is the same ReAct loop, but the "tools" are other agents.
+    Time: ~3 min. Here the supervisor's plan is fixed (all three specialists, then synthesis); in a dynamic supervisor the &ldquo;tools&rdquo; it chooses between are other agents. Point out: asyncio.gather makes fan-out latency roughly the slowest specialist, not the sum (Exercise 6.6 part 3 measures this). Every hand-off is a typed Signature output, which is what makes the audit trail readable. Kaizen also has <code>Pipeline.router()</code>, but it routes between <code>BaseAgent</code> instances (not Delegates) and its <code>run()</code> is synchronous &mdash; ex_6/03 builds an explicit LLM router instead.
   </aside>
 </section>
 
@@ -3184,41 +3186,40 @@ result = await supervisor.run(
       <ul>
         <li>Without MCP: every agent framework has its own tool format</li>
         <li>With MCP: one server, any client</li>
-        <li>Like REST APIs for humans, MCP is APIs for AI agents</li>
+        <li>One interface for tools, many agent clients &mdash; like a shared plug standard for devices</li>
       </ul>
     </div>
     <div class="col">
-      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_mcp import MCPServer, tool
-from kailash_ml import DataExplorer
+      <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_mcp import MCPServer
 
-server = MCPServer("ml-tools")
+# Transport is chosen when the server is built
+server = MCPServer(name="ml-tools", transport="stdio")
 
-@server.tool
-def profile_dataset(
-    path: str,
-) -> dict:
-    """Profile a dataset and return
-    summary statistics."""
-    explorer = DataExplorer()
-    report = explorer.profile(path)
-    return report.to_dict()
+@server.tool()          # note the parentheses
+def search_corpus(query: str, top_k: int = 3) -> str:
+    """Search the corpus for passages matching a query.
 
-@server.tool
-def train_model(
-    dataset: str, target: str,
-) -> dict:
-    """Train a classifier on the
-    given dataset."""
-    # ... implementation ...
+    Args:
+        query: Search query text.
+        top_k: Maximum results to return.
+    """
+    hits = passages.filter(
+        passages["text"].str.contains(query, literal=True))
+    return "\n\n".join(hits["text"].head(top_k).to_list())
 
-server.run(transport="stdio")</code></pre>
+@server.tool()
+def get_corpus_stats() -> str:
+    """Size and topic coverage of the corpus."""
+    return f"{passages.height} passages"
+
+server.run()            # serves until the client disconnects</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. MCP is the interoperability standard for AI tools. You build one MCP server, and any agent (Kaizen, LangChain, Claude Desktop, etc.) can use it. If beginners confused: "Think of MCP as a USB port for AI tools. Any device that speaks USB can plug in."
+    Time: ~3 min. MCP is the interoperability standard for AI tools. You build one MCP server, and any MCP-compatible client (a Kaizen agent, an IDE, a desktop assistant) can use it. The type hints and docstring become the tool's published schema. Three API traps on the course stack: <code>@server.tool()</code> needs the parentheses (it is a decorator factory); the transport goes in the constructor; <code>run()</code> takes no arguments. In Exercise 6.6 (ex_6/04) an <code>MCPClient</code> launches the server over stdio, discovers the tools and calls them &mdash; including a tool that runs a specialist agent. If beginners confused: "Think of MCP as a USB port for AI tools. Any device that speaks USB can plug in."
   </aside>
 </section>
 
@@ -3264,17 +3265,18 @@ server.run(transport="stdio")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build multi-agent pipeline: DataScientist &rarr; FeatureEngineer &rarr; ModelSelector &rarr; ReportWriter</li>
-        <li>Build MCP server exposing ML tools</li>
-        <li>Test cross-agent coordination</li>
-        <li>Verify structured outputs between agents</li>
+        <li>Supervisor-worker: factual / semantic / structural specialists fan out, a supervisor synthesises (<code>ex_6/01</code>, SQuAD 2.0 passages)</li>
+        <li>Sequential pipeline extract &rarr; interpret &rarr; synthesise (<code>02</code>)</li>
+        <li>Parallel execution + LLM router vs keyword router (<code>03</code>)</li>
+        <li>MCP server with three typed tools, called from a real MCP client (<code>04</code>)</li>
+        <li>Short-term / long-term / entity memory + multi-agent security (<code>05</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>Multi-agent pipeline produces correct end-to-end results</li>
-        <li>MCP server functional and callable from agents</li>
+        <li>MCP server discovered and called over stdio by a client</li>
         <li>Agents communicate via structured outputs (not free-form)</li>
         <li>Each agent stays within its specialisation</li>
       </ul>
@@ -3284,7 +3286,7 @@ server.run(transport="stdio")</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. This is the integration exercise: multiple agents coordinating through structured interfaces. The MCP server is a standalone component that any agent can use.
+    Time: ~1 min. This is the integration exercise: multiple agents coordinating through structured interfaces. The MCP server is a standalone component that any agent can use. The spec's DataScientist &rarr; FeatureEngineer &rarr; ModelSelector &rarr; ReportWriter chain is the same sequential pattern as ex_6/02 with ML-flavoured roles &mdash; a good extension for fast finishers.
   </aside>
 </section>
 

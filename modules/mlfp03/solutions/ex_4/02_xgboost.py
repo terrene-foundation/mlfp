@@ -6,11 +6,13 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
+#   - Screen a dataset for target leakage BEFORE modelling (Lesson 3.1)
 #   - Train an XGBoost classifier on a real imbalanced credit dataset
 #   - Read XGBoost hyperparameters in terms of the theory from 4.1
 #     (learning_rate ↔ η, max_depth ↔ tree size, reg_lambda ↔ λ)
 #   - Use AUC-PR as the primary metric for 12%-positive data
-#   - Extract and rank gain-based feature importances
+#   - Extract and rank gain-based feature importances (and know which
+#     "gain" XGBoost reports)
 #   - Explain why XGBoost is the default choice for tabular data
 #
 # PREREQUISITES: Exercise 4.1 (boosting theory, split-gain formula).
@@ -19,25 +21,31 @@
 #
 # TASKS:
 #   1. Theory — hyperparameters as theory dials
-#   2. Build — XGBoost classifier with course-standard defaults
+#   2. Build — leakage screen, then XGBoost with course-standard defaults
 #   3. Train — fit on Singapore credit data, time the training
 #   4. Visualise — feature-importance bar chart + top-15 table
-#   5. Apply — DBS credit risk team ranks features to explain decisions
+#   5. Apply — a bank's credit-risk team sanity-checks what the model uses
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import time
 
+import numpy as np
 import plotly.graph_objects as go
+import polars as pl
 from dotenv import load_dotenv
 
 from shared.mlfp03.ex_4 import (
+    CREDIT_NON_FEATURE_COLUMNS,
     OUTPUT_DIR,
+    TARGET_COLUMN,
     evaluate_classifier,
+    load_credit_data,
     make_xgboost,
     prepare_credit_split,
     print_metrics,
+    screen_single_feature_leakage,
 )
 
 load_dotenv()
@@ -78,6 +86,32 @@ print("\n" + "=" * 70)
 print("  XGBoost on Singapore Credit Scoring")
 print("=" * 70)
 
+# --- 2a. Leakage screen: what could a model "cheat" with? ---------------
+# Before any model sees this data, score every numeric column ON ITS OWN
+# against the target. Real credit features rarely exceed AUC ~0.75 alone;
+# a column that separates defaulters almost perfectly is almost always
+# recorded after the outcome.
+raw = load_credit_data()
+screen = screen_single_feature_leakage(raw)
+print("\n  --- Single-feature AUC screen (top 8) ---")
+print(screen.head(8))
+
+flagged = screen.filter(pl.col("suspicious"))["feature"].to_list()
+print(f"\n  Flagged as suspicious (AUC >= 0.95): {flagged}")
+print(
+    raw.group_by("future_default_indicator")
+    .agg(
+        pl.len().alias("rows"),
+        pl.col(TARGET_COLUMN).mean().alias("default_rate"),
+    )
+    .sort("future_default_indicator")
+)
+# INTERPRETATION: `future_default_indicator` is ~0.93 default rate when 1
+# and ~0.002 when 0 — it is the outcome in disguise, filled in AFTER the
+# loan was observed. It is not available when a new application arrives,
+# so prepare_credit_split() drops it, together with the row ID
+# (CREDIT_NON_FEATURE_COLUMNS).
+
 data = prepare_credit_split()
 X_train, y_train = data["X_train"], data["y_train"]
 X_test, y_test = data["X_test"], data["y_test"]
@@ -86,6 +120,12 @@ feature_names = data["feature_names"]
 print(f"\n  Train: {X_train.shape} | Test: {X_test.shape}")
 print(f"  Features: {len(feature_names)}")
 print(f"  Default rate (imbalance): {data['default_rate']:.2%}")
+print(f"  Excluded before modelling: {list(CREDIT_NON_FEATURE_COLUMNS)}")
+
+# ── Checkpoint 0 ────────────────────────────────────────────────────────
+assert "future_default_indicator" in flagged, "The leakage screen must flag the leak"
+assert not set(CREDIT_NON_FEATURE_COLUMNS) & set(feature_names), "Leak/ID columns must be excluded"
+print("\n[ok] Checkpoint 0 passed — leak found by EDA and excluded from the features\n")
 
 # Course-standard XGBoost (see shared.mlfp03.ex_4.make_xgboost)
 model = make_xgboost(n_estimators=500, learning_rate=0.1, max_depth=6)
@@ -97,7 +137,7 @@ model = make_xgboost(n_estimators=500, learning_rate=0.1, max_depth=6)
 
 print("\n  Training XGBoost (500 rounds, η=0.1, depth=6)...")
 t0 = time.perf_counter()
-model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+model.fit(X_train, y_train)  # the test set is NOT shown to the model in any form
 train_time = time.perf_counter() - t0
 
 y_proba = model.predict_proba(X_test)[:, 1]
@@ -106,26 +146,33 @@ metrics = evaluate_classifier(y_test, y_proba)
 print_metrics("XGBoost", metrics, train_time=train_time)
 
 
+print(
+    f"  AUC-PR {metrics['auc_pr']:.4f} vs random-ranking AUC-PR "
+    f"{data['default_rate']:.4f} (= the default rate): "
+    f"{metrics['auc_pr'] / data['default_rate']:.1f}x better than chance"
+)
+
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
 assert metrics["auc_roc"] > 0.7, "XGBoost should beat 0.7 AUC-ROC on credit data"
 assert (
-    metrics["auc_pr"] > 0.3
-), "XGBoost AUC-PR should clear the 0.3 bar (12% base rate)"
-# INTERPRETATION: AUC-PR is the metric that matters here. With 12% base
-# rate, random scoring gives AUC-PR ≈ 0.12 and a model that ranks every
-# customer at the population rate gives AUC-ROC ≈ 0.5 — yet a bank would
-# still call that "50% accurate". AUC-PR ≥ 0.3 means the model is
-# surfacing real signal on the rare positives.
+    metrics["auc_pr"] > 2 * data["default_rate"]
+), "XGBoost AUC-PR should be at least twice the random baseline (the default rate)"
+# INTERPRETATION: AUC-PR is the metric that matters here. A random
+# ranking scores AUC-PR ≈ the default rate (~0.13) and AUC-ROC ≈ 0.5;
+# AUC-ROC can look respectable while precision on the rare defaulters
+# stays low. Without the leak column the honest numbers are modest —
+# that is what real credit data looks like.
 print("\n[ok] Checkpoint 1 passed — XGBoost trained and evaluated\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE feature importance
 # ════════════════════════════════════════════════════════════════════════
-# XGBoost uses gain-based importance by default: the total reduction in
-# loss (summed split gains) attributed to each feature. This is the right
-# importance metric for this theory — it maps directly to the split-gain
-# formula from 4.1.
+# XGBClassifier.feature_importances_ defaults to importance_type="gain":
+# the AVERAGE split gain (the 4.1 formula) over every split that used the
+# feature, normalised to sum to 1. "total_gain" (average × number of
+# splits) is the alternative; a feature used rarely but decisively ranks
+# higher on average gain than on total gain.
 
 importances = model.feature_importances_
 ranked = sorted(
@@ -135,8 +182,8 @@ ranked = sorted(
 )
 top_15 = ranked[:15]
 
-print("  --- Top-15 Features by XGBoost Gain Importance ---")
-print(f"  {'Rank':>4}  {'Feature':<30}  {'Gain':>10}")
+print("  --- Top-15 Features by XGBoost Average-Gain Importance ---")
+print(f"  {'Rank':>4}  {'Feature':<30}  {'Avg gain':>10}")
 print("  " + "─" * 50)
 for rank, (name, importance) in enumerate(top_15, start=1):
     print(f"  {rank:>4}  {name:<30}  {importance:>10.4f}")
@@ -155,7 +202,7 @@ fig = go.Figure(
 )
 fig.update_layout(
     title="XGBoost Feature Importance — Singapore Credit Default",
-    xaxis_title="Gain (total split-loss reduction attributed to feature)",
+    xaxis_title="Average split gain per use (normalised to sum to 1)",
     yaxis_title="",
     height=520,
 )
@@ -164,55 +211,54 @@ fig.write_html(viz_path)
 print(f"\n  Saved: {viz_path}")
 
 
+top5_share = float(sum(v for _, v in ranked[:5]))
+print(f"\n  Share of importance in the top 5 features: {top5_share:.1%}")
+idx_1 = feature_names.index(ranked[0][0])
+idx_2 = feature_names.index(ranked[1][0])
+corr_12 = float(np.corrcoef(X_train[:, idx_1], X_train[:, idx_2])[0, 1])
+print(
+    f"  Correlation between #1 ({ranked[0][0]}) and #2 ({ranked[1][0]}): "
+    f"{corr_12:+.3f}"
+)
+
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
 assert len(importances) == len(
     feature_names
 ), "importance vector must match feature count"
 assert sum(importances) > 0, "at least one feature must have positive importance"
-# INTERPRETATION: A well-behaved gain importance distribution is typically
-# dominated by 3-5 features that together account for 50%+ of the total
-# gain. If it's flat (every feature ≈ equal), either the model is
-# underfitting or the features are nearly-collinear proxies for each
-# other. A sharply-peaked distribution means there are a few features
-# that do most of the discrimination work.
+# INTERPRETATION: When two top features are almost perfectly correlated
+# (near-duplicates such as the same quantity measured in months and in
+# years), the trees pick either one at each split and the credit is
+# SPLIT between them — neither ranking alone tells you how much the
+# underlying quantity matters. Group near-duplicates before you read an
+# importance chart, or use SHAP (Exercise 6).
 print("\n[ok] Checkpoint 2 passed — feature importance extracted and visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Credit Risk Team Explainability
+# TASK 5 — APPLY: A Credit-Risk Team Sanity-Checks What The Model Uses
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS's credit risk team needs to explain every automated
-# decline to the Monetary Authority of Singapore (MAS) under the FEAT
-# principles (Fairness, Ethics, Accountability, Transparency) issued by
-# the MAS for AI in finance.
+# SCENARIO (illustrative): a Singapore retail bank's credit-risk team
+# must be able to explain automated declines. The MAS FEAT principles
+# (Fairness, Ethics, Accountability, Transparency — non-binding guidance
+# for AI in finance) call for exactly this kind of transparency.
 #
-# The XGBoost feature-importance ranking above is the FIRST artifact the
-# team hands to MAS when asked "what is the model looking at?". But it's
-# only a starting point — gain importance is population-level; for a
-# specific customer's decline, the team uses SHAP values (Exercise 6) to
-# break down "why was THIS application declined".
-#
-# The top features in Singapore credit scoring are almost always:
-#   1. Debt Service Ratio (monthly debt / monthly income)
-#   2. Months since last bounced cheque / missed payment
-#   3. Total unsecured credit exposure
-#   4. Employment length
-#   5. Age of oldest credit account
-#
-# When the model puts one of these in the top 3, the team has a clear
-# narrative to give MAS. When the model ranks something unexpected in
-# top 3 (e.g., postal code region), that's a fairness red flag — it
-# triggers a bias audit under PACT/MAS guidelines.
-#
-# BUSINESS IMPACT: DBS approves ~S$12B in new unsecured credit per year.
-# A 1-percentage-point improvement in AUC-PR is worth roughly S$25-40M
-# in avoided losses at typical loss-given-default rates of 40-60%. The
-# gain importance view above is what lets the risk team quickly answer
-# "did the model learn what we told it to learn" — a cheap 5-minute
-# sanity check before every re-train goes to production. Finding a
-# suspicious top feature BEFORE the model ships is worth S$0 in direct
-# savings but avoids a ~S$5M MAS remediation + reputational cost if the
-# model shipped with a proxy-discrimination feature in the top 3.
+# The importance ranking is the team's first, population-level check:
+# "is the model looking at things a credit officer would recognise?"
+# For an individual decline, they need per-applicant explanations (SHAP,
+# Exercise 6). Two red flags to look for on every re-train:
+#   1. A column that should not exist at decision time ranks at the top —
+#      exactly what the leak column did before Checkpoint 0 removed it.
+#   2. A protected attribute (gender, race) or an obvious proxy for one
+#      ranks highly — that triggers a fairness review (Exercise 6.5).
+
+protected = {"gender", "race", "nationality"}
+top_10_names = [name for name, _ in ranked[:10]]
+print("\n  Pre-release sanity check:")
+print(f"    Top 3 features: {top_10_names[:3]}")
+print(f"    Protected attributes in the top 10: {sorted(protected & set(top_10_names)) or 'none'}")
+# A five-minute check like this before every release is cheap; shipping a
+# model that relies on a leaked or protected column is not.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -223,19 +269,22 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     f"""
+  [x] Found the planted leak with a single-feature AUC screen and kept it
+      (and the row ID) out of every model
   [x] Trained XGBoost on real Singapore credit data (AUC-PR={metrics['auc_pr']:.4f})
   [x] Connected every hyperparameter back to the theory in 4.1
   [x] Used AUC-PR as the primary metric for 12%-positive imbalanced data
-  [x] Ranked features by gain importance and interpreted the shape
-  [x] Explained how DBS's credit risk team uses the ranking to satisfy
-      MAS FEAT principles for AI in finance
+  [x] Ranked features by average-gain importance and saw near-duplicate
+      features split the credit between them
+  [x] Turned the ranking into a pre-release sanity check for leaked and
+      protected columns
 
   KEY INSIGHT: XGBoost is the default choice for tabular credit/fraud/
   risk data because (a) it handles mixed feature types, (b) the split-
   gain formula gives you structural regularisation for free, and
-  (c) gain importance is a defensible, regulator-ready explanation
-  artifact out of the box. Start here, compare against LightGBM for
-  speed and CatBoost for categorical-heavy data.
+  (c) gain importance is a quick first look at what the model uses —
+  a starting point for explanation, not the whole story. Compare against
+  LightGBM for speed and CatBoost for categorical-heavy data.
 
   Next: 03_lightgbm_catboost.py — the same data, same metric, two
   alternative libraries, and the decision tree for choosing one.

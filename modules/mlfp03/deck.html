@@ -713,7 +713,7 @@ snap = asyncio.run(as_of(icu, datetime(2023, 1, 1)))</code></pre>
       <tr><td><strong>Stratified k-Fold</strong></td><td>Preserve class proportions in each fold</td><td>Imbalanced classification</td></tr>
       <tr><td><strong>Time-Series Split</strong></td><td>Walk-forward: train on past, test on future</td><td>Temporal data (never use future to predict past)</td></tr>
       <tr><td><strong>GroupKFold</strong></td><td>Keep grouped observations together</td><td>Same patient, same company, repeated measures</td></tr>
-      <tr><td><strong>Nested CV</strong></td><td>Outer: model selection. Inner: hyperparameters</td><td>Unbiased model comparison (Lesson 3.7)</td></tr>
+      <tr><td><strong>Nested CV</strong></td><td>Outer: estimates performance. Inner: tunes hyperparameters</td><td>Honest score after tuning (Exercises 3.2, 3.3)</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -1008,7 +1008,7 @@ print(best, mean_squared_error(y_te, final.predict(X_te)))  # test: once</code><
   <div class="kailash-bridge">
     <h3>AutoMLEngine</h3>
     <p>You supply the trial function; the engine runs the sweep, records every trial and returns the best.</p>
-    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
@@ -1256,29 +1256,26 @@ for t in result.all_trials:
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>TrainingPipeline &mdash; one interface, three libraries</h3>
-    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
-from kailash.db import ConnectionManager
-from kailash_ml import ModelRegistry, TrainingPipeline
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from kailash_ml import TrainingPipeline
 from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
-from shared.mlfp03.ex_7 import credit_feature_schema, prepare_credit_frames
+from shared.mlfp03.ex_7 import (build_training_registry,
+    credit_feature_schema, prepare_credit_frames)
 
 dev, test, cols = prepare_credit_frames()  # leak column dropped; test held out
 SPECS = {
     "xgboost": ModelSpec("xgboost.XGBClassifier",
-                         {"n_estimators": 300, "learning_rate": 0.05}),
-    "lightgbm": ModelSpec("lightgbm.LGBMClassifier",
-                          {"n_estimators": 300, "learning_rate": 0.05,
-                           "verbose": -1}, framework="lightgbm"),
+        {"n_estimators": 300, "learning_rate": 0.05}),
+    "lightgbm": ModelSpec("lightgbm.LGBMClassifier", {"n_estimators": 300,
+        "learning_rate": 0.05, "verbose": -1}, framework="lightgbm"),
     "catboost": ModelSpec("catboost.CatBoostClassifier",
-                          {"iterations": 300, "learning_rate": 0.05,
-                           "verbose": 0}),
+        {"iterations": 300, "learning_rate": 0.05, "verbose": 0}),
 }
 
 async def compare():
-    conn = ConnectionManager("sqlite:///mlfp03_models.db")
-    await conn.initialize()
+    registry, conn = await build_training_registry()  # ModelRegistry + DB
     try:
-        pipe = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
+        pipe = TrainingPipeline(feature_store=None, registry=registry)
         for name, spec in SPECS.items():
             r = await pipe.train(data=dev, schema=credit_feature_schema(cols),
                 model_spec=spec, eval_spec=EvalSpec(metrics=["accuracy", "auc"]),
@@ -1867,18 +1864,15 @@ print(run_id, results["go"]["result"])  # the branch not taken has no entry</cod
   <p>Every workflow step is a node. Kailash provides built-in nodes and lets you create custom ones.</p>
   <div class="kailash-bridge">
     <h3>Custom Node Example</h3>
-    <pre style="font-size: 0.55em;"><code class="language-python">from typing import Any
+    <pre style="font-size: 0.48em;"><code class="language-python">from typing import Any
 from kailash.nodes.base import Node, NodeParameter, register_node
 from shared.mlfp03.ex_7 import load_credit_frame
 
 @register_node()
-class CreditLoadNode(Node):
-    """Load the leak-free credit table; return a JSON-safe summary."""
-
+class CreditLoadNode(Node):  # leak-free credit table -> JSON-safe summary
     def get_parameters(self) -&gt; dict[str, NodeParameter]:
         return {"min_rows": NodeParameter(name="min_rows", type=int,
                                           required=False, default=1000)}
-
     def run(self, **kwargs: Any) -&gt; dict[str, Any]:
         df = load_credit_frame()
         if df.height &lt; kwargs.get("min_rows", 1000):
@@ -1897,34 +1891,32 @@ class CreditLoadNode(Node):
 <section class="code-fit">
   <h2>Bayesian Hyperparameter Search</h2>
   <span class="marker marker-theory">Theory</span>
-  <div class="kailash-bridge">
-    <h3>HyperparameterSearch</h3>
+  <div class="columns">
+  <div class="col" style="flex:2.4;">
+  <div class="kailash-bridge" style="padding:10px 14px;">
     <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
-from kailash.db import ConnectionManager
-from kailash_ml import HyperparameterSearch, ModelRegistry, TrainingPipeline
+from kailash_ml import HyperparameterSearch, TrainingPipeline
 from kailash_ml.engines.hyperparameter_search import (
-    ParamDistribution, SearchConfig, SearchSpace)
+    ParamDistribution as P, SearchConfig, SearchSpace)
 from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
-from shared.mlfp03.ex_7 import credit_feature_schema, prepare_credit_frames
+from shared.mlfp03.ex_7 import (build_training_registry,
+    credit_feature_schema, prepare_credit_frames)
 
 dev, test, cols = prepare_credit_frames()   # search on dev; test used once
-space = SearchSpace(params=[
-    ParamDistribution("n_estimators", "int_uniform", low=100, high=800),
-    ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
-    ParamDistribution("num_leaves", "int_uniform", low=15, high=127)])
+space = SearchSpace(params=[P("n_estimators", "int_uniform", low=100, high=800),
+    P("learning_rate", "log_uniform", low=0.01, high=0.3),
+    P("num_leaves", "int_uniform", low=15, high=127)])
 
 async def search():
-    conn = ConnectionManager("sqlite:///mlfp03_models.db")
-    await conn.initialize()
+    registry, conn = await build_training_registry()
     try:
-        pipe = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
-        return await HyperparameterSearch(pipeline=pipe).search(
+        return await HyperparameterSearch(pipeline=TrainingPipeline(
+            feature_store=None, registry=registry)).search(
             data=dev, schema=credit_feature_schema(cols),
             base_model_spec=ModelSpec("lightgbm.LGBMClassifier",
-                                      {"verbose": -1}, framework="lightgbm"),
-            search_space=space,
-            config=SearchConfig(strategy="bayesian", n_trials=20,
-                                metric_to_optimize="auc"),
+                {"verbose": -1}, framework="lightgbm"),
+            search_space=space, config=SearchConfig(strategy="bayesian",
+                n_trials=20, metric_to_optimize="auc"),
             eval_spec=EvalSpec(metrics=["auc"]),  # holdout carved from dev
             experiment_name="credit_hp_search")
     finally:
@@ -1933,8 +1925,12 @@ async def search():
 best = asyncio.run(search())
 print(best.best_params, best.best_metrics["auc"])</code></pre>
   </div>
-  <div class="callout callout-theory">
+  </div>
+  <div class="col" style="flex:1;">
+  <div class="callout callout-theory" style="font-size:0.8em;">
     <strong>Why Bayesian?</strong> Grid search is exhaustive (too slow). Random search is better but uninformed. Bayesian optimisation builds a surrogate model of the objective and samples where improvement is most likely.
+  </div>
+  </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -2074,7 +2070,7 @@ async def register(artifact: bytes, cols: list[str], test_auc: float):
   <div class="kailash-bridge">
     <h3>DataFlow</h3>
     <p>Zero-config database operations for persisting ML results.</p>
-    <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
 from dataflow import DataFlow
 
 db = DataFlow("sqlite:///mlfp03_results.db")

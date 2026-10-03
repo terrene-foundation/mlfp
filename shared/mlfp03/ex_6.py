@@ -45,10 +45,11 @@ from shared.data_loader import MLFPDataLoader
 OUTPUT_DIR = Path("outputs") / "mlfp03_ex6_interpretability"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Singapore credit scoring: Monetary Authority of Singapore (MAS) requires
-# explainability for credit decisions under the Model Risk Management
-# guideline. This dataset simulates a retail-bank default prediction task
-# used throughout MLFP02/MLFP03.
+# Singapore credit scoring: this synthetic dataset simulates a retail-bank
+# default prediction task used throughout MLFP02/MLFP03. Banks are expected
+# to be able to explain credit decisions (e.g. under the MAS FEAT
+# principles, which are non-binding guidance), which is why Exercise 6
+# explains this model.
 DATASET_MODULE = "mlfp02"
 DATASET_FILE = "sg_credit_scoring.parquet"
 TARGET_COLUMN = "default"
@@ -62,8 +63,17 @@ RANDOM_SEED = 42
 #                              reading the answer (Exercise 4 screens for it).
 CREDIT_NON_FEATURE_COLUMNS: tuple[str, ...] = ("customer_id", "future_default_indicator")
 
-# Protected attribute candidates we audit for disparate impact.
-PROTECTED_CANDIDATES: list[str] = ["age", "gender", "ethnicity", "marital_status"]
+# Protected attributes audited in 05_fairness_audit.py. These are the
+# REAL column names in sg_credit_scoring.parquet (race, not "ethnicity").
+# Categorical ones are ordinal-encoded by PreprocessingPipeline and are
+# decoded back to labels with ``decode_group``; age is banded.
+PROTECTED_ATTRIBUTES: list[str] = ["race", "gender", "age"]
+AGE_BANDS: list[tuple[str, int, int]] = [
+    ("21-34", 21, 34),
+    ("35-49", 35, 49),
+    ("50-64", 50, 64),
+    ("65+", 65, 200),
+]
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -117,6 +127,7 @@ def load_credit_scoring() -> dict[str, Any]:
         X_test=X_test,
         y_test=y_test,
         feature_names=feature_names,
+        ordinal_mappings=result.transformers["ordinal_mappings"],
     )
     return _CACHE
 
@@ -211,19 +222,28 @@ def feature_index(feature_names: list[str], name: str) -> int:
     return feature_names.index(name)
 
 
-def synthetic_group_split(
-    X: np.ndarray, feature_idx: int = 0
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Split X into two groups on a median cut of `feature_idx`.
+def decode_group(
+    X: np.ndarray,
+    feature_names: list[str],
+    attribute: str,
+    ordinal_mappings: dict[str, dict[str, int]],
+) -> np.ndarray:
+    """Return a string label per row for a protected attribute.
 
-    Returns (group_a_mask, group_b_mask, median_value).
-    Used as a fallback when no protected attribute is present in features.
+    Categorical attributes are mapped back from their ordinal codes using
+    the PreprocessingPipeline's fitted ``ordinal_mappings``; ``age`` is
+    binned into ``AGE_BANDS``.
     """
-    vals = X[:, feature_idx]
-    median_val = float(np.median(vals))
-    group_a = vals <= median_val
-    group_b = ~group_a
-    return group_a, group_b, median_val
+    values = X[:, feature_index(feature_names, attribute)]
+    if attribute == "age":
+        labels = np.full(values.shape[0], "unknown", dtype=object)
+        for name, lo, hi in AGE_BANDS:
+            labels[(values >= lo) & (values <= hi)] = name
+        return labels
+    if attribute not in ordinal_mappings:
+        raise KeyError(f"No ordinal mapping for '{attribute}' — is it categorical?")
+    code_to_label = {code: label for label, code in ordinal_mappings[attribute].items()}
+    return np.array([code_to_label.get(int(v), "unknown") for v in values], dtype=object)
 
 
 def print_section(title: str, char: str = "=") -> None:

@@ -294,6 +294,25 @@ print(rankings.tail(5))  # bottom 5
 </section>
 
 <section>
+  <h2>Trend or seasonality? Test it</h2>
+  <pre><code class="language-python" data-trim>
+seasonal = (
+    monthly_prices
+    .with_columns(pl.col("transaction_date").dt.month().alias("month_num"))
+    .group_by("month_num")
+    .agg(pl.col("median_price_sqm").mean().alias("seasonal_avg"))
+    .sort("month_num")
+)
+print(seasonal)   # 12 rows: one average per calendar month
+  </code></pre>
+  <ul style="font-size: 0.8em;">
+    <li><strong>Trend:</strong> long-run direction across years. <strong>Seasonality:</strong> a pattern that repeats every year.</li>
+    <li>On the course's synthetic HDB data both are flat: yearly median prices stay within 2% (839k&ndash;853k SGD) and the 12 calendar-month averages within 1% &mdash; no trend and no seasonal dip to report.</li>
+    <li>A seasonal story ("a holiday-month dip") is a hypothesis. Claim it only when this table shows it.</li>
+  </ul>
+</section>
+
+<section>
   <h2>🟣 Lazy frames — global optimisation</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg">

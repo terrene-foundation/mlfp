@@ -1294,7 +1294,7 @@ print(obs.agent.report("q3_summary_v1"))
   <ul>
     <li>Explain how LLMs are pre-trained and aligned</li>
     <li>Apply 5+ prompt engineering techniques effectively</li>
-    <li>Use Kaizen <code>Delegate</code> for structured LLM output with cost tracking</li>
+    <li>Use Kaizen <code>Delegate</code> and <code>Signature</code> for structured LLM output with token and cost accounting</li>
     <li>Understand basic inference optimisation concepts</li>
   </ul>
   <div class="callout callout-foundations" style="margin-top: 16px;">
@@ -1358,11 +1358,11 @@ print(obs.agent.report("q3_summary_v1"))
       <ul>
         <li>Performance improves predictably with more <strong>parameters</strong>, <strong>data</strong>, and <strong>compute</strong></li>
         <li>Kaplan et al. (2020): power-law relationship between loss and each factor</li>
-        <li>Chinchilla (2022): optimal allocation is roughly equal scaling of params and data</li>
+        <li>Hoffmann et al. (2022, &ldquo;Chinchilla&rdquo;): optimal allocation is roughly equal scaling of params and data</li>
       </ul>
       <div class="equation-box" style="margin-top:12px;">
-        <span class="katex-display">L(N, D) \approx \left(\frac{N_c}{N}\right)^{\alpha_N} + \left(\frac{D_c}{D}\right)^{\alpha_D}</span>
-        <div class="annotation">Loss as a function of model size N and dataset size D</div>
+        <span class="katex-display">L(N, D) \approx E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}</span>
+        <div class="annotation">Chinchilla form (Hoffmann et al., 2022): <em>E</em> is the irreducible loss &mdash; more N and D shrink only the last two terms</div>
       </div>
     </div>
     <div class="col">
@@ -1370,7 +1370,7 @@ print(obs.agent.report("q3_summary_v1"))
       <table>
         <thead><tr><th>Model</th><th>Params</th><th>Key Innovation</th></tr></thead>
         <tbody>
-          <tr><td>GPT-4</td><td>~1.8T (MoE)</td><td>Mixture of Experts</td></tr>
+          <tr><td>GPT-4</td><td>Undisclosed (reported ~1.8T MoE)</td><td>Mixture of Experts (reported)</td></tr>
           <tr><td>Claude</td><td>Undisclosed</td><td>Constitutional AI</td></tr>
           <tr><td>Llama 3</td><td>8B-405B</td><td>Open weights, GQA</td></tr>
           <tr><td>Mistral</td><td>7B-8x22B</td><td>Sliding window attn</td></tr>
@@ -1497,7 +1497,7 @@ How many apples do they have?
 
 Let's think step by step."""</code></pre>
       <div class="callout callout-theory" style="margin-top:12px;">
-        <strong>Kojima et al. (2022):</strong> Adding "Let's think step by step" improves accuracy on GSM8K from 17.7% to 78.7% (zero-shot CoT vs standard zero-shot).
+        <strong>Kojima et al. (2022):</strong> Adding the five words "Let's think step by step" lifted zero-shot accuracy on MultiArith from 17.7% to 78.7%, and on GSM8K from 10.4% to 40.7% (text-davinci-002).
       </div>
     </div>
   </div>
@@ -1523,13 +1523,16 @@ Let's think step by step."""</code></pre>
         <li>More robust than single CoT &mdash; reduces variance</li>
       </ul>
       <pre><code class="language-python"># Sample 5 CoT paths, take majority answer
+from collections import Counter
+from shared.mlfp06._ollama_bootstrap import (
+    make_delegate, run_delegate_text)
+
 answers = []
-for _ in range(5):
-    response = delegate.generate(
-        prompt, temperature=0.7
-    )
-    answers.append(extract_answer(response))
-final = majority_vote(answers)</code></pre>
+for _ in range(5):  # fresh delegate = independent path
+    text, usage, secs = await run_delegate_text(
+        make_delegate(temperature=0.7), prompt)
+    answers.append(extract_answer(text))
+final = Counter(answers).most_common(1)[0][0]</code></pre>
     </div>
     <div class="col">
       <h3>Structured Output</h3>
@@ -1564,7 +1567,7 @@ Text: "The quarterly results exceeded..."
   <span class="marker marker-foundations">Foundations</span>
   <table>
     <thead>
-      <tr><th>Technique</th><th>When to Use</th><th>Cost</th><th>Accuracy Gain</th></tr>
+      <tr><th>Technique</th><th>When to Use</th><th>Cost</th><th>Typical Gain (illustrative)</th></tr>
     </thead>
     <tbody>
       <tr><td>Zero-shot</td><td>Simple, well-defined tasks</td><td>Lowest</td><td>Baseline</td></tr>
@@ -1582,7 +1585,7 @@ Text: "The quarterly results exceeded..."
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. This is the decision framework. Students should be able to pick the right technique for any given task. Cost matters: self-consistency multiplies your API bill by N.
+    Time: ~2 min. This is the decision framework. Students should be able to pick the right technique for any given task. The gain column is a rough, task-dependent illustration &mdash; Exercise 6.1 measures the real numbers on SST-2 with your model. Cost matters: self-consistency multiplies your API bill by N.
   </aside>
 </section>
 
@@ -1593,10 +1596,9 @@ Text: "The quarterly results exceeded..."
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>From Raw Prompts to Type-Safe Output</h3>
-    <pre style="font-size: 0.37em;"><code class="language-python">import os
-from dataclasses import dataclass
-from kaizen import Signature, InputField, OutputField
+    <pre style="font-size: 0.37em;"><code class="language-python">from kaizen import Signature, InputField, OutputField
 from kaizen.core.base_agent import BaseAgent
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
 
 class SentimentSignature(Signature):
     """Classify sentiment of a product review."""
@@ -1604,32 +1606,31 @@ class SentimentSignature(Signature):
     sentiment: str = OutputField(description="positive, negative, or neutral")
     confidence: float = OutputField(description="Confidence score 0.0 to 1.0")
 
-@dataclass
-class SentimentConfig:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "openai")
-    model: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    temperature: float = 0.2
-    budget_limit_usd: float = 1.0
+# Local Ollama model; the name comes from OLLAMA_CHAT_MODEL
+config = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,             # required for run_async
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+agent = BaseAgent(config=config, signature=SentimentSignature())
 
-class SentimentAgent(BaseAgent):
-    def __init__(self, config: SentimentConfig):
-        super().__init__(config=config, signature=SentimentSignature())
-
-agent = SentimentAgent(SentimentConfig())
 result = await agent.run_async(
     review="The battery life is incredible but the screen is dim."
 )
-print(result["sentiment"])    # "mixed" or "neutral"
-print(result["confidence"])   # 0.72</code></pre>
+print(result["sentiment"])    # e.g. "neutral"
+print(result["confidence"])   # e.g. 0.72</code></pre>
   </div>
   <div class="callout callout-theory">
-    <strong>Why Signature?</strong> Free-form text output is brittle. <code>Signature</code> enforces a schema: the LLM must return typed fields. If it does not, Kaizen retries with corrective prompting.
+    <strong>Why Signature?</strong> Free-form text output is brittle. <code>Signature</code> renders a schema into the prompt and parses the reply into typed fields. A missing field is a real failure &mdash; check for it, never fill a placeholder.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This is the Kailash bridge: everything we just learned about prompting is wrapped in a type-safe interface. No more parsing JSON from raw text. The Delegate handles streaming, retries, and cost tracking. Show the cost attribute: students should always know how much they are spending.
+    Time: ~3 min. This is the Kailash bridge: everything we just learned about prompting is wrapped in a type-safe interface. No more parsing JSON from raw text. Point out the config: a local Ollama model named by <code>OLLAMA_CHAT_MODEL</code>, never a hard-coded hosted model. Students should always know what each call consumes &mdash; on local Ollama that is tokens and seconds, not dollars (a dollar cap such as <code>budget_limit_usd</code> only bites on a priced provider).
   </aside>
 </section>
 
@@ -1672,47 +1673,39 @@ print(result["confidence"])   # 0.72</code></pre>
     <div class="col">
       <h3>Task</h3>
       <ul>
-        <li>Build a classification system using Kaizen <code>Delegate</code></li>
-        <li>Compare zero-shot vs few-shot vs CoT on the same dataset</li>
-        <li>Measure cost and accuracy for each approach</li>
-        <li>Use <code>Signature</code> for all outputs</li>
+        <li>Classify SST-2 movie-review sentiment with a Kaizen <code>Delegate</code> on local Ollama</li>
+        <li>Six technique files (<code>ex_1/01&ndash;06</code>): zero-shot, few-shot, CoT, zero-shot CoT, self-consistency, <code>Signature</code> structured output</li>
+        <li>Measure accuracy, tokens and latency for each technique</li>
       </ul>
       <h3 style="margin-top:12px;">Assessment Criteria</h3>
       <ul>
-        <li>All three prompting techniques demonstrated</li>
+        <li>All techniques run on the same eval docs</li>
         <li>Accuracy comparison shows when each technique helps</li>
-        <li>Cost tracking working &mdash; total spend reported</li>
+        <li>Token usage reported, plus an illustrative hosted-price estimate (tokens &times; a reference price)</li>
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python"># Skeleton
-import os
-from kaizen import Signature, InputField, OutputField
-from kaizen_agents import Delegate
+      <pre><code class="language-python"># Skeleton — local/ex_1/01_zero_shot.py (abridged)
+from shared.mlfp06.ex_1 import (
+    CATEGORIES, get_eval_docs, normalise_label, run_delegate)
 
-class ClassificationResult(Signature):
-    """Classify news article topic."""
-    article: str = InputField()
-    topic: str = OutputField()
-    reasoning: str = OutputField()
+async def zero_shot_classify(text: str) -> tuple[str, float, float]:
+    """Return (label, tokens, elapsed)."""
+    # TODO: task + CATEGORIES + review text, ask for the label only
+    prompt = ____
+    # TODO: call run_delegate(prompt)
+    response, tokens, elapsed = ____
+    # TODO: map free text to a label with normalise_label()
+    ____
 
-delegate = Delegate(
-    model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
-    budget_usd=0.50,
-    signature=ClassificationResult,
-)
-
-# TODO: Implement zero_shot_classify()
-# TODO: Implement few_shot_classify()
-# TODO: Implement cot_classify()
-# TODO: Compare accuracy & cost</code></pre>
+# Files 02-05 change only the prompt; 06 swaps in a Signature</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Walk through the exercise skeleton. Students implement three functions, run them on the same test set, and compare. The cost tracking is the engineering differentiator: this is not a toy exercise, it is a production evaluation.
+    Time: ~1 min. Walk through the exercise skeleton. Students work through six technique files on the same SST-2 eval docs and compare accuracy, tokens and latency. On local Ollama the dollar cost is zero, so the exercise reports tokens and converts them to an illustrative hosted price &mdash; that accounting is the engineering differentiator: this is not a toy exercise, it is a production evaluation.
   </aside>
 </section>
 

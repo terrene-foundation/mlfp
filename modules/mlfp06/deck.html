@@ -551,26 +551,22 @@
 from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()  # lazy init, no network call here
-
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
     "Refunds within 14 days, no exceptions.",
     context=["Refund policy: 30-day window for unused items."])
 # one-row DataFrame: faithfulness (0-1), mode, judge_model, rationale
-
 # ── LLM-as-judge on one response ─────────────────────────────
 verdict = obs.output.llm_as_judge(
     "Summarise the Q3 earnings call in 3 bullets.", draft_answer,
     criteria="coherence,factual_accuracy,completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
-
 # ── Hallucination via self-consistency: YOU sample, it compares
 question = "Which listing rule governs board independence?"
 samples = [(await run_delegate_text(make_delegate(temperature=0.8),
                                     question))[0] for _ in range(5)]
 sc = obs.output.self_consistency(samples, prompt=question)
 # columns: agreement (mean pairwise similarity), is_outlier
-
 # ── Refusal calibration: score the MODEL'S RESPONSES ─────────
 obs.output.refusal_rate(harmful_responses)   # should be high
 obs.output.over_refusal(benign_responses)    # should be near zero
@@ -806,11 +802,9 @@ probe = obs.attention.probe(prompts, labels, layer=6)
 <pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()
-
 # ── Standard IR metrics for ONE query ────────────────────────
 r = obs.retrieval.recall_at_k(retrieved_ids, gold_ids, k=5)
 p = obs.retrieval.precision_at_k(retrieved_ids, gold_ids, k=5)
-
 # ── Retriever bake-off on identical queries ──────────────────
 eval_set = [{"query": q, "relevant_ids": [gold]} for q, gold in pairs]
 board = obs.retrieval.compare_retrievers(
@@ -1529,11 +1523,13 @@ from shared.mlfp06._ollama_bootstrap import (
     make_delegate, run_delegate_text)
 
 answers = []
-for _ in range(5):  # fresh delegate = independent path
-    text, usage, secs = await run_delegate_text(
-        make_delegate(temperature=0.7), prompt)
+for _ in range(5):  # fresh = independent
+    d = make_delegate(temperature=0.7)
+    text, _, _ = await run_delegate_text(
+        d, prompt)
     answers.append(extract_answer(text))
-final = Counter(answers).most_common(1)[0][0]</code></pre>
+votes = Counter(answers)
+final = votes.most_common(1)[0][0]</code></pre>
     </div>
     <div class="col">
       <h3>Structured Output</h3>
@@ -2207,16 +2203,13 @@ for batch in preference_dataloader:
         <li>Sample <span class="katex-inline">G</span> completions for each prompt</li>
         <li>Score each completion with a verifier (not a learned reward model)</li>
         <li>Compute advantage relative to group mean</li>
-        <li>Update policy with a PPO-style clipped objective plus a KL penalty to <span class="katex-inline">\pi_{\text{ref}}</span> &mdash; no value network</li>
+        <li>Update with a PPO-style clipped objective + KL penalty to <span class="katex-inline">\pi_{\text{ref}}</span>; no value network</li>
       </ul>
       <div class="equation-box" style="margin-top:8px;">
         <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r}) + \epsilon}</span>
-        <div class="annotation">Advantage of completion i relative to its group (std-normalised &rArr; reward-scale invariant)</div>
+        <div class="annotation">Advantage relative to the group (std-normalised: reward-scale invariant)</div>
       </div>
-      <div class="equation-box" style="margin-top:6px; font-size:0.8em;">
-        <span class="katex-display">J = \mathbb{E}\big[\min(\rho_i \hat{A}_i,\, \text{clip}(\rho_i, 1\pm\epsilon)\hat{A}_i)\big] - \beta\, \mathrm{KL}(\pi_\theta \Vert \pi_{\text{ref}})</span>
-        <div class="annotation"><span class="katex-inline">\rho_i = \pi_\theta(y_i|x) / \pi_{\text{old}}(y_i|x)</span></div>
-      </div>
+
     </div>
     <div class="col">
       <h3>DPO vs GRPO</h3>
@@ -2238,7 +2231,7 @@ for batch in preference_dataloader:
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. GRPO was introduced by Shao et al. (2024) in DeepSeekMath and later used to train DeepSeek-R1 (2025). Dividing by the group std is what makes it insensitive to the reward's scale; the clip and the KL term keep each update small. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
+    Time: ~4 min. GRPO was introduced by Shao et al. (2024) in DeepSeekMath and later used to train DeepSeek-R1 (2025). Dividing by the group std is what makes it insensitive to the reward's scale. Write the full objective on the board: J = E[ min(&rho;<sub>i</sub>&Acirc;<sub>i</sub>, clip(&rho;<sub>i</sub>, 1&plusmn;&epsilon;)&Acirc;<sub>i</sub>) ] &minus; &beta;&middot;KL(&pi;<sub>&theta;</sub> &Vert; &pi;<sub>ref</sub>), with &rho;<sub>i</sub> = &pi;<sub>&theta;</sub>(y<sub>i</sub>|x) / &pi;<sub>old</sub>(y<sub>i</sub>|x). The clip and the KL term keep each update small. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
   </aside>
 </section>
 
@@ -2911,36 +2904,29 @@ print(reply["response"])</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Tool-Using Delegate &mdash; Tools Registered in a ToolRegistry</h3>
-    <pre style="font-size: 0.4em; line-height: 1.3"><code class="language-python">import polars as pl
+    <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import polars as pl
 from kailash_ml import DataExplorer
 from kaizen_agents.delegate.loop import ToolRegistry
 from shared import MLFPDataLoader
 from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
-
 df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
 
 async def explore_data() -> str:
     """Profile the HDB resale table (a Kailash engine as a tool)."""
-    profile = await DataExplorer().profile(df)
-    return str(profile.to_dict())[:2000]
-
+    return str((await DataExplorer().profile(df)).to_dict())[:2000]
 async def mean_price_by(column: str) -> str:
-    out = df.group_by(column).agg(pl.col("resale_price").mean())
-    return str(out.sort("resale_price", descending=True).head(10))
+    return str(df.group_by(column).agg(pl.col("resale_price").mean()))
 
 tools = ToolRegistry()   # a bare list of functions registers NOTHING
-tools.register(name="explore_data", description="Profile the HDB resale data",
+tools.register(name="explore_data", description="Profile the HDB data",
                parameters={"type": "object", "properties": {}},
                executor=explore_data)
-tools.register(name="mean_price_by",
-               description="Mean resale price grouped by one column",
+tools.register(name="mean_price_by", description="Mean price by a column",
                parameters={"type": "object", "required": ["column"],
                            "properties": {"column": {"type": "string"}}},
                executor=mean_price_by)
-
-agent = make_delegate(tools=tools, max_turns=8)  # model from OLLAMA_CHAT_MODEL
-answer, usage, secs = await run_delegate_text(
-    agent, "Which flat type has the highest mean resale price?")</code></pre>
+agent = make_delegate(tools=tools, max_turns=8)  # model: OLLAMA_CHAT_MODEL
+answer, usage, secs = await run_delegate_text(agent, "Which flat type costs most?")</code></pre>
   </div>
   <p class="small muted" style="margin-top:4px;">Ready-made: <code>kaizen_agents.agents.ReActAgent</code> and <code>ChainOfThoughtAgent</code> (step-by-step reasoning before answering) &mdash; both take <code>llm_provider=&quot;ollama&quot;</code>, and their <code>run()</code> is synchronous.</p>
   <div class="slide-footer">
@@ -3387,47 +3373,37 @@ verdict = engine.verify_action(
     </div>
     <div class="col">
       <pre style="font-size: 0.44em; line-height: 1.3"><code class="language-python">from pact import (
-    ConstraintEnvelopeConfig,
-    FinancialConstraintConfig,
-    OperationalConstraintConfig,
-    TemporalConstraintConfig,
-    DataAccessConstraintConfig,
-    CommunicationConstraintConfig,
+    CommunicationConstraintConfig as Comm,
     ConfidentialityLevel,
-    RoleEnvelope,
+    ConstraintEnvelopeConfig,
+    DataAccessConstraintConfig as Data,
+    FinancialConstraintConfig as Fin,
     MonotonicTighteningError,
-)
+    OperationalConstraintConfig as Ops,
+    RoleEnvelope,
+    TemporalConstraintConfig as Time)
 
 parent = ConstraintEnvelopeConfig(
     id="parent",
     description="Analyst envelope",
     confidentiality_clearance=
         ConfidentialityLevel.RESTRICTED,
-    financial=FinancialConstraintConfig(
-        max_spend_usd=5.00),
-    operational=OperationalConstraintConfig(
-        allowed_actions=[
-            "data_analysis",
-            "model_training"]),
-    temporal=TemporalConstraintConfig(),
-    data_access=DataAccessConstraintConfig(),
-    communication=
-        CommunicationConstraintConfig(),
-    max_delegation_depth=3,
-)
+    financial=Fin(max_spend_usd=5.00),
+    operational=Ops(allowed_actions=[
+        "data_analysis", "model_training"]),
+    temporal=Time(), data_access=Data(),
+    communication=Comm(),
+    max_delegation_depth=3)
 
-# Monotonic tightening enforced by the
-# framework — child must be ≤ parent
-# on every dimension.
-try:
+try:  # child must be <= parent everywhere
     RoleEnvelope.validate_tightening(
         parent_envelope=parent,
-        child_envelope=child)   # keyword-only
+        child_envelope=child)  # keyword-only
 except MonotonicTighteningError as exc:
     print(f"Escalation blocked: {exc}")
 
-# Attach: the head (D1-R1) defines the envelope
-# for its team role (D1-R1-T1-R1)
+# Attach: the head (D1-R1) defines the
+# envelope of its team role
 engine.set_role_envelope(RoleEnvelope(
     id="analyst_env",
     defining_role_address="D1-R1",

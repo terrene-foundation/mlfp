@@ -30,8 +30,9 @@
 #   10. Comprehensive ranked district report with for loop iteration
 #
 # DATASET: Singapore HDB resale flat transactions
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions | Columns: month, town, flat_type,
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions | Columns: month, town, flat_type,
 #   floor_area_sqm, resale_price, and more
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -79,6 +80,9 @@ def format_pct(value: float, decimals: int = 1) -> str:
     return f"{value * 100:.{decimals}f}%"
 
 
+# price_range_label() uses if / elif / else to pick ONE branch. You'll
+# study if/elif/else properly in Lesson 1.4 — for now, read it top to
+# bottom: the first condition that is True decides the label.
 def price_range_label(price: float) -> str:
     """Classify a resale price into a human-readable tier."""
     if price < 350_000:
@@ -420,6 +424,19 @@ print(
     ).head(10)
 )
 
+# Market position summary
+position_summary = (
+    district_stats.group_by("market_position")
+    .agg(
+        pl.len().alias("towns"),
+        pl.col("median_price").mean().alias("avg_median_price"),
+        pl.col("cv_price_pct").mean().alias("avg_cv"),
+    )
+    .sort("avg_median_price", descending=True)
+)
+print(f"\n=== Market Position Summary ===")
+print(position_summary)
+
 # ── Checkpoint 6 ─────────────────────────────────────────────────────
 assert "iqr_price" in district_stats.columns, "iqr_price should be added"
 assert "cv_price_pct" in district_stats.columns, "cv_price_pct should be added"
@@ -589,10 +606,12 @@ hdb_q = hdb.with_columns(
     pl.col("month_num").replace_strict(quarter_map, default="Q?").alias("quarter")
 )
 
+# pl.len() counts every sale in the quarter across ALL years (pooled),
+# so this is a total, not an average per year.
 quarterly_volume = (
-    hdb_q.group_by("quarter").agg(pl.len().alias("avg_transactions")).sort("quarter")
+    hdb_q.group_by("quarter").agg(pl.len().alias("total_transactions")).sort("quarter")
 )
-print(f"\n=== Average Quarterly Volume ===")
+print(f"\n=== Transactions by Quarter (all years pooled) ===")
 print(quarterly_volume)
 
 # ── Checkpoint 8 ─────────────────────────────────────────────────────
@@ -757,10 +776,42 @@ print(
     f"  Price gap (max - min):     {format_sgd(all_medians.max() - all_medians.min())}"
 )
 print(f"  Average CV:                {all_cvs.mean():.1f}%")
+print(
+    f"  Most active district:      {district_stats.sort('transaction_count', descending=True)['town'][0]}"
+)
+print(
+    f"  Least active district:     {district_stats.sort('transaction_count')['town'][0]}"
+)
+
+# --- Market position breakdown ---
+position_counts = (
+    district_stats.group_by("market_position")
+    .agg(
+        pl.len().alias("districts"),
+        pl.col("transaction_count").sum().alias("total_transactions"),
+        pl.col("median_price").mean().alias("avg_median"),
+    )
+    .sort("avg_median", descending=True)
+)
+
+print(f"\n=== Market Position Breakdown ===")
+for row in position_counts.iter_rows(named=True):
+    print(
+        f"  {row['market_position']:<12} "
+        f"{row['districts']:>3} districts  "
+        f"{row['total_transactions']:>8,} txns  "
+        f"avg median={format_sgd(row['avg_median'])}"
+    )
+
+# INTERPRETATION: The spread between the most and least expensive districts
+# quantifies Singapore's housing inequality. A wide spread (>S$200k) indicates
+# that geography still matters significantly — where you buy affects your
+# long-term asset value, not just your commute.
 
 # ── Checkpoint 10 ────────────────────────────────────────────────────
 assert all_medians.max() > all_medians.min(), "Most expensive > least expensive"
 assert all_counts.sum() == hdb.height, "Total transactions should match dataset"
+assert position_counts.height > 0, "Should have market position breakdown"
 print("\n✓ Checkpoint 10 passed — comprehensive report generated correctly\n")
 
 
@@ -784,11 +835,12 @@ print(
   ✓ Time-series aggregation: annual trends, YoY growth, quarterly patterns
   ✓ Reusable functions: town_deep_dive() — parameterised analysis
   ✓ for loops: .iter_rows(named=True) to process each row as a dict
+  ✓ Report building: combining statistics into formatted output
 
   NEXT: In Exercise 4, you'll combine data from multiple tables
-  using joins — merging HDB transactions with MRT station proximity
-  and school density data. You'll learn when to use left vs inner
-  joins, how to handle NULLs after a join, and how to enrich a
-  dataset with spatial context.
+  using joins — enriching HDB transactions with MRT station and
+  school data. You'll learn when to use left vs inner joins, how to
+  handle NULLs after a join, and why you must check what a column
+  really measures before you join it.
 """
 )

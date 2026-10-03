@@ -29,3 +29,13 @@
 
 ## Upstream (kailash-ml) notes
 - Top-level `kailash_ml.FeatureSchema` rejected by FeatureStore; re-registering a schema name as version 2 fails.
+
+---
+# Additions from the slides shard (S2, merged 3edfaa86)
+- Lesson 2.6 worked example = HDB resale above-median target (as ex_6): OR ≈ 54 per SD of floor area, accuracy 0.81, AUC 0.92. Tukey = studentized range.
+- Lesson 2.7: CUPED ρ = 0.7 → 49%; on the real experiment data (control vs treatment_a, pre-period covariate) the reduction is only ≈4% — say so. DiD on ex_7.4's simulated panel: estimate −23,208 vs true −20,000. SRM vs the designed split.
+- Lesson 2.8: capstone = HDB resale valuation (wine option dropped — no dataset); 3,536 impossible rows removed, R² 0.828, floor area +9,096 per sqm.
+- Lesson 2.4: ≈11,554 per arm (not 5,800).
+- Textbook/notes pages 2.4–2.8 still carry old APIs, missing datasets, 51% CUPED, ~5,800/arm → S3/S4 must fix. speaker-notes.md regenerate (D4). index.html: old ICU card for 2.6 and wrong dataset table → integration.
+- Owner question: spec says "End of Module Assessment: Quiz + mini-project" but the real assessment is auto-graded coding tasks (S5 will redesign; reconcile spec then).
+- Lesson 2.4 slides use a "BOGO" case while the deck opens with the hawker-centre case (numbers now correct; framing differs).

@@ -55,18 +55,18 @@
       <!-- Stage 1: Extract -->
       <rect x="10" y="20" width="130" height="80" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
       <text x="75" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#1E293B">Extract</text>
-      <text x="75" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">10,000 rows</text>
-      <text x="75" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">8 columns</text>
-      <text x="75" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">3% nulls, raw types</text>
+      <text x="75" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">50,000 rows</text>
+      <text x="75" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">12 columns</text>
+      <text x="75" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">planted defects, text dates</text>
 
       <line x1="140" y1="60" x2="165" y2="60" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18s)"/>
 
       <!-- Stage 2: Profile -->
       <rect x="170" y="20" width="130" height="80" rx="8" fill="#FEF9C3" stroke="#EAB308" stroke-width="1.5"/>
       <text x="235" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#92400E">Profile</text>
-      <text x="235" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#92400E">4 alerts</text>
-      <text x="235" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">nulls, outliers,</text>
-      <text x="235" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">skew detected</text>
+      <text x="235" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#92400E">12 alerts</text>
+      <text x="235" y="78" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">nulls, skew,</text>
+      <text x="235" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#92400E">lat↔lng r = −1.00</text>
       <rect x="175" y="104" width="120" height="16" rx="3" fill="#FEF3C7"/>
       <text x="235" y="116" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#92400E">DataExplorer</text>
 
@@ -75,9 +75,9 @@
       <!-- Stage 3: Transform -->
       <rect x="330" y="20" width="130" height="80" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
       <text x="395" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#0D9488">Transform</text>
-      <text x="395" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">9,680 rows</text>
-      <text x="395" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">10 columns</text>
-      <text x="395" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">+hour, +day_of_week</text>
+      <text x="395" y="62" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">47,547 rows</text>
+      <text x="395" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0D9488">15 columns</text>
+      <text x="395" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#0D9488">+hour, +weekday, +duration</text>
       <rect x="335" y="104" width="120" height="16" rx="3" fill="#CCFBF1"/>
       <text x="395" y="116" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#0D9488">PreprocessingPipeline</text>
 
@@ -86,8 +86,8 @@
       <!-- Stage 4: Visualise -->
       <rect x="490" y="20" width="130" height="80" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
       <text x="555" y="42" text-anchor="middle" font-family="Inter" font-weight="700" font-size="12" fill="#3B82F6">Visualise</text>
-      <text x="555" y="62" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6">hourly demand</text>
-      <text x="555" y="78" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6">zone heatmap</text>
+      <text x="555" y="62" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6">fares, distance</text>
+      <text x="555" y="78" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6">hourly volume</text>
       <text x="555" y="92" text-anchor="middle" font-family="Inter" font-size="9" fill="#94A3B8">Plotly figures</text>
       <rect x="495" y="104" width="120" height="16" rx="3" fill="#DBEAFE"/>
       <text x="555" y="116" text-anchor="middle" font-family="JetBrains Mono" font-size="8" fill="#3B82F6">ModelVisualizer</text>
@@ -116,9 +116,9 @@
 
       <!-- Row count annotation -->
       <g font-family="JetBrains Mono" font-size="9" fill="#94A3B8">
-        <text x="75" y="200" text-anchor="middle">10,000 rows</text>
-        <text x="75" y="212" text-anchor="middle">3% null</text>
-        <text x="395" y="200" text-anchor="middle">9,680 rows</text>
+        <text x="75" y="200" text-anchor="middle">50,000 rows</text>
+        <text x="75" y="212" text-anchor="middle">7 defect types</text>
+        <text x="395" y="200" text-anchor="middle">47,547 rows</text>
         <text x="395" y="212" text-anchor="middle">0% null</text>
         <text x="700" y="200" text-anchor="middle">clean +</text>
         <text x="700" y="212" text-anchor="middle">visualised</text>
@@ -165,12 +165,15 @@
     </tbody>
   </table>
   <pre><code class="language-python" data-trim>
-# Forward-fill for time-series
-df = df.with_columns(pl.col("fare").forward_fill())
+# Known meaning: a missing tip is no tip
+taxi = taxi.with_columns(pl.col("tip_sgd").fill_null(0.0))
 
-# Median imputation
-df = df.with_columns(
-    pl.col("fare").fill_null(pl.col("fare").median())
+# Forward-fill for time series (sorted by date)
+cpi = cpi.with_columns(pl.col("cpi_all_items").forward_fill())
+
+# Median imputation for a numeric column
+taxi = taxi.with_columns(
+    pl.col("distance_km").fill_null(pl.col("distance_km").median())
 )
   </code></pre>
 </section>
@@ -211,8 +214,10 @@ import httpx
 response = httpx.get(
     "https://www.onemap.gov.sg/api/common/elastic/search",
     params={"searchVal": "Tampines", "returnGeom": "Y",
-            "getAddrDetails": "Y"}
+            "getAddrDetails": "Y"},     # query parameters
+    timeout=10,
 )
+response.raise_for_status()               # stop on 4xx / 5xx
 data = response.json()
 print(f"Found {data['found']} results")
   </code></pre>
@@ -243,27 +248,32 @@ print(df_locations.head(3))
 
 <!-- ═══ Slide 8: PreprocessingPipeline ═══════════════════════ -->
 <section>
-  <h2>PreprocessingPipeline: automated cleaning</h2>
+  <h2>PreprocessingPipeline: automated preparation</h2>
   <pre><code class="language-python" data-trim>
 from kailash_ml import PreprocessingPipeline
 
-pipeline = PreprocessingPipeline(
-    numeric_strategy="median",
-    categorical_strategy="onehot",
-    scale=True,
+pipeline = PreprocessingPipeline()        # no constructor arguments
+result = pipeline.setup(
+    data=train_rows,                      # features + target column
+    target="fare_sgd",
+    imputation_strategy="median",
+    categorical_encoding="onehot",
+    normalize=True,                       # z-score the numerics
 )
-
-df_clean = pipeline.fit_transform(df_raw)
-print(f"Before: {df_raw.shape} → After: {df_clean.shape}")
+print(result.task_type)                   # 'regression'
+print(result.original_shape, "->", result.transformed_shape)
+print(result.train_data.shape, result.test_data.shape)
   </code></pre>
   <p style="font-size: 0.8em; color: #64748B;">
-    One call: detects types, imputes nulls, encodes categoricals, scales numerics.
+    One call: detects numeric vs categorical columns, imputes nulls, one-hot encodes,
+    scales, then splits into <code>train_data</code> / <code>test_data</code>.
+    <code>pipeline.transform(new_rows)</code> applies the same learned rules.
   </p>
 </section>
 
-<!-- ═══ Slide 9: fit_transform vs transform ══════════════════ -->
+<!-- ═══ Slide 9: setup vs transform ══════════════════════════ -->
 <section>
-  <h2>fit_transform vs transform</h2>
+  <h2>setup() vs transform()</h2>
   <figure style="text-align: center;">
     <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -273,25 +283,28 @@ print(f"Before: {df_raw.shape} → After: {df_clean.shape}")
       </defs>
       <!-- Training path -->
       <rect x="20" y="30" width="160" height="50" rx="6" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
-      <text x="100" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Training data</text>
+      <text x="100" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#0D9488">Training rows</text>
       <line x1="180" y1="55" x2="250" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18t)"/>
       <rect x="255" y="30" width="200" height="50" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
-      <text x="355" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0D9488">fit_transform()</text>
+      <text x="355" y="52" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#0D9488">setup()</text>
+      <text x="355" y="70" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488">learns medians, categories, scales</text>
       <line x1="455" y1="55" x2="525" y2="55" stroke="#0D9488" stroke-width="2" marker-end="url(#arr18t)"/>
       <rect x="530" y="30" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
-      <text x="610" y="60" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Clean train</text>
+      <text x="610" y="52" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">train + validation</text>
+      <text x="610" y="70" text-anchor="middle" font-family="Inter" font-size="10" fill="#22C55E">model-ready</text>
       <!-- Test path -->
       <rect x="20" y="130" width="160" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="100" y="160" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">Test data</text>
+      <text x="100" y="160" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#3B82F6">Held-out test rows</text>
       <line x1="180" y1="155" x2="250" y2="155" stroke="#3B82F6" stroke-width="2" marker-end="url(#arr18t)"/>
       <rect x="255" y="130" width="200" height="50" rx="6" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-      <text x="355" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#3B82F6">transform()</text>
+      <text x="355" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#3B82F6">transform()</text>
+      <text x="355" y="170" text-anchor="middle" font-family="Inter" font-size="10" fill="#3B82F6">re-uses what setup() learned</text>
       <line x1="455" y1="155" x2="525" y2="155" stroke="#3B82F6" stroke-width="2" marker-end="url(#arr18t)"/>
       <rect x="530" y="130" width="160" height="50" rx="6" fill="#F0FDF4" stroke="#22C55E" stroke-width="2"/>
       <text x="610" y="160" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#22C55E">Clean test</text>
       <!-- Warning -->
       <text x="360" y="215" text-anchor="middle" font-family="Inter" font-weight="600" font-size="12" fill="#F43F5E">
-        Never fit on test data — that is data leakage
+        setup() learns from EVERY row you pass, then splits &#8212; hold out test rows first
       </text>
     </svg>
   </figure>
@@ -301,15 +314,17 @@ print(f"Before: {df_raw.shape} → After: {df_clean.shape}")
 <section>
   <h2>The dataset: Singapore taxi trips</h2>
   <pre><code class="language-text" data-trim>
-Shape: (10000, 8)
-Columns: pickup_datetime, dropoff_datetime, pickup_zone,
-         dropoff_zone, trip_distance_km, fare_amount,
-         passenger_count, payment_type
-Nulls:   fare_amount (3%), pickup_zone (1.2%)
+Shape:   (50000, 12)   synthetic trip log, realistic places
+Columns: trip_id, pickup_datetime, dropoff_datetime, pickup_zone,
+         dropoff_zone, distance_km, fare_sgd, tip_sgd, payment_type,
+         passengers, pickup_latitude, pickup_longitude
+Planted: 250 swapped lat/lng, 1,000 fares &lt;= 0, 500 passengers &lt; 1,
+         500 trips dated 2025-2027, 15 payment spellings,
+         500 rows sharing trip_ids, nulls in zones and tips
   </code></pre>
   <p style="font-size: 0.85em;">
-    <strong>Question:</strong> when does taxi demand peak?<br>
-    <strong>Pipeline:</strong> load → profile → clean → engineer hour/day → visualise → report
+    <strong>Question:</strong> what drives a fare, and when do people ride?<br>
+    <strong>Pipeline:</strong> load → profile → clean → engineer hour/day/duration → prepare → visualise → report
   </p>
 </section>
 
@@ -321,9 +336,9 @@ from shared import MLFPDataLoader
 import polars as pl
 
 loader = MLFPDataLoader()
-df_raw = loader.load("mlfp01", "sg_taxi_trips.csv")
+df_raw = loader.load("mlfp01", "sg_taxi_trips.parquet")
 print(f"Raw: {df_raw.shape}")
-# → Raw: (10000, 8)
+# → Raw: (50000, 12)
   </code></pre>
   <p style="font-size: 0.85em; color: #64748B;">
     Same loader, same pattern. One line.
@@ -334,128 +349,149 @@ print(f"Raw: {df_raw.shape}")
 <section>
   <h2>Step 2: Profile</h2>
   <pre><code class="language-python" data-trim>
-from kailash_ml import DataExplorer
 from shared import run_profile
 
-explorer = DataExplorer()
-profile = run_profile(explorer, df_raw)
-
+profile = run_profile(df_raw)        # 12 alerts
 for alert in profile.alerts:
-    print(f"  {alert.type}: {alert.column}")
+    if alert["severity"] == "warning" or alert["type"] == "high_skewness":
+        print(f"  {alert['type']}: {alert.get('column', alert.get('columns'))}")
   </code></pre>
   <pre><code class="language-text" data-trim>
-  high_nulls: fare_amount
-  high_nulls: pickup_zone
-  outliers: trip_distance_km
-  high_skewness: fare_amount
+  high_skewness: distance_km
+  high_nulls: tip_sgd                       (78% null)
+  high_skewness: pickup_latitude            (skew 14)
+  high_skewness: pickup_longitude
+  high_correlation: ['pickup_latitude', 'pickup_longitude']   (r = -1.00)
   </code></pre>
+  <p style="font-size: 0.75em; color: #64748B;">The skew and the r = −1.00 are the 250 swapped coordinates. Negative fares raise <em>no</em> alert &mdash; <code>describe()</code> min/max finds them.</p>
 </section>
 
 <!-- ═══ Slide 13: Transform step ═════════════════════════════ -->
 <section>
   <h2>Step 3: Transform</h2>
   <pre><code class="language-python" data-trim>
+swapped = pl.col("pickup_latitude") &gt; 100          # lat/lng the wrong way round
+pay = pl.col("payment_type").str.to_lowercase()
 df = (
     df_raw
     .with_columns(
-        pl.col("pickup_datetime")
-          .str.to_datetime("%Y-%m-%d %H:%M:%S"),
+        pl.col("pickup_datetime", "dropoff_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+        pl.when(swapped).then(pl.col("pickup_longitude")).otherwise(pl.col("pickup_latitude")).alias("pickup_latitude"),
+        pl.when(swapped).then(pl.col("pickup_latitude")).otherwise(pl.col("pickup_longitude")).alias("pickup_longitude"),
+        pl.when(pay.str.contains("grab")).then(pl.lit("Grab"))
+          .when(pay.str.contains("nets")).then(pl.lit("NETS"))
+          .when(pay.str.contains("cash")).then(pl.lit("Cash"))
+          .otherwise(pl.lit("Card")).alias("payment_type"),
     )
-    .filter(pl.col("fare_amount") > 0)
+    .filter(pl.col("fare_sgd") &gt; 0, pl.col("passengers") &gt;= 1,
+            pl.col("pickup_datetime") &lt; datetime(2025, 1, 1),
+            ~pl.col("trip_id").is_duplicated())
+    .with_columns(pl.col("tip_sgd").fill_null(0.0),
+                  pl.col("pickup_zone", "dropoff_zone").fill_null("Unknown"))
     .with_columns(
-        pl.col("fare_amount")
-          .fill_null(pl.col("fare_amount").median()),
         hour=pl.col("pickup_datetime").dt.hour(),
-        day_of_week=pl.col("pickup_datetime").dt.weekday(),
+        day_of_week=pl.col("pickup_datetime").dt.weekday(),   # 1 = Mon ... 7 = Sun
+        trip_duration_min=(pl.col("dropoff_datetime")
+                           - pl.col("pickup_datetime")).dt.total_seconds() / 60,
     )
-    .drop_nulls(subset=["pickup_zone"])
 )
-print(f"Clean: {df.shape}")
+print(f"Clean: {df.shape}")   # → Clean: (47547, 15)
   </code></pre>
+  <p style="font-size: 0.7em; color: #64748B;">Needs <code>from datetime import datetime</code>. Polars weekdays are ISO: Monday = 1, weekend = 6 and 7.</p>
 </section>
 
 <!-- ═══ Slide 14: Preprocess step ════════════════════════════ -->
 <section>
   <h2>Step 4: PreprocessingPipeline</h2>
   <pre><code class="language-python" data-trim>
-pipeline = PreprocessingPipeline(
-    numeric_strategy="median",
-    categorical_strategy="onehot",
-    scale=True,
-)
-df_model = pipeline.fit_transform(
-    df.select(["fare_amount", "trip_distance_km",
-               "hour", "day_of_week", "pickup_zone"])
-)
-print(f"Model-ready: {df_model.shape}")
-# → Model-ready: (9800, 22)
+from kailash_ml import PreprocessingPipeline
+
+features = df.select("distance_km", "trip_duration_min", "hour",
+                     "day_of_week", "payment_type", "pickup_zone", "fare_sgd")
+shuffled = features.sample(fraction=1.0, shuffle=True, seed=42)
+n_test = shuffled.height // 5
+test_rows, train_rows = shuffled.head(n_test), shuffled.slice(n_test)
+
+pipeline = PreprocessingPipeline()
+result = pipeline.setup(data=train_rows, target="fare_sgd",
+                        imputation_strategy="median",
+                        categorical_encoding="onehot", normalize=True)
+print(result.original_shape, "->", result.transformed_shape)  # (38038, 7) -> (38038, 44)
+test_ready = pipeline.transform(test_rows)                       # (9509, 44)
   </code></pre>
   <p style="font-size: 0.8em; color: #64748B;">
-    5 columns → 22 columns (one-hot encoding expanded pickup_zone)
+    7 columns → 44 (one-hot encoding expands payment_type and pickup_zone).
+    The test rows never reach <code>setup()</code>, so nothing about them leaks into the learned rules.
   </p>
 </section>
 
 <!-- ═══ Slide 15: Visualise step ═════════════════════════════ -->
 <section>
-  <h2>Step 5: Visualise peak demand</h2>
+  <h2>Step 5: Visualise demand by hour</h2>
   <pre><code class="language-python" data-trim>
 hourly = (
     df.group_by("hour")
-    .agg(pl.count().alias("trips"))
+    .agg(pl.len().alias("trips"))
     .sort("hour")
-)
+)   # 1,917 to 2,054 trips in every hour
   </code></pre>
   <figure style="text-align: center; margin-top: 1em;">
     <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
-      <!-- Simplified bar chart for hourly demand -->
+      <!-- Hourly trip counts from the cleaned course data: nearly flat -->
       <line x1="60" y1="170" x2="700" y2="170" stroke="#94A3B8" stroke-width="1"/>
       <line x1="60" y1="30" x2="60" y2="170" stroke="#94A3B8" stroke-width="1"/>
-      <text x="380" y="195" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Hour of day</text>
+      <text x="380" y="195" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">Hour of day (0–23)</text>
       <text x="30" y="100" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B" transform="rotate(-90 30 100)">Trips</text>
-      <!-- Bars showing morning and evening peaks -->
       <g fill="#0D9488" opacity="0.7">
-        <rect x="80" y="145" width="22" height="25" rx="2"/>
-        <rect x="107" y="150" width="22" height="20" rx="2"/>
-        <rect x="134" y="155" width="22" height="15" rx="2"/>
-        <rect x="161" y="158" width="22" height="12" rx="2"/>
-        <rect x="188" y="160" width="22" height="10" rx="2"/>
-        <rect x="215" y="155" width="22" height="15" rx="2"/>
-        <rect x="242" y="130" width="22" height="40" rx="2"/>
-        <rect x="269" y="90" width="22" height="80" rx="2" fill="#0D9488"/>
-        <rect x="296" y="60" width="22" height="110" rx="2" fill="#0D9488"/>
-        <rect x="323" y="100" width="22" height="70" rx="2"/>
-        <rect x="350" y="120" width="22" height="50" rx="2"/>
-        <rect x="377" y="115" width="22" height="55" rx="2"/>
-        <rect x="404" y="110" width="22" height="60" rx="2"/>
-        <rect x="431" y="115" width="22" height="55" rx="2"/>
-        <rect x="458" y="120" width="22" height="50" rx="2"/>
-        <rect x="485" y="110" width="22" height="60" rx="2"/>
-        <rect x="512" y="90" width="22" height="80" rx="2"/>
-        <rect x="539" y="50" width="22" height="120" rx="2" fill="#0D9488"/>
-        <rect x="566" y="40" width="22" height="130" rx="2" fill="#0D9488"/>
-        <rect x="593" y="70" width="22" height="100" rx="2"/>
-        <rect x="620" y="100" width="22" height="70" rx="2"/>
-        <rect x="647" y="120" width="22" height="50" rx="2"/>
-        <rect x="674" y="140" width="22" height="30" rx="2"/>
+        <rect x="70" y="72" width="22" height="98" rx="2"/>
+        <rect x="96" y="74" width="22" height="96" rx="2"/>
+        <rect x="122" y="71" width="22" height="99" rx="2"/>
+        <rect x="148" y="72" width="22" height="98" rx="2"/>
+        <rect x="174" y="74" width="22" height="96" rx="2"/>
+        <rect x="200" y="75" width="22" height="95" rx="2"/>
+        <rect x="226" y="75" width="22" height="95" rx="2"/>
+        <rect x="252" y="70" width="22" height="100" rx="2"/>
+        <rect x="278" y="69" width="22" height="101" rx="2"/>
+        <rect x="304" y="73" width="22" height="97" rx="2"/>
+        <rect x="330" y="73" width="22" height="97" rx="2"/>
+        <rect x="356" y="72" width="22" height="98" rx="2"/>
+        <rect x="382" y="73" width="22" height="97" rx="2"/>
+        <rect x="408" y="72" width="22" height="98" rx="2"/>
+        <rect x="434" y="74" width="22" height="96" rx="2"/>
+        <rect x="460" y="73" width="22" height="97" rx="2"/>
+        <rect x="486" y="70" width="22" height="100" rx="2"/>
+        <rect x="512" y="72" width="22" height="98" rx="2"/>
+        <rect x="538" y="70" width="22" height="100" rx="2"/>
+        <rect x="564" y="73" width="22" height="97" rx="2"/>
+        <rect x="590" y="72" width="22" height="98" rx="2"/>
+        <rect x="616" y="70" width="22" height="100" rx="2"/>
+        <rect x="642" y="73" width="22" height="97" rx="2"/>
+        <rect x="668" y="75" width="22" height="95" rx="2"/>
       </g>
-      <text x="296" y="52" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488">AM rush</text>
-      <text x="553" y="32" text-anchor="middle" font-family="Inter" font-size="10" fill="#0D9488">PM rush</text>
+      <text x="380" y="55" text-anchor="middle" font-family="Inter" font-size="11" fill="#0D9488">no rush-hour peak in this synthetic log</text>
     </svg>
   </figure>
+  <p style="font-size: 0.75em; color: #64748B;">A real dispatch log would show morning and evening peaks. Here the chart says "no peak" &mdash; report what the data shows, not what you expected.</p>
 </section>
 
 <!-- ═══ Slide 16: Re-profile ═════════════════════════════════ -->
 <section>
   <h2>Step 6: Re-profile and compare</h2>
   <pre><code class="language-python" data-trim>
-profile_clean = run_profile(explorer, df)
-comparison = run_profile(explorer, df_raw, df_compare=df)
+from shared import run_compare
 
-print(f"Alerts before: {len(profile.alerts)}")
-print(f"Alerts after:  {len(profile_clean.alerts)}")
+df_out = df.select(df_raw.columns)          # same columns as the raw data
+profile_clean = run_profile(df_out)
+comparison = run_compare(df_raw, df_out)
+
+print(f"Alerts before: {len(profile.alerts)}")        # 12 (2 warnings)
+print(f"Alerts after:  {len(profile_clean.alerts)}")  # 12 (1 warning)
+print(comparison["shape_comparison"])   # rows 50000 -> 47547
   </code></pre>
-  <div style="background: #F0FDF4; padding: 14px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 1em;">
-    Always re-profile after cleaning. Verify the pipeline helped.
+  <div style="background: #F0FDF4; padding: 12px 18px; border-left: 4px solid #22C55E; border-radius: 4px; margin-top: 0.8em; font-size: 0.85em;">
+    Same count, different alerts: the swapped-coordinate skew and r = −1.00 are gone,
+    and the real <code>distance_km</code> ↔ <code>fare_sgd</code> link (r = 0.97) now shows.
+    Always re-profile after cleaning &mdash; and read the alerts, not just the count.
   </div>
 </section>
 
@@ -511,7 +547,7 @@ generate_html_report(df_clean, charts)
   </div>
   <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
     <strong>2. Fitting pipeline on test data</strong><br>
-    <span style="font-size: 0.8em;"><code>fit_transform(train)</code>, <code>transform(test)</code>. Never fit on both.</span>
+    <span style="font-size: 0.8em;"><code>setup(train_rows)</code>, then <code>transform(test_rows)</code>. Never pass test rows to <code>setup()</code>.</span>
   </div>
   <div style="background: #FFF1F2; padding: 8px 14px; border-left: 4px solid #F43F5E; border-radius: 4px; margin: 0.5em 0;">
     <strong>3. Hardcoding file paths</strong><br>

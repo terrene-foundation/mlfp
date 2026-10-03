@@ -1,6 +1,6 @@
 # Module 4 — Unsupervised Machine Learning and Advanced Techniques for Insights
 
-> *"What if the data could organise itself?"*
+> _"What if the data could organise itself?"_
 
 This chapter marks a turning point in the MLFP programme. In Modules 1 through 3 you built a complete supervised ML pipeline: hand-engineer features from domain knowledge, feed them to a model, predict a labelled outcome, evaluate, deploy, monitor. Everything you did required a target column — someone, somewhere, had to label each row. Now we remove the labels. Unsupervised machine learning discovers structure in data without being told what to look for. Clusters emerge. Dimensions collapse. Anomalies surface. Topics crystallise from raw text. And by the end of this chapter, you will see how matrix factorisation learns embeddings through optimisation — the same mechanism that powers every neural network you will build in Module 5.
 
@@ -64,24 +64,24 @@ This chapter has eight lessons that progress along the Feature Engineering Spect
 
 The three-layer depth markers continue:
 
-| Marker | Audience | How to Read It |
-|---|---|---|
-| **FOUNDATIONS:** | Zero background | Plain language, analogies, no derivations. Read every word. |
-| **THEORY:** | Practitioner | Formal statement, derivation, working knowledge. Read to understand why. |
-| **ADVANCED:** | Masters / researcher | Paper references, frontier results. Skim on first read. |
+| Marker           | Audience             | How to Read It                                                           |
+| ---------------- | -------------------- | ------------------------------------------------------------------------ |
+| **FOUNDATIONS:** | Zero background      | Plain language, analogies, no derivations. Read every word.              |
+| **THEORY:**      | Practitioner         | Formal statement, derivation, working knowledge. Read to understand why. |
+| **ADVANCED:**    | Masters / researcher | Paper references, frontier results. Skim on first read.                  |
 
 **Estimated reading time per lesson:**
 
-| Lesson | Title | Reading | Exercise | Total |
-|---|---|---|---|---|
-| 4.1 | Clustering | 100 min | 60 min | ~2h 40m |
-| 4.2 | EM Algorithm and Gaussian Mixture Models | 110 min | 65 min | ~2h 55m |
-| 4.3 | Dimensionality Reduction | 120 min | 70 min | ~3h 10m |
-| 4.4 | Anomaly Detection and Ensembles | 100 min | 60 min | ~2h 40m |
-| 4.5 | Association Rules and Market Basket Analysis | 90 min | 55 min | ~2h 25m |
-| 4.6 | NLP — Text to Topics | 110 min | 65 min | ~2h 55m |
-| 4.7 | Recommender Systems and Collaborative Filtering | 120 min | 70 min | ~3h 10m |
-| 4.8 | Neural Networks, Backpropagation, and the Training Toolkit | 150 min | 90 min | ~4h |
+| Lesson | Title                                                      | Reading | Exercise | Total   |
+| ------ | ---------------------------------------------------------- | ------- | -------- | ------- |
+| 4.1    | Clustering                                                 | 100 min | 60 min   | ~2h 40m |
+| 4.2    | EM Algorithm and Gaussian Mixture Models                   | 110 min | 65 min   | ~2h 55m |
+| 4.3    | Dimensionality Reduction                                   | 120 min | 70 min   | ~3h 10m |
+| 4.4    | Anomaly Detection and Ensembles                            | 100 min | 60 min   | ~2h 40m |
+| 4.5    | Association Rules and Market Basket Analysis               | 90 min  | 55 min   | ~2h 25m |
+| 4.6    | NLP — Text to Topics                                       | 110 min | 65 min   | ~2h 55m |
+| 4.7    | Recommender Systems and Collaborative Filtering            | 120 min | 70 min   | ~3h 10m |
+| 4.8    | Neural Networks, Backpropagation, and the Training Toolkit | 150 min | 90 min   | ~4h     |
 
 Total: roughly 25 hours of focused work. Lesson 4.8 is the densest lesson in the entire programme — it bridges everything that came before to everything that comes after. Give it the time it needs.
 
@@ -91,9 +91,9 @@ Total: roughly 25 hours of focused work. Lesson 4.8 is the densest lesson in the
 
 ## Why This Matters
 
-In 2022, a Singapore retailer with over 200 outlets across the island wanted to personalise its loyalty programme. The marketing team had been segmenting customers by spending tier — bronze, silver, gold, platinum — using arbitrary thresholds set during a board meeting in 2018. Those thresholds had not changed in four years, even though the customer base had shifted dramatically during and after the pandemic. The gold tier contained stay-at-home parents who ordered groceries online every three days and executives who bought premium wine once a month. Their needs were entirely different, but the loyalty programme treated them identically because both spent between two hundred and five hundred dollars per month.
+Consider an illustrative case, a composite of a common retail story rather than a report on one named company. A Singapore retailer with a large network of outlets across the island wants to personalise its loyalty programme. The marketing team had been segmenting customers by spending tier — bronze, silver, gold, platinum — using arbitrary thresholds set during a board meeting in 2018. Those thresholds had not changed in four years, even though the customer base had shifted dramatically during and after the pandemic. The gold tier contained stay-at-home parents who ordered groceries online every three days and executives who bought premium wine once a month. Their needs were entirely different, but the loyalty programme treated them identically because both spent between two hundred and five hundred dollars per month.
 
-A data scientist on the team ran K-means clustering on the transaction data — not on spending alone, but on twelve features including purchase frequency, basket diversity, time-of-day preference, and category mix. Five clusters emerged. None of them aligned with the old bronze-silver-gold-platinum tiers. One cluster was "weeknight convenience shoppers" who bought ready meals and snacks between 6 and 9 PM. Another was "weekend entertainers" who bought large quantities of meat, beverages, and party supplies on Saturdays. The marketing team redesigned the loyalty programme around these five naturally occurring segments, and within three months the redemption rate on targeted offers had tripled.
+A data scientist on the team ran K-means clustering on the transaction data — not on spending alone, but on twelve features including purchase frequency, basket diversity, time-of-day preference, and category mix. Five clusters emerged. None of them aligned with the old bronze-silver-gold-platinum tiers. One cluster was "weeknight convenience shoppers" who bought ready meals and snacks between 6 and 9 PM. Another was "weekend entertainers" who bought large quantities of meat, beverages, and party supplies on Saturdays. The marketing team redesigned the loyalty programme around these five naturally occurring segments and could then measure whether targeted offers were redeemed more often than the old tier-based ones. (The segment names and numbers in this story are illustrative; the worked example below runs on the course's real customer data, where the structure turns out to be much less crisp.)
 
 The lesson: domain-expert segmentation is a starting point, not a destination. When the data contains structure that your categories do not capture, unsupervised clustering can reveal it. But clustering is not magic — it is sensitive to your choice of algorithm, your choice of distance metric, your choice of the number of clusters, and whether the data has been properly scaled. This lesson teaches you to make those choices deliberately.
 
@@ -103,7 +103,7 @@ The lesson: domain-expert segmentation is a starting point, not a destination. W
 
 Clustering is the task of grouping data points so that points within the same group are more similar to each other than to points in other groups. There is no target variable — nobody has labelled the data. The algorithm discovers the groups on its own. This is the defining characteristic of unsupervised learning: structure discovered, not imposed.
 
-The word "similar" does the heavy lifting. For numeric data, similarity usually means closeness in Euclidean space — points that are near each other in the feature space belong together. But closeness depends on scale. If one feature is measured in dollars (range 0 to 500,000) and another in kilometres (range 0 to 50), the dollar feature will dominate the distance calculation purely because its numbers are bigger. This is why you always standardise your features before clustering — the same `PreprocessingPipeline` you used in Module 3 applies here.
+The word "similar" does the heavy lifting. For numeric data, similarity usually means closeness in Euclidean space — points that are near each other in the feature space belong together. But closeness depends on scale. If one feature is measured in dollars (range 0 to 500,000) and another in kilometres (range 0 to 50), the dollar feature will dominate the distance calculation purely because its numbers are bigger. This is why you always standardise your features before clustering — subtract each column's mean and divide by its standard deviation (scikit-learn's `StandardScaler`, or one polars expression, as in the worked example below).
 
 There are four families of clustering algorithms, each with different assumptions about what a "group" looks like:
 
@@ -138,12 +138,12 @@ Agglomerative hierarchical clustering starts with each point as its own cluster 
 
 The key decision is the linkage criterion — how you define the distance between two clusters:
 
-| Linkage | Definition | Tendency |
-|---|---|---|
-| Single | Distance between the two closest points in the clusters | Chains (elongated clusters) |
-| Complete | Distance between the two farthest points in the clusters | Compact, spherical clusters |
-| Average | Mean distance between all pairs of points across the clusters | Compromise between single and complete |
-| Ward's | Increase in WCSS if the clusters are merged | Minimises variance, similar to K-means |
+| Linkage  | Definition                                                    | Tendency                               |
+| -------- | ------------------------------------------------------------- | -------------------------------------- |
+| Single   | Distance between the two closest points in the clusters       | Chains (elongated clusters)            |
+| Complete | Distance between the two farthest points in the clusters      | Compact, spherical clusters            |
+| Average  | Mean distance between all pairs of points across the clusters | Compromise between single and complete |
+| Ward's   | Increase in WCSS if the clusters are merged                   | Minimises variance, similar to K-means |
 
 Ward's linkage tends to produce clusters of similar size and is the most commonly used for general-purpose hierarchical clustering. Single linkage is useful when you expect irregular, elongated cluster shapes but suffers from the "chaining" effect — two clusters connected by a thin bridge of points will be merged prematurely.
 
@@ -182,7 +182,11 @@ $$\text{DB} = \frac{1}{K} \sum_{i=1}^{K} \max_{j \neq i} \frac{s_i + s_j}{d(c_i,
 
 Lower is better. A cluster with small intra-cluster distances and large inter-cluster distances scores well.
 
-**Gap statistic.** Compare the within-cluster dispersion of your clustering to the expected dispersion under a null reference distribution (uniform random). The gap is the difference; the number of clusters is chosen where the gap is largest. This is the most principled method for choosing $K$, but also the most computationally expensive.
+**Gap statistic** (Tibshirani, Walther and Hastie, 2001). Compare the within-cluster dispersion $W_K$ (the WCSS) of your clustering to its expected value under a null reference distribution with no clusters — data drawn uniformly over the bounding box of your features:
+
+$$\text{Gap}(K) = \mathbb{E}^*\left[\log W_K^{\text{ref}}\right] - \log W_K$$
+
+The expectation is estimated by clustering $B$ reference datasets; $s_K$ is the standard deviation of $\log W_K^{\text{ref}}$ across them, scaled by $\sqrt{1 + 1/B}$. The rule is not "take the largest gap": choose the **smallest** $K$ such that $\text{Gap}(K) \geq \text{Gap}(K+1) - s_{K+1}$ (the one-standard-error rule, which is what Exercise 1.1 implements). It is the most principled of the three methods for choosing $K$, and also the most expensive, because every $K$ is fitted $B + 1$ times.
 
 **External metrics** apply when you do have ground-truth labels for evaluation:
 
@@ -211,65 +215,67 @@ Solving: $\boldsymbol{\mu} = \frac{1}{m}\sum_{i=1}^{m} \mathbf{x}_i$, which is t
 
 K-means is a special case of the EM algorithm for Gaussian Mixture Models with equal, spherical covariances and hard assignments. When you replace hard assignments (each point belongs to exactly one cluster) with soft assignments (each point has a probability of belonging to each cluster), you get the EM algorithm for GMMs, which is Lesson 4.2. This is a recurring pattern in ML: many algorithms are special cases of more general probabilistic frameworks.
 
-## The Kailash Engine: AutoMLEngine (clustering mode)
+## The Kailash Engine: ClusteringEngine
 
-For clustering, Kailash's `AutoMLEngine` can be configured for unsupervised tasks. However, for this lesson we implement clustering from scratch to build understanding, then use the engine for evaluation and comparison:
+kailash-ml puts four of this lesson's algorithms — K-means, GMM (Lesson 4.2), DBSCAN and spectral clustering — behind one `ClusteringEngine.fit()` call that returns the labels together with the silhouette, Calinski-Harabasz and inertia values. `sweep_k()` runs the "try every $K$ and score it" loop you will write by hand in the worked example and reports the best $K$ for the criterion you choose. Ward/agglomerative clustering and HDBSCAN are not in the engine; the worked example and Exercise 1 use SciPy and the `hdbscan` package for those.
 
 ```python
-from kailash_ml import AutoMLEngine, ModelVisualizer
+import polars as pl
+from shared import MLFPDataLoader
+from kailash_ml.engines.clustering import ClusteringEngine
 
-# AutoMLEngine in clustering mode
-engine = AutoMLEngine(task="clustering")
-result = engine.fit(df, n_clusters=5)
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())  # standardise
 
-# Visualise clusters
-viz = ModelVisualizer()
-fig = viz.scatter(df, x="feature_1", y="feature_2", color="cluster_label")
+engine = ClusteringEngine()  # algorithms: kmeans | gmm | dbscan | spectral
+sweep = engine.sweep_k(X, k_range=range(2, 9), criterion="silhouette")
+fit = engine.fit(X, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(f"K={fit.n_clusters}  silhouette={fit.silhouette_score:.3f}")
 ```
 
-The `ModelVisualizer` is your primary tool for cluster inspection — scatter plots coloured by cluster assignment, silhouette plots per cluster, and dendrogram visualisations for hierarchical methods.
+On this 3,000-customer sample the sweep picks $K = 3$ with a silhouette of about 0.18. `fit.labels` holds one cluster id per row, ready to join back onto the customer table. The same engine is what the module assessment's clustering task uses.
 
-## Worked Example: Singapore Retail Customer Segmentation
+`AutoMLEngine` is a different tool: it does not know what clustering is. You give it a search space (for example, algorithm $\in$ {kmeans, gmm} and $K \in [3, 8]$) and an async trial function that fits one candidate — typically with `ClusteringEngine` — and returns its metric; the engine runs the search, enforces the trial, time and cost budgets, and records every trial. With `agent=False` no language model is called. Exercise 1.5 shows the full pattern.
 
-We will cluster customers from a Singapore retail chain using transaction history. The dataset contains 15,000 customers with twelve engineered features: total spending, purchase frequency, average basket size, category diversity (number of distinct product categories), time-of-day preference (encoded as morning/afternoon/evening ratios), recency (days since last purchase), and six category-specific spending shares (groceries, electronics, fashion, dining, health, home).
+## Worked Example: Singapore E-Commerce Customer Segmentation
+
+We cluster the Singapore e-commerce customers you met in Module 3 (`mlfp03/ecommerce_customers.parquet`, 50,000 customers). Seven numeric columns describe behaviour: total revenue, order count, average order value, days since the last order, tenure in days, a 1–5 satisfaction score and the number of returns (0–6). The `churned` column is an **outcome**, not behaviour: it is deliberately left out of the features, so the segments are not partly a split on the answer, and used afterwards only to profile the segments. Hierarchical clustering and the silhouette score scale with $n^2$, so we work on the same 3,000-customer random sample as the engine example above; every step runs in seconds.
 
 ### Step 0: Load and standardise
 
 ```python
 from __future__ import annotations
 
-import polars as pl
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
-from sklearn.metrics import silhouette_score, davies_bouldin_score
+import polars as pl
+from scipy.cluster.hierarchy import linkage
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.metrics import silhouette_score, davies_bouldin_score, adjusted_rand_score
 import hdbscan
 
 from shared import MLFPDataLoader
-from kailash_ml import ModelVisualizer
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_retail_customers.csv")
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]
 
-feature_cols = [
-    "total_spending", "purchase_frequency", "avg_basket_size",
-    "category_diversity", "morning_ratio", "afternoon_ratio",
-    "evening_ratio", "recency_days", "groceries_share",
-    "electronics_share", "fashion_share", "dining_share",
-]
-
-X = df.select(feature_cols).to_numpy()
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+sample = customers.drop_nulls(subset=FEATURES).sample(3000, seed=42)
+X_df = sample.select(FEATURES)
+X_scaled = X_df.select((pl.all() - pl.all().mean()) / pl.all().std()).to_numpy()
+print(X_scaled.shape)  # (3000, 7)
 ```
 
-Standardisation is essential. Without it, `total_spending` (range S$50–S$50,000) would dominate every distance calculation, and features like `morning_ratio` (range 0–1) would be invisible to the algorithm.
+Standardisation is essential. Without it, `total_revenue` (S$0.01 to about S$3,600) and `customer_tenure_days` (hundreds to thousands) would dominate every distance calculation, and `satisfaction_score` (1–5) and `num_returns` (0–6) would be invisible to the algorithm. Those last two are small integer counts: after standardising they form a few stacked "bands" of points, which is worth remembering when you look at cluster scatter plots.
 
-### Step 1: K-means with elbow method
+### Step 1: K-means with the elbow and silhouette
 
 ```python
-wcss = []
-sil_scores = []
+wcss, sil_scores = [], []
 K_range = range(2, 11)
 
 for k in K_range:
@@ -278,83 +284,107 @@ for k in K_range:
     wcss.append(km.inertia_)
     sil_scores.append(silhouette_score(X_scaled, labels))
 
-# The elbow is at K=5: WCSS drops steeply from 2 to 5, then flattens
-# Silhouette score peaks at K=5 with s=0.38
+for k, w, s in zip(K_range, wcss, sil_scores):
+    print(f"K={k:>2}  WCSS={w:>8,.0f}  silhouette={s:.3f}")
 ```
 
-### Step 2: Hierarchical clustering with dendrogram
+The output tells an honest story. WCSS falls by about 2,900 from $K = 2$ to $K = 3$, then by 1,300, 1,100, 850 and so on — a gentle curve with no sharp elbow after $K = 3$. The silhouette is 0.169 at $K = 2$, peaks at **0.182 at $K = 3$**, and drifts down to 0.145 at $K = 10$. A silhouette below about 0.25 means the clusters overlap heavily: real customer behaviour does not fall into crisp, well-separated groups. That does not make segmentation useless — it means the value lies in the business profile of each segment (Step 5), not in the score.
+
+### Step 2: Hierarchical clustering with Ward's linkage
 
 ```python
-from scipy.cluster.hierarchy import dendrogram, linkage
+Z = linkage(X_scaled, method="ward")
+print("Last six merge heights:", np.round(Z[-6:, 2], 1))
 
-Z = linkage(X_scaled[:2000], method="ward")  # subsample for visualisation
-# Cut at height that produces 5 clusters
-agg = AgglomerativeClustering(n_clusters=5, linkage="ward")
-labels_agg = agg.fit_predict(X_scaled)
+labels_km = KMeans(n_clusters=3, init="k-means++", n_init=10,
+                   random_state=42).fit_predict(X_scaled)
+labels_ward = AgglomerativeClustering(n_clusters=3, linkage="ward").fit_predict(X_scaled)
+print(f"Agreement with K-means (ARI): {adjusted_rand_score(labels_km, labels_ward):.3f}")
 ```
 
-The dendrogram shows a clear gap between the fourth and fifth merge levels, confirming that five clusters is a natural choice.
+The last six merges happen at heights of about 34.6, 37.1, 37.7, 54.9, 68.4 and 74.8. The final merge (two clusters into one) is at 74.8, the one before it (three into two) at 68.4. The largest jump is from 37.7 to 54.9 — between the five-to-four and four-to-three merges — so reading the dendrogram alone would suggest **four** clusters, while the silhouette preferred three. Cutting the Ward tree at three clusters gives an adjusted Rand index of about 0.49 with K-means: the two methods agree on the broad structure but disagree on many individual customers. Different methods, each reasonable, suggest different answers — a normal outcome when the data has no crisp clusters.
 
 ### Step 3: HDBSCAN for density-based comparison
 
 ```python
-clusterer = hdbscan.HDBSCAN(min_cluster_size=100, min_samples=10)
-labels_hdbscan = clusterer.fit_predict(X_scaled)
+labels_hdb = hdbscan.HDBSCAN(min_cluster_size=50, min_samples=10).fit_predict(X_scaled)
 
-n_clusters = len(set(labels_hdbscan)) - (1 if -1 in labels_hdbscan else 0)
-n_noise = (labels_hdbscan == -1).sum()
-print(f"HDBSCAN found {n_clusters} clusters with {n_noise} noise points")
+n_clusters = len(set(labels_hdb)) - (1 if -1 in labels_hdb else 0)
+n_noise = int((labels_hdb == -1).sum())
+print(f"HDBSCAN found {n_clusters} clusters and {n_noise} noise points "
+      f"({n_noise / len(labels_hdb):.1%})")
 ```
 
-HDBSCAN finds four clusters and labels approximately 800 points (5.3%) as noise. These noise points are customers whose behaviour does not fit any cluster — irregular purchasers, one-time visitors, or data-entry anomalies. In a production system, these would be flagged for manual review.
+HDBSCAN also finds three dense regions, but it refuses to assign 447 customers (14.9%) to any of them. Those noise points are customers whose combination of revenue, recency and tenure is not shared by a dense group — unusual high spenders, very long-tenured customers, one-off buyers. In a production system they are worth a look of their own rather than being forced into the nearest segment.
 
 ### Step 4: Evaluate and compare
 
 ```python
-# Silhouette and DB index for K-means (K=5) vs HDBSCAN
-sil_km = silhouette_score(X_scaled, labels_km)
-db_km = davies_bouldin_score(X_scaled, labels_km)
+def report(name, X, labels):
+    keep = labels != -1  # HDBSCAN noise is excluded from the scores
+    sil = silhouette_score(X[keep], labels[keep])
+    db = davies_bouldin_score(X[keep], labels[keep])
+    print(f"{name:<9} n={int(keep.sum()):>5}  silhouette={sil:.3f}  DB={db:.3f}")
 
-mask = labels_hdbscan != -1
-sil_hdb = silhouette_score(X_scaled[mask], labels_hdbscan[mask])
-db_hdb = davies_bouldin_score(X_scaled[mask], labels_hdbscan[mask])
-
-print(f"K-means:  Silhouette={sil_km:.3f}, DB={db_km:.3f}")
-print(f"HDBSCAN:  Silhouette={sil_hdb:.3f}, DB={db_hdb:.3f}")
+report("K-means", X_scaled, labels_km)
+report("Ward", X_scaled, labels_ward)
+report("HDBSCAN", X_scaled, labels_hdb)
 ```
+
+| Method | Customers scored | Silhouette | Davies-Bouldin |
+| --- | --- | --- | --- |
+| K-means ($K=3$) | 3,000 | 0.182 | 1.71 |
+| Ward ($K=3$) | 3,000 | 0.134 | 1.99 |
+| HDBSCAN | 2,553 (noise excluded) | 0.095 | 2.77 |
+
+K-means scores best on both internal metrics — unsurprisingly, because silhouette and Davies-Bouldin reward compact, convex, centroid-shaped clusters, which is exactly what K-means optimises. That is a bias of the metrics, not proof that K-means found the "true" segments (Exercise 1.4 shows silhouette preferring K-means on two interleaved moons that spectral clustering separates perfectly).
 
 ### Step 5: Interpret clusters with business meaning
 
 ```python
-df_clustered = df.with_columns(pl.Series("cluster", labels_km))
-
-cluster_profiles = df_clustered.group_by("cluster").agg([
-    pl.col("total_spending").mean().alias("avg_spending"),
-    pl.col("purchase_frequency").mean().alias("avg_frequency"),
-    pl.col("evening_ratio").mean().alias("avg_evening_ratio"),
-    pl.col("groceries_share").mean().alias("avg_groceries"),
-    pl.col("category_diversity").mean().alias("avg_diversity"),
-])
-print(cluster_profiles.sort("cluster"))
+pl.Config.set_tbl_cols(-1)
+profiles = (
+    sample.with_columns(pl.Series("cluster", labels_km))
+    .group_by("cluster")
+    .agg(
+        pl.len().alias("customers"),
+        pl.col("total_revenue").mean().round(0),
+        pl.col("avg_order_value").mean().round(0),
+        pl.col("order_count").mean().round(1),
+        pl.col("days_since_last_order").mean().round(0),
+        pl.col("customer_tenure_days").mean().round(0),
+        pl.col("churned").mean().round(2).alias("churn_rate"),  # outcome, profiling only
+    )
+    .sort("cluster")
+)
+print(profiles)
 ```
 
-The five clusters might emerge as: (0) budget-conscious weekly grocery shoppers, (1) weeknight convenience shoppers with high evening ratios, (2) weekend entertainers with high basket sizes and low frequency, (3) health-and-wellness focused with high health-category share, (4) high-value diverse shoppers across multiple categories. The business interpretation transforms numbers into actionable segments.
+| Cluster | Customers | Revenue (S$) | Avg order (S$) | Orders | Days since last order | Tenure (days) | Churn rate |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 402 | 950 | 166 | 6.6 | 340 | 827 | 0.74 |
+| 1 | 1,274 | 240 | 31 | 8.4 | 182 | 603 | 0.46 |
+| 2 | 1,324 | 239 | 32 | 8.2 | 533 | 1,116 | 1.00 |
+
+The cluster ids are arbitrary (rerun with another seed and they may be renumbered); the profiles are what matter. Cluster 0 is a small group of **high-value, big-basket customers** — four times the revenue and five times the average order of the rest. Cluster 1 is **recently active customers**: the shortest time since the last order, the shortest tenure and, by far, the lowest churn rate. Cluster 2 is **lapsed long-standing customers**: their last order was a year and a half ago on average, and every one of them in the sample is recorded as churned. Satisfaction and returns barely differ between the clusters (about 3.0 and 0.5 everywhere), so they are not what separates these customers. The business reading is immediate: protect cluster 0, keep cluster 1 engaged, and decide whether a win-back campaign for cluster 2 is worth its cost. Notice that `churned` was never a clustering input, yet the segments separate it sharply — recency is doing the work.
 
 ## Try It Yourself
 
-**Drill 1.** Implement K-means from scratch in twenty lines of Python. Use NumPy for distance computation. Start with random initialisation (not K-means++). Run it on a 2D synthetic dataset with three well-separated Gaussian blobs (use `sklearn.datasets.make_blobs`). Verify that your implementation produces the same cluster assignments as `sklearn.cluster.KMeans`.
+**Drill 1.** Implement K-means from scratch in about twenty lines of Python. Use NumPy for distance computation. Start with random initialisation (not K-means++). Run it on a 2D synthetic dataset with three well-separated Gaussian blobs (use `sklearn.datasets.make_blobs`). Verify that your implementation produces the same partition as `sklearn.cluster.KMeans`.
 
 **Solution:**
+
 ```python
 import numpy as np
+from sklearn.cluster import KMeans
 from sklearn.datasets import make_blobs
+from sklearn.metrics import adjusted_rand_score
 
 X, y_true = make_blobs(n_samples=300, centers=3, cluster_std=0.6, random_state=42)
 
-def kmeans_scratch(X, K, max_iters=100):
-    n, d = X.shape
-    idx = np.random.choice(n, K, replace=False)
-    centroids = X[idx].copy()
+def kmeans_scratch(X, K, max_iters=100, seed=0):
+    rng = np.random.default_rng(seed)
+    centroids = X[rng.choice(len(X), K, replace=False)].copy()
     for _ in range(max_iters):
         dists = np.linalg.norm(X[:, None] - centroids[None, :], axis=2)
         labels = np.argmin(dists, axis=1)
@@ -362,17 +392,30 @@ def kmeans_scratch(X, K, max_iters=100):
         if np.allclose(centroids, new_centroids):
             break
         centroids = new_centroids
-    return labels, centroids
+    wcss = float(((X - centroids[labels]) ** 2).sum())
+    return labels, centroids, wcss
 
-labels, centroids = kmeans_scratch(X, 3)
-print(f"Cluster sizes: {[int((labels == k).sum()) for k in range(3)]}")
+labels_sk = KMeans(n_clusters=3, n_init=10, random_state=42).fit_predict(X)
+runs = []
+for seed in range(5):
+    labels, centroids, wcss = kmeans_scratch(X, 3, seed=seed)
+    ari = adjusted_rand_score(labels, labels_sk)
+    runs.append((wcss, seed, labels))
+    print(f"seed={seed}: WCSS={wcss:8.1f}  ARI vs sklearn={ari:.3f}")
+
+best_wcss, best_seed, best_labels = min(runs, key=lambda r: r[0])
+print(f"Best of 5 restarts (seed {best_seed}): ARI = "
+      f"{adjusted_rand_score(best_labels, labels_sk):.3f}")
 ```
 
-**Drill 2.** Apply agglomerative clustering with all four linkage methods (single, complete, average, Ward's) to the same blob dataset. Compare the dendrograms visually. Which linkage method produces the most balanced clusters? Which produces the most elongated?
+The cluster *numbers* can differ between two implementations (your cluster 0 may be sklearn's cluster 2), so compare partitions with the adjusted Rand index, which ignores label names. The output shows the local-minimum problem in action: with seeds 0 and 1, random initialisation drops two starting centroids into the same blob, the algorithm converges to a WCSS of about 5,310, and the partition agrees poorly with sklearn (ARI ≈ 0.44). Seeds 2–4 reach WCSS ≈ 204 and reproduce sklearn's partition exactly (ARI = 1.0). Keeping the restart with the lowest WCSS fixes it — which is precisely what sklearn's `n_init=10` does, on top of the K-means++ initialisation that makes bad starts rare in the first place.
+
+**Drill 2.** Apply agglomerative clustering with all four linkage methods (single, complete, average, Ward's) to the same blob dataset. Compare the dendrograms visually. Which linkage method produces the most balanced clusters? Which is most prone to chaining?
 
 **Solution:**
+
 ```python
-from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.cluster.hierarchy import dendrogram, fcluster, linkage
 import matplotlib.pyplot as plt
 
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -380,54 +423,84 @@ for ax, method in zip(axes.flat, ["single", "complete", "average", "ward"]):
     Z = linkage(X, method=method)
     dendrogram(Z, ax=ax, truncate_mode="lastp", p=20)
     ax.set_title(f"{method.capitalize()} linkage")
+    sizes = np.bincount(fcluster(Z, t=3, criterion="maxclust"))[1:]
+    print(f"{method:<8} cluster sizes at K=3: {sizes.tolist()}")
 plt.tight_layout()
 plt.savefig("linkage_comparison.png")
 ```
-Ward's produces the most balanced clusters (similar sizes). Single linkage produces the most elongated due to the chaining effect.
 
-**Drill 3.** Run DBSCAN on the blob dataset with $\varepsilon = 0.5$ and $\text{minPts} = 5$. How many clusters does it find? How many noise points? Now increase $\varepsilon$ to 2.0. What happens? Explain why.
+On three well-separated blobs every linkage recovers the same three groups of 100 — easy data does not discriminate between methods. The dendrograms still differ: Ward's merges at heights that grow sharply once whole blobs are joined, giving the clearest cut, while single linkage merges points one at a time at small, similar heights — the chaining behaviour that makes it merge clusters joined by a thin bridge of points. Repeat the drill with `cluster_std=2.5` to see the methods disagree.
+
+**Drill 3.** Run DBSCAN on the blob dataset with $\text{minPts} = 5$ and $\varepsilon \in \{0.3, 0.5, 2.0, 8.0\}$. For each, how many clusters and how many noise points? Explain the pattern. How large must $\varepsilon$ be before two blobs merge?
 
 **Solution:**
+
 ```python
+from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
 
-for eps in [0.5, 2.0]:
-    db = DBSCAN(eps=eps, min_samples=5)
-    labels = db.fit_predict(X)
+for eps in [0.3, 0.5, 2.0, 8.0]:
+    labels = DBSCAN(eps=eps, min_samples=5).fit_predict(X)
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-    n_noise = (labels == -1).sum()
+    n_noise = int((labels == -1).sum())
     print(f"eps={eps}: {n_clusters} clusters, {n_noise} noise points")
-```
-At $\varepsilon = 0.5$, DBSCAN finds 3 clusters with a few noise points. At $\varepsilon = 2.0$, everything merges into a single cluster because the neighbourhood radius is large enough to connect all three blobs.
 
-**Drill 4.** Compute the silhouette score for K-means with $K = 2, 3, 4, 5, 6, 7, 8$ on the retail customer dataset. Plot silhouette score versus $K$. Does the optimal $K$ from silhouette agree with the elbow method? Explain any discrepancy.
+# Smallest distance between points of different blobs
+gaps = {(a, b): cdist(X[y_true == a], X[y_true == b]).min()
+        for a in range(3) for b in range(a + 1, 3)}
+print({pair: round(float(g), 2) for pair, g in gaps.items()})
+```
+
+| $\varepsilon$ | Clusters | Noise points |
+| --- | --- | --- |
+| 0.3 | 5 | 52 |
+| 0.5 | 3 | 10 |
+| 2.0 | 3 | 0 |
+| 8.0 | 2 | 0 |
+
+At $\varepsilon = 0.3$ the radius is too small: the sparser edges of the blobs fall apart into extra fragments and 52 points are noise. At 0.5 the three blobs are found with 10 noise points on their fringes. At 2.0 the result is **still three clusters** — the larger radius only absorbs the fringe points (0 noise); it does not merge the blobs, because the closest pair of points from two different blobs is about 7.5 units apart. Merging needs $\varepsilon$ larger than that gap: at $\varepsilon = 8.0$ two blobs join. The lesson: DBSCAN's $\varepsilon$ must be judged against the scale of the gaps between clusters (here, several units), not against the cluster spread (0.6). A common way to choose it is the "k-distance plot": sort every point's distance to its $\text{minPts}$-th neighbour and look for the knee.
+
+**Drill 4.** Compute the silhouette score for K-means with $K = 2, \ldots, 8$ on the customer sample from the worked example, using **three different random 3,000-customer samples** (seeds 0, 1, 2). Does the best $K$ stay the same? What does that tell you?
 
 **Solution:**
-```python
-sil_scores = {}
-for k in range(2, 9):
-    km = KMeans(n_clusters=k, init="k-means++", n_init=10, random_state=42)
-    labels = km.fit_predict(X_scaled)
-    sil_scores[k] = silhouette_score(X_scaled, labels)
-    print(f"K={k}: Silhouette={sil_scores[k]:.4f}")
-```
-Silhouette often peaks at a lower $K$ than the elbow because it penalises overlapping clusters more aggressively. If the data has fuzzy boundaries between some segments, the elbow may suggest more clusters while silhouette prefers fewer, cleaner ones.
 
-**Drill 5.** Take the five K-means clusters from the worked example and compute the percentage of customers in each cluster who have a recency of less than 30 days (active customers). Which cluster has the highest churn risk (lowest active percentage)? What marketing action would you recommend for that cluster?
+```python
+for seed in [0, 1, 2]:
+    sub = customers.drop_nulls(subset=FEATURES).sample(3000, seed=seed).select(FEATURES)
+    Xs = sub.select((pl.all() - pl.all().mean()) / pl.all().std()).to_numpy()
+    sils = {}
+    for k in range(2, 9):
+        lab = KMeans(n_clusters=k, n_init=10, random_state=42).fit_predict(Xs)
+        sils[k] = silhouette_score(Xs, lab)
+    best = max(sils, key=sils.get)
+    print(f"seed={seed}: best K={best}  " +
+          "  ".join(f"K{k}={s:.3f}" for k, s in sils.items()))
+```
+
+The silhouette curve is low (roughly 0.14–0.27) and flat, and the winning $K$ switches with the sample: seed 0 picks $K = 2$ (0.265), seeds 1 and 2 pick $K = 3$ (about 0.18). When the "optimal" $K$ is that sensitive to which customers you happened to sample, the data does not contain one obviously correct number of clusters. Choose $K$ by combining the metric with stability across samples and, above all, with whether the resulting profiles are distinct and actionable.
+
+**Drill 5.** Using the three K-means clusters from the worked example, compute for each cluster the share of customers who ordered in the last 90 days and the churn rate. Which cluster is the highest churn risk among customers who are still reachable? What would you do for it?
 
 **Solution:**
+
 ```python
-df_clustered = df.with_columns(
-    (pl.col("recency_days") < 30).alias("is_active"),
-    pl.Series("cluster", labels_km),
+churn_view = (
+    sample.with_columns(
+        pl.Series("cluster", labels_km),
+        (pl.col("days_since_last_order") <= 90).alias("ordered_last_90d"),
+    )
+    .group_by("cluster")
+    .agg(
+        pl.len().alias("customers"),
+        pl.col("ordered_last_90d").mean().round(3).alias("active_share"),
+        pl.col("churned").mean().round(3).alias("churn_rate"),
+    )
+    .sort("churn_rate", descending=True)
 )
-churn_analysis = df_clustered.group_by("cluster").agg([
-    pl.col("is_active").mean().alias("active_pct"),
-    pl.len().alias("cluster_size"),
-])
-print(churn_analysis.sort("active_pct"))
+print(churn_view)
 ```
-The cluster with the lowest active percentage is the highest churn risk. A win-back campaign with personalised offers based on the cluster's category preferences would be appropriate.
+
+Cluster 2 (lapsed long-standing customers) is already fully churned in this data, so it is a win-back question, not a retention one. Only 14% of the high-value cluster 0 ordered in the last 90 days (28% in cluster 1), and its churn rate is about 0.74 despite its spending — losing these customers costs the most revenue per head, so it is the segment where a retention offer (personal outreach, loyalty benefits) has the best expected return. Cluster 1 is the healthy core. `churned` was used only after clustering, never as an input.
 
 ## Cross-References
 
@@ -648,6 +721,7 @@ Typically 15–25% of customers fall on boundaries between clusters. These are t
 **Drill 1.** Modify the from-scratch EM implementation to use diagonal covariance matrices instead of full covariance. How does this change the number of parameters per component? Run both versions on the synthetic data and compare the recovered cluster shapes.
 
 **Solution:**
+
 ```python
 # Diagonal covariance: only D parameters per component instead of D*(D+1)/2
 # Replace sigma[k] update with:
@@ -657,11 +731,13 @@ for k in range(K):
     sigma_diag[k] = (resp[:, k:k+1] * diff**2).sum(axis=0) / Nk[k] + 1e-6
 # Use np.diag(sigma_diag[k]) when computing gaussian_pdf
 ```
+
 Full covariance: $D(D+1)/2 = 3$ parameters per component in 2D. Diagonal: $D = 2$ parameters. Diagonal cannot capture correlations between features, so tilted ellipses become axis-aligned.
 
 **Drill 2.** Implement BIC (Bayesian Information Criterion) to select the number of components. BIC $= -2\mathcal{L} + p \log N$, where $p$ is the number of parameters. Run GMM with $K = 1, 2, \ldots, 8$ and plot BIC versus $K$. Which $K$ minimises BIC?
 
 **Solution:**
+
 ```python
 bics = {}
 for k in range(1, 9):
@@ -676,6 +752,7 @@ print(f"Optimal K by BIC: {best_k}")
 **Drill 3.** For the real e-commerce data, compare K-means hard assignments with GMM soft assignments. For each customer, compute the "assignment confidence" as $\max_k r_{nk}$. Plot a histogram of assignment confidences. What fraction of customers have confidence below 0.6?
 
 **Solution:**
+
 ```python
 confidences = probs.max(axis=1)
 low_conf = (confidences < 0.6).mean()
@@ -685,6 +762,7 @@ print(f"{low_conf:.1%} of customers have assignment confidence < 0.6")
 **Drill 4.** Verify empirically that the log-likelihood never decreases. Run EM for 100 iterations and assert that $\mathcal{L}_{t+1} \geq \mathcal{L}_t$ for all $t$. If you deliberately skip the M-step on one iteration (keep old parameters), what happens to the log-likelihood?
 
 **Solution:**
+
 ```python
 lls = []
 for iteration in range(100):
@@ -695,6 +773,7 @@ for iteration in range(100):
     lls.append(ll)
 print("Log-likelihood never decreased (verified)")
 ```
+
 Skipping the M-step means the E-step is repeated with the same parameters, producing the same responsibilities, so the log-likelihood stays constant.
 
 **Drill 5.** Explain in three sentences why Mixture of Experts is a generalisation of GMM. What plays the role of the responsibilities $r_{nk}$ in an MoE model? What plays the role of the component distributions?
@@ -900,6 +979,7 @@ print(f"Reconstruction MSE with 4 components: {recon_error:.4f}")
 **Drill 1.** Implement PCA from scratch using NumPy's eigendecomposition. Compute the covariance matrix, find eigenvalues and eigenvectors, project onto the top 2 components. Verify your result matches `sklearn.decomposition.PCA`.
 
 **Solution:**
+
 ```python
 X_centred = X_scaled - X_scaled.mean(axis=0)
 cov = X_centred.T @ X_centred / (len(X_centred) - 1)
@@ -921,6 +1001,7 @@ for i in range(2):
 **Drill 2.** Compute PCA using SVD instead of eigendecomposition. Verify that the singular values squared divided by $(n-1)$ equal the eigenvalues from Drill 1.
 
 **Solution:**
+
 ```python
 U, S, Vt = np.linalg.svd(X_centred, full_matrices=False)
 eigenvalues_from_svd = S**2 / (len(X_centred) - 1)
@@ -930,17 +1011,20 @@ print("Eigenvalues match:", np.allclose(eigenvalues[:len(S)], eigenvalues_from_s
 **Drill 3.** Run t-SNE with perplexity values of 5, 30, and 100 on the e-commerce dataset. How does perplexity affect the visual appearance of the clusters? Which perplexity produces the clearest separation?
 
 **Solution:**
+
 ```python
 for perp in [5, 30, 100]:
     tsne = TSNE(n_components=2, perplexity=perp, random_state=42)
     X_tsne = tsne.fit_transform(X_scaled)
     print(f"Perplexity={perp}: spread range x=[{X_tsne[:,0].min():.1f}, {X_tsne[:,0].max():.1f}]")
 ```
+
 Low perplexity (5) creates tight, fragmented clusters. High perplexity (100) creates a more uniform spread with less local structure. Perplexity 30 is typically the best compromise.
 
 **Drill 4.** Demonstrate that PCA reconstruction error equals the sum of discarded eigenvalues. Compute PCA with $k=2$ components, reconstruct, compute MSE, and compare with $\sum_{i=3}^{p} \lambda_i / p$.
 
 **Solution:**
+
 ```python
 pca_2 = PCA(n_components=2)
 X_pca_2 = pca_2.fit_transform(X_scaled)
@@ -954,6 +1038,7 @@ print(f"MSE: {mse:.6f}, Sum(discarded)/p: {discarded:.6f}")
 **Drill 5.** Apply UMAP to the e-commerce data with `n_components=3` (not 2). Feed the 3D UMAP embedding into K-means with $K=4$. Compare the silhouette score of clustering in the original high-dimensional space versus the 3D UMAP space. Which is higher? Why?
 
 **Solution:**
+
 ```python
 reducer_3d = umap.UMAP(n_components=3, random_state=42)
 X_umap_3d = reducer_3d.fit_transform(X_scaled)
@@ -966,6 +1051,7 @@ sil_umap = silhouette_score(X_umap_3d, km_umap.labels_)
 print(f"Silhouette (original): {sil_orig:.3f}")
 print(f"Silhouette (UMAP 3D): {sil_umap:.3f}")
 ```
+
 UMAP often produces a higher silhouette score because it concentrates cluster structure into fewer dimensions, making clusters more compact and well-separated in the reduced space.
 
 ## Cross-References
@@ -1134,6 +1220,7 @@ The blended detector typically catches anomalies that no single method found: a 
 **Drill 1.** Implement the Z-score method on the `amount` column of the transaction data. Compare the anomalies found using thresholds of 2, 3, and 4 standard deviations. How many anomalies does each threshold produce?
 
 **Solution:**
+
 ```python
 for threshold in [2, 3, 4]:
     n_anomalies = (z_scores > threshold).sum()
@@ -1144,6 +1231,7 @@ for threshold in [2, 3, 4]:
 **Drill 2.** Run Isolation Forest with contamination rates of 0.01, 0.02, 0.05, and 0.10. How does the contamination parameter affect the number of detected anomalies? Plot the anomaly score distribution for each setting.
 
 **Solution:**
+
 ```python
 for c in [0.01, 0.02, 0.05, 0.10]:
     iforest = IsolationForest(contamination=c, random_state=42)
@@ -1155,6 +1243,7 @@ for c in [0.01, 0.02, 0.05, 0.10]:
 **Drill 3.** Compare LOF with $k = 5, 20, 50$ neighbours. Which setting is most sensitive (finds the most anomalies at a 2% contamination rate)? Which produces the highest LOF scores for true anomalies?
 
 **Solution:**
+
 ```python
 for k in [5, 20, 50]:
     lof = LocalOutlierFactor(n_neighbors=k, contamination=0.02)
@@ -1167,6 +1256,7 @@ for k in [5, 20, 50]:
 **Drill 4.** Implement a simple voting ensemble: flag a point as anomalous if at least 2 out of 3 detectors agree. Compare this with the weighted blending approach. Which finds more true anomalies (using the first 100 known fraudulent transactions as ground truth)?
 
 **Solution:**
+
 ```python
 votes = (z_anomalies.astype(int) +
          (iforest_labels == -1).astype(int) +
@@ -1179,6 +1269,7 @@ print(f"Blended ensemble: {anomalies.sum()} anomalies")
 **Drill 5.** Build a monitoring check: after fitting Isolation Forest, artificially set all scores to 0.5 (simulating the silent failure from the lesson introduction). What happens to the blended anomaly count? Design a simple assertion that would catch this failure in production.
 
 **Solution:**
+
 ```python
 # Simulate silent failure
 if_norm_broken = np.full_like(if_norm, 0.5)
@@ -1329,6 +1420,7 @@ df_features = df.with_columns([
 **Drill 1.** Run both Apriori and FP-Growth on the retail basket data with min_support = 0.02. Compare execution time. How much faster is FP-Growth?
 
 **Solution:**
+
 ```python
 import time
 
@@ -1347,6 +1439,7 @@ print(f"FP-Growth is {t_apriori/t_fp:.1f}x faster")
 **Drill 2.** Find all rules with lift > 2 and confidence > 0.3. How many rules satisfy both conditions? What is the highest-lift rule, and does it make business sense?
 
 **Solution:**
+
 ```python
 strong_rules = rules[(rules["lift"] > 2) & (rules["confidence"] > 0.3)]
 print(f"Strong rules: {len(strong_rules)}")
@@ -1358,6 +1451,7 @@ print(f"  Lift: {top_rule['lift']:.2f}, Confidence: {top_rule['confidence']:.2f}
 **Drill 3.** Demonstrate that lift is symmetric but confidence is not. Pick a rule $X \to Y$ and compute both $\text{conf}(X \to Y)$ and $\text{conf}(Y \to X)$. Then compute $\text{lift}(X \to Y)$ and $\text{lift}(Y \to X)$.
 
 **Solution:**
+
 ```python
 # Pick a specific rule
 rule = rules.iloc[0]
@@ -1382,6 +1476,7 @@ if len(reverse) > 0:
 **Drill 4.** Lower the minimum support threshold from 0.02 to 0.005. How many additional frequent itemsets are found? Plot the distribution of itemset sizes (1-item, 2-item, 3-item, etc.).
 
 **Solution:**
+
 ```python
 freq_low = fpgrowth(basket_pd, min_support=0.005, use_colnames=True)
 freq_low["size"] = freq_low["itemsets"].apply(len)
@@ -1392,6 +1487,7 @@ print(f"Total at 0.005: {len(freq_low)}, at 0.02: {len(freq_items)}")
 **Drill 5.** Take the top 10 association rules and create 10 binary interaction features. Train a logistic regression model (from Module 3) predicting whether a customer will make a repeat purchase within 30 days. Compare the model's performance with and without the association-rule features.
 
 **Solution:**
+
 ```python
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
@@ -1574,6 +1670,7 @@ topic_model.get_topic_info()
 **Drill 1.** Implement TF-IDF from scratch. Compute the TF and IDF components separately for a small corpus of 5 documents, then multiply them. Verify your result matches `sklearn.feature_extraction.text.TfidfVectorizer`.
 
 **Solution:**
+
 ```python
 import numpy as np
 from collections import Counter
@@ -1607,6 +1704,7 @@ print(f"Shape: {tfidf_manual.shape}")
 **Drill 2.** Compare NMF and LDA on the policy documents. Use NPMI coherence to determine which method produces more coherent topics. Print the top 5 words for each topic from both methods.
 
 **Solution:**
+
 ```python
 from gensim.models.coherencemodel import CoherenceModel
 import gensim.corpora as corpora
@@ -1626,6 +1724,7 @@ for model_name, components in [("NMF", nmf.components_), ("LDA", lda.components_
 **Drill 3.** Vary the number of LDA topics from 3 to 15 and plot NPMI coherence versus number of topics. What is the optimal number of topics?
 
 **Solution:**
+
 ```python
 coherences = {}
 for n in range(3, 16):
@@ -1643,6 +1742,7 @@ for n in range(3, 16):
 **Drill 4.** Apply BERTopic to the policy documents and compare with LDA. Which produces more interpretable topic labels? Compute the percentage of documents assigned to each BERTopic topic.
 
 **Solution:**
+
 ```python
 topic_model = BERTopic(nr_topics=8)
 topics, probs = topic_model.fit_transform(documents)
@@ -1653,6 +1753,7 @@ print(info[["Topic", "Count", "Name"]])
 **Drill 5.** Implement a simple sentiment classifier using TF-IDF features and logistic regression. Split the policy documents into positive (supportive) and negative (critical) submissions using a labelled subset. Report accuracy and the most predictive words for each sentiment.
 
 **Solution:**
+
 ```python
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -1760,13 +1861,13 @@ In Lesson 4.8, neural networks will generalise this. A hidden layer's activation
 
 The spectrum:
 
-| Stage | Method | Features | Error signal? |
-|---|---|---|---|
-| M3 | Manual | Human-designed | N/A |
-| M4.1–4.6 | USML | Data geometry | No |
-| M4.7 | Matrix factorisation | Optimisation | Yes (reconstruction) |
-| M4.8 | Neural networks | Backpropagation | Yes (task loss) |
-| M5 | Deep learning | Specialised architectures | Yes (task loss) |
+| Stage    | Method               | Features                  | Error signal?        |
+| -------- | -------------------- | ------------------------- | -------------------- |
+| M3       | Manual               | Human-designed            | N/A                  |
+| M4.1–4.6 | USML                 | Data geometry             | No                   |
+| M4.7     | Matrix factorisation | Optimisation              | Yes (reconstruction) |
+| M4.8     | Neural networks      | Backpropagation           | Yes (task loss)      |
+| M5       | Deep learning        | Specialised architectures | Yes (task loss)      |
 
 ## Mathematical Foundations
 
@@ -1881,6 +1982,7 @@ V_2d = pca.fit_transform(V)
 **Drill 1.** Implement user-based collaborative filtering with cosine similarity. Recommend 5 items for 3 different users. For each recommendation, explain which similar user's preferences drove the recommendation.
 
 **Solution:**
+
 ```python
 for uid in [users[0], users[10], users[50]]:
     recs = recommend_user_cf(uid, n=5)
@@ -1893,6 +1995,7 @@ for uid in [users[0], users[10], users[50]]:
 **Drill 2.** Implement item-based collaborative filtering. For a given user who rated item A highly, find the 5 most similar items to A and recommend them. Compare with user-based CF recommendations.
 
 **Solution:**
+
 ```python
 def recommend_item_cf(user_id, n=5):
     u = user_idx[user_id]
@@ -1909,6 +2012,7 @@ def recommend_item_cf(user_id, n=5):
 **Drill 3.** Vary the number of latent factors $k$ in ALS from 5 to 100 (5, 10, 20, 50, 100). Plot the reconstruction error versus $k$. What is the optimal $k$ based on a validation set?
 
 **Solution:**
+
 ```python
 for k in [5, 10, 20, 50, 100]:
     # Run ALS with k factors
@@ -1920,6 +2024,7 @@ for k in [5, 10, 20, 50, 100]:
 **Drill 4.** Visualise the item embeddings from the ALS model in 2D (using PCA or UMAP). Colour the items by category. Do items in the same category cluster together in embedding space?
 
 **Solution:**
+
 ```python
 import umap
 reducer = umap.UMAP(n_components=2, random_state=42)
@@ -2017,27 +2122,27 @@ where $\eta$ is the learning rate. Too large: overshoots and diverges. Too small
 
 ### FOUNDATIONS: Activation functions
 
-| Function | Formula | Use | Why |
-|---|---|---|---|
-| ReLU | $\max(0, z)$ | Default hidden layer | Simple, fast, mitigates vanishing gradient |
-| Leaky ReLU | $\max(0.01z, z)$ | Hidden layer | Avoids dead neurons |
-| GELU | $z \cdot \Phi(z)$ | Transformer hidden layers | Smooth, used in BERT/GPT |
-| Sigmoid | $1/(1 + e^{-z})$ | Binary output | Maps to $[0,1]$ probability |
-| Tanh | $(e^z - e^{-z})/(e^z + e^{-z})$ | Hidden layer (less common) | Zero-centred, maps to $[-1,1]$ |
-| Softmax | $e^{z_i}/\sum_j e^{z_j}$ | Multi-class output | Maps to probability distribution |
+| Function   | Formula                         | Use                        | Why                                        |
+| ---------- | ------------------------------- | -------------------------- | ------------------------------------------ |
+| ReLU       | $\max(0, z)$                    | Default hidden layer       | Simple, fast, mitigates vanishing gradient |
+| Leaky ReLU | $\max(0.01z, z)$                | Hidden layer               | Avoids dead neurons                        |
+| GELU       | $z \cdot \Phi(z)$               | Transformer hidden layers  | Smooth, used in BERT/GPT                   |
+| Sigmoid    | $1/(1 + e^{-z})$                | Binary output              | Maps to $[0,1]$ probability                |
+| Tanh       | $(e^z - e^{-z})/(e^z + e^{-z})$ | Hidden layer (less common) | Zero-centred, maps to $[-1,1]$             |
+| Softmax    | $e^{z_i}/\sum_j e^{z_j}$        | Multi-class output         | Maps to probability distribution           |
 
 ReLU is the default choice for hidden layers. Sigmoid and softmax are for output layers. GELU is the default in modern transformer architectures.
 
 ### THEORY: Loss functions taxonomy
 
-| Loss | Formula | Use |
-|---|---|---|
-| MSE | $\frac{1}{n}\sum(y - \hat{y})^2$ | Regression |
-| MAE | $\frac{1}{n}\sum\|y - \hat{y}\|$ | Robust regression |
-| Cross-entropy | $-\sum y_c \log \hat{y}_c$ | Multi-class classification |
-| Binary CE | $-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$ | Binary classification |
-| Focal loss | $-\alpha_t(1-p_t)^\gamma \log(p_t)$ | Imbalanced classification |
-| KL divergence | $\sum p \log(p/q)$ | Distribution matching (VAE) |
+| Loss          | Formula                                  | Use                         |
+| ------------- | ---------------------------------------- | --------------------------- |
+| MSE           | $\frac{1}{n}\sum(y - \hat{y})^2$         | Regression                  |
+| MAE           | $\frac{1}{n}\sum\|y - \hat{y}\|$         | Robust regression           |
+| Cross-entropy | $-\sum y_c \log \hat{y}_c$               | Multi-class classification  |
+| Binary CE     | $-[y\log\hat{y} + (1-y)\log(1-\hat{y})]$ | Binary classification       |
+| Focal loss    | $-\alpha_t(1-p_t)^\gamma \log(p_t)$      | Imbalanced classification   |
+| KL divergence | $\sum p \log(p/q)$                       | Distribution matching (VAE) |
 
 ### FOUNDATIONS: Dropout
 
@@ -2133,11 +2238,13 @@ This is backpropagation: compute the error at the output, propagate it backward 
 Consider a 2-hidden-layer network for HDB price prediction. The input is $\mathbf{x} = [\text{floor\_area}, \text{storey}, \text{lease\_remaining}, \text{town\_encoded}]$.
 
 The first hidden layer might learn features like:
+
 - $h_1$: "overall quality" (positive loading on area, storey, and lease)
 - $h_2$: "location premium" (depends heavily on town encoding)
 - $h_3$: "new vs old" (positive on lease remaining, negative on storey)
 
 The second hidden layer combines these into more abstract features:
+
 - $h'_1$: "premium mature estate flat" (combines location premium with overall quality)
 - $h'_2$: "value new-build" (combines new-vs-old with moderate quality)
 
@@ -2266,6 +2373,7 @@ The training loss should decrease steadily. If the test loss begins to increase 
 **Drill 1.** Add dropout to the hidden layers (p=0.2). Implement it from scratch: during training, generate a binary mask from Bernoulli(1-p) and element-wise multiply the activations. Scale by 1/(1-p). During evaluation, do not apply dropout. Compare training curves with and without dropout.
 
 **Solution:**
+
 ```python
 def dropout(a, p=0.2, training=True):
     if not training:
@@ -2281,6 +2389,7 @@ a2 = dropout(relu(z2), p=0.2, training=True)
 **Drill 2.** Implement batch normalisation from scratch for the first hidden layer. During training, normalise using the mini-batch statistics. Maintain running mean and variance for inference. Compare training convergence with and without batch norm.
 
 **Solution:**
+
 ```python
 gamma1 = np.ones((1, 64))
 beta1 = np.zeros((1, 64))
@@ -2304,6 +2413,7 @@ def batch_norm(z, gamma, beta, running_mean, running_var, training=True):
 **Drill 3.** Replace SGD with Adam. Implement Adam from scratch (maintain first and second moment estimates, apply bias correction). Compare convergence speed: how many epochs does SGD need versus Adam to reach the same test loss?
 
 **Solution:**
+
 ```python
 # Adam state for each parameter
 m_W1 = np.zeros_like(W1); v_W1 = np.zeros_like(W1)
@@ -2322,6 +2432,7 @@ def adam_update(param, grad, m, v, t, lr=0.001):
 **Drill 4.** Implement cosine annealing for the learning rate. Start at $\eta = 0.001$, anneal to $\eta = 0.0001$ over 100 epochs. Plot the learning rate schedule and compare training curves with fixed vs cosine-annealed learning rate.
 
 **Solution:**
+
 ```python
 eta_max, eta_min = 0.001, 0.0001
 T = 100
@@ -2333,6 +2444,7 @@ for epoch in range(T):
 **Drill 5.** Implement gradient clipping with max_norm = 1.0. Compute the total gradient norm across all parameters. If it exceeds max_norm, scale all gradients down proportionally. When does gradient clipping activate during training? In which epochs?
 
 **Solution:**
+
 ```python
 def clip_gradients(grads, max_norm=1.0):
     total_norm = np.sqrt(sum(np.sum(g**2) for g in grads))
@@ -2352,6 +2464,7 @@ if norm > 1.0:
 **Drill 6.** Extract the activations of the first hidden layer for all test data points. Apply PCA to reduce these 64-dimensional activations to 2D. Colour the scatter plot by the true resale price. Do the learned representations show meaningful structure (e.g., expensive flats clustered together)?
 
 **Solution:**
+
 ```python
 z1_test = X_test @ W1 + b1
 a1_test = relu(z1_test)
@@ -2396,15 +2509,15 @@ Module 4 took you from the last row of labelled data in Module 3 into the territ
 
 ## The Feature Engineering Spectrum — completed
 
-| Stage | Module | Method | Features | Error signal |
-|---|---|---|---|---|
-| Manual | M3 | Domain expertise | Human-designed | N/A |
-| Geometric | M4.1–4.3 | Clustering, PCA | Data structure | No |
-| Statistical | M4.4–4.6 | Anomaly, topics, rules | Co-occurrence | No |
-| Optimisation | M4.7 | Matrix factorisation | Embeddings (linear) | Yes (reconstruction) |
-| Learned | M4.8 | Neural networks | Embeddings (non-linear) | Yes (task loss) |
-| Specialised | M5 | CNN, RNN, Transformer | Architecture-specific | Yes (task loss) |
-| Semantic | M6 | LLMs | Language features | Yes (pre-training) |
+| Stage        | Module   | Method                 | Features                | Error signal         |
+| ------------ | -------- | ---------------------- | ----------------------- | -------------------- |
+| Manual       | M3       | Domain expertise       | Human-designed          | N/A                  |
+| Geometric    | M4.1–4.3 | Clustering, PCA        | Data structure          | No                   |
+| Statistical  | M4.4–4.6 | Anomaly, topics, rules | Co-occurrence           | No                   |
+| Optimisation | M4.7     | Matrix factorisation   | Embeddings (linear)     | Yes (reconstruction) |
+| Learned      | M4.8     | Neural networks        | Embeddings (non-linear) | Yes (task loss)      |
+| Specialised  | M5       | CNN, RNN, Transformer  | Architecture-specific   | Yes (task loss)      |
+| Semantic     | M6       | LLMs                   | Language features       | Yes (pre-training)   |
 
 This spectrum is the intellectual backbone of the MLFP programme. Every module from here forward is a variation on "learn features from data, guided by a loss function".
 
@@ -2604,55 +2717,55 @@ Module 5 introduces specialised architectures: autoencoders for reconstruction, 
 
 **On unsupervised learning**
 
-- Hastie, T., Tibshirani, R., and Friedman, J. *The Elements of Statistical Learning.* Springer, 2009. Chapters 13 (prototypes and nearest-neighbours), 14 (unsupervised learning), and 8 (model inference and averaging) are directly relevant. Free online at `web.stanford.edu/~hastie/ElemStatLearn/`.
+- Hastie, T., Tibshirani, R., and Friedman, J. _The Elements of Statistical Learning._ Springer, 2009. Chapters 13 (prototypes and nearest-neighbours), 14 (unsupervised learning), and 8 (model inference and averaging) are directly relevant. Free online at `web.stanford.edu/~hastie/ElemStatLearn/`.
 
-- Bishop, C. *Pattern Recognition and Machine Learning.* Springer, 2006. Chapter 9 (Mixture Models and EM) is the standard reference for the EM algorithm. Chapter 12 (Continuous Latent Variables) covers PCA and factor analysis.
+- Bishop, C. _Pattern Recognition and Machine Learning._ Springer, 2006. Chapter 9 (Mixture Models and EM) is the standard reference for the EM algorithm. Chapter 12 (Continuous Latent Variables) covers PCA and factor analysis.
 
 **On clustering**
 
-- Ester, M., et al. "A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise." *KDD*, 1996. The original DBSCAN paper.
+- Ester, M., et al. "A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise." _KDD_, 1996. The original DBSCAN paper.
 
-- McInnes, L., Healy, J., and Astels, S. "hdbscan: Hierarchical density based clustering." *JOSS*, 2017. The HDBSCAN reference.
+- McInnes, L., Healy, J., and Astels, S. "hdbscan: Hierarchical density based clustering." _JOSS_, 2017. The HDBSCAN reference.
 
-- Arthur, D., and Vassilvitskii, S. "k-means++: The Advantages of Careful Seeding." *SODA*, 2007. The K-means++ initialisation paper with its $O(\log K)$ competitive guarantee.
+- Arthur, D., and Vassilvitskii, S. "k-means++: The Advantages of Careful Seeding." _SODA_, 2007. The K-means++ initialisation paper with its $O(\log K)$ competitive guarantee.
 
 **On dimensionality reduction**
 
-- Jolliffe, I. *Principal Component Analysis.* Springer, 2002. The definitive PCA reference.
+- Jolliffe, I. _Principal Component Analysis._ Springer, 2002. The definitive PCA reference.
 
-- van der Maaten, L., and Hinton, G. "Visualizing Data using t-SNE." *JMLR*, 2008. The original t-SNE paper.
+- van der Maaten, L., and Hinton, G. "Visualizing Data using t-SNE." _JMLR_, 2008. The original t-SNE paper.
 
-- McInnes, L., Healy, J., and Melville, J. "UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction." *arXiv:1802.03426*, 2018.
+- McInnes, L., Healy, J., and Melville, J. "UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction." _arXiv:1802.03426_, 2018.
 
 **On anomaly detection**
 
-- Liu, F., Ting, K., and Zhou, Z.-H. "Isolation Forest." *ICDM*, 2008. The original Isolation Forest paper.
+- Liu, F., Ting, K., and Zhou, Z.-H. "Isolation Forest." _ICDM_, 2008. The original Isolation Forest paper.
 
-- Breunig, M., et al. "LOF: Identifying Density-Based Local Outliers." *SIGMOD*, 2000. The original LOF paper.
+- Breunig, M., et al. "LOF: Identifying Density-Based Local Outliers." _SIGMOD_, 2000. The original LOF paper.
 
 **On topic modelling and NLP**
 
-- Blei, D., Ng, A., and Jordan, M. "Latent Dirichlet Allocation." *JMLR*, 2003. The original LDA paper.
+- Blei, D., Ng, A., and Jordan, M. "Latent Dirichlet Allocation." _JMLR_, 2003. The original LDA paper.
 
-- Grootendorst, M. "BERTopic: Neural topic modeling with a class-based TF-IDF procedure." *arXiv:2203.05794*, 2022.
+- Grootendorst, M. "BERTopic: Neural topic modeling with a class-based TF-IDF procedure." _arXiv:2203.05794_, 2022.
 
-- Robertson, S., and Zaragoza, H. "The Probabilistic Relevance Framework: BM25 and Beyond." *Foundations and Trends in Information Retrieval*, 2009.
+- Robertson, S., and Zaragoza, H. "The Probabilistic Relevance Framework: BM25 and Beyond." _Foundations and Trends in Information Retrieval_, 2009.
 
 **On recommender systems**
 
-- Koren, Y., Bell, R., and Volinsky, C. "Matrix Factorization Techniques for Recommender Systems." *Computer*, 2009. The Netflix Prize paper — the definitive introduction to collaborative filtering with matrix factorisation.
+- Koren, Y., Bell, R., and Volinsky, C. "Matrix Factorization Techniques for Recommender Systems." _Computer_, 2009. The Netflix Prize paper — the definitive introduction to collaborative filtering with matrix factorisation.
 
-- Hu, Y., Koren, Y., and Volinsky, C. "Collaborative Filtering for Implicit Feedback Datasets." *ICDM*, 2008.
+- Hu, Y., Koren, Y., and Volinsky, C. "Collaborative Filtering for Implicit Feedback Datasets." _ICDM_, 2008.
 
 **On neural networks and deep learning foundations**
 
-- Goodfellow, I., Bengio, Y., and Courville, A. *Deep Learning.* MIT Press, 2016. Chapters 6 (Deep Feedforward Networks), 7 (Regularization), and 8 (Optimization) are the standard reference for the material in Lesson 4.8. Free online at `deeplearningbook.org`.
+- Goodfellow, I., Bengio, Y., and Courville, A. _Deep Learning._ MIT Press, 2016. Chapters 6 (Deep Feedforward Networks), 7 (Regularization), and 8 (Optimization) are the standard reference for the material in Lesson 4.8. Free online at `deeplearningbook.org`.
 
-- He, K., et al. "Delving Deep into Rectifiers." *ICCV*, 2015. The Kaiming initialisation paper.
+- He, K., et al. "Delving Deep into Rectifiers." _ICCV_, 2015. The Kaiming initialisation paper.
 
-- Kingma, D., and Ba, J. "Adam: A Method for Stochastic Optimization." *ICLR*, 2015.
+- Kingma, D., and Ba, J. "Adam: A Method for Stochastic Optimization." _ICLR_, 2015.
 
-- Ioffe, S., and Szegedy, C. "Batch Normalization: Accelerating Deep Network Training." *ICML*, 2015.
+- Ioffe, S., and Szegedy, C. "Batch Normalization: Accelerating Deep Network Training." _ICML_, 2015.
 
 **On Singapore-specific data**
 

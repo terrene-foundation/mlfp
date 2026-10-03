@@ -9,6 +9,7 @@
 #   - Engineer features from discovered association rules
 #   - Compare a product-presence baseline against a rule-enhanced model
 #   - Measure whether explicit rules add signal over raw one-hot features
+#   - Build a prediction target that is NOT a function of the features
 #   - Attribute model importance across product vs rule feature groups
 #   - See the forward connection to matrix factorisation and neural nets
 #
@@ -22,9 +23,9 @@
 # TASKS:
 #   1. Theory — rules as handcrafted co-occurrence features
 #   2. Build — turn actionable rules into numeric feature columns
-#   3. Train — logistic regression + random forest, baseline vs combined
+#   3. Train — predict next-trip breakfast-bundle purchase, baseline vs combined
 #   4. Visualise — metric comparison + feature importance attribution
-#   5. Apply — NTUC Link high-value shopper scoring for CRM
+#   5. Apply — loyalty-programme next-trip offer targeting
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -42,7 +43,7 @@ from sklearn.preprocessing import StandardScaler
 
 from shared.mlfp04.ex_5 import (
     OUTPUT_DIR,
-    generate_transactions,
+    generate_shopper_trips,
     print_transaction_summary,
     setup_engines,
     teardown_engines,
@@ -84,6 +85,16 @@ tracker, exp_name = setup_engines()
 #
 # Ex 5.4 is the bottom rung. Every step above this file is a different
 # way to discover co-occurrence structure without hand-writing rules.
+#
+# THE TARGET MUST NOT BE A FUNCTION OF THE FEATURES
+# A tempting target is "big basket" (>= 6 items). But basket size is the
+# row-sum of the one-hot product columns, so a linear model recovers it
+# exactly (AUC = 1.0) and NO feature can add anything — a leak, not a
+# finding. Here every shopper has TWO trips. Features come from THIS
+# trip; the target is whether the NEXT trip contains the breakfast
+# bundle (at least 2 of bread / butter / eggs). Both trips share the
+# shopper's habits, so this trip is real but noisy evidence — exactly
+# the setting where you can honestly ask whether rules add signal.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -219,14 +230,17 @@ def engineer_rule_features(
 # TASK 3 — TRAIN: baseline vs combined classifiers
 # ════════════════════════════════════════════════════════════════════════
 
-transactions = generate_transactions(n=2500, seed=42)
+# Features come from this trip; the label comes from the shopper's NEXT
+# trip, which is never used to build a feature.
+transactions, next_trips = generate_shopper_trips(n_shoppers=2500, seed=42)
 print_transaction_summary(transactions)
 
-# Target = "high-value shopper" (basket size >= 6 items).
-basket_sizes = np.array([len(t) for t in transactions])
-HIGH_VALUE_THRESHOLD = 6
-y = (basket_sizes >= HIGH_VALUE_THRESHOLD).astype(int)
-print(f"\n  Target: high-value shopper (basket >= {HIGH_VALUE_THRESHOLD} items)")
+TARGET_BUNDLE = frozenset({"bread", "butter", "eggs"})
+y = np.array([int(len(nxt & TARGET_BUNDLE) >= 2) for nxt in next_trips])
+print(
+    f"\n  Target: next trip contains >= 2 of {sorted(TARGET_BUNDLE)} "
+    "(breakfast bundle)"
+)
 print(f"  Positive rate: {y.mean():.1%}")
 
 # --- Baseline features: raw product presence ---
@@ -309,6 +323,10 @@ lr_combined = results["LR: Combined"]["auc_roc"]
 rf_baseline = results["RF: Baseline"]["auc_roc"]
 assert lr_baseline > 0.5, "Baseline LR should beat random"
 assert rf_baseline > 0.5, "Baseline RF should beat random"
+assert lr_baseline < 0.95, (
+    "Baseline AUC is suspiciously close to 1.0 — check that the target is "
+    "not computed from the feature columns (target leakage)"
+)
 assert (
     lr_combined >= lr_baseline - 0.05
 ), "Adding rule features should not significantly regress LR"
@@ -429,22 +447,37 @@ acc_path = OUTPUT_DIR / "04_accuracy_comparison.html"
 fig_acc.write_html(str(acc_path))
 print(f"[viz] Accuracy comparison: {acc_path}")
 
-# INTERPRETATION: For a simple linear model, rule features typically add
-# 2-5 points of AUC because the LR cannot represent "all three breakfast
-# items present" without an explicit interaction. For a random forest,
-# the lift is smaller (sometimes zero) because the tree already learns
-# interactions implicitly via branching. This is the exact reason Ex 7
-# (matrix factorisation) and Ex 8 (neural nets) exist — they learn the
-# same co-occurrence structure WITHOUT requiring you to pre-specify rules.
+# INTERPRETATION — computed from this run, not assumed in advance.
+lr_lift = results["LR: Combined"]["auc_roc"] - results["LR: Baseline"]["auc_roc"]
+rf_lift = results["RF: Combined"]["auc_roc"] - results["RF: Baseline"]["auc_roc"]
+print("\n=== Did rule features add signal? ===")
+for model_name, lift in [("Logistic regression", lr_lift), ("Random forest", rf_lift)]:
+    if lift > 0.01:
+        verdict = "rules ADDED signal the product columns did not carry"
+    elif lift < -0.01:
+        verdict = "rules HURT — extra correlated columns added noise"
+    else:
+        verdict = "no measurable gain (within +/-0.01 AUC)"
+    print(f"  {model_name:<20} AUC change {lift:+.3f} -> {verdict}")
+print(
+    "  Read this honestly. When each item is independent evidence of a\n"
+    "  shopper's habit, a model that adds up per-product weights already\n"
+    "  uses that evidence, so 'bread AND butter' columns add little AUC.\n"
+    "  Rule features earn their place when the outcome depends on the\n"
+    "  COMBINATION itself, and as named, auditable columns. Ex 7 (matrix\n"
+    "  factorisation) and Ex 8 (neural nets) learn such structure without\n"
+    "  pre-specified rules."
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: NTUC Link high-value shopper scoring for CRM
+# TASK 5 — APPLY: loyalty-programme next-trip offer targeting
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: NTUC Link is Singapore's largest grocery loyalty programme
-# (~1.7M members). The CRM team wants a model that scores each basket
-# right after checkout, flagging the top 20% of baskets as "high value"
-# for targeted next-trip offers (e.g., free delivery, priority slots).
+# SCENARIO: A Singapore supermarket chain runs a grocery loyalty
+# programme (assume ~1.5M members for illustration). The CRM team wants a
+# model that scores each shopper right after checkout and predicts what
+# they will buy on the NEXT trip, so the top 20% can receive a targeted
+# next-trip offer (e.g. a breakfast-bundle voucher).
 #
 # Two constraints drive the design:
 #   - The model must be AUDITABLE (regulator + internal governance)
@@ -452,25 +485,23 @@ print(f"[viz] Accuracy comparison: {acc_path}")
 #
 # Rule-based features meet both. Every feature column has a business
 # name you can trace to a specific association rule, and the mining
-# pipeline reruns monthly against the previous 90 days of baskets.
-# Matrix factorisation (Ex 7) would score slightly higher on AUC but
-# loses the per-feature interpretability that the CRM team needs when
-# explaining a segment to senior management.
+# pipeline reruns monthly against the previous 90 days of baskets. Your
+# run above shows whether they also add accuracy on top of the product
+# columns — if they do not, they can still be kept for explainability,
+# but the decision should rest on the measured AUC change, not on hope.
 #
-# BUSINESS IMPACT: A 3-5% improvement in high-value precision at the
-# top 20% cutoff translates to roughly 25,000-42,000 members receiving
-# targeted offers who would otherwise have been missed. Typical offer
-# ROI at that scale is S$4-6 per activated member — ~S$100K-250K/month
-# in incremental campaign contribution. On top of that, the rule-based
-# column names feed directly into the "why did this shopper qualify?"
-# explainability panel the CRM team shows regulators.
+# BUSINESS IMPACT (illustrative assumptions, not measured figures): if
+# better targeting reaches an extra 1% of 1.5M members per month (15,000
+# shoppers) and each activated offer contributes S$4 of margin, that is
+# ~S$60K/month. Plug in YOUR measured AUC change and the programme's
+# real offer economics before quoting a number. The rule-based column
+# names also feed a "why did this shopper qualify?" explanation panel.
 #
 # LIMITATIONS:
-#   - Rules captured here are support >= 3%, which is about the floor
-#     for a 1.7M-member base; rarer categories (baby care, pet food)
-#     need their own mining run with lower thresholds
-#   - Target is basket size, a proxy for value — for true $-value
-#     segmentation, weight by SKU price (out of scope here)
+#   - Rules captured here are support >= 3%; rarer categories (baby
+#     care, pet food) need their own mining run with lower thresholds
+#   - Two trips per shopper is a minimal history; production models
+#     aggregate many past trips per shopper
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -533,8 +564,12 @@ print(f"  [tracked] Baseline-vs-combined classifier metrics logged to {exp_name}
 # features end-to-end. The destination-first surface in Kailash is two
 # engines stacked:
 #
-#   FeatureEngineer.generate(...) -> auto co-occurrence + lag features
-#   TrainingPipeline.train(schema, model_spec, eval_spec) -> ranked models
+#   FeatureEngineer().generate(data, schema, strategies=["interactions"])
+#       -> pairwise interaction columns (on 0/1 product columns, these
+#          are exactly the co-occurrence features you hand-built)
+#   TrainingPipeline(feature_store, registry).train(
+#       data, schema, model_spec, eval_spec, experiment_name)
+#       -> trained, evaluated, registered model
 #
 # In production you ship the rule-feature columns (kept verbatim for the
 # auditability story above) PLUS the FeatureEngineer-generated set, then
@@ -543,8 +578,14 @@ print(f"  [tracked] Baseline-vs-combined classifier metrics logged to {exp_name}
 # which is exactly the spectrum-of-discovery story this lesson opened on.
 
 print("  Destination contract:")
-print("    FeatureEngineer().generate(df)             -> auto co-occurrence cols")
-print("    TrainingPipeline().train(schema, model, eval) -> ranked classifiers")
+print(
+    "    FeatureEngineer().generate(data, schema, strategies=['interactions'])"
+    "  -> co-occurrence cols"
+)
+print(
+    "    TrainingPipeline(feature_store, registry).train("
+    "data, schema, model_spec, eval_spec, experiment_name)  -> trained model"
+)
 print(
     f"  Today's run: hand-built {X_rules.shape[1]} rule features, "
     f"trained 4 sklearn variants — top AUC = {max(auc_vals):.4f}"
@@ -563,9 +604,11 @@ print(
     """
   [x] Engineered numeric features from discovered association rules
   [x] Compared baseline product-presence vs rule-enhanced models
+  [x] Built a next-trip target that is not a function of the features,
+      and guarded the baseline AUC against target leakage
   [x] Attributed feature importance across product and rule groups
-  [x] Identified a production scenario (NTUC Link CRM scoring) where
-      explicit rule features are preferred over learned embeddings
+  [x] Identified a production scenario (loyalty next-trip offers) where
+      explicit rule features are valued for auditability
   [x] Pointed at the Kailash destination — FeatureEngineer +
       TrainingPipeline — that ships rule features alongside auto-discovered
       co-occurrence structure in one call
@@ -580,7 +623,7 @@ print(
   co-occurrence structure, just with less human steering and less
   interpretability.
 
-  Next: Exercise 6 moves to UNSTRUCTURED text — TF-IDF from scratch,
+  Next: Exercise 6 moves to UNSTRUCTURED text — TF-IDF and BM25,
   NMF topic modelling, and topic quality evaluation via NPMI coherence.
 """
 )

@@ -122,41 +122,85 @@ N_TRANSACTIONS_DEFAULT: int = 2500
 # ════════════════════════════════════════════════════════════════════════
 
 
+def _draw_basket(rng: np.random.Generator, bundle_probs: Iterable[float]) -> set[str]:
+    """Draw one basket: each bundle fires with its probability, each item in
+    a firing bundle is kept with 0.85 probability, plus a Poisson(2) number
+    of random impulse items."""
+    basket: set[str] = set()
+    for (bundle_items, _), prob in zip(BUNDLES, bundle_probs):
+        if rng.random() < prob:
+            for item in bundle_items:
+                if rng.random() < 0.85:
+                    basket.add(item)
+    n_random = rng.poisson(2)
+    if n_random > 0:
+        random_items = rng.choice(PRODUCTS, size=int(min(n_random, 5)), replace=False)
+        basket.update(random_items)
+    return basket
+
+
 def generate_transactions(
     n: int = N_TRANSACTIONS_DEFAULT,
     seed: int = 42,
 ) -> list[set[str]]:
-    """Generate synthetic Singapore retail transactions.
+    """Generate ``n`` non-empty synthetic Singapore retail transactions.
 
     Each transaction is a set of product strings. Bundles fire with their
     listed probability; each item inside a firing bundle is kept with 0.85
     probability (random drop-out) so support is noisy. A Poisson number of
-    random items is added on top to simulate impulse buys.
+    random items is added on top to simulate impulse buys. Empty draws are
+    re-drawn, so exactly ``n`` baskets are returned.
     """
     rng = np.random.default_rng(seed)
+    base_probs = [prob for _, prob in BUNDLES]
     transactions: list[set[str]] = []
-    for _ in range(n):
-        basket: set[str] = set()
-        for bundle_items, prob in BUNDLES:
-            if rng.random() < prob:
-                for item in bundle_items:
-                    if rng.random() < 0.85:
-                        basket.add(item)
-        n_random = rng.poisson(2)
-        if n_random > 0:
-            random_items = rng.choice(
-                PRODUCTS, size=int(min(n_random, 5)), replace=False
-            )
-            basket.update(random_items)
+    while len(transactions) < n:
+        basket = _draw_basket(rng, base_probs)
         if basket:
             transactions.append(basket)
     return transactions
 
 
+# Habit model for two-trip shoppers (used by Exercise 5.4). A shopper is a
+# "regular" for a bundle with probability HABIT_RATE_MULTIPLIER x the
+# bundle's base rate; regulars fire that bundle on HABIT_FIRE_PROB of their
+# trips, everyone else on CASUAL_FIRE_PROB of their trips.
+HABIT_RATE_MULTIPLIER: float = 1.5
+HABIT_FIRE_PROB: float = 0.6
+CASUAL_FIRE_PROB: float = 0.03
+
+
+def generate_shopper_trips(
+    n_shoppers: int = N_TRANSACTIONS_DEFAULT,
+    seed: int = 42,
+) -> tuple[list[set[str]], list[set[str]]]:
+    """Two consecutive baskets per shopper: ``(this_trip, next_trip)``.
+
+    Both trips are drawn independently from the SAME per-shopper habit
+    profile, so this trip carries real but noisy evidence about the next
+    one. The next trip is never used to build features — it only supplies
+    a prediction target that is NOT a function of this trip's items.
+    """
+    rng = np.random.default_rng(seed)
+    base = np.array([prob for _, prob in BUNDLES])
+    this_trip: list[set[str]] = []
+    next_trip: list[set[str]] = []
+    while len(this_trip) < n_shoppers:
+        habit = rng.random(len(BUNDLES)) < base * HABIT_RATE_MULTIPLIER
+        probs = np.where(habit, HABIT_FIRE_PROB, CASUAL_FIRE_PROB)
+        first = _draw_basket(rng, probs)
+        second = _draw_basket(rng, probs)
+        if first:
+            this_trip.append(first)
+            next_trip.append(second)
+    return this_trip, next_trip
+
+
 def transactions_to_onehot(transactions: list[set[str]]) -> pl.DataFrame:
     """One-row-per-transaction boolean matrix (columns = sorted PRODUCTS).
 
-    Polars-native. Used as input to mlxtend FP-Growth (via .to_pandas()).
+    Polars-native. mlxtend needs pandas, so callers convert with
+    ``.to_pandas()`` at the mlxtend call site only.
     """
     all_items = sorted(PRODUCTS)
     rows = [{item: (item in txn) for item in all_items} for txn in transactions]
@@ -272,7 +316,7 @@ def _finite(x: float) -> float:
 
 
 async def _setup_engines_async() -> tuple[ExperimentTracker, str]:
-    """Open the association-rules ExperimentTracker (kailash-ml ≥1.5)."""
+    """Open the association-rules ExperimentTracker."""
     tracker = await ExperimentTracker.create(store_url=ASSOC_DB)
     return tracker, ASSOC_EXPERIMENT_NAME
 

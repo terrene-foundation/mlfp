@@ -6,21 +6,22 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Train all five classical models on the same data
-#   - Build a fair comparison table: accuracy, F1, AUC-ROC, train time
+#   - Compare all five classical model families on the SAME CV folds
+#   - Tune each family inside the comparison (nested CV) so no model is
+#     judged with hand-picked or test-tuned hyperparameters
+#   - Read a comparison table as mean ± spread, not as a single number
 #   - Overlay decision boundaries in 2D PCA space to see SHAPE differences
-#   - Publish a "when to use which model" decision guide
-#   - Quantify the dollar impact of each model on the Singapore
-#     e-commerce churn scenario
+#   - Publish a "when to use which model" decision guide and quantify the
+#     dollar impact of each model on the e-commerce churn scenario
 #
-# PREREQUISITES: 01_svm through 05_random_forest
+# PREREQUISITES: 01_svm through 05_random_forest; Exercise 2.4 (nested CV)
 #
-# ESTIMATED TIME: ~30 min
+# ESTIMATED TIME: ~35 min
 #
 # TASKS:
 #   1. Theory — why model selection is a multi-criteria decision
-#   2. Build — assemble all 5 models with reasonable defaults
-#   3. Train — fit each, time each, evaluate each on the same test set
+#   2. Build — one estimator + small tuning grid per family
+#   3. Train — nested CV on shared outer folds; refit winners on train
 #   4. Visualise — decision boundaries + metric comparison chart
 #   5. Apply — when-to-use guide + dollars saved ranking
 # ════════════════════════════════════════════════════════════════════════
@@ -30,6 +31,7 @@ from __future__ import annotations
 import numpy as np
 from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_validate
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -40,9 +42,9 @@ from shared.mlfp03.ex_3 import (
     churn_saved_dollars,
     decision_boundary_mesh,
     fit_and_evaluate,
-    OUTPUT_DIR,
     project_2d,
     RANDOM_SEED,
+    save_decision_boundaries,
     save_metric_comparison,
 )
 
@@ -52,22 +54,23 @@ load_dotenv()
 # THEORY — Model selection is multi-criteria
 # ════════════════════════════════════════════════════════════════════════
 # No model wins on every axis at once. You trade off:
-#   - Accuracy (F1, AUC)
-#   - Training time
-#   - Prediction time
+#   - Ranking quality (AUC) and accuracy vs the majority baseline
+#   - Training time and prediction time
 #   - Interpretability (can you explain a single prediction?)
 #   - Robustness to drift (does small data shift the model dramatically?)
-#   - Memory footprint
 #
-# A pragmatic workflow:
-#   1. Train every sensible classical model with modest defaults
-#   2. Put them on one comparison table
-#   3. Rank by the metric that matches the business problem, then
-#      filter by the constraint that binds (compliance, latency, memory)
+# A FAIR comparison has three rules:
+#   1. Same data, same preprocessing, same CV folds for every model.
+#   2. Every model gets its hyperparameters tuned the same way — inside
+#      each training fold (nested CV), never on the folds used to score it
+#      and never on the test set.
+#   3. Report the spread across folds. If two models' means differ by
+#      less than their fold-to-fold standard deviation, the data cannot
+#      tell them apart — choose on speed or interpretability instead.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD: assemble all 5 models
+# TASK 2 — BUILD: one estimator + a small tuning grid per family
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 70)
@@ -77,51 +80,123 @@ print("=" * 70)
 data = build_train_test_split()
 X_train, X_test = data["X_train"], data["X_test"]
 y_train, y_test = data["y_train"], data["y_test"]
+outer_cv = data["cv"]  # the SAME 5 folds every earlier file used
+inner_cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_SEED)
 
 print(f"\nTrain: {X_train.shape}, Test: {X_test.shape}")
+print(f"Majority-class baseline accuracy (test): {data['majority_accuracy']:.4f}")
 
-zoo = {
-    "SVM (RBF)": SVC(
-        kernel="rbf",
-        C=1.0,
-        probability=True,
-        random_state=RANDOM_SEED,
+# The grids cover the ranges the earlier technique files found useful.
+# GaussianNB has no hyperparameter worth tuning here, so its grid is empty.
+zoo: dict[str, tuple[object, dict[str, list]]] = {
+    "SVM (RBF)": (
+        SVC(kernel="rbf", random_state=RANDOM_SEED),
+        {"C": [0.01, 0.1, 1.0]},
     ),
-    "KNN (k=11)": KNeighborsClassifier(n_neighbors=11, metric="euclidean"),
-    "Naive Bayes": GaussianNB(),
-    "Decision Tree": DecisionTreeClassifier(max_depth=7, random_state=RANDOM_SEED),
-    "Random Forest": RandomForestClassifier(
-        n_estimators=200,
-        max_features="sqrt",
-        oob_score=True,
-        random_state=RANDOM_SEED,
-        n_jobs=-1,
+    "KNN": (KNeighborsClassifier(), {"n_neighbors": [21, 51, 101]}),
+    "Naive Bayes": (GaussianNB(), {}),
+    "Decision Tree": (
+        DecisionTreeClassifier(random_state=RANDOM_SEED),
+        {"max_depth": [2, 3, 5, 7]},
+    ),
+    "Random Forest": (
+        RandomForestClassifier(
+            n_estimators=200, max_features="sqrt", random_state=RANDOM_SEED, n_jobs=-1
+        ),
+        {"min_samples_leaf": [1, 5, 20]},
     ),
 }
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN: fit every model on the same data
-# ════════════════════════════════════════════════════════════════════════
+def tuned(estimator: object, grid: dict[str, list]) -> object:
+    """Wrap an estimator so it tunes itself (by AUC) on whatever data it is fit on."""
+    if not grid:
+        return estimator
+    return GridSearchCV(estimator, grid, cv=inner_cv, scoring="roc_auc")
 
-results: list[dict] = []
-for name, est in zoo.items():
-    r = fit_and_evaluate(est, X_train, y_train, X_test, y_test, name=name)
-    results.append(r)
 
-print("\n--- Performance table ---")
-print(f"{'Model':<18} {'Accuracy':>10} {'F1':>10} {'AUC-ROC':>10} " f"{'Time (s)':>10}")
-print("-" * 62)
-for r in results:
-    print(
-        f"{r['name']:<18} {r['accuracy']:>10.4f} {r['f1']:>10.4f} "
-        f"{r['auc_roc']:>10.4f} {r['train_time']:>10.4f}"
+# ════════════════════════════════════════════════════════════════════════
+# TASK 3 — TRAIN: nested CV on the shared outer folds
+# ════════════════════════════════════════════════════════════════════════
+# Outer loop (outer_cv, 5 folds): scores each family on data it never saw.
+# Inner loop (inner_cv, 3 folds, inside each outer training fold): picks
+# that family's hyperparameters. This is the nested CV from Exercise 2.4.
+
+cv_rows: list[dict] = []
+for name, (est, grid) in zoo.items():
+    r = cross_validate(
+        tuned(est, grid),
+        X_train,
+        y_train,
+        cv=outer_cv,
+        scoring=("accuracy", "f1", "roc_auc"),
+        return_estimator=True,
+    )
+    chosen = (
+        [str(fold_est.best_params_) for fold_est in r["estimator"]] if grid else ["—"]
+    )
+    cv_rows.append(
+        {
+            "name": name,
+            "auc": float(r["test_roc_auc"].mean()),
+            "auc_std": float(r["test_roc_auc"].std()),
+            "accuracy": float(r["test_accuracy"].mean()),
+            "f1": float(r["test_f1"].mean()),
+            "fit_time": float(r["fit_time"].mean()),
+            "chosen": sorted(set(chosen)),
+        }
     )
 
-ranked = sorted(results, key=lambda r: r["f1"], reverse=True)
-print("\nRanking by F1:")
-for i, r in enumerate(ranked, 1):
-    print(f"  {i}. {r['name']} (F1={r['f1']:.4f})")
+cv_rows.sort(key=lambda row: row["auc"], reverse=True)
+print("\n--- Nested-CV comparison (5 shared outer folds) ---")
+print(
+    f"{'Model':<15} {'CV AUC (mean±std)':>18} {'CV Acc':>8} {'CV F1':>7} "
+    f"{'fit s/fold':>11}  hyperparameters chosen per fold"
+)
+print("-" * 100)
+for row in cv_rows:
+    print(
+        f"{row['name']:<15} {row['auc']:>10.4f} ± {row['auc_std']:.4f} "
+        f"{row['accuracy']:>8.4f} {row['f1']:>7.4f} {row['fit_time']:>11.3f}  "
+        f"{', '.join(row['chosen'])}"
+    )
+
+leader, runner_up = cv_rows[0], cv_rows[1]
+gap = leader["auc"] - runner_up["auc"]
+print(
+    f"\nLeader by CV AUC: {leader['name']} ({leader['auc']:.4f}). "
+    f"Gap to {runner_up['name']}: {gap:.4f} vs fold-to-fold std "
+    f"{leader['auc_std']:.4f} — "
+    + (
+        "a real difference."
+        if gap > leader["auc_std"]
+        else "within noise: the data cannot separate them, so speed and "
+        "interpretability should decide."
+    )
+)
+
+# Refit every tuned family on the FULL training set, then score each ONCE
+# on the untouched test set (needed for the dollar-impact table).
+results: list[dict] = []
+fitted: dict[str, object] = {}
+for name, (est, grid) in zoo.items():
+    r = fit_and_evaluate(tuned(est, grid), X_train, y_train, X_test, y_test, name=name)
+    fitted[name] = r["model"].best_estimator_ if grid else r["model"]
+    results.append(r)
+
+print("\n--- Held-out test set (each tuned model scored once) ---")
+print(f"{'Model':<15} {'Accuracy':>10} {'F1':>8} {'AUC-ROC':>9} {'refit s':>9}")
+print("-" * 55)
+for r in results:
+    print(
+        f"{r['name']:<15} {r['accuracy']:>10.4f} {r['f1']:>8.4f} "
+        f"{r['auc_roc']:>9.4f} {r['train_time']:>9.2f}"
+    )
+
+# ── Checkpoint 1 ────────────────────────────────────────────────────────
+assert len(cv_rows) == 5 and len(results) == 5, "All five classical models must run"
+assert all(row["auc"] > 0.6 for row in cv_rows), "Every model must rank better than chance"
+print("\n[ok] Checkpoint 1 passed — all 5 models compared on identical folds\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -131,49 +206,42 @@ for i, r in enumerate(ranked, 1):
 pca_bundle = project_2d(X_train, X_test)
 X_train_2d = pca_bundle["X_train_2d"]
 print(
-    f"\nPCA variance explained: "
-    f"{pca_bundle['explained_variance']} "
-    f"(total {pca_bundle['explained_variance'].sum():.2%})"
+    f"PCA variance explained by the 2 plotted axes: "
+    f"{pca_bundle['explained_variance'].sum():.2%}"
 )
 
-boundary_scores: dict[str, float] = {}
 xx, yy = decision_boundary_mesh(X_train_2d)
 grid_points = np.c_[xx.ravel(), yy.ravel()]
+panels: dict[str, np.ndarray] = {}
+for name, model in fitted.items():
+    # Same family + same tuned hyperparameters, re-fit on the 2D projection
+    # so every boundary is drawn on identical axes.
+    model_2d = type(model)(**model.get_params())
+    model_2d.fit(X_train_2d, y_train)
+    panels[name] = model_2d.predict(grid_points).reshape(xx.shape)
 
-for name, est in zoo.items():
-    # Re-fit on the 2D projection so the boundary shape is directly
-    # comparable across models on identical axes.
-    if hasattr(est, "oob_score"):
-        est_2d = type(est)(
-            **{**est.get_params(), "oob_score": False, "n_estimators": 100}
-        )
-    else:
-        est_2d = type(est)(**est.get_params())
-    est_2d.fit(X_train_2d, y_train)
-    pred_2d = est_2d.predict(pca_bundle["X_test_2d"])
-    boundary_scores[name] = float((pred_2d == y_test).mean())
-    Z = est_2d.predict(grid_points).reshape(xx.shape)
-    print(
-        f"  {name:<18}: 2D accuracy={boundary_scores[name]:.4f} "
-        f"| boundary mesh={Z.shape}"
-    )
+boundary_path = save_decision_boundaries(
+    panels,
+    xx,
+    yy,
+    X_train_2d,
+    y_train,
+    fname="ex3_06_zoo_boundaries.html",
+    title="Five model families, one 2D PCA view (red = churned)",
+)
+print(f"Saved: {boundary_path}")
 
 metric_dict = {
-    r["name"]: {
-        "Accuracy": r["accuracy"],
-        "F1": r["f1"],
-        "AUC-ROC": r["auc_roc"],
-    }
-    for r in results
+    row["name"]: {"CV AUC": row["auc"], "CV Accuracy": row["accuracy"], "CV F1": row["f1"]}
+    for row in cv_rows
 }
 comparison_path = save_metric_comparison(metric_dict, "ex3_06_zoo_comparison.html")
-print(f"\nSaved: {comparison_path}")
+print(f"Saved: {comparison_path}")
 
-# ── Checkpoint 1 ────────────────────────────────────────────────────────
-assert len(results) == 5, "All five classical models must run"
-assert all(r["accuracy"] > 0.5 for r in results), "Every model must beat random"
-assert len(boundary_scores) == 5, "All 5 boundaries computed"
-print("\n[ok] Checkpoint 1 passed — all 5 models compared and plotted\n")
+# ── Checkpoint 2 ────────────────────────────────────────────────────────
+assert len(panels) == 5, "All 5 boundaries computed"
+assert boundary_path.exists() and comparison_path.exists(), "Figures must be written"
+print("[ok] Checkpoint 2 passed — boundaries and comparison chart rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -181,90 +249,80 @@ print("\n[ok] Checkpoint 1 passed — all 5 models compared and plotted\n")
 # ════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 76)
-print("  WHEN TO USE EACH MODEL — Singapore e-commerce churn playbook")
+print("  WHEN TO USE EACH MODEL — e-commerce churn playbook")
 print("=" * 76)
 print(
     """
 +-------------------+---------------------+---------------------+---------------+
 | Model             | Best when           | Avoid when          | Key tradeoff  |
 +-------------------+---------------------+---------------------+---------------+
-| SVM (RBF)         | Mid-dim (~20-50),   | Very large n        | High accuracy |
-|                   | clear margin        | (O(n^2) kernel)     | but slow      |
+| SVM (RBF)         | Small-to-mid n,     | Very large n        | Flexible, but |
+|                   | curved boundary     | (O(n^2) kernel)     | slow + opaque |
 +-------------------+---------------------+---------------------+---------------+
 | KNN               | Small n, cold-start,| High-dim feature    | Zero training,|
 |                   | low-ceremony        | space               | slow predict  |
 +-------------------+---------------------+---------------------+---------------+
-| Naive Bayes       | High volume,        | Correlated features,| Tiny memory,  |
-|                   | fast baseline       | long-tailed counts  | strong bias   |
+| Naive Bayes       | High volume,        | Correlated features | Tiny memory,  |
+|                   | fast baseline       | need calibrated p   | strong bias   |
 +-------------------+---------------------+---------------------+---------------+
-| Decision Tree     | Compliance / audit  | Noisy data          | Interpretable,|
-|                   | needs full rules    | (high variance)     | unstable      |
+| Decision Tree     | Every decision must | Noisy data          | Interpretable,|
+|                   | be readable         | (high variance)     | unstable      |
 +-------------------+---------------------+---------------------+---------------+
-| Random Forest     | Default tabular     | Need per-pred       | Robust, but   |
-|                   | workhorse           | interpretability    | black-box     |
+| Random Forest     | Default tabular     | Need per-prediction | Robust, but   |
+|                   | workhorse           | explanations        | black-box     |
 +-------------------+---------------------+---------------------+---------------+
+(Business figures below are illustrative teaching assumptions.)
 """
 )
 
 print("\n--- Dollar impact ranking (held-out test set) ---")
-print(f"{'Model':<18} {'TP':>6} {'S$ saved':>14} {'Monthly S$ @250K':>18}")
-print("-" * 60)
+print(f"{'Model':<15} {'TP':>6} {'S$ saved':>14} {'Monthly S$ @250K':>18}")
+print("-" * 57)
 impact_rows = []
 for r in results:
     tp = int(((r["pred"] == 1) & (y_test == 1)).sum())
     saved = churn_saved_dollars(tp)
     monthly_scale = saved * (250_000 / len(y_test))
-    impact_rows.append(
-        {
-            "name": r["name"],
-            "tp": tp,
-            "saved": saved,
-            "monthly_scale": monthly_scale,
-            "f1": r["f1"],
-        }
-    )
-    print(f"{r['name']:<18} {tp:>6} S${saved:>11,.2f} S${monthly_scale:>15,.0f}")
+    impact_rows.append({"name": r["name"], "tp": tp, "monthly_scale": monthly_scale})
+    print(f"{r['name']:<15} {tp:>6} S${saved:>11,.2f} S${monthly_scale:>15,.0f}")
 
-best_dollar = max(impact_rows, key=lambda r: r["monthly_scale"])
-best_f1 = max(impact_rows, key=lambda r: r["f1"])
+best_dollar = max(impact_rows, key=lambda row: row["monthly_scale"])
 print(
     f"\nHighest dollar impact: {best_dollar['name']} "
-    f"(S${best_dollar['monthly_scale']:,.0f}/mo)"
+    f"(S${best_dollar['monthly_scale']:,.0f}/mo). Caution: this simple value "
+    f"model counts caught churners but charges nothing for offers sent to "
+    f"customers who would have stayed — a model that flags EVERYONE maximises "
+    f"it. Lesson 3.5 replaces it with a full cost matrix."
 )
-print(
-    f"Highest F1: {best_f1['name']} (F1={best_f1['f1']:.4f}) — "
-    f"often the same model, but check for cost-of-action ties."
-)
+print(f"Highest CV AUC: {leader['name']} (AUC={leader['auc']:.4f})")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # DESTINATION-FIRST CLOSE — km.diagnose
 # ════════════════════════════════════════════════════════════════════════
-# This lesson built five classical models from primitives — fitting each,
+# This lesson built five classical models from primitives — tuning each,
 # timing each, building a comparison table, mapping decision boundaries.
-# The kailash-ml SDK packages the entire diagnostic surface (per-class
-# metrics, class-balance severity, confusion matrix, accuracy heuristics)
-# into a single call.
-#
-# Destination-first: when the journey is internalised, the SDK is one line.
+# The kailash-ml SDK packages the diagnostic surface (per-class metrics,
+# class-balance severity, confusion matrix, accuracy heuristics) into a
+# single call.
 
 from kailash_ml import diagnose
 
 # `kind="classical_classifier"` dispatches to the sklearn ClassifierMixin
-# adapter; `data=(X, y)` is the validation pair the lesson already built.
-# Use the F1 winner from the comparison above.
-best_model = zoo[best_f1["name"]]
+# adapter; `data=(X, y)` is the held-out pair. Use the CV-AUC leader,
+# already refit on the full training set above.
+best_model = fitted[leader["name"]]
 report = diagnose(
     best_model, kind="classical_classifier", data=(X_test, y_test), show=False
 )
 print()
-print(f"  km.diagnose model    : {best_f1['name']}")
+print(f"  km.diagnose model    : {leader['name']}")
 print(f"  km.diagnose metrics  : {report.metrics}")
 print(f"  km.diagnose severity : {report.severity}")
 print()
 print("km.diagnose: 1 call -> the same diagnostic surface the lesson body")
-print("hand-rolled across all 5 models. Destination-first: when the")
-print("journey is internalised, the SDK is one line.")
+print("hand-rolled. Destination-first: when the journey is internalised,")
+print("the SDK is one line.")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -275,20 +333,21 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     f"""
-  [x] Trained 5 classical models on identical data and folds
-  [x] Built a fair accuracy / F1 / AUC / training-time comparison table
+  [x] Compared 5 classical model families on the same 5 outer CV folds
+  [x] Tuned every family inside each training fold (nested CV) — no
+      hand-picked or test-tuned hyperparameters
+  [x] Read the table as mean ± std: leader {leader['name']} by
+      {gap:.4f} AUC vs a fold std of {leader['auc_std']:.4f}
   [x] Mapped decision boundaries in 2D PCA space across all 5 models
-  [x] Identified the highest-F1 model: {best_f1['name']}
-  [x] Identified the highest-dollar-impact model: {best_dollar['name']}
-  [x] Published a Singapore-friendly "when to use which model" guide
+  [x] Scored each tuned model once on the held-out test set
+  [x] Published a "when to use which model" guide
 
-  KEY INSIGHT: Random Forest is the safest tabular default, SVM excels
-  in mid-dimensional separable data, Decision Trees are the only fully
-  interpretable model in the zoo, and Naive Bayes / KNN remain useful
-  as near-zero-cost baselines you can stand up before lunch.
+  KEY INSIGHT: when the families are within noise of each other — as
+  they often are on modest tabular data — the decision moves to cost,
+  latency and explainability. Let the evidence, not habit, pick.
 
-  NEXT: Exercise 4 — gradient boosting (XGBoost, LightGBM, CatBoost).
-  Tree ensembles that usually out-accuracy everything in this zoo by
-  building each tree to correct the previous one's errors.
+  NEXT: Exercise 4 — gradient boosting (XGBoost, LightGBM, CatBoost):
+  tree ensembles that build each tree to correct the previous one's
+  errors, usually the strongest family on tabular data.
 """
 )

@@ -1025,8 +1025,8 @@ print(obs.agent.report("q3_summary_v1"))
         <li><strong>Envelope snapshot</strong> &mdash; Financial, Operational, Temporal, Data Access, Communication per role</li>
         <li><strong>Budget consumption</strong> &mdash; spend, tokens, tool calls against each envelope dimension</li>
         <li><strong>Audit chain verification</strong> &mdash; hash-linked log, tamper-evident, returns first bad index on failure</li>
-        <li><strong>D/T/R addressing</strong> &mdash; who decided, who trusted, who responded (PACT grammar)</li>
-        <li><strong>Negative verdict drill</strong> &mdash; assert the DENY set stays denied; positive regression test</li>
+        <li><strong>D/T/R addressing</strong> &mdash; every verdict is tied to a Department / Team / Role address (PACT grammar)</li>
+        <li><strong>Negative verdict drill</strong> &mdash; assert the DENY set stays denied (only meaningful once roles have envelopes &mdash; see 6.7)</li>
       </ul>
       <div class="callout callout-foundations" style="font-size: 0.76em; margin-top: 6px;">
         <strong>Native to Kailash:</strong> this lens has zero external dependencies. PACT is the Foundation's own governance framework &mdash; the lens inspects <code>GovernanceEngine</code>, not a third-party policy engine.
@@ -1058,7 +1058,7 @@ print(obs.agent.report("q3_summary_v1"))
           <path d="M 50 193 L 50 215 L 290 215 L 290 193" stroke="#334155" stroke-width="1.2" fill="none"/>
           <rect x="60" y="220" width="220" height="40" rx="4" fill="#FEF2F2" stroke="#F43F5E"/>
           <text x="170" y="238" font-size="10" font-weight="700" fill="#BE123C" text-anchor="middle">hash-chained audit log</text>
-          <text x="170" y="252" font-size="9" fill="#334155" text-anchor="middle">verify_chain() &rarr; True | tampered_index</text>
+          <text x="170" y="252" font-size="9" fill="#334155" text-anchor="middle">verify_chain() &rarr; ok / broken per entry</text>
         </svg>
       </div>
     </div>
@@ -1070,6 +1070,7 @@ print(obs.agent.report("q3_summary_v1"))
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Every allowed action AND every denied action appends to the same hash-linked log. A broken chain means tampering &mdash; and you can name the exact index.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;Why audit DENIALS, not just executions?&rdquo; &rarr; expected wrong answer: &ldquo;completeness&rdquo; &rarr; right answer: &ldquo;because the pattern of denials is how you detect an agent that is probing its envelope &mdash; systematic deny-then-retry patterns are a leading indicator of compromise or mis-aligned optimisation.&rdquo;<br/>
+    <strong>Caveat to state now</strong>: in the installed PACT (0.14.x) a role with NO envelope &mdash; or an address not in the org &mdash; is auto-approved. The &ldquo;no&rdquo; branch only exists for roles whose envelope you have attached. We prove this in 6.7.<br/>
     <strong>If behind schedule</strong>: skip D/T/R; envelope + chain is the headline.<br/>
     <strong>Transition</strong>: &ldquo;Six lenses, six responsibilities. Here is the modern stack that powers each.&rdquo;
   </aside>
@@ -1090,12 +1091,12 @@ print(obs.agent.report("q3_summary_v1"))
     <tbody>
       <tr>
         <td><strong>Output eval</strong></td>
-        <td>DeepEval, RAGAS</td>
+        <td>Kaizen judge, RAGAS</td>
         <td>Faithfulness, hallucination, LLM-as-judge (bias-mitigated)</td>
       </tr>
       <tr>
         <td><strong>Interpretability</strong></td>
-        <td>TransformerLens, nnterp, Gemma Scope SAEs</td>
+        <td>TransformerLens, SAELens + Gemma Scope SAEs</td>
         <td>Attention heatmaps, logit lens, feature reading (read, not train)</td>
       </tr>
       <tr>
@@ -1105,7 +1106,7 @@ print(obs.agent.report("q3_summary_v1"))
       </tr>
       <tr>
         <td><strong>Agent trace</strong></td>
-        <td>Langfuse (self-hosted), LangSmith, Phoenix</td>
+        <td>Langfuse (self-hosted), Phoenix &mdash; both open source</td>
         <td>Event capture, OTEL-compatible spans; Plotly viewer for Colab</td>
       </tr>
       <tr>
@@ -1121,15 +1122,15 @@ print(obs.agent.report("q3_summary_v1"))
     </tbody>
   </table>
   <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 8px;">
-    <strong>Why this stack?</strong> Every tool is open-source or Foundation-native. Langfuse self-hosted over LangSmith; DeepEval over proprietary evals. Independence is a design constraint, not a suggestion.
+    <strong>Why this stack?</strong> Every tool is open-source or Foundation-native, and every one can run on your own machine &mdash; traces, prompts and judge calls never leave it. Independence is a design constraint, not a suggestion.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;You will install each of these in the exercises. None of them is a mystery SDK &mdash; they are the tools the 2026 LLM engineering profession runs on.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does the Output row list TWO tools (DeepEval AND RAGAS)?&rdquo; &rarr; expected wrong answer: &ldquo;redundancy&rdquo; &rarr; right answer: &ldquo;DeepEval excels at open-ended judge metrics; RAGAS is RAG-specific. Different specialists. The observatory composes, it does not pick winners.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;The observatory wraps these behind one object, so you rarely import them directly. None of them is a mystery SDK &mdash; they are open tools the LLM engineering profession runs on.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does the Output row list TWO tools (a Kaizen judge AND RAGAS)?&rdquo; &rarr; expected wrong answer: &ldquo;redundancy&rdquo; &rarr; right answer: &ldquo;the judge handles open-ended criteria on any response; RAGAS is RAG-specific (faithfulness to retrieved context). Different specialists. The observatory composes, it does not pick winners.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip the callout; the table is the artefact.<br/>
     <strong>Transition</strong>: &ldquo;Now for the map: which lens powers which lesson.&rdquo;
   </aside>
@@ -1153,7 +1154,7 @@ print(obs.agent.report("q3_summary_v1"))
         <td><strong>6.1</strong></td>
         <td>Prompting &amp; structured output</td>
         <td>Output</td>
-        <td>Attention (preview only &mdash; API models)</td>
+        <td>Attention (preview only &mdash; served model)</td>
       </tr>
       <tr>
         <td><strong>6.2</strong></td>
@@ -1205,7 +1206,7 @@ print(obs.agent.report("q3_summary_v1"))
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;The six lenses stay the same for the next eight lessons. What changes is which lens takes the lead.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why does 6.1's attention lens say 'preview only'?&rdquo; &rarr; expected wrong answer: &ldquo;too advanced&rdquo; &rarr; right answer: &ldquo;API-only models cannot be X-rayed &mdash; no weights exposed. Attention goes live in 6.2 when we load Gemma-2-2B.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;Why does 6.1's attention lens say 'preview only'?&rdquo; &rarr; expected wrong answer: &ldquo;too advanced&rdquo; &rarr; right answer: &ldquo;the chat model is reached through Ollama's HTTP API, which exposes text, not activations. The attention lens needs the weights loaded in-process (e.g. <code>LLMObservatory(attention_model=&quot;google/gemma-2-2b&quot;)</code>) &mdash; an optional, advanced extension.&rdquo;<br/>
     <strong>If behind schedule</strong>: skim 6.2&ndash;6.7; the headline is that the capstone uses ALL SIX.<br/>
     <strong>Transition</strong>: &ldquo;Last slide of the section: the protocol you run before every M6 build.&rdquo;
   </aside>

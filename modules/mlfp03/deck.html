@@ -1831,25 +1831,33 @@ for c in stacked.component_contributions:
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>WorkflowBuilder</h3>
-    <p>Build ML pipelines as directed acyclic graphs (DAGs) of nodes.</p>
-    <pre><code class="language-python">from kailash import WorkflowBuilder, Runtime
+    <p>Build ML pipelines as directed acyclic graphs (DAGs) of named nodes. Edges map one node's output to another's input.</p>
+    <pre style="font-size: 0.5em;"><code class="language-python">from kailash.runtime import LocalRuntime
+from kailash.workflow.builder import WorkflowBuilder
 
-wf = WorkflowBuilder("ml-pipeline")
-wf.add_node("load", data_loader_node)
-wf.add_node("preprocess", preprocessing_node)
-wf.add_node("train", training_node)
-wf.add_node("evaluate", evaluation_node)
-wf.connect("load", "preprocess")
-wf.connect("preprocess", "train")
-wf.connect("train", "evaluate")
+wf = WorkflowBuilder()
+wf.add_node("CreditLoadNode", "load", {"min_rows": 50_000})  # custom: next slide
+wf.add_node("PythonCodeNode", "check", {"code":
+    "result = {'rate': default_rate, 'ok': 0.05 &lt;= default_rate &lt;= 0.30}"})
+wf.add_node("SwitchNode", "gate",
+            {"condition_field": "ok", "operator": "==", "value": True})
+wf.add_node("PythonCodeNode", "go", {"code": "result = dict(payload, next='train')"})
+wf.add_node("PythonCodeNode", "stop",
+            {"code": "result = dict(payload, next='investigate')"})
+# add_connection(from_node, from_output, to_node, to_input)
+wf.add_connection("load", "default_rate", "check", "default_rate")
+wf.add_connection("check", "result", "gate", "input_data")
+wf.add_connection("gate", "true_output", "go", "payload")
+wf.add_connection("gate", "false_output", "stop", "payload")
 
-runtime = Runtime()
-results = runtime.execute(wf.build())</code></pre>
+with LocalRuntime(conditional_execution="skip_branches") as runtime:
+    results, run_id = runtime.execute(wf.build())
+print(run_id, results["go"]["result"])  # the branch not taken has no entry</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. WorkflowBuilder is from the core Kailash SDK (not kailash-ml). It handles node connections, execution order, error handling, and parallelism. Think of it as a factory assembly line: each node does one job and passes the result to the next.</aside>
+  <aside class="notes">Timing: 2 min. WorkflowBuilder is from the core Kailash SDK (not kailash-ml). add_node takes the node type, a node id and its config; add_connection wires a named output to a named input. LocalRuntime validates the DAG, runs nodes in dependency order and returns the results per node plus a run id for the audit trail; if a node fails, execute raises (there is no silent fallback). PythonCodeNode runs a few inline lines: its inputs arrive as variables and whatever you assign to result is its output. SwitchNode routes input_data to true_output or false_output; with skip_branches, only the taken branch runs. On the credit data the default rate is about 13%, so the gate routes to "go". Node outputs must be JSON-serialisable, so Exercise 3.7 passes parquet paths and registry name plus version between nodes, not DataFrames or model objects.</aside>
 </section>
 
 <!-- SLIDE 63 — Custom Nodes -->
@@ -1859,23 +1867,30 @@ results = runtime.execute(wf.build())</code></pre>
   <p>Every workflow step is a node. Kailash provides built-in nodes and lets you create custom ones.</p>
   <div class="kailash-bridge">
     <h3>Custom Node Example</h3>
-    <pre><code class="language-python">from kailash import Node, register_node
+    <pre style="font-size: 0.55em;"><code class="language-python">from typing import Any
+from kailash.nodes.base import Node, NodeParameter, register_node
+from shared.mlfp03.ex_7 import load_credit_frame
 
-@register_node("feature_engineer")
-class FeatureEngineerNode(Node):
-    def execute(self, inputs):
-        df = inputs["data"]
-        df = df.with_columns(
-            (pl.col("floor_area") * pl.col("storey")).alias("size_score"),
-            pl.col("month").dt.month().alias("sale_month"),
-        )
-        return {"data": df, "feature_count": len(df.columns)}</code></pre>
+@register_node()
+class CreditLoadNode(Node):
+    """Load the leak-free credit table; return a JSON-safe summary."""
+
+    def get_parameters(self) -&gt; dict[str, NodeParameter]:
+        return {"min_rows": NodeParameter(name="min_rows", type=int,
+                                          required=False, default=1000)}
+
+    def run(self, **kwargs: Any) -&gt; dict[str, Any]:
+        df = load_credit_frame()
+        if df.height &lt; kwargs.get("min_rows", 1000):
+            raise ValueError(f"only {df.height} rows")
+        return {"rows": df.height,
+                "default_rate": float(df["default"].mean())}</code></pre>
   </div>
-  <p><strong>Also available:</strong> <code>PythonCodeNode</code> (inline code), <code>ConditionalNode</code> (branching logic).</p>
+  <p><strong>Also available:</strong> <code>PythonCodeNode</code> (inline code), <code>SwitchNode</code> (branching), <code>AsyncNode</code> (<code>async_run</code>, for engines such as <code>TrainingPipeline</code>).</p>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. Custom nodes encapsulate each step of the pipeline. The decorator registers the node so WorkflowBuilder can find it. PythonCodeNode is for quick prototyping. ConditionalNode enables branching: if model accuracy above threshold, proceed to registration; otherwise, retrain with different parameters.</aside>
+  <aside class="notes">Timing: 2 min. A custom node is a class decorated with @register_node() so WorkflowBuilder can find it by its class name. get_parameters declares the inputs the node accepts (name, type, required, default); run receives them as keyword arguments and returns a dict whose keys are the outputs other nodes can connect to. Raise on bad input: a raised error stops the workflow and surfaces in the run, which is the point. Nodes that call async engines (TrainingPipeline, ModelRegistry) subclass AsyncNode and implement async_run instead. In Exercise 3.7 the DAG is load, preprocess, train (TrainingPipeline), evaluate on the untouched test frame, then a PythonCodeNode quality gate and a SwitchNode that either promotes the model or holds it in staging.</aside>
 </section>
 
 <!-- SLIDE 64 — HyperparameterSearch -->
@@ -1884,23 +1899,39 @@ class FeatureEngineerNode(Node):
   <span class="marker marker-theory">Theory</span>
   <div class="kailash-bridge">
     <h3>HyperparameterSearch</h3>
-    <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import HyperparameterSearch, SearchSpace, SearchConfig
+    <pre style="font-size: 0.45em;"><code class="language-python">import asyncio
+from kailash.db import ConnectionManager
+from kailash_ml import HyperparameterSearch, ModelRegistry, TrainingPipeline
+from kailash_ml.engines.hyperparameter_search import (
+    ParamDistribution, SearchConfig, SearchSpace)
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from shared.mlfp03.ex_7 import credit_feature_schema, prepare_credit_frames
 
-space = SearchSpace({
-    "n_estimators": (100, 1000),
-    "max_depth": (3, 12),
-    "learning_rate": (0.01, 0.3, "log"),
-    "subsample": (0.6, 1.0),
-})
+dev, test, cols = prepare_credit_frames()   # search on dev; test used once
+space = SearchSpace(params=[
+    ParamDistribution("n_estimators", "int_uniform", low=100, high=800),
+    ParamDistribution("learning_rate", "log_uniform", low=0.01, high=0.3),
+    ParamDistribution("num_leaves", "int_uniform", low=15, high=127)])
 
-search = HyperparameterSearch(
-    model="xgboost",
-    search_space=space,
-    config=SearchConfig(strategy="bayesian", n_trials=50, cv_folds=5),
-    metric="f1_weighted"
-)
-best = search.run(X_train, y_train)
-print(best.params, best.score)</code></pre>
+async def search():
+    conn = ConnectionManager("sqlite:///mlfp03_models.db")
+    await conn.initialize()
+    try:
+        pipe = TrainingPipeline(feature_store=None, registry=ModelRegistry(conn))
+        return await HyperparameterSearch(pipeline=pipe).search(
+            data=dev, schema=credit_feature_schema(cols),
+            base_model_spec=ModelSpec("lightgbm.LGBMClassifier",
+                                      {"verbose": -1}, framework="lightgbm"),
+            search_space=space,
+            config=SearchConfig(strategy="bayesian", n_trials=20,
+                                metric_to_optimize="auc"),
+            eval_spec=EvalSpec(metrics=["auc"]),  # holdout carved from dev
+            experiment_name="credit_hp_search")
+    finally:
+        await conn.close()
+
+best = asyncio.run(search())
+print(best.best_params, best.best_metrics["auc"])</code></pre>
   </div>
   <div class="callout callout-theory">
     <strong>Why Bayesian?</strong> Grid search is exhaustive (too slow). Random search is better but uninformed. Bayesian optimisation builds a surrogate model of the objective and samples where improvement is most likely.
@@ -1908,7 +1939,7 @@ print(best.params, best.score)</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. HyperparameterSearch wraps Bayesian optimisation with a clean API. The search space uses tuples for ranges and "log" for log-scale parameters (learning rate). 50 trials with Bayesian is typically better than 1000 trials with random search. Connects to nested CV: the inner loop of nested CV is hyperparameter search.</aside>
+  <aside class="notes">Timing: 2 min. HyperparameterSearch drives TrainingPipeline: each trial is one train() call on the dev frame, scored on a holdout carved from dev. The space is a list of ParamDistribution objects: int_uniform, uniform, log_uniform (use it for learning rates) and categorical with choices. strategy="bayesian" uses Optuna's TPE sampler; the other strategies are grid, random and successive_halving. There is no cross-validation inside the search: each trial scores one holdout, so the winner is re-checked once on the untouched test frame. Bayesian search usually finds good settings in fewer trials than random search because it concentrates trials where past trials scored well; how much it helps depends on the problem. Exercise 3.7 compares 20 Bayesian trials with a 4-point grid on the same dev frame and validation rows. Connects to nested CV: the inner loop of nested CV is hyperparameter search.</aside>
 </section>
 
 <!-- SLIDE 65 — ModelRegistry -->
@@ -1917,33 +1948,40 @@ print(best.params, best.score)</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>ModelRegistry</h3>
-    <pre><code class="language-python">from kailash_ml import ModelRegistry, ModelSignature, MetricSpec
+    <pre style="font-size: 0.5em;"><code class="language-python">from kailash_ml.types import MetricSpec, ModelSignature
+from shared.mlfp03.ex_7 import build_training_registry, credit_feature_schema
 
-registry = ModelRegistry()
-registry.register(
-    model=best_model,
-    name="credit-scorer-v2",
-    signature=ModelSignature(
-        inputs={"age": "float", "income": "float", "credit_history": "int"},
-        output={"default_probability": "float"}
-    ),
-    metrics={"f1": 0.87, "auc": 0.93, "brier": 0.12},
-    stage="staging"
-)</code></pre>
+async def register(artifact: bytes, cols: list[str], test_auc: float):
+    registry, conn = await build_training_registry()
+    try:
+        v = await registry.register_model(
+            "credit_default", artifact,              # pickled model bytes
+            metrics=[MetricSpec("auc_roc", test_auc, split="test")],
+            signature=ModelSignature(
+                input_schema=credit_feature_schema(cols),
+                output_columns=["default_probability", "default_label"],
+                output_dtypes=["float64", "int64"],
+                model_type="classifier"))
+        # every new version starts in "staging"; promotion needs a reason
+        await registry.promote_model("credit_default", v.version,
+            "production", reason=f"test AUC {test_auc:.3f} passed the gate")
+        return v.version
+    finally:
+        await conn.close()</code></pre>
   </div>
-  <div style="margin-top:12px;">
-    <span class="lifecycle-stage stage-experiment">Experiment</span>
-    <span style="font-size:1.2em;">&rarr;</span>
+  <div style="margin-top:8px;">
     <span class="lifecycle-stage stage-staging">Staging</span>
+    <span style="font-size:1.2em;">&rarr;</span>
+    <span class="lifecycle-stage stage-experiment">Shadow</span>
     <span style="font-size:1.2em;">&rarr;</span>
     <span class="lifecycle-stage stage-production">Production</span>
     <span style="font-size:1.2em;">&rarr;</span>
-    <span class="lifecycle-stage stage-retired">Retired</span>
+    <span class="lifecycle-stage stage-retired">Archived</span>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
   </div>
-  <aside class="notes">Timing: 2 min. ModelRegistry tracks every model version with its signature, metrics, and lifecycle stage. The signature defines the contract: what goes in, what comes out. This prevents the "works on my laptop" problem. The lifecycle stages map to real deployment: experiment (dev), staging (testing), production (live), retired (archived).</aside>
+  <aside class="notes">Timing: 2 min. ModelRegistry tracks every model version with its signature, metrics, and lifecycle stage. register_model stores the artefact bytes, MetricSpec rows (name, value, split, higher_is_better) and a ModelSignature: the input FeatureSchema plus the output columns and dtypes, the contract a serving layer can check requests against. TrainingPipeline already registers each model it trains with an automatic one-column signature; Exercise 3.7 registers a production entry with the richer contract. The registry's stages are staging, shadow, production and archived, and only some moves are allowed: promoting a new version to production archives the previous production version automatically, and an archived version cannot jump straight back to production; it goes archived to staging to production. That route is the rollback Exercise 3.8 rehearses. There is no registry.promote; the call is promote_model.</aside>
 </section>
 
 <!-- SLIDE 66 — Model Lifecycle -->
@@ -1952,15 +1990,16 @@ registry.register(
   <span class="marker marker-foundations">Foundations</span>
   <div class="flowchart-box">
     <p style="text-align:center; font-size:0.9em;">
-      <strong>Experiment</strong> &rarr; <strong>Register</strong> &rarr; <strong>Stage</strong> &rarr; <strong>Validate</strong> &rarr; <strong>Promote</strong> &rarr; <strong>Serve</strong> &rarr; <strong>Monitor</strong> &rarr; <strong>Retire</strong>
+      <strong>Experiment</strong> &rarr; <strong>Register (staging)</strong> &rarr; <strong>Validate</strong> &rarr; <strong>Shadow</strong> &rarr; <strong>Promote (production)</strong> &rarr; <strong>Serve</strong> &rarr; <strong>Monitor</strong> &rarr; <strong>Archive</strong>
     </p>
   </div>
   <table>
-    <thead><tr><th>Stage</th><th>Gate</th><th>Who Decides</th></tr></thead>
+    <thead><tr><th>Transition</th><th>Gate</th><th>Who Decides</th></tr></thead>
     <tbody>
-      <tr><td>Experiment &rarr; Stage</td><td>Metrics meet minimum thresholds</td><td>Automated (pipeline)</td></tr>
-      <tr><td>Stage &rarr; Production</td><td>A/B test on shadow traffic passes</td><td>Human (model owner)</td></tr>
-      <tr><td>Production &rarr; Retired</td><td>Drift detected or new model promoted</td><td>Automated + human review</td></tr>
+      <tr><td>Experiment &rarr; staging</td><td>Metrics meet minimum thresholds</td><td>Automated (pipeline)</td></tr>
+      <tr><td>Staging/shadow &rarr; production</td><td>Test-set gates + shadow traffic pass</td><td>Human (model owner)</td></tr>
+      <tr><td>Production &rarr; archived</td><td>Drift detected or new version promoted</td><td>Automated + human review</td></tr>
+      <tr><td>Rollback</td><td>archived &rarr; staging &rarr; production</td><td>Human (on incident)</td></tr>
     </tbody>
   </table>
   <div class="slide-footer">
@@ -1982,9 +2021,9 @@ registry.register(
       <li>Result: unbiased estimate of how well a tuned model generalises</li>
     </ul>
   </div>
-  <p>Expensive (25 total fits for 5x5) but the gold standard for model comparison.</p>
+  <p>Expensive &mdash; 5 &times; (5 &times; K + 1) fits for K candidate settings &mdash; but the gold standard for model comparison.</p>
   <div class="callout callout-kailash">
-    <strong>Kailash bridge:</strong> <code>TrainingPipeline</code> supports nested CV natively: <code>cv_strategy="nested"</code> with separate inner and outer fold counts.
+    <strong>Build it with sklearn:</strong> <code>cross_val_score(GridSearchCV(model, grid, cv=inner), X, y, cv=outer)</code>, as in Exercises 3.2 and 3.3. <code>TrainingPipeline</code> and <code>HyperparameterSearch</code> score a single holdout, so they have no nested mode.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>
@@ -2001,10 +2040,10 @@ registry.register(
     <li><strong>HyperparameterSearch:</strong> Bayesian optimisation &gt; grid search &gt; random search</li>
     <li><strong>ModelRegistry:</strong> Version, sign, and lifecycle-manage models</li>
     <li><strong>Nested CV:</strong> Unbiased model selection (outer) + tuning (inner)</li>
-    <li><strong>Model lifecycle:</strong> Experiment &rarr; Stage &rarr; Production &rarr; Retire</li>
+    <li><strong>Model lifecycle:</strong> staging &rarr; shadow &rarr; production &rarr; archived</li>
   </ul>
   <div class="callout callout-kailash">
-    <strong>Exercise 3.7:</strong> Build automated ML workflow: data loading &rarr; preprocessing &rarr; training &rarr; evaluation &rarr; conditional promotion. Register best model with signature.
+    <strong>Exercise 3.7:</strong> Credit-default workflow: load &rarr; preprocess &rarr; train (<code>TrainingPipeline</code>) &rarr; evaluate &rarr; <code>PythonCodeNode</code> gate &rarr; <code>SwitchNode</code> promote/hold. Plus DataFlow persistence, Bayesian search vs grid, and a registry entry with a signature.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 3 &mdash; Terrene Open Academy</span>

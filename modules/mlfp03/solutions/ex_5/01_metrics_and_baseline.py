@@ -21,12 +21,13 @@
 #   Build    — train a "do-nothing" LightGBM baseline
 #   Train    — fit on the imbalanced training split
 #   Visualise — confusion matrix + per-metric bar chart
-#   Apply    — DBS Singapore consumer credit scorecard triage
+#   Apply    — a Singapore retail bank's consumer-credit scorecard triage
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import lightgbm as lgb
+import plotly.graph_objects as go
 import polars as pl
 from dotenv import load_dotenv
 
@@ -46,10 +47,11 @@ load_dotenv()
 # THEORY — Why Accuracy Lies
 # ════════════════════════════════════════════════════════════════════════
 # Imagine you are the Chief Risk Officer of a Singapore retail bank. Every
-# day, 300 consumer loan applications arrive. ~12% of approved applicants
+# day, 300 consumer loan applications arrive. ~13% of approved applicants
 # will eventually default. If you build a model that says "no default" for
-# every single applicant, you get 88% accuracy and zero defaults caught.
-# Your CEO would fire you — but your F1 textbook would congratulate you.
+# every single applicant, you get ~87% accuracy and zero defaults caught.
+# Your CEO would fire you — but an accuracy dashboard would congratulate
+# you. (Its F1 is 0: no true positives, so precision and recall are 0.)
 #
 # This is why we need a complete metrics taxonomy BEFORE we even pick a
 # model. Each metric answers a different business question:
@@ -75,8 +77,17 @@ load_dotenv()
 #   Brier score— Proper scoring rule for calibrated probabilities.
 #                (p_predicted = 0.2 should mean ~20% default in reality)
 #
-# Rule of thumb for Singapore consumer credit: report AUC-PR + Brier to
-# the risk committee. Never report accuracy.
+# Rule of thumb for imbalanced credit data: report AUC-PR + Brier to the
+# risk committee, and quote accuracy only next to the majority-class
+# baseline it has to beat.
+#
+# WHY RAW LIGHTGBM HERE: every technique in Exercise 5 changes the training
+# LOSS (class weights, per-row sample weights, a custom focal objective) or
+# post-processes the probabilities. kailash-ml's TrainingPipeline.train()
+# takes a ModelSpec(model_class, hyperparameters) and exposes no per-row
+# sample_weight / init_score hook, so these loss-level experiments call
+# LightGBM directly; 05_calibration.py closes with the kailash-ml
+# km.diagnose engine on the final model.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -93,7 +104,7 @@ print(f"  Default rate:     {pos_rate:.2%}")
 print(f"  Imbalance ratio:  {imbalance_ratio:.0f}:1 (non-default : default)")
 print(f"  Train rows:       {X_train.shape[0]:,}")
 print(f"  Test rows:        {X_test.shape[0]:,}")
-print(f"  Cost matrix:      FP=${DEFAULT_COSTS.fp:,.0f}, FN=${DEFAULT_COSTS.fn:,.0f}")
+print(f"  Cost matrix:      FP=S${DEFAULT_COSTS.fp:,.0f}, FN=S${DEFAULT_COSTS.fn:,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -131,11 +142,44 @@ print(
     f"       Actual 1   {row['fn']:>12,}   {row['tp']:>12,}"
 )
 
-# INTERPRETATION: Look at the gap between accuracy (misleadingly high)
-# and recall (embarrassingly low). A "do nothing" model gets high
-# accuracy by being conservative — it predicts "no default" almost
-# everywhere. In Singapore consumer credit, each missed default costs
-# S$10,000. One model, one number, one CRO pager.
+majority_accuracy = 1.0 - float(y_test.mean())
+print(f"\n  Majority-class ('approve everyone') accuracy: {majority_accuracy:.4f}")
+print(f"  Baseline LightGBM accuracy @0.5:             {row['accuracy']:.4f}")
+print(f"  Baseline recall @0.5:                        {row['recall']:.4f}")
+print(
+    f"  -> accuracy beats 'approve everyone' by only "
+    f"{row['accuracy'] - majority_accuracy:+.4f}, while catching "
+    f"{row['recall']:.0%} of the defaulters."
+)
+# INTERPRETATION: Compare the accuracy with the majority-class line above
+# it — that is the number accuracy has to beat. Recall tells you how many
+# defaulters the 0.5 threshold actually catches. Each missed default costs
+# DEFAULT_COSTS.fn (illustratively S$10,000).
+
+# ── Visual: confusion matrix heatmap (the picture for non-technical readers)
+cm_fig = go.Figure(
+    data=go.Heatmap(
+        z=[[row["tn"], row["fp"]], [row["fn"], row["tp"]]],
+        x=["Predicted: repay", "Predicted: default"],
+        y=["Actual: repaid", "Actual: defaulted"],
+        text=[[f"TN {row['tn']:,}", f"FP {row['fp']:,}"], [f"FN {row['fn']:,}", f"TP {row['tp']:,}"]],
+        texttemplate="%{text}",
+        colorscale="Blues",
+    )
+)
+cm_fig.update_layout(title="Baseline confusion matrix @ threshold 0.5", height=420)
+cm_path = OUTPUT_DIR / "ex5_01_confusion_matrix.html"
+cm_fig.write_html(str(cm_path))
+print(f"\n  Saved: {cm_path}")
+
+# ── Visual: the whole metrics taxonomy as one bar chart
+metric_names = ["accuracy", "precision", "recall", "specificity", "f1", "auc_roc", "auc_pr", "brier"]
+bar_fig = go.Figure(go.Bar(x=metric_names, y=[row[m] for m in metric_names], marker_color="#6366f1"))
+bar_fig.add_hline(y=majority_accuracy, line_dash="dot", annotation_text="majority-class accuracy")
+bar_fig.update_layout(title="Baseline: one model, eight different stories", yaxis_title="Score", height=420)
+bar_path = OUTPUT_DIR / "ex5_01_metric_taxonomy.html"
+bar_fig.write_html(str(bar_path))
+print(f"  Saved: {bar_path}")
 
 print("\n  When to use which metric:")
 print("    Accuracy     — NEVER for imbalanced data")
@@ -153,40 +197,33 @@ print(f"\n  Saved: {OUTPUT_DIR / 'baseline_metrics.parquet'}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — DBS Singapore consumer credit scorecard triage
+# APPLY — A Singapore retail bank's consumer-credit scorecard triage
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS retail bank processes ~100,000 unsecured personal loan
-# applications per year across Singapore, Malaysia, and Indonesia. The
-# underwriting team uses a scorecard model as the first-pass filter.
+# SCENARIO (illustrative): a Singapore retail bank processes ~100,000
+# unsecured personal-loan applications per year. The underwriting team
+# uses a scorecard model as the first-pass filter.
 #
-# Business cost structure (from MAS consumer credit report 2024):
-#   - Charged-off personal loan average: S$10,000 per missed default
-#   - False decline operational cost:    S$100 per good applicant turned away
-#     (manual review + lost relationship NPV + NPS penalty)
-#   - Cost ratio: 100:1 — every missed default "pays for" 100 false declines
+# Illustrative cost structure (see shared.mlfp03.ex_5.DEFAULT_COSTS):
+#   - Missed default (FN):  ~S$10,000 charged-off principal
+#   - False decline (FP):   ~S$1,500 forgone interest margin
 #
-# What the baseline model actually delivers at a naive 0.5 threshold:
-#   - Recall ~20-30% (most defaulters slip through)
-#   - Precision ~40-60% (the few flagged are mostly correct)
-#   - Annual "do nothing" cost: ~S$9M in missed defaults
-#
-# Why this matters: the CRO needs ONE number to show the board.
-# "Our scorecard has F1=0.32" loses budget. "Our scorecard misses
-# S$9M of defaults per year at the current threshold" moves the
-# needle. Later techniques in this exercise claw that number down
-# to ~S$3M by changing the LOSS FUNCTION, not the model architecture.
+# Why this matters: the CRO needs ONE number to show the board. "Our
+# scorecard has F1=0.2" loses budget; "our scorecard misses S$X of
+# defaults per year at the current threshold" moves the needle. The
+# code below computes X for THIS model — the rest of the exercise tries
+# to move it by changing the loss, the threshold and the calibration.
 
 n_def_test = int(y_test.sum())
 n_missed_test = int(((y_test == 1) & (y_proba_base < 0.5)).sum())
 miss_rate = n_missed_test / max(n_def_test, 1)
-print("\n  Singapore retail-bank implication:")
+print("\n  Singapore retail-bank implication (illustrative volumes):")
 print(f"    Defaults in test set:       {n_def_test:,}")
 print(f"    Missed by baseline @0.5:    {n_missed_test:,} ({miss_rate:.0%})")
 print(
     f"    Scaled to 100K apps/year:   ~S${DEFAULT_COSTS.fn * n_def_test * miss_rate * (100_000 / len(y_test)):,.0f} lost"
 )
 print("    Next file (02_sampling_strategies.py) adds SMOTE and cost-sensitive")
-print("    learning — and shows why one of them is almost always wrong.")
+print("    learning and compares them on ranking AND calibration.")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -202,7 +239,7 @@ print(
   [x] Built the complete metrics taxonomy (precision/recall/specificity/
       F1/AUC-ROC/AUC-PR/Brier)
   [x] Saved the baseline probability vector for later technique files
-  [x] Translated the baseline's failure into S$ lost per year at DBS
+  [x] Translated the baseline's failure into S$ lost per year for a bank
 
   KEY INSIGHT: Accuracy is the wrong metric for rare events. AUC-PR +
   Brier is the right pair to report. Everything in this exercise after

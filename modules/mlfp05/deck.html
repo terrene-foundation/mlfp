@@ -3443,7 +3443,7 @@ print(v.valid, v.max_diff)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Two practical applications. Financial prediction is relevant for professionals. Text generation makes the technology tangible and connects to LLMs. The Shakespeare exercise is fun and pedagogically effective.
+    Time: ~2 min. Two practical applications. Financial prediction is relevant for professionals. Text generation makes the technology tangible and connects to LLMs. Be honest about scope: Exercise 5.3 forecasts prices from daily Close/High/Low/Volume; technical indicators and character-level generation (with perplexity = exp of the mean cross-entropy) are taught here but are not yet exercise files &mdash; set them as extensions.
   </aside>
 </section>
 
@@ -3455,19 +3455,20 @@ print(v.valid, v.max_diff)</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Build LSTM for Singapore stock price prediction with technical indicators</li>
-        <li>Add temporal attention layer &mdash; visualise attention weights</li>
-        <li>Compare LSTM vs GRU (accuracy and training speed)</li>
-        <li>Implement character-level text generation with LSTM</li>
+        <li>Vanilla RNN: 20-day windows of STI + APAC daily prices &rarr; 5-day forecast; watch gradients vanish</li>
+        <li>LSTM: the six gate equations as tensor ops; gradient preservation vs RNN</li>
+        <li>GRU vs LSTM: parameters, latency, accuracy</li>
+        <li>Temporal (additive) attention over LSTM states &mdash; attention heatmaps</li>
+        <li>Fair four-way comparison + multi-stock generalisation</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
         <li>LSTM gate equations implemented correctly</li>
-        <li>Attention improves prediction (quantified)</li>
+        <li>Attention vs plain LSTM quantified</li>
         <li>GRU vs LSTM comparison documented</li>
-        <li>Text generation produces coherent output</li>
+        <li>Extension: technical indicators; char-level generation</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 12px;">
         <strong>Gradient clipping:</strong> Essential for RNN training. Use <code>torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</code>
@@ -3478,7 +3479,7 @@ print(v.valid, v.max_diff)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. Gradient clipping is non-negotiable for RNN training. Without it, exploding gradients will crash training. Students should include it in every RNN training loop.
+    Time: ~1 min. Exercise 5.3 is five files on real daily prices for the STI and five APAC/US tickers (Close, High, Low, Volume; 20-day lookback, 5-day horizon): vanilla RNN, LSTM, GRU, LSTM + temporal attention, and a fair comparison. The spec's technical indicators (RSI, MACD, Bollinger) and character-level text generation are not in the files yet &mdash; offer them as extensions. Gradient clipping is non-negotiable for RNN training; the shared training loop clips at max_norm=1.0. Without it, exploding gradients can derail training.
   </aside>
 </section>
 
@@ -3491,11 +3492,12 @@ print(v.valid, v.max_diff)</code></pre>
   </div>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
-      <h3>Key Equations (5)</h3>
+      <h3>Key Equations (6)</h3>
       <ul class="small">
         <li>Forget: <span class="katex-inline">f_t = \sigma(W_f [h_{t-1}, x_t] + b_f)</span></li>
         <li>Input: <span class="katex-inline">i_t = \sigma(W_i [h_{t-1}, x_t] + b_i)</span></li>
-        <li>Cell: <span class="katex-inline">C_t = f_t \odot C_{t-1} + i_t \odot \tanh(W_C [h_{t-1}, x_t] + b_C)</span></li>
+        <li>Candidate: <span class="katex-inline">\tilde{C}_t = \tanh(W_C [h_{t-1}, x_t] + b_C)</span></li>
+        <li>Cell: <span class="katex-inline">C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t</span></li>
         <li>Output: <span class="katex-inline">o_t = \sigma(W_o [h_{t-1}, x_t] + b_o)</span></li>
         <li>Hidden: <span class="katex-inline">h_t = o_t \odot \tanh(C_t)</span></li>
       </ul>
@@ -3523,12 +3525,12 @@ print(v.valid, v.max_diff)</code></pre>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Finance &mdash; SGX Price Forecasting &amp; Fraud Sequences</strong>
-        <p class="small">Quant desks at DBS and UOB run LSTM+attention models on minute-bar SGX data with the exact feature set from Exercise 3 (RSI, MACD, Bollinger Bands). The same architecture, trained on transaction sequences instead of prices, detects card-not-present fraud rings by their spending <em>cadence</em> &mdash; something a point-in-time classifier cannot see.</p>
+        <strong>Finance &mdash; Price Forecasting &amp; Fraud Sequences</strong>
+        <p class="small">A bank's quant desk can run LSTM+attention models on intraday price bars; Exercise 3's daily OHLCV features plus RSI, MACD and Bollinger Bands are the usual starting set. The same architecture, trained on transaction sequences instead of prices, detects card-not-present fraud rings by their spending <em>cadence</em> &mdash; something a point-in-time classifier cannot see.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Healthcare &mdash; ICU Vital Sign Early Warning</strong>
-        <p class="small">SGH's ICU deploys LSTMs over streams of heart rate, blood pressure, SpO2, and respiratory rate to predict deterioration 6&ndash;12 hours before it is clinically obvious. Temporal attention highlights <em>which</em> time steps mattered, giving clinicians an interpretable "why" alongside the alert.</p>
+        <p class="small">A hospital ICU can run LSTMs over streams of heart rate, blood pressure, SpO2, and respiratory rate to flag deterioration hours before it is clinically obvious. Temporal attention highlights <em>which</em> time steps mattered, giving clinicians an interpretable "why" alongside the alert.</p>
       </div>
     </div>
     <div class="col">
@@ -3537,19 +3539,19 @@ print(v.valid, v.max_diff)</code></pre>
         <p class="small">A Singapore distributor forecasts weekly SKU-level demand across 3,000 products using GRU networks (fewer parameters, faster training than LSTM &mdash; exactly the trade-off you measured in Exercise 3). Promo calendars and public holidays enter as auxiliary sequence features.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
-        <strong>Transport &mdash; MRT Ridership Prediction</strong>
-        <p class="small">LTA forecasts MRT ridership per station per 15-minute bin using sequence models; operations uses the forecast to pre-position trains. Attention weights show the model leaning on "the same 07:45 slot from last week" during normal days and on "the last 30 minutes" when rain is falling &mdash; interpretable behaviour switching.</p>
+        <strong>Transport &mdash; Rail Ridership Prediction</strong>
+        <p class="small">A transit operator can forecast ridership per station per 15-minute bin with sequence models and pre-position trains. Attention weights show the model leaning on "the same 07:45 slot from last week" during normal days and on "the last 30 minutes" when rain is falling &mdash; interpretable behaviour switching.</p>
       </div>
     </div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
-    <strong>Why this matters for YOU:</strong> when the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is the <em>lead time</em> &mdash; six hours on ICU deterioration, a week on stock-outs, 30 min on crowding &mdash; converting emergencies into scheduled decisions.
+    <strong>Why this matters for YOU:</strong> when the question is "given what has happened, what happens next?", sequence models are your starting point. The business value is the <em>lead time</em> &mdash; hours on ICU deterioration, a week on stock-outs, 30 min on crowding (illustrative) &mdash; converting emergencies into scheduled decisions.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Focus on the "lead time, not prediction" framing &mdash; that is the line a non-technical exec will remember. The ICU example is the emotional hook. The MRT example works well as the "relatable" case for Singaporean audiences. Note the GRU-vs-LSTM trade-off: students measured it themselves in Exercise 3, so the retail distributor example closes the loop back to the notebook.
+    Time: ~3 min. Focus on the "lead time, not prediction" framing &mdash; that is the line a non-technical exec will remember. The ICU example is the emotional hook. The rail ridership example works well as the "relatable" case for Singaporean audiences. These are illustrative scenarios, not claims about any named organisation's systems. Note the GRU-vs-LSTM trade-off: students measured it themselves in Exercise 3, so the retail distributor example closes the loop back to the notebook.
   </aside>
 </section>
 

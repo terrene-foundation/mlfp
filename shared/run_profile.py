@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Sync wrappers for the async DataExplorer engine — used in M1 before async is taught.
 
-``DataExplorer.profile()`` and ``DataExplorer.compare()`` are coroutines.
+``DataExplorer.profile()``, ``.compare()`` and ``.to_html()`` are coroutines.
 These helpers run them to completion so a Module 1 student can write::
 
-    from shared import run_profile, run_compare
+    from shared import run_profile, run_compare, run_report
     profile = run_profile(df)                     # DataProfile
     profile = run_profile(df, alert_config=cfg)   # custom alert thresholds
     diff = run_compare(df_raw, df_clean)          # dict (see run_compare)
+    html = run_report(df, title="My data")        # HTML profile report
 
 They work both in a plain script (no event loop running) and inside
 Jupyter / Colab (an event loop is already running there, where a bare
@@ -94,6 +95,26 @@ def run_compare(
     """
     explorer = DataExplorer()
     return _run_sync(explorer.compare(df_a, df_b, columns=columns))
+
+
+def run_report(
+    df: pl.DataFrame,
+    title: str = "Data Profile Report",
+    alert_config: AlertConfig | None = None,
+) -> str:
+    """Build a standalone HTML profile report with ``DataExplorer.to_html()``.
+
+    Args:
+        df: Polars DataFrame to report on.
+        title: Title shown at the top of the report.
+        alert_config: Optional ``AlertConfig`` thresholds; ``None`` uses defaults.
+
+    Returns:
+        The report as an HTML string — write it to a ``.html`` file and
+        open it in a browser.
+    """
+    explorer = DataExplorer(alert_config=alert_config)
+    return _run_sync(explorer.to_html(df, title=title))
 
 
 def run_alerts(

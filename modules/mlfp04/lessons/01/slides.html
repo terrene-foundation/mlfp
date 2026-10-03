@@ -349,18 +349,23 @@ nmi = normalized_mutual_info_score(labels_kmeans, labels_gmm)
   <h2>Kailash ClusteringEngine — one surface, four algorithms</h2>
   <pre><code class="language-python" data-trim>
 import polars as pl
+from shared import MLFPDataLoader
 from kailash_ml.engines.clustering import ClusteringEngine
 
-X_df = pl.from_numpy(X_scaled, schema=feature_cols)  # standardised, numeric only
-engine = ClusteringEngine()   # algorithm = "kmeans" | "gmm" | "dbscan" | "spectral"
+FEATURES = ["total_revenue", "order_count", "avg_order_value",
+            "days_since_last_order", "customer_tenure_days",
+            "satisfaction_score", "num_returns"]  # churned = outcome, excluded
+customers = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
+X = customers.select(FEATURES).drop_nulls().sample(3000, seed=42)
+X = X.select((pl.all() - pl.all().mean()) / pl.all().std())  # standardise
 
-sweep = engine.sweep_k(X_df, k_range=range(2, 11), algorithm="kmeans",
-                       criterion="silhouette")
-result = engine.fit(X_df, algorithm="kmeans", n_clusters=sweep.optimal_k)
-print(result.n_clusters, result.silhouette_score, result.calinski_harabasz_score)
+engine = ClusteringEngine()  # algorithms: kmeans | gmm | dbscan | spectral
+sweep = engine.sweep_k(X, k_range=range(2, 9), criterion="silhouette")
+fit = engine.fit(X, algorithm="kmeans", n_clusters=sweep.optimal_k)
+print(f"K={fit.n_clusters}  silhouette={fit.silhouette_score:.3f}")
   </code></pre>
   <div class="callout-slide kailash">
-    <strong>⚙ Kailash:</strong> the engine does <em>not</em> scale for you — pass standardised features. Ward hierarchical and HDBSCAN stay with scipy / <code>hdbscan</code>.
+    <strong>⚙ Kailash:</strong> the engine does <em>not</em> scale for you — standardise first. On this sample it picks K = 3, silhouette ≈ 0.18: real customers do not form crisp clusters. Ward and HDBSCAN stay with scipy / <code>hdbscan</code>.
   </div>
   <aside class="notes">This is the bridge from the hand-rolled sklearn code to the Kailash engine students use in Exercise 1.5 and the assessment. ClusteringEngine.fit returns a ClusterResult (labels, n_clusters, silhouette_score, calinski_harabasz_score, inertia, metrics); sweep_k returns a KSweepResult with optimal_k chosen by silhouette or calinski_harabasz. It selects numeric columns only and does no scaling, so standardise first.</aside>
 </section>

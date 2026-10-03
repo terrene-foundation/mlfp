@@ -186,7 +186,7 @@ for i in range(3):
   <table style="font-size: 0.75em;">
     <thead><tr><th></th><th>t-SNE</th><th>UMAP</th></tr></thead>
     <tbody>
-      <tr><td>Speed</td><td>slow</td><td>fast</td></tr>
+      <tr><td>Speed</td><td>slow (sklearn default Barnes-Hut, $O(n \log n)$, large constant; exact is $O(n^2)$)</td><td>fast</td></tr>
       <tr><td>Global structure</td><td>poor</td><td>better (still qualitative)</td></tr>
       <tr><td>New-point embedding</td><td>no</td><td>yes</td></tr>
       <tr><td>Deterministic</td><td>no</td><td>yes (with seed)</td></tr>

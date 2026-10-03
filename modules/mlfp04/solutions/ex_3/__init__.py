@@ -8,5 +8,5 @@ Five technique files, each independently runnable:
   02_kernel_pca.py   — RBF + polynomial kernel PCA
   03_tsne.py         — t-SNE, perplexity, local structure
   04_umap.py         — UMAP, out-of-sample transform, global+local
-  05_comparison.py   — silhouette grid + intrinsic dimensionality
+  05_comparison.py   — trustworthiness leaderboard + intrinsic dimensionality
 """

@@ -137,7 +137,7 @@ Talking points:
 - Three engines: DataExplorer for profiling, PreprocessingPipeline for cleaning, ModelVisualizer for charts.
 - These appear in lessons 1.6-1.8. Lessons 1.1-1.5 teach core Python and Polars so you understand what the engines automate.
 - If beginners confused: think of engines as power tools. You learn the hand tool first, then the power tool.
-- If experts bored: mention DataExplorer runs 8 statistical tests asynchronously under the hood.
+- If experts bored: mention DataExplorer's methods are async; Module 1 uses small sync wrappers (shared.run_profile) so you meet async later.
 Transition: "Let us begin with Lesson 1.1 and your very first line of Python."
   </aside>
 </section>
@@ -2527,31 +2527,34 @@ Transition: "Let us profile a dataset with one call."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="kailash-bridge">
     <h3>DataExplorer &mdash; Automated Data Quality Assessment</h3>
-    <pre><code class="language-python">from kailash_ml import DataExplorer
-from shared import run_profile
+    <pre><code class="language-python">from shared import run_profile  # sync wrapper around DataExplorer.profile()
 
-explorer = DataExplorer()
-profile = run_profile(explorer, df)
+profile = run_profile(df)        # df = HDB resale data
 
-print(f"Rows: {profile.row_count}")
-print(f"Columns: {profile.column_count}")
-print(f"Missing: {profile.missing_summary}")
-print(f"Alerts: {len(profile.alerts)}")
+print(f"Rows: {profile.n_rows}")                 # 50150
+print(f"Columns: {profile.n_columns}")           # 11
+print(f"Duplicates: {profile.duplicate_count}")  # 300
+print(f"Alerts: {len(profile.alerts)}")          # 7
 
-for alert in profile.alerts:
-    print(f"  [{alert.severity}] {alert.column}: {alert.message}")</code></pre>
+for alert in profile.alerts:  # each alert is a dict
+    where = alert.get("column", alert.get("columns"))
+    print(f"  [{alert['severity']}] {alert['type']}: {where}")
+# [info] high_skewness: resale_price   (skew 11.4)
+# [warning] duplicates: None           (300 rows)</code></pre>
   </div>
   <div class="callout callout-foundations">
-    <strong>Checks:</strong> Missing values, outliers, duplicates, skewness, high correlation, low cardinality, constant columns, type inference issues.
+    <strong>8 alert types:</strong> high_nulls, constant, high_skewness, high_zeros, high_cardinality, high_correlation, duplicates, imbalanced. Outliers are a per-column <em>statistic</em> (<code>outlier_count</code>), not an alert.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- One call gives you everything: distributions, correlations, alerts.
-- The shared.run_profile wrapper hides the async complexity.
+- One call gives you everything: per-column statistics (profile.columns), correlations (profile.correlation_matrix), duplicates and alerts.
+- DataExplorer.profile() is async. shared.run_profile(df) runs it for you, in a script or in Colab/Jupyter, so you can use it before async is taught.
+- Alerts are dicts with keys type, column (or columns for a correlated pair), value and severity ("info" or "warning"). Use alert["type"], not alert.type.
+- On the HDB data the skewness alert (11.4) is the S$10 / S$9M prices from the opening scenario.
 - If beginners confused: run the code, read the alerts.
-- If experts bored: DataExplorer runs 8 tests in parallel using async.
+- If experts bored: look at profile.columns for resale_price: outlier_count is 646 by the IQR rule, even though no "outlier" alert exists.
 Transition: "What if the default thresholds are wrong?"
   </aside>
 </section>
@@ -2564,31 +2567,32 @@ Transition: "What if the default thresholds are wrong?"
       <pre><code class="language-python">from kailash_ml import AlertConfig
 
 config = AlertConfig(
-    missing_threshold=0.05,
-    outlier_std=3.0,
-    duplicate_threshold=0.01,
-    skew_threshold=2.0,
-    correlation_threshold=0.95,
-    cardinality_threshold=0.95,
-    constant_threshold=0.99,
+    high_null_pct_threshold=0.02,     # default 0.05
+    skewness_threshold=2.0,           # default 2.0
+    high_correlation_threshold=0.95,  # default 0.9
+    high_cardinality_ratio=0.9,       # default 0.9
+    zero_pct_threshold=0.5,           # default 0.5
+    imbalance_ratio_threshold=0.1,    # default 0.1
+    duplicate_pct_threshold=0.0,      # default 0.0
+    constant_threshold=1,  # unique values; default 1
 )
 
-explorer = DataExplorer(alert_config=config)
-profile = run_profile(explorer, df)</code></pre>
+profile = run_profile(df, alert_config=config)
+# now also: high_nulls on remaining_lease (2.9%)</code></pre>
     </div>
     <div class="col">
       <h3>8 Alert Types</h3>
       <table>
-        <thead><tr><th>Alert</th><th>Detects</th></tr></thead>
+        <thead><tr><th>Alert</th><th>Fires when (default)</th></tr></thead>
         <tbody>
-          <tr><td>Missing</td><td>Null values above threshold</td></tr>
-          <tr><td>Outlier</td><td>Extreme values (by std)</td></tr>
-          <tr><td>Duplicate</td><td>Repeated rows</td></tr>
-          <tr><td>Skewness</td><td>Non-symmetric distributions</td></tr>
-          <tr><td>Correlation</td><td>Redundant features</td></tr>
-          <tr><td>Cardinality</td><td>Near-unique columns</td></tr>
-          <tr><td>Constant</td><td>No-variance columns</td></tr>
-          <tr><td>Type</td><td>Type inference issues</td></tr>
+          <tr><td>high_nulls</td><td>null share &gt; 0.05</td></tr>
+          <tr><td>constant</td><td>unique values &le; 1</td></tr>
+          <tr><td>high_skewness</td><td>|skewness| &gt; 2.0</td></tr>
+          <tr><td>high_zeros</td><td>zero share &gt; 0.5</td></tr>
+          <tr><td>high_cardinality</td><td>unique/rows &gt; 0.9 (near-unique)</td></tr>
+          <tr><td>high_correlation</td><td>|r| &gt; 0.9 for a column pair</td></tr>
+          <tr><td>duplicates</td><td>duplicate-row share &gt; 0</td></tr>
+          <tr><td>imbalanced</td><td>rarest category share &lt; 0.1</td></tr>
         </tbody>
       </table>
     </div>
@@ -2597,10 +2601,11 @@ profile = run_profile(explorer, df)</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- AlertConfig lets you tune what counts as a problem.
-- Lower thresholds = more alerts. Higher = fewer.
+- AlertConfig lets you tune what counts as a problem. Every argument is optional; omitted ones keep the default shown in the comment.
+- Lower thresholds = more alerts. Higher = fewer. On HDB, remaining_lease is 2.9% null: silent at the 0.05 default, flagged at 0.02.
+- constant_threshold is a COUNT of unique values (a column with at most 1 distinct value is constant), not a fraction.
 - If beginners confused: defaults are fine to start.
-- If experts bored: discuss IQR vs z-score outlier detection.
+- If experts bored: outliers are not an alert; each ColumnProfile carries outlier_count / outlier_pct (IQR rule) for you to judge.
 Transition: "DataExplorer can also compare two datasets."
   </aside>
 </section>
@@ -2610,32 +2615,33 @@ Transition: "DataExplorer can also compare two datasets."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">profile_before = run_profile(explorer, df_dirty)
+      <pre><code class="language-python">from shared import run_compare  # wraps DataExplorer.compare()
 
 df_clean = (
-    df_dirty
-    .drop_nulls(subset=["resale_price"])
-    .filter(pl.col("resale_price") &gt; 0)
+    df.unique()  # drop duplicate rows
+    .filter(pl.col("resale_price")
+            .is_between(50_000, 3_000_000))
 )
 
-profile_after = run_profile(explorer, df_clean)
+result = run_compare(df, df_clean)  # a dict
+print(result["shape_comparison"])
+# {'rows_a': 50150, 'rows_b': 49750, ...}
 
-comparison = explorer.compare(
-    profile_before, profile_after
-)
-print(comparison.summary)</code></pre>
+for d in result["column_deltas"]:
+    if d["column"] == "resale_price":
+        print(d["mean_delta"], d["std_delta"])
+# about -21,479 and -244,897</code></pre>
     </div>
     <div class="col">
-      <h3>What compare() Shows</h3>
+      <h3>What compare() Returns</h3>
       <ul>
-        <li>Row count change</li>
-        <li>Alert count change</li>
-        <li>Distribution shifts per column</li>
-        <li>Missing value reduction</li>
-        <li>Outlier count change</li>
+        <li><code>shape_comparison</code> &mdash; rows/cols before and after</li>
+        <li><code>column_deltas</code> &mdash; per column: mean, std, null % and unique-count change</li>
+        <li><code>profile_a</code>, <code>profile_b</code> &mdash; full profiles, alerts included</li>
+        <li><code>missing_in_a</code> / <code>missing_in_b</code> &mdash; schema drift</li>
       </ul>
       <div class="callout callout-kailash" style="margin-top:12px;">
-        <strong>Use Case:</strong> Compare train vs test for drift. Compare pre vs post cleaning.
+        <strong>Use Case:</strong> Original vs cleaned. Train vs test. One period vs another.
       </div>
     </div>
   </div>
@@ -2643,7 +2649,8 @@ print(comparison.summary)</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- compare() verifies that cleaning improved the data.
+- compare() verifies that cleaning improved the data. It takes two DataFrames (not two profiles) and returns a dict.
+- Compare the two alert lists in result["profile_a"].alerts and result["profile_b"].alerts: after cleaning, the skewness alert is gone (11.4 -> 0.39) and a NEW high_correlation alert appears (floor area vs price, r = 0.91). The bad prices were hiding the real relationship.
 - If beginners confused: think of it as a "before and after photo".
 - If experts bored: discuss KS tests and Population Stability Index.
 Transition: "Let us add error handling."
@@ -2656,8 +2663,8 @@ Transition: "Let us add error handling."
   <div class="columns">
     <div class="col">
       <pre><code class="language-python">try:
-    df = pl.read_csv("data/economic.csv")
-    profile = run_profile(explorer, df)
+    df = loader.load("mlfp01", "economic_indicators.csv")
+    profile = run_profile(df)
     print(f"Profiled {df.shape[0]} rows")
 except FileNotFoundError:
     print("Error: Data file not found.")
@@ -2684,6 +2691,7 @@ finally:
 Time: ~3 min
 Talking points:
 - try/except prevents crashes on expected errors. Always be specific about exception types.
+- loader.load raises FileNotFoundError for a file name it cannot find; change the name to see the first except branch run.
 - If beginners confused: "try this, but if it fails, do this instead."
 - If experts bored: discuss custom exceptions and context managers.
 Transition: "Exercise time."
@@ -2696,12 +2704,12 @@ Transition: "Exercise time."
   <div class="columns">
     <div class="col">
       <ol>
-        <li>Load the dirty economic indicators dataset</li>
-        <li>Profile with DataExplorer</li>
+        <li>Load CPI (monthly), employment (quarterly) and FX (daily) data</li>
+        <li>Align them on one monthly timeline and merge</li>
         <li>Configure AlertConfig with sensible thresholds</li>
-        <li>Clean the data</li>
-        <li>Profile the cleaned version</li>
-        <li>Compare original vs cleaned</li>
+        <li>Profile with DataExplorer; interpret every alert</li>
+        <li>Compare pre-COVID vs COVID-era data with <code>compare()</code></li>
+        <li>Handle errors with try/except; save an HTML report</li>
       </ol>
     </div>
     <div class="col">
@@ -2714,7 +2722,8 @@ Transition: "Exercise time."
   <aside class="notes">
 Time: ~2 min
 Talking points:
-- Deliberately messy dataset. Students must identify and fix issues.
+- Three deliberately messy synthetic datasets modelled on Singapore statistics (illustrative values): mixed granularity, mixed date formats, gaps, COVID-era outliers, near-zero JPY rates.
+- The original-vs-cleaned comparison is the capstone's job: Exercise 1.8 runs run_compare(raw, cleaned).
 - If beginners confused: run default profiler, read every alert, then decide how to clean.
 - If experts bored: write an automated cleaning function.
 Transition: "Lesson 1.7 recap."
@@ -2728,10 +2737,10 @@ Transition: "Lesson 1.7 recap."
     <div class="col">
       <h3>DataExplorer</h3>
       <ul>
-        <li><code>DataExplorer()</code> + <code>run_profile()</code></li>
+        <li><code>run_profile(df)</code> &mdash; sync wrapper for <code>DataExplorer.profile()</code></li>
         <li><code>AlertConfig</code> for thresholds</li>
-        <li>8 alert types</li>
-        <li><code>compare()</code> for before vs after</li>
+        <li>8 alert types; outliers are a column statistic</li>
+        <li><code>run_compare(df_a, df_b)</code> for before vs after</li>
       </ul>
     </div>
     <div class="col">

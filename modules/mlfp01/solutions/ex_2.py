@@ -31,8 +31,9 @@
 #   10. Method chaining — building analysis pipelines step by step
 #
 # DATASET: Singapore HDB resale flat transactions
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions | Columns: month, town, flat_type,
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions | Columns: month, town, flat_type,
 #   floor_area_sqm, resale_price, and more
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -255,6 +256,10 @@ print(f"\nS$400k-600k (is_between): {mid_range.height:,}")
 
 # --- 4e: .is_null() and .is_not_null() ---
 # Check for missing values — critical before any analysis
+# You've been making decisions with EXPRESSIONS (filters, and soon
+# pl.when/then). Python also has if/else STATEMENTS for decisions in
+# ordinary code — you'll learn them properly in Lesson 1.4. For now,
+# read `if nc > 0:` as "only do the next line when nc is above 0".
 for col_name in hdb.columns:
     nc = hdb[col_name].null_count()
     if nc > 0:
@@ -465,10 +470,11 @@ for row in monthly_counts.iter_rows(named=True):
     name = month_names.get(row["month_num"], "?")
     bar = "█" * (row["count"] // 1000)
     print(f"  {name}: {row['count']:>7,} {bar}")
-# INTERPRETATION: Transaction volume varies by month. Singapore's property
-# market typically sees dips around Chinese New Year (Jan/Feb) and year-end
-# (Dec). Higher volume months have more data points, making their price
-# statistics more reliable.
+# INTERPRETATION: In real property markets, volume often dips around
+# holidays such as Chinese New Year (Jan/Feb) and year-end (Dec). Check
+# whether the counts printed above show any such dip before assuming it.
+# Either way, higher-volume months have more data points, making their
+# price statistics more reliable.
 
 # --- 7d: Extract quarter ---
 hdb = hdb.with_columns(
@@ -529,11 +535,10 @@ for row in tier_counts.iter_rows(named=True):
         f"median=S${row['median_price']:>10,.0f}  area={row['median_area']:.0f}sqm  {bar}"
     )
 
-# --- 8b: Flat age proxy ---
-# HDB leases are 99 years. The transaction date minus the flat's approximate
-# build year gives remaining lease. We don't have build year directly, but
-# we can estimate from the lease commencement date if available.
-# For now, classify by era based on first transaction year per town+block.
+# --- 8b: Transaction era classification ---
+# Group each sale by WHEN it happened (its transaction year). This is not
+# the flat's age — that comes from lease_commence_date, the year the
+# flat's 99-year lease started.
 hdb = hdb.with_columns(
     pl.when(pl.col("year") <= 2015)
     .then(pl.lit("pre-2016"))
@@ -556,9 +561,11 @@ era_summary = (
 )
 print(f"\n=== Price by Transaction Era ===")
 print(era_summary)
-# INTERPRETATION: Comparing median prices across eras reveals price inflation.
-# If 2023+ median is S$150k above pre-2016 median, that's the cumulative
-# price appreciation. Dividing by the years gives a rough annual growth rate.
+# INTERPRETATION: Comparing median prices across eras is how you would
+# measure price inflation: the gap between the latest and earliest era's
+# median, divided by the years between them, is a rough annual growth
+# rate. Read the medians printed above before concluding anything — if
+# they are almost equal, this data shows no appreciation at all.
 
 # --- 8c: Boolean flag columns ---
 hdb = hdb.with_columns(
@@ -608,7 +615,7 @@ print(
 # First sort by town (alphabetically), then by price within each town
 by_town_price = hdb.sort("town", "resale_price", descending=[False, True])
 print(f"\n=== Sorted by Town then Price (desc) ===")
-# Show the most expensive flat in each of the first 3 towns
+# Show the most expensive flat in each of the first 5 towns
 seen_towns: set[str] = set()
 for row in by_town_price.iter_rows(named=True):
     if row["town"] not in seen_towns:
@@ -624,7 +631,8 @@ print(f"\n=== Highest Price per sqm ===")
 print(by_psm.select("town", "flat_type", "price_per_sqm", "resale_price").head(5))
 
 # --- 9d: Sorting for analysis — find the middle of the market ---
-# The 50th percentile transaction (not the same as the median of a column)
+# The middle row of the price-sorted data IS the median transaction —
+# compare its price with the column's median() printed below.
 n = hdb.height
 middle_idx = n // 2
 sorted_df = hdb.sort("resale_price")
@@ -634,6 +642,7 @@ print(f"  Town: {middle_row['town']}, Type: {middle_row['flat_type']}")
 print(
     f"  Price: S${middle_row['resale_price']:,.0f}, Area: {middle_row['floor_area_sqm']:.0f} sqm"
 )
+print(f"  Column median for comparison: S${hdb['resale_price'].median():,.0f}")
 
 # ── Checkpoint 9 ─────────────────────────────────────────────────────
 assert (
@@ -715,10 +724,10 @@ for row in annual_median.iter_rows(named=True):
             f"({row['transactions']:,} txns)"
         )
     prev_price = price
-# INTERPRETATION: The annual summary reveals Singapore's property market cycles.
-# Look for: (1) sharp rises after policy relaxation or COVID rebound,
-# (2) flat or declining years after cooling measures, (3) transaction
-# volume dropping when prices peak — buyers wait for corrections.
+# INTERPRETATION: An annual summary like this is how analysts spot market
+# cycles: sharp rises, flat years, and volume dropping when prices peak.
+# Judge the size of each change before calling it a cycle — a move of
+# a fraction of a percent each year is noise, not a boom or a correction.
 
 # --- 10d: Full analysis pipeline — one chained expression ---
 investment_report = (

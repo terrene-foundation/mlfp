@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -34,9 +34,9 @@
 </h1>
 
 <p class="lead">
-  Real questions almost never fit in a single table. "Is Bishan more
-  expensive because it is closer to the MRT?" requires an HDB table
-  <em>and</em> an MRT table, joined on a shared key. Today you learn how
+  Real questions almost never fit in a single table. "Do towns with more
+  MRT stations, or towns nearer the city centre, sell for more?" requires an
+  HDB table <em>and</em> an MRT table, joined on a shared key. Today you learn how
   to combine datasets with <code>join</code>, when to use left versus inner
   versus outer joins, and how to handle the nulls that appear when one side
   has no match. You also meet Python's <code>if/elif/else</code> statement
@@ -69,16 +69,16 @@
   <rect x="20" y="30" width="180" height="70" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
   <text x="110" y="55" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">HDB transactions</text>
   <text x="110" y="75" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · price · area</text>
-  <text x="110" y="90" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">500,000 rows</text>
+  <text x="110" y="90" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">50,150 rows</text>
 
   <rect x="20" y="115" width="180" height="70" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
   <text x="110" y="140" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">MRT stations</text>
-  <text x="110" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · station · dist_km</text>
-  <text x="110" y="175" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">26 rows</text>
+  <text x="110" y="160" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">station · Town · lat/lng</text>
+  <text x="110" y="175" text-anchor="middle" font-family="Inter" font-size="11" fill="#64748B">150 rows (32 towns)</text>
 
   <rect x="20" y="200" width="180" height="50" rx="8" fill="#F1F5F9" stroke="#64748B" stroke-width="2"/>
   <text x="110" y="222" text-anchor="middle" font-family="Inter" font-weight="600" font-size="13" fill="#1E293B">Schools</text>
-  <text x="110" y="240" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">town · school_count</text>
+  <text x="110" y="240" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#64748B">school · Town · type</text>
 
   <line x1="205" y1="140" x2="330" y2="140" stroke="#0D9488" stroke-width="3" marker-end="url(#arrj1)"/>
   <text x="267" y="130" text-anchor="middle" font-family="Inter" font-size="12" fill="#0D9488">join on "town"</text>
@@ -87,15 +87,15 @@
   <rect x="340" y="50" width="460" height="180" rx="8" fill="#E0F2F1" stroke="#0D9488" stroke-width="2"/>
   <text x="570" y="80" text-anchor="middle" font-family="Inter" font-weight="600" font-size="14" fill="#0D9488">Enriched HDB</text>
   <g font-family="JetBrains Mono" font-size="11" fill="#1E293B">
-    <text x="360" y="110" fill="#0F766E">town   price  area  station     dist  schools</text>
-    <text x="360" y="132">BISHAN 720k   100   Bishan MRT  0.4   6</text>
-    <text x="360" y="150">BISHAN 680k    95   Bishan MRT  0.4   6</text>
-    <text x="360" y="168">JURONG 420k   100   Lakeside    0.8   4</text>
-    <text x="360" y="186">JURONG 445k   104   Lakeside    0.8   4</text>
-    <text x="360" y="204" fill="#94A3B8">... 500,000 rows, enriched ...</text>
+    <text x="360" y="110" fill="#0F766E">town         price  stations  schools</text>
+    <text x="360" y="132">BISHAN       950k   5         13</text>
+    <text x="360" y="150">BISHAN       930k   5         13</text>
+    <text x="360" y="168">JURONG WEST  820k   5         17</text>
+    <text x="360" y="186">JURONG WEST  845k   5         17</text>
+    <text x="360" y="204" fill="#94A3B8">... 50,150 rows, town context attached ...</text>
   </g>
 </svg>
-<figcaption>Three tables with a shared key (<code>town</code>) combine into one enriched table. Each transaction now carries its spatial context.</figcaption>
+<figcaption>Three tables with a shared key (<code>town</code>) combine into one enriched table. Each transaction now carries its town's context. Note the key is <code>"BISHAN"</code> in HDB but <code>"Bishan"</code> in the other two tables — the worked example deals with that.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -213,18 +213,24 @@ from shared import MLFPDataLoader  # load one name from a package
   columns from both sides.
 </p>
 
-<pre><code class="language-python">hdb_enriched = hdb.join(
-    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
-    on="town",
-    how="left",
+<pre><code class="language-python"># one row per town, key in the same case as HDB ("BISHAN")
+mrt_by_town = (
+    mrt_stations.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("station_count"))
 )
+
+hdb_enriched = hdb.join(mrt_by_town, on="town", how="left")
+print(hdb_enriched.shape)   # (50150, 12): every HDB row kept
 </code></pre>
 
 <p>
   Four things to notice: the left-hand DataFrame (<code>hdb</code>) calls
   <code>.join</code>; the right-hand DataFrame is the first argument; the
   <code>on</code> parameter names the shared key; the <code>how</code>
-  parameter chooses which kind of join.
+  parameter chooses which kind of join. The two preparation steps on the
+  right-hand side — upper-casing the town and collapsing to one row per
+  town — exist because the raw tables disagree. The worked example shows
+  what goes wrong without them.
 </p>
 
 <h3>Left, inner, outer, right</h3>
@@ -294,23 +300,25 @@ from shared import MLFPDataLoader  # load one name from a package
 </p>
 
 <pre><code class="language-python"># Count unmatched rows
-n_null = hdb_enriched["distance_to_mrt_km"].null_count()
-print(f"HDB rows with no MRT data: {n_null:,}")
+n_null = hdb_enriched["station_count"].null_count()
+print(f"HDB rows with no MRT data: {n_null:,}")   # → 11,032
 
-# Fill with a sentinel (0, -1, "Unknown")
-hdb_enriched = hdb_enriched.with_columns(
-    pl.col("school_count").fill_null(0),
+# Fill with a sentinel (0, -1, "Unknown") — only if it is TRUE
+hdb_filled = hdb_enriched.with_columns(
+    pl.col("station_count").fill_null(0),
 )
 
 # Or drop the unmatched rows entirely
-hdb_matched = hdb_enriched.filter(pl.col("distance_to_mrt_km").is_not_null())
+hdb_matched = hdb_enriched.filter(pl.col("station_count").is_not_null())
 </code></pre>
 
 <p>
   Which choice is correct depends on the question. If you are counting
-  schools and "no match" really does mean "zero schools", fill with 0. If
-  "no match" means "data missing" and you cannot model missingness,
-  drop. Never silently let nulls propagate into calculations without
+  stations and "no match" really does mean "zero stations", fill with 0. If
+  "no match" means "data missing" — and here it does: Hougang, Sengkang and
+  Punggol have MRT stations in reality, they are simply absent from this
+  station table — then filling with 0 would be a lie, so drop or keep the
+  null. Never silently let nulls propagate into calculations without
   deciding.
 </p>
 
@@ -319,12 +327,15 @@ hdb_matched = hdb_enriched.filter(pl.col("distance_to_mrt_km").is_not_null())
   <p>
     A join is <em>one-to-one</em>, <em>one-to-many</em>, or
     <em>many-to-many</em> depending on how unique the key is in each table.
-    MRT stations has one row per town — the key is unique on the right side.
-    HDB has many rows per town. The join is therefore <em>many-to-one</em>,
-    and the output has the same row count as HDB. If both sides had duplicate
-    keys the output would be a Cartesian product of the matches, which can
-    blow up memory in a hurry. Always check the key uniqueness on both sides
-    before joining.
+    HDB has many rows per town. The raw MRT table also has many rows per
+    town — it is one row per <em>station</em>, up to 17 stations in a town.
+    Joined directly (after fixing the case), every HDB sale is repeated once
+    per station in its town: 50,150 rows become 186,997. Only after
+    collapsing MRT to one row per town (<code>mrt_by_town</code>) is the key
+    unique on the right, the join <em>many-to-one</em>, and the output row
+    count equal to HDB's. Always check key uniqueness on both sides before
+    joining — <code>df["town"].is_duplicated().any()</code> answers it in
+    one line.
   </p>
 </div>
 
@@ -344,20 +355,34 @@ hdb_matched = hdb_enriched.filter(pl.col("distance_to_mrt_km").is_not_null())
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: Enriching HDB with Spatial Features</h2>
+<h2>Worked Example: Enriching HDB with Town Context</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Combine the HDB resale data with MRT station proximity and school
-    counts, then produce a district summary that ranks towns by a composite
-    "desirability" score computed with an if/elif/else function.
+    Combine the HDB resale data with MRT station counts, a town position and
+    school counts, measure each town's distance to the CBD, then produce a
+    district summary that labels towns with a "desirability" tier computed
+    by an if/elif/else function.
+  </p>
+  <p>
+    A word on what the MRT table can and cannot tell you. It has one row per
+    <em>station</em> (name, town, line, latitude, longitude). Its
+    <code>distance_to_mrt_km</code> column is the gap between that station
+    and its neighbouring station — <em>not</em> the distance from anyone's
+    flat to the MRT. The HDB table has no flat coordinates at all, so a true
+    "distance from this flat to the nearest station" cannot be computed
+    here. What we <em>can</em> compute honestly is town-level context: how
+    many stations a town has, where its stations are centred, and how far
+    that centre is from the CBD.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
     <p>Load all three datasets.</p>
-    <pre><code class="language-python">import polars as pl
+    <pre><code class="language-python">import math
+
+import polars as pl
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
@@ -368,52 +393,78 @@ schools = loader.load("mlfp_assessment", "schools.parquet")
 print(f"HDB:      {hdb.height:,} rows")
 print(f"MRT:      {mrt_stations.height} rows")
 print(f"Schools:  {schools.height} rows")</code></pre>
+    <pre><code class="language-text">HDB:      50,150 rows
+MRT:      150 rows
+Schools:  242 rows</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2.</span>
     <p>Check the overlap of join keys <em>before</em> joining. This is the
-       step that catches 90% of join errors.</p>
+       step that catches most join errors.</p>
     <pre><code class="language-python">hdb_towns = set(hdb["town"].unique().to_list())
 mrt_towns = set(mrt_stations["town"].unique().to_list())
 
-matched = hdb_towns & mrt_towns       # intersection
-unmatched = hdb_towns - mrt_towns     # in HDB but not in MRT
-
 print(f"HDB towns:       {len(hdb_towns)}")
 print(f"MRT towns:       {len(mrt_towns)}")
-print(f"Matched:         {len(matched)}")
-print(f"Unmatched HDB:   {len(unmatched)}")
-if unmatched:
-    print(f"Missing from MRT: {sorted(unmatched)}")</code></pre>
+print(f"Matched (raw):   {len(hdb_towns & mrt_towns)}")
+
+mrt_upper = {t.upper() for t in mrt_towns}
+unmatched = hdb_towns - mrt_upper     # in HDB but not in MRT
+print(f"Matched (upper): {len(hdb_towns & mrt_upper)}")
+print(f"Missing from MRT: {sorted(unmatched)}")</code></pre>
+    <pre><code class="language-text">HDB towns:       27
+MRT towns:       32
+Matched (raw):   0
+Matched (upper): 21
+Missing from MRT: ['BOON LAY', 'CENTRAL AREA', 'HOUGANG', 'KALLANG/WHAMPOA', 'PUNGGOL', 'SENGKANG']</code></pre>
     <p>
-      Matched towns will gain MRT columns; unmatched towns will get nulls
-      under a left join (or disappear under an inner join). This check tells
-      you what to expect before you run the join.
+      Zero raw matches: HDB stores <code>"BISHAN"</code>, the MRT table
+      stores <code>"Bishan"</code>. A raw left join would still return
+      50,150 rows — so the row count looks healthy — while every MRT column
+      is null. After upper-casing, 21 of 27 towns match; six HDB towns have
+      no stations in this table and will get nulls under a left join (or
+      disappear under an inner join).
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Left-join MRT stations onto HDB. We use <code>.select(...)</code>
-       on the right side to limit which columns come across — otherwise every
-       column of the MRT table would be attached.</p>
-    <pre><code class="language-python">hdb_enriched = hdb.join(
-    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
-    on="town",
-    how="left",
+    <p>Collapse MRT to one row per town, then left-join it onto HDB. The
+       town's position is the centre (mean latitude and longitude) of its
+       stations.</p>
+    <pre><code class="language-python">mrt_by_town = (
+    mrt_stations
+    .with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town")
+    .agg(
+        pl.len().alias("station_count"),
+        pl.col("latitude").mean().alias("town_lat"),
+        pl.col("longitude").mean().alias("town_lng"),
+    )
 )
 
+hdb_enriched = hdb.join(mrt_by_town, on="town", how="left")
+
 print(f"Rows after MRT join: {hdb_enriched.height:,}")
-# Should equal hdb.height — left join preserves all left rows</code></pre>
+print(f"Rows with no MRT match: {hdb_enriched['station_count'].null_count():,}")</code></pre>
+    <pre><code class="language-text">Rows after MRT join: 50,150
+Rows with no MRT match: 11,032</code></pre>
+    <p>
+      Why collapse first? The station table has up to 17 rows per town.
+      Joining it directly (case fixed, not aggregated) repeats every sale
+      once per station in its town and produces 186,997 rows — the
+      many-to-many explosion from the Theory box above.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4.</span>
-    <p>Schools is one row per school, so we need to aggregate to
-       one-row-per-town before joining.</p>
+    <p>Schools is one row per school, so we aggregate to one row per town
+       (fixing the case the same way) before joining.</p>
     <pre><code class="language-python">school_counts = (
     schools
+    .with_columns(pl.col("town").str.to_uppercase())
     .group_by("town")
     .agg(pl.col("school_name").count().alias("school_count"))
 )
@@ -424,64 +475,134 @@ hdb_enriched = hdb_enriched.join(
     how="left",
 ).with_columns(
     pl.col("school_count").fill_null(0),  # no match → zero schools
-)</code></pre>
+)
+print(hdb_enriched.shape)   # (50150, 15)</code></pre>
     <p>
-      The <code>.fill_null(0)</code> step matters. Without it, towns with
-      zero schools in the source data would show up as <code>null</code>,
-      which is <em>different</em> from zero — any arithmetic with nulls
-      produces more nulls, so you would silently lose those towns in
-      downstream calculations.
+      The <code>.fill_null(0)</code> step matters: without it, unmatched
+      towns would carry <code>null</code>, and arithmetic with nulls
+      produces more nulls. But be honest about what the 0 means. Three HDB
+      towns get 0 — Boon Lay, Central Area and Kallang/Whampoa — and at
+      least one of them is a naming mismatch rather than a true zero: the
+      schools table spells that town <code>"Kallang"</code>. A fill value is
+      a claim about the world; check it before you make it.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5.</span>
-    <p>Write a helper function that classifies desirability using
-       <code>if / elif / else</code>.</p>
-    <pre><code class="language-python">def desirability_tier(distance_km: float, schools: int) -> str:
-    """Classify a town into four desirability tiers."""
-    if distance_km is None:
-        return "Unknown"
-    if distance_km < 1.0 and schools >= 5:
-        return "Prime (close MRT, many schools)"
-    elif distance_km < 1.0:
+    <p>Two helper functions: the great-circle (haversine) distance between
+       two latitude/longitude points, and a desirability classifier built
+       with <code>if / elif / else</code>.</p>
+    <pre><code class="language-python">def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two points, in kilometres."""
+    R = 6371.0  # Earth radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlon / 2) ** 2)
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def desirability_tier(stations, schools: int) -> str:
+    """Classify a town into a desirability tier."""
+    if stations is None:
+        return "Unknown"           # town not in the MRT table
+    if stations >= 4 and schools >= 10:
+        return "Prime"
+    elif stations >= 4:
         return "Good MRT access"
-    elif schools >= 5:
-        return "School-rich, farther MRT"
+    elif schools >= 10:
+        return "School-rich"
     else:
-        return "Further out"</code></pre>
+        return "Fewer amenities"</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
-    <p>Aggregate to town level and apply the function using
-       <code>map_elements</code>.</p>
-    <pre><code class="language-python">district_summary = (
+    <p>Aggregate to town level and apply both functions using
+       <code>map_elements</code>. Raffles Place (1.2830, 103.8513) stands
+       in for the CBD.</p>
+    <pre><code class="language-python">CBD_LAT, CBD_LNG = 1.2830, 103.8513
+
+district_summary = (
     hdb_enriched.group_by("town")
     .agg(
         pl.col("resale_price").median().alias("median_price"),
-        pl.col("distance_to_mrt_km").first().alias("distance_to_mrt_km"),
-        pl.col("school_count").first().alias("school_count"),
+        pl.col("station_count").first().alias("stations"),
+        pl.col("school_count").first().alias("schools"),
+        pl.col("town_lat").first(),
+        pl.col("town_lng").first(),
         pl.len().alias("transactions"),
     )
     .with_columns(
-        pl.struct(["distance_to_mrt_km", "school_count"])
+        pl.struct("town_lat", "town_lng")
         .map_elements(
-            lambda x: desirability_tier(x["distance_to_mrt_km"], x["school_count"]),
+            lambda r: None if r["town_lat"] is None
+            else haversine_km(r["town_lat"], r["town_lng"], CBD_LAT, CBD_LNG),
+            return_dtype=pl.Float64,
+        )
+        .alias("km_to_cbd"),
+        pl.struct("stations", "schools")
+        .map_elements(
+            lambda r: desirability_tier(r["stations"], r["schools"]),
             return_dtype=pl.String,
         )
         .alias("tier"),
     )
+    .drop("town_lat", "town_lng")
     .sort("median_price", descending=True)
 )
 
 print(district_summary.head(10))</code></pre>
+    <pre><code class="language-text">┌─────────────────┬──────────────┬──────────┬─────────┬──────────────┬───────────┬─────────────────┐
+│ town            ┆ median_price ┆ stations ┆ schools ┆ transactions ┆ km_to_cbd ┆ tier            │
+╞═════════════════╪══════════════╪══════════╪═════════╪══════════════╪═══════════╪═════════════════╡
+│ TOA PAYOH       ┆ 973887.0     ┆ 2        ┆ 5       ┆ 1463         ┆ 5.936218  ┆ Fewer amenities │
+│ KALLANG/WHAMPOA ┆ 964675.0     ┆ null     ┆ 0       ┆ 1514         ┆ null      ┆ Unknown         │
+│ BUKIT TIMAH     ┆ 961182.0     ┆ 10       ┆ 8       ┆ 485          ┆ 7.717159  ┆ Good MRT access │
+│ QUEENSTOWN      ┆ 960422.0     ┆ 7        ┆ 10      ┆ 1523         ┆ 6.044103  ┆ Prime           │
+│ CENTRAL AREA    ┆ 955722.5     ┆ null     ┆ 0       ┆ 504          ┆ null      ┆ Unknown         │
+│ MARINE PARADE   ┆ 955660.0     ┆ 4        ┆ 9       ┆ 979          ┆ 5.83572   ┆ Good MRT access │
+│ BISHAN          ┆ 945823.0     ┆ 5        ┆ 13      ┆ 1515         ┆ 7.882774  ┆ Prime           │
+│ JURONG EAST     ┆ 843266.0     ┆ 3        ┆ 3       ┆ 1439         ┆ 13.783023 ┆ Fewer amenities │
+│ SERANGOON       ┆ 838884.0     ┆ 4        ┆ 5       ┆ 1579         ┆ 7.429555  ┆ Good MRT access │
+│ HOUGANG         ┆ 837820.5     ┆ null     ┆ 15      ┆ 2564         ┆ null      ┆ Unknown         │
+└─────────────────┴──────────────┴──────────┴─────────┴──────────────┴───────────┴─────────────────┘</code></pre>
     <p>
-      <code>pl.struct([...])</code> bundles two columns into a single
-      argument for <code>map_elements</code>, which calls your Python
-      function once per row. This is the bridge between vectorised Polars
-      expressions and plain Python logic — use it sparingly, because it's
-      slower than a pure Polars expression.
+      <code>pl.struct(...)</code> bundles columns into a single argument for
+      <code>map_elements</code>, which calls your Python function once per
+      row. This is the bridge between vectorised Polars expressions and
+      plain Python logic — use it sparingly, because it is slower than a
+      pure Polars expression. (Here it runs once per <em>town</em>, 27
+      calls, so speed does not matter.)
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 7.</span>
+    <p>Ask the question we started with: which town feature tracks
+       price?</p>
+    <pre><code class="language-python">print(district_summary.select(
+    pl.corr("km_to_cbd", "median_price").alias("cbd_vs_price"),
+    pl.corr("stations", "median_price").alias("stations_vs_price"),
+    pl.corr("schools", "median_price").alias("schools_vs_price"),
+))</code></pre>
+    <pre><code class="language-text">┌──────────────┬───────────────────┬──────────────────┐
+│ cbd_vs_price ┆ stations_vs_price ┆ schools_vs_price │
+╞══════════════╪═══════════════════╪══════════════════╡
+│ -0.552295    ┆ 0.255961          ┆ -0.189148        │
+└──────────────┴───────────────────┴──────────────────┘</code></pre>
+    <p>
+      Distance to the CBD is the feature that tracks price: the farther a
+      town's stations sit from Raffles Place, the lower its median
+      (r ≈ −0.55). Station count is only weakly positive (r ≈ 0.26), and
+      school count is slightly negative. Two cautions. First, the CBD and
+      station correlations use only the 21 towns that matched the MRT table
+      — <code>pl.corr</code> skips rows where either value is null. Second,
+      the HDB prices are synthetic, so this tells you how the course data
+      was generated, not how the real market behaves. The technique —
+      join, aggregate, derive a distance, correlate — is what transfers.
     </p>
   </div>
 </div>
@@ -513,8 +634,9 @@ print(district_summary.head(10))</code></pre>
 
 <p>
   The <em>set difference</em> $H \setminus M = \{t : t \in H, t \notin M\}$
-  tells you which HDB towns have no matching MRT row — exactly the nulls
-  you saw in Step 2 of the worked example.
+  tells you which HDB towns have no matching MRT row — exactly the six
+  towns Step 2 of the worked example listed, and the 11,032 nulls Step 3
+  counted.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -523,10 +645,11 @@ print(district_summary.head(10))</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Inner join when left was meant</span>
   <p>
-    You start with 500,000 HDB rows. You inner-join with MRT. You end with
-    480,000 rows. Twenty thousand transactions silently disappeared — the
-    ones whose towns had no MRT match. Left join preserves them; inner
-    drops them. Always know which you wanted.
+    You start with 50,150 HDB rows. You inner-join with
+    <code>mrt_by_town</code>. You end with 39,118 rows. 11,032 transactions
+    — every sale in six towns — silently disappeared because those towns
+    have no MRT match. Left join preserves them; inner drops them. Always
+    know which you wanted.
   </p>
 </div>
 
@@ -535,8 +658,10 @@ print(district_summary.head(10))</code></pre>
   <p>
     If both sides have many rows per key, the join produces a Cartesian
     product of matches. 5 HDB rows × 5 MRT rows for the same town → 25
-    output rows instead of 5. Aggregate one side to one-row-per-key before
-    joining (as we did with school_counts).
+    output rows instead of 5. On the course data the unaggregated MRT join
+    turns 50,150 rows into 186,997. Aggregate one side to one-row-per-key
+    before joining (as we did with <code>mrt_by_town</code> and
+    <code>school_counts</code>).
   </p>
 </div>
 
@@ -554,8 +679,12 @@ print(district_summary.head(10))</code></pre>
   <span class="label">⚠ Mistake 4: Mismatched key types or cases</span>
   <p>
     Joining <code>"BISHAN"</code> with <code>"Bishan"</code> produces zero
-    matches — the strings are not equal. Before joining, normalise both
-    sides with <code>str.to_uppercase()</code> or <code>str.strip_chars()</code>.
+    matches — the strings are not equal. On the course data a raw HDB–MRT
+    left join still returns 50,150 rows, so the row count looks fine while
+    every new column is null. Before joining, normalise both sides with
+    <code>str.to_uppercase()</code> or <code>str.strip_chars()</code>, then
+    check the overlap. Case is not the only trap: the schools table says
+    <code>"Kallang"</code> where HDB says <code>"KALLANG/WHAMPOA"</code>.
   </p>
 </div>
 
@@ -600,6 +729,37 @@ print(district_summary.head(10))</code></pre>
   </p>
 </div>
 
+<div class="try-it">
+  <h3>🎯 Exercise E — Outer join</h3>
+  <p>
+    Build a town-level price table
+    (<code>hdb.group_by("town").agg(pl.col("resale_price").median().alias("median_price"))</code>)
+    and full-outer-join it to <code>mrt_by_town</code> with
+    <code>how="full", coalesce=True</code>. How many towns appear? Which
+    towns have a station count but no price, and which have a price but no
+    station count?
+  </p>
+</div>
+
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: <code>classify_size(95)</code> returns <code>"medium"</code>.
+    B: the inner join keeps 39,118 rows; the left join keeps all 50,150.
+    C: among the ten priciest towns, Bishan (13 schools), Queenstown (10)
+    and Hougang (15) have ten or more schools — but across all 27 towns
+    school count and median price are slightly <em>negatively</em>
+    correlated (r ≈ −0.19), so schools alone do not explain price here.
+    D: without upper-casing, the difference is all 27 HDB towns; after
+    upper-casing, it is BOON LAY, CENTRAL AREA, HOUGANG, KALLANG/WHAMPOA,
+    PUNGGOL and SENGKANG. E: 38 towns. Eleven MRT-only towns (BUONA VISTA,
+    CHANGI, DOWNTOWN, KALLANG, MUSEUM, NOVENA, ORCHARD, OUTRAM, ROCHOR,
+    TANGLIN, TUAS) have no price; the six towns from D have no station
+    count. An outer join is how you see both sides of a key mismatch at
+    once.
+  </p>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
@@ -619,22 +779,24 @@ print(district_summary.head(10))</code></pre>
   Today you learned the vocabulary of multi-table work: <code>import</code>
   to load libraries, <code>if/elif/else</code> for code-level branching,
   and <code>join</code> to combine DataFrames by key. You built a concrete
-  enrichment pipeline: start with HDB transactions, attach MRT proximity,
-  attach school counts, produce a ranked district summary with a
-  Python-function classifier.
+  enrichment pipeline: start with HDB transactions, attach MRT station
+  counts and a town position, attach school counts, measure distance to
+  the CBD, and produce a ranked district summary with a Python-function
+  classifier.
 </p>
 <p>
   The most important habit is the <em>key check</em> before every join —
   count the unique keys on each side, compute the intersection, decide what
   to do with the difference. A join without that check is how analysts
-  silently lose twenty thousand rows and ship a broken report.
+  silently lose eleven thousand rows — or join on keys that never match —
+  and ship a broken report.
 </p>
 <p>
   In Lesson 1.5 we pivot from space to time. The joined table you built
   today becomes the input for <em>window functions</em> — rolling means,
   YoY changes, trend detection — which compute per-row values that depend
-  on nearby rows. Polars has the fastest window implementation in any open
-  DataFrame library, and you will see why.
+  on nearby rows — and you will see why gaps in the calendar make them
+  harder than they look.
 </p>
 </div>
 

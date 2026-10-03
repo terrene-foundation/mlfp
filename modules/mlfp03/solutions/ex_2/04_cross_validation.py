@@ -6,11 +6,12 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Run nested CV and measure optimism bias vs standard CV
-#   - Apply TimeSeriesSplit for walk-forward validation on temporal data
-#   - Use GroupKFold so grouped observations stay together
+#   - Run nested CV and measure the optimism of "tune and report on the
+#     same folds"
+#   - Use stratified k-fold to keep a rare outcome's rate equal across folds
+#   - Apply TimeSeriesSplit for walk-forward validation on time-ordered data
+#   - Use GroupKFold so repeat patients never sit on both sides of a split
 #   - Pick the RIGHT CV strategy for a given deployment scenario
-#   - Quantify the hidden bias in "leaky" CV on Singapore payments data
 #
 # PREREQUISITES:
 #   - 02_ridge_regression.py and 03_lasso_elasticnet.py
@@ -20,20 +21,23 @@
 #
 # TASKS (5-phase R10):
 #   1. Theory — why "one CV fits all" is wrong
-#   2. Build — three CV splitters and a scoring loop
-#   3. Train — nested CV (unbiased α selection)
-#   4. Visualise — CV-strategy comparison table + TimeSeriesSplit / Group
-#   5. Apply — GrabPay transaction fraud time-series validation
+#   2. Build — the splitters and the datasets whose structure they match
+#   3. Train — nested CV (honest estimate after α selection)
+#   4. Visualise — stratified, walk-forward and grouped CV on real structure
+#   5. Apply — choosing the CV for a payments-fraud scorer
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
-from sklearn.linear_model import Ridge, RidgeCV
+import plotly.graph_objects as go
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import r2_score
 from sklearn.model_selection import (
+    GridSearchCV,
     GroupKFold,
     KFold,
+    StratifiedKFold,
     TimeSeriesSplit,
     cross_val_score,
 )
@@ -42,7 +46,10 @@ from shared.mlfp03.ex_2 import (
     ALPHAS,
     SEED,
     load_credit_data,
+    load_credit_default_sample,
+    load_icu_admissions_for_cv,
     print_header,
+    save_html_plot,
 )
 
 # ════════════════════════════════════════════════════════════════════════
@@ -53,59 +60,82 @@ from shared.mlfp03.ex_2 import (
 #   (b) Observations are IDENTICALLY distributed — training-time
 #       distribution equals prediction-time distribution
 #   (c) Hyperparameter selection and performance estimation can share
-#       the same splits (they can't — that's leakage)
+#       the same splits (they can't — the chosen setting was picked
+#       BECAUSE it looked good on those folds)
 #
 # Real datasets break these assumptions all the time:
-#   - FINANCIAL DATA is temporal: shuffling lets the model train on
-#     future dates to predict past dates (violates (b)).
-#   - MEDICAL DATA has repeated measures per patient: the same patient
-#     can end up in both folds (violates (a)).
-#   - HYPERPARAMETER TUNING on the same splits used for evaluation
-#     gives a biased, optimistic estimate (violates (c)).
+#   - FINANCIAL / CLINICAL DATA is temporal: shuffling lets the model
+#     train on later records to predict earlier ones (violates (b)).
+#   - MEDICAL DATA has repeated admissions per patient: the same patient
+#     can end up in both train and test (violates (a)).
+#   - RARE OUTCOMES (defaults, fraud) make a random fold's positive rate
+#     swing, so fold scores are noisier than they need to be.
+#   - HYPERPARAMETER TUNING on the evaluation folds gives an optimistic
+#     estimate (violates (c)).
 #
 # THE FIX — pick the CV strategy that MATCHES the deployment scenario:
-#   i.i.d. data           → standard k-fold
-#   temporal data         → TimeSeriesSplit (walk-forward)
-#   grouped data          → GroupKFold
-#   hyperparameter tuning → nested CV (outer for eval, inner for tune)
+#   i.i.d. data             → k-fold
+#   rare binary outcome     → stratified k-fold
+#   temporal data           → TimeSeriesSplit (walk-forward)
+#   grouped data            → GroupKFold
+#   hyperparameter tuning   → nested CV (outer for eval, inner for tune)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 2 — BUILD the CV splitters + scoring loop
+# TASK 2 — BUILD: the datasets and their structure
 # ════════════════════════════════════════════════════════════════════════
+# Each strategy is demonstrated on data that ACTUALLY has the structure
+# it is designed for:
+#   - credit savings regression (300 rows)   → nested CV
+#   - credit default, 600 applicants (~13%)  → stratified k-fold
+#   - ICU admissions, time-ordered, with
+#     repeat patients                        → TimeSeriesSplit, GroupKFold
 
-print_header("Cross-Validation Strategies on Singapore Credit Data")
+print_header("Cross-Validation Strategies")
 X_train, y_train, X_test, y_test, feature_names = load_credit_data()
-print(f"Train: {X_train.shape}  Features: {len(feature_names)}")
+print(f"Credit regression train: {X_train.shape}")
 
-rng = np.random.default_rng(SEED)
+X_def, y_def, _ = load_credit_default_sample(n=600)
+print(f"Credit default sample:   {X_def.shape}, default rate {y_def.mean():.1%}")
+
+icu = load_icu_admissions_for_cv()
+n_patients = len(np.unique(icu["groups"]))
+print(
+    f"ICU admissions:          {icu['X'].shape}, {n_patients} distinct patients, "
+    f"{icu['admit_time'].min():%Y-%m-%d} → {icu['admit_time'].max():%Y-%m-%d}"
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN with nested CV (unbiased α selection)
+# TASK 3 — TRAIN with nested CV (honest estimate after α selection)
 # ════════════════════════════════════════════════════════════════════════
-# STANDARD CV uses the SAME folds to pick α AND report performance.
-# That double use is a form of leakage: α was chosen to look good on
-# those folds, so the score on those folds is biased upward.
+# STANDARD CV uses the SAME folds to pick α AND report performance: the
+# best mean CV score among the candidates. That number is optimistic —
+# among several candidates, the winner is partly the one that got lucky
+# on those particular folds.
 #
 # NESTED CV fixes this:
 #   OUTER 5-fold: held out for performance reporting (never touched
 #                 during α selection).
-#   INNER 3-fold: used inside each outer fold to pick α from the
-#                 candidates ALPHAS.
+#   INNER 3-fold: used inside each outer fold to pick α from ALPHAS.
 #
-# The outer mean is an unbiased estimate of the selected model's
-# generalisation performance.
+# The outer mean estimates how well the WHOLE procedure ("tune α by CV,
+# then fit") generalises.
 
-print_header("Nested Cross-Validation")
+print_header("Nested Cross-Validation (Ridge on credit savings)")
 
-# Biased standard CV baseline
-ridge_cv = RidgeCV(alphas=ALPHAS, cv=5)
-ridge_cv.fit(X_train, y_train)
-biased_score = float(ridge_cv.score(X_test, y_test))
+# Standard (optimistic) CV: best mean CV score across the α grid
+grid = GridSearchCV(
+    Ridge(),
+    {"alpha": ALPHAS},
+    cv=KFold(n_splits=5, shuffle=True, random_state=SEED),
+    scoring="r2",
+)
+grid.fit(X_train, y_train)
+standard_score = float(grid.best_score_)
 print(
-    f"Standard (biased) CV:  R² = {biased_score:.4f}, "
-    f"selected α = {ridge_cv.alpha_:.4f}"
+    f"Standard CV (tune + report on same folds): R² = {standard_score:.4f}, "
+    f"selected α = {grid.best_params_['alpha']}"
 )
 
 outer_cv = KFold(n_splits=5, shuffle=True, random_state=SEED)
@@ -143,143 +173,182 @@ for fold_idx, (tr_idx, te_idx) in enumerate(outer_cv.split(X_train)):
 
 nested_mean = float(np.mean(nested_scores))
 nested_std = float(np.std(nested_scores))
-print(f"\nNested CV:  R² = {nested_mean:.4f} ± {nested_std:.4f}")
-print(f"Standard CV: R² = {biased_score:.4f}")
-print(f"Optimism bias (standard - nested): {biased_score - nested_mean:+.4f}")
+optimism = standard_score - nested_mean
+print(f"\nNested CV:   R² = {nested_mean:.4f} ± {nested_std:.4f}")
+print(f"Standard CV: R² = {standard_score:.4f}")
+print(f"Optimism (standard - nested): {optimism:+.4f}")
 
 
 # ── Checkpoint 1 ───────────────────────────────────────────────────────
 assert len(nested_scores) == 5, "Should have 5 outer fold scores"
 assert all(isinstance(s, float) for s in nested_scores), "Scores must be floats"
-print("\n[ok] Checkpoint 1 passed — nested CV unbiased estimate produced")
-# INTERPRETATION: The gap between standard and nested CV is the
-# optimism from using the same data for tuning and evaluation. If it's
-# large (>0.03 R²), your reported performance is a lie.
-
-
-# ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE time-series and group CV
-# ════════════════════════════════════════════════════════════════════════
-# Run three strategies on the SAME ridge model and compare the means.
-# The differences tell you where the leakage is.
-
-print_header("CV Strategy Comparison: k-fold vs Time-series vs Group")
-
-# Standard 5-fold
-kfold_scores = cross_val_score(Ridge(alpha=1.0), X_train, y_train, cv=5, scoring="r2")
-
-# Time-series walk-forward
-tscv = TimeSeriesSplit(n_splits=5)
-ts_scores = cross_val_score(Ridge(alpha=1.0), X_train, y_train, cv=tscv, scoring="r2")
-
-print("\nTime-series walk-forward splits:")
-for fold, (tr_idx, te_idx) in enumerate(tscv.split(X_train)):
-    print(
-        f"  Fold {fold + 1}: train=[0:{tr_idx[-1] + 1}] "
-        f"({len(tr_idx)} samples), test=[{te_idx[0]}:{te_idx[-1] + 1}] "
-        f"({len(te_idx)} samples)"
+print("\n[ok] Checkpoint 1 passed — nested CV estimate produced")
+print(
+    f"  The optimism here is {optimism:+.4f} R², against a fold-to-fold "
+    f"spread of ±{nested_std:.4f}. "
+    + (
+        "It is larger than one standard deviation — report the nested number."
+        if optimism > nested_std
+        else "It is within the fold noise on this small sample, but the "
+        "nested number is still the one to report."
     )
-
-# GroupKFold — simulate ~5 observations per "customer"
-n = X_train.shape[0]
-groups = np.repeat(np.arange(n // 5 + 1), 5)[:n]
-rng.shuffle(groups)
-group_cv = GroupKFold(n_splits=5)
-group_scores = cross_val_score(
-    Ridge(alpha=1.0),
-    X_train,
-    y_train,
-    cv=group_cv,
-    groups=groups,
-    scoring="r2",
 )
 
-# Verify group integrity
-for fold, (tr_idx, te_idx) in enumerate(group_cv.split(X_train, groups=groups)):
-    train_g = set(groups[tr_idx])
-    test_g = set(groups[te_idx])
-    overlap = train_g & test_g
-    assert not overlap, f"Fold {fold + 1}: groups overlap {overlap}"
-print("  [ok] GroupKFold: no group appears in both train and test")
 
+# ════════════════════════════════════════════════════════════════════════
+# TASK 4 — VISUALISE stratified, walk-forward and grouped CV
+# ════════════════════════════════════════════════════════════════════════
+
+# ── 4a. Stratified k-fold on a rare outcome ─────────────────────────────
+print_header("Stratified vs plain k-fold — credit default (rare outcome)")
+
+plain_cv = KFold(n_splits=10, shuffle=True, random_state=SEED)
+strat_cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=SEED)
+plain_rates = [float(y_def[te].mean()) for _, te in plain_cv.split(X_def, y_def)]
+strat_rates = [float(y_def[te].mean()) for _, te in strat_cv.split(X_def, y_def)]
+logit = LogisticRegression(max_iter=2000)
+plain_auc = cross_val_score(logit, X_def, y_def, cv=plain_cv, scoring="roc_auc")
+strat_auc = cross_val_score(logit, X_def, y_def, cv=strat_cv, scoring="roc_auc")
 print(
     f"""
-Strategy                 R²            When to use
------------------------  ------------  --------------------------------
-Standard k-fold          {kfold_scores.mean():+.4f} ± {kfold_scores.std():.4f}  i.i.d. data, no groups
-Nested CV                {nested_mean:+.4f} ± {nested_std:.4f}  Hyperparameter + report
-TimeSeriesSplit          {ts_scores.mean():+.4f} ± {ts_scores.std():.4f}  Temporal data
-GroupKFold               {group_scores.mean():+.4f} ± {group_scores.std():.4f}  Grouped observations
+                     default rate per fold          AUC (mean ± sd)
+  KFold              {min(plain_rates):.3f} – {max(plain_rates):.3f}                 {plain_auc.mean():.3f} ± {plain_auc.std():.3f}
+  StratifiedKFold    {min(strat_rates):.3f} – {max(strat_rates):.3f}                 {strat_auc.mean():.3f} ± {strat_auc.std():.3f}
 """
 )
 
+fig_strat = go.Figure()
+fig_strat.add_trace(go.Bar(x=list(range(1, 11)), y=plain_rates, name="KFold"))
+fig_strat.add_trace(go.Bar(x=list(range(1, 11)), y=strat_rates, name="StratifiedKFold"))
+fig_strat.add_hline(y=float(y_def.mean()), line_dash="dot", annotation_text="overall rate")
+fig_strat.update_layout(
+    title="Default rate in each test fold",
+    xaxis_title="Fold",
+    yaxis_title="Default rate",
+    barmode="group",
+)
+print(f"Saved: {save_html_plot(fig_strat, 'ex2_04_stratified_folds.html')}")
+
+# ── 4b. Walk-forward (TimeSeriesSplit) on time-ordered ICU admissions ──
+print_header("TimeSeriesSplit + GroupKFold — ICU length of stay")
+X_icu, y_icu, groups = icu["X"], icu["y"], icu["groups"]
+admit_time = icu["admit_time"]
+
+tscv = TimeSeriesSplit(n_splits=5)
+print("\nWalk-forward splits (rows are sorted by admit_time):")
+for fold, (tr_idx, te_idx) in enumerate(tscv.split(X_icu)):
+    assert admit_time[int(tr_idx[-1])] <= admit_time[int(te_idx[0])]
+    print(
+        f"  Fold {fold + 1}: train {admit_time[0]:%Y-%m} → "
+        f"{admit_time[int(tr_idx[-1])]:%Y-%m} ({len(tr_idx)} adm.), "
+        f"test {admit_time[int(te_idx[0])]:%Y-%m} → "
+        f"{admit_time[int(te_idx[-1])]:%Y-%m} ({len(te_idx)} adm.)"
+    )
+
+# ── 4c. GroupKFold: same patient never in both train and test ──────────
+shuffled_kfold = KFold(n_splits=5, shuffle=True, random_state=SEED)
+group_cv = GroupKFold(n_splits=5)
+leaky_patients = []
+for (tr_k, te_k), (tr_g, te_g) in zip(
+    shuffled_kfold.split(X_icu), group_cv.split(X_icu, groups=groups)
+):
+    leaky_patients.append(len(set(groups[tr_k]) & set(groups[te_k])))
+    assert not (set(groups[tr_g]) & set(groups[te_g])), "GroupKFold leaked a patient"
+print(
+    f"\nShuffled KFold: on average {np.mean(leaky_patients):.0f} patients per fold "
+    "appear in BOTH train and test."
+)
+print("GroupKFold:     0 patients shared between train and test (verified).")
+
+model = Ridge(alpha=1.0)
+icu_scores = {
+    "KFold (shuffled)": cross_val_score(model, X_icu, y_icu, cv=shuffled_kfold, scoring="r2"),
+    "TimeSeriesSplit": cross_val_score(model, X_icu, y_icu, cv=tscv, scoring="r2"),
+    "GroupKFold": cross_val_score(
+        model, X_icu, y_icu, cv=group_cv, groups=groups, scoring="r2"
+    ),
+}
+print(f"\n{'Strategy':<18} {'R² (mean ± sd)':>18}")
+print("-" * 38)
+for name, sc in icu_scores.items():
+    print(f"{name:<18} {sc.mean():>+9.4f} ± {sc.std():.4f}")
+
+fig_cv = go.Figure()
+for name, sc in icu_scores.items():
+    fig_cv.add_trace(go.Box(y=sc, name=name, boxpoints="all"))
+fig_cv.update_layout(
+    title="ICU length-of-stay R² per fold under three CV strategies",
+    yaxis_title="R² on the held-out fold",
+)
+print(f"Saved: {save_html_plot(fig_cv, 'ex2_04_cv_strategies.html')}")
+
 
 # ── Checkpoint 2 ───────────────────────────────────────────────────────
-assert (
-    len(ts_scores) == 5 and len(group_scores) == 5
-), "Each CV strategy should produce 5 scores"
-print("[ok] Checkpoint 2 passed — all CV strategies produced 5 scores")
-# INTERPRETATION: If TimeSeriesSplit gives a substantially LOWER R²
-# than standard k-fold, your data has temporal leakage — the standard
-# score is an illusion. Same for GroupKFold with grouped data.
+assert all(len(sc) == 5 for sc in icu_scores.values()), "Each strategy: 5 scores"
+assert max(strat_rates) - min(strat_rates) <= max(plain_rates) - min(plain_rates), (
+    "Stratified folds should keep the default rate at least as even as KFold"
+)
+assert np.mean(leaky_patients) > 0, "Shuffled KFold should split some patients"
+print("[ok] Checkpoint 2 passed — strategies match the data structure")
+
+best_icu = max(sc.mean() for sc in icu_scores.values())
+print(
+    "  "
+    + (
+        f"Every strategy gives R² ≤ {best_icu:.3f}: in this dataset, length of "
+        "stay is essentially unpredictable from admission-time demographics, "
+        "so the strategies cannot disagree much. That is itself a finding — "
+        "and the honest walk-forward / grouped estimates are the ones you "
+        "would report."
+        if best_icu < 0.05
+        else "Compare the means: a k-fold score clearly above the walk-forward "
+        "or grouped score means shuffled CV was leaking time or patients."
+    )
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: GrabPay Transaction Fraud Time-Series Validation
+# TASK 5 — APPLY: choosing the CV for a payments-fraud scorer
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: GrabPay processes ~60M transactions/month across Southeast
-# Asia (~25M in Singapore). The fraud team builds a real-time risk
-# scorer that sees each transaction once and must respond in <300ms.
-# The data has STRONG temporal structure:
+# SCENARIO (illustrative): a Southeast Asian digital-wallet operator
+# builds a real-time fraud scorer that sees each transaction once. The
+# data has STRONG structure:
 #   - Fraud patterns shift every few weeks (new attack vectors)
 #   - Merchant mix changes with marketing campaigns
-#   - Seasonal effects (11.11, BFCM, Chinese New Year) create regime
-#     shifts that a shuffled k-fold completely misses
+#   - Seasonal peaks (11.11, year-end sales, Chinese New Year) create
+#     regime shifts that a shuffled k-fold mixes together
+#   - Large merchants and repeat users contribute thousands of rows each
 #
-# WHY TIME-SERIES CV:
-#   - Walk-forward validation mirrors deployment: we train on "past",
-#     predict on "future", and never let the future leak backwards.
-#   - TimeSeriesSplit also reveals concept drift — if walk-forward R²
-#     degrades monotonically across folds, the model is ageing and
-#     needs more-frequent refreshes.
+# WHY TIME-SERIES CV: walk-forward validation mirrors deployment — train
+# on the past, score the future. If walk-forward performance degrades
+# across successive folds, the model is ageing and needs refreshing.
 #
-# WHY GROUPKFOLD TOO:
-#   - Merchants with thousands of transactions dominate the volume. If
-#     a single merchant lands in both train and test, the model is
-#     effectively memorising the merchant_id. Group by merchant_id
-#     (≈120K groups) to force generalisation to NEW merchants.
-#   - Same for user_id: without GroupKFold, models over-fit to
-#     repeat-user spending patterns and under-detect first-purchase
-#     fraud (the highest-risk cohort).
+# WHY GROUPKFOLD TOO: if one merchant (or user) sits in both train and
+# test, the model can memorise that merchant and look better than it
+# will on NEW merchants. Grouping by merchant forces the estimate to
+# reflect generalisation to unseen merchants.
 #
-# BUSINESS IMPACT (GrabPay Singapore, 2026 run-rate):
-#   - Transaction volume: ~S$12B/year in Singapore
-#   - Fraud loss baseline (k-fold evaluated model): ~18 bp = S$21.6M/yr
-#   - Walk-forward + GroupKFold evaluated model: ~14 bp = S$16.8M/yr
-#     (lower because the chosen model ACTUALLY generalises to new days
-#     and new merchants, instead of looking good on shuffled folds)
-#   - Annual loss avoided by correct CV strategy: S$4.8M
-#   - Model-revalidation cost avoided: walk-forward catches drift 4-6
-#     weeks earlier than shuffled k-fold, avoiding ~3 emergency model
-#     refreshes per year at ~S$180K each = S$540K
-#   - Total annual impact of switching CV strategy: ~S$5.3M
+# WHY STRATIFIED + NESTED: fraud is rare, so fold-level fraud rates must
+# be held steady; and every threshold or hyperparameter tuned on the
+# evaluation folds inflates the reported recall — nested CV removes that.
 #
-# LEAKAGE FAILURE MODE: A previous GrabPay model used shuffled k-fold
-# and reported 93% fraud recall. When deployed, true recall was 71%.
-# The gap was entirely due to temporal leakage — the training folds
-# contained future fraud signatures that the test folds also saw.
+# THE RISK OF GETTING IT WRONG (illustrative): a team that validates with
+# shuffled k-fold can report a recall that the live system never
+# reaches, because the validation folds contained the same time period,
+# merchants and users as the training folds. The gap shows up only after
+# deployment, as fraud losses.
 
-print_header("GrabPay Fraud Scoring — Walk-Forward Matters")
+print_header("Payments Fraud — matching CV to deployment")
 print(
     """
-CV strategy                | Reported recall | True deployed recall | S$ loss
----------------------------|-----------------|----------------------|---------
-Shuffled k-fold            |       93%       |         71%          |  S$21.6M
-TimeSeriesSplit + GroupKFold|      78%       |         77%          |  S$16.8M
-
-Lesson: a model that LOOKS worse in shuffled CV but matches deployment
-reality in walk-forward CV is the one that actually saves money.
-Match your CV to your deployment geometry.
+Data property                     | CV strategy
+----------------------------------|----------------------------------
+Scores tomorrow's transactions    | TimeSeriesSplit (walk-forward)
+Many rows per merchant / user     | GroupKFold (group = merchant/user)
+Fraud is rare                     | Stratified folds (or stratified
+                                  |   time blocks)
+Threshold / hyperparameters tuned | Nested CV, or a final untouched
+                                  |   time-ordered holdout
 """
 )
 
@@ -294,9 +363,10 @@ print(
 ======================================================================
 
   [x] Nested CV: outer for honest eval, inner for α selection
+  [x] Measuring optimism as (best standard-CV score - nested score)
+  [x] Stratified k-fold: equal outcome rates in every fold
   [x] TimeSeriesSplit: walk-forward validation, no future leakage
-  [x] GroupKFold: grouped observations stay together
-  [x] Measuring optimism bias as (standard - nested) CV difference
+  [x] GroupKFold: repeat patients stay on one side of the split
   [x] Picking a CV strategy based on DEPLOYMENT, not data shape
 
   KEY INSIGHT: The CV strategy is a MODELLING DECISION, not a

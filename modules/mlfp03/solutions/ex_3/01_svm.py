@@ -8,20 +8,22 @@
 # WHAT YOU'LL LEARN:
 #   - Understand margin maximisation and the soft-margin C parameter
 #   - Train a linear SVM and an RBF-kernel SVM with sklearn
-#   - Sweep C across orders of magnitude and pick the best via CV
+#   - Sweep C across orders of magnitude and pick the best via CV AUC
+#   - Judge a classifier against the majority-class baseline, not "random"
 #   - Visualise the RBF decision boundary in 2D PCA space
-#   - Translate SVM accuracy into Singapore retail churn dollars saved
+#   - Translate SVM output into e-commerce churn dollars saved
 #
-# PREREQUISITES: MLFP03 Exercise 2 (bias-variance, regularisation)
+# PREREQUISITES: MLFP03 Exercise 2 (bias-variance, regularisation,
+#   cross-validation)
 #
 # ESTIMATED TIME: ~30 min
 #
 # TASKS:
 #   1. Theory — margin maximisation and the kernel trick
-#   2. Build — linear + RBF SVM, C parameter sweep
-#   3. Train — final RBF SVM on the full training set
-#   4. Visualise — 2D decision boundary, support vector overlay
-#   5. Apply — Singapore e-commerce churn cost-benefit
+#   2. Build — linear + RBF SVM, C parameter sweep scored by CV AUC
+#   3. Train — final RBF SVM on the full training set, vs the baseline
+#   4. Visualise — C-sweep curves + 2D decision boundary
+#   5. Apply — e-commerce churn cost-benefit
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -33,14 +35,15 @@ from sklearn.svm import SVC
 from shared.mlfp03.ex_3 import (
     build_train_test_split,
     churn_saved_dollars,
-    cv_accuracy_f1,
+    cv_scores,
     decision_boundary_mesh,
     fit_and_evaluate,
-    get_visualizer,
     OUTPUT_DIR,
     print_classification_report,
     project_2d,
     RANDOM_SEED,
+    save_decision_boundaries,
+    save_sweep_plot,
 )
 
 load_dotenv()
@@ -66,8 +69,15 @@ load_dotenv()
 #     Linear : K(x, x') = x . x'
 #     RBF    : K(x, x') = exp(-γ ||x - x'||²)
 #
-# RBF is the default choice for tabular data because it can bend the
-# decision surface around arbitrary clusters.
+# RBF can bend the decision surface around arbitrary clusters — but it
+# only beats a linear kernel when the true boundary is actually curved.
+# The sweep below lets the data decide.
+#
+# BASELINES, NOT "RANDOM": about 74% of customers in this dataset churned.
+# A "model" that answers "churned" for everyone is already ~74% accurate
+# and has a churn F1 of ~0.85. So we (a) choose C by ROC AUC, which
+# measures ranking quality and cannot be gamed by predicting one class,
+# and (b) compare accuracy against the majority-class baseline.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -86,34 +96,54 @@ feature_names = data["feature_names"]
 
 print(f"\nTrain: {X_train.shape}, Test: {X_test.shape}")
 print(f"Churn rate (train): {data['churn_rate']:.2%}")
+print(
+    f"Majority-class baseline on test: accuracy={data['majority_accuracy']:.4f}, "
+    f"churn F1 of 'everyone churns'={data['majority_f1']:.4f}"
+)
 
 C_VALUES = [0.01, 0.1, 1.0, 10.0, 100.0]
 
 
 def sweep_c(kernel: str) -> dict[float, dict[str, float]]:
-    """Sweep C for a given kernel and return {C: {accuracy, f1}}."""
+    """Sweep C for a given kernel and return {C: cv_scores(...)}."""
     results: dict[float, dict[str, float]] = {}
-    print(f"\n--- {kernel.upper()} SVM: C parameter sweep ---")
-    print(f"{'C':>10} {'CV Accuracy':>14} {'CV F1':>10}")
-    print("-" * 38)
+    print(f"\n--- {kernel.upper()} SVM: C parameter sweep (5-fold CV) ---")
+    print(f"{'C':>10} {'CV Accuracy':>14} {'CV F1':>10} {'CV AUC':>10}")
+    print("-" * 48)
     for c_val in C_VALUES:
-        acc, f1 = cv_accuracy_f1(
+        scores = cv_scores(
             SVC(kernel=kernel, C=c_val, random_state=RANDOM_SEED),
             X_train,
             y_train,
             cv,
         )
-        results[c_val] = {"accuracy": acc, "f1": f1}
-        print(f"{c_val:>10.2f} {acc:>14.4f} {f1:>10.4f}")
+        results[c_val] = scores
+        print(
+            f"{c_val:>10.2f} {scores['accuracy']:>14.4f} "
+            f"{scores['f1']:>10.4f} {scores['auc_roc']:>10.4f}"
+        )
     return results
 
 
 linear_results = sweep_c("linear")
 rbf_results = sweep_c("rbf")
 
-best_c_linear = max(linear_results, key=lambda c: linear_results[c]["f1"])
-best_c_rbf = max(rbf_results, key=lambda c: rbf_results[c]["f1"])
-print(f"\nBest C — linear: {best_c_linear}, RBF: {best_c_rbf}")
+best_c_linear = max(linear_results, key=lambda c: linear_results[c]["auc_roc"])
+best_c_rbf = max(rbf_results, key=lambda c: rbf_results[c]["auc_roc"])
+print(
+    f"\nBest C by CV AUC — linear: {best_c_linear} "
+    f"(AUC {linear_results[best_c_linear]['auc_roc']:.4f}), "
+    f"RBF: {best_c_rbf} (AUC {rbf_results[best_c_rbf]['auc_roc']:.4f})"
+)
+kernel_gap = rbf_results[best_c_rbf]["auc_roc"] - linear_results[best_c_linear]["auc_roc"]
+print(
+    f"RBF minus linear CV AUC: {kernel_gap:+.4f} — "
+    + (
+        "the curved boundary earns its extra cost here."
+        if kernel_gap > 0.01
+        else "no meaningful gain from bending the boundary on this data."
+    )
+)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -134,6 +164,10 @@ print(
     f"accuracy={svm_result['accuracy']:.4f} | "
     f"F1={svm_result['f1']:.4f} | AUC={svm_result['auc_roc']:.4f}"
 )
+print(
+    f"Accuracy lift over the majority baseline: "
+    f"{svm_result['accuracy'] - data['majority_accuracy']:+.4f}"
+)
 print_classification_report(y_test, svm_result["pred"])
 
 svm_model = svm_result["model"]
@@ -141,18 +175,34 @@ n_sv = int(svm_model.support_vectors_.shape[0])
 sv_pct = n_sv / len(y_train)
 print(
     f"Support vectors: {n_sv} ({sv_pct:.1%} of training). "
-    f"A healthy SVM uses 10-30% of training points."
+    f"A large share means the classes overlap heavily — many points sit "
+    f"inside or on the wrong side of the margin."
 )
 
 # ── Checkpoint 1 ────────────────────────────────────────────────────────
-assert svm_result["accuracy"] > 0.5, "SVM must beat random"
+assert svm_result["auc_roc"] > 0.6, "SVM must rank churners above retained customers"
 assert best_c_rbf in C_VALUES, "Best C must come from the sweep"
 print("\n[ok] Checkpoint 1 passed — SVM trained and evaluated\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 4 — VISUALISE: 2D decision boundary + C-sweep curve
+# TASK 4 — VISUALISE: C-sweep curves + 2D decision boundary
 # ════════════════════════════════════════════════════════════════════════
+
+sweep_out = save_sweep_plot(
+    C_VALUES,
+    {
+        "linear CV AUC": [linear_results[c]["auc_roc"] for c in C_VALUES],
+        "RBF CV AUC": [rbf_results[c]["auc_roc"] for c in C_VALUES],
+        "linear CV accuracy": [linear_results[c]["accuracy"] for c in C_VALUES],
+        "RBF CV accuracy": [rbf_results[c]["accuracy"] for c in C_VALUES],
+    },
+    x_label="C (log scale)",
+    title="SVM: linear vs RBF — CV AUC / accuracy across C",
+    fname="ex3_01_svm_c_sweep.html",
+    log_x=True,
+)
+print(f"Saved: {sweep_out}")
 
 pca_bundle = project_2d(X_train, X_test)
 X_train_2d = pca_bundle["X_train_2d"]
@@ -163,56 +213,55 @@ svm_2d.fit(X_train_2d, y_train)
 xx, yy = decision_boundary_mesh(X_train_2d)
 Z = svm_2d.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
 
-viz = get_visualizer()
-# C-sweep as a training-history style plot (accuracy and F1 vs log C)
-history = {
-    "linear accuracy": [linear_results[c]["accuracy"] for c in C_VALUES],
-    "linear F1": [linear_results[c]["f1"] for c in C_VALUES],
-    "rbf accuracy": [rbf_results[c]["accuracy"] for c in C_VALUES],
-    "rbf F1": [rbf_results[c]["f1"] for c in C_VALUES],
-}
-fig_sweep = viz.training_history(history, x_label="C value (index)")
-fig_sweep.update_layout(title="SVM: linear vs RBF C sweep (CV accuracy / F1)")
-sweep_out = OUTPUT_DIR / "ex3_01_svm_c_sweep.html"
-fig_sweep.write_html(str(sweep_out))
-print(f"Saved: {sweep_out}")
-
-# Decision boundary: export the mesh + decision so the notebook can
-# render either via ModelVisualizer or a static matplotlib preview.
+boundary_out = save_decision_boundaries(
+    {f"RBF SVM (C={best_c_rbf})": Z},
+    xx,
+    yy,
+    X_train_2d,
+    y_train,
+    fname="ex3_01_svm_boundary.html",
+    title="RBF SVM decision regions in 2D PCA space (red = churned)",
+)
+print(f"Saved: {boundary_out}")
 print(
-    f"Decision mesh shape: {Z.shape} | "
-    f"PCA variance captured: {pca_bundle['explained_variance'].sum():.2%}"
+    f"PCA variance captured by the 2 plotted axes: "
+    f"{pca_bundle['explained_variance'].sum():.2%} — the 2D picture is an "
+    f"intuition aid, not the model the metrics above describe."
 )
 
 # ── Checkpoint 2 ────────────────────────────────────────────────────────
-assert Z.shape[0] > 0 and Z.shape[1] > 0, "Decision boundary mesh is empty"
-print("[ok] Checkpoint 2 passed — 2D decision boundary computed\n")
+assert Z.shape == xx.shape, "Decision mesh must match the grid"
+assert boundary_out.exists(), "Decision-boundary figure must be written"
+print("[ok] Checkpoint 2 passed — 2D decision boundary rendered\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore e-commerce churn cost-benefit
+# TASK 5 — APPLY: e-commerce churn cost-benefit
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: A mid-market Singapore e-commerce marketplace (comparable to
-# the SG-listed Shopee/Lazada footprint) has ~250K active customers per
-# month. Annual churn baseline is ~22%. The retention team runs a
-# targeted promo campaign (S$18 offer) against customers the model
-# flags as likely churners.
+# SCENARIO: A mid-market regional e-commerce marketplace has ~250K active
+# customers per month. The retention team runs a targeted promo campaign
+# (S$18 offer) against customers the model flags as likely churners.
+# (All business figures here are illustrative teaching assumptions.)
 #
-# Why SVM is a reasonable candidate:
-#   - Tabular feature space has around 20-30 behavioural features.
-#     RBF SVM handles mid-dimensional data very well.
-#   - The margin-based decision rule gives a calibrated "how close to
-#     the boundary" signal that can prioritise the highest-risk flags.
+# Why SVM is a candidate:
+#   - The feature space is small (11 behavioural / profile features),
+#     where kernel methods are tractable and well-behaved.
+#   - The SVM decision value says how far a customer sits from the
+#     boundary, which can be used to RANK flags. It is NOT a calibrated
+#     probability — that is why sklearn fits an extra Platt-scaling step
+#     when you ask for probability=True (Lesson 3.5 covers calibration).
 #   - Training cost is a one-off nightly batch job — O(n²) is tolerable
-#     at the subsampled 5K training size.
+#     at the subsampled 4K training size.
 #
 # LIMITATIONS:
-#   - RBF SVM is a black box — the retention team cannot explain WHY a
-#     customer was flagged. Compliance teams (PDPA, MAS) prefer
-#     interpretable models for automated decisions.
+#   - An RBF SVM is hard to explain feature-by-feature; retention teams
+#     usually want a reason they can act on, not a kernel distance.
 #   - Scaling beyond ~50K training samples makes the O(n²) kernel matrix
-#     impractical. For the full 250K customer base, move to Random
-#     Forest or gradient boosting.
+#     impractical. For the full customer base, move to Random Forest or
+#     gradient boosting.
+#   - With ~74% of customers churning, flagging is only useful if the
+#     model separates the uncertain middle — read the classification
+#     report, not just the headline accuracy.
 
 true_positives = int(((svm_result["pred"] == 1) & (y_test == 1)).sum())
 dollars_saved = churn_saved_dollars(true_positives)
@@ -235,9 +284,10 @@ print("=" * 70)
 print(
     f"""
   [x] Margin maximisation and the C parameter trade-off
-  [x] Linear vs RBF kernels and when each is appropriate
-  [x] CV-driven C selection across five orders of magnitude
-  [x] Held-out accuracy: {svm_result['accuracy']:.4f}, F1: {svm_result['f1']:.4f}
+  [x] Linear vs RBF kernels — CV AUC gap: {kernel_gap:+.4f}
+  [x] CV-driven C selection across five orders of magnitude, by AUC
+  [x] Held-out accuracy {svm_result['accuracy']:.4f} vs majority baseline
+      {data['majority_accuracy']:.4f}; AUC {svm_result['auc_roc']:.4f}
   [x] 2D PCA decision boundary for visual intuition
   [x] Translated classifier output into S${dollars_saved:,.0f} of retained
       customer value on the held-out test fold

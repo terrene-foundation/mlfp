@@ -21,7 +21,7 @@
 #   2. Build — scale features, define the C grid
 #   3. Train — fit LogReg with L1 at each C
 #   4. Visualise — sparsity path + top-15 surviving coefficients
-#   5. Apply — DBS Bank card-fraud scoring (S$ impact)
+#   5. Apply — card-fraud scoring at a Singapore retail bank
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -50,6 +50,10 @@ from shared.mlfp03.ex_1 import (
 # absolute coefficient values:
 #
 #     loss = data_loss + (1/C) * sum(|w_j|)
+#
+# (In scikit-learn ≥ 1.8 you request the pure L1 penalty with
+# LogisticRegression(l1_ratio=1.0, solver="saga") — the older
+# penalty="l1" spelling is deprecated.)
 #
 # The absolute-value penalty has a corner at zero, so the gradient
 # pushes weak coefficients all the way to exactly 0 — not just "close
@@ -101,7 +105,7 @@ print("-" * 30)
 lasso_results: dict[float, dict] = {}
 for c_val in C_VALUES:
     lasso = LogisticRegression(
-        penalty="l1",
+        l1_ratio=1.0,
         C=c_val,
         solver="saga",
         max_iter=5000,
@@ -192,10 +196,17 @@ assert (
 ), "Task 4: stronger regularisation (smaller C) must yield fewer non-zero coefficients"
 print("\n[ok] Checkpoint 2 passed — sparsity trajectory is monotonic\n")
 
-# INTERPRETATION: At C=0.001 only the most informative features survive;
-# at C=10 the model is practically unregularised. The "elbow" of the
-# sparsity curve is the sweet spot — beyond it you lose signal; before
-# it you carry noise.
+# INTERPRETATION — computed from the path:
+print(
+    f"  C={C_VALUES[0]}: {lasso_results[C_VALUES[0]]['n_nonzero']} features survive; "
+    f"C={C_VALUES[-1]}: {lasso_results[C_VALUES[-1]]['n_nonzero']} "
+    "(practically unregularised)."
+)
+# The features that survive the smallest C are the ones the model gives
+# up last. Where the count jumps between neighbouring C values is the
+# "elbow"; pick C there by cross-validation, not by eye. (On this
+# dataset 02 and 03 found no feature beating a noise baseline, so the
+# survivors here are the least-noisy noise — L1 always returns SOME set.)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -234,35 +245,29 @@ print(f"\n  ExperimentTracker run: {run_id}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Bank Card-Fraud Scoring
+# TASK 5 — APPLY: card-fraud scoring at a Singapore retail bank
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS Bank processes ~6M card transactions per day. The fraud
-# team needs a scoring model that:
-#   - returns a decision in <25 ms at the point of sale
-#   - uses a stable, auditable feature set because MAS (Monetary
-#     Authority of Singapore) regulators review the model quarterly
-#   - handles ~400 candidate features (transaction velocity, geo
-#     distance, merchant category histograms, device fingerprint)
+# SCENARIO (illustrative): a Singapore retail bank scores millions of card
+# transactions a day. The fraud team needs a model that:
+#   - returns a decision within a ~25 ms point-of-sale budget
+#   - uses a stable, auditable feature set its model-risk team reviews
+#     every quarter
+#   - chooses from ~400 candidate features (transaction velocity, geo
+#     distance, merchant-category histograms, device signals)
 #
 # Why L1 is the right tool here:
-#   - Single-fit training means the nightly retraining job costs 10x
-#     less than an RFE loop — critical when you retrain daily
-#   - Sparse coefficients mean the production scorer can skip the
-#     features with zero weight, hitting the 25ms latency budget
-#   - Regulators can audit a linear model's coefficients directly;
-#     a Random Forest's feature interactions are much harder to
-#     justify in a compliance review
-#   - The sparsity pattern is STABLE across training runs as long as
-#     features are scaled — so the feature list itself becomes part
-#     of the model-risk documentation
+#   - One fit instead of an RFE loop keeps nightly retraining cheap
+#   - Zero-weight features can be dropped from the production scorer,
+#     which helps the latency budget
+#   - Reviewers can read a linear model's coefficients directly
+#   - With standardised inputs the sparsity pattern tends to be stable
+#     between runs, so the feature list can go into the model
+#     documentation
 #
-# BUSINESS IMPACT: DBS's internal studies show each percentage point
-# of fraud recall at fixed precision recovers ~S$4.2M/year across the
-# card portfolio. A feature set that cuts inference latency 35% lets
-# the team afford one extra decision layer (device fingerprint vector)
-# at the same p99 latency budget — worth an estimated 0.8pp of recall.
-#     0.8 x S$4.2M = S$3.36M/year in additional fraud prevented
-# Minus S$300K in annual ML infra ops. ~11x net ROI.
+# ILLUSTRATIVE ARITHMETIC (assumed values, not the bank's figures): if
+# one percentage point of fraud recall at fixed precision is worth
+# ~S$4M a year, a leaner feature set that frees latency for one more
+# signal worth +0.8pp recall is worth ~0.8 × S$4M ≈ S$3.2M a year.
 #
 # LIMITATIONS:
 #   - L1 breaks ties between correlated features arbitrarily — two
@@ -288,7 +293,7 @@ print(
   [x] Walked the regularisation path across multiple C values
   [x] Read non-zero coefficients as an interpretable feature ranking
   [x] Logged the embedded run to ExperimentTracker
-  [x] Applied L1 to DBS card-fraud scoring where latency dominates
+  [x] Applied L1 to card-fraud scoring where latency dominates
 
   KEY INSIGHT: Embedded methods give you selection for free as a side
   effect of training. When the model family is linear and the latency

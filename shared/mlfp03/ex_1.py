@@ -46,6 +46,22 @@ EXPERIMENT_NAME = "mlfp03_healthcare_features"
 
 _DT_FMT = "%Y-%m-%d %H:%M:%S"
 
+# PREDICTION TIME. The model scores each admission PREDICTION_HOURS after
+# ICU admission ("will this be a long stay?"). Every event-based feature
+# may only use records with admit_time <= event_time <= prediction_cutoff.
+# Anything later — and anything that depends on the discharge time — does
+# not exist yet at prediction time.
+PREDICTION_HOURS = 24
+
+# The target is derived from los_days (known only at discharge). These
+# columns are TARGET SOURCES or post-outcome information and must never be
+# features. ``audit_feature_list`` enforces this.
+ID_COLUMNS: frozenset[str] = frozenset(
+    {"patient_id", "admission_id", "admit_time", "prediction_cutoff"}
+)
+TARGET_SOURCE_COLUMNS: frozenset[str] = frozenset({"los_days", "discharge_time"})
+TARGET_NAME = "long_stay"
+
 VITAL_COLS: list[str] = [
     "heart_rate",
     "systolic_bp",
@@ -82,6 +98,10 @@ def load_icu_tables() -> dict[str, pl.DataFrame]:
     admissions = admissions.with_columns(
         pl.col("admit_time").str.to_datetime(_DT_FMT),
         pl.col("discharge_time").str.to_datetime(_DT_FMT),
+    ).with_columns(
+        (pl.col("admit_time") + pl.duration(hours=PREDICTION_HOURS)).alias(
+            "prediction_cutoff"
+        )
     )
     medications = medications.with_columns(
         pl.col("start_time").str.to_datetime(_DT_FMT),
@@ -120,28 +140,69 @@ def load_icu_tables() -> dict[str, pl.DataFrame]:
 # ════════════════════════════════════════════════════════════════════════
 
 
+def events_in_prediction_window(
+    events: pl.DataFrame, admissions: pl.DataFrame, time_col: str
+) -> pl.DataFrame:
+    """Keep only events recorded between admit_time and prediction_cutoff.
+
+    This single filter is used by EVERY event-based feature builder, so the
+    point-in-time rule lives in one place and can be audited.
+    """
+    return events.join(
+        admissions.select("admission_id", "admit_time", "prediction_cutoff"),
+        on="admission_id",
+        how="inner",
+    ).filter(
+        (pl.col(time_col) >= pl.col("admit_time"))
+        & (pl.col(time_col) <= pl.col("prediction_cutoff"))
+    )
+
+
+def prediction_window_report(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
+    """Audit the event data actually available at prediction time.
+
+    For each event table: how many events / admissions fall inside the
+    window, and the latest event offset (hours after admission) used.
+    Computed from the same filter the builders use — not asserted.
+    """
+    admissions = tables["admissions"]
+    rows = []
+    for name, time_col in (
+        ("vitals", "timestamp"),
+        ("medications", "start_time"),
+        ("labs", "timestamp"),
+    ):
+        kept = events_in_prediction_window(tables[name], admissions, time_col)
+        offsets = (kept[time_col] - kept["admit_time"]).dt.total_seconds() / 3600
+        rows.append(
+            {
+                "table": name,
+                "events_total": tables[name].height,
+                "events_in_window": kept.height,
+                "admissions_with_events": kept["admission_id"].n_unique(),
+                "admissions_total": admissions.height,
+                "max_offset_hours": float(offsets.max()) if kept.height else 0.0,
+            }
+        )
+    return pl.DataFrame(rows)
+
+
 def build_vital_features(
     vitals: pl.DataFrame, admissions: pl.DataFrame
 ) -> pl.DataFrame:
     """Aggregate long-format vitals per admission with temporal correctness.
 
-    Only uses vital readings recorded BETWEEN admit_time and discharge_time
-    for each admission. Returns one row per admission with columns:
+    Only uses vital readings recorded in the first PREDICTION_HOURS of each
+    admission. Returns one row per admission with columns:
         {vital}_{mean,std,min,max,range,trend,count,cv}
     """
-    # Vitals already carries admission_id and patient_id. Join only to pull
-    # in the admit/discharge window; drop admissions' patient_id on the
-    # way in to avoid duplicate columns.
-    filtered = vitals.join(
-        admissions.select("admission_id", "admit_time", "discharge_time"),
-        on="admission_id",
-        how="inner",
-    ).filter(
-        (pl.col("timestamp") >= pl.col("admit_time"))
-        & (pl.col("timestamp") <= pl.col("discharge_time"))
+    filtered = events_in_prediction_window(vitals, admissions, "timestamp").sort(
+        "admission_id", "timestamp"
     )
 
-    names = filtered["vital_name"].unique().to_list()
+    names = sorted(filtered["vital_name"].unique().to_list())
+    if not names:
+        return admissions.select("admission_id")
     aggs: list[pl.DataFrame] = []
     for vital in names:
         agg = (
@@ -172,19 +233,10 @@ def build_vital_features(
 def build_medication_features(
     medications: pl.DataFrame, admissions: pl.DataFrame
 ) -> pl.DataFrame:
-    """Flag high-risk medications and count distinct drugs per admission."""
+    """Flag high-risk medications and count distinct drugs per admission
+    (medications started within the first PREDICTION_HOURS only)."""
     return (
-        medications.join(
-            admissions.select(
-                "patient_id", "admission_id", "admit_time", "discharge_time"
-            ),
-            on="admission_id",
-            how="inner",
-        )
-        .filter(
-            (pl.col("start_time") >= pl.col("admit_time"))
-            & (pl.col("start_time") <= pl.col("discharge_time"))
-        )
+        events_in_prediction_window(medications, admissions, "start_time")
         .group_by("admission_id")
         .agg(
             pl.col("drug_name").n_unique().alias("n_unique_medications"),
@@ -206,24 +258,15 @@ def build_medication_features(
 
 
 def build_lab_features(labs: pl.DataFrame, admissions: pl.DataFrame) -> pl.DataFrame:
-    """Aggregate lab results per admission with abnormal-flag counts."""
+    """Aggregate lab results per admission with abnormal-flag counts
+    (results within the first PREDICTION_HOURS only)."""
     return (
-        labs.join(
-            admissions.select("admission_id", "admit_time", "discharge_time"),
-            on="admission_id",
-            how="inner",
-        )
-        .filter(
-            (pl.col("timestamp") >= pl.col("admit_time"))
-            & (pl.col("timestamp") <= pl.col("discharge_time"))
-        )
+        events_in_prediction_window(labs, admissions, "timestamp")
         .group_by("admission_id")
         .agg(
             pl.col("test_name").n_unique().alias("n_unique_labs"),
             pl.col("value").count().alias("n_lab_results"),
             (pl.col("flag") != "normal").sum().alias("n_abnormal_labs"),
-            pl.col("value").mean().alias("lab_value_mean"),
-            pl.col("value").std().alias("lab_value_std"),
         )
     )
 
@@ -266,16 +309,15 @@ def build_full_feature_frame(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
     lf = build_lab_features(tables["labs"], admissions)
     features = features.join(lf, on="admission_id", how="left")
 
-    # Derived features
+    # Derived features. NOTE: nothing here may divide by los_days or use
+    # the discharge time — the length of stay is the TARGET and is unknown
+    # at prediction time. Rates use the fixed PREDICTION_HOURS window.
     features = features.with_columns(
         (pl.col("n_abnormal_labs") / pl.col("n_lab_results").clip(lower_bound=1)).alias(
             "abnormal_lab_ratio"
         ),
-        (pl.col("n_medication_doses") / pl.col("los_days").clip(lower_bound=1)).alias(
-            "medication_intensity"
-        ),
-        (pl.col("n_lab_results") / pl.col("los_days").clip(lower_bound=1)).alias(
-            "lab_intensity"
+        (pl.col("n_medication_doses") / PREDICTION_HOURS).alias(
+            "medication_doses_per_hour"
         ),
         (pl.col("n_unique_medications") > 10).alias("polypharmacy_flag"),
     )
@@ -296,10 +338,7 @@ def build_full_feature_frame(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
     ]
     fill_float = [
         "abnormal_lab_ratio",
-        "medication_intensity",
-        "lab_intensity",
-        "lab_value_mean",
-        "lab_value_std",
+        "medication_doses_per_hour",
     ]
     features = features.with_columns(
         *[pl.col(c).fill_null(0) for c in fill_int if c in features.columns],
@@ -330,7 +369,7 @@ def build_full_feature_frame(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
             )
         )
     exprs.append(
-        (pl.col("medication_intensity") * pl.col("abnormal_lab_ratio")).alias(
+        (pl.col("medication_doses_per_hour") * pl.col("abnormal_lab_ratio")).alias(
             "treatment_burden_score"
         )
     )
@@ -354,45 +393,68 @@ def build_full_feature_frame(tables: dict[str, pl.DataFrame]) -> pl.DataFrame:
 # ════════════════════════════════════════════════════════════════════════
 
 
+def audit_feature_list(feature_cols: list[str]) -> None:
+    """Raise if any ID, target-source or post-outcome column is a feature.
+
+    A real leakage gate: it FAILS (raises ValueError) instead of printing
+    a reassuring message. Called by ``prepare_selection_inputs`` and by the
+    validation file before anything is logged.
+    """
+    forbidden = [
+        c
+        for c in feature_cols
+        if c in ID_COLUMNS
+        or c in TARGET_SOURCE_COLUMNS
+        or c == TARGET_NAME
+        or "discharge" in c.lower()
+    ]
+    if forbidden:
+        raise ValueError(
+            f"Leakage: these columns cannot be features at prediction time: {forbidden}"
+        )
+
+
+def build_target(features: pl.DataFrame) -> np.ndarray:
+    """``long_stay`` = 1 if the stay is longer than the median length of stay.
+
+    Derived from los_days, which is only known at DISCHARGE — so it is the
+    label, never a feature.
+    """
+    median_los = features["los_days"].median()
+    return (features["los_days"] > median_los).cast(pl.Int64).to_numpy().ravel()
+
+
 def prepare_selection_inputs(
     features: pl.DataFrame,
 ) -> tuple[list[str], np.ndarray, np.ndarray]:
-    """Return (feature_cols, X, y_binary) for every feature-selection method.
+    """Return (feature_cols, X, y) for every feature-selection method.
 
-    - Drops ID columns and the target from the feature matrix
-    - Coerces bool/int/float columns only (selection methods require numeric)
+    - Excludes ID columns, the target and its source columns
+      (``audit_feature_list`` raises if any slips through)
+    - Keeps bool/int/float columns only (selection methods need numbers)
     - Replaces NaN / inf with bounded numbers
-    - Builds a binary target: mortality if present, otherwise los_days > median
+    - y is the binary ``long_stay`` label from ``build_target``
     """
-    id_cols = {"patient_id", "admission_id", "admit_time", "discharge_time"}
-    target_col = "mortality" if "mortality" in features.columns else "los_days"
-    exclude = id_cols | {target_col}
-
-    numeric_dtypes = {pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Boolean}
+    exclude = ID_COLUMNS | TARGET_SOURCE_COLUMNS | {TARGET_NAME}
+    numeric_dtypes = {
+        pl.Float64,
+        pl.Float32,
+        pl.Int64,
+        pl.Int32,
+        pl.UInt32,
+        pl.Boolean,
+    }
     feature_cols = [
         c
         for c in features.columns
         if c not in exclude and features[c].dtype in numeric_dtypes
     ]
+    audit_feature_list(feature_cols)
 
     X = features.select(feature_cols).to_numpy().astype(np.float64)
     X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
-
-    if target_col == "mortality":
-        y = features["mortality"].to_numpy().astype(np.float64).ravel()
-    else:
-        median_los = features["los_days"].median()
-        y = (
-            (features["los_days"] > median_los)
-            .cast(pl.Int32)
-            .to_numpy()
-            .ravel()
-            .astype(np.float64)
-        )
-    y_binary = (
-        (y > np.median(y)).astype(int) if target_col != "mortality" else y.astype(int)
-    )
-    return feature_cols, X, y_binary
+    y = build_target(features)
+    return feature_cols, X, y
 
 
 # ════════════════════════════════════════════════════════════════════════

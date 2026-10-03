@@ -8,40 +8,46 @@
 # WHAT YOU'LL LEARN:
 #   - Declare a database table with `@db.model` (schema = Python class)
 #   - Let DataFlow auto-migrate the schema — no hand-written DDL
-#   - Persist evaluation records with `db.express.create` (~23x faster
-#     than driving CreateNode through WorkflowBuilder for single records)
-#   - Query persisted results back with `db.express.list`
-#   - Understand why compliance-grade ML needs a first-class result store
+#   - Run the full CRUD cycle with `db.express`: create, read
+#     (find_one / read / list / count), update and delete
+#   - Persist a TrainingPipeline evaluation next to its registry reference
+#   - Understand why governed ML needs a first-class result store
 #
 # PREREQUISITES: 01_workflow_builder.py
 # ESTIMATED TIME: ~35 min
 #
 # 5-PHASE R10:
-#   1. Theory     — why "write metrics to a database" is a regulatory must
-#   2. Build      — @db.model classes for ModelEvaluation + ModelArtifact
-#   3. Train      — train once and persist the result through db.express
-#   4. Visualise  — list persisted records and render them
-#   5. Apply      — Singapore MAS Notice 635 evidence store
+#   1. Theory     — why "write metrics to a database" matters
+#   2. Build      — @db.model classes for evaluations + artefacts
+#   3. Train      — train once, then create / update / delete rows
+#   4. Visualise  — read the persisted records back
+#   5. Apply      — a bank's model evidence store
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
 import json
-
-import lightgbm as lgb
+from typing import Any
 
 from dataflow import DataFlow
+from kailash_ml import TrainingPipeline
+from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+from kailash_ml.interop import to_sklearn_input
 
 from shared.mlfp03.ex_7 import (
+    DATASET_NAME,
     DB_URL,
+    ENGINE_METRICS,
     RANDOM_SEED,
-    SG_BANK_PORTFOLIO,
+    TARGET_COLUMN,
+    build_training_registry,
     compute_classification_metrics,
+    credit_feature_schema,
     headline_roi_text,
-    prepare_credit_split,
+    load_registered_model,
+    prepare_credit_frames,
     print_metric_block,
-    scale_pos_weight_for,
 )
 
 
@@ -49,18 +55,19 @@ from shared.mlfp03.ex_7 import (
 # THEORY — Why persist metrics?
 # ════════════════════════════════════════════════════════════════════════
 # The `print()` statement is the cheapest, worst form of observability
-# for ML. In a regulated environment (MAS Notice 635, EBA, Fed SR 11-7)
-# an auditor can walk in six months after a loan was declined and ask:
+# for ML. Months after a loan was declined, a model validator, internal
+# auditor or supervisor can ask:
 #
 #   "Show me the model that was used for this decision, the version,
 #    the exact metrics on the evaluation set at the time of promotion,
 #    and the hyperparameters the training run used."
 #
 # If your answer is "let me grep some log files", you have already lost.
-# The compliance answer is a database table — queryable, append-only,
-# indexed by model_name + version — that records every evaluation, every
-# artifact, and every stage transition. DataFlow turns that table from
-# a week of SQL-migration work into a decorated Python class.
+# The defensible answer is a database table — queryable, indexed by
+# model name + version — that records every evaluation, every artefact
+# and every review decision. DataFlow turns that table from a week of
+# SQL-migration work into a decorated Python class, and `db.express`
+# gives you the whole CRUD cycle as one-line async calls.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -71,163 +78,264 @@ db = DataFlow(DB_URL)
 
 
 @db.model
-class ModelEvaluation:
-    """Stores evaluation metrics for every trained model version.
+class CreditEvaluation:
+    """Evaluation metrics for every trained credit-model version.
 
-    Note: the modern ``@db.model`` decorator auto-generates the primary
-    key (named ``id``) — no explicit ``field(primary_key=True)``
-    declaration is required. Plain class annotations ARE the schema.
-    Defaults (e.g. ``hyperparameters: str = "{}"``) are respected.
+    ``@db.model`` auto-generates the primary key ``id`` from the plain
+    ``id: int`` annotation (plus created_at / updated_at timestamps).
+    Plain class annotations ARE the schema; defaults are ordinary
+    Python defaults.
     """
 
     id: int
     model_name: str
+    model_version: int
     dataset: str
     accuracy: float
     f1_score: float
     auc_roc: float
     auc_pr: float
     log_loss_val: float
-    train_size: int
-    test_size: int
+    train_rows: int
     feature_count: int
     hyperparameters: str = "{}"
 
 
 @db.model
-class ModelArtifact:
-    """Stores the artefact pointer + lifecycle stage for each model."""
+class CreditModelArtifact:
+    """Registry reference + human review status for each model version."""
 
     id: int
     model_name: str
     version: int
-    artifact_path: str
-    is_production: bool = False
+    registry_ref: str
+    review_status: str = "pending"
     created_by: str = "mlfp03_ex7"
 
 
+MODEL_NAME = "credit_default_dataflow"
+HYPERPARAMETERS: dict[str, Any] = {
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+    "max_depth": 5,
+    "num_leaves": 31,
+    "min_child_samples": 40,
+    "random_state": RANDOM_SEED,
+    "verbose": -1,
+}
+
+
 # ════════════════════════════════════════════════════════════════════════
-# TASK 3 — TRAIN once then persist the result
+# TASK 3 — TRAIN once, then CREATE / UPDATE / DELETE rows
 # ════════════════════════════════════════════════════════════════════════
-
-split = prepare_credit_split()
-model = lgb.LGBMClassifier(
-    n_estimators=500,
-    learning_rate=0.1,
-    max_depth=6,
-    scale_pos_weight=scale_pos_weight_for(split.y_train),
-    random_state=RANDOM_SEED,
-    verbose=-1,
-)
-model.fit(split.X_train, split.y_train)
-y_pred = model.predict(split.X_test)
-y_proba = model.predict_proba(split.X_test)[:, 1]
-metrics = compute_classification_metrics(split.y_test, y_pred, y_proba)
-print_metric_block("Trained LightGBM — metrics ready to persist", metrics)
+# Training goes through TrainingPipeline (fit + holdout evaluation +
+# registry entry in one engine call) on the dev frame; the registered
+# model is then scored on the test frame. Every DataFlow call below is
+# awaited inside ONE event loop — the DataFlow connection pool belongs to
+# the loop that opened it, so one asyncio.run() drives the whole file.
 
 
-async def persist_evaluation() -> tuple[dict, dict]:
-    """Initialise DataFlow, write one evaluation row and one artefact row."""
+async def train_with_engine() -> tuple[dict[str, float], int, int, int]:
+    """Train via TrainingPipeline, then score the registered model on test.
+
+    Returns (test metrics, registry version, training rows, n_features).
+    """
+    dev, test, feature_cols = prepare_credit_frames()
+    registry, conn = await build_training_registry()
+    try:
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+        result = await pipeline.train(
+            data=dev,
+            schema=credit_feature_schema(feature_cols),
+            model_spec=ModelSpec(
+                model_class="lightgbm.LGBMClassifier",
+                framework="lightgbm",
+                hyperparameters=HYPERPARAMETERS,
+            ),
+            eval_spec=EvalSpec(
+                metrics=ENGINE_METRICS, split_strategy="holdout", test_size=0.2
+            ),
+            experiment_name=MODEL_NAME,
+        )
+        if result.model_version is None:
+            raise RuntimeError("TrainingPipeline did not register the model")
+        version = int(result.model_version.version)
+        model = await load_registered_model(registry, MODEL_NAME, version)
+    finally:
+        await conn.close()
+
+    X_test, y_test, _ = to_sklearn_input(
+        test, feature_columns=feature_cols, target_column=TARGET_COLUMN
+    )
+    y_proba = model.predict_proba(X_test)[:, 1]
+    metrics = compute_classification_metrics(y_test, (y_proba >= 0.5).astype(int), y_proba)
+    return metrics, version, dev.height, len(feature_cols)
+
+
+async def persist_review_cleanup(
+    metrics: dict[str, float], version: int, rows: int, n_features: int
+) -> dict[str, Any]:
+    """CREATE the evaluation + artefact rows, UPDATE the review, DELETE a scratch row."""
     await db.initialize()
 
-    eval_row = await db.express.create(
-        "ModelEvaluation",
+    # CREATE — returns the written fields plus rows_affected (no id echo)
+    created_eval = await db.express.create(
+        "CreditEvaluation",
         {
-            "model_name": "lgbm_credit_v1",
-            "dataset": "sg_credit_scoring",
+            "model_name": MODEL_NAME,
+            "model_version": version,
+            "dataset": DATASET_NAME,
             "accuracy": metrics["accuracy"],
             "f1_score": metrics["f1"],
             "auc_roc": metrics["auc_roc"],
             "auc_pr": metrics["auc_pr"],
             "log_loss_val": metrics["log_loss"],
-            "train_size": split.train_size,
-            "test_size": split.test_size,
-            "feature_count": split.feature_count,
-            "hyperparameters": json.dumps(model.get_params(), default=str),
+            "train_rows": rows,
+            "feature_count": n_features,
+            "hyperparameters": json.dumps(HYPERPARAMETERS),
         },
     )
-
-    artifact_row = await db.express.create(
-        "ModelArtifact",
+    created_artifact = await db.express.create(
+        "CreditModelArtifact",
         {
-            "model_name": "lgbm_credit_v1",
-            "version": 1,
-            "artifact_path": "models/lgbm_credit_v1.pkl",
-            "is_production": False,
-            "created_by": "mlfp03_ex7",
+            "model_name": MODEL_NAME,
+            "version": version,
+            "registry_ref": f"model_registry://{MODEL_NAME}/v{version}",
         },
     )
-    return eval_row, artifact_row
+
+    # READ the row we just wrote (find_one filters on any columns)
+    artifact = await db.express.find_one(
+        "CreditModelArtifact", {"model_name": MODEL_NAME, "version": version}
+    )
+
+    # UPDATE — a reviewer signs off this version
+    reviewed = await db.express.update(
+        "CreditModelArtifact", artifact["id"], {"review_status": "approved"}
+    )
+
+    # DELETE — a smoke-test row written by a CI check must not linger
+    await db.express.create(
+        "CreditEvaluation",
+        {
+            "model_name": "ci_smoke_test",
+            "model_version": 0,
+            "dataset": "synthetic",
+            "accuracy": 0.0,
+            "f1_score": 0.0,
+            "auc_roc": 0.5,
+            "auc_pr": 0.0,
+            "log_loss_val": 0.0,
+            "train_rows": 0,
+            "feature_count": 0,
+        },
+    )
+    smoke = await db.express.find_one("CreditEvaluation", {"model_name": "ci_smoke_test"})
+    deleted = await db.express.delete("CreditEvaluation", smoke["id"])
+    smoke_left = await db.express.count("CreditEvaluation", {"model_name": "ci_smoke_test"})
+
+    return {
+        "created_eval": created_eval,
+        "created_artifact": created_artifact,
+        "artifact_id": artifact["id"],
+        "reviewed": reviewed,
+        "deleted": deleted,
+        "smoke_left": smoke_left,
+    }
 
 
-eval_record, artifact_record = asyncio.run(persist_evaluation())
+async def read_back(version: int) -> dict[str, Any]:
+    """READ: by id, by filter, the full list, and a count."""
+    evaluation = await db.express.find_one(
+        "CreditEvaluation", {"model_name": MODEL_NAME, "model_version": version}
+    )
+    artifact = await db.express.find_one(
+        "CreditModelArtifact", {"model_name": MODEL_NAME, "version": version}
+    )
+    by_id = await db.express.read("CreditModelArtifact", artifact["id"])
+    return {
+        "evaluation": evaluation,
+        "artifact": by_id,
+        "all_evaluations": await db.express.list(
+            "CreditEvaluation", filter={"model_name": MODEL_NAME}
+        ),
+        "n_artifacts": await db.express.count(
+            "CreditModelArtifact", {"model_name": MODEL_NAME}
+        ),
+    }
 
+
+async def run_all() -> dict[str, Any]:
+    metrics, version, rows, n_features = await train_with_engine()
+    try:
+        crud = await persist_review_cleanup(metrics, version, rows, n_features)
+        stored = await read_back(version)
+    finally:
+        await db.close_async()
+    return {"metrics": metrics, "version": version, **crud, **stored}
+
+
+out = asyncio.run(run_all())
+print_metric_block("Test-frame metrics of the registered model — ready to persist", out["metrics"])
 
 # ── Checkpoint ──────────────────────────────────────────────────────────
-# Modern db.express.create returns {<fields...>, "rows_affected": 1}
-# — it does NOT echo the auto-generated primary key in the response
-# payload. The authoritative contract is `rows_affected == 1`. The auto
-# id is visible when we list the table below.
-assert (
-    eval_record is not None and eval_record.get("rows_affected") == 1
-), "Task 3: DataFlow should insert exactly one evaluation row"
-assert (
-    artifact_record is not None and artifact_record.get("rows_affected") == 1
-), "Task 3: DataFlow should insert exactly one artefact row"
-print(f"\n  ModelEvaluation row written: {eval_record.get('model_name')}")
-print(f"  ModelArtifact   row written: {artifact_record.get('model_name')}")
-print("\n[ok] Checkpoint passed — DataFlow persistence verified\n")
+# db.express.create returns {<fields...>, "rows_affected": 1}; the
+# auto-generated id is visible when the row is read back.
+assert out["created_eval"].get("rows_affected") == 1, "Task 3: one evaluation row"
+assert out["created_artifact"].get("rows_affected") == 1, "Task 3: one artefact row"
+assert out["reviewed"]["review_status"] == "approved", "Task 3: update must persist"
+assert out["deleted"] is True and out["smoke_left"] == 0, "Task 3: delete must remove the row"
+print("\n[ok] Checkpoint passed — create / update / delete verified\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE persisted records by reading them back
 # ════════════════════════════════════════════════════════════════════════
 # Any persistence code you cannot READ BACK is a black hole. The audit
-# test is "I wrote it, I can list it, I can filter it."
+# test is "I wrote it, I can find it, I can filter it, I can count it."
 
-
-async def list_persisted() -> tuple[list[dict], list[dict]]:
-    evals = await db.express.list("ModelEvaluation")
-    artifacts = await db.express.list("ModelArtifact")
-    return evals, artifacts
-
-
-persisted_evals, persisted_artifacts = asyncio.run(list_persisted())
-
-print(f"=== Persisted Evaluations ({len(persisted_evals)}) ===")
-for row in persisted_evals:
+ev, art = out["evaluation"], out["artifact"]
+print(f"=== {MODEL_NAME} v{out['version']} as stored ===")
+print(
+    f"  CreditEvaluation id={ev['id']}: AUC-ROC={ev['auc_roc']:.4f} "
+    f"AUC-PR={ev['auc_pr']:.4f} train_rows={ev['train_rows']:,} features={ev['feature_count']}"
+)
+print(
+    f"  CreditModelArtifact id={art['id']}: {art['registry_ref']} "
+    f"review_status={art['review_status']}"
+)
+print(f"\n=== Evaluation history for {MODEL_NAME} ({len(out['all_evaluations'])} runs) ===")
+for row in out["all_evaluations"]:
     print(
-        f"  {row['model_name']}: AUC-ROC={row['auc_roc']:.4f}"
-        f"  AUC-PR={row['auc_pr']:.4f}"
-        f"  train={row['train_size']}  test={row['test_size']}"
+        f"  v{row['model_version']:<3} AUC-PR={row['auc_pr']:.4f}  "
+        f"written {row.get('created_at', '?')}"
     )
+print(f"  artefact rows for {MODEL_NAME}: {out['n_artifacts']}")
 
-print(f"\n=== Persisted Artifacts ({len(persisted_artifacts)}) ===")
-for row in persisted_artifacts:
-    stage = "PRODUCTION" if row.get("is_production") else "staging"
-    print(f"  {row['model_name']} v{row['version']}: {stage}")
+# ── Checkpoint ──────────────────────────────────────────────────────────
+assert abs(ev["auc_pr"] - out["metrics"]["auc_pr"]) < 1e-9, (
+    "Task 4: the stored AUC-PR must equal the engine's value"
+)
+assert art["review_status"] == "approved", "Task 4: read-back must see the update"
+print("\n[ok] Checkpoint passed — persisted rows read back intact\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Singapore MAS Notice 635 Evidence Store
+# TASK 5 — APPLY: A Bank's Model Evidence Store
 # ════════════════════════════════════════════════════════════════════════
-# MAS Notice 635 (Credit Card and Unsecured Credit Rules) requires every
-# lender using an ML model in a credit decision to show, for each
-# decision, the model that produced the recommendation, the version, the
-# evaluation metrics at the time of promotion, and the training data
-# snapshot reference.
-#
-# Before this file, the bank's compliance team spent ~160 analyst hours
-# per month reconciling ad-hoc notebooks into evidence packs. After this
-# file, the evidence pack is a single SELECT over the ModelEvaluation
-# and ModelArtifact tables.
+# SCENARIO (illustrative): before this file, a Singapore bank's model
+# validation team rebuilt an "evidence pack" by hand for every retrain —
+# copying metrics out of notebooks, chasing which hyperparameters were
+# used, emailing for sign-off. With the two tables above, the evidence
+# pack is a query: evaluation metrics + registry reference + review
+# status for any model version, written at the moment it happened.
 print("\n" + "=" * 70)
-print("  APPLY: MAS Notice 635 Evidence Store")
+print("  APPLY: Model Evidence Store")
 print("=" * 70)
 print(headline_roi_text())
 print(
-    "\n  The `Audit prep savings` line above is UNLOCKED by this file."
-    "\n  Without persisted @db.model records, the savings are S$0."
+    "\n  The evidence-pack line above is what persistence buys: the rows"
+    "\n  you just wrote replace the manual reconstruction."
 )
 
 
@@ -240,18 +348,18 @@ print("=" * 70)
 print(
     f"""
   [x] Declared database tables with the @db.model decorator
-  [x] Used db.express.create for 23x-faster single-record CRUD
-  [x] Queried persisted evaluations with db.express.list
-  [x] Tied the persistence layer to a real MAS compliance scenario
+  [x] Ran the full db.express CRUD cycle: create, find_one/read/list/count,
+      update, delete
+  [x] Stored a TrainingPipeline evaluation next to its registry reference
+  [x] Recorded a human review decision as an UPDATE, not an email
 
   KEY INSIGHT: If your metrics only exist in a print() call, they don't
   exist from an auditor's perspective. DataFlow turns "write it to a DB"
-  from a week of schema work into a one-line decorator.
+  from a week of schema work into a decorated class and a few awaits.
 
   Next: 03_hyperparameter_search.py — use Bayesian search to improve the
   metrics you just learned how to persist.
 
   DB URL: {DB_URL}
-  Portfolio anchor: S${SG_BANK_PORTFOLIO['portfolio_sgd']/1e9:.0f}B
 """
 )

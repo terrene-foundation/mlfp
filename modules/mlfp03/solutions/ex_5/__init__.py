@@ -9,7 +9,7 @@ Run order (later files depend on probability vectors saved by earlier ones):
 
     01_metrics_and_baseline.py      # baseline + complete metrics taxonomy
     02_sampling_strategies.py       # SMOTE vs cost-sensitive learning
-    03_loss_functions.py            # focal loss + alpha weighting
-    04_threshold_optimisation.py    # cost matrix + annual ROI
+    03_loss_functions.py            # focal loss as a custom LightGBM objective
+    04_threshold_optimisation.py    # out-of-fold threshold tuning + annual ROI
     05_calibration.py               # Platt + Isotonic + final comparison
 """

@@ -9,8 +9,8 @@
 #   - Compute pairwise SHAP interaction values via TreeExplainer
 #   - Distinguish main effects (diagonal) from interactions (off-diagonal)
 #   - Rank feature pairs by mean |interaction|
-#   - Understand why interactions are what makes trees beat linear models
-#   - Apply: UOB SME loan cross-feature risk factors (income x tenure)
+#   - Separate NON-ADDITIVITY (interactions) from non-linear main effects
+#   - Apply: an (illustrative) SME-lending cross-feature risk audit
 #
 # PREREQUISITES: 01_shap_global.py (same SHAP bundle + feature ranking).
 #
@@ -21,7 +21,7 @@
 #   2. Build — shap_interaction_values on a 500-row sample
 #   3. Train — no training; MEASURE the trained model's interactions
 #   4. Visualise — top-10 interaction table
-#   5. Apply — UOB SME cross-feature risk factor audit
+#   5. Apply — SME cross-feature risk audit (illustrative bank)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -46,20 +46,25 @@ load_dotenv()
 # Shapley INTERACTION index (Grabisch 1997) decomposes each Shapley
 # value further into main effects and pairwise interactions:
 #
-#     phi_i    = phi_ii + (1/2) * sum_{j != i} phi_ij
+#     phi_i    = phi_ii + sum_{j != i} phi_ij
 #
 # where phi_ii is the "pure" main effect of feature i and phi_ij is the
-# shared effect of features i and j acting TOGETHER.
+# effect of features i and j acting TOGETHER. TreeSHAP splits each pair's
+# joint effect equally between the two cells, phi_ij = phi_ji, so every
+# ROW of the interaction matrix sums to that feature's ordinary SHAP value
+# (you will verify this numerically below).
 #
 # TreeExplainer.shap_interaction_values() returns a tensor of shape
 # (n_samples, n_features, n_features) where:
 #   - the DIAGONAL is the main effect of each feature
 #   - the OFF-DIAGONAL is the pairwise interaction (symmetric)
 #
-# A linear model has ZERO off-diagonal entries — that's what "linear"
-# means. The off-diagonal mass is EXACTLY the non-linearity that a tree
-# (or DNN) captures beyond a linear baseline. Auditing it tells you
-# WHICH feature combinations the model is actually exploiting.
+# An ADDITIVE model f(x) = g_1(x_1) + ... + g_d(x_d) has ZERO off-diagonal
+# entries — even when each g_i is a wiggly non-linear curve. So the
+# off-diagonal mass measures NON-ADDITIVITY (features modifying each
+# other's effect), not "non-linearity". A tree can be strongly non-linear
+# yet nearly additive. Auditing the off-diagonal tells you WHICH feature
+# combinations the model actually exploits.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -85,6 +90,11 @@ if isinstance(shap_interaction, list):
     shap_interaction = shap_interaction[1]
 
 print(f"Interaction tensor shape: {shap_interaction.shape}")
+
+# Verify: each row of the interaction matrix sums to the ordinary SHAP value
+shap_sample = bundle["shap_vals"][:sample_size]
+row_sum_error = float(np.abs(shap_interaction.sum(axis=2) - shap_sample).max())
+print(f"max |row-sum of interactions - SHAP value| = {row_sum_error:.2e}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -123,13 +133,14 @@ print("─" * 70)
 for rank, (f1, f2, strength) in enumerate(interaction_strengths[:10], 1):
     print(f"{rank:>4} {f1:<25} {f2:<25} {strength:>12.4f}")
 
-# Compare magnitudes: how much of the model's behavior is non-linear?
-total_main = float(main_effects.sum())
-total_interaction = float(sum(s for _, _, s in interaction_strengths))
-nonlinear_share = total_interaction / (total_main + total_interaction)
+# How much of the attribution mass sits OFF the diagonal?
+abs_mean = np.abs(shap_interaction).mean(axis=0)  # (features x features)
+total_main = float(np.trace(abs_mean))
+total_interaction = float(abs_mean.sum() - total_main)  # both phi_ij and phi_ji
+interaction_share = total_interaction / (total_main + total_interaction)
 print(f"\nMain-effect mass:     {total_main:.4f}")
 print(f"Interaction mass:     {total_interaction:.4f}")
-print(f"Non-linear share:     {nonlinear_share:.1%}")
+print(f"Interaction share:    {interaction_share:.1%}")
 
 # ── Visual: SHAP interaction heatmap (top 10 features) ──────────────────
 top_n = min(10, n_features)
@@ -167,45 +178,44 @@ assert len(interaction_strengths) > 0, "Task 4: interaction list must be non-emp
 assert (
     interaction_strengths[0][2] >= 0
 ), "Task 4: interaction strength must be non-negative"
-# INTERPRETATION: The non-linear share tells you how much of the model's
-# predictive power comes from cross-feature effects. A high share means a
-# linear baseline would lose a lot; a low share means a linear challenger
-# might be competitive and cheaper to govern.
+assert row_sum_error < 1e-6, "Task 4: interaction rows must sum to the SHAP values"
+# INTERPRETATION: The interaction share tells you how much attribution
+# comes from features modifying each other. A low share means an ADDITIVE
+# challenger (e.g. a GAM, or a linear model with good per-feature
+# transforms) may be competitive and cheaper to govern; a high share means
+# the model relies on combinations that such a challenger cannot express.
 print("\n[ok] Checkpoint — interaction tensor computed and ranked\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: UOB SME Cross-Feature Risk Factor Audit
+# TASK 5 — APPLY: SME Cross-Feature Risk Audit (illustrative bank)
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: UOB Bank (Singapore) underwrites ~8,000 SME working-capital
-# loans per year. Their risk team has a standing hypothesis that
-# INCOME * TENURE is a stronger default signal than either alone: a
-# high-income applicant with 6 months of trading history is riskier than
-# a modest-income applicant with 8 years of trading history, even though
-# a linear model would rank them the other way.
+# SCENARIO (illustrative): a Singapore bank's SME-lending risk team has a
+# hypothesis that INCOME x TENURE matters more than either alone: a
+# high-income applicant with 6 months of history may be riskier than a
+# modest-income applicant with 8 years of history.
 #
-# Why SHAP interaction values are the right tool here:
-#   - The interaction tensor directly exposes which PAIRS the model used
-#   - UOB can validate the INCOME x TENURE hypothesis with a single
-#     lookup instead of running counterfactual what-if experiments
-#   - If the top-10 interaction list surfaces an unexpected pair
-#     (e.g., zip_code x loan_purpose), the risk team has an audit flag
-#     for potential proxy discrimination
+# Why SHAP interaction values fit:
+#   - The interaction tensor directly shows which PAIRS the model uses
+#   - The team can check a hypothesis with a lookup instead of a
+#     counterfactual experiment
+#   - An unexpected pair involving a protected attribute (e.g. age x
+#     debt_to_income) is an audit flag for proxy discrimination — check
+#     whether any appears in the top-10 list printed above
 #
-# BUSINESS IMPACT:
-#   - SME default rates are 2.4x higher than consumer (UOB 2024 annual).
-#     A 1-percentage-point improvement in the underwriting model is worth
-#     ~S$4.8M/year in avoided write-offs on an S$480M book.
-#   - SHAP interaction audits surface non-linearities that linear
-#     challenger models miss. UOB's 2023 SHAP interaction audit found a
-#     (age x debt_service_ratio) interaction that was contributing a
-#     measurable negative SHAP for applicants aged 55-65 — a classic
-#     disparate-impact red flag. The finding led to a mid-year model
-#     rebuild that reduced the DIR gap from 0.71 to 0.89.
-#   - Implementation cost: the interaction audit runs inside the
-#     existing SHAP pipeline, adding ~3 minutes per quarterly review.
-#     Marginal cost: ~zero. Marginal benefit: catching one mis-priced
-#     age cohort = ~S$1.2M/year in avoided remediation.
+# COST: the audit reuses the existing SHAP pipeline — the only extra cost
+# is computing the interaction tensor on a sample, as you just did.
+
+protected = {"age", "gender", "race"}
+flagged = [(f1, f2, s) for f1, f2, s in interaction_strengths[:10] if f1 in protected or f2 in protected]
+print_section("Interaction audit (computed)", char="─")
+print(f"  Interaction share of attribution: {interaction_share:.1%}")
+print(f"  Top pair: {interaction_strengths[0][0]} x {interaction_strengths[0][1]}")
+if flagged:
+    for f1, f2, s in flagged:
+        print(f"  FLAG — protected attribute in a top-10 pair: {f1} x {f2} ({s:.4f})")
+else:
+    print("  No protected attribute appears in the top-10 interaction pairs")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -217,13 +227,14 @@ print(
   [x] Computed the SHAP interaction tensor on a 500-sample slice
   [x] Separated main effects (diagonal) from interactions (off-diagonal)
   [x] Ranked feature PAIRS by mean |interaction|
-  [x] Quantified the non-linear share of the model's predictive power
-  [x] Mapped the audit to UOB's SME underwriting hypothesis testing
+  [x] Verified rows of the interaction matrix sum to the SHAP values
+  [x] Quantified the interaction (non-additive) share of attribution
+  [x] Mapped the audit to SME underwriting hypothesis testing
 
-  KEY INSIGHT: Interactions are what justify using a tree over a linear
-  model. If the non-linear share is tiny, you're paying a complexity
-  tax for no accuracy gain — and the linear challenger is the better
-  production choice.
+  KEY INSIGHT: Interactions measure NON-ADDITIVITY. If the interaction
+  share is tiny, an additive challenger with good per-feature curves may
+  match the tree and be easier to govern; if it is large, the model's
+  value lives in feature combinations.
 
   Next: 05_fairness_audit.py — step out of accuracy and into FAIRNESS:
   disparate impact, equalized odds, and the impossibility theorem.

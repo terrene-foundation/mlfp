@@ -7,13 +7,23 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Use mutual information to rank features by any dependency
-#   - Use chi-squared to test statistical independence
-#   - Intersect top-k rankings to find ROBUST features
-#   - Apply filter selection to SingHealth radiology triage
+#   - Use mutual information to rank features by any (linear or non-linear)
+#     dependency with the target
+#   - Use chi-squared to rank features by statistical independence
+#   - Intersect top-k rankings to find features that survive both methods
+#   - Test a ranking against a shuffled-target noise floor
+#   - Apply filter selection to high-dimensional clinical data in a
+#     cost-sensitive healthcare setting
 #
 # PREREQUISITES: 01_feature_engineering.py (feature matrix built)
 # ESTIMATED TIME: ~25 min
+#
+# TASKS:
+#   1. Theory — what "filter" means and when to use it
+#   2. Build — prepare X, y_binary from the feature matrix
+#   3. Train — score every feature with MI and chi-squared
+#   4. Visualise — ranked bar chart + top-20 intersection
+#   5. Apply — radiology triage for a Singapore hospital cluster
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -21,10 +31,12 @@ from __future__ import annotations
 import asyncio
 
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.feature_selection import chi2, mutual_info_classif
 from sklearn.preprocessing import MinMaxScaler
 
 from shared.mlfp03.ex_1 import (
+    OUTPUT_DIR,
     build_full_feature_frame,
     load_icu_tables,
     log_selection_run,
@@ -38,10 +50,24 @@ from shared.mlfp03.ex_1 import (
 # ════════════════════════════════════════════════════════════════════════
 # THEORY — What "Filter" Selection Means
 # ════════════════════════════════════════════════════════════════════════
-# Filter methods score each feature INDEPENDENTLY of the downstream
-# model. Fast, parallelisable, blind to interactions.
-#   - Mutual information (MI): any functional dependency
-#   - Chi-squared: independence test; requires NON-NEGATIVE features
+# Filter methods score each feature INDEPENDENTLY of the model that will
+# eventually consume them. They are cheap, parallelisable, and stable.
+# They are also blind to interactions: a feature that is useless alone
+# but informative in combination with another feature will score poorly.
+#
+# Two filter methods cover the common cases:
+#   - Mutual information (MI): captures any functional dependency, linear
+#     or non-linear. Continuous features encouraged.
+#   - Chi-squared: tests independence between a feature and a categorical
+#     target. Requires NON-NEGATIVE features (MinMax-scale first).
+#
+# WHEN TO USE: first-pass pruning before expensive wrapper methods, or
+# whenever you need a stable, explainable ranking that a clinician can
+# sign off on.
+#
+# WHEN TO AVOID: feature engineering where interactions dominate — e.g.,
+# "fever AND tachycardia" together matter even though each alone is
+# common. For interaction-heavy domains, jump to wrapper selection (RFE).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -64,10 +90,12 @@ print(f"  Positive class rate: {y_binary.mean():.3f}")
 # TASK 3 — TRAIN (score): run MI and chi-squared
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Score every feature with mutual information.
-# Hint: mutual_info_classif(X_sel, y_binary, random_state=42)
+# --- Mutual Information ---
+# TODO: Score every feature with mutual information (random_state=42).
+# Hint: mutual_info_classif(X, y, random_state=...)
 mi_scores = ____
-
+# kNN-based MI / chi2 can return NaN for features that are constant or tie
+# heavily on duplicate rows; treat an undefined score as "no information" (0.0).
 mi_ranking = sorted(
     [
         (name, float(score) if np.isfinite(score) else 0.0)
@@ -77,15 +105,11 @@ mi_ranking = sorted(
     reverse=True,
 )
 
-# Chi-squared requires non-negative features — scale to [0, 1] first.
-# TODO: Apply MinMaxScaler to X_sel before chi2.
-# Hint: MinMaxScaler().fit_transform(X_sel)
+# --- Chi-Squared (requires non-negative features) ---
+# TODO: chi2 needs non-negative inputs — MinMax-scale X_sel first, then
+# run chi2 and unpack (scores, pvalues).
 X_chi2 = ____
-
-# TODO: Run chi2 on the scaled X and unpack (scores, pvalues).
-# Hint: chi2(X_chi2, y_binary)
 chi2_scores, chi2_pvalues = ____
-
 chi2_ranking = sorted(
     [
         (name, float(score) if np.isfinite(score) else 0.0)
@@ -94,6 +118,23 @@ chi2_ranking = sorted(
     key=lambda x: x[1],
     reverse=True,
 )
+
+# --- Noise floor: what MI does a feature get when the target is RANDOM? ---
+# Shuffle y (breaking any real relationship) and re-score. MI is never
+# negative and its estimator is noisy, so even pure noise gets small
+# positive scores. A feature only carries signal if it beats this floor.
+rng = np.random.default_rng(42)
+null_max_mi = []
+for _ in range(5):
+    # TODO: shuffle the target (rng.permutation) and re-score MI against it
+    y_shuffled = ____
+    null_mi = ____
+    null_max_mi.append(float(np.nanmax(null_mi)))
+mi_noise_floor = float(np.mean(null_max_mi))
+# TODO: names of features whose MI score exceeds mi_noise_floor
+features_above_floor = ____
+print(f"\nMI noise floor (mean of max MI over 5 shuffled targets): {mi_noise_floor:.4f}")
+print(f"Features scoring above the noise floor: {len(features_above_floor)}")
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────────
 assert len(mi_ranking) == len(feature_cols), "Task 3: MI must score every feature"
@@ -109,11 +150,12 @@ print("\n[ok] Checkpoint 1 passed — filter scoring complete\n")
 print_ranking("Mutual Information (top 15)", mi_ranking, top=15)
 print_ranking("Chi-Squared (top 15)", chi2_ranking, top=15)
 
-# TODO: Build top-20 sets for each method and compute the intersection.
-# Hint: mi_top20 = {name for name, _ in mi_ranking[:20]}
+# Intersection: features that pass BOTH filter methods are robust —
+# their relevance is not an artefact of one particular score.
+# TODO: top-20 name sets for each method and their sorted intersection.
 mi_top20 = ____
 chi2_top20 = ____
-filter_consensus = sorted(mi_top20 & chi2_top20)
+filter_consensus = ____
 
 print("\n--- Filter Consensus (top-20 intersection) ---")
 print(f"  MI top-20:           {len(mi_top20)} features")
@@ -122,12 +164,103 @@ print(f"  Intersection:        {len(filter_consensus)} features")
 for f in filter_consensus:
     print(f"    - {f}")
 
+# --- Mutual information + chi-squared bar charts (top 15) ---
+top_n = 15
+mi_names = [name for name, _ in mi_ranking[:top_n]]
+mi_vals = [score for _, score in mi_ranking[:top_n]]
+chi2_names = [name for name, _ in chi2_ranking[:top_n]]
+chi2_vals = [score for _, score in chi2_ranking[:top_n]]
+
+fig_mi = go.Figure(
+    go.Bar(x=mi_vals[::-1], y=mi_names[::-1], orientation="h", marker_color="#2563eb")
+)
+fig_mi.update_layout(
+    title="Mutual Information Scores — Top 15 Features",
+    xaxis_title="MI Score",
+    yaxis_title="Feature",
+    height=500,
+    margin=dict(l=200),
+)
+mi_path = OUTPUT_DIR / "ex1_02_mi_scores.html"
+fig_mi.write_html(str(mi_path))
+
+fig_chi2 = go.Figure(
+    go.Bar(
+        x=chi2_vals[::-1], y=chi2_names[::-1], orientation="h", marker_color="#dc2626"
+    )
+)
+fig_chi2.update_layout(
+    title="Chi-Squared Scores — Top 15 Features",
+    xaxis_title="Chi2 Score",
+    yaxis_title="Feature",
+    height=500,
+    margin=dict(l=200),
+)
+chi2_path = OUTPUT_DIR / "ex1_02_chi2_scores.html"
+fig_chi2.write_html(str(chi2_path))
+
+# --- Selected vs dropped features comparison ---
+mi_top20 = {name for name, _ in mi_ranking[:20]}
+chi2_top20 = {name for name, _ in chi2_ranking[:20]}
+consensus_features = sorted(mi_top20 & chi2_top20)
+only_mi = sorted(mi_top20 - chi2_top20)
+only_chi2 = sorted(chi2_top20 - mi_top20)
+
+fig_venn = go.Figure()
+categories = (
+    ["Both"] * len(consensus_features)
+    + ["MI only"] * len(only_mi)
+    + ["Chi2 only"] * len(only_chi2)
+)
+feat_names = consensus_features + only_mi + only_chi2
+fig_venn.add_trace(
+    go.Bar(
+        y=feat_names,
+        x=[1] * len(feat_names),
+        orientation="h",
+        marker_color=[
+            "#10b981" if c == "Both" else "#2563eb" if c == "MI only" else "#dc2626"
+            for c in categories
+        ],
+        text=categories,
+        textposition="inside",
+    )
+)
+fig_venn.update_layout(
+    title="Filter Consensus: MI vs Chi-Squared Top-20 Overlap",
+    xaxis=dict(showticklabels=False),
+    height=max(400, 25 * len(feat_names)),
+    margin=dict(l=200),
+    showlegend=False,
+)
+venn_path = OUTPUT_DIR / "ex1_02_filter_consensus.html"
+fig_venn.write_html(str(venn_path))
+print(f"\n  Saved: {mi_path}")
+print(f"  Saved: {chi2_path}")
+print(f"  Saved: {venn_path}")
+
+# Persist the rankings so downstream technique files can re-use them
 save_ranking_csv(mi_ranking, "filter_mi_ranking.csv", score_col="mi_score")
 save_ranking_csv(chi2_ranking, "filter_chi2_ranking.csv", score_col="chi2_score")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────────
-assert len(filter_consensus) >= 3, "Task 4: expected at least 3 consensus features"
+assert (
+    len(filter_consensus) >= 3
+), f"Task 4: expected at least 3 consensus features, got {len(filter_consensus)}"
 print("\n[ok] Checkpoint 2 passed — filter consensus found\n")
+
+# INTERPRETATION: agreement between two filters is only evidence of
+# signal if the scores themselves beat the noise floor. Computed here:
+print(
+    f"  Top MI score {mi_ranking[0][1]:.4f} vs noise floor {mi_noise_floor:.4f}; "
+    f"{len(features_above_floor)} of {len(feature_cols)} features beat it."
+)
+if not features_above_floor:
+    print(
+        "  → No feature beats a shuffled target: these rankings order NOISE.\n"
+        "    Every selection method will still return a 'top 20' — always\n"
+        "    compare against a permutation baseline before trusting one."
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -156,15 +289,39 @@ print(f"\n  ExperimentTracker run: {run_id}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: SingHealth Radiology Triage
+# TASK 5 — APPLY: radiology triage for a Singapore hospital cluster
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: SingHealth's tele-radiology network processes 4,000
-# chest X-rays/day. Filter scoring runs in milliseconds per feature —
-# the ranking can refresh nightly, and clinicians can veto features
-# they don't trust.
+# SCENARIO (illustrative): a Singapore hospital cluster runs a shared
+# tele-radiology queue receiving ~4,000 chest X-rays a day. Radiologists
+# want a priority score that surfaces likely-abnormal studies within two
+# minutes of upload.
 #
-# BUSINESS IMPACT: ~S$246K/year in earlier interventions + S$1.2M/year
-# in avoided missed findings. ~30x ROI in year one.
+# The candidate feature matrix has ~180 columns — patient demographics,
+# prior admissions, current vitals, medication flags, referring
+# specialty. Running a wrapper method for every new cohort is too slow.
+#
+# Why filter selection is the right tool:
+#   - Filter scoring is cheap, so the ranking can be refreshed nightly
+#   - The MI + chi-squared intersection is explainable — a clinician
+#     reviewing the feature list can veto any feature they don't trust
+#   - Filters are model-agnostic: the downstream priority model can be
+#     swapped (LogReg today, GBM tomorrow) without re-running selection
+#
+# ILLUSTRATIVE ARITHMETIC (assumed values, not the cluster's figures):
+# value one minute of faster reading on an urgent study at S$0.75
+# (S$45 per hour of delay avoided). With 15% of 4,000 studies urgent
+# and 1.5 minutes saved each:
+#     600 urgent/day × 1.5 min × S$0.75/min × 365 days ≈ S$246K/year
+#
+# LIMITATIONS:
+#   - Filter methods miss INTERACTION effects (the whole point of
+#     wrapper selection in 03_wrapper_selection.py)
+#   - Chi-squared requires non-negative features — the MinMax step
+#     silently flattens scale, which can hurt features with natural
+#     zeros
+#   - MI is sensitive to bandwidth choice on continuous features;
+#     random_state=42 makes the ranking deterministic but not
+#     necessarily "correct"
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -175,11 +332,19 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Scored every engineered feature with mutual information + chi2
-  [x] Found the robust top-20 intersection as a model-free shortlist
-  [x] Logged the run to ExperimentTracker
+  [x] Scored every engineered feature with mutual information
+  [x] Scored every engineered feature with chi-squared (MinMax-scaled)
+  [x] Found the top-20 intersection as a model-free shortlist
+  [x] Checked the scores against a shuffled-target noise floor
+  [x] Logged the filter run to ExperimentTracker for later comparison
+  [x] Applied filter selection to a radiology triage queue
 
-  Next: 03_wrapper_selection.py — Recursive Feature Elimination with
-  a Random Forest to capture interactions.
+  KEY INSIGHT: Filters are the cheapest, fastest, most explainable
+  feature-selection tool. Reach for them first. Only graduate to
+  wrapper or embedded methods when the filter shortlist is not enough
+  or when interactions dominate.
+
+  Next: 03_wrapper_selection.py — use Recursive Feature Elimination
+  with a Random Forest to capture interactions that filters miss.
 """
 )

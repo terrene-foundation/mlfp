@@ -2137,7 +2137,7 @@ Distance to the CBD has a moderate negative correlation with price: towns nearer
 
 - **Lesson 1.5** will move into time-series analysis with window functions, which operate on the enriched joined dataset you built here.
 - **Lesson 1.6** will visualise relationships between numeric columns as scatter plots and a correlation heatmap.
-- **Lesson 1.8** will perform a more complex multi-source merge when aligning monthly CPI, quarterly employment, and daily FX-rate data onto a common monthly spine.
+- **Lesson 1.7** will perform a more complex multi-source merge when aligning monthly CPI, quarterly employment, and daily FX-rate data onto a common monthly spine.
 - **Module 2**'s FeatureStore uses joins under the hood to materialise feature groups. The join semantics are exactly what you learned today.
 
 ## Reflection
@@ -2308,7 +2308,15 @@ The `method` parameter controls how ties are broken:
 - `"min"` — ties get the lowest possible rank, and the next value skips ahead. `[1, 2, 2, 4]`.
 - `"average"` — ties get the average of their ranks. `[1, 2.5, 2.5, 4]`.
 
-`"ordinal"` is the default for most purposes; use it when you want a strict 1-2-3 ordering. `"dense"` is useful when you want to count distinct values and assign them consecutive ranks regardless of duplicates.
+Polars' own default is `"average"`; pass `method="ordinal"` when you want a strict 1-2-3 ordering. `"dense"` is useful when you want to count distinct values and assign them consecutive ranks regardless of duplicates.
+
+### FOUNDATIONS: Trend and seasonality — and testing for them
+
+A time series can move in two systematic ways. A **trend** is a long-run drift: prices that rise (or fall) year after year. **Seasonality** is a pattern that repeats on a fixed calendar cycle: more sales every March, higher prices every December. Everything else is noise.
+
+Window functions are your tools for both. A long rolling mean (12 months) averages away seasonality and noise, leaving the trend. A YoY change compares each month to the same month a year earlier, so a seasonal pattern cancels out and only trend plus noise remain. To look for seasonality directly, group by *month of the year* (1–12) across all years and compare: if every January is high, the January group will stand out.
+
+The important habit is to treat "there is a seasonal pattern" (or "prices are rising") as a **hypothesis to test**, not a fact to assume. Housing markets in many countries do have seasonal rhythms and long-run trends. Whether *this* dataset has them is a question only the data can answer — and in the worked example below, the honest answer turns out to be no.
 
 ### FOUNDATIONS: Lazy frames — query optimisation
 
@@ -2350,7 +2358,9 @@ monthly_prices = monthly_prices.sort("town", "transaction_date")
 
 Sort by partition key first (so rows in the same partition are adjacent), then by the ordering key within each partition. After sorting, `.over("town")` correctly partitions and the window functions compute what you expect.
 
-There is also a subtlety with `shift`: Polars' `shift(n)` in a window context shifts by row count, not by time. If there are gaps in the monthly time series (a month with no transactions), `shift(12)` does *not* reach back exactly 12 calendar months — it reaches back 12 rows, which might be 13 or 14 calendar months. For the HDB dataset this is usually not a problem because every town has transactions every month, but be aware of the pitfall. For strictly time-based shifts, you can use `group_by_dynamic` or join the DataFrame to a date-shifted copy of itself.
+There is also a subtlety with `shift` and `rolling_mean`: in a window context they count *rows*, not time. If a month is missing from the series (a month with no transactions in that town), `shift(12)` does *not* reach back exactly 12 calendar months — it reaches back 12 rows, which is 13 calendar months for every row after the gap. Nothing warns you; the YoY number is simply wrong. The course HDB data has exactly this problem: 27 towns × 120 months = 3,240 town-months, but only 3,236 have any sales (Bukit Timah is missing three months, Central Area one). A naive `shift(12).over("town")` silently misaligns 40 rows.
+
+The fix is to build a complete **calendar spine** — every town × every month — and left-join the observed data onto it before any window function. Missing months then become explicit null rows, so a 12-row shift is always a 12-month shift, and a rolling window containing a gap returns null rather than quietly averaging across it. The worked example does exactly this. (The alternative is a join on a date-shifted copy of the table, e.g. matching each row to `transaction_date.dt.offset_by("-12mo")`.)
 
 ### ADVANCED: Rolling windows are a form of convolution
 
@@ -2371,6 +2381,8 @@ The time-series analysis you are learning here feeds directly into `FeatureEngin
 ```python
 from __future__ import annotations
 
+from datetime import date
+
 import polars as pl
 
 from shared import MLFPDataLoader
@@ -2384,18 +2396,50 @@ hdb = hdb.with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
 )
 
-monthly_prices = (
+monthly_observed = (
     hdb.group_by("town", "transaction_date")
     .agg(
         pl.col("price_per_sqm").median().alias("median_price_sqm"),
         pl.col("resale_price").median().alias("median_resale_price"),
         pl.len().alias("transaction_count"),
     )
+)
+print(f"Town-month rows observed: {monthly_observed.height:,}")
+
+# Calendar spine: every town x every month, so a 12-row shift is a 12-month shift
+towns = hdb.select("town").unique()
+months = pl.DataFrame({
+    "transaction_date": pl.date_range(date(2015, 1, 1), date(2024, 12, 1), "1mo", eager=True)
+})
+spine = towns.join(months, how="cross")
+print(f"Complete town x month grid: {spine.height:,}")
+
+monthly_prices = (
+    spine.join(monthly_observed, on=["town", "transaction_date"], how="left")
     .sort("town", "transaction_date")
 )
+print(monthly_prices.filter(pl.col("transaction_count").is_null()).select("town", "transaction_date"))
 ```
 
-The base table has one row per (town, month) with the median price metrics. Sorting by town then date is crucial for window functions — without this, the rolling windows will compute garbage.
+Expected output:
+
+```text
+Town-month rows observed: 3,236
+Complete town x month grid: 3,240
+shape: (4, 2)
+┌──────────────┬──────────────────┐
+│ town         ┆ transaction_date │
+│ ---          ┆ ---              │
+│ str          ┆ date             │
+╞══════════════╪══════════════════╡
+│ BUKIT TIMAH  ┆ 2015-10-01       │
+│ BUKIT TIMAH  ┆ 2017-02-01       │
+│ BUKIT TIMAH  ┆ 2022-07-01       │
+│ CENTRAL AREA ┆ 2015-08-01       │
+└──────────────┴──────────────────┘
+```
+
+`pl.date_range(..., "1mo", eager=True)` builds the 120 month-start dates from January 2015 to December 2024, and the cross join pairs each with each of the 27 towns. Left-joining the observed medians onto that grid turns the four missing town-months into explicit null rows. The base table now has exactly one row per (town, month) with no gaps, sorted by town then date — the sort is crucial, because window functions read rows in their current order.
 
 ### Step 2: Rolling averages
 
@@ -2408,7 +2452,7 @@ monthly_prices = monthly_prices.with_columns(
 print(monthly_prices.filter(pl.col("town") == "BISHAN").tail(18))
 ```
 
-Inspect Bishan for the last 18 months. You should see the raw `median_price_sqm` bouncing around, the `rolling_3m_price_sqm` tracking it more smoothly, and the `rolling_12m_price_sqm` as a very smooth trend line. When `rolling_3m` rises above `rolling_12m`, the short-term average is above the long-term average — an accelerating market signal.
+Inspect Bishan for the last 18 months. With only 11–18 sales in a month, the raw `median_price_sqm` bounces by several hundred dollars from month to month (S$9,262 to S$10,159 in the second half of 2024). `rolling_3m_price_sqm` follows it more smoothly, and `rolling_12m_price_sqm` barely moves (about S$9,890–10,080). When `rolling_3m` rises above `rolling_12m`, the short-term average is above the long-term average — but in a flat series like this, those crossings are noise, not market signals. A rolling window that contains one of the spine's null months returns null, so Bukit Timah's 12-month average disappears for a year after each gap instead of silently spanning it.
 
 ### Step 3: Year-over-year change
 
@@ -2430,7 +2474,7 @@ print(monthly_prices.filter(pl.col("town") == "BISHAN").tail(24).select(
 ))
 ```
 
-For the 2022–2023 period you should see YoY values around +10% to +20% — a large post-COVID rebound. For 2015–2017 you should see values near zero or slightly negative, reflecting the cooling-measure era.
+In the last six months of 2024, Bishan's YoY values run from about −10% to +0.2%. Look across the whole table and the picture is clear: over all towns and months the YoY change averages +0.26% with a standard deviation of about 6 percentage points (range −29% to +32%). Individual months swing wildly because each town-month median is built from a dozen or so sales, but there is no sustained growth. This is the synthetic dataset's flat price level showing through — the real resale market rose strongly after 2020, and a learner who expects that will "see" a rebound in noise if they do not check.
 
 ### Step 4: Find the trend leaders with lazy evaluation
 
@@ -2456,7 +2500,7 @@ recent_yoy = (
 print(recent_yoy.head(10))
 ```
 
-Each town's `mean_yoy_pct` is its average annual appreciation rate since 2021. Towns at the top are the fastest-growing; towns at the bottom are the slowest. Compare `mean_yoy_pct` to `peak_yoy_pct` — towns with a high peak but a low mean had a single good month and then flatlined, while towns with similar peak and mean have been growing consistently.
+Each town's `mean_yoy_pct` is its average YoY change since 2021. In this data the "leader", BUKIT TIMAH, averages +1.35% with a standard deviation of 10 points and a peak of +28%, and the bottom town, SERANGOON, averages −0.62%. Every town's mean is within about ±1.4% of zero while its monthly swings are ten times larger. Compare `mean_yoy_pct` to `std_yoy_pct` before you call a town a leader: a mean that is small relative to its own spread is indistinguishable from zero. Note also `months_of_data`: Bukit Timah has 46 rather than 48 because its 2022-07 gap removes two YoY values (2022-07 itself and 2023-07, whose 12-month-ago value is the gap).
 
 ### Step 5: Classify towns into leaders, followers, and laggards
 
@@ -2479,7 +2523,43 @@ print(f"Std dev: {std_growth:.2f}%")
 print(recent_yoy.group_by("trend_category").agg(pl.len().alias("count")))
 ```
 
-Under a roughly normal distribution of growth rates, about 16% of towns should be more than 1 standard deviation above the mean (leaders) and 16% below (laggards). If the actual counts are far from those proportions, the growth distribution is skewed.
+Expected output:
+
+```text
+Mean YoY growth (all towns): 0.20%
+Std dev: 0.39%
+shape: (3, 2)
+┌────────────────┬───────┐
+│ trend_category ┆ count │
+│ ---            ┆ ---   │
+│ str            ┆ u32   │
+╞════════════════╪═══════╡
+│ follower       ┆ 22    │
+│ laggard        ┆ 3     │
+│ leader         ┆ 2     │
+└────────────────┴───────┘
+```
+
+(The order of `group_by` output rows is not guaranteed; add `.sort("trend_category")` to fix it.) Under a roughly normal distribution, about 16% of towns should be more than one standard deviation above the mean and 16% below — about 4 of 27 each; here there are 2 leaders and 3 laggards. But notice the scale: the segmentation is relative, so it *always* produces leaders and laggards, even when the whole spread is 0.39 percentage points. A classification rule built on mean ± std tells you who is above the others, never whether the difference matters.
+
+### Step 6: Test for seasonality
+
+Is there a best month of the year to buy? Group every sale by its calendar month, across all ten years:
+
+```python
+seasonal = (
+    hdb.with_columns(pl.col("transaction_date").dt.month().alias("month_of_year"))
+    .group_by("month_of_year")
+    .agg(
+        pl.len().alias("transactions"),
+        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+    )
+    .sort("month_of_year")
+)
+print(seasonal)
+```
+
+The 12 rows show between 4,001 (January) and 4,333 (November) sales per calendar month, and median prices per square metre between S$8,759 (August) and S$8,836 (October) — a spread of S$78, under 1%. There is no month that is consistently busier or dearer. The hypothesis "prices are seasonal" is rejected for this dataset, just as the "prices are trending up" hypothesis was rejected in Step 3. Both are correct, useful findings: you checked rather than assumed, and you now know that any model trained on this file will find no calendar signal to learn.
 
 ## Try It Yourself
 
@@ -2491,12 +2571,12 @@ Under a roughly normal distribution of growth rates, about 16% of towns should b
 
 **Drill 4.** Rewrite Step 4 in eager mode (no `.lazy()` / `.collect()`). Confirm the output is identical. Time both versions using Python's `time.perf_counter()`; which is faster?
 
-**Drill 5.** Compute a three-year *compound* annual growth rate (CAGR) per town instead of the one-year YoY. CAGR = (ending / beginning)^(1/years) - 1. Which town has the highest 3-year CAGR?
+**Drill 5.** Compute a *compound* annual growth rate (CAGR) per town from January 2021 to December 2024, using the `rolling_12m_price_sqm` values at the two ends (smoother than single months). CAGR = (ending / beginning)^(1/years) − 1, where `years` must be the actual time between the two dates. Which town has the highest CAGR?
 
 ## Cross-References
 
 - **Lesson 1.6** will visualise the rolling averages and YoY trends as line charts — the natural chart type for time-series data.
-- **Lesson 1.8** will use rolling features in the taxi-trip cleaning pipeline (rolling average trip duration per hour of day).
+- **Lesson 1.7** will align monthly, quarterly and daily economic series onto one calendar — the same spine idea you used here.
 - **Module 2**'s `FeatureEngineer` automates rolling-feature generation at scale.
 - **Module 5** will reintroduce rolling windows as a form of convolution when you meet TCNs (temporal convolutional networks).
 
@@ -2511,6 +2591,8 @@ You should now be able to:
 - Explain what lazy evaluation means, what `.collect()` does, and what optimisations the Polars query planner performs.
 - Use `rank` with different tie-breaking methods and understand what each produces.
 - Classify values into categories using `pl.when().then()` combined with the mean and standard deviation.
+- Build a complete calendar spine before using `shift` or `rolling_mean`, and explain why gaps break row-based windows.
+- Test a trend or seasonality hypothesis with YoY changes and a month-of-year group_by, and report a negative result honestly.
 
 ### Drill answers
 
@@ -2550,23 +2632,29 @@ You should now be able to:
    )
    print(peaks)
    ```
-4. Lazy is typically 10–30% faster on this query because the filter-then-drop_nulls-then-group_by chain can be rewritten; on smaller datasets the difference is small.
+4. Remove `.lazy()` and `.collect()`; the output is identical. On a 3,240-row table both versions take a few milliseconds and the timing difference is noise — sometimes one wins, sometimes the other. Lazy evaluation pays off on large inputs (millions of rows, or `pl.scan_parquet` reading only the needed columns from a big file), not here.
 5. ```python
    cagr = (
-       monthly_prices
+       monthly_prices.filter(pl.col("transaction_date") >= pl.date(2021, 1, 1))
+       .drop_nulls("rolling_12m_price_sqm")
        .group_by("town")
        .agg(
-           pl.col("median_price_sqm").first().alias("start"),
-           pl.col("median_price_sqm").last().alias("end"),
+           pl.col("rolling_12m_price_sqm").first().alias("start"),
+           pl.col("rolling_12m_price_sqm").last().alias("end"),
            pl.col("transaction_date").first().alias("first_date"),
            pl.col("transaction_date").last().alias("last_date"),
        )
        .with_columns(
-           ((pl.col("end") / pl.col("start")) ** (1/3) - 1).alias("cagr_3y")
+           ((pl.col("last_date") - pl.col("first_date")).dt.total_days() / 365.25).alias("years")
        )
-       .sort("cagr_3y", descending=True)
+       .with_columns(
+           ((pl.col("end") / pl.col("start")) ** (1 / pl.col("years")) - 1).alias("cagr")
+       )
+       .sort("cagr", descending=True)
    )
+   print(cagr.head(3))
    ```
+   The exponent uses the real elapsed time (about 3.9 years from 2021-01 to 2024-12), not a hard-coded `1/3`. The highest is BUKIT TIMAH at about 0.86% a year, and every town lies between about −0.8% and +0.9% — flat, as Step 3 found.
 
 ---
 

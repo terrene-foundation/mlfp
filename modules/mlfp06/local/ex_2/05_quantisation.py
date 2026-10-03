@@ -212,6 +212,8 @@ print(
 
   KEY INSIGHT: quantisation is the single biggest deployment lever.
   FP16 -> INT4 cuts memory 4x at ~2-5% quality drop on most tasks.
+  Pair quantisation with LoRA (QLoRA) for fine-tuning, and with
+  llama.cpp GGUF for CPU-only edge deployment.
 
   Next: 06_sft_alignment_pipeline.py runs the real kailash-align
   SFT pipeline + AdapterRegistry on the IMDB SFT dataset.

@@ -233,9 +233,10 @@ print(
   [x] Applied the tree to a Singapore hospital DP-SGD scenario
       (illustrative ~S$973k/year saving across two sites)
 
-  KEY INSIGHT: there is no "best" fine-tuning technique. Only the
-  best technique FOR a specific dataset size, GPU budget, privacy
-  constraint, and number of tasks.
+  KEY INSIGHT: there is no "best" fine-tuning technique.  There is
+  only the best technique FOR a specific dataset size, GPU budget,
+  privacy constraint, and number of tasks.  The decision tree is how
+  you stop defaulting to LoRA out of habit.
 
   Next: 04_model_merging.py combines fine-tuned models without any
   additional training.

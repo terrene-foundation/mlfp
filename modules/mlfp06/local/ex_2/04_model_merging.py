@@ -231,11 +231,11 @@ print(
   [x] Applied merging to a Singapore fintech three-LoRA scenario
       (~S$50k/year saving vs separate deployments, zero retraining)
 
-  KEY INSIGHT: merging is free compute. TIES handles sign conflict,
+  KEY INSIGHT: merging is free compute.  TIES handles sign conflict,
   SLERP handles norm drift, and task arithmetic composes them for
   targeted capability addition or removal.
 
-  Next: 05_quantisation.py surveys how we shrink the merged model
-  for deployment on smaller hardware.
+  Next: 05_quantisation.py surveys how we shrink the merged model for
+  deployment on smaller hardware.
 """
 )

@@ -765,14 +765,14 @@ probe = obs.attention.probe(prompts, labels, layer=6)
           <text x="305" y="94" font-size="8" fill="#64748B" text-anchor="middle">utilisation</text>
           <!-- Leaderboard -->
           <rect x="20" y="120" width="300" height="140" rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>
-          <text x="170" y="138" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Retriever leaderboard &mdash; 50 SG policy queries</text>
+          <text x="170" y="138" font-size="10" font-weight="700" fill="#0F172A" text-anchor="middle">Illustrative leaderboard &mdash; your Ex 6.4 run fills it in</text>
           <text x="30" y="158" font-size="9" fill="#64748B">retriever</text>
           <text x="180" y="158" font-size="9" fill="#64748B">recall@5</text>
           <text x="250" y="158" font-size="9" fill="#64748B">faithfulness</text>
           <text x="30" y="178" font-size="10" fill="#334155">BM25</text>
           <text x="200" y="178" font-size="10" fill="#334155" text-anchor="end">0.71</text>
           <text x="275" y="178" font-size="10" font-weight="700" fill="#166534" text-anchor="end">0.88</text>
-          <text x="30" y="196" font-size="10" fill="#334155">dense (bge-m3)</text>
+          <text x="30" y="196" font-size="10" fill="#334155">dense (nomic-embed)</text>
           <text x="200" y="196" font-size="10" fill="#334155" text-anchor="end">0.78</text>
           <text x="275" y="196" font-size="10" fill="#334155" text-anchor="end">0.81</text>
           <text x="30" y="214" font-size="10" fill="#334155">hybrid</text>
@@ -792,7 +792,7 @@ probe = obs.attention.probe(prompts, labels, layer=6)
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;Most RAG post-mortems stop at recall@5. That is why most RAG post-mortems are wrong.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Hybrid wins recall by 12 points but loses faithfulness by 15. Why?&rdquo; &rarr; expected wrong answer: &ldquo;hybrid is worse&rdquo; &rarr; right answer: &ldquo;hybrid retrieves MORE chunks &mdash; generator latches onto weaker ones and ungrounds. Classic over-retrieval pattern.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;In this illustrative board hybrid wins recall by 12 points but loses faithfulness by 15. How could that happen?&rdquo; &rarr; expected wrong answer: &ldquo;hybrid is worse&rdquo; &rarr; right answer: &ldquo;hybrid retrieves MORE chunks &mdash; generator latches onto weaker ones and ungrounds. Classic over-retrieval pattern.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip MRR &mdash; the recall-vs-faithfulness tension is the insight.<br/>
     <strong>Transition</strong>: &ldquo;Code surface for the retrieval lens is short and scriptable.&rdquo;
   </aside>
@@ -802,43 +802,42 @@ probe = obs.attention.probe(prompts, labels, layer=6)
 <section class="code-fit">
   <h2>Lens 3: Retrieval &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
-  <p class="small muted" style="margin-top: 0;">Backs onto <code>ragas</code> + <code>trulens-eval</code>. Works for any retriever that exposes <code>retrieve(query, k)</code>.</p>
+  <p class="small muted" style="margin-top: 0;">Uses <code>ragas</code> when installed, a Kaizen judge otherwise. A retriever is any callable <code>(query, k) &rarr; [(doc_id, text, score)]</code>.</p>
 <pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()
 
-# ── Standard IR metrics ──────────────────────────────────────
-df = obs.retrieval.recall_at_k(
-    queries=eval_queries, relevant_ids=gold_chunk_ids, retriever=my_retriever, k=5)
+# ── Standard IR metrics for ONE query ────────────────────────
+r = obs.retrieval.recall_at_k(retrieved_ids, gold_ids, k=5)
+p = obs.retrieval.precision_at_k(retrieved_ids, gold_ids, k=5)
 
 # ── Retriever bake-off on identical queries ──────────────────
-leaderboard = obs.retrieval.compare_retrievers(
-    retrievers={"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
-    queries=eval_queries, relevant_ids=gold_chunk_ids, k=5)
-# leaderboard: Polars DataFrame with recall@k, precision@k, faithfulness, latency_ms
+eval_set = [{"query": q, "relevant_ids": [gold]} for q, gold in pairs]
+board = obs.retrieval.compare_retrievers(
+    {"bm25": bm25, "dense": dense, "hybrid": hybrid, "hyde": hyde},
+    eval_set, k=5)
+# columns: retriever, recall_at_k, precision_at_k, mrr, ndcg_at_k
 
 # ── Did the generator actually USE the context? ──────────────
-util = obs.retrieval.context_utilisation(
-    response=generated_answer, context=retrieved_chunks)
-# util.grounded_claims / util.total_claims, util.unused_chunks
+util = obs.retrieval.context_utilisation(answer, retrieved_chunks)
+# float in [0, 1] — token-overlap heuristic, no LLM call
 
-# ── Chunk-size sweep: find the empirical sweet spot ──────────
-sweep = obs.retrieval.chunk_size_sweep(
-    documents=policy_corpus, sizes=[256, 512, 1024, 2048], queries=eval_queries)
+# ── Judge-based RAG scores for the whole pipeline ────────────
+scores = obs.retrieval.ragas_scores(queries, contexts_per_query, answers)
 
-obs.retrieval.plot_retrieval_dashboard().show()  # recall + leaderboard + sweep
+obs.retrieval.plot_rag_dashboard().show()  # recall + leaderboard
 </code></pre>
   <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
-    <strong>First use:</strong> Exercise 6.4 &mdash; Singapore policy RAG leaderboard across four retrievers.
+    <strong>First use:</strong> Exercise 6.4 (<code>ex_4/05</code>) &mdash; hit@k leaderboard for BM25 / dense / hybrid / HyDE on a 1,000-document sample of the open <code>neural-bridge/rag-dataset-12000</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 2 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. You will run it in 6.4 across four retrievers without writing a single for-loop yourself.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;<code>compare_retrievers</code> is one call. In 6.4 you score four retrievers with it without hand-writing a single metric loop.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;What happens if <code>context_utilisation</code> is 0.3? Which number do I change?&rdquo; &rarr; expected wrong answer: &ldquo;try a bigger model&rdquo; &rarr; right answer: &ldquo;tighten the prompt to cite chunks, OR re-rank so irrelevant chunks do not crowd the context window.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip chunk-size sweep &mdash; the bake-off is the headline.<br/>
+    <strong>If behind schedule</strong>: skip <code>ragas_scores</code> &mdash; the bake-off is the headline. (Chunk-size comparison is Exercise 6.4 part 1, <code>ex_4/01</code>.)<br/>
     <strong>Transition</strong>: &ldquo;Lens 4 is the one most teams never build &mdash; until the first 3am agent incident.&rdquo;
   </aside>
 </section>

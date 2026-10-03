@@ -31,13 +31,15 @@ import asyncio
 
 import numpy as np
 import plotly.graph_objects as go
-from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker
 
 from shared.mlfp02.ex_7 import (
+    ANALYSIS_ARM,
     OUTPUT_DIR,
+    compute_srm,
     get_revenue_arrays,
     load_experiment,
+    msprt_lambda,
     msprt_sequential_pvalues,
     naive_ab,
     print_banner,
@@ -50,12 +52,16 @@ from shared.mlfp02.ex_7 import (
 # THEORY — The Peeking Problem and Sequential Testing
 # ════════════════════════════════════════════════════════════════════════
 # Standard p-values are designed for a SINGLE look at the data. If you
-# peek at your experiment 20 times and stop when p < 0.05, the actual
-# false positive rate jumps from 5% to ~64%.
+# peek at your experiment 20 times and stop the first time p < 0.05, the
+# actual false positive rate is far above 5% — Task 3 measures it.
 #
-# Why? Each peek is an independent test. With 20 independent tests at
-# alpha=0.05, the probability of at LEAST ONE false positive is:
-#   1 - (1-0.05)^20 = 64%
+# Why? Every peek is another chance for random noise to cross the line.
+# The peeks are NOT independent tests: each look re-uses all the data of
+# the previous look plus a little more, so consecutive z-statistics are
+# highly correlated. That is why the naive formula 1 - 0.95^20 = 64% for
+# 20 independent tests is wrong here; for 20 equally spaced looks the
+# true rate is roughly 25% — still five times the promised 5%. Because
+# there is no simple closed form, we measure it by simulation.
 #
 # mSPRT (mixture Sequential Probability Ratio Test) provides "always-
 # valid" p-values that remain correct no matter when you look. The
@@ -68,10 +74,14 @@ from shared.mlfp02.ex_7 import (
 # scale that gives the correct reading no matter how many times you
 # step on it.
 #
-# WHY THIS MATTERS: At Grab (Singapore), experiments run continuously
-# and dashboards update hourly. Product managers peek daily. Without
-# sequential testing, ~30% of "significant" results were false positives
-# that reverted after full rollout.
+# The always-valid p-value is the running minimum of 1 / Lambda_n, where
+#   Lambda_n = sqrt(V/(V+tau^2)) * exp(tau^2 * diff^2 / (2 V (V+tau^2)))
+# V is the variance of the current difference estimate and tau^2 is the
+# width of the mixing prior over plausible effect sizes.
+#
+# WHY THIS MATTERS: Experimentation platforms whose dashboards update
+# continuously invite daily peeking; without sequential methods, a large
+# share of "significant" results are noise that disappears after rollout.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -81,12 +91,16 @@ from shared.mlfp02.ex_7 import (
 print_banner("MLFP02 Exercise 7.3: Sequential Testing (mSPRT)")
 
 experiment = load_experiment()
-control, treatment = split_groups(experiment)
+control, treatment = split_groups(experiment, ANALYSIS_ARM)
+srm_p = compute_srm(control.height, treatment.height)  # vs the designed 40:35 ratio
+if srm_p < 0.01:
+    raise RuntimeError(f"SRM on control vs {ANALYSIS_ARM} (p={srm_p:.2g}) — stop")
 y_c, y_t = get_revenue_arrays(control, treatment)
 baseline = naive_ab(y_c, y_t)
 se_naive = baseline["se"]
 
-print(f"  Data loaded: {experiment.shape[0]:,} rows")
+print(f"  Data loaded: {experiment.shape[0]:,} rows; analysing control vs {ANALYSIS_ARM}")
+print(f"  Pairwise SRM p={srm_p:.3f} (OK)")
 print(f"  Baseline SE: ${se_naive:.2f}")
 print(f"  Baseline lift: ${baseline['lift']:.2f}")
 
@@ -102,7 +116,9 @@ print("\n>>> Checkpoint 1 passed -- data loaded and baseline computed\n")
 print(f"\n=== Sequential Testing (mSPRT) ===")
 
 tau_sq = se_naive**2  # mSPRT hyperparameter
-sequential_results = msprt_sequential_pvalues(experiment, tau_sq=tau_sq)
+sequential_results = msprt_sequential_pvalues(
+    experiment, tau_sq=tau_sq, treatment_arm=ANALYSIS_ARM
+)
 
 print(f"{'Day':>4} {'n':>8} {'Lift':>10} {'p (fixed)':>12} {'p (mSPRT)':>12}")
 print("-" * 52)
@@ -122,8 +138,22 @@ print(f"Days with p < 0.05 (sequential): {early_sig_seq}/{len(sequential_results
 # evidence accumulates. If a product manager stopped at the first
 # fixed-p < 0.05, they might ship a non-effect.
 
+# Compute the mixture likelihood ratio yourself at the final look
+# (all data): diff = full-sample lift, V = se_naive^2.
+v_final = se_naive**2
+diff_final = baseline["lift"]
+lambda_final = np.sqrt(v_final / (v_final + tau_sq)) * np.exp(
+    tau_sq * diff_final**2 / (2 * v_final * (v_final + tau_sq))
+)
+print(f"\nFinal look: Lambda = {lambda_final:.3g}, 1/Lambda = {1 / lambda_final:.3g}")
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(sequential_results) > 0, "Must have sequential results"
+assert np.isclose(lambda_final, msprt_lambda(diff_final, v_final, tau_sq), rtol=1e-9), (
+    "Your Lambda should match the reference msprt_lambda helper"
+)
+seq_ps = [r["p_sequential"] for r in sequential_results]
+assert all(b <= a for a, b in zip(seq_ps, seq_ps[1:])), "Always-valid p must never increase"
 for r in sequential_results:
     assert 0 <= r["p_sequential"] <= 1, "Sequential p-values must be valid"
 print("\n>>> Checkpoint 2 passed -- sequential testing completed\n")
@@ -147,12 +177,13 @@ print(
     f"  Peeking with fixed p:       {peek_results['rate_fixed_peek']:.1%} (inflated!)"
 )
 print(
-    f"  Expected with {int(peek_results['n_checks'])} peeks:     "
-    f"~{peek_results['theoretical_inflated_rate']*100:.0f}% (theory)"
+    f"  Inflation factor:           "
+    f"{peek_results['rate_fixed_peek'] / peek_results['rate_no_peek']:.1f}x"
 )
-# INTERPRETATION: Peeking inflates Type I error dramatically. With
-# 20 peeks, the false positive rate jumps from 5% to ~64%! Sequential
-# testing (mSPRT) is the correct way to monitor experiments.
+# INTERPRETATION: Read the simulated rate above — with 20 looks it lands
+# around 25%, not 5%. It is well below the 64% an "independent tests"
+# calculation would predict, because each look re-uses earlier data.
+# Sequential testing (mSPRT) is the correct way to monitor experiments.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert (
@@ -194,13 +225,12 @@ print(f"\nSaved: {out_path}")
 
 # Peeking problem visualisation
 fig2 = go.Figure()
-categories = ["No peeking", "Peeking (fixed p)", "Theory (20 peeks)"]
+categories = ["No peeking", f"Peeking ({int(peek_results['n_checks'])} looks, fixed p)"]
 rates = [
     peek_results["rate_no_peek"],
     peek_results["rate_fixed_peek"],
-    peek_results["theoretical_inflated_rate"],
 ]
-colours = ["green", "red", "orange"]
+colours = ["green", "red"]
 fig2.add_trace(
     go.Bar(
         x=categories,
@@ -222,35 +252,32 @@ print(f"Saved: {out_path2}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — Grab Singapore: Continuous Experiment Monitoring
+# APPLY — A Singapore Ride-Hailing Platform: Continuous Monitoring
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: Grab runs ~50 experiments simultaneously on their ride-
-# hailing platform. Dashboards update hourly, and product managers
-# check results daily — effectively peeking 30 times per month.
+# Scenario (illustrative figures): a ride-hailing platform concludes ~50
+# experiments a month. Dashboards update continuously and product
+# managers check results about 20 times per experiment.
 #
-# Without sequential testing:
-#   - 50 experiments x 64% false positive rate = ~32 false positives
-#   - Each false positive ships a non-effect -> wasted eng time + UX churn
-#   - Cost: ~S$100K per false positive (development, rollback, re-test)
-#   - Annual waste: ~S$3.2M from peeking-inflated false positives
-#
-# With mSPRT:
-#   - 50 experiments x 5% false positive rate = ~2.5 false positives
-#   - Annual savings: ~S$2.9M
-#   - Trade-off: experiments take ~20% longer to reach significance
+# Worst case — none of the 50 changes truly works:
+#   - With peeking, each experiment has the SIMULATED false-positive rate
+#     from Task 3 of being declared a winner.
+#   - With mSPRT, the false-positive rate is at most 5% (alpha).
+#   - Each false positive ships a non-effect: development, rollback and
+#     re-test cost an assumed S$100K.
+#   - Trade-off: mSPRT needs more data than a single fixed-horizon test.
 
 print(f"\n--- Singapore Application: Ride-Hailing Experiment Monitoring ---")
-n_experiments = 50
-fp_peeking = n_experiments * peek_results["rate_fixed_peek"]
-fp_msprt = n_experiments * 0.05
-cost_per_fp = 100_000
-print(f"Concurrent experiments: {n_experiments}")
-print(f"False positives (peeking): ~{fp_peeking:.0f}")
-print(f"False positives (mSPRT):   ~{fp_msprt:.0f}")
-print(f"Cost per false positive: S${cost_per_fp:,}")
+n_experiments_per_month = 50  # illustrative
+fp_peeking = n_experiments_per_month * peek_results["rate_fixed_peek"]
+fp_msprt_bound = n_experiments_per_month * 0.05  # upper bound under H0
+cost_per_fp = 100_000  # S$, illustrative
+print(f"Experiments concluded per month: {n_experiments_per_month}")
+print(f"False positives per month (peeking, simulated rate): ~{fp_peeking:.1f}")
+print(f"False positives per month (mSPRT, at most):          ~{fp_msprt_bound:.1f}")
+print(f"Cost per false positive (assumed): S${cost_per_fp:,}")
 print(f"Annual waste (peeking): S${fp_peeking * cost_per_fp * 12:,.0f}")
-print(f"Annual waste (mSPRT):   S${fp_msprt * cost_per_fp * 12:,.0f}")
-print(f"Annual savings: S${(fp_peeking - fp_msprt) * cost_per_fp * 12:,.0f}")
+print(f"Annual waste (mSPRT, at most): S${fp_msprt_bound * cost_per_fp * 12:,.0f}")
+print(f"Annual savings (at least): S${(fp_peeking - fp_msprt_bound) * cost_per_fp * 12:,.0f}")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -261,8 +288,6 @@ print(f"Annual savings: S${(fp_peeking - fp_msprt) * cost_per_fp * 12:,.0f}")
 async def log_sequential_results():
     db = "sqlite:///mlfp02_experiments.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
-    await conn.initialize()
 
     exp_id = "mlfp02_ex7_sequential_testing"
 
@@ -270,6 +295,7 @@ async def log_sequential_results():
         await run.log_params(
             {
                 "sequential_method": "mSPRT",
+                "treatment_arm": ANALYSIS_ARM,
                 "tau_sq": str(float(tau_sq)),
                 "n_peek_sims": "1000",
                 "n_checks": "20",
@@ -281,17 +307,13 @@ async def log_sequential_results():
                 "days_sig_sequential": float(early_sig_seq),
                 "fp_rate_no_peek": float(peek_results["rate_no_peek"]),
                 "fp_rate_peeking": float(peek_results["rate_fixed_peek"]),
-                "fp_rate_theoretical": float(peek_results["theoretical_inflated_rate"]),
             }
         )
     print(f"\nLogged sequential testing run")
-    await conn.close()
+    await tracker.close()
 
 
-try:
-    asyncio.run(log_sequential_results())
-except Exception as e:
-    print(f"  [Skipped: ExperimentTracker logging ({type(e).__name__}: {e})]")
+asyncio.run(log_sequential_results())
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 print("\n>>> Checkpoint 4 passed -- visualisation and logging complete\n")
@@ -306,7 +328,8 @@ print("=" * 70)
 print(
     f"""
   - mSPRT: always-valid p-values for safe experiment monitoring
-  - Peeking problem: {int(peek_results['n_checks'])} peeks inflates alpha from 5% to ~{peek_results['rate_fixed_peek']:.0%}
+  - Peeking problem: {int(peek_results['n_checks'])} correlated peeks inflate alpha from 5% to ~{peek_results['rate_fixed_peek']:.0%} (simulated)
+  - The mixture likelihood ratio Lambda and the running-minimum p-value
   - Fixed vs sequential p-value trajectories
   - tau_sq hyperparameter: set to baseline SE^2
   - Why dashboards with live p-values need sequential methods

@@ -157,9 +157,18 @@ def profile_lr_ci_normal_mu(
 ) -> tuple[tuple[float, float], np.ndarray, np.ndarray]:
     """Profile likelihood 1-alpha CI for the Normal mean.
 
-    The CI is the set of mu where 2*(loglik_at_mle - loglik(mu)) < chi^2_{1-alpha, df=1}.
+    sigma is a NUISANCE parameter, so it is profiled out: at every grid
+    value of mu we re-maximise the likelihood over sigma, which for the
+    Normal has the closed form sigma_hat(mu)^2 = mean((x - mu)^2). The
+    profile log-likelihood is l_p(mu) = l(mu, sigma_hat(mu)).
 
-    Returns (ci, mu_grid, loglik_values) so the caller can plot the profile.
+    (Holding sigma fixed at the global MLE instead would give
+    2*(l_max - l(mu)) = n*(x_bar - mu)^2 / sigma_hat^2 — exactly the Wald
+    statistic, i.e. no profile at all.)
+
+    The CI is the set of mu where 2*(loglik_at_mle - l_p(mu)) <= chi^2_{1-alpha, df=1}.
+
+    Returns (ci, mu_grid, profile_loglik_values) so the caller can plot it.
     """
     n = len(x)
     se_mu = sigma_hat / np.sqrt(n)
@@ -171,15 +180,26 @@ def profile_lr_ci_normal_mu(
         n_grid,
     )
     loglik_values = np.array(
-        [-neg_log_likelihood_normal([mu, np.log(sigma_hat)], x) for mu in mu_grid]
+        [
+            -neg_log_likelihood_normal(
+                [mu, 0.5 * np.log(np.mean((x - mu) ** 2))], x
+            )
+            for mu in mu_grid
+        ]
     )
     lr_values = loglik_at_mle - loglik_values
     mask = lr_values <= threshold
-    if mask.any():
-        ci = (float(mu_grid[mask][0]), float(mu_grid[mask][-1]))
-    else:
-        # Fallback: Wald CI
-        ci = wald_ci(mu_hat, se_mu, alpha)
+    if not mask.any():
+        raise ValueError(
+            "profile likelihood: no grid point inside the CI — check that "
+            "loglik_at_mle is the log-likelihood at (mu_hat, sigma_hat)"
+        )
+    if mask[0] or mask[-1]:
+        raise ValueError(
+            "profile likelihood: CI reaches the grid edge — increase "
+            "grid_width_in_se"
+        )
+    ci = (float(mu_grid[mask][0]), float(mu_grid[mask][-1]))
     return ci, mu_grid, loglik_values
 
 

@@ -11,7 +11,7 @@
 #   - Derive precision, recall, F1, and accuracy from the matrix
 #   - Plot and interpret ROC curves + compute AUC
 #   - Plot precision-recall curves for imbalanced-class awareness
-#   - Apply classification metrics to Singapore mortgage risk screening
+#   - Apply classification metrics to bank mortgage pre-screening
 #
 # PREREQUISITES: Exercise 6.1 (logistic regression), 6.2 (thresholds)
 # ESTIMATED TIME: ~40 min
@@ -21,7 +21,7 @@
 #   2. Build — confusion matrix + derived metrics
 #   3. Train — ROC curve + precision-recall curve
 #   4. Visualise — ROC, PR, and annotated confusion matrix
-#   5. Apply — DBS mortgage pre-screening (S$ impact)
+#   5. Apply — bank mortgage pre-screening (illustrative S$ impact)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -288,72 +288,84 @@ print("\n[ok] Checkpoint 3 passed — ROC, PR, confusion matrix visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS mortgage pre-screening
+# TASK 5 — APPLY: bank mortgage pre-screening
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: DBS Bank (Singapore's largest bank) uses an automated
-# pre-screening model for HDB mortgage applications. Each application
-# is classified as "likely high-value" or "likely standard."
+# SCENARIO: A Singapore bank pre-screens HDB mortgage applications. Each
+# application is classified as "likely high-value" or "likely standard."
 #
 # High-value applications are routed to a senior relationship manager
 # (RM) who can offer premium rates and cross-sell wealth products.
 # Standard applications go through the automated approval pipeline.
 #
-# Getting this wrong has two costs:
+# Getting this wrong has two (ILLUSTRATIVE) costs:
 #   - FP (standard routed to RM): RM time wasted, S$200/case
 #   - FN (high-value goes auto): lost cross-sell revenue, S$8,000/case
+#
+# These are NOT the Task 2 costs (S$30K vs S$50K), so the Task 2
+# threshold is not cost-optimal here — re-run the sweep with the
+# bank's own costs before comparing thresholds.
 
-rm_cost = 200  # S$ per unnecessary RM routing
-cross_sell_loss = 8_000  # S$ average lost revenue per missed high-value
+rm_cost = 200  # S$ per unnecessary RM routing (illustrative)
+cross_sell_loss = 8_000  # S$ lost revenue per missed high-value (illustrative)
+annual_apps = 25_000  # illustrative annual application volume
 
-annual_apps = 25_000  # DBS HDB mortgage applications per year
+bank_thresholds = np.round(np.linspace(0.01, 0.99, 99), 2)
+bank_costs = []
+for t in bank_thresholds:
+    tn_t, fp_t, fn_t, tp_t = confusion_matrix(y, (p_scratch >= t).astype(int)).ravel()
+    bank_costs.append(fp_t * rm_cost + fn_t * cross_sell_loss)
+bank_threshold = float(bank_thresholds[int(np.argmin(bank_costs))])
 
-# At optimal threshold
-fn_rate = fn / n_obs
-fp_rate = fp / n_obs
-annual_rm_waste = int(annual_apps * fp_rate) * rm_cost
-annual_cross_sell_loss = int(annual_apps * fn_rate) * cross_sell_loss
 
-# At default threshold (0.5)
-y_pred_05 = (p_scratch >= 0.5).astype(int)
-cm_05 = confusion_matrix(y, y_pred_05)
-tn_05, fp_05, fn_05, tp_05 = cm_05.ravel()
-annual_rm_waste_05 = int(annual_apps * fp_05 / n_obs) * rm_cost
-annual_cross_sell_05 = int(annual_apps * fn_05 / n_obs) * cross_sell_loss
+def annual_bank_cost(threshold: float) -> tuple[float, float]:
+    """Annual (RM waste, lost cross-sell) in S$, scaling dataset rates."""
+    tn_t, fp_t, fn_t, tp_t = confusion_matrix(
+        y, (p_scratch >= threshold).astype(int)
+    ).ravel()
+    return (
+        annual_apps * fp_t / n_obs * rm_cost,
+        annual_apps * fn_t / n_obs * cross_sell_loss,
+    )
 
-print(f"\n=== Real-World Application: DBS Mortgage Pre-Screening ===")
-print(f"  Annual mortgage applications: {annual_apps:,}")
-print(f"\n  Default threshold (0.5):")
-print(f"    Unnecessary RM routing:    S${annual_rm_waste_05:,.0f}")
-print(f"    Lost cross-sell revenue:   S${annual_cross_sell_05:,.0f}")
-print(
-    f"    Total misclassification cost: S${annual_rm_waste_05 + annual_cross_sell_05:,.0f}"
-)
-print(f"\n  Cost-optimal threshold ({optimal_threshold:.3f}):")
-print(f"    Unnecessary RM routing:    S${annual_rm_waste:,.0f}")
-print(f"    Lost cross-sell revenue:   S${annual_cross_sell_loss:,.0f}")
-print(
-    f"    Total misclassification cost: S${annual_rm_waste + annual_cross_sell_loss:,.0f}"
-)
-savings = (annual_rm_waste_05 + annual_cross_sell_05) - (
-    annual_rm_waste + annual_cross_sell_loss
-)
-print(f"    Annual saving:             S${savings:,.0f}")
-print(f"\n  Model discrimination (AUC): {roc_auc:.4f}")
 
-# BUSINESS IMPACT: Even a modest improvement in classification
-# threshold yields significant savings at DBS's scale. The ROC AUC
-# of {roc_auc:.3f} tells us the model has good discrimination —
-# at any threshold, it ranks high-value applications above standard
-# ones most of the time. The cost-optimal threshold shifts the
-# boundary to match the 40:1 asymmetry in error costs.
+print(f"\n=== Real-World Application: Bank Mortgage Pre-Screening ===")
+print(f"  Annual mortgage applications (illustrative): {annual_apps:,}")
+print(f"  Cost ratio FN:FP = {cross_sell_loss / rm_cost:.0f}:1")
+bank_rows = [
+    ("Default", 0.5),
+    ("Task 2 optimum (other costs)", float(optimal_threshold)),
+    ("Re-optimised for bank costs", bank_threshold),
+]
+print(f"\n  {'Threshold rule':<30} {'t':>5} {'RM waste S$':>13} {'Lost x-sell S$':>15} {'Total S$':>13}")
+bank_totals = {}
+for label, t in bank_rows:
+    rm_waste, lost = annual_bank_cost(t)
+    bank_totals[label] = rm_waste + lost
+    print(f"  {label:<30} {t:>5.2f} {rm_waste:>13,.0f} {lost:>15,.0f} {rm_waste + lost:>13,.0f}")
+savings = bank_totals["Default"] - bank_totals["Re-optimised for bank costs"]
+print(f"\n  Annual saving vs default threshold: S${savings:,.0f}")
+print(f"  Model discrimination (AUC): {roc_auc:.4f}")
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert bank_totals["Re-optimised for bank costs"] <= min(
+    bank_totals["Default"], bank_totals["Task 2 optimum (other costs)"]
+), "The threshold tuned for the bank's costs must be the cheapest of the three"
+print("\n[ok] Checkpoint 4 passed — threshold re-optimised for the bank's costs\n")
+
+# BUSINESS IMPACT: The AUC printed above measures how well the model
+# RANKS high-value above standard applications at every threshold; the
+# threshold decides how that ranking becomes routing. With a 40:1 cost
+# asymmetry the cheapest threshold sits below 0.5, sending more cases
+# to RMs to miss fewer high-value clients. The table shows what reusing
+# a threshold tuned for different costs would leave on the table.
 #
 # LIMITATIONS:
 #   - Model uses only 3 property features. Real mortgage models
 #     include income, existing debt, credit score, and employment.
 #   - Cross-sell revenue is estimated. Actual conversion rates for
 #     wealth products vary by customer segment and market conditions.
-#   - The model does not account for seasonal effects (Chinese New
-#     Year, cooling measures) that shift the value distribution.
+#   - The model does not account for seasonal effects (festive
+#     periods, cooling measures) that shift the value distribution.
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -361,9 +373,13 @@ print(f"\n  Model discrimination (AUC): {roc_auc:.4f}")
 # ══════════════════════════════════════════════════════════════════════
 print("""
 What you've mastered in this technique:
-  ✓ The concepts and implementation covered above
-  ✓ Visual proof of how the technique works
-  ✓ Real-world application with business impact
+  ✓ Building a confusion matrix and deriving precision, recall, F1, accuracy
+  ✓ ROC curve + AUC as threshold-free discrimination
+  ✓ Precision-recall curve and when it beats ROC (rare positives)
+  ✓ Choosing the operating threshold from the costs of the decision
+    that will actually use it
 
-Next: Continue to the next technique file in this exercise...
+Next: In 04_calibration_anova.py you'll check whether the predicted
+probabilities themselves can be trusted (calibration) and compare
+group means with ANOVA.
 """)

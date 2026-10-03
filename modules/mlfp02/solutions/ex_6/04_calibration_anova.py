@@ -10,7 +10,7 @@
 #   - Understand what "well-calibrated" means for decision-making
 #   - Perform one-way ANOVA and interpret F-statistics + eta-squared
 #   - Apply post-hoc Tukey HSD for pairwise group comparisons
-#   - Apply calibration + ANOVA to Singapore HDB policy analysis
+#   - Apply calibration + ANOVA to HDB resale valuation bands
 #
 # PREREQUISITES: Exercises 6.1-6.3 (logistic regression, metrics)
 # ESTIMATED TIME: ~45 min
@@ -20,7 +20,7 @@
 #   2. Build — calibration curve + Brier score
 #   3. Train — one-way ANOVA + Tukey HSD across flat types
 #   4. Visualise — calibration plot + ANOVA box plots
-#   5. Apply — HDB flat-type pricing policy (S$ impact)
+#   5. Apply — flat-type valuation bands (illustrative S$ impact)
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -60,16 +60,24 @@ from shared.mlfp02.ex_6 import (
 # are wrong.
 #
 # The BRIER SCORE = mean((p - y)^2) combines calibration + discrimination
-# into a single number. Lower = better. Random guessing gives Brier = 0.25
-# for balanced classes.
+# into a single number. Lower = better; 0 is perfect and 1 is the worst
+# possible score. The useful REFERENCE is a constant forecast of 0.5,
+# which scores exactly 0.25 on any 0/1 outcome — a model that cannot
+# beat 0.25 has learned nothing beyond "flip a coin".
 #
 # ANOVA generalises the t-test from 2 groups to k groups.
 # H0: mu_1 = mu_2 = ... = mu_k (all means equal)
 # H1: at least one mean differs
 #
-# ANOVA tells you SOMETHING differs but not WHAT. Tukey HSD runs all
-# pairwise comparisons with a multiple-testing correction so the
-# family-wise error rate stays at 5%.
+# ANOVA tells you SOMETHING differs but not WHAT. Tukey's HSD (Honestly
+# Significant Difference) compares every pair of means with the
+# statistic q = |mean_i - mean_j| / sqrt(MS_within/2 * (1/n_i + 1/n_j))
+# and judges q against the STUDENTIZED RANGE distribution (k groups,
+# N - k degrees of freedom). That distribution describes the largest
+# gap among k means, so the family-wise error rate stays at 5% across
+# all k(k-1)/2 pairs. Bonferroni (multiply each pairwise t-test p by the
+# number of pairs) also controls the FWER but is more conservative —
+# it is a different procedure, not "Tukey".
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -107,8 +115,8 @@ cal_predicted, cal_observed, cal_counts = calibration_bins(y, p_scratch, n_bins=
 
 print(f"\n=== Model Calibration ===")
 print(f"Brier score: {brier:.6f} (lower = better, 0 = perfect)")
-print(f"Max Brier (random): 0.25")
-print(f"Brier skill: {1 - brier / 0.25:.4f} (1 = perfect, 0 = random)")
+print(f"Brier of a constant 0.5 forecast: 0.25 (reference; the maximum possible is 1)")
+print(f"Brier skill vs the 0.5 forecast: {1 - brier / 0.25:.4f} (1 = perfect, 0 = no better)")
 print(f"\n{'Bin':>4} {'Predicted':>12} {'Observed':>12} {'Count':>8} {'Gap':>8}")
 print("─" * 48)
 for i in range(len(cal_predicted)):
@@ -125,7 +133,7 @@ for i in range(len(cal_predicted)):
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert 0 <= brier <= 1, "Brier score must be between 0 and 1"
-assert brier < 0.25, "Model should beat random (Brier < 0.25)"
+assert brier < 0.25, "Model should beat the constant-0.5 forecast (Brier < 0.25)"
 print("\n[ok] Checkpoint 1 passed — calibration assessed\n")
 
 
@@ -156,7 +164,8 @@ for ft in flat_types:
 # Run ANOVA
 f_anova, p_anova = stats.f_oneway(*anova_groups)
 print(f"\nANOVA F-statistic: {f_anova:.2f}")
-print(f"p-value: {p_anova:.2e}")
+p_anova_label = f"= {p_anova:.2e}" if p_anova > 0 else "< 1e-300 (underflows to 0)"
+print(f"p-value {p_anova_label}")
 print(
     f"{'SIGNIFICANT' if p_anova < 0.05 else 'NOT significant'}: "
     f"{'at least one flat type has a different mean price' if p_anova < 0.05 else 'no evidence of difference'}"
@@ -173,42 +182,66 @@ print(
     f"({eta_squared:.1%} of variance explained by flat type)"
 )
 
-# Post-hoc: Tukey HSD (Bonferroni-corrected pairwise t-tests)
+# Post-hoc: Tukey HSD (Tukey-Kramer form, valid for unequal group sizes)
 print(f"\n--- Tukey HSD Post-Hoc Comparisons ---")
 n_all = len(all_data)
 k_groups = len(anova_groups)
-ms_within = sum(np.sum((g - g.mean()) ** 2) for g in anova_groups) / (n_all - k_groups)
+df_within = n_all - k_groups
+ms_within = sum(np.sum((g - g.mean()) ** 2) for g in anova_groups) / df_within
+n_comparisons = k_groups * (k_groups - 1) // 2
+
+# scipy's reference implementation — used to verify the hand computation
+tukey = stats.tukey_hsd(*anova_groups)
 
 print(
-    f"{'Comparison':<25} {'Diff ($)':>12} {'SE':>10} "
-    f"{'q':>8} {'p-value':>10} {'Sig':>6}"
+    f"{'Comparison':<25} {'Diff ($)':>12} {'SE':>10} {'q':>8} "
+    f"{'p (Tukey)':>11} {'p (Bonf.)':>11} {'Sig':>5}"
 )
-print("─" * 75)
+print("─" * 88)
+tukey_rows = []
 for i in range(k_groups):
     for j in range(i + 1, k_groups):
         diff = anova_groups[j].mean() - anova_groups[i].mean()
+        # Tukey-Kramer standard error for the studentized range statistic
         se = np.sqrt(
-            ms_within * (1 / len(anova_groups[i]) + 1 / len(anova_groups[j])) / 2
+            ms_within / 2 * (1 / len(anova_groups[i]) + 1 / len(anova_groups[j]))
         )
         q_stat = abs(diff) / se
-        # Bonferroni-corrected pairwise t-test
-        n_comparisons = k_groups * (k_groups - 1) / 2
-        t_stat = diff / (
-            np.sqrt(ms_within)
-            * np.sqrt(1 / len(anova_groups[i]) + 1 / len(anova_groups[j]))
-        )
-        p_pair = 2 * (1 - stats.t.cdf(abs(t_stat), df=n_all - k_groups))
-        p_bonf = min(p_pair * n_comparisons, 1.0)
+        # Tukey: q against the studentized range distribution (k, N - k)
+        p_tukey = float(stats.studentized_range.sf(q_stat, k_groups, df_within))
+        # For contrast only — Bonferroni-corrected pairwise t-test.
+        # The pairwise t statistic is q / sqrt(2).
+        t_stat = q_stat / np.sqrt(2)
+        p_bonf = min(2 * stats.t.sf(t_stat, df=df_within) * n_comparisons, 1.0)
         sig = (
             "***"
-            if p_bonf < 0.001
-            else "**" if p_bonf < 0.01 else "*" if p_bonf < 0.05 else "ns"
+            if p_tukey < 0.001
+            else "**" if p_tukey < 0.01 else "*" if p_tukey < 0.05 else "ns"
         )
         label = f"{anova_labels[i]} vs {anova_labels[j]}"
+        tukey_rows.append((i, j, diff, p_tukey))
         print(
-            f"{label:<25} ${diff:>10,.0f} {se:>10,.0f} "
-            f"{q_stat:>8.2f} {p_bonf:>10.4f} {sig:>6}"
+            f"{label:<25} ${diff:>10,.0f} {se:>10,.0f} {q_stat:>8.2f} "
+            f"{p_tukey:>11.2e} {p_bonf:>11.2e} {sig:>5}"
         )
+
+# Cross-check: the hand-computed Tukey results must match scipy's
+# tukey_hsd (its statistic[j, i] is mean_j - mean_i).
+max_p_gap = max(abs(p - float(tukey.pvalue[i, j])) for i, j, _, p in tukey_rows)
+max_diff_gap = max(abs(d - float(tukey.statistic[j, i])) for i, j, d, _ in tukey_rows)
+print(f"\nMax |p_hand - p_scipy|: {max_p_gap:.2e}   max |diff gap|: ${max_diff_gap:.4f}")
+# Where the two procedures differ: the critical |t| each one needs for a
+# pair to be significant at FWER = 5%.
+t_crit_tukey = stats.studentized_range.ppf(0.95, k_groups, df_within) / np.sqrt(2)
+t_crit_bonf = stats.t.ppf(1 - 0.05 / (2 * n_comparisons), df=df_within)
+print(
+    f"Critical |t| at FWER 5%: Tukey {t_crit_tukey:.3f} vs Bonferroni "
+    f"{t_crit_bonf:.3f} -> Bonferroni demands a larger gap (more conservative)."
+)
+print(
+    "Tukey p-values bottom out near 4.5e-12 (the precision limit of scipy's\n"
+    "studentized-range integral) — read them as 'p < 1e-11'."
+)
 
 # INTERPRETATION: ANOVA tells you SOME group differs. Tukey HSD tells
 # you WHICH pairs differ. In property, this shows the price premium
@@ -218,6 +251,10 @@ for i in range(k_groups):
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert f_anova > 0, "F-statistic must be positive"
 assert 0 <= eta_squared <= 1, "Eta-squared must be between 0 and 1"
+assert len(tukey_rows) == n_comparisons, "Tukey HSD must cover every pair of groups"
+assert max_p_gap < 1e-6, "Hand-computed Tukey p-values must match scipy.stats.tukey_hsd"
+assert max_diff_gap < 1e-6, "Mean differences must match scipy.stats.tukey_hsd"
+assert t_crit_tukey < t_crit_bonf, "Tukey's critical value should be below Bonferroni's"
 print("\n[ok] Checkpoint 2 passed — ANOVA + Tukey HSD completed\n")
 
 
@@ -256,7 +293,7 @@ fig2 = go.Figure()
 for label, group in zip(anova_labels, anova_groups):
     fig2.add_trace(go.Box(y=group[:5000], name=label))
 fig2.update_layout(
-    title=f"Resale Price by Flat Type (ANOVA F={f_anova:.0f}, p<0.001)",
+    title=f"Resale Price by Flat Type (ANOVA F={f_anova:.0f}, p {p_anova_label})",
     yaxis_title="Resale Price ($)",
     xaxis_title="Flat Type",
 )
@@ -284,20 +321,20 @@ print("\n[ok] Checkpoint 3 passed — calibration + ANOVA visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: HDB flat-type pricing policy
+# TASK 5 — APPLY: flat-type valuation bands for HDB resale flats
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: The Housing and Development Board (HDB) is reviewing its
-# resale pricing guidelines. ANOVA shows that flat type explains a
-# significant portion of price variance — but HOW MUCH matters for
-# policy design.
+# SCENARIO: A Singapore property-valuation firm is deciding whether to
+# publish quick-quote valuation bands by HDB flat type. ANOVA shows
+# that flat type explains a significant portion of price variance —
+# but HOW MUCH matters for whether type-only bands are defensible.
 #
 # If eta-squared is high (>0.3), flat type is a dominant price driver
-# and HDB can set differentiated valuation bands by type. If low
+# and differentiated bands by type are a reasonable first cut. If low
 # (<0.1), other factors (location, condition, floor) dominate and
 # per-type bands would be misleading.
 
-# Price differentials from Tukey HSD
-print(f"\n=== Real-World Application: HDB Pricing Policy ===")
+# Price differentials (Tukey HSD confirmed every pair differs)
+print(f"\n=== Real-World Application: Flat-Type Valuation Bands ===")
 print(f"\n  Variance explained by flat type: {eta_squared:.1%}")
 if eta_squared > 0.3:
     print(f"  HIGH — flat type is a dominant price driver")
@@ -325,18 +362,29 @@ if brier < 0.15:
 else:
     print(f"  Needs recalibration before using probabilities in pricing")
 
-# BUSINESS IMPACT: HDB manages ~1 million flats across Singapore.
-# If flat-type-based pricing bands are set correctly, they reduce
-# valuation disputes (currently ~2,800/year at S$1,200 average
-# resolution cost = S$3.36M annually). ANOVA-informed bands that
-# account for the demonstrated price differentials could reduce
-# disputes by 20-30%, saving S$0.7-1.0M annually.
+# BUSINESS IMPACT (ILLUSTRATIVE assumptions, not published figures):
+# suppose the firm issues 5,000 quick quotes a year, 8% of them are
+# disputed by clients, and each dispute costs S$1,200 of re-valuation
+# time. Bands that reflect the demonstrated type differentials might
+# cut disputes by a fraction that grows with how much of the variance
+# flat type actually explains.
+quotes_per_year = 5_000  # illustrative
+dispute_rate = 0.08  # illustrative
+cost_per_dispute = 1_200  # S$, illustrative
+baseline_dispute_cost = quotes_per_year * dispute_rate * cost_per_dispute
+# Optimistic upper bound: disputes fall in proportion to the share of
+# price variance the bands explain (eta-squared).
+max_saving = baseline_dispute_cost * eta_squared
+print(
+    f"\n  Illustrative dispute cost: S${baseline_dispute_cost:,.0f}/year; "
+    f"upper-bound saving if disputes fall by eta-sq ({eta_squared:.0%}): "
+    f"S${max_saving:,.0f}/year"
+)
 #
-# The calibration assessment tells HDB whether the model's
-# probability outputs can be used directly for premium calculations
-# (well-calibrated) or only for ranking (poorly calibrated but good
-# discrimination). This distinction matters because mortgage banks
-# use the probability to set interest rate margins.
+# The calibration assessment tells the firm whether the model's
+# probability outputs ("P(above-median price)") can be quoted directly
+# to clients (well-calibrated) or only used for ranking (poorly
+# calibrated but good discrimination).
 #
 # LIMITATIONS:
 #   - ANOVA assumes normally distributed residuals. HDB resale prices
@@ -370,7 +418,7 @@ print(
   [x] Calibration: predicted probabilities match observed frequencies
   [x] Brier score: overall measure of probabilistic accuracy
   [x] One-way ANOVA: F-test for 3+ group means, eta-squared effect size
-  [x] Tukey HSD: pairwise comparisons with multiple testing correction
+  [x] Tukey HSD: studentized-range pairwise comparisons (not Bonferroni)
 
   KEY INSIGHT: Classification metrics are not just academic — the
   CHOICE of metric directly determines business outcomes. Accuracy

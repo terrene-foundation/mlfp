@@ -23,7 +23,7 @@
 #   2. Build — Welch's t-test on simulated and real data
 #   3. Train — three CI methods: Welch, Normal approximation, Bootstrap
 #   4. Visualise — CI comparison chart with zero-reference line
-#   5. Apply — DBS Singapore credit-card reward A/B CI analysis
+#   5. Apply — credit-card cashback A/B: CI plus cost-benefit at both ends
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ from shared.mlfp02.ex_4 import (
     OUTPUT_DIR,
     SEED,
     TwoArmAB,
+    interpret_cohens_d,
     load_experiment,
     make_rng,
     print_banner,
@@ -130,7 +131,7 @@ pooled_std_real = np.sqrt(
 cohens_d_real = obs_diff / pooled_std_real
 print(
     f"Cohen's d: {cohens_d_real:.4f} "
-    f"({'small' if abs(cohens_d_real) < 0.2 else 'medium' if abs(cohens_d_real) < 0.5 else 'large'})"
+    f"({interpret_cohens_d(abs(cohens_d_real))})"
 )
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
@@ -232,47 +233,81 @@ print("\n>>> Checkpoint 3 passed — CI visualisation saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Singapore Credit-Card Reward A/B
+# TASK 5 — APPLY: Credit-Card Cashback A/B (illustrative)
 # ════════════════════════════════════════════════════════════════════════
-# DBS tests a new cashback tier (2% vs 1.5%) on monthly spend.
-# The question is not just "does 2% increase spend?" but "by how much?"
+# A Singapore bank (illustrative numbers) tests a richer cashback tier
+# (2.0% vs 1.5%) on monthly card spend. The question is not just "does
+# 2% increase spend?" but "by how much — and does it pay?" A CI answers
+# the first part; the cost-benefit must then be checked at BOTH ends.
 
-print_banner("Applied — DBS Singapore Credit-Card Reward A/B")
+print_banner("Applied — Credit-Card Cashback A/B")
 
 # Simulate: control = 1.5% cashback, treatment = 2.0% cashback
-n_dbs = 5_000
-dbs_ctrl = rng.normal(loc=2200, scale=800, size=n_dbs)
-dbs_treat = rng.normal(loc=2350, scale=850, size=n_dbs)
+n_cards = 5_000
+card_ctrl = rng.normal(loc=2200, scale=800, size=n_cards)  # monthly spend, SGD
+card_treat = rng.normal(loc=2350, scale=850, size=n_cards)  # +$150 lift
 
-dbs_diff = dbs_treat.mean() - dbs_ctrl.mean()
-dbs_se = np.sqrt(dbs_ctrl.var(ddof=1) / n_dbs + dbs_treat.var(ddof=1) / n_dbs)
+card_diff = card_treat.mean() - card_ctrl.mean()
+card_se = np.sqrt(card_ctrl.var(ddof=1) / n_cards + card_treat.var(ddof=1) / n_cards)
+# TODO: Compute the 95% normal CI for the card experiment.
+# Hint: (card_diff - 1.96 * card_se, card_diff + 1.96 * card_se)
+card_ci = ____
 
-# TODO: Compute the 95% normal CI for the DBS experiment.
-# Hint: (dbs_diff - 1.96 * dbs_se, dbs_diff + 1.96 * dbs_se)
-dbs_ci = ____
+# Cost-benefit (illustrative rates). The richer rate is paid on EVERY
+# dollar of treatment spend, while the extra interchange is earned only
+# on the incremental spend.
+ctrl_cashback_rate = 0.015
+treat_cashback_rate = 0.020
+interchange_rate = 0.015
+ctrl_spend = card_ctrl.mean()
 
-# Cost-benefit analysis
-extra_cashback_cost = dbs_diff * 0.005 * 12
-interchange_revenue = dbs_diff * 0.015 * 12
 
-print(f"Control (1.5% cashback):  SGD {dbs_ctrl.mean():,.0f}/mo avg spend")
-print(f"Treatment (2.0% cashback): SGD {dbs_treat.mean():,.0f}/mo avg spend")
-print(f"Lift: SGD {dbs_diff:+,.0f}/mo per customer")
-print(f"95% CI: [SGD {dbs_ci[0]:+,.0f}, SGD {dbs_ci[1]:+,.0f}]")
-print(f"\nPer-customer annual economics:")
-print(f"  Extra cashback cost:    SGD {extra_cashback_cost:,.0f}")
-print(f"  Interchange revenue:    SGD {interchange_revenue:,.0f}")
-print(
-    f"  Net per customer/yr:    SGD {interchange_revenue - extra_cashback_cost:+,.0f}"
-)
-print(f"\nAt 100K cardholders:")
-print(
-    f"  Annual net revenue: SGD {(interchange_revenue - extra_cashback_cost) * 100_000:+,.0f}"
-)
+def annual_economics(monthly_lift: float) -> tuple[float, float, float]:
+    """(extra cashback, extra interchange, net) per customer per year."""
+    treat_spend = ctrl_spend + monthly_lift
+    # TODO: Extra cashback the bank pays per month. The higher rate applies
+    # to ALL treatment spend, not just the incremental spend.
+    # Hint: treat_cashback_rate * treat_spend - ctrl_cashback_rate * ctrl_spend
+    extra_cashback = ____
+    extra_interchange = interchange_rate * monthly_lift
+    return 12 * extra_cashback, 12 * extra_interchange, 12 * (extra_interchange - extra_cashback)
+
+
+cost_pt, rev_pt, net_pt = annual_economics(card_diff)
+_, _, net_at_ci_lo = annual_economics(card_ci[0])
+_, _, net_at_ci_hi = annual_economics(card_ci[1])
+worst_net = min(net_at_ci_lo, net_at_ci_hi)
+best_net = max(net_at_ci_lo, net_at_ci_hi)
+
+print(f"Control (1.5% cashback):  SGD {card_ctrl.mean():,.0f}/mo avg spend")
+print(f"Treatment (2.0% cashback): SGD {card_treat.mean():,.0f}/mo avg spend")
+print(f"Lift: SGD {card_diff:+,.0f}/mo per customer")
+print(f"95% CI: [SGD {card_ci[0]:+,.0f}, SGD {card_ci[1]:+,.0f}]")
+print(f"\nPer-customer annual economics (point estimate):")
+print(f"  Extra cashback paid:    SGD {cost_pt:,.0f}")
+print(f"  Extra interchange:      SGD {rev_pt:,.0f}")
+print(f"  Net per customer/yr:    SGD {net_pt:+,.0f}")
+print(f"  Net across the lift CI: SGD {worst_net:+,.0f} (worst) to SGD {best_net:+,.0f} (best)")
+print(f"\nAt 100K cardholders: SGD {net_pt * 100_000:+,.0f} per year")
+if best_net < 0:
+    verdict = (
+        "Loses money ANYWHERE in the CI — the richer rate on all\n"
+        "spend costs more than the extra spend earns. Do not roll out on\n"
+        "interchange economics alone (it would need retention or fee value)."
+    )
+elif worst_net > 0:
+    verdict = "Profitable ANYWHERE in the CI — the decision is clear."
+else:
+    verdict = "The CI spans break-even — gather more data before deciding."
+print(f"\nDecision: {verdict}")
+# INTERPRETATION: A significant spend lift is not a business case. Run
+# the economics at both ends of the CI — here the sign is decided by the
+# cost structure, not by the size of the lift.
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert dbs_ci[0] < dbs_ci[1], "DBS CI must be valid"
-print("\n>>> Checkpoint 4 passed — DBS scenario completed\n")
+assert card_ci[0] < card_ci[1], "Card CI must be valid"
+assert worst_net <= net_pt <= best_net, "Point-estimate net must lie within the CI range"
+print("\n>>> Checkpoint 4 passed — cashback scenario completed\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -287,7 +322,7 @@ print(
   - Satterthwaite df: weighted average accounting for variance differences
   - Three CI methods: Welch, Normal approximation, Bootstrap
   - CI interpretation: "how big" matters more than "is it significant"
-  - Applied: DBS Singapore credit-card reward cost-benefit via CI
+  - Applied: card cashback — run the economics at both ends of the CI
 
   NEXT: In Exercise 4.4 you'll learn experiment validity checks
   (SUTVA, interference) and adaptive sample-size design.

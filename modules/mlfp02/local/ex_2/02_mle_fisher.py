@@ -20,7 +20,7 @@
 #   2. Build — neg-log-likelihood function with log(sigma) trick
 #   3. Train — fit Normal MLE via L-BFGS-B, compare to analytical
 #   4. Visualise — profile log-likelihood surface with CI bands
-#   5. Apply — DBS risk-weighted capital adequacy SE estimation
+#   5. Apply — planning baseline for a bank's credit-risk scenarios
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -56,7 +56,8 @@ from shared.mlfp02.ex_2 import (
 #   SE(sigma) = sigma / sqrt(2n)
 #
 # WALD CI:    mu_hat +/- z * SE     (assumes quadratic log-likelihood)
-# PROFILE CI: { mu : 2*(l_max - l(mu)) < chi2(0.95, 1) }  (exact)
+# PROFILE CI: { mu : 2*(l_max - l_p(mu)) < chi2(0.95, 1) }, where
+#   l_p(mu) = max over sigma of l(mu, sigma)  (sigma re-fitted at each mu)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -124,9 +125,24 @@ print(f"Profile LR 95% CI for mu: [{profile_ci[0]:.3f}%, {profile_ci[1]:.3f}%]")
 print(f"Wald CI width:    {mu_wald_ci[1] - mu_wald_ci[0]:.4f}%")
 print(f"Profile CI width: {profile_ci[1] - profile_ci[0]:.4f}%")
 
+# Small-n check: profile out sigma on just the first 8 quarters
+x_small = gdp_growth[:8]
+small_fit = fit_normal_mle(x_small)
+small_se, _ = normal_fisher_standard_errors(small_fit["sigma"], len(x_small))
+small_wald = wald_ci(small_fit["mu"], small_se)
+# TODO: Profile-likelihood CI for the 8-quarter sample (same helper as above)
+# Hint: pass x_small and the matching entries of small_fit
+small_profile, _, _ = ____
+full_ratio = (profile_ci[1] - profile_ci[0]) / (mu_wald_ci[1] - mu_wald_ci[0])
+small_ratio = (small_profile[1] - small_profile[0]) / (small_wald[1] - small_wald[0])
+print(f"\nProfile / Wald width ratio, n={n_gdp}: {full_ratio:.3f}")
+print(f"Profile / Wald width ratio, n={len(x_small)}:   {small_ratio:.3f}")
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert mu_wald_ci[0] < mle_mu < mu_wald_ci[1], "MLE mean must be inside Wald CI"
 assert se_mu > 0, "Standard error must be positive"
+assert profile_ci[0] < mle_mu < profile_ci[1], "MLE mean must be inside profile CI"
+assert small_ratio > 1.0, "With n=8 the profile CI should be wider than Wald"
 print("\n--- Checkpoint 2 passed --- SEs and CIs computed\n")
 
 
@@ -134,8 +150,18 @@ print("\n--- Checkpoint 2 passed --- SEs and CIs computed\n")
 # TASK 4 — VISUALISE: Profile Log-Likelihood
 # ════════════════════════════════════════════════════════════════════════
 
+# Compare with the log-likelihood when sigma is (wrongly) held fixed at
+# sigma_hat — this curve is exactly the Wald quadratic.
+ll_fixed_sigma = np.array(
+    [-neg_log_likelihood_normal([mu, np.log(mle_sigma)], gdp_growth) for mu in mu_grid]
+)
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=mu_grid, y=ll_values, name="Profile log-likelihood"))
+fig.add_trace(
+    go.Scatter(
+        x=mu_grid, y=ll_fixed_sigma, name="sigma fixed at MLE", line={"dash": "dash"}
+    )
+)
 fig.add_vline(x=mle_mu, line_dash="dash", annotation_text="MLE")
 fig.add_vline(x=profile_ci[0], line_dash="dot", line_color="red")
 fig.add_vline(x=profile_ci[1], line_dash="dot", line_color="red")
@@ -152,31 +178,45 @@ print("\n--- Checkpoint 3 passed --- profile log-likelihood visualised\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: DBS Risk-Weighted Capital Adequacy
+# TASK 5 — APPLY: Planning Baseline for a Bank's Credit-Risk Scenarios
 # ════════════════════════════════════════════════════════════════════════
-# Singapore banks compute capital adequacy ratios under MAS Notice 637.
-# The SE of the loss rate estimate determines how much capital buffer
-# the bank must hold above the point estimate.
+# A Singapore bank's credit-risk team (illustrative) anchors its
+# loan-loss planning on a "baseline" quarterly GDP growth rate. They use
+# the long-run mean — but how precisely is that baseline known, and how
+# does that differ from how much any ONE quarter can deviate from it?
+#
+#   - SE(mu_hat) answers: how well do we know the long-run MEAN?
+#   - sigma_hat answers:  how far can a single quarter land from it?
 
-print(f"\n=== APPLY: DBS Capital Adequacy SE ===")
+print(f"\n=== APPLY: Planning Baseline for GDP Growth ===")
 
-print(f"Point estimate (GDP growth mean): {mle_mu:.3f}%")
-print(f"Standard error: {se_mu:.3f}%")
-print(f"95% CI: [{mu_wald_ci[0]:.3f}%, {mu_wald_ci[1]:.3f}%]")
+print(f"Baseline (mean quarterly GDP growth): {mle_mu:.3f}%")
+print(f"95% CI for the baseline: [{mu_wald_ci[0]:.3f}%, {mu_wald_ci[1]:.3f}%]")
 print(
-    f"\nImplication: If MAS requires capital provisioning against the"
-    f"\nlower bound of the CI ({mu_wald_ci[0]:.3f}%), the bank must"
-    f"\nhold {mle_mu - mu_wald_ci[0]:.3f}% more buffer than the point estimate."
+    f"A conservative planner who uses the lower CI bound shifts the baseline"
+    f"\ndown by {mle_mu - mu_wald_ci[0]:.3f} percentage points."
+)
+single_q_lo = mle_mu - 1.96 * mle_sigma
+single_q_hi = mle_mu + 1.96 * mle_sigma
+print(
+    f"\nBut ONE quarter's growth varies far more: roughly "
+    f"[{single_q_lo:.2f}%, {single_q_hi:.2f}%] under the Normal fit."
 )
 print(
-    f"With {n_gdp} quarters of data, SE = {se_mu:.3f}%. If we had twice"
-    f"\nthe data, SE would shrink to {se_mu / np.sqrt(2):.3f}% — the value"
-    f"\nof longer data histories for regulatory precision."
+    "Stress scenarios must be built from that spread (and its heavy tails —"
+    "\nsee 04_mle_failures.py), not from the CI for the mean."
+)
+print(
+    f"\nWith {n_gdp} quarters of data, SE = {se_mu:.3f}%. With twice the"
+    f"\ndata, SE would shrink to {se_mu / np.sqrt(2):.3f}% — but the spread of a"
+    f"\nsingle quarter (sigma ≈ {mle_sigma:.2f}%) would not shrink at all."
 )
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-assert se_mu > 0, "SE must be positive for capital buffer calculation"
-print("\n--- Checkpoint 4 passed --- DBS capital application complete\n")
+assert single_q_hi - single_q_lo > mu_wald_ci[1] - mu_wald_ci[0], (
+    "Single-quarter spread must exceed the CI for the mean"
+)
+print("\n--- Checkpoint 4 passed --- planning-baseline application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -191,8 +231,9 @@ print(
   - L-BFGS-B reparameterisation (log sigma enforces sigma > 0)
   - Wald SE from Fisher information: SE(mu_hat) = sigma / sqrt(n)
   - Profile likelihood CI — invariant to reparameterisation
-  - When Wald and profile CIs agree: Normal approximation is adequate
-  - Real-world impact: capital buffer sizing under regulatory SEs
+  - Profiling out sigma: Wald and profile agree for large n, and the
+    profile CI is wider (more honest) for small n
+  - Precision of a mean (SE) vs spread of one outcome (sigma)
 
   NEXT: In 03_map_estimation.py, you'll add a prior to the MLE
   objective, creating MAP estimation, and observe how the prior

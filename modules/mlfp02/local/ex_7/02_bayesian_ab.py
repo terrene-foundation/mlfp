@@ -21,7 +21,7 @@
 #   3. Expected loss analysis (both directions)
 #   4. Decision framework: ship / continue / hold
 #   5. Visualise posterior distribution
-#   6. Apply to Singapore fintech scenario
+#   6. Apply to a Singapore payments scenario
 #
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -31,14 +31,15 @@ import asyncio
 
 import numpy as np
 import plotly.graph_objects as go
-from kailash.db import ConnectionManager
 from kailash_ml import ExperimentTracker
 from scipy import stats
 
 from shared.mlfp02.ex_7 import (
+    ANALYSIS_ARM,
     OUTPUT_DIR,
     bayesian_decision,
     bayesian_decision_rule,
+    compute_srm,
     get_covariate_arrays,
     get_revenue_arrays,
     load_experiment,
@@ -59,15 +60,21 @@ from shared.mlfp02.ex_7 import (
 #   P(treatment > control | data) — direct probability of improvement
 #   Expected loss — the average revenue you lose by choosing wrong
 #
+# With the posterior lift L ~ Normal(m, s) and z = m / s:
+#   E[loss | ship treatment] = E[max(0, -L)] = s*phi(z) - m*Phi(-z)
+#   E[loss | keep control]   = E[max(0,  L)] = s*phi(z) + m*Phi(z)
+# (phi = Normal pdf, Phi = Normal cdf). If the lift is clearly positive,
+# shipping costs almost nothing in expectation and keeping control costs
+# about m per user.
+#
 # The expected loss is particularly powerful: if P(B > A) = 75% but
 # the expected loss of choosing B is only $0.02/user, you can ship
 # confidently. If P(B > A) = 95% but expected loss is $5/user, you
 # should collect more data.
 #
-# WHY THIS MATTERS: At GrabPay (Singapore), the product team uses
-# expected loss rather than p-values for payment flow experiments,
-# because the cost of a wrong decision (friction in checkout) is
-# directly quantifiable in S$/transaction.
+# WHY THIS MATTERS: For checkout and payment-flow experiments the cost
+# of a wrong decision is directly measurable in S$ per transaction, so
+# "how much do we lose if we are wrong?" is the question that matters.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -76,22 +83,29 @@ from shared.mlfp02.ex_7 import (
 
 print_banner("MLFP02 Exercise 7.2: Bayesian A/B Testing")
 
-# TODO: Load experiment, split groups, extract revenue and covariate arrays.
-# Hint: Use load_experiment(), split_groups(), get_revenue_arrays(),
-#   get_covariate_arrays() from the shared module.
+# TODO: Load the experiment and split control vs ONE treatment arm.
+# Hint: load_experiment(); split_groups(experiment, ANALYSIS_ARM)
 experiment = ____
 control, treatment = ____
+# TODO: Check the pair's sample ratio against its designed 40:35 split.
+# Hint: compute_srm(n_control, n_treatment) — its defaults are the designed shares.
+srm_p = ____
+if srm_p < 0.01:
+    raise RuntimeError(f"SRM on control vs {ANALYSIS_ARM} (p={srm_p:.2g}) — stop")
+# TODO: Extract revenue and pre-experiment covariate arrays.
+# Hint: get_revenue_arrays(control, treatment); get_covariate_arrays(control, treatment)
 y_c, y_t = ____
 x_c, x_t = ____
 
-# TODO: Apply CUPED to get adjusted arrays.
-# Hint: single_cov_cuped(y_c, y_t, x_c, x_t) returns a dict with
-#   y_c_adj, y_t_adj, lift, rho, etc.
+# Apply CUPED first — Bayesian analysis on CUPED-adjusted data
+# TODO: Apply CUPED (you derived it in 7.1) using the reference helper.
+# Hint: single_cov_cuped(y_c, y_t, x_c, x_t) returns y_c_adj, y_t_adj, lift, rho.
 cuped = ____
 y_c_adj = cuped["y_c_adj"]
 y_t_adj = cuped["y_t_adj"]
 lift_adj = cuped["lift"]
 
+print(f"  Control vs {ANALYSIS_ARM}: pairwise SRM p={srm_p:.3f} (OK)")
 print(f"  Data loaded, CUPED applied (rho={cuped['rho']:.3f})")
 print(f"  CUPED-adjusted lift: ${lift_adj:.2f}")
 
@@ -103,14 +117,34 @@ print("\n>>> Checkpoint 1 passed -- data loaded and CUPED applied\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 2 — Bayesian Posterior for Treatment Effect
 # ════════════════════════════════════════════════════════════════════════
-# Using normal approximation on CUPED-adjusted arrays.
-# Posterior: lift ~ Normal(lift_adj, se_lift)
+# Using a normal approximation on CUPED-adjusted arrays (flat prior,
+# large n): posterior lift ~ Normal(lift_adj, se_lift)
 
-# TODO: Compute the Bayesian decision metrics.
-# Hint: bayesian_decision(y_c_adj, y_t_adj, lift_adj, practical_threshold=1.0)
-#   returns a dict with prob_treatment_better, prob_practical,
-#   expected_loss_treatment, expected_loss_control, se_lift, ci_lo, ci_hi.
-bayes = ____
+se_lift = np.sqrt(
+    y_c_adj.var(ddof=1) / len(y_c_adj) + y_t_adj.var(ddof=1) / len(y_t_adj)
+)
+# TODO: P(lift > 0) and P(lift > $1) under the Normal posterior.
+# Hint: 1 - stats.norm.cdf(threshold, loc=lift_adj, scale=se_lift)
+prob_better = ____
+prob_practical = ____
+
+# Expected loss in each direction (closed form — see THEORY)
+z = lift_adj / se_lift
+# TODO: Implement both expected-loss formulas from the THEORY block.
+# Hint: s*phi(z) -/+ m*Phi(...) with stats.norm.pdf / stats.norm.cdf;
+#   check the sign of z inside Phi for each direction.
+exp_loss_treat = ____
+exp_loss_ctrl = ____
+
+bayes = {
+    "prob_treatment_better": float(prob_better),
+    "prob_practical": float(prob_practical),
+    "expected_loss_treatment": float(exp_loss_treat),
+    "expected_loss_control": float(exp_loss_ctrl),
+    "se_lift": float(se_lift),
+    "ci_lo": float(lift_adj - 1.96 * se_lift),
+    "ci_hi": float(lift_adj + 1.96 * se_lift),
+}
 
 print(f"\n=== Bayesian A/B Test ===")
 print(
@@ -128,6 +162,10 @@ print(f"95% credible interval: [${bayes['ci_lo']:.2f}, ${bayes['ci_hi']:.2f}]")
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert 0 <= bayes["prob_treatment_better"] <= 1, "Probability must be valid"
 assert bayes["expected_loss_treatment"] >= 0, "Expected loss must be non-negative"
+reference = bayesian_decision(y_c_adj, y_t_adj, lift_adj, practical_threshold=1.0)
+assert abs(bayes["expected_loss_control"] - reference["expected_loss_control"]) < 1e-9, (
+    "Your expected loss should match the reference helper"
+)
 print("\n>>> Checkpoint 2 passed -- Bayesian posterior computed\n")
 
 
@@ -137,19 +175,42 @@ print("\n>>> Checkpoint 2 passed -- Bayesian posterior computed\n")
 # Expected loss quantifies the cost of being wrong.
 # E[loss | choose treatment] = E[max(control - treatment, 0)]
 # E[loss | choose control]   = E[max(treatment - control, 0)]
+# Verify the closed form by brute force: sample the posterior and average.
+
+rng = np.random.default_rng(42)
+posterior_draws = rng.normal(lift_adj, se_lift, size=1_000_000)
+# TODO: Monte-Carlo estimates of E[max(0, -L)] and E[max(0, L)].
+# Hint: np.maximum(0.0, ...) on the draws, then .mean()
+mc_loss_treat = ____
+mc_loss_ctrl = ____
 
 print(f"\n=== Expected Loss Analysis ===")
+print(f"Closed form vs Monte-Carlo (1M posterior draws):")
+print(f"  choose treatment: ${exp_loss_treat:.6f} vs ${mc_loss_treat:.6f}")
+print(f"  choose control:   ${exp_loss_ctrl:.6f} vs ${mc_loss_ctrl:.6f}")
 print(f"If we ship treatment and it is worse:")
 print(f"  Average loss per user: ${bayes['expected_loss_treatment']:.4f}")
 print(f"If we keep control and treatment is actually better:")
 print(f"  Average loss per user: ${bayes['expected_loss_control']:.4f}")
-print(
-    f"\nLoss ratio (control/treatment): "
-    f"{bayes['expected_loss_control'] / max(bayes['expected_loss_treatment'], 1e-9):.1f}x"
-)
+if bayes["expected_loss_treatment"] > 1e-6:
+    print(
+        f"\nLoss ratio (control/treatment): "
+        f"{bayes['expected_loss_control'] / bayes['expected_loss_treatment']:.1f}x"
+    )
+else:
+    print("\nExpected loss of shipping is effectively zero — the posterior puts")
+    print("essentially no mass below a zero lift.")
+# INTERPRETATION: When expected_loss_treatment is tiny (e.g., $0.05/user),
+# even moderate confidence (80%) is enough to ship — the cost of being
+# wrong is negligible. When it is large (e.g., $5/user), you need very
+# high confidence before deploying. Note the asymmetry: the loss of
+# keeping control is roughly the lift itself when the lift is clearly
+# positive.
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert bayes["expected_loss_control"] >= 0, "Expected loss must be non-negative"
+assert abs(exp_loss_treat - mc_loss_treat) < 0.01 * se_lift + 1e-6, "Closed form must match Monte-Carlo"
+assert abs(exp_loss_ctrl - mc_loss_ctrl) < 0.01 * se_lift + 1e-6, "Closed form must match Monte-Carlo"
 print("\n>>> Checkpoint 3 passed -- expected loss analysis complete\n")
 
 
@@ -184,13 +245,11 @@ print("\n>>> Checkpoint 4 passed -- decision framework applied\n")
 # TASK 5 — Visualise: Posterior Distribution
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Create a plotly figure showing the posterior distribution of the
-# treatment effect. Add vertical lines at 0 (no effect) and $1
-# (practical threshold).
-# Hint: Use stats.norm.pdf(x, loc=lift_adj, scale=bayes["se_lift"])
 x_range = np.linspace(
     lift_adj - 4 * bayes["se_lift"], lift_adj + 4 * bayes["se_lift"], 200
 )
+# TODO: Evaluate the posterior density over x_range.
+# Hint: stats.norm.pdf(x, loc=..., scale=...)
 pdf_vals = ____
 
 fig = go.Figure()
@@ -221,26 +280,35 @@ print(f"\nSaved: {out_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# APPLY — GrabPay Singapore: Payment Flow Experiments
+# APPLY — A Singapore Payments App: Checkout Flow Experiment
 # ════════════════════════════════════════════════════════════════════════
-# Scenario: GrabPay tests a new checkout flow. The metric is revenue
-# per transaction. With ~2M transactions/day, even small lifts matter.
+# Scenario (illustrative volume): a Singapore payments app tests a new
+# checkout flow, treating the per-user revenue lift measured above as
+# the per-transaction lift, at an assumed 200,000 transactions/day.
 #
 # Traditional approach: "Is p < 0.05?" — binary, ignores magnitude.
-# Bayesian approach: "P(B > A) = 87%, expected loss = $0.03/txn"
-#   -> At 2M txns/day, choosing wrong costs $60K/day
-#   -> But choosing right gains $200K/day
-#   -> Ship: expected gain far exceeds expected loss
+# Bayesian approach: put a dollar figure on each side of the decision:
+#   upside of shipping   = E[max(0, L)] per transaction
+#   downside of shipping = E[max(0, -L)] per transaction
+#   net expected value   = upside - downside = E[L] = the posterior mean
+#
+# The expected loss framework turns a statistical question into a
+# business decision with dollar amounts attached.
 
-print(f"\n--- Singapore Application: Payment Flow Experiment ---")
-daily_txns = 2_000_000
-daily_gain = daily_txns * lift_adj * bayes["prob_treatment_better"]
-daily_loss = daily_txns * bayes["expected_loss_treatment"]
-print(f"Daily transactions: {daily_txns:,}")
-print(f"Expected daily gain from shipping: S${daily_gain:,.0f}")
-print(f"Expected daily loss if wrong: S${daily_loss:,.0f}")
-print(f"Net expected daily value: S${daily_gain - daily_loss:,.0f}")
-print(f"Annualised net value: S${(daily_gain - daily_loss) * 365:,.0f}")
+print(f"\n--- Singapore Application: Checkout Flow Experiment ---")
+daily_txns = 200_000  # illustrative
+# TODO: Scale the per-transaction upside E[max(0, L)] and downside
+# E[max(0, -L)] to a day. Hint: which expected loss equals which?
+daily_upside = ____
+daily_downside = ____
+print(f"Daily transactions (assumed): {daily_txns:,}")
+print(f"Expected daily upside of shipping:   S${daily_upside:,.0f}")
+print(f"Expected daily downside of shipping: S${daily_downside:,.2f}")
+print(f"Net expected daily value: S${daily_upside - daily_downside:,.0f}")
+print(f"Annualised net value: S${(daily_upside - daily_downside) * 365:,.0f}")
+# INTERPRETATION: The downside is the expected cost of being wrong. When
+# it is a rounding error next to the upside, shipping is the rational
+# decision even before a p-value is consulted.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -251,8 +319,6 @@ print(f"Annualised net value: S${(daily_gain - daily_loss) * 365:,.0f}")
 async def log_bayesian_results():
     db = "sqlite:///mlfp02_experiments.db"
     tracker = await ExperimentTracker.create(store_url=db)
-    conn = ConnectionManager(db)
-    await conn.initialize()
 
     exp_id = "mlfp02_ex7_bayesian_ab"
 
@@ -260,6 +326,7 @@ async def log_bayesian_results():
         await run.log_params(
             {
                 "method": "bayesian_normal_approx",
+                "treatment_arm": ANALYSIS_ARM,
                 "practical_threshold": "1.0",
                 "decision": decision,
             }
@@ -274,13 +341,10 @@ async def log_bayesian_results():
             }
         )
     print(f"\nLogged Bayesian experiment run")
-    await conn.close()
+    await tracker.close()
 
 
-try:
-    asyncio.run(log_bayesian_results())
-except Exception as e:
-    print(f"  [Skipped: ExperimentTracker logging ({type(e).__name__}: {e})]")
+asyncio.run(log_bayesian_results())
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────
 print("\n>>> Checkpoint 5 passed -- visualisation and logging complete\n")
@@ -295,6 +359,7 @@ print("=" * 70)
 print(
     """
   - Bayesian A/B: P(treatment > control) and expected loss
+  - Closed-form expected loss, checked against Monte-Carlo draws
   - Decision framework: ship (>95% + low loss) / continue / hold
   - Expected loss quantifies the cost of being wrong in $/user
   - Posterior credible interval vs frequentist confidence interval

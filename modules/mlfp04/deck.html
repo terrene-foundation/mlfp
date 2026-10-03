@@ -2172,59 +2172,42 @@ with torch.no_grad():
   </div>
   <table style="font-size: 0.68em; margin-top: 12px;">
     <tr><th>Lesson</th><th>Method</th><th>Feature Output</th><th>Kailash Engine</th></tr>
-    <tr><td>4.1</td><td>Clustering</td><td>Cluster labels (n &rarr; 1)</td><td>AutoMLEngine</td></tr>
-    <tr><td>4.2</td><td>EM / GMM</td><td>Soft probabilities (n &rarr; k)</td><td>AutoMLEngine</td></tr>
-    <tr><td>4.3</td><td>PCA / t-SNE / UMAP</td><td>Components (n &rarr; k)</td><td>ModelVisualizer</td></tr>
-    <tr><td>4.4</td><td>Anomaly Detection</td><td>Anomaly scores (n &rarr; 1)</td><td>EnsembleEngine</td></tr>
+    <tr><td>4.1</td><td>Clustering</td><td>Cluster labels (n &rarr; 1)</td><td>ClusteringEngine, AutoMLEngine</td></tr>
+    <tr><td>4.2</td><td>EM / GMM</td><td>Soft probabilities (n &rarr; k)</td><td>ClusteringEngine (gmm)</td></tr>
+    <tr><td>4.3</td><td>PCA / t-SNE / UMAP</td><td>Components (n &rarr; k)</td><td>DimReductionEngine</td></tr>
+    <tr><td>4.4</td><td>Anomaly Detection</td><td>Anomaly scores (n &rarr; 1)</td><td>AnomalyDetectionEngine, EnsembleEngine</td></tr>
     <tr><td>4.5</td><td>Association Rules</td><td>Rule features (n &rarr; binary)</td><td>&mdash;</td></tr>
-    <tr><td>4.6</td><td>NLP / Topics</td><td>Topic proportions (n &rarr; k)</td><td>AutoMLEngine</td></tr>
+    <tr><td>4.6</td><td>NLP / Topics</td><td>Topic proportions (n &rarr; k)</td><td>DimReductionEngine (nmf)</td></tr>
     <tr><td>4.7</td><td>Recommenders</td><td>Embeddings (n &rarr; k) &mdash; THE PIVOT</td><td>&mdash;</td></tr>
-    <tr><td>4.8</td><td>Neural Networks</td><td>Hidden activations (n &rarr; m)</td><td>OnnxBridge</td></tr>
+    <tr><td>4.8</td><td>Neural Networks</td><td>Hidden activations (n &rarr; m)</td><td>OnnxBridge, SklearnTrainable</td></tr>
   </table>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through the full arc. "Every row produces features. The module is one continuous story from simple group discovery to neural feature learning."
+    Timing: 2 min. Walk through the full arc. "Every row produces features. The module is one continuous story from simple group discovery to neural feature learning." The engine column lists the kailash-ml surface for each lesson; ModelVisualizer draws the plots throughout. SklearnTrainable wraps a scikit-learn estimator (e.g. an MLP) so it trains through kailash-ml's train / register path &mdash; the assessment's neural-network task uses it.
   </aside>
 </section>
 
 <section>
   <h2>Module 4 Assessment</h2>
   <span class="marker marker-foundations">Foundations</span>
-  <div class="columns">
-    <div class="col">
-      <h3>Quiz</h3>
-      <ul style="font-size: 0.85em;">
-        <li>Clustering algorithm selection</li>
-        <li>EM convergence properties</li>
-        <li>PCA vs t-SNE vs UMAP</li>
-        <li>Anomaly detection methods</li>
-        <li>Association rule metrics</li>
-        <li>Topic coherence evaluation</li>
-        <li>Matrix factorisation &amp; the pivot</li>
-        <li>Neural network training toolkit</li>
-      </ul>
-    </div>
-    <div class="col">
-      <h3>Project</h3>
-      <div class="callout callout-kailash">
-        <strong>End-to-end pipeline:</strong>
-        <ol style="font-size: 0.85em;">
-          <li>Cluster data (4.1)</li>
-          <li>Reduce dimensions (4.3)</li>
-          <li>Detect anomalies (4.4)</li>
-          <li>Build neural network on discovered features (4.8)</li>
-          <li>Compare: does USML preprocessing improve DL?</li>
-        </ol>
-      </div>
-    </div>
+  <p style="font-size: 0.85em;">Four auto-graded tasks, 25 marks each &mdash; open-book, no AI assistants. The ML step runs through a kailash-ml engine.</p>
+  <table style="font-size: 0.68em;">
+    <tr><th>Task</th><th>Topic</th><th>Engine</th></tr>
+    <tr><td>1</td><td>Customer segmentation by clustering</td><td>ClusteringEngine</td></tr>
+    <tr><td>2</td><td>Dimensionality reduction &amp; anomaly detection</td><td>DimReductionEngine + AnomalyDetectionEngine</td></tr>
+    <tr><td>3</td><td>NLP topic discovery with NMF</td><td>DimReductionEngine (nmf)</td></tr>
+    <tr><td>4</td><td>Neural network foundations</td><td>SklearnTrainable (MLP)</td></tr>
+  </table>
+  <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.8em;">
+    Graders check <strong>recovered structure</strong> against hidden ground truth (e.g. ARI vs planted segments, ROC-AUC vs hidden anomaly flags) &mdash; not surface code. Details: <code>assessment/README.md</code>.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. The project ties together the entire module. Students must demonstrate that unsupervised features improve a downstream neural network.
+    Timing: 2 min. Walk through the four tasks and point students to assessment/README.md and each task's problem.md. Each task is a starter file with a solve() function, graded by automated checks against ground truth the brief does not reveal &mdash; so the only way to score is to genuinely recover the structure. Polars only, keep the given seeds, no hardcoded secrets or model names. The engines on this slide are the ones from the bridge slides in 4.1, 4.3, 4.4 and 4.8.
   </aside>
 </section>
 
@@ -2232,23 +2215,23 @@ with torch.no_grad():
   <h2>Looking Ahead: Module 5</h2>
   <span class="marker marker-foundations">Foundations</span>
   <div class="bridge-box">
-    <p style="text-align: center; font-size: 1.05em;"><strong>M5: LLMs, AI Agents &amp; RAG Systems</strong></p>
+    <p style="text-align: center; font-size: 1.05em;"><strong>M5: Deep Learning &mdash; Vision &amp; Transfer Learning</strong></p>
     <ul style="font-size: 0.85em; margin-top: 12px;">
-      <li>The neural networks from 4.8 scaled to billions of parameters</li>
-      <li>Transformers: attention mechanism, positional encoding</li>
-      <li>Large Language Models: GPT architecture, fine-tuning</li>
-      <li>AI Agents: autonomous systems that use LLMs as reasoning engines</li>
-      <li>RAG: retrieval-augmented generation for grounded responses</li>
+      <li>Autoencoders: reconstruction loss as unsupervised feature learning</li>
+      <li>CNNs for vision; RNNs for sequences</li>
+      <li>Transformers: attention, positional encoding</li>
+      <li>GANs, diffusion and graph neural networks</li>
+      <li>Transfer learning and reinforcement learning</li>
     </ul>
   </div>
   <div class="callout callout-advanced" style="margin-top: 12px;">
-    <strong>The thread continues:</strong> 4.8's hidden layers &rarr; M5's transformer layers &rarr; attention IS a soft clustering of tokens &rarr; the spectrum never ends.
+    <strong>The thread continues:</strong> 4.8's hidden layers &rarr; M5's specialised architectures &rarr; M6: LLMs, agents and RAG.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. "You now understand embeddings, optimisation-driven features, and the training toolkit. M5 scales all of this to the models that power ChatGPT, Claude, and every modern AI system."
+    Timing: 2 min. "You now understand embeddings, optimisation-driven features, and the training toolkit. M5 applies the same toolkit to specialised architectures &mdash; autoencoders, CNNs, RNNs, transformers, GANs, diffusion, graph networks &mdash; plus transfer learning and reinforcement learning." Large language models, agents and retrieval-augmented generation come in Module 6, built on the transformer from M5. Attention can be read as a soft, input-dependent weighting over tokens &mdash; the same idea as the GMM responsibilities and Mixture-of-Experts gating from 4.2.
   </aside>
 </section>
 
@@ -2262,7 +2245,7 @@ with torch.no_grad():
     <span>Terrene Foundation &bull; Kailash Python SDK</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. Thank the class. Remind them of the exercise schedule and the end-of-module project. "You just crossed the bridge from manual feature engineering to neural feature learning. Well done."
+    Timing: 1 min. Thank the class. Remind them of the exercise schedule and the four-task end-of-module assessment. "You just crossed the bridge from manual feature engineering to neural feature learning. Well done."
   </aside>
 </section>
 

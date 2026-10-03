@@ -22,7 +22,7 @@
 #   2. Build — fit four distribution families, compute AIC/BIC
 #   3. Train — bootstrap for median, trimmed mean, IQR
 #   4. Visualise — bootstrap distributions and CI comparison
-#   5. Apply — OCBC portfolio risk: which tail model to use?
+#   5. Apply — bank portfolio risk: which tail model to use?
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -129,7 +129,9 @@ print(f"Best by BIC: {best_bic[0]} (BIC={best_bic[1]['bic']:.2f})")
 
 # INTERPRETATION: AIC and BIC may disagree — BIC penalises complexity
 # more heavily for large n. When they agree, the evidence is strong.
-# When they disagree, prefer BIC for prediction and AIC for explanation.
+# When they disagree, prefer AIC for prediction (it is asymptotically
+# efficient) and BIC for identifying the true / most parsimonious model
+# (it is consistent).
 
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert all(
@@ -231,17 +233,17 @@ print("\n--- Checkpoint 3 passed --- bootstrap visualisations saved\n")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: OCBC Portfolio Risk — Which Tail Model?
+# TASK 5 — APPLY: Bank Portfolio Risk — Which Tail Model?
 # ════════════════════════════════════════════════════════════════════════
-# OCBC manages a multi-billion dollar fixed-income portfolio. The
-# risk team must choose a distribution model for quarterly returns.
+# A Singapore bank (illustrative) manages a multi-billion dollar
+# fixed-income portfolio. The risk team must choose a distribution model for quarterly returns.
 # The choice between Normal and Student-t has real dollar consequences:
 #
 # Value-at-Risk (VaR) at 99% confidence determines the capital reserve.
 # If they use Normal and reality is t-distributed, they will hold
 # insufficient capital for tail events.
 
-print(f"\n=== APPLY: OCBC Portfolio Risk — Distribution Choice ===")
+print(f"\n=== APPLY: Bank Portfolio Risk — Distribution Choice ===")
 
 # Use GDP growth as a proxy for portfolio returns
 mu_normal = normal_result["mu"]
@@ -258,10 +260,12 @@ print(
     f"\n{'Confidence':>12} {'VaR (Normal)':>15} {'VaR (t-dist)':>15} {'Shortfall':>12}"
 )
 print("-" * 60)
+shortfalls = {}
 for alpha in [0.95, 0.99, 0.995]:
     var_normal = -stats.norm.ppf(1 - alpha, loc=mu_normal, scale=sigma_normal)
     var_t = -stats.t.ppf(1 - alpha, df=t_df_fit, loc=t_mu_fit, scale=t_scale_fit)
     shortfall = (var_t - var_normal) * portfolio_value / 100
+    shortfalls[alpha] = shortfall
     print(
         f"{alpha*100:>10.1f}%  {var_normal:>12.3f}%  {var_t:>12.3f}%  "
         f"SGD {shortfall:>7.0f}M"
@@ -274,12 +278,17 @@ else:
     print("For risk management (tail events matter), prefer the heavier-tailed model.")
 
 print(
-    "\nBottom line: choosing the wrong distribution model can leave"
-    "\nhundreds of millions in unprovisioned tail risk."
+    f"\nBottom line: at 99% VaR the Normal model holds SGD "
+    f"{shortfalls[0.99]:,.0f}M {'less' if shortfalls[0.99] > 0 else 'more'} "
+    f"capital than the t model on this (illustrative) SGD {portfolio_value:,}M book."
+)
+print(
+    "Note the 95% row: the heavy-tailed t can give a SMALLER VaR at moderate"
+    "\nconfidence — tails differ most where the reserve decision matters."
 )
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
-print("\n--- Checkpoint 4 passed --- OCBC portfolio risk application complete\n")
+print("\n--- Checkpoint 4 passed --- bank portfolio risk application complete\n")
 
 
 # ════════════════════════════════════════════════════════════════════════

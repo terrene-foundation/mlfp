@@ -327,9 +327,19 @@ loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
     pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
 )
 
+# Set aside the planted impossible prices (S$10 and S$9,000,000) before charting
+hdb_clean = hdb.filter(pl.col("resale_price").is_between(50_000, 5_000_000))
+print(f"{hdb.height - hdb_clean.height} rows set aside")   # 251 rows set aside
+
 viz = ModelVisualizer()</code></pre>
+    <p>
+      Lesson 1.2 found the 107 sales at <span class="nomath">S$10</span> and 144 at <span class="nomath">S$9,000,000.</span> They
+      are not prices any real flat sold for, so every chart below uses
+      <code>hdb_clean</code>. Step 2 shows why that matters.
+    </p>
   </div>
 
   <div class="step">
@@ -337,19 +347,20 @@ viz = ModelVisualizer()</code></pre>
     <p>Answering "how are prices distributed?". Bins = 40 gives enough
        resolution to see shape without over-fragmenting.</p>
     <pre><code class="language-python">fig = viz.histogram(
-    data=hdb,
+    data=hdb_clean,
     column="resale_price",
     bins=40,
     title="HDB Resale Price Distribution",
 )
 fig.write_html("ex6_price_histogram.html")</code></pre>
     <p>
-      In the course data, 80% of sales fall between about <span class="nomath">S$538,000</span> and
-      <span class="nomath">S$1,225,000,</span> with a median of <span class="nomath">S$849,124.</span> The tail is extreme: 144
-      records at <span class="nomath">S$9,000,000</span> pull the mean up to about <span class="nomath">S$881,800</span> and squash
-      the histogram into a few bars until you filter them out. The 107
-      records at <span class="nomath">S$10</span> sit in the first bar. A histogram is the fastest way
-      to spot both.
+      Try it on the raw <code>hdb</code> first: the 144 records at
+      <span class="nomath">S$9,000,000</span> stretch the x-axis to nine million and squash every real
+      sale into the first few bars, and they pull the mean up to about
+      <span class="nomath">S$881,800.</span> A histogram is the fastest way to spot such defects. On
+      <code>hdb_clean</code> the shape is visible: 80% of sales fall between
+      about <span class="nomath">S$539,000</span> and <span class="nomath">S$1,221,000</span> around a median of <span class="nomath">S$848,916,</span> with
+      only a mild right skew (about 0.39).
     </p>
   </div>
 
@@ -357,7 +368,7 @@ fig.write_html("ex6_price_histogram.html")</code></pre>
     <span class="step-label">Step 3 — Scatter.</span>
     <p>Answering "how does price relate to area?". Sample to 5,000 points
        — a scatter of 50,000 points is unreadable ink.</p>
-    <pre><code class="language-python">hdb_sample = hdb.sample(n=5_000, seed=42)
+    <pre><code class="language-python">hdb_sample = hdb_clean.sample(n=5_000, seed=42)
 fig = viz.scatter(
     data=hdb_sample,
     x="floor_area_sqm",
@@ -366,11 +377,12 @@ fig = viz.scatter(
 )
 fig.write_html("ex6_price_vs_area.html")</code></pre>
     <p>
-      Positive slope, wide vertical spread. On the full data the correlation
-      is r = 0.47, so area alone explains only about 22% of price variance
-      ($r^2 \approx 0.22$). Drop the 251 records at <span class="nomath">S$10</span> and <span class="nomath">S$9M</span> and r
-      jumps to about 0.91 — a handful of bad rows can hide a strong real
-      relationship.
+      A tight, rising band: larger flats cost more. On the cleaned data the
+      correlation between floor area and price is r = 0.91, so area alone
+      accounts for about 83% of the price variance ($r^2 \approx 0.83$). Run
+      the same correlation on the raw <code>hdb</code> and r falls to 0.47
+      ($r^2 \approx 0.22$). The relationship did not change; 251 bad rows
+      (0.5% of the data) hid it.
     </p>
   </div>
 
@@ -381,7 +393,7 @@ fig.write_html("ex6_price_vs_area.html")</code></pre>
        That method was built to compare model scores, so its default axis
        titles are "Model" and "Score" — set the real ones.</p>
     <pre><code class="language-python">district_prices = (
-    hdb.group_by("town")
+    hdb_clean.group_by("town")
     .agg(pl.col("resale_price").median().alias("median_price"))
     .sort("median_price", descending=True)
 )
@@ -412,7 +424,7 @@ fig.write_html("ex6_median_by_town_h.html")</code></pre>
     <p>Answering "how has price per sqm changed over time?". Aggregate to
        monthly first.</p>
     <pre><code class="language-python">monthly = (
-    hdb.group_by("transaction_date")
+    hdb_clean.group_by("transaction_date")
     .agg(pl.col("price_per_sqm").median().alias("median_psm"))
     .sort("transaction_date")
 )
@@ -430,7 +442,7 @@ fig.write_html("ex6_price_trend.html")</code></pre>
       unless told otherwise. Repurposing it is fine, but only if you fix the
       axis: the two extra lines give the chart real dates and real labels
       ("no misleading axes"). The line itself is flat — the monthly median
-      stays between about <span class="nomath">S$8,656</span> and <span class="nomath">S$8,968</span> per sqm for ten years. No
+      stays between about <span class="nomath">S$8,640</span> and <span class="nomath">S$8,970</span> per sqm for ten years. No
       trend is a legitimate answer.
     </p>
   </div>
@@ -439,8 +451,8 @@ fig.write_html("ex6_price_trend.html")</code></pre>
     <span class="step-label">Step 6 — Heatmap.</span>
     <p>Answering "how do numeric features correlate?". Compute the matrix
        with Polars, draw it with <code>px.imshow</code>.</p>
-    <pre><code class="language-python">numeric = hdb.select("resale_price", "floor_area_sqm", "price_per_sqm")
-corr = numeric.corr()   # Polars correlation matrix
+    <pre><code class="language-python">numeric_cols = ["resale_price", "floor_area_sqm", "price_per_sqm", "year"]
+corr = hdb_clean.select(numeric_cols).corr()   # Polars correlation matrix
 
 fig = px.imshow(
     corr.to_numpy(), x=corr.columns, y=corr.columns,
@@ -451,8 +463,11 @@ fig.write_html("ex6_correlation.html")</code></pre>
     <p>
       With <code>RdBu_r</code> pinned to −1…+1, <strong>red means
       positive</strong>, blue means negative and white is zero. Price and
-      price per sqm correlate at 0.82, price and area at 0.47, and area and
-      price per sqm at about −0.01. Do not use
+      area are the darkest red off the diagonal (0.91); price and price per
+      sqm are moderately red (0.45); area and price per sqm are near white
+      (0.05) — a bigger flat costs more in total but not more per square
+      metre. And <code>year</code> is white against everything (about
+      0.00): no time trend, the same finding as Lesson 1.5. Do not use
       <code>ModelVisualizer.confusion_matrix</code> for this: it takes true
       and predicted <em>labels</em> and computes a confusion matrix from
       them; it cannot draw an arbitrary grid.
@@ -463,7 +478,7 @@ fig.write_html("ex6_correlation.html")</code></pre>
     <span class="step-label">Step 7 — Stacked bar.</span>
     <p>Answering "how does flat-type composition vary across towns?".</p>
     <pre><code class="language-python">composition = (
-    hdb.group_by("town", "flat_type")
+    hdb_clean.group_by("town", "flat_type")
     .agg(pl.len().alias("count"))
     .sort("town", "flat_type")
 )
@@ -498,7 +513,7 @@ fig.update_layout(xaxis_title="Share of town's sales (%)")
 fig.write_html("ex6_composition_pct.html")</code></pre>
     <p>
       Each bar now sums to exactly 100%. The 4-room share ranges only from
-      about 38% to 44% across the 27 towns — the composition is nearly
+      about 37% to 44% across the 27 towns — the composition is nearly
       identical everywhere, which the raw-count chart hid behind different
       bar heights.
     </p>
@@ -655,10 +670,10 @@ fig.write_html("ex6_composition_pct.html")</code></pre>
     sqm with a median of about 98 sqm — no long tail, unlike price.
     B: <code>viz.scatter(..., color="price_per_sqm")</code>; points with the
     same area but very different colours are the planted price defects.
-    C: the top ten by median price per sqm start with Toa Payoh
-    (about <span class="nomath">S$9,972</span>) and six other central towns near <span class="nomath">S$9,800</span>–<span class="nomath">S$9,960,</span> then
-    drop to about <span class="nomath">S$8,680</span> (Choa Chu Kang, Jurong East, Bukit Panjang) — the
-    title should say so. D: noisy month-to-month lines around a flat
+    C: on <code>hdb_clean</code> the top ten by median price per sqm start
+    with Toa Payoh (about <span class="nomath">S$9,976</span>) and six other central towns near
+    <span class="nomath">S$9,800</span>–<span class="nomath">S$9,960,</span> then drop to about <span class="nomath">S$8,680</span> (Jurong East, Choa Chu
+    Kang, Bukit Panjang) — the title should say so. D: noisy month-to-month lines around a flat
     rolling mean; there is no trend in this synthetic data. E: divide each
     (flat type, storey range) count by
     <code>pl.col("count").sum().over("flat_type")</code>.

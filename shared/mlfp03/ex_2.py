@@ -146,8 +146,29 @@ def load_credit_data(
 # ════════════════════════════════════════════════════════════════════════
 
 
+def sine_truth(x: np.ndarray) -> np.ndarray:
+    """The noiseless generating function f(x) = sin(2πx)."""
+    return np.sin(2 * np.pi * np.asarray(x).ravel())
+
+
+def sample_sine_training_set(
+    n: int,
+    noise_sigma: float,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Draw ONE fresh training set (x ~ U[0,1], y = sin(2πx) + ε).
+
+    The bias-variance decomposition is defined over many independent
+    training sets drawn from the same process — this is how we draw them.
+    """
+    x = rng.uniform(0, 1, n)
+    y = sine_truth(x) + rng.normal(0, noise_sigma, n)
+    return x.reshape(-1, 1), y
+
+
 def make_sine_dataset(
-    n: int = 100,
+    n_train: int = 40,
+    n_test: int = 1000,
     noise_sigma: float = 0.2,
     seed: int = SEED,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
@@ -159,18 +180,15 @@ def make_sine_dataset(
         noise_variance (float, σ² — the irreducible error floor)
 
     The true function is ``y = sin(2πx) + ε`` with ε ~ N(0, σ²).
+    A small training set (40 points) makes overfitting visible; a large,
+    independently drawn test set (1,000 points) makes the test MSE a
+    stable estimate rather than the noise of a handful of points.
     The noise variance is returned so callers can use it in the
     bias-variance decomposition (σ² is the "irreducible noise" term).
     """
     rng = np.random.default_rng(seed)
-    x = rng.uniform(0, 1, n)
-    y = np.sin(2 * np.pi * x) + rng.normal(0, noise_sigma, n)
-
-    split = int(n * 0.8)
-    x_train = x[:split].reshape(-1, 1)
-    x_test = x[split:].reshape(-1, 1)
-    y_train = y[:split]
-    y_test = y[split:]
+    x_train, y_train = sample_sine_training_set(n_train, noise_sigma, rng)
+    x_test, y_test = sample_sine_training_set(n_test, noise_sigma, rng)
     return x_train, y_train, x_test, y_test, noise_sigma**2
 
 

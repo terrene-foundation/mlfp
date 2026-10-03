@@ -12,6 +12,7 @@ Technique-specific code (GCN, GAT, GraphSAGE layers) does NOT belong here.
 from __future__ import annotations
 
 import asyncio
+import copy
 import pickle
 from pathlib import Path
 from typing import Any
@@ -90,7 +91,9 @@ def load_karate() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str, 
 
     G = nx.karate_club_graph()
     n = G.number_of_nodes()
-    A_np = nx.to_numpy_array(G, dtype=np.float32)
+    # weight=None: an unweighted 0/1 adjacency (the graph carries interaction
+    # counts as edge weights, which would otherwise leak into A).
+    A_np = nx.to_numpy_array(G, dtype=np.float32, weight=None)
     labels = np.array(
         [0 if G.nodes[i]["club"] == "Mr. Hi" else 1 for i in range(n)],
         dtype=np.int64,
@@ -101,6 +104,18 @@ def load_karate() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str, 
     src, dst = np.where(A_np > 0)
     edge_index_np = np.stack([src, dst]).astype(np.int64)
     return X_np, A_np, labels, edge_index_np, "Karate Club", 2
+
+
+def normalise_adjacency(A: torch.Tensor) -> torch.Tensor:
+    """Symmetric-normalised adjacency with self-loops: D^{-1/2} (A + I) D^{-1/2}.
+
+    This is the GCN propagation matrix (Kipf & Welling, 2017). It is NOT
+    the graph Laplacian — the normalised Laplacian is I - D^{-1/2} A D^{-1/2}.
+    """
+    A_hat = A + torch.eye(A.size(0), device=A.device)
+    d_inv_sqrt = A_hat.sum(dim=1).pow(-0.5)
+    d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
+    return d_inv_sqrt.unsqueeze(1) * A_hat * d_inv_sqrt.unsqueeze(0)
 
 
 def load_graph_data() -> dict:
@@ -135,12 +150,10 @@ def load_graph_data() -> dict:
     A = torch.from_numpy(A_np).to(device)
     y = torch.from_numpy(y_np).to(device)
 
-    # Add self-loops and build the symmetric Laplacian D^{-1/2} A D^{-1/2}
+    # Add self-loops and build the symmetric-normalised adjacency
+    # D^{-1/2} (A + I) D^{-1/2}
     A_hat = A + torch.eye(N, device=device)
-    deg = A_hat.sum(dim=1)
-    d_inv_sqrt = deg.pow(-0.5)
-    d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
-    A_norm = d_inv_sqrt.unsqueeze(1) * A_hat * d_inv_sqrt.unsqueeze(0)
+    A_norm = normalise_adjacency(A)
 
     # Train/val/test split — 20% train, 20% val, 60% test (per class)
     train_mask = torch.zeros(N, dtype=torch.bool, device=device)
@@ -225,6 +238,13 @@ def train_node_classifier(
 ) -> tuple[list[float], list[float], list[float]]:
     """Train a GNN for node classification and log metrics to ExperimentTracker.
 
+    Model selection uses VALIDATION accuracy only: when training ends, the
+    weights from the epoch with the highest validation accuracy are
+    restored, so later embeddings, plots and registered artifacts describe
+    the model whose numbers are reported. Test accuracy is recorded every
+    epoch for plotting, but the honest test figure is the one at the
+    best-validation epoch: ``test_accs[int(np.argmax(val_accs))]``.
+
     Returns:
         train_losses: per-epoch training loss
         val_accs: per-epoch validation accuracy
@@ -275,6 +295,9 @@ async def _train_node_classifier_async(
     train_losses: list[float] = []
     val_accs: list[float] = []
     test_accs: list[float] = []
+    best_val_acc = -1.0
+    best_epoch = 0
+    best_state: dict[str, torch.Tensor] = {}
 
     async with tracker.track(experiment=exp_name, run_name=name) as run:
         await run.log_params(
@@ -307,6 +330,9 @@ async def _train_node_classifier_async(
                 t_acc = (preds[test_mask] == y[test_mask]).float().mean().item()
             val_accs.append(v_acc)
             test_accs.append(t_acc)
+            if v_acc > best_val_acc:  # first epoch wins ties, like np.argmax
+                best_val_acc, best_epoch = v_acc, epoch
+                best_state = copy.deepcopy(model.state_dict())
 
             await run.log_metrics(
                 {
@@ -323,15 +349,21 @@ async def _train_node_classifier_async(
                     f"loss={loss.item():.4f}  val_acc={v_acc:.3f}  test_acc={t_acc:.3f}"
                 )
 
+        model.load_state_dict(best_state)
         await run.log_metrics(
             {
                 "final_loss": train_losses[-1],
                 "final_val_accuracy": val_accs[-1],
                 "final_test_accuracy": test_accs[-1],
-                "best_val_accuracy": max(val_accs),
-                "best_test_accuracy": max(test_accs),
+                "best_val_accuracy": best_val_acc,
+                "best_val_epoch": float(best_epoch + 1),
+                "test_accuracy_at_best_val": test_accs[best_epoch],
             }
         )
+    print(
+        f"  [{name}] best val_acc={best_val_acc:.3f} at epoch {best_epoch + 1}; "
+        "restored those weights"
+    )
 
     return train_losses, val_accs, test_accs
 

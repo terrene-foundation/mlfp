@@ -447,10 +447,10 @@ print("--- Checkpoint 2 passed --- all DQN visualisations generated\n")
 # TASK 5 — Apply: Inventory Management for a Singapore Retailer
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You're the operations manager at a Singapore supermarket chain
-# (think FairPrice or Cold Storage). Every day you decide how much stock
-# to order for a perishable product category (fresh produce). Order too
-# much -> holding costs and spoilage. Order too little -> empty shelves
-# and lost sales.
+# (hypothetical; every number below is illustrative). Every day you
+# decide how much stock to order for a perishable product category
+# (fresh produce). Order too much -> holding costs and spoilage. Order
+# too little -> empty shelves and lost sales.
 #
 # State: (stock_level, demand_forecast, day_of_week)
 #   - stock_level: normalised current inventory [0, 1]

@@ -573,13 +573,13 @@ print("=" * 70)
 decision_framework = pl.DataFrame(
     {
         "Business Problem": [
-            "Inventory reorder (FairPrice)",
-            "Surge pricing (Grab)",
-            "Customer churn (Singtel)",
+            "Inventory reorder (supermarket)",
+            "Surge pricing (ride-hailing)",
+            "Customer churn (telco)",
             "Portfolio rebalancing",
-            "Queue staffing (Changi)",
-            "Traffic signals (LTA)",
-            "Energy trading (SP Group)",
+            "Queue staffing (airport)",
+            "Traffic signals (road authority)",
+            "Energy trading (electricity retailer)",
             "LLM alignment (M6)",
         ],
         "Action Space": [

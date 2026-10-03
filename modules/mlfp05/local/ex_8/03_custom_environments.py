@@ -89,8 +89,9 @@ from kailash_ml import ModelVisualizer
 #   4. DYNAMICS: How does the world respond to actions?
 #      Must be realistic enough to transfer to the real system.
 #
-# Each environment below models a REAL business problem with realistic
-# dynamics calibrated to Singapore market conditions.
+# Each environment below models a real KIND of business problem. The
+# dynamics are illustrative: loosely shaped on Singapore settings, with
+# every number invented for teaching — not calibrated to any company.
 
 print("=" * 70)
 print("  TASK 1: Custom Environments — The Foundation of Applied RL")
@@ -108,12 +109,12 @@ print("  TASK 2: Build 5 Custom Environments")
 print("=" * 70)
 
 
-# ── Environment 1: Customer Churn Prevention (Singtel / StarHub) ─────
+# ── Environment 1: Customer Churn Prevention (a telco) ───────────────
 class ChurnPreventionEnv(gym.Env):
     """Prevent customer churn through targeted retention interventions.
 
     SCENARIO: You manage the retention team at a Singapore telecom
-    (think Singtel or StarHub). Each day you observe a customer's health
+    operator (hypothetical). Each day you observe a customer's health
     metrics and decide whether/how to intervene.
 
     State (4,): [satisfaction_score, usage_frequency, months_active, support_tickets]
@@ -281,13 +282,13 @@ class PortfolioRebalancingEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 3: Queue Management (Changi Airport) ─────────────────
+# ── Environment 3: Queue Management (an airport) ─────────────────────
 class QueueManagementEnv(gym.Env):
-    """Allocate staff to counters at Changi Airport to minimise wait times.
+    """Allocate staff to counters at an airport to minimise wait times.
 
-    SCENARIO: You manage immigration counter staffing at Changi Airport.
+    SCENARIO: You manage immigration counter staffing at a hub airport.
     Flights arrive in waves; you redistribute staff across three zones
-    (T1, T2, T3) every 30 minutes.
+    (halls A, B, C) every 30 minutes.
 
     State (6,): [queue_t1, queue_t2, queue_t3, staff_t1, staff_t2, staff_t3]
       Queues normalised by capacity; staff normalised by total headcount.
@@ -331,7 +332,7 @@ class QueueManagementEnv(gym.Env):
             staff[dst] += amount
             realloc_cost = 0.15
 
-        # Flight arrival waves (Changi pattern: peaks at 6am, 12pm, 6pm, 11pm)
+        # Flight arrival waves (illustrative: peaks around 6am, 8am, 12pm, 6pm, 8pm, 11pm)
         half_hour = self.step_count % 48
         hour = half_hour / 2.0
         wave_t1 = 0.15 * np.exp(-0.5 * ((hour - 6) / 2) ** 2) + 0.1 * np.exp(
@@ -370,11 +371,11 @@ class QueueManagementEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 4: Energy Trading (SP Group) ─────────────────────────
+# ── Environment 4: Energy Trading (an electricity retailer) ──────────
 class EnergyTradingEnv(gym.Env):
     """Buy and sell electricity on Singapore's spot market.
 
-    SCENARIO: You manage the trading desk at SP Group. Every hour you
+    SCENARIO: You run an electricity retailer's trading desk. Every hour you
     decide whether to buy, sell, or hold electricity based on price
     forecasts, current reserves, and demand patterns.
 
@@ -477,12 +478,12 @@ class EnergyTradingEnv(gym.Env):
         return self.state.copy(), reward, False, truncated, {}
 
 
-# ── Environment 5: Traffic Signal Optimisation (LTA) ─────────────────
+# ── Environment 5: Traffic Signal Optimisation (a road authority) ────
 class TrafficSignalEnv(gym.Env):
     """Optimise green light timing at a Singapore intersection.
 
-    SCENARIO: You manage a 4-way intersection for the Land Transport
-    Authority (LTA). Every cycle (90 seconds) you allocate green time
+    SCENARIO: You manage a 4-way intersection for a city road
+    authority. Every cycle (90 seconds) you allocate green time
     between the north-south and east-west directions.
 
     State (4,): [queue_ns, queue_ew, flow_ns, flow_ew]
@@ -892,7 +893,7 @@ for name, results in [
     )
 
 # Revenue impact calculation
-monthly_revenue_per_customer = 50.0  # SGD (typical telecom ARPU)
+monthly_revenue_per_customer = 50.0  # SGD — illustrative monthly revenue per customer
 intervention_cost_per_action = 5.0  # SGD average
 
 for name, results in [
@@ -951,11 +952,11 @@ print("=" * 70)
 print(
     """
   [x] Built 5 Gymnasium-compliant environments for real business problems:
-      1. ChurnPrevention (Singtel/StarHub) — customer retention interventions
+      1. ChurnPrevention (telco) — customer retention interventions
       2. PortfolioRebalancing (hedge fund) — risk-adjusted asset allocation
-      3. QueueManagement (Changi Airport) — staff allocation to counters
-      4. EnergyTrading (SP Group) — electricity spot market trading
-      5. TrafficSignal (LTA) — green light timing optimisation
+      3. QueueManagement (airport) — staff allocation to counters
+      4. EnergyTrading (electricity retailer) — spot market trading
+      5. TrafficSignal (road authority) — green light timing optimisation
   [x] Trained DQN on ChurnPrevention and registered in ModelRegistry
   [x] Visualised environment behaviour:
       - Training reward curves showing learning progress

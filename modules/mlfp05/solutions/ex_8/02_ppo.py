@@ -507,9 +507,9 @@ print("--- Checkpoint 2 passed --- all PPO visualisations generated\n")
 # TASK 5 — Apply: Dynamic Pricing for a Singapore Ride-Hailing Platform
 # ════════════════════════════════════════════════════════════════════════
 # SCENARIO: You're the pricing algorithms team at a Singapore ride-hailing
-# platform (think Grab or Gojek). During peak hours (morning commute,
-# evening rush, after-MRT-closure), demand spikes. You need to set a
-# price multiplier that balances:
+# platform (hypothetical; the demand curves are illustrative). During
+# peak hours (morning commute, evening rush, after-MRT-closure), demand
+# spikes. You need to set a price multiplier that balances:
 #   - Revenue: higher prices = more revenue per ride
 #   - Customer satisfaction: too-high prices = riders switch to MRT/bus
 #   - Driver supply: higher prices = more drivers come online

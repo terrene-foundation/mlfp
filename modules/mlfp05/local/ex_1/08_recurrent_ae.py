@@ -76,15 +76,18 @@ N_SERIES_TEST = 500
 
 def generate_sensor_data(n_samples, seq_len, seed=42):
     """Generate synthetic industrial vibration sensor data."""
-    # TODO: Generate n_samples time series, each of length seq_len
-    # Each series: sum of 2 sinusoids at random frequencies + noise
-    # t = np.linspace(0, 4*pi, seq_len)
-    # signal = amp1*sin(freq1*t+phase) + amp2*sin(freq2*t) + 0.1*noise
-    # Normalise each series to [0, 1]
+    # TODO: Return a float32 array of n_samples series, each seq_len long,
+    # drawn from a legacy NumPy RandomState seeded with `seed`.
+    # Time axis: seq_len evenly spaced points over two periods [0, 4*pi].
+    # Each series = a main sine (freq in [0.8, 1.2], amplitude in [0.5, 1.0],
+    # random phase in [0, 2*pi]) + a second sine (freq in [1.8, 2.2],
+    # amplitude in [0.2, 0.5], no phase) + standard-normal noise scaled by
+    # 0.1; then min-max scale each series to [0, 1] (guard the divide).
     ____
 
 
-# TODO: Generate train and test sensor data
+# TODO: sensor_train — N_SERIES_TRAIN series (seed 42); sensor_test —
+#       N_SERIES_TEST series with a DIFFERENT seed (99), both SEQ_LEN long
 sensor_train = ____
 sensor_test = ____
 
@@ -109,12 +112,13 @@ class RecurrentAE(nn.Module):
         super().__init__()
         self.seq_len = seq_len
         self.hidden_dim = hidden_dim
-        # TODO: Define layers:
-        #   encoder_lstm: nn.LSTM(input_size=1, hidden_size=hidden_dim, batch_first=True)
-        #   enc_to_latent: nn.Linear(hidden_dim, latent_dim)
-        #   latent_to_dec: nn.Linear(latent_dim, hidden_dim)
-        #   decoder_lstm: nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim, batch_first=True)
-        #   output_layer: nn.Sequential(nn.Linear(hidden_dim, 1), nn.Sigmoid())
+        # TODO: Define layers (batch-first LSTMs throughout):
+        #   encoder_lstm: LSTM reading 1 feature per step into hidden_dim units
+        #   enc_to_latent: linear hidden_dim -> latent_dim (the bottleneck)
+        #   latent_to_dec: linear latent_dim -> hidden_dim
+        #   decoder_lstm: LSTM from hidden_dim inputs to hidden_dim units
+        #   output_layer: linear hidden_dim -> 1 value per step, then Sigmoid
+        #                 (the series are scaled to [0, 1])
         self.encoder_lstm = ____
         self.enc_to_latent = ____
         self.latent_to_dec = ____
@@ -122,13 +126,16 @@ class RecurrentAE(nn.Module):
         self.output_layer = ____
 
     def forward(self, x):
-        # TODO: Implement LSTM AE forward pass:
-        # 1. x_seq = x.unsqueeze(-1)  — add feature dim
-        # 2. Encode: _, (h_n, _) = self.encoder_lstm(x_seq)
-        # 3. Compress: z = self.enc_to_latent(h_n.squeeze(0))
-        # 4. Expand: dec_input = self.latent_to_dec(z).unsqueeze(1).repeat(1, seq_len, 1)
-        # 5. Decode: dec_output, _ = self.decoder_lstm(dec_input)
-        # 6. Output: x_hat = self.output_layer(dec_output).squeeze(-1)
+        # TODO: Implement LSTM AE forward pass (x is (batch, seq_len)):
+        # 1. Add a trailing feature axis -> (batch, seq_len, 1)
+        # 2. Encode: run the encoder LSTM; keep only its FINAL hidden state
+        #    h_n, shaped (1, batch, hidden) — drop the layer axis
+        # 3. Compress: z = that hidden state through the bottleneck layer
+        # 4. Expand: map z back to hidden_dim and repeat it as the input at
+        #    every one of the seq_len steps -> (batch, seq_len, hidden)
+        # 5. Decode: run the decoder LSTM over that repeated input
+        # 6. Output: per-step output layer, trailing axis removed -> x_hat
+        #    shaped like x
         # Return (x_hat, z)
         ____
 
@@ -143,7 +150,10 @@ print("  Recurrent AE — Time-Series (Sensor Data)")
 print("=" * 70)
 print("  LSTM encoder reads sequence -> latent -> LSTM decoder reconstructs.")
 
-# TODO: Create RecurrentAE(SEQ_LEN, hidden_dim=64, latent_dim=LATENT_DIM) and train
+# TODO: recurrent_model — a RecurrentAE for SEQ_LEN steps, 64 hidden units,
+#       module latent size; train it with train_variant as run
+#       "recurrent_ae" on sensor_loader, logging extra_params
+#       {"seq_len": <as a string>, "data_type": "sensor_vibration"}
 recurrent_model = ____
 recurrent_losses = ____
 
@@ -188,7 +198,8 @@ print_prescription_pad(findings, "Recurrent AE (LSTM)")
 # TASK 3 — Visualise Time-Series Reconstruction
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_timeseries_reconstruction
+# TODO: show_timeseries_reconstruction on the test-sensor TENSOR, titled
+#       "Recurrent AE — Sensor Vibration Reconstruction"
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────
@@ -247,9 +258,10 @@ crisis_periods = [
     (1200, 1230, "Geopolitical Crisis"),
 ]
 
-# TODO: Fill daily_returns using correlated random draws
-# Normal days: positive drift + normal vol
-# Crisis days: negative drift + 3x vol
+# TODO: Fill daily_returns from the correlated draw corr_z. Convert the
+# ANNUAL figures to daily ones: drift / 252 trading days, vol / sqrt(252).
+# Normal days: +daily drift + daily vol x corr_z
+# Crisis days: drift flipped negative and doubled, vol tripled
 for day in range(N_DAYS):
     in_crisis = any(start <= day < end for start, end, _ in crisis_periods)
     z = fin_rng.standard_normal(N_STOCKS)
@@ -327,17 +339,22 @@ class LSTMDecoder(nn.Module):
 class LSTMAutoencoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, seq_len):
         super().__init__()
-        # TODO: Create encoder and decoder
+        # TODO: encoder — an LSTMEncoder (input_dim -> hidden_dim);
+        #       decoder — an LSTMDecoder that outputs input_dim features per
+        #       step over seq_len steps
         self.encoder = ____
         self.decoder = ____
 
     def forward(self, x):
-        # TODO: Encode then decode
+        # TODO: Encode x to its final (h, c) state, then decode from x and
+        #       that state; return the reconstruction
         ____
 
 
 HIDDEN_DIM = 32
-# TODO: Create LSTMAutoencoder, optimizer, criterion. Train 60 epochs.
+# TODO: fin_model — an LSTMAutoencoder over N_FEATURES with HIDDEN_DIM
+#       units and FIN_SEQ_LEN steps, on the device; fin_opt — Adam, lr 1e-3.
+#       (The MSE criterion and the 60-epoch loop are given.)
 fin_model = ____
 fin_opt = ____
 fin_criterion = nn.MSELoss()
@@ -347,7 +364,8 @@ for epoch in range(60):
     fin_model.train()
     epoch_loss, n_batches = 0.0, 0
     for (batch,) in fin_train_loader:
-        # TODO: Forward, loss, backprop
+        # TODO: Reconstruct the batch, score it with fin_criterion, take an
+        #       optimiser step, and add to epoch_loss / n_batches
         ____
     if (epoch + 1) % 15 == 0:
         print(f"  Epoch {epoch+1:3d}/60: loss = {epoch_loss/n_batches:.6f}")

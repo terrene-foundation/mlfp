@@ -144,21 +144,22 @@ vae_losses = train_variant(
 class ContractiveVAE(nn.Module):
     def __init__(self, input_dim, latent_dim):
         super().__init__()
-        # TODO: Define explicit encoder layers (for weight access):
-        #       enc1: Linear(input_dim, 256)
-        #       enc2: Linear(256, 128)
-        #       fc_mu: Linear(128, latent_dim)
-        #       fc_logvar: Linear(128, latent_dim)
+        # TODO: Define separately named fully-connected encoder layers
+        #       (encoder() below chains them by hand):
+        #       enc1: input_dim -> 256, enc2: 256 -> 128,
+        #       fc_mu and fc_logvar: 128 -> latent_dim each
         self.enc1 = ____
         self.enc2 = ____
         self.fc_mu = ____
         self.fc_logvar = ____
 
-        # TODO: Build decoder — same as vanilla VAE
+        # TODO: Build decoder — same as the vanilla VAE in 09
+        #       (latent_dim -> 128 -> 256 -> input_dim, Sigmoid output)
         self.decoder = ____
 
     def encoder(self, x):
-        # TODO: Forward through enc1->ReLU->enc2->ReLU
+        # TODO: Return the 128-d body output: enc1 then enc2, a functional
+        #       ReLU after each
         ____
 
     def encode(self, x):
@@ -204,8 +205,9 @@ def jacobian_penalty(encode_fn, xb):
 
 def cvae_loss_fn(model, xb):
     # TODO: ELBO (summed recon + KL_WEIGHT * KL, both averaged per sample)
-    #   plus CVAE_CONTRACTIVE_WEIGHT * jacobian_penalty of the MEAN code
-    #   mu(x) = fc_mu(encoder(x)) with respect to x. Return (loss, {}).
+    #   plus CVAE_CONTRACTIVE_WEIGHT * the Jacobian penalty of the MEAN code:
+    #   pass jacobian_penalty a function of x that runs the encoder body and
+    #   then the fc_mu head (not the sampled z). Return (loss, {}).
     ____
 
 
@@ -213,7 +215,10 @@ print("\n" + "=" * 70)
 print("  Contractive VAE — Smooth + Probabilistic")
 print("=" * 70)
 
-# TODO: Create ContractiveVAE(INPUT_DIM, LATENT_DIM) and train
+# TODO: cvae_model — a ContractiveVAE (flattened input, module latent size);
+#       train it with train_variant as run "contractive_vae" using
+#       cvae_loss_fn, logging both weights as strings via extra_params
+#       ({"kl_weight": ..., "contractive_weight": ...})
 cvae_model = ____
 cvae_losses = ____
 
@@ -252,7 +257,8 @@ print_prescription_pad(findings, f"CVAE (KL={KL_WEIGHT}, lam={CVAE_CONTRACTIVE_W
 # no smoother than the vanilla VAE's, raise it.
 # ════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction
+# TODO: show_reconstruction on the flattened test images, titled
+#       "Contractive VAE"
 ____
 
 
@@ -315,11 +321,13 @@ FAMILY_NAMES = ["Analgesics", "Antibiotics", "Antivirals", "Oncology", "Cardiova
 
 mol_rng = np.random.default_rng(42)
 
-# TODO: Generate clustered molecular data
-# family_labels = random assignment to N_FAMILIES
-# family_centers = random centers in N_DESCRIPTORS-dim space
-# mol_data[i] = family_centers[label[i]] + noise
-# Normalise to [0, 1]
+# TODO: Generate clustered molecular data with mol_rng
+# family_labels — a random family id (0..N_FAMILIES-1) per molecule
+# family_centers — one centre per family in N_DESCRIPTORS-d space,
+#   standard-normal draws scaled by 2 (float32)
+# mol_data — (N_MOLECULES, N_DESCRIPTORS) float32: each molecule is its
+#   family's centre plus Gaussian noise with sd 0.5
+# (Min-max normalisation to [0, 1] is given below.)
 family_labels = ____
 family_centers = ____
 mol_data = ____
@@ -336,12 +344,11 @@ mol_loader = DataLoader(TensorDataset(mol_tensor), batch_size=128, shuffle=True)
 class MolecularCVAE(nn.Module):
     def __init__(self, input_dim, latent_dim=10):
         super().__init__()
-        # TODO: enc1: Linear(input_dim, 64)
-        #       enc2: Linear(64, 32)
-        #       fc_mu: Linear(32, latent_dim)
-        #       fc_logvar: Linear(32, latent_dim)
-        #       decoder: Linear(latent_dim, 32), ReLU, Linear(32, 64), ReLU,
-        #                Linear(64, input_dim), Sigmoid
+        # TODO: Same layout as ContractiveVAE, scaled down:
+        #       enc1: input_dim -> 64, enc2: 64 -> 32,
+        #       fc_mu / fc_logvar: 32 -> latent_dim
+        #       decoder: latent_dim -> 32 -> 64 -> input_dim, ReLU between,
+        #                Sigmoid output
         self.enc1 = ____
         self.enc2 = ____
         self.fc_mu = ____
@@ -353,12 +360,15 @@ class MolecularCVAE(nn.Module):
         ____
 
     def forward(self, x):
-        # TODO: encode -> reparameterise -> decode
+        # TODO: encode, sample z with the reparameterisation trick (inline —
+        #       this class has no reparameterise method), decode.
+        #       Return (reconstruction, mu, logvar)
         ____
 
 
 MOL_LATENT = 10
-# TODO: Create MolecularCVAE, optimizer. Train 80 epochs with ELBO + Jacobian loss.
+# TODO: mol_model — a MolecularCVAE over N_DESCRIPTORS with MOL_LATENT dims,
+#       on the device; mol_opt — Adam, lr 1e-3. The 80-epoch loop is given.
 mol_model = ____
 mol_opt = ____
 
@@ -366,7 +376,9 @@ print(f"Training CVAE on {N_MOLECULES} molecules ({N_DESCRIPTORS} descriptors)..
 for epoch in range(80):
     mol_model.train()
     for (batch,) in mol_loader:
-        # TODO: Forward, compute ELBO + contractive loss, backprop
+        # TODO: Forward; loss = summed recon error + summed KL (as in 09's
+        #       patient VAE) + 1e-4 x the sum of squared enc1 and enc2
+        #       weights; optimiser step
         ____
 
 # --- Encode all molecules ---

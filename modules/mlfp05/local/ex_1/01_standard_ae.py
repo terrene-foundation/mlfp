@@ -88,15 +88,13 @@ class StandardAE(nn.Module):
 
     def __init__(self, input_dim: int, hidden_dim: int = 1024):
         super().__init__()
-        # TODO: Build encoder — nn.Sequential with:
-        #       Linear(input_dim, hidden_dim), ReLU,
-        #       Linear(hidden_dim, hidden_dim), ReLU
+        # TODO: Build encoder — an nn.Sequential of two fully-connected layers,
+        #       input_dim -> hidden_dim -> hidden_dim, each followed by ReLU
         #       Note: hidden_dim=1024 > input_dim=784 — this is overcomplete
         self.encoder = ____
 
-        # TODO: Build decoder — nn.Sequential with:
-        #       Linear(hidden_dim, hidden_dim), ReLU,
-        #       Linear(hidden_dim, input_dim), Sigmoid
+        # TODO: Build decoder — hidden_dim -> hidden_dim (ReLU) -> input_dim,
+        #       ending in a Sigmoid so pixels land in [0, 1]
         self.decoder = ____
 
     def forward(self, x):
@@ -119,11 +117,13 @@ print("  Standard Autoencoder — Identity Risk Demo")
 print("=" * 70)
 print("  Hidden dim=1024 > input dim=784. Can the model just copy?")
 
-# TODO: Create StandardAE instance with INPUT_DIM, hidden_dim=1024
+# TODO: standard_model — an overcomplete StandardAE for flattened images
+#       (hidden width 1024)
 standard_model = ____
 
-# TODO: Train using train_variant with:
-#       tracker, exp_name, standard_model, "standard_ae", flat_loader, standard_ae_loss
+# TODO: Train it with the train_variant helper (see its signature in
+#       shared.mlfp05.ex_1): run name "standard_ae", the flattened-image
+#       loader, and the loss function you wrote above
 standard_losses = ____
 
 # ══════════════════════════════════════════════════════════════════
@@ -187,8 +187,8 @@ print_prescription_pad(findings, "Standard AE (Overcomplete)")
 # LeakyReLU/GELU, normalisation layers, or Kaiming initialisation.
 # ════════════════════════════════════════════════════════════════════
 
-# TODO: Visualise reconstructions using show_reconstruction
-#       Pass: standard_model, X_test_flat, title="Standard AE (Overcomplete)"
+# TODO: Visualise test-set reconstructions with the show_reconstruction
+#       helper, titled "Standard AE (Overcomplete)"
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────

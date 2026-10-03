@@ -107,7 +107,8 @@ print("  Stacked AE — Deep Feature Hierarchy")
 print("=" * 70)
 print("  5 encoder layers: 784->512->256->128->64->16")
 
-# TODO: Create StackedAE(INPUT_DIM, LATENT_DIM) and train
+# TODO: stacked_model — a StackedAE (flattened input, module latent size);
+#       train it with train_variant as run "stacked_ae" on flat_loader
 stacked_model = ____
 stacked_losses = ____
 
@@ -151,7 +152,8 @@ print_prescription_pad(findings, "Stacked AE (5-layer)")
 # TASK 3 — Visualise
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction
+# TODO: show_reconstruction on the flattened test images, titled
+#       "Stacked AE (5 Layers)"
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────

@@ -87,23 +87,20 @@ class ContractiveAE(nn.Module):
 
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
-        # TODO: Define 3 explicit Linear layers for the encoder
-        #       (not nn.Sequential — we need weight access for Jacobian)
-        #       enc1: Linear(input_dim, 256)
-        #       enc2: Linear(256, 64)
-        #       enc3: Linear(64, latent_dim)
+        # TODO: Define 3 separately named fully-connected encoder layers
+        #       (not nn.Sequential — encoder() below chains them by hand)
+        #       enc1: input_dim -> 256, enc2: 256 -> 64, enc3: 64 -> latent_dim
         self.enc1 = ____
         self.enc2 = ____
         self.enc3 = ____
 
-        # TODO: Build decoder — nn.Sequential:
-        #       Linear(latent_dim, 64), ReLU, Linear(64, 256), ReLU,
-        #       Linear(256, input_dim), Sigmoid
+        # TODO: Build decoder — nn.Sequential, latent_dim -> 64 -> 256 ->
+        #       input_dim, ReLU between layers, Sigmoid on the output
         self.decoder = ____
 
     def encoder(self, x):
-        # TODO: Forward through enc1->ReLU->enc2->ReLU->enc3
-        # Use F.relu() for activations
+        # TODO: Return the latent code: enc1, enc2, enc3 in order, with a
+        # functional ReLU after the first two (none after enc3)
         ____
 
     def forward(self, x):
@@ -145,7 +142,9 @@ print("  Contractive AE — Jacobian Penalty")
 print("=" * 70)
 print("  Smooth latent space: similar inputs -> similar latent codes.")
 
-# TODO: Create ContractiveAE(INPUT_DIM, LATENT_DIM) and train
+# TODO: contractive_model — a ContractiveAE (flattened input, module latent
+#       size); train it with train_variant as run "contractive_ae", logging
+#       {"contractive_weight": ...} (as a string) via extra_params
 contractive_model = ____
 contractive_losses = ____
 
@@ -191,7 +190,9 @@ print_prescription_pad(findings, f"Contractive AE (lambda={CONTRACTIVE_WEIGHT})"
 # TASK 3 — Visualise Reconstruction + Latent Interpolation
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction and show_latent_interpolation
+# TODO: On the flattened test images: show_reconstruction titled
+#       "Contractive AE", then show_latent_interpolation titled
+#       "Contractive AE — Latent Interpolation"
 ____
 ____
 
@@ -249,7 +250,8 @@ def generate_anomalous_image(rng_local):
     ____
 
 
-# TODO: Generate datasets
+# TODO: normal_images — N_NORMAL normal images from med_rng stacked into one
+#       array; anomalous_data — a list of N_ANOMALOUS (image, mask) tuples
 normal_images = ____
 anomalous_data = ____
 anomalous_images = np.stack([d[0] for d in anomalous_data])
@@ -271,18 +273,20 @@ print(f"Normal: {N_NORMAL}, Anomalous: {N_ANOMALOUS}")
 class MedicalConvAE(nn.Module):
     def __init__(self):
         super().__init__()
-        # TODO: Build encoder — 3 Conv2d layers (same pattern as SparseConvAE)
+        # TODO: Build encoder — 3 strided conv layers, 1 -> 16 -> 32 -> 64
+        #       channels (same pattern as SparseConvAE in 04)
         self.encoder = ____
 
         # TODO: Build decoder — 3 ConvTranspose2d layers, ending with Sigmoid
         self.decoder = ____
 
     def forward(self, x):
-        # TODO: Return decoder(encoder(x))
+        # TODO: Return the reconstruction only (encode, then decode)
         ____
 
 
-# TODO: Create model, optimizer, MSE criterion. Train 40 epochs.
+# TODO: med_model — a MedicalConvAE on the device; med_opt — Adam, lr 1e-3.
+#       (The MSE criterion and the 40-epoch loop are given.)
 med_model = ____
 med_opt = ____
 med_criterion = nn.MSELoss()
@@ -292,7 +296,8 @@ for epoch in range(40):
     med_model.train()
     epoch_loss, n_batches = 0.0, 0
     for (batch,) in med_train_loader:
-        # TODO: Forward, loss, backprop
+        # TODO: Reconstruct the batch, score it with med_criterion, take an
+        #       optimiser step, and add to epoch_loss / n_batches
         ____
     if (epoch + 1) % 10 == 0:
         print(f"  Epoch {epoch+1:3d}/40: loss = {epoch_loss/n_batches:.6f}")

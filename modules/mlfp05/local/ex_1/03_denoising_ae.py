@@ -86,16 +86,16 @@ class DenoisingAE(nn.Module):
 
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
-        # TODO: Build encoder — same as UndercompleteAE:
-        #       Linear(input_dim, 256), ReLU, Linear(256, 64), ReLU,
-        #       Linear(64, latent_dim)
+        # TODO: Build encoder — same shape as UndercompleteAE in 02:
+        #       input_dim -> 256 -> 64 -> latent_dim, ReLU after hidden layers
         self.encoder = ____
 
         # TODO: Build decoder — mirror of encoder ending with Sigmoid
         self.decoder = ____
 
     def add_noise(self, x, sigma=0.3):
-        # TODO: Add Gaussian noise: clamp(x + sigma * randn_like(x), 0, 1)
+        # TODO: Return x corrupted by zero-mean Gaussian noise of std sigma
+        #       (a noise tensor shaped like x), clamped back into [0, 1]
         ____
 
     def forward(self, x):
@@ -108,9 +108,9 @@ NOISE_SIGMA = 0.3
 
 def dae_loss(model, xb):
     """Train on noisy input, reconstruct clean target."""
-    # TODO: Add noise to xb using model.add_noise(xb, sigma=NOISE_SIGMA)
-    # Forward pass on NOISY input, compute MSE against CLEAN xb
-    # Return (loss, empty_dict)
+    # TODO: Corrupt xb with the model's add_noise method (NOISE_SIGMA),
+    # run the forward pass on the NOISY input, and compute the MSE against
+    # the CLEAN xb. Return (loss, empty_dict)
     ____
 
 
@@ -119,7 +119,9 @@ print("  Denoising AE — Noise Injection (sigma=0.3)")
 print("=" * 70)
 print("  Input: corrupted image. Target: clean image. The model learns to denoise.")
 
-# TODO: Create DenoisingAE(INPUT_DIM, LATENT_DIM) and train
+# TODO: dae_model — a DenoisingAE (flattened input, module latent size);
+#       train it with train_variant as run "denoising_ae" using dae_loss, and
+#       log the noise level via extra_params ({"noise_sigma": ...} as a string)
 dae_model = ____
 dae_losses = ____
 
@@ -165,7 +167,9 @@ print_prescription_pad(findings, f"Denoising AE (sigma={NOISE_SIGMA})")
 # TASK 3 — Visualise: 3-Row Denoising Grid
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_denoising_grid(dae_model, X_test_flat, "Denoising AE (3-Row Comparison)")
+# TODO: Draw the clean / noisy / denoised grid for the flattened test images
+#       with the show_denoising_grid helper, titled
+#       "Denoising AE (3-Row Comparison)"
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────
@@ -216,18 +220,19 @@ sensor_names = [
 
 
 def generate_clean_window(rng_local):
-    # TODO: Generate a clean sensor window (WINDOW_SIZE x N_SENSORS)
-    # For each sensor: sum of 3 sinusoids at different frequencies + slow drift
-    # t = np.linspace(0, 2*pi, WINDOW_SIZE)
-    # freq = rng_local.uniform(0.5, 4.0), amp = rng_local.uniform(0.3, 1.0)
-    # signal = amp*sin(freq*t+phase) + harmonics + drift
+    # TODO: Return one clean float32 window of shape (WINDOW_SIZE, N_SENSORS)
+    # Time axis: WINDOW_SIZE evenly spaced points over one period [0, 2*pi].
+    # For each sensor, draw a fundamental frequency in [0.5, 4.0], an
+    # amplitude in [0.3, 1.0] and a phase in [0, 2*pi]; the signal is that
+    # sine wave plus its 2nd harmonic (0.3 x amplitude) and 3rd harmonic
+    # (0.1 x amplitude), each with a random phase in [0, pi], plus a slow
+    # drift sine of amplitude 0.2 at frequency 0.1.
     ____
 
 
-# TODO: Generate clean_windows, add noise to create noisy_windows
-# clean_windows = np.stack([generate_clean_window(sensor_rng) for _ in range(N_WINDOWS)])
-# noise = sensor_rng.normal(0, SENSOR_NOISE_SIGMA, clean_windows.shape)
-# noisy_windows = clean_windows + noise
+# TODO: clean_windows — N_WINDOWS windows from sensor_rng stacked into one
+# (N_WINDOWS, WINDOW_SIZE, N_SENSORS) array; noise — zero-mean Gaussian with
+# std SENSOR_NOISE_SIGMA, same shape, float32; noisy_windows — their sum
 clean_windows = ____
 noise = ____
 noisy_windows = ____
@@ -263,21 +268,23 @@ print(
 class SensorDenoisingAE(nn.Module):
     def __init__(self, input_dim: int, latent_dim: int = 128):
         super().__init__()
-        # TODO: Build encoder — Linear(input_dim, 512), ReLU,
-        #       Linear(512, 256), ReLU, Linear(256, latent_dim), ReLU
+        # TODO: Build encoder — fully-connected input_dim -> 512 -> 256 ->
+        #       latent_dim, with a ReLU after EVERY layer (including the code)
         self.encoder = ____
 
-        # TODO: Build decoder — mirror, NO Sigmoid (regression output)
-        #       Linear(latent_dim, 256), ReLU, Linear(256, 512), ReLU,
-        #       Linear(512, input_dim)
+        # TODO: Build decoder — mirror, latent_dim -> 256 -> 512 -> input_dim,
+        #       ReLU between layers and NO output activation: the signals are
+        #       standardised (can be negative), so this is a regression output
         self.decoder = ____
 
     def forward(self, x):
-        # TODO: Return decoder(encoder(x))
+        # TODO: Return the reconstruction (encode, then decode)
         ____
 
 
-# TODO: Create model, optimizer, criterion. Train 60 epochs on noisy->clean pairs.
+# TODO: sensor_model — a SensorDenoisingAE for SENSOR_INPUT_DIM on the
+#       device; sensor_opt — Adam over its parameters, lr 1e-3
+#       (the MSE criterion and the 60-epoch loop are given)
 sensor_model = ____
 sensor_opt = ____
 sensor_criterion = nn.MSELoss()
@@ -288,7 +295,9 @@ for epoch in range(60):
     epoch_loss = 0.0
     n_batches = 0
     for noisy_batch, clean_batch in sensor_train_loader:
-        # TODO: Forward noisy_batch through model, MSE vs clean_batch, backprop
+        # TODO: Reconstruct noisy_batch, score it against clean_batch with
+        #       sensor_criterion, take an optimiser step, and add to
+        #       epoch_loss / n_batches for the progress print
         ____
     if (epoch + 1) % 15 == 0:
         print(f"  Epoch {epoch+1:3d}/60: loss = {epoch_loss/n_batches:.6f}")
@@ -371,10 +380,12 @@ REAL_FAULTS_PER_QUARTER = 12
 COST_PER_MISSED_FAULT = 200_000
 COST_PER_FALSE_ALERT = 5_000
 
-# TODO: Compute quarterly savings
-# false_alerts_noisy_q = FLEET_TRAINS * SENSORS_PER_TRAIN * 90 * FALSE_ALERT_RATE_NOISY
-# savings_false_alerts = (noisy - clean) * COST_PER_FALSE_ALERT
-# savings_missed_faults = (missed_noisy - missed_clean) * COST_PER_MISSED_FAULT
+# TODO: Compute quarterly savings (counts as whole numbers)
+# - false_alerts_*_q: sensor-days in a 90-day quarter across the fleet,
+#   times the false-alert rate on noisy vs DAE-cleaned data
+# - missed_faults_*: real faults per quarter times each missed-fault rate
+# - savings_false_alerts / savings_missed_faults: alerts (or faults) avoided
+#   times their unit cost; total_quarterly_savings is their sum
 false_alerts_noisy_q = ____
 false_alerts_clean_q = ____
 missed_faults_noisy = ____

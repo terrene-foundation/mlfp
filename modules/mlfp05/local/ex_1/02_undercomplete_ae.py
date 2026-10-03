@@ -84,17 +84,15 @@ class UndercompleteAE(nn.Module):
 
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
-        # TODO: Build encoder — nn.Sequential with:
-        #       Linear(input_dim, 256), ReLU,
-        #       Linear(256, 64), ReLU,
-        #       Linear(64, latent_dim)
+        # TODO: Build encoder — fully-connected layers that narrow
+        #       input_dim -> 256 -> 64 -> latent_dim, ReLU after each hidden
+        #       layer (no activation on the latent code)
         #       Key: latent_dim=16 << input_dim=784 forces compression
         self.encoder = ____
 
-        # TODO: Build decoder — mirror of encoder:
-        #       Linear(latent_dim, 64), ReLU,
-        #       Linear(64, 256), ReLU,
-        #       Linear(256, input_dim), Sigmoid
+        # TODO: Build decoder — the mirror image of the encoder,
+        #       latent_dim -> 64 -> 256 -> input_dim, ReLU between layers and a
+        #       Sigmoid on the output (pixels live in [0, 1])
         self.decoder = ____
 
     def forward(self, x):
@@ -113,10 +111,12 @@ print("  Undercomplete AE — Forced Compression (latent=16)")
 print("=" * 70)
 print("  784 pixels -> 16 numbers. Compression ratio 49:1.")
 
-# TODO: Create UndercompleteAE with INPUT_DIM, LATENT_DIM
+# TODO: undercomplete_model — an UndercompleteAE for flattened images with
+#       the module's latent size
 undercomplete_model = ____
 
-# TODO: Train with train_variant — name="undercomplete_ae", loader=flat_loader
+# TODO: Train with train_variant — run name "undercomplete_ae", the flattened
+#       loader and your loss function (same pattern as 01_standard_ae.py)
 undercomplete_losses = ____
 
 # ══════════════════════════════════════════════════════════════════
@@ -163,8 +163,8 @@ print_prescription_pad(findings, "Undercomplete AE (latent=16)")
 # VISUALISE — Reconstruction grid
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction with undercomplete_model, X_test_flat,
-#       title=f"Undercomplete AE (latent={LATENT_DIM})"
+# TODO: show_reconstruction on the flattened test images, with a title that
+#       reports the latent size, e.g. "Undercomplete AE (latent=16)"
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────
@@ -208,15 +208,18 @@ n_fraud = int(N_TOTAL * FRAUD_RATE)
 n_normal = N_TOTAL - n_fraud
 rng = np.random.default_rng(42)
 
-# TODO: Generate normal transaction features using rng
-# - normal_amounts: rng.lognormal(mean=3.5, sigma=1.2, size=n_normal).clip(0.5, 5000)
-# - normal_hour: rng.normal(loc=14, scale=4, size=n_normal).clip(0, 23).astype(int)
-# - normal_merchant_cat: rng.choice(range(15), size=n_normal, p=[0.18, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03, 0.02, 0.02, 0.01])
-# - normal_is_online: rng.binomial(1, 0.35, size=n_normal)
-# - normal_distance: rng.exponential(scale=5, size=n_normal).clip(0, 50)
-# - normal_freq_24h: rng.poisson(lam=2, size=n_normal)
-# - normal_amt_ratio: rng.normal(1.0, 0.3, size=n_normal).clip(0.1, 3.0)
-# - normal_foreign: rng.binomial(1, 0.08, size=n_normal)
+# TODO: Generate n_normal legitimate transactions with rng (one numpy
+#       Generator method per feature; clip where a range is given)
+# - normal_amounts: log-normal, log-mean 3.5, log-sigma 1.2, clipped to [0.5, 5000]
+# - normal_hour: normal around 14:00 with sd 4 h, clipped to [0, 23], as int
+# - normal_merchant_cat: one of 15 categories with probabilities
+#   0.18, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03,
+#   0.02, 0.02, 0.01 (mirror the fraud_merchant_cat call given below)
+# - normal_is_online: 0/1 flag, P(online) = 0.35
+# - normal_distance: exponential with scale 5 km, clipped to [0, 50]
+# - normal_freq_24h: Poisson count with mean 2
+# - normal_amt_ratio: normal, mean 1.0, sd 0.3, clipped to [0.1, 3.0]
+# - normal_foreign: 0/1 flag, P(foreign) = 0.08
 normal_amounts = ____
 normal_hour = ____
 normal_merchant_cat = ____
@@ -226,14 +229,15 @@ normal_freq_24h = ____
 normal_amt_ratio = ____
 normal_foreign = ____
 
-# TODO: Generate fraud features — shifted distributions to simulate anomalous behaviour
-# - fraud_amounts: rng.lognormal(mean=5.5, sigma=1.5, size=n_fraud).clip(10, 50000)
-# - fraud_hour: rng.choice([0, 1, 2, 3, 4, 22, 23], size=n_fraud)  # late night
-# - fraud_is_online: rng.binomial(1, 0.75, size=n_fraud)  # mostly online
-# - fraud_distance: rng.exponential(scale=40, size=n_fraud).clip(0, 200)  # far from home
-# - fraud_freq_24h: rng.poisson(lam=8, size=n_fraud)  # high frequency burst
-# - fraud_amt_ratio: rng.normal(4.0, 1.5, size=n_fraud).clip(0.5, 15.0)  # way above average
-# - fraud_foreign: rng.binomial(1, 0.45, size=n_fraud)  # often foreign
+# TODO: Generate n_fraud fraudulent transactions — the same feature kinds
+#       with shifted distributions to simulate anomalous behaviour
+# - fraud_amounts: log-normal, log-mean 5.5, log-sigma 1.5, clipped to [10, 50000]
+# - fraud_hour: uniform pick from the late-night hours 0, 1, 2, 3, 4, 22, 23
+# - fraud_is_online: P(online) = 0.75 (mostly online)
+# - fraud_distance: exponential, scale 40 km, clipped to [0, 200] (far from home)
+# - fraud_freq_24h: Poisson with mean 8 (high-frequency burst)
+# - fraud_amt_ratio: normal, mean 4.0, sd 1.5, clipped to [0.5, 15.0]
+# - fraud_foreign: P(foreign) = 0.45 (often foreign)
 fraud_amounts = ____
 fraud_hour = ____
 fraud_merchant_cat = rng.choice(
@@ -263,12 +267,10 @@ fraud_freq_24h = ____
 fraud_amt_ratio = ____
 fraud_foreign = ____
 
-# TODO: Combine into arrays and build polars DataFrame
-# Concatenate normal + fraud for each feature, create labels array
-# (0 for normal, 1 for fraud), then build pl.DataFrame with columns:
-# amount, hour, merchant_category, is_online, distance_from_home_km,
-# transactions_last_24h, amount_vs_avg_ratio, is_foreign, is_fraud
-# Shuffle with .sample(fraction=1.0, seed=42, shuffle=True)
+# TODO: Combine into arrays — for each feature, the normal rows followed by
+# the fraud rows (one numpy call joins two arrays end to end); labels holds
+# 0 for every normal row and 1 for every fraud row, in the same order.
+# The polars DataFrame below then names and shuffles the columns.
 amounts = ____
 hours = ____
 merchant_cats = ____
@@ -302,9 +304,9 @@ feature_cols = [c for c in df.columns if c != "is_fraud"]
 all_features = df.select(feature_cols).to_numpy().astype(np.float32)
 all_labels = df["is_fraud"].to_numpy()
 
-# TODO: Min-max normalise all_features
-# feat_min, feat_max = all_features.min(axis=0), all_features.max(axis=0)
-# Handle zero-range features, then normalise: (features - min) / range
+# TODO: Min-max normalise all_features column by column: feat_min and
+# feat_max are the per-feature (axis 0) minimum and maximum; the zero-range
+# guard is given; all_features_norm maps every feature into [0, 1]
 feat_min = ____
 feat_max = ____
 feat_range = feat_max - feat_min
@@ -343,8 +345,8 @@ FRAUD_INPUT_DIM = len(feature_cols)
 class FraudDetectorAE(nn.Module):
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
-        # TODO: Build encoder — Linear(input_dim, 32), ReLU,
-        #       Linear(32, 16), ReLU, Linear(16, latent_dim)
+        # TODO: Build encoder — fully-connected input_dim -> 32 -> 16 ->
+        #       latent_dim, ReLU after each hidden layer
         self.encoder = ____
 
         # TODO: Build decoder — mirror of encoder, ending with Sigmoid
@@ -355,14 +357,14 @@ class FraudDetectorAE(nn.Module):
         ____
 
 
-# TODO: Create FraudDetectorAE(FRAUD_INPUT_DIM, 3) and move to device
+# TODO: fraud_model — a FraudDetectorAE over all transaction features with
+#       a 3-dimensional latent code, on the training device
 fraud_model = ____
 fraud_opt = torch.optim.Adam(fraud_model.parameters(), lr=1e-3)
 
 print("\nTraining fraud detection autoencoder...")
-# TODO: Training loop — 50 epochs, MSE loss
-# For each epoch: iterate fraud_train_loader, compute F.mse_loss(recon, batch),
-# backprop, step. Print every 10 epochs.
+# Training loop (provided) — 50 epochs of reconstruction MSE on normal-only
+# batches; it prints every 10 epochs.
 for epoch in range(50):
     fraud_model.train()
     epoch_loss = 0.0
@@ -411,11 +413,9 @@ plt.savefig(
 plt.show()
 
 # --- Visualisation 2: Precision-Recall ---
-# TODO: Compute precision, recall, F1 across thresholds
-# thresholds = np.linspace(errors.min(), np.percentile(errors, 99.5), 200)
-# For each threshold: predicted_fraud = errors > t
-# Compute tp, fp, fn, then precision, recall, f1
-# Find best F1 threshold
+# Sweep (provided): 200 thresholds from the smallest error to the 99.5th
+# percentile; at each, flag errors above the threshold as fraud, count
+# tp/fp/fn, and keep the threshold with the best F1.
 thresholds = np.linspace(errors.min(), np.percentile(errors, 99.5), 200)
 precisions, recalls, f1_scores = [], [], []
 for t in thresholds:
@@ -477,10 +477,13 @@ FPR_AT_BEST = np.sum((errors > best_threshold) & (test_labels == 0)) / np.sum(
     test_labels == 0
 )
 
-# TODO: Compute daily metrics
-# daily_fraud_caught_ae = int(DAILY_FRAUD_COUNT * best_recall)
-# daily_fraud_caught_rules = int(DAILY_FRAUD_COUNT * RULE_BASED_RECALL)
-# daily_additional_caught, daily_false_alerts, daily_value_saved, annual_value_saved
+# TODO: Compute daily metrics (whole transactions, so truncate to int)
+# - daily_fraud_caught_ae / daily_fraud_caught_rules: the day's fraud events
+#   each system catches at its recall (best_recall vs RULE_BASED_RECALL)
+# - daily_additional_caught: how many more the autoencoder catches
+# - daily_false_alerts: legitimate daily transactions flagged at FPR_AT_BEST
+# - daily_value_saved / annual_value_saved: extra catches x AVG_FRAUD_VALUE_SGD,
+#   per day and over 365 days
 daily_fraud_caught_ae = ____
 daily_fraud_caught_rules = ____
 daily_additional_caught = ____

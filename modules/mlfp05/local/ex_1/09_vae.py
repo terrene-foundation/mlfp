@@ -89,19 +89,18 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 class VAE(nn.Module):
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
-        # TODO: Build shared encoder body — nn.Sequential:
-        #       Linear(input_dim, 256), ReLU, Linear(256, 128), ReLU
+        # TODO: Build shared encoder body — nn.Sequential, fully-connected
+        #       input_dim -> 256 -> 128 with a ReLU after each layer
         self.encoder = ____
 
-        # TODO: Two separate heads from the shared encoder output:
-        #       fc_mu: Linear(128, latent_dim) — mean of q(z|x)
-        #       fc_logvar: Linear(128, latent_dim) — log-variance of q(z|x)
+        # TODO: Two separate linear heads on the 128-d encoder output, each
+        #       producing latent_dim numbers:
+        #       fc_mu — mean of q(z|x); fc_logvar — log-variance of q(z|x)
         self.fc_mu = ____
         self.fc_logvar = ____
 
-        # TODO: Build decoder — nn.Sequential:
-        #       Linear(latent_dim, 128), ReLU, Linear(128, 256), ReLU,
-        #       Linear(256, input_dim), Sigmoid
+        # TODO: Build decoder — nn.Sequential, latent_dim -> 128 -> 256 ->
+        #       input_dim, ReLU between layers, Sigmoid on the output
         self.decoder = ____
 
     def encode(self, x):
@@ -110,9 +109,9 @@ class VAE(nn.Module):
 
     def reparameterise(self, mu, logvar):
         """z = mu + sigma * epsilon. Gradients flow through mu and sigma."""
-        # TODO: std = exp(0.5 * logvar)
-        #       eps = torch.randn_like(std)
-        #       return mu + eps * std
+        # TODO: Turn the log-variance into a standard deviation
+        #       (sigma = e^(logvar / 2)), draw epsilon from a standard normal
+        #       with sigma's shape, and return the sampled z (see docstring)
         ____
 
     def forward(self, x):
@@ -122,8 +121,9 @@ class VAE(nn.Module):
 
     def sample(self, n):
         """Sample from the prior N(0, I) and decode to images."""
-        # TODO: z = torch.randn(n, latent_dim, device=...)
-        #       return self.decoder(z)
+        # TODO: Draw n latent vectors from N(0, I) — the latent size is the
+        #       output width of fc_mu, and they must live on the same device as
+        #       the model's parameters — and decode them
         ____
 
 
@@ -133,9 +133,10 @@ KL_WEIGHT = 0.1
 def vae_loss_fn(model, xb):
     """VAE loss: reconstruction (MSE) + KL divergence."""
     # TODO: Forward pass to get x_hat, mu, logvar
-    # recon = F.mse_loss(x_hat, xb, reduction="sum") / xb.size(0)
-    # kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / xb.size(0)
-    # Return (recon + KL_WEIGHT * kl, {"recon": recon.item(), "kl": kl.item()})
+    # recon — squared error SUMMED over pixels and batch, divided by batch size
+    # kl — the closed-form KL(N(mu, sigma^2) || N(0, I)) from the lesson,
+    #      summed over latent dims and batch, divided by batch size
+    # Return (recon + KL_WEIGHT * kl, {"recon": <float>, "kl": <float>})
     ____
 
 
@@ -145,7 +146,9 @@ print("=" * 70)
 print("  Reparameterisation trick: z = mu + sigma * epsilon")
 print(f"  KL weight: {KL_WEIGHT} (balance reconstruction vs regularity)")
 
-# TODO: Create VAE(INPUT_DIM, LATENT_DIM) and train
+# TODO: vae_model — a VAE (flattened input, module latent size); train it
+#       with train_variant as run "vae" using vae_loss_fn, logging
+#       {"kl_weight": ...} (as a string) via extra_params
 vae_model = ____
 vae_losses = ____
 
@@ -190,10 +193,12 @@ print_prescription_pad(findings, f"VAE (KL={KL_WEIGHT})")
 # TASK 3 — Visualise: Reconstruction, Generation, Latent Traversal
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: Three visualisations:
-# show_reconstruction(vae_model, X_test_flat, "VAE Reconstruction")
-# show_generated_samples(vae_model, "VAE — Generated Samples from N(0,I)", grid_size=8)
-# show_latent_traversal(vae_model, X_test_flat, "VAE — Latent Traversal", n_dims=5)
+# TODO: Three visualisations with the shared helpers:
+# 1. show_reconstruction of the flattened test images, "VAE Reconstruction"
+# 2. show_generated_samples — an 8x8 grid sampled from the prior, titled
+#    "VAE — Generated Samples from N(0,I)"
+# 3. show_latent_traversal of the test images over the first 5 latent dims,
+#    titled "VAE — Latent Traversal"
 ____
 ____
 ____
@@ -290,12 +295,11 @@ patient_loader = DataLoader(TensorDataset(data_tensor), batch_size=256, shuffle=
 class PatientVAE(nn.Module):
     def __init__(self, input_dim, latent_dim=8):
         super().__init__()
-        # TODO: Build encoder, mu/logvar heads, decoder
-        # Encoder: Linear(input_dim, 64), ReLU, Linear(64, 32), ReLU
-        # fc_mu: Linear(32, latent_dim)
-        # fc_logvar: Linear(32, latent_dim)
-        # Decoder: Linear(latent_dim, 32), ReLU, Linear(32, 64), ReLU,
-        #          Linear(64, input_dim), Sigmoid
+        # TODO: Build encoder, mu/logvar heads, decoder — the VAE above at a
+        # smaller scale:
+        # Encoder: input_dim -> 64 -> 32, ReLU after each
+        # fc_mu / fc_logvar: 32 -> latent_dim each
+        # Decoder: latent_dim -> 32 -> 64 -> input_dim, ReLU between, Sigmoid
         self.encoder = ____
         self.fc_mu = ____
         self.fc_logvar = ____
@@ -319,7 +323,9 @@ class PatientVAE(nn.Module):
 
 
 PATIENT_LATENT = 8
-# TODO: Create PatientVAE, optimizer. Train 100 epochs with ELBO loss.
+# TODO: patient_model — a PatientVAE over N_FEATURES with PATIENT_LATENT
+#       dims, on the device; patient_opt — Adam, lr 1e-3. The 100-epoch loop
+#       below trains it with the (unweighted) ELBO loss.
 patient_model = ____
 patient_opt = ____
 
@@ -328,7 +334,10 @@ for epoch in range(100):
     patient_model.train()
     epoch_loss, n_samples = 0.0, 0
     for (batch,) in patient_loader:
-        # TODO: Forward, compute recon_loss + kl_loss, backprop
+        # TODO: Forward; recon_loss = summed squared error, kl_loss = the same
+        #       closed-form KL as vae_loss_fn (both summed, NOT averaged);
+        #       step on their sum; add to epoch_loss and the batch's row count
+        #       to n_samples (the print divides by it)
         ____
     if (epoch + 1) % 25 == 0:
         print(f"  Epoch {epoch+1:3d}/100: loss = {epoch_loss/n_samples:.4f}")

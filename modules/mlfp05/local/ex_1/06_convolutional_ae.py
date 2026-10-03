@@ -85,16 +85,17 @@ class ConvAE(nn.Module):
     def __init__(self, latent_dim: int = 16):
         super().__init__()
         # TODO: Build encoder — nn.Sequential:
-        #       Conv2d(1, 16, kernel_size=3, stride=2, padding=1), ReLU,
-        #       Conv2d(16, 32, kernel_size=3, stride=2, padding=1), ReLU,
-        #       Flatten(), Linear(32*7*7, latent_dim)
+        #       two 3x3 convolutions with stride 2 and padding 1, channels
+        #       1 -> 16 -> 32, ReLU after each (spatial 28 -> 14 -> 7), then
+        #       flatten the (32, 7, 7) maps and project them to latent_dim
         self.encoder = ____
 
-        # TODO: Build decoder — nn.Sequential:
-        #       Linear(latent_dim, 32*7*7), ReLU,
-        #       Unflatten(1, (32, 7, 7)),
-        #       ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1), ReLU,
-        #       ConvTranspose2d(16, 1, 3, stride=2, padding=1, output_padding=1), Sigmoid
+        # TODO: Build decoder — nn.Sequential, the reverse path:
+        #       project latent_dim back to 32*7*7 values (ReLU), reshape them
+        #       to (32, 7, 7) feature maps, then two transposed 3x3
+        #       convolutions that each double the spatial size (stride 2,
+        #       padding 1, output_padding 1), channels 32 -> 16 -> 1, ReLU
+        #       between and Sigmoid at the end (7 -> 14 -> 28)
         self.decoder = ____
 
     def forward(self, x):
@@ -112,7 +113,9 @@ print("  Convolutional AE — Spatial Hierarchy")
 print("=" * 70)
 print("  Conv2d preserves spatial structure. Expect sharper reconstructions.")
 
-# TODO: Create ConvAE(LATENT_DIM) and train on img_loader (not flat_loader!)
+# TODO: conv_model — a ConvAE with the module latent size; train it with
+#       train_variant as run "conv_ae" on img_loader (image-shaped batches,
+#       not flat_loader!)
 conv_model = ____
 conv_losses = ____
 
@@ -156,7 +159,9 @@ print_prescription_pad(findings, "Convolutional AE")
 # TASK 3 — Visualise
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction with is_conv=True
+# TODO: show_reconstruction on the IMAGE-shaped test set (X_test_img),
+#       titled "Convolutional AE", telling the helper the model is
+#       convolutional (see its is_conv flag)
 ____
 
 # ── Checkpoint ──────────────────────────────────────────────────────
@@ -233,16 +238,20 @@ class CompressionAE(nn.Module):
     def __init__(self, bottleneck_channels: int):
         super().__init__()
         self.bottleneck_channels = bottleneck_channels
-        # TODO: Build encoder — Conv2d(1,16,3,stride=2,padding=1), ReLU,
-        #       Conv2d(16,32,3,stride=2,padding=1), ReLU,
-        #       Conv2d(32, bottleneck_channels, 3, padding=1), ReLU
+        # TODO: Build encoder — two stride-2 3x3 convolutions (padding 1),
+        #       1 -> 16 -> 32 channels (28 -> 14 -> 7), then a stride-1 3x3
+        #       convolution (padding 1) down to bottleneck_channels; ReLU after
+        #       each. The bottleneck is (bottleneck_channels, 7, 7).
         self.encoder = ____
 
-        # TODO: Build decoder — ConvTranspose2d mirroring encoder, end with Sigmoid
+        # TODO: Build decoder — transposed convolutions mirroring the encoder:
+        #       a stride-1 3x3 layer bottleneck_channels -> 32 (padding 1), then
+        #       two stride-2 3x3 layers (padding 1, output_padding 1),
+        #       32 -> 16 -> 1, ReLU between, Sigmoid at the end
         self.decoder = ____
 
     def forward(self, x):
-        # TODO: Return decoder(encoder(x))
+        # TODO: Return the reconstruction only (encode, then decode)
         ____
 
     @property
@@ -260,14 +269,16 @@ ae_models = {}
 
 print("\nTraining Conv AE at different bottleneck sizes...")
 for bn_ch in bottleneck_configs:
-    # TODO: Create CompressionAE(bn_ch), train 30 epochs on img_loader
-    # Evaluate SSIM/PSNR on test set. Store results.
+    # TODO: comp_model — a CompressionAE for this bottleneck size on the
+    # device; comp_opt — Adam, lr 1e-3. The 30-epoch loop on img_loader and
+    # the SSIM/PSNR evaluation below are given.
     comp_model = ____
     comp_opt = ____
     for epoch in range(30):
         comp_model.train()
         for (batch,) in img_loader:
-            # TODO: Forward, MSE loss, backprop
+            # TODO: Reconstruct the batch, MSE against the batch itself,
+            #       optimiser step
             ____
     comp_model.eval()
     with torch.no_grad():

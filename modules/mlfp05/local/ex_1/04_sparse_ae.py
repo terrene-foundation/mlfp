@@ -81,15 +81,12 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 class SparseAE(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int = 256):
         super().__init__()
-        # TODO: Build encoder — nn.Sequential:
-        #       Linear(input_dim, hidden_dim), ReLU,
-        #       Linear(hidden_dim, 128), ReLU,
-        #       Linear(128, 64)
+        # TODO: Build encoder — fully-connected input_dim -> hidden_dim ->
+        #       128 -> 64, ReLU after the hidden layers (none on the 64-d code)
         self.encoder = ____
 
-        # TODO: Build decoder — mirror:
-        #       Linear(64, 128), ReLU, Linear(128, hidden_dim), ReLU,
-        #       Linear(hidden_dim, input_dim), Sigmoid
+        # TODO: Build decoder — the mirror, 64 -> 128 -> hidden_dim ->
+        #       input_dim, ReLU between layers, Sigmoid on the output
         self.decoder = ____
 
     def forward(self, x):
@@ -102,10 +99,10 @@ SPARSITY_WEIGHT = 1e-4
 
 def sparse_ae_loss(model, xb):
     """MSE + L1 sparsity penalty on hidden activations."""
-    # TODO: Forward pass to get x_hat and z
-    # recon_loss = F.mse_loss(x_hat, xb)
-    # sparsity_loss = SPARSITY_WEIGHT * torch.mean(torch.abs(z))
-    # Return (recon_loss + sparsity_loss, {"sparsity": sparsity_loss.item()})
+    # TODO: Forward pass to get x_hat and the code z
+    # Loss = reconstruction MSE + an L1 penalty on the code: the mean absolute
+    # activation of z, scaled by SPARSITY_WEIGHT.
+    # Return (total_loss, {"sparsity": <the penalty as a Python float>})
     ____
 
 
@@ -114,7 +111,9 @@ print("  Sparse AE — L1 Sparsity Penalty")
 print("=" * 70)
 print(f"  Sparsity weight: {SPARSITY_WEIGHT}. Most neurons should stay near zero.")
 
-# TODO: Create SparseAE(INPUT_DIM) and train
+# TODO: sparse_model — a SparseAE for flattened images; train it with
+#       train_variant as run "sparse_ae" using sparse_ae_loss, logging the
+#       weight via extra_params ({"sparsity_weight": ...} as a string)
 sparse_model = ____
 sparse_losses = ____
 
@@ -159,7 +158,9 @@ print_prescription_pad(findings, f"Sparse AE (L1={SPARSITY_WEIGHT})")
 # TASK 3 — Visualise Reconstruction + Sparsity
 # ════════════════════════════════════════════════════════════════════════
 
-# TODO: show_reconstruction and show_activation_sparsity
+# TODO: On the flattened test images: show_reconstruction titled
+#       "Sparse AE", then show_activation_sparsity titled
+#       "Sparse AE — Hidden Activations"
 ____
 ____
 
@@ -212,7 +213,9 @@ def generate_defective_wafer(rng_local):
     ____
 
 
-# TODO: Generate good_wafers and defective data
+# TODO: good_wafers — N_GOOD base wafers from wafer_rng stacked into one
+#       array; defect_data — a list of N_DEFECTIVE generate_defective_wafer
+#       tuples (unpacked below)
 good_wafers = ____
 defect_data = ____
 defective_wafers = np.stack([d[0] for d in defect_data])
@@ -234,16 +237,15 @@ class SparseConvAE(nn.Module):
     def __init__(self, sparsity_weight: float = 1e-3):
         super().__init__()
         self.sparsity_weight = sparsity_weight
-        # TODO: Build encoder — 3 Conv2d layers:
-        #       Conv2d(1, 16, 3, stride=2, padding=1), ReLU,
-        #       Conv2d(16, 32, 3, stride=2, padding=1), ReLU,
-        #       Conv2d(32, 64, 3, stride=2, padding=1), ReLU
+        # TODO: Build encoder — three 3x3 convolutions with stride 2 and
+        #       padding 1, channels 1 -> 16 -> 32 -> 64, ReLU after each
+        #       (spatial 64 -> 32 -> 16 -> 8)
         self.encoder = ____
 
-        # TODO: Build decoder — 3 ConvTranspose2d layers:
-        #       ConvTranspose2d(64, 32, 3, stride=2, padding=1, output_padding=1), ReLU,
-        #       ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1), ReLU,
-        #       ConvTranspose2d(16, 1, 3, stride=2, padding=1, output_padding=1), Sigmoid
+        # TODO: Build decoder — three transposed 3x3 convolutions that each
+        #       DOUBLE the spatial size (stride 2, padding 1, and an
+        #       output_padding of 1 to land exactly on 16/32/64), channels
+        #       64 -> 32 -> 16 -> 1, ReLU between, Sigmoid at the end
         self.decoder = ____
 
     def forward(self, x):
@@ -251,11 +253,14 @@ class SparseConvAE(nn.Module):
         ____
 
     def loss(self, recon, x, z):
-        # TODO: MSE + sparsity_weight * mean(abs(z))
+        # TODO: Reconstruction MSE plus the L1 code penalty (mean |z|)
+        #       scaled by self.sparsity_weight
         ____
 
 
-# TODO: Create model, optimizer. Train 50 epochs on good wafers only.
+# TODO: wafer_model — a SparseConvAE (sparsity weight 1e-3) on the device;
+#       wafer_opt — Adam, lr 1e-3. The 50-epoch loop below trains on good
+#       wafers only.
 wafer_model = ____
 wafer_opt = ____
 
@@ -264,7 +269,8 @@ for epoch in range(50):
     wafer_model.train()
     epoch_loss, n_batches = 0.0, 0
     for (batch,) in wafer_train_loader:
-        # TODO: Forward, compute loss with wafer_model.loss(), backprop
+        # TODO: Forward, score with wafer_model.loss(), optimiser step, and
+        #       add to epoch_loss / n_batches for the progress print
         ____
     if (epoch + 1) % 10 == 0:
         print(f"  Epoch {epoch+1:3d}/50: loss = {epoch_loss/n_batches:.6f}")
@@ -341,6 +347,12 @@ operating_dr = detection_rates[best_idx]
 operating_far = false_alarm_rates[best_idx]
 
 # TODO: Calculate annual savings from missed defects + labour
+# - annual_missed_manual / annual_missed_ae: each day's missed defects times
+#   COST_PER_MISSED_DEFECT over WORKING_DAYS
+# - annual_savings_defects: the difference between the two
+# - annual_savings_labour: assume the AE lets the plant keep ONE of the
+#   INSPECTORS_NEEDED inspectors; the rest of their annual cost is saved
+# - total_annual_savings: defects + labour
 daily_defective = int(WAFERS_PER_DAY * DEFECT_RATE)
 manual_missed = daily_defective - int(daily_defective * MANUAL_DETECTION_RATE)
 ae_missed = daily_defective - int(daily_defective * operating_dr)

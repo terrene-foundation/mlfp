@@ -582,16 +582,32 @@ print("\n--- Checkpoint 4 passed --- ONNX export complete\n")
 # The attention heatmap is the Transformer's "explanation" -- it shows
 # which words the model attends to when classifying a headline.
 transformer_model.eval()
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
 
-# TODO: Generate attention heatmap from trained transformer embeddings
-# Hint: with torch.no_grad():
-#   embed = transformer_model.embed(sample_idx[:1])
-#   embed = transformer_model.posenc(embed)
-#   _, attn_weights = mha_viz(embed)
-#   attn_np = attn_weights[0, 0].cpu().numpy()
+
+def encoder_attention(model: nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Per-head attention weights of the TRAINED first encoder layer.
+
+    nn.TransformerEncoderLayer (post-norm, the default) feeds its input
+    straight into self_attn, so we rebuild that input (embedding +
+    positional encoding) and ask the layer's own attention module for its
+    weights. Returns (batch, n_heads, seq, seq); padded keys get weight 0.
+    """
+    model.eval()
+    pad_mask = tokens == 0
+    x = model.posenc(model.embed(tokens))
+    first_layer = model.encoder.layers[0]
+    # TODO: same call as in 02_transformer_encoder.py — the trained layer's
+    #   self_attn on x, padded keys masked, per-head weights returned.
+    _, weights = ____
+    return weights
+
+
+# Head 0 of the TRAINED first encoder layer (a fresh attention module
+# would only show random projections).
+# TODO: attention weights for sample_idx[:1], then head 0 as a numpy array
 with torch.no_grad():
-    ...  # YOUR CODE HERE
+    attn_weights = ____
+    attn_np = ____
 
 words = sample_texts[0].lower().split()[:MAX_LEN]
 word_labels = words + ["<pad>"] * (MAX_LEN - len(words))

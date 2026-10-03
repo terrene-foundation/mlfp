@@ -660,12 +660,35 @@ print("\n--- Checkpoint 4 passed --- ONNX export complete\n")
 # The attention heatmap is the Transformer's "explanation" -- it shows
 # which words the model attends to when classifying a headline.
 transformer_model.eval()
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
 
+
+def encoder_attention(model: nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Per-head attention weights of the TRAINED first encoder layer.
+
+    nn.TransformerEncoderLayer (post-norm, the default) feeds its input
+    straight into self_attn, so we rebuild that input (embedding +
+    positional encoding) and ask the layer's own attention module for its
+    weights. Returns (batch, n_heads, seq, seq); padded keys get weight 0.
+    """
+    model.eval()
+    pad_mask = tokens == 0
+    x = model.posenc(model.embed(tokens))
+    first_layer = model.encoder.layers[0]
+    _, weights = first_layer.self_attn(
+        x,
+        x,
+        x,
+        key_padding_mask=pad_mask,
+        need_weights=True,
+        average_attn_weights=False,
+    )
+    return weights
+
+
+# Head 0 of the TRAINED first encoder layer (a fresh attention module
+# would only show random projections).
 with torch.no_grad():
-    embed = transformer_model.embed(sample_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, attn_weights = mha_viz(embed)
+    attn_weights = encoder_attention(transformer_model, sample_idx[:1])
     attn_np = attn_weights[0, 0].cpu().numpy()
 
 words = sample_texts[0].lower().split()[:MAX_LEN]

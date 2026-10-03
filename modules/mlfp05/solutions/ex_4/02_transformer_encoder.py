@@ -336,12 +336,33 @@ sample_idx = torch.tensor(
     device=DEVICE,
 )
 
-# Extract attention from our EducationalMultiHead on the trained embeddings
-mha_viz = EducationalMultiHead(d_model=128, n_heads=4).to(DEVICE)
+def encoder_attention(model: nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Per-head attention weights of the TRAINED first encoder layer.
+
+    nn.TransformerEncoderLayer (post-norm, the default) feeds its input
+    straight into self_attn, so we rebuild that input (embedding +
+    positional encoding) and ask the layer's own attention module for its
+    weights. Returns (batch, n_heads, seq, seq); padded keys get weight 0.
+    """
+    model.eval()
+    pad_mask = tokens == 0
+    x = model.posenc(model.embed(tokens))
+    first_layer = model.encoder.layers[0]
+    _, weights = first_layer.self_attn(
+        x,
+        x,
+        x,
+        key_padding_mask=pad_mask,
+        need_weights=True,
+        average_attn_weights=False,
+    )
+    return weights
+
+
+# The heatmaps must come from the layer that was TRAINED: a fresh
+# EducationalMultiHead here would show random projections.
 with torch.no_grad():
-    embed = transformer_model.embed(sample_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, attn_weights = mha_viz(embed)  # (1, 4, seq, seq)
+    attn_weights = encoder_attention(transformer_model, sample_idx[:1])  # (1, 4, seq, seq)
 
 words = sample_texts[0].lower().split()[:MAX_LEN]
 word_labels = words + ["<pad>"] * (MAX_LEN - len(words))
@@ -358,11 +379,9 @@ for head_idx in range(min(4, attn_weights.shape[1])):
     fig.write_html(f"ex_4_2_head_{head_idx}_attention.html")
 
 print(f"  Saved 4 attention head heatmaps (ex_4_2_head_0..3_attention.html)")
-print(f"  Different heads capture different relationship types:")
-print(f"    Head 0: may focus on adjacent word pairs (local syntax)")
-print(f"    Head 1: may focus on content words across the sentence (semantics)")
-print(f"    Head 2: may focus on sentence boundaries and punctuation (structure)")
-print(f"    Head 3: may focus on entity-to-entity relationships")
+print(f"  Compare the four heads: do they spread attention differently?")
+print(f"  (Specialisation is something to LOOK FOR, not assume: heads in a")
+print(f"  small model trained for a few epochs often look alike.)")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
 assert attn_weights.shape == (
@@ -431,9 +450,7 @@ for text, pred, probs in zip(financial_headlines, fin_preds, fin_probs.cpu().tol
 
 # Show attention-based explanation for the first document
 with torch.no_grad():
-    embed = transformer_model.embed(fin_idx[:1])
-    embed = transformer_model.posenc(embed)
-    _, fin_attn = mha_viz(embed)  # (1, 4, seq, seq)
+    fin_attn = encoder_attention(transformer_model, fin_idx[:1])  # (1, 4, seq, seq)
     # Average across heads for an aggregate attention view
     avg_attn = fin_attn[0].mean(dim=0).cpu().numpy()  # (seq, seq)
 

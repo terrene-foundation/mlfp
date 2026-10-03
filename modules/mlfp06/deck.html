@@ -2138,11 +2138,11 @@ version = await AdapterRegistry().register_adapter(
         <div class="annotation">
           <span class="katex-inline">y_w</span> = preferred response &nbsp;|&nbsp;
           <span class="katex-inline">y_l</span> = rejected response &nbsp;|&nbsp;
-          <span class="katex-inline">\beta</span> = deviation penalty
+          <span class="katex-inline">\beta</span> = KL-penalty strength (large &rarr; stays close to <span class="katex-inline">\pi_{\text{ref}}</span>)
         </div>
       </div>
       <p style="font-size:0.82em; margin-top:10px;">
-        <strong>Intuition:</strong> Increase probability of <span class="katex-inline">y_w</span> relative to reference. Decrease probability of <span class="katex-inline">y_l</span> relative to reference. <span class="katex-inline">\beta</span> controls how far the policy can deviate.
+        <strong>Intuition:</strong> Increase probability of <span class="katex-inline">y_w</span> relative to reference. Decrease probability of <span class="katex-inline">y_l</span> relative to reference. <span class="katex-inline">\beta</span> controls how far the policy can deviate: <strong>small &beta;</strong> = weak anchor, more drift; <strong>large &beta;</strong> = stays close to the reference.
       </p>
     </div>
   </div>
@@ -2201,16 +2201,20 @@ for batch in preference_dataloader:
   <span class="marker marker-advanced">Advanced</span>
   <div class="columns">
     <div class="col">
-      <h3>Key Innovation (DeepSeek-R1, 2025)</h3>
+      <h3>Key Innovation (Shao et al., 2024 &mdash; DeepSeekMath)</h3>
       <ul>
         <li>Sample <span class="katex-inline">G</span> completions for each prompt</li>
         <li>Score each completion with a verifier (not a learned reward model)</li>
         <li>Compute advantage relative to group mean</li>
-        <li>Update policy with clipped objective (like PPO, but group-normalised)</li>
+        <li>Update policy with a PPO-style clipped objective plus a KL penalty to <span class="katex-inline">\pi_{\text{ref}}</span> &mdash; no value network</li>
       </ul>
-      <div class="equation-box" style="margin-top:12px;">
-        <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r})}</span>
-        <div class="annotation">Advantage of completion i relative to group statistics</div>
+      <div class="equation-box" style="margin-top:8px;">
+        <span class="katex-display">\hat{A}_i = \frac{r_i - \text{mean}(\mathbf{r})}{\text{std}(\mathbf{r}) + \epsilon}</span>
+        <div class="annotation">Advantage of completion i relative to its group (std-normalised &rArr; reward-scale invariant)</div>
+      </div>
+      <div class="equation-box" style="margin-top:6px; font-size:0.8em;">
+        <span class="katex-display">J = \mathbb{E}\big[\min(\rho_i \hat{A}_i,\, \text{clip}(\rho_i, 1\pm\epsilon)\hat{A}_i)\big] - \beta\, \mathrm{KL}(\pi_\theta \Vert \pi_{\text{ref}})</span>
+        <div class="annotation"><span class="katex-inline">\rho_i = \pi_\theta(y_i|x) / \pi_{\text{old}}(y_i|x)</span></div>
       </div>
     </div>
     <div class="col">
@@ -2233,7 +2237,7 @@ for batch in preference_dataloader:
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. GRPO is what powers DeepSeek-R1's reasoning ability. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
+    Time: ~4 min. GRPO was introduced by Shao et al. (2024) in DeepSeekMath and later used to train DeepSeek-R1 (2025). Dividing by the group std is what makes it insensitive to the reward's scale; the clip and the KL term keep each update small. The key insight: if you can verify correctness (code compiles, math is right), you do not need preference pairs at all. Sample many attempts, score them, and learn from the relative differences. If beginners confused: "Imagine giving 10 students the same maths problem, marking all their answers, then telling each student how they did compared to the group average."
   </aside>
 </section>
 
@@ -2319,31 +2323,33 @@ lm_eval --model hf --model_args pretrained=my-model \
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>AlignmentPipeline with method="dpo"</h3>
-    <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_align import AlignmentPipeline, AlignmentConfig
+    <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">import os
+from datasets import Dataset
+from kailash_align import (AlignmentConfig, AlignmentPipeline,
+                           DPOConfig, LoRAConfig)
 
 config = AlignmentConfig(
     method="dpo",
-    model_name="meta-llama/Llama-3-8B",
-    beta=0.1,           # Deviation penalty
-    lora_rank=8,         # Use LoRA for efficiency
-    learning_rate=5e-5,
-    num_epochs=1,
+    base_model_id=os.environ.get("SFT_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+    lora=LoRAConfig(rank=16, alpha=32, target_modules=("q_proj", "v_proj")),
+    dpo=DPOConfig(beta=0.1, learning_rate=5e-5, num_train_epochs=2),
 )
 
-pipeline = AlignmentPipeline(config)
-result = pipeline.train(
-    dataset="preference_pairs",  # (prompt, chosen, rejected) triples
-    eval_with="llm_judge",       # Auto-evaluate with LLM-as-judge
-)
+# (prompt, chosen, rejected) triples -> HuggingFace Dataset
+prefs = Dataset.from_dict(
+    train_pref.select(["prompt", "chosen", "rejected"]).to_dict(as_series=False))
+result = await AlignmentPipeline(config).train(
+    None, adapter_name="ultrafeedback_dpo_v1", preference_dataset=prefs)
 
-print(f"Win rate vs reference: {result.win_rate:.1%}")
-print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
+m = result.training_metrics     # raw TRL metrics dict
+print(m["train_loss"], m.get("rewards/margins"), result.adapter_path)
+# Win rate / benchmarks are YOUR evaluation step — not returned here</code></pre>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. The Kailash bridge: AlignmentPipeline wraps the DPO training loop, handles LoRA setup, and provides built-in evaluation. Students implement the loss function from scratch first, then use the pipeline.
+    Time: ~2 min. The Kailash bridge: AlignmentPipeline wraps the DPO training loop and LoRA setup. The preference triples go in <code>preference_dataset</code>, not the positional slot; <code>beta</code> lives on <code>DPOConfig</code>. The pipeline does NOT evaluate &mdash; win rate (LLM-as-judge) and safety/benchmark checks are separate steps you run (ex_3/03 safety eval, ex_3/04 judge). Students implement the loss from scratch first (ex_3/02), then use the pipeline.
   </aside>
 </section>
 
@@ -2356,19 +2362,19 @@ print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Fine-tune a model with DPO on preference data</li>
-        <li>Evaluate using LLM-as-judge (measure position and verbosity bias)</li>
-        <li>Run lm-eval benchmarks before and after alignment</li>
-        <li>Report the alignment tax (capability degradation)</li>
+        <li>Load UltraFeedback Binarized preference pairs (GPT-4-rated, not human) (<code>ex_3/01</code>)</li>
+        <li>Implement the DPO loss; sweep &beta; (<code>02</code>)</li>
+        <li>Train a DPO adapter with AlignmentPipeline; compare base vs aligned refusal rates on adversarial prompts (<code>03</code>)</li>
+        <li>GRPO advantages; LLM-as-judge with position- and verbosity-bias tests and a swap-averaged judge; benchmark survey (<code>04</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>DPO training converges (loss decreases)</li>
-        <li>LLM-as-judge biases measured and mitigated</li>
-        <li>Benchmarks show alignment impact quantitatively</li>
-        <li>Win rate vs reference model reported</li>
+        <li>DPO training reports a real loss and reward margin</li>
+        <li>&beta; interpreted correctly (large &beta; = closer to reference)</li>
+        <li>LLM-as-judge biases measured; position bias mitigated by swapping</li>
+        <li>Base-vs-aligned safety comparison reported quantitatively</li>
       </ul>
     </div>
   </div>
@@ -2376,7 +2382,7 @@ print(f"MMLU change: {result.mmlu_delta:+.1f}%")</code></pre>
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The exercise combines implementation with evaluation. Students must demonstrate that alignment worked (win rate up) without destroying general capability (benchmarks stable).
+    Time: ~1 min. The exercise combines implementation with evaluation. Students must show that alignment changed behaviour (refusals on adversarial prompts) and know how they would check it did not destroy general capability: running lm-eval before and after is the recommended extension (see the benchmarks slide). Remind them UltraFeedback's preferences are AI (GPT-4) ratings, not human labels.
   </aside>
 </section>
 

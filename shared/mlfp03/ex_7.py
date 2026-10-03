@@ -183,6 +183,43 @@ def prepare_credit_frame(
     return combined, feature_columns
 
 
+def prepare_credit_frames(
+    credit: pl.DataFrame | None = None, *, seed: int = RANDOM_SEED
+) -> tuple[pl.DataFrame, pl.DataFrame, list[str]]:
+    """Return ``(dev_frame, test_frame, feature_columns)`` for honest model selection.
+
+    ``dev_frame`` (80%) is everything model SELECTION may touch —
+    hyperparameter search, grid baselines, early stopping; TrainingPipeline
+    carves its own validation holdout out of it. ``test_frame`` (20%) is
+    touched exactly once, to report the chosen model. Both carry a unique
+    ``application_id`` so they satisfy the same ``FeatureSchema``.
+    """
+    if credit is None:
+        credit = load_credit_frame()
+
+    pipeline = PreprocessingPipeline()
+    result = pipeline.setup(
+        credit,
+        target=TARGET_COLUMN,
+        seed=seed,
+        normalize=False,
+        categorical_encoding="ordinal",
+    )
+    n_dev = result.train_data.height
+    dev = result.train_data.with_columns(
+        pl.int_range(0, n_dev, dtype=pl.Int64).alias("application_id")
+    )
+    test = result.test_data.with_columns(
+        pl.int_range(n_dev, n_dev + result.test_data.height, dtype=pl.Int64).alias(
+            "application_id"
+        )
+    )
+    feature_columns = [
+        c for c in dev.columns if c not in (TARGET_COLUMN, "application_id")
+    ]
+    return dev, test, feature_columns
+
+
 def credit_feature_schema(feature_columns: list[str]) -> FeatureSchema:
     """Build a FeatureSchema matching ``prepare_credit_frame`` output."""
     return FeatureSchema(
@@ -239,55 +276,136 @@ def print_metric_block(title: str, metrics: dict[str, float]) -> None:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# SINGAPORE BANKING ML-OPS APPLICATION DATA — ROI ANCHORS (R9B)
+# QUALITY GATE — what a candidate model must clear before production
 # ════════════════════════════════════════════════════════════════════════
-# Real MAS-regulated figures (rounded for teaching). Every technique file
-# references this table so the dollar impact is consistent across the
-# exercise and trivially auditable.
+# Both thresholds are relative to what "no skill" looks like on THIS data:
+#   - AUC-ROC 0.5 is random ranking; we demand a clear margin above it.
+#   - AUC-PR (average precision) of a random scorer equals the default
+#     rate (~13% here); we demand at least twice that.
+# Leak-free LightGBM on this dataset lands around AUC 0.77 / AUC-PR 0.37,
+# so a sound model passes and a broken one (e.g. shuffled labels) fails.
 
-SG_BANK_PORTFOLIO: dict[str, Any] = {
-    # ~S$48B unsecured retail portfolio across the three local banks (DBS,
-    # OCBC, UOB) — public pillar-3 disclosures, FY2024.
-    "portfolio_sgd": 48_000_000_000.0,
-    # ~12% credit default rate for unsecured lending post-COVID stimulus
-    # unwind (MAS Financial Stability Review 2024).
-    "default_rate": 0.12,
-    # Average loss given default on unsecured retail (bureau data).
-    "lgd": 0.65,
-    # Hyperparameter-optimised model lift vs grid-search baseline, measured
-    # on the exercise's own validation folds.
-    "hp_search_lift_auc_pr": 0.04,
-    # Incremental AUC-PR translated to captured defaults through the
-    # operating point analysis in module 3 exercise 4.
-    "defaults_caught_per_auc_pr_point": 140,
-    # Average principal per caught default (S$ retail revolving balance).
-    "avg_sgd_per_default": 18_000.0,
-    # MAS Notice 635 — each production model re-training needs an audit
-    # trail; ML-ops automation eliminates ~4 analyst-weeks per cycle.
-    "audit_prep_hours_saved_per_cycle": 160.0,
-    # Blended analyst rate (SG fintech, fully loaded) used for the audit
-    # savings ROI line.
+PROMOTION_MIN_AUC: float = 0.75
+PROMOTION_MIN_AP_MULTIPLE: float = 2.0  # × default rate
+
+
+def promotion_gate(metrics: dict[str, float], default_rate: float) -> dict[str, Any]:
+    """Evaluate the production quality gate.
+
+    ``metrics`` uses ``compute_classification_metrics`` names
+    (``auc_roc``, ``auc_pr``) computed on rows the model never trained on.
+    Returns a JSON-serialisable dict: thresholds, observed values, verdict.
+    """
+    min_ap = PROMOTION_MIN_AP_MULTIPLE * default_rate
+    auc = float(metrics["auc_roc"])
+    ap = float(metrics["auc_pr"])
+    return {
+        "auc_roc": auc,
+        "auc_pr": ap,
+        "min_auc_roc": PROMOTION_MIN_AUC,
+        "min_auc_pr": min_ap,
+        "promote": bool(auc >= PROMOTION_MIN_AUC and ap >= min_ap),
+    }
+
+
+async def load_registered_model(registry: Any, name: str, version: int) -> Any:
+    """Load a model artefact that THIS course's pipeline registered.
+
+    The registry stores the fitted estimator as pickle bytes. Unpickling
+    executes code, so only ever load artefacts you trained yourself.
+    """
+    import pickle
+
+    artifact = await registry.load_artifact(name, version)
+    return pickle.loads(artifact)
+
+
+# Metrics TrainingPipeline can compute from its holdout predictions. In
+# kailash-ml 2.2.2 the engine's evaluator does not pass predicted
+# probabilities to the metric registry, so "average_precision",
+# "log_loss" and "brier_score_loss" are skipped there; the exercises
+# compute those with ``compute_classification_metrics`` on the
+# registered model's probabilities instead.
+ENGINE_METRICS: list[str] = ["accuracy", "f1", "auc"]
+
+
+# ════════════════════════════════════════════════════════════════════════
+# APPLY-PHASE BUSINESS ASSUMPTIONS (R9B) — ILLUSTRATIVE
+# ════════════════════════════════════════════════════════════════════════
+# Round numbers for a HYPOTHETICAL Singapore retail bank's unsecured
+# lending book. They are teaching assumptions, not figures from any real
+# lender, regulator or report — replace them with your institution's own
+# numbers. Only the model-quality inputs (defaults caught, metrics) are
+# measured by the exercise code itself.
+
+ILLUSTRATIVE_BANK: dict[str, Any] = {
+    "applications_per_year": 200_000,
+    "avg_exposure_sgd": 18_000.0,  # average principal per approved loan
+    "lgd": 0.65,  # loss given default on unsecured retail
+    "review_budget": 0.10,  # share of applications the credit team can review
+    "evidence_hours_per_retrain": 160.0,  # manual evidence-pack assembly
     "analyst_hourly_sgd": 120.0,
+    "retrains_per_year": 12,
 }
 
 
-def headline_roi_text() -> str:
-    """Plain-text summary used in Apply phases across all 5 technique files."""
-    p = SG_BANK_PORTFOLIO
-    lift_pts = p["hp_search_lift_auc_pr"] * 100
-    caught = p["defaults_caught_per_auc_pr_point"] * lift_pts
-    dollars = caught * p["avg_sgd_per_default"] * p["lgd"]
-    audit = p["audit_prep_hours_saved_per_cycle"] * p["analyst_hourly_sgd"] * 12
-    total = dollars + audit
-    return (
-        f"  Portfolio base:     S${p['portfolio_sgd']/1e9:.0f}B unsecured retail\n"
-        f"  Model lift:         +{lift_pts:.1f} AUC-PR points from orchestration\n"
-        f"  Defaults caught:    ~{caught:.0f} additional per year\n"
-        f"  Loss avoided:       ~S${dollars/1e6:.1f}M / yr (after LGD)\n"
-        f"  Audit prep savings: ~S${audit/1e3:.0f}k / yr (MAS Notice 635)\n"
-        f"  ──────────────────────────────────────────────\n"
-        f"  Total annual value: ~S${total/1e6:.2f}M"
+def defaults_caught_at_budget(
+    y_true: np.ndarray, y_proba: np.ndarray, budget: float | None = None
+) -> int:
+    """Defaults among the top ``budget`` share of applications by model score.
+
+    This is how a credit team actually uses a score: it can only review a
+    fixed share of applications, so a better model is one that puts more
+    true defaults into that reviewed slice.
+    """
+    budget = ILLUSTRATIVE_BANK["review_budget"] if budget is None else budget
+    k = max(1, int(round(budget * len(y_true))))
+    top = np.argsort(-np.asarray(y_proba))[:k]
+    return int(np.asarray(y_true)[top].sum())
+
+
+def annual_loss_avoided(extra_defaults_caught: float, n_scored: int) -> float:
+    """Scale extra defaults caught on ``n_scored`` test rows to a year (S$)."""
+    b = ILLUSTRATIVE_BANK
+    per_year = extra_defaults_caught * b["applications_per_year"] / n_scored
+    return float(per_year * b["avg_exposure_sgd"] * b["lgd"])
+
+
+def evidence_prep_savings() -> float:
+    """Annual analyst cost of hand-assembling model evidence packs (S$)."""
+    b = ILLUSTRATIVE_BANK
+    return float(
+        b["evidence_hours_per_retrain"] * b["analyst_hourly_sgd"] * b["retrains_per_year"]
     )
+
+
+def headline_roi_text(loss_avoided_sgd: float | None = None) -> str:
+    """Plain-text ROI block for the Apply phases (ILLUSTRATIVE assumptions).
+
+    ``loss_avoided_sgd`` must come from a measured comparison (see
+    03_hyperparameter_search.py); when it is not supplied the line says so
+    instead of inventing a number.
+    """
+    b = ILLUSTRATIVE_BANK
+    audit = evidence_prep_savings()
+    lines = [
+        "  (illustrative assumptions for a hypothetical Singapore retail bank)",
+        f"  Applications scored:  {b['applications_per_year']:,} / yr",
+        f"  Retrains:             {b['retrains_per_year']} / yr",
+        f"  Evidence-pack prep:   ~S${audit/1e3:,.0f}k / yr of analyst time that a",
+        "                        persisted, replayable pipeline removes",
+    ]
+    if loss_avoided_sgd is None:
+        lines.append(
+            "  Loss avoided:         not claimed here — measured in "
+            "03_hyperparameter_search.py"
+        )
+    else:
+        lines.append(
+            f"  Loss avoided:         ~S${loss_avoided_sgd/1e6:,.2f}M / yr "
+            "(measured lift × assumptions)"
+        )
+    return "\n".join(lines)
 
 
 # ════════════════════════════════════════════════════════════════════════

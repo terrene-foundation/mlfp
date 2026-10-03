@@ -2,11 +2,11 @@
 
 > "The feature that killed a clinical trial looked perfect in every metric."
 
-Module 1 taught you how to *see* data. Module 2 teaches you how to *reason* about
+Module 1 taught you how to _see_ data. Module 2 teaches you how to _reason_ about
 it. Before a single machine-learning model is trained in Module 3, you need the
-vocabulary and the mathematical tools to answer questions like: *How confident
+vocabulary and the mathematical tools to answer questions like: _How confident
 are we in this number? Did the treatment actually work, or did we get lucky?
-Is this feature a genuine signal or a statistical artefact?* Without those
+Is this feature a genuine signal or a statistical artefact?_ Without those
 tools, every downstream model is a guess wearing a confidence interval.
 
 This chapter is a self-contained reference that you can read cover-to-cover or
@@ -33,8 +33,8 @@ By the end of this module you will be able to:
    families from scratch, and explain when each method fails.
 3. **Quantify uncertainty in estimates** using analytic standard errors,
    the bootstrap (percentile and BCa), and frequentist confidence
-   intervals — and state their meaning *correctly* (a confidence interval
-   is *not* "the 95% chance the parameter is in this range").
+   intervals — and state their meaning _correctly_ (a confidence interval
+   is _not_ "the 95% chance the parameter is in this range").
 4. **Design and analyse A/B tests** with proper randomisation, power
    analysis, and SRM detection; interpret p-values without falling into the
    prosecutor's fallacy.
@@ -113,7 +113,7 @@ Three "layers" of depth are marked in-line:
 
 Common pitfalls are called out in boxed warnings like this:
 
-> ⚠ **Pitfall:** The p-value is *not* the probability that the null
+> ⚠ **Pitfall:** The p-value is _not_ the probability that the null
 > hypothesis is true. We will come back to this repeatedly.
 
 Everything assumes **Polars, not pandas**, and **Kailash engines, not raw
@@ -131,11 +131,11 @@ will write less code, not more.
 Imagine you live in Singapore and you wake up one morning with a scratchy
 throat. You buy a COVID Antigen Rapid Test (ART) at the pharmacy. The box
 says the test is "99% accurate." You swab, wait 15 minutes, and see two red
-lines: *positive*. How worried should you be?
+lines: _positive_. How worried should you be?
 
 The natural reaction is "99% means I'm almost certainly infected." But that
 is wrong — sometimes spectacularly wrong. The correct answer depends on how
-common COVID is in the general population *right now*, a quantity that has
+common COVID is in the general population _right now_, a quantity that has
 nothing to do with the test. During a low-prevalence week in Singapore
 (say, 0.5% of the population actively infected), a positive ART test
 actually means you have roughly an **18% chance** of being
@@ -143,7 +143,7 @@ infected (with typical ART sensitivity ~90%, specificity ~98%).
 During a surge week (say, 10% prevalence), the same positive
 result means you're about **83% likely** to be infected.
 
-The difference is not the test. The difference is the *prior*. This lesson
+The difference is not the test. The difference is the _prior_. This lesson
 teaches you the single tool that separates good probabilistic reasoning
 from confident nonsense: **Bayes' theorem**.
 
@@ -176,7 +176,7 @@ working data scientist uses both:
   probability is the long-run proportion of times the event happens. "The
   probability of heads is 0.5" means: if you flip a fair coin a million
   times, roughly half a million will be heads.
-- **Bayesian interpretation.** Probability is a *degree of belief* given
+- **Bayesian interpretation.** Probability is a _degree of belief_ given
   the information you have. "There's a 70% chance it will rain tomorrow"
   doesn't require running tomorrow a thousand times; it's a statement
   about how confident you are given the current forecast, satellite
@@ -221,7 +221,7 @@ P(A ∩ B) = P(A) × P(B)
 Flipping a coin twice: whether the first flip lands heads tells you
 nothing about the second. `P(H on flip 2 | H on flip 1) = P(H on flip 2) = 0.5`.
 
-Drawing two cards from a shuffled deck *without* replacement: the events
+Drawing two cards from a shuffled deck _without_ replacement: the events
 are dependent. If the first card is the ace of spades, the probability
 that the second card is also the ace of spades drops to zero.
 
@@ -231,7 +231,7 @@ Practical test: ask yourself two questions.
    multiplying `P(A) × P(B)` regardless of which happens first, you are
    probably dealing with independence.
 2. **Does one affect the sample space of the other?** If event `A`
-   *removes* possibilities from the pool for `B` (draws a card, uses up
+   _removes_ possibilities from the pool for `B` (draws a card, uses up
    inventory, influences someone's behaviour), the events are dependent.
 
 ### Conditional probability
@@ -254,7 +254,7 @@ P(A ∩ B) = P(B) × P(A | B) = P(A) × P(B | A)
 
 We will use both forms constantly.
 
-> ⚠ **Pitfall:** `P(A | B)` is *not* the same as `P(B | A)`. Mixing them
+> ⚠ **Pitfall:** `P(A | B)` is _not_ the same as `P(B | A)`. Mixing them
 > up is called the **prosecutor's fallacy** and has, literally, put
 > innocent people in jail. `P(match | innocent)` and
 > `P(innocent | match)` can differ by orders of magnitude when the base
@@ -275,7 +275,7 @@ The test manufacturer publishes two numbers:
   98% correctly test negative. (Equivalently,
   `P(T+ | C-) = 0.02`, the false-positive rate.)
 
-What we *want* is `P(C+ | T+)`, the probability that, given a positive
+What we _want_ is `P(C+ | T+)`, the probability that, given a positive
 test, the person actually has COVID. Intuitively, "the test is 98%
 specific, so my chance of being sick is 98%." This is wrong. We need
 Bayes' theorem, and we need to know the **prior** `P(C+)` — the base rate
@@ -297,7 +297,7 @@ P(C+ | T+) = P(T+ | C+) × P(C+) / P(T+)
 
 A positive test means there's roughly an **18% chance** you actually have
 COVID. The other 82% of the time you're a false positive — because the
-base rate is so low that *most* positive tests come from the 99.5% of
+base rate is so low that _most_ positive tests come from the 99.5% of
 people who don't have COVID but occasionally trip the 2% false-positive
 rate. One in five positives is a true positive; four in five are false
 alarms.
@@ -347,13 +347,13 @@ P(A | B) = P(B | A) × P(A) / P(B)
 
 That's Bayes' theorem. The components have names that we will use forever:
 
-- `P(A)` — the **prior**. Your belief about `A` *before* seeing the data.
+- `P(A)` — the **prior**. Your belief about `A` _before_ seeing the data.
 - `P(B | A)` — the **likelihood**. How probable the data is, given the
   hypothesis.
 - `P(B)` — the **evidence** (or marginal likelihood). The overall
   probability of observing `B`, marginalised over every possible state
   of the world.
-- `P(A | B)` — the **posterior**. Your updated belief about `A` *after*
+- `P(A | B)` — the **posterior**. Your updated belief about `A` _after_
   observing `B`.
 
 A pattern you should memorise:
@@ -476,7 +476,7 @@ Var (population form) = 28800 / 5 = 5760
 σ = √5760 ≈ 75.9
 ```
 
-If we treat the five values as a *sample* rather than a population, we
+If we treat the five values as a _sample_ rather than a population, we
 divide by `n − 1 = 4` instead of `n = 5`:
 
 ```
@@ -485,8 +485,8 @@ s = √7200 ≈ 84.9
 ```
 
 We'll explain why `n − 1` in Lesson 2.2 (it's called **Bessel's
-correction**). For now, remember: *population* variance divides by `n`,
-*sample* variance divides by `n − 1`.
+correction**). For now, remember: _population_ variance divides by `n`,
+_sample_ variance divides by `n − 1`.
 
 ### Distributions — the statistics theme park
 
@@ -503,7 +503,7 @@ f(x) = (1 / √(2π σ²)) × exp(−(x − μ)² / (2 σ²))
 ```
 
 Two parameters: mean `μ` and variance `σ²`. The CLT (Lesson 2.2) tells us
-that *sums of independent random variables* tend toward Normal regardless
+that _sums of independent random variables_ tend toward Normal regardless
 of their individual distributions, which is why it is everywhere.
 
 **Beta.** `X ~ Beta(α, β)`. A distribution on `[0, 1]`. Perfect for
@@ -540,12 +540,12 @@ correlated with what you're trying to measure. The most famous example
 is the **friendship paradox**: on average, your friends have more
 friends than you.
 
-This is *not* a self-esteem issue. It's a statistical fact. When you
+This is _not_ a self-esteem issue. It's a statistical fact. When you
 sample a random person and ask "how many friends do you have?", you
-get the average over people. When you sample a random *friend* (by
+get the average over people. When you sample a random _friend_ (by
 picking a random person, then picking one of their friends uniformly),
-you over-sample popular people — because popular people are *more
-often* someone's friend. The average of that biased sample is larger.
+you over-sample popular people — because popular people are _more
+often_ someone's friend. The average of that biased sample is larger.
 
 This matters in ML because we constantly deal with biased samples:
 
@@ -581,8 +581,8 @@ with tracker.start_run(name="covid_ART_bayesian_update") as run:
 Why is this worth doing for such a simple calculation? Because in a week
 from now, the prevalence will be different, the test version will be
 different, and you won't remember which numbers went into which
-analysis. `ExperimentTracker` makes a durable trail of *exactly* which
-prior produced *exactly* which posterior. We'll use it in every lesson
+analysis. `ExperimentTracker` makes a durable trail of _exactly_ which
+prior produced _exactly_ which posterior. We'll use it in every lesson
 from here on.
 
 ## Worked Example — Full Bayesian Update on HDB Prices
@@ -637,11 +637,11 @@ with standard deviation about **SGD 2,517**. Three observations:
 2. The posterior standard deviation (2,517) is much smaller than either
    the prior (25,000) or the sample standard deviation of individual
    prices (80,000). Averaging lots of samples sharpens our estimate of
-   the *mean*, even though individual prices stay noisy.
+   the _mean_, even though individual prices stay noisy.
 3. The 95% **credible interval** (the Bayesian analog of a confidence
    interval) is `μₙ ± 1.96 × σₙ ≈ [534,640, 544,506]`. You can literally
    say "I'm 95% sure the true mean is in this range" — which, as we'll
-   see in Lesson 2.2, you *cannot* say about a frequentist CI.
+   see in Lesson 2.2, you _cannot_ say about a frequentist CI.
 
 Code:
 
@@ -697,7 +697,7 @@ spam (sensitivity) and mistakenly marks 1% of legitimate email as spam
 (false positive rate). You know that 20% of your incoming mail is spam.
 An email is marked as spam. What is the probability it's actually spam?
 
-*Solution.* Let `S` = "is spam", `M` = "marked spam".
+_Solution._ Let `S` = "is spam", `M` = "marked spam".
 
 ```
 P(S | M) = P(M | S) × P(S) / P(M)
@@ -712,7 +712,7 @@ the likelihood as hard.
 **Problem 2 — Two children.** A colleague says, "I have two children.
 At least one is a boy." What is the probability both are boys?
 
-*Solution.* Label the children by age. The four equally likely
+_Solution._ Label the children by age. The four equally likely
 combinations are BB, BG, GB, GG. Conditioning on "at least one boy"
 eliminates GG, leaving BB, BG, GB. Only BB has two boys, so:
 
@@ -721,13 +721,13 @@ P(BB | at least one B) = 1 / 3
 ```
 
 Not `1/2`. This surprises almost everyone the first time. The subtle
-point is that "at least one boy" is a constraint on the *joint*
+point is that "at least one boy" is a constraint on the _joint_
 distribution, not on a specific child.
 
 **Problem 3 — Rolling dice.** You roll two fair six-sided dice. Let `A`
 = "sum is 7" and `B` = "first die is 3". Are `A` and `B` independent?
 
-*Solution.* `P(A) = 6/36 = 1/6` (the six combinations that sum to 7).
+_Solution._ `P(A) = 6/36 = 1/6` (the six combinations that sum to 7).
 `P(B) = 6/36 = 1/6`. `P(A ∩ B) = 1/36` (only 3+4 works). Check:
 
 ```
@@ -742,7 +742,7 @@ Then `P(A) × P(B) = 30/1296 ≠ 36/1296`. Not independent.
 a priori. You observe 500 transactions with sample mean 420K and sample
 SD 60K. Compute the posterior mean and SD for the true mean price.
 
-*Solution.* Plug into the Normal-Normal formula:
+_Solution._ Plug into the Normal-Normal formula:
 
 ```
 1/σₙ² = 1/30_000² + 500/60_000² = 1.111e-9 + 1.389e-7 ≈ 1.400e-7
@@ -759,7 +759,7 @@ Posterior mean ≈ SGD 419,844, posterior SD ≈ SGD 2,672.
 and 98% specificity for a rare disease present in 1 in 10,000 people.
 A patient tests positive. What is the probability they have the disease?
 
-*Solution.*
+_Solution._
 
 ```
 P(D) = 0.0001
@@ -795,7 +795,7 @@ when new information arrives. Write down:
 2. The sensitivity and false positive rate of whatever signal you use.
 3. The posterior probability after a positive signal.
 
-If your domain never quantifies these things, ask *why not*. That's
+If your domain never quantifies these things, ask _why not_. That's
 Module 2 in one sentence.
 
 ---
@@ -804,9 +804,9 @@ Module 2 in one sentence.
 
 ## Why This Matters
 
-Every model you will ever train is built on this question: *given some
+Every model you will ever train is built on this question: _given some
 data, what parameter values best describe the process that generated
-it?* A linear regression wants the slope and intercept. A logistic
+it?_ A linear regression wants the slope and intercept. A logistic
 regression wants a vector of coefficients. A Normal distribution wants a
 mean and variance. A deep neural network wants weights for every edge.
 
@@ -822,7 +822,7 @@ This lesson covers:
    is the most common statistical mistake).
 2. The Law of Large Numbers and the Central Limit Theorem — the two
    pillars of frequentist inference.
-3. Confidence intervals: what they actually mean (hint: *not* what you
+3. Confidence intervals: what they actually mean (hint: _not_ what you
    think).
 4. Maximum likelihood estimation from first principles: write the
    log-likelihood, take the derivative, set it to zero.
@@ -841,7 +841,7 @@ in Singapore in 2024" has a specific average price; you could in
 principle compute it exactly by including every sale.
 
 A **sample** is a subset you actually observe. The sample mean `x̄` and
-sample variance `s²` are computed from the sample. They are *random*
+sample variance `s²` are computed from the sample. They are _random_
 — a different sample would give different values.
 
 The entire point of statistics is to reason about the population (what
@@ -870,7 +870,7 @@ The Central Limit Theorem (below) tells us: approximately
 
 - 68% of your sample means will land within `[532K, 548K]`.
 - 95% will land within `[524K, 556K]`.
-- The *individual* prices have SD 80K, but the *sample mean* has SD
+- The _individual_ prices have SD 80K, but the _sample mean_ has SD
   only 8K. The mean is far more precise than any one observation.
 
 ### Law of Large Numbers (LLN)
@@ -888,8 +888,8 @@ data is more accurate."
 
 ### Central Limit Theorem (CLT)
 
-The LLN tells you *where* the sample mean goes. The CLT tells you
-*how fast* and *in what shape*. For any population with finite
+The LLN tells you _where_ the sample mean goes. The CLT tells you
+_how fast_ and _in what shape_. For any population with finite
 variance `σ²`, the distribution of `x̄` is approximately Normal for
 large `n`:
 
@@ -967,7 +967,7 @@ If we knew `μ`, we could estimate `σ²` by plugging in the sample:
 ```
 
 This is unbiased. But we don't know `μ`; we use `x̄` instead. Here's
-the problem: `x̄` is the sample value that *minimises* the sum of
+the problem: `x̄` is the sample value that _minimises_ the sum of
 squared deviations. Using it in place of `μ` systematically
 under-estimates the true variance — the sample hugs its own mean too
 tightly.
@@ -1031,7 +1031,7 @@ The **log-likelihood** is:
 
 We take logs for two reasons:
 
-1. Products of small probabilities *underflow* in floating-point
+1. Products of small probabilities _underflow_ in floating-point
    arithmetic. Sums don't.
 2. The derivative of a sum is simpler than the derivative of a
    product. The logarithm turns MLE into an additive problem.
@@ -1078,7 +1078,7 @@ Set to zero:
 ```
 
 So the MLE of the mean is the **sample mean**. Totally unsurprising,
-but now we know *why*: it is the value that maximises the joint
+but now we know _why_: it is the value that maximises the joint
 probability of the observed data under the Normal model.
 
 **Solve for `σ²`.** Take the partial derivative with respect to `σ²`:
@@ -1095,7 +1095,7 @@ n × σ̂² = Σᵢ (xᵢ − μ̂)²
 σ̂²_MLE = (1/n) × Σᵢ (xᵢ − x̄)²
 ```
 
-The MLE of the variance divides by `n`, *not* `n − 1`. That makes it
+The MLE of the variance divides by `n`, _not_ `n − 1`. That makes it
 slightly biased (see Bessel's correction). MLE estimators can be
 biased; we accept that trade-off in exchange for other desirable
 properties (asymptotic efficiency and consistency).
@@ -1226,7 +1226,7 @@ finite samples:
    or explicit mode-finding.
 3. **Model misspecification.** If the data don't come from the
    model family you're fitting, MLE converges to the
-   *Kullback-Leibler closest* member of the family, which may be a
+   _Kullback-Leibler closest_ member of the family, which may be a
    bad approximation. Solution: expand the model family or use
    robust methods.
 4. **Infinite likelihood.** A Gaussian mixture with a component
@@ -1296,7 +1296,7 @@ Bernstein-von Mises in action.
 exponential distribution `f(x; λ) = λ × e^(−λx)` from `n` i.i.d.
 observations.
 
-*Solution.* Log-likelihood:
+_Solution._ Log-likelihood:
 
 ```
 ℓ(λ) = Σᵢ log(λ) + Σᵢ (−λxᵢ) = n log λ − λ Σᵢ xᵢ
@@ -1315,7 +1315,7 @@ So the MLE of the rate is the reciprocal of the sample mean (since
 **Problem 2 — Poisson MLE.** Derive the MLE for `λ` in the Poisson
 distribution `P(X = k) = e^(−λ) λ^k / k!` from `n` i.i.d. observations.
 
-*Solution.* Log-likelihood:
+_Solution._ Log-likelihood:
 
 ```
 ℓ(λ) = Σᵢ (−λ + xᵢ log λ − log(xᵢ!)) = −nλ + log(λ) Σᵢ xᵢ + const
@@ -1333,7 +1333,7 @@ Again the sample mean — Poisson mean equals `λ`.
 **Problem 3 — CLT check.** You have a sample of `n = 64` observations
 with `x̄ = 100` and `s = 16`. Compute the 95% CI for the population mean.
 
-*Solution.*
+_Solution._
 
 ```
 SE = s / √n = 16 / 8 = 2
@@ -1344,7 +1344,7 @@ CI = 100 ± 1.96 × 2 = [96.08, 103.92]
 percentile of the `t(8)` distribution is about 2.306 (instead of
 1.96 for Normal). Compute the CI.
 
-*Solution.*
+_Solution._
 
 ```
 SE = 16 / 3 = 5.333
@@ -1359,11 +1359,11 @@ average bus arrival delay is `[3.2, 5.6]` minutes." Your manager
 says "So there's a 95% chance the real delay is between 3.2 and 5.6
 minutes?" Is the manager right? Why or why not?
 
-*Solution.* No. The manager is stating a Bayesian credible interval,
+_Solution._ No. The manager is stating a Bayesian credible interval,
 but the statistician reported a frequentist CI. The correct
 interpretation is: "If we repeated the sampling procedure many
 times, about 95% of the constructed intervals would contain the
-true mean delay." The *true mean* is a fixed number — either in
+true mean delay." The _true mean_ is a fixed number — either in
 this interval or not — so it does not have a probability. In
 practice, with a flat prior and large `n`, the numerical answer is
 often the same, but the interpretation differs.
@@ -1407,7 +1407,7 @@ This lesson gives you two tools that work when theory alone isn't
 enough:
 
 1. **The bootstrap** lets you estimate the sampling distribution of
-   *any* statistic by resampling with replacement. It's one of the
+   _any_ statistic by resampling with replacement. It's one of the
    most powerful ideas in modern statistics.
 2. **Hypothesis testing** frames your question as a decision: is the
    observed effect bigger than what random noise would produce? We
@@ -1424,8 +1424,8 @@ defensible scientific claim.
 
 In 1979 Bradley Efron asked a deceptively simple question: if the
 sampling distribution of a statistic is what we care about, and we
-can't draw new samples from the population, why not *resample from
-the sample we have*? Each resample is a best-effort simulation of
+can't draw new samples from the population, why not _resample from
+the sample we have_? Each resample is a best-effort simulation of
 "another draw from the population," and the distribution of the
 statistic across resamples approximates the true sampling
 distribution.
@@ -1499,7 +1499,7 @@ you for free.
 2. **Heavy tails.** If the population has infinite variance, the
    bootstrap inherits the problem.
 3. **Dependent data.** Standard bootstrap destroys time-series
-   structure. Use a *block bootstrap* or a *stationary bootstrap*
+   structure. Use a _block bootstrap_ or a _stationary bootstrap_
    instead.
 4. **Very small `n`.** Below about `n = 10`, the bootstrap
    distribution is too discrete to be useful.
@@ -1512,7 +1512,7 @@ you for free.
   the raw data. No model assumed.
 - **Parametric bootstrap** fits a parametric model (e.g. a Normal
   distribution with MLE parameters), then draws new samples from
-  *that model*. Useful when you trust the model family but need
+  _that model_. Useful when you trust the model family but need
   resamples.
 
 ## Mathematical Foundations — Hypothesis Testing
@@ -1538,27 +1538,27 @@ observing a test statistic at least as extreme as the one you saw.
 > ⚠ **Pitfall — The single most common statistical mistake.** A
 > p-value is **NOT** the probability that `H₀` is true. It is **NOT**
 > the probability that your finding is false. It is **NOT** `1 −
-> P(H₁ is true)`. Do not say any of these things.
+P(H₁ is true)`. Do not say any of these things.
 
 The correct interpretation:
 
 > "The probability of observing data at least as extreme as ours,
-> *given that `H₀` is true*."
+> _given that `H₀` is true_."
 
 Notice the conditioning: `P(data | H₀)`. That's not the same as
 `P(H₀ | data)` — we're back to the prosecutor's fallacy from
 Lesson 2.1.
 
 If `p ≤ α`, we **reject** `H₀`. If `p > α`, we **fail to reject**
-`H₀`. We *never* say "accept `H₀`" — absence of evidence is not
+`H₀`. We _never_ say "accept `H₀`" — absence of evidence is not
 evidence of absence.
 
 ### Type I vs Type II errors
 
-|                     | H₀ true                       | H₀ false                          |
-|---------------------|-------------------------------|-----------------------------------|
-| **Reject H₀**       | Type I error (prob = `α`)     | Correct rejection (prob = `1−β`)  |
-| **Fail to reject**  | Correct (prob = `1−α`)        | Type II error (prob = `β`)        |
+|                    | H₀ true                   | H₀ false                         |
+| ------------------ | ------------------------- | -------------------------------- |
+| **Reject H₀**      | Type I error (prob = `α`) | Correct rejection (prob = `1−β`) |
+| **Fail to reject** | Correct (prob = `1−α`)    | Type II error (prob = `β`)       |
 
 - **α** = significance level = Type I error rate. You set this.
 - **β** = Type II error rate. You don't set it directly, but you can
@@ -1592,7 +1592,7 @@ n ≈ 2 × ((1.96 + 0.84) × 80_000 / 10_000)²
 You need about 1000 flats per group, or 2000 total, to detect a
 10K difference with 80% power. If you only have 200 flats per
 group, you cannot reasonably expect to detect that effect — the
-experiment is *underpowered*.
+experiment is _underpowered_.
 
 ### The t-statistic
 
@@ -1610,7 +1610,7 @@ Normal.
 **Derivation intuition.** The numerator is how far the sample mean
 is from the hypothesised value, measured in SGD. The denominator is
 the standard error of the sample mean, also in SGD. The ratio is
-*unitless*: how many standard errors away is our estimate?
+_unitless_: how many standard errors away is our estimate?
 
 ### Two-sample t-test
 
@@ -1651,7 +1651,7 @@ the gold standard when you can afford the compute.
 
 If you test one hypothesis at `α = 0.05`, you have a 5% chance of a
 false positive. If you test 20 hypotheses at `α = 0.05`, you expect
-*one* false positive by chance, even if none of the 20 effects is
+_one_ false positive by chance, even if none of the 20 effects is
 real. This is the **multiple testing problem**.
 
 **Bonferroni correction** (conservative). Divide `α` by the number
@@ -1665,7 +1665,7 @@ If you test 20 hypotheses and want FWER (family-wise error rate)
 below 5%, test each at `α = 0.05 / 20 = 0.0025`.
 
 Bonferroni is simple but aggressive — it controls the probability
-of *any* false positive, which is often too strict.
+of _any_ false positive, which is often too strict.
 
 **Benjamini-Hochberg FDR** (recommended in practice). Controls the
 expected proportion of false discoveries among rejections, not the
@@ -1676,7 +1676,7 @@ family-wise rate. Procedure:
    `q` is your desired FDR.
 3. Reject all hypotheses with p-values `≤ p_(k)`.
 
-BH FDR keeps the *proportion* of false discoveries below `q`
+BH FDR keeps the _proportion_ of false discoveries below `q`
 while allowing more rejections than Bonferroni when many tests
 are significant.
 
@@ -1768,7 +1768,7 @@ se_diff = √(p_a(1 − p_a)/n_a + p_b(1 − p_b)/n_b)
 CI = 0.0051 ± 1.96 × 0.001348 = [0.00246, 0.00774]
 ```
 
-Both endpoints are positive, so 0 is *not* in the 95% CI. This
+Both endpoints are positive, so 0 is _not_ in the 95% CI. This
 suggests `H₀: diff = 0` would be rejected at `α = 0.05`.
 
 **Step 3: z-test p-value.**
@@ -1806,10 +1806,10 @@ alone does not tell you that.
 
 **Problem 1 — Bootstrap median.** A sample of 10 salaries (in thousands)
 is `[45, 48, 52, 55, 58, 60, 62, 65, 70, 95]`. Estimate the 95% CI
-for the *median* by bootstrap (conceptually — describe the
+for the _median_ by bootstrap (conceptually — describe the
 procedure and give the expected CI width in words).
 
-*Solution.* The procedure is: sample 10 values with replacement
+_Solution._ The procedure is: sample 10 values with replacement
 from this list, compute the median, repeat 10_000 times, take the
 2.5 and 97.5 percentiles. The median of the original sample is
 `(58 + 60)/2 = 59`. The bootstrap distribution of the median will
@@ -1824,7 +1824,7 @@ predicts prices with an average error of SGD 25,000 on 25 flats,
 sample SD of errors = SGD 12,000. Is the average error
 significantly different from 0 at `α = 0.05`?
 
-*Solution.*
+_Solution._
 
 ```
 t = 25_000 / (12_000 / √25) = 25_000 / 2400 ≈ 10.42
@@ -1840,7 +1840,7 @@ p-values `[0.002, 0.008, 0.01, 0.015, 0.03, 0.04, 0.06, 0.08, 0.1,
 0.12, 0.2, 0.3, 0.4, 0.5, 0.7]`. Which do you reject at FDR
 `q = 0.05` (Benjamini-Hochberg)?
 
-*Solution.* Sort (already sorted). Compute `(k/m) × q` for each:
+_Solution._ Sort (already sorted). Compute `(k/m) × q` for each:
 
 ```
 k=1: 1/15 × 0.05 = 0.00333   p=0.002 ≤ 0.00333 ✓
@@ -1862,7 +1862,7 @@ controlling false discoveries.
 from a baseline of 10% with 90% power. What sample size do you
 need per group? (Assume `α = 0.05` two-sided.)
 
-*Solution.*
+_Solution._
 
 ```
 p₁ = 0.10, p₂ = 0.12, δ = 0.02
@@ -1883,7 +1883,7 @@ week-long experiment.
 returned p = 0.03. So there's only a 3% chance our result is wrong."
 What is the correct thing to say?
 
-*Solution.* "There's a 3% chance of observing data this extreme if
+_Solution._ "There's a 3% chance of observing data this extreme if
 there were truly no effect." The 3% is `P(data | H₀)`, not
 `P(error)` and definitely not `P(H₀ | data)`. The colleague's
 phrasing is a version of the base-rate fallacy; you need a prior
@@ -1917,7 +1917,7 @@ point estimates go wrong.
 Lessons 2.1–2.3 gave you the tools. Lesson 2.4 shows you how to use
 them in practice, before and during an experiment, so you don't end
 up with data that can't answer your question. The hardest part of
-A/B testing isn't the math — it's the *design*. A perfectly executed
+A/B testing isn't the math — it's the _design_. A perfectly executed
 test of the wrong hypothesis is worse than useless; it's actively
 misleading.
 
@@ -1945,8 +1945,8 @@ A good hypothesis has three parts:
 3. **Metric.** How will you measure it? "Daily spend (SGD) per
    unique customer over 14 days."
 
-Write it as one sentence: *"The BOGO banner increases daily spend
-per customer by at least SGD 5 over a 14-day period."* Now you
+Write it as one sentence: _"The BOGO banner increases daily spend
+per customer by at least SGD 5 over a 14-day period."_ Now you
 have something falsifiable, measurable, and scoped.
 
 Common mistakes:
@@ -1964,8 +1964,8 @@ Common mistakes:
 
 Randomisation is the one thing that separates experiments from
 observational analysis. By assigning subjects to treatment and
-control *randomly*, you ensure the two groups are statistically
-equivalent on every variable you measure *and* every variable you
+control _randomly_, you ensure the two groups are statistically
+equivalent on every variable you measure _and_ every variable you
 don't. Any difference in outcome can then be attributed to the
 treatment.
 
@@ -2071,7 +2071,7 @@ Suppose you designed a 50/50 A/B test. You expect roughly equal
 numbers of users in each arm. When the data comes in, arm A has
 52,000 users and arm B has 48,000. Is this bad?
 
-Yes. It's called a **Sample Ratio Mismatch** and it is *the*
+Yes. It's called a **Sample Ratio Mismatch** and it is _the_
 single most common experiment-ruining bug. Causes include:
 
 - Bot filtering applied to one arm but not the other.
@@ -2112,13 +2112,13 @@ assignment pipeline and re-run.
 > ⚠ **Pitfall — Rationalising SRM.** "It's only a 4% difference,
 > probably fine." No. A 4% difference at `n = 100K` is
 > overwhelming evidence of a broken pipeline. The threshold for
-> SRM panic is a p-value below 0.001, *not* below 0.05.
+> SRM panic is a p-value below 0.001, _not_ below 0.05.
 
 ## The Kailash Engine — ExperimentTracker for Design
 
 `ExperimentTracker` has explicit support for experiment design:
 you record the hypothesis, the power analysis, the randomisation
-scheme, and the SRM check as metadata on the experiment, *before*
+scheme, and the SRM check as metadata on the experiment, _before_
 you look at any outcome data.
 
 ```python
@@ -2154,7 +2154,7 @@ with tracker.start_run(name="homepage_bogo_banner") as run:
         run.log_param("srm_status", "PASS")
 ```
 
-The magic of logging the design *before* the results is that you
+The magic of logging the design _before_ the results is that you
 cannot be tempted to rationalise after the fact. The hypothesis,
 the MDE, the power, and the SRM threshold are all committed
 before you see an outcome number.
@@ -2167,8 +2167,8 @@ enough to cover the production cost.
 
 **Step 1 — Hypothesis.**
 
-> *"The BOGO banner increases 14-day average spend per customer by
-> at least SGD 5 compared to the current home page."*
+> _"The BOGO banner increases 14-day average spend per customer by
+> at least SGD 5 compared to the current home page."_
 
 **Step 2 — Primary and secondary metrics.**
 
@@ -2202,7 +2202,7 @@ the secondary metrics for context.
 **Step 7 — Decide.** If the 95% CI excludes 0 and the lower
 bound exceeds the break-even point (say SGD 2), roll out. If the
 CI straddles 0, fail to reject the null and do not roll out — but
-*also* report the point estimate and CI so stakeholders can see
+_also_ report the point estimate and CI so stakeholders can see
 how uncertain the result was.
 
 ## Try It Yourself
@@ -2211,7 +2211,7 @@ how uncertain the result was.
 users, observing 101,500 in arm A and 98,500 in arm B. Is this
 SRM?
 
-*Solution.*
+_Solution._
 
 ```
 expected = 100_000
@@ -2225,7 +2225,7 @@ Investigate.
 and want to detect a 1% lift on a 10% baseline conversion. Can
 you do it at `α = 0.05`, power 0.80?
 
-*Solution.* Pooled `p ≈ 0.105`, `σ² ≈ 0.094`.
+_Solution._ Pooled `p ≈ 0.105`, `σ² ≈ 0.094`.
 
 ```
 n ≈ 2 × (2.8² × 0.094) / 0.01² ≈ 2 × 0.737 / 0.0001 ≈ 14_740
@@ -2237,11 +2237,11 @@ underpowered. Either run much longer or redesign the hypothesis.
 **Problem 3 — Hypothesis critique.** Rewrite this bad hypothesis:
 "We want to see if the new checkout flow is better."
 
-*Solution.*
+_Solution._
 
-> *"The new checkout flow increases completion rate by at least
+> _"The new checkout flow increases completion rate by at least
 > 0.5 percentage points compared to the current flow, over a
-> 30-day period among all desktop users."*
+> 30-day period among all desktop users."_
 
 Change, metric, direction, effect size, scope — all explicit.
 
@@ -2249,7 +2249,7 @@ Change, metric, direction, effect size, scope — all explicit.
 carousel. Which should be the primary metric: click-through rate,
 add-to-cart, purchase, or 7-day revenue per customer?
 
-*Solution.* 7-day revenue per customer. CTR captures only the
+_Solution._ 7-day revenue per customer. CTR captures only the
 first action; purchases can be dragged around by the carousel
 without increasing overall revenue. Revenue captures the ultimate
 business goal.
@@ -2259,7 +2259,7 @@ homepage A/B test every two weeks. Given `n = 5000` visitors per
 day, baseline 5% conversion, and a 0.5-percentage-point MDE, is
 14 days enough?
 
-*Solution.*
+_Solution._
 
 ```
 Required n per arm ≈ 2 × (2.8² × 0.05 × 0.95) / 0.005²
@@ -2286,7 +2286,7 @@ push to 21 days.
 Take the last experiment your team ran. Answer: was the
 hypothesis pre-registered? Was there a power analysis? Was
 randomisation at the user level or session level? Was SRM
-checked? If any answer is "no," next time fix it *before*
+checked? If any answer is "no," next time fix it _before_
 running the test.
 
 ---
@@ -2302,7 +2302,7 @@ regression, GLMs, neural networks (a linear layer is just OLS
 per neuron), ridge, lasso, even the attention mechanism in
 transformers is a soft version of linear projection.
 
-More importantly, regression is how you *explain* a prediction.
+More importantly, regression is how you _explain_ a prediction.
 A coefficient has a direction, a magnitude, and a significance.
 You can say "holding all else equal, a one-unit increase in X
 is associated with a `β̂` change in Y, and we are 95% sure
@@ -2379,7 +2379,7 @@ understand each piece:
 - `XᵀX` is a `(p+1) × (p+1)` matrix: the "covariance structure"
   of the predictors (unscaled).
 - `(XᵀX)⁻¹` undoes the predictor covariance so each `β̂ⱼ` is
-  the *unique* contribution of predictor `j` after accounting
+  the _unique_ contribution of predictor `j` after accounting
   for all others.
 
 For a simple regression (one predictor, intercept):
@@ -2398,7 +2398,7 @@ log-likelihood is:
 ℓ(β, σ²) = −(n/2) log(2π σ²) − (1/(2σ²)) × Σᵢ (yᵢ − xᵢᵀβ)²
 ```
 
-Maximising over `β` is equivalent to *minimising* `Σᵢ (yᵢ −
+Maximising over `β` is equivalent to _minimising_ `Σᵢ (yᵢ −
 xᵢᵀβ)²` — which is exactly OLS. So OLS = MLE under Normal
 errors. Beautiful.
 
@@ -2415,7 +2415,7 @@ errors. Beautiful.
 
 ### Non-linear extensions in a linear framework
 
-Linear regression is linear *in the parameters*, not in the
+Linear regression is linear _in the parameters_, not in the
 predictors. You can add:
 
 - **Polynomial terms:** `x`, `x²`, `x³`. Captures curvature.
@@ -2435,7 +2435,7 @@ small `β₁`. For example, `β̂₁ = 0.05` means "y increases by about
 For a categorical predictor with `k` levels, create `k − 1` dummy
 variables. The omitted level is the **base** (or reference)
 category. The intercept then represents the mean for the base,
-and each dummy's coefficient represents the *difference* from the
+and each dummy's coefficient represents the _difference_ from the
 base.
 
 Example: flat type ∈ {3-room, 4-room, 5-room}. Let 3-room be the
@@ -2449,7 +2449,7 @@ base. Then:
 how much more (or less) a 4-room flat costs than a 3-room flat,
 holding all else equal.
 
-> ⚠ **Pitfall — Dummy variable trap.** If you include *all* `k`
+> ⚠ **Pitfall — Dummy variable trap.** If you include _all_ `k`
 > dummies plus an intercept, `XᵀX` is singular (the dummies sum
 > to 1, which equals the intercept column). `β̂` cannot be
 > computed. Drop one dummy; `pd.get_dummies(..., drop_first=True)`
@@ -2501,7 +2501,7 @@ cutoffs:
 - |t| > 1.96 → p < 0.05 (95% confidence)
 - |t| > 2.58 → p < 0.01 (99% confidence)
 
-This is the *same* t-statistic from Lesson 2.3, applied to a
+This is the _same_ t-statistic from Lesson 2.3, applied to a
 regression coefficient instead of a sample mean. The conceptual
 unity is the entire point.
 
@@ -2555,13 +2555,13 @@ you the model is useful, and t tells you which predictors matter.
 Suppose `n = 5`. Predictors: floor area (sqm) and age (years).
 Response: price (SGD 000s).
 
-| i | area | age | price |
-|---|------|-----|-------|
-| 1 | 60   | 10  | 420   |
-| 2 | 70   | 5   | 490   |
-| 3 | 80   | 15  | 510   |
-| 4 | 90   | 20  | 540   |
-| 5 | 100  | 25  | 580   |
+| i   | area | age | price |
+| --- | ---- | --- | ----- |
+| 1   | 60   | 10  | 420   |
+| 2   | 70   | 5   | 490   |
+| 3   | 80   | 15  | 510   |
+| 4   | 90   | 20  | 540   |
+| 5   | 100  | 25  | 580   |
 
 Design matrix `X` (with intercept column):
 
@@ -2638,7 +2638,7 @@ p-value, and residual diagnostics.
 Target: 4-room resale price. Predictors: floor area, storey,
 remaining lease, distance to CBD, town (one-hot).
 
-Expected coefficient signs (your *prior*):
+Expected coefficient signs (your _prior_):
 
 - `floor_area_sqm`: positive. Bigger flats cost more.
 - `storey_mid`: slightly positive. Higher floors have better
@@ -2651,21 +2651,21 @@ Expected coefficient signs (your *prior*):
 
 After fitting (n ≈ 50_000), a plausible table:
 
-| Predictor              | β̂        | SE    | t     | p       |
-|------------------------|-----------|-------|-------|---------|
-| intercept              | 280_000   | 5_000 | 56.0  | < 0.001 |
-| floor_area_sqm         | 3_200     | 60    | 53.3  | < 0.001 |
-| storey_mid             | 2_500     | 150   | 16.7  | < 0.001 |
-| remaining_lease_years  | 900       | 80    | 11.25 | < 0.001 |
-| distance_to_cbd_km     | −15_000   | 300   | −50.0 | < 0.001 |
-| town[BISHAN]           | 55_000    | 2_500 | 22.0  | < 0.001 |
-| town[TOA PAYOH]        | 40_000    | 2_300 | 17.4  | < 0.001 |
-| … (other towns)        | …         | …     | …     | …       |
+| Predictor             | β̂       | SE    | t     | p       |
+| --------------------- | ------- | ----- | ----- | ------- |
+| intercept             | 280_000 | 5_000 | 56.0  | < 0.001 |
+| floor_area_sqm        | 3_200   | 60    | 53.3  | < 0.001 |
+| storey_mid            | 2_500   | 150   | 16.7  | < 0.001 |
+| remaining_lease_years | 900     | 80    | 11.25 | < 0.001 |
+| distance_to_cbd_km    | −15_000 | 300   | −50.0 | < 0.001 |
+| town[BISHAN]          | 55_000  | 2_500 | 22.0  | < 0.001 |
+| town[TOA PAYOH]       | 40_000  | 2_300 | 17.4  | < 0.001 |
+| … (other towns)       | …       | …     | …     | …       |
 
 R² = 0.84, adjusted R² = 0.839, F = 3200 (p < 0.001). Every
 coefficient is significant. Signs match priors. The model is
 well-specified enough that we can start using it for valuations
-— *with the caveat* that R² on training data isn't generalisation
+— _with the caveat_ that R² on training data isn't generalisation
 error; we'll need Module 3's cross-validation to verify.
 
 ## Try It Yourself
@@ -2674,7 +2674,7 @@ error; we'll need Module 3's cross-validation to verify.
 `x = [1, 2, 3, 4, 5]`, `y = [2, 4, 5, 4, 5]`, compute
 `β̂₀` and `β̂₁`.
 
-*Solution.*
+_Solution._
 
 ```
 x̄ = 3, ȳ = 4
@@ -2687,7 +2687,7 @@ x̄ = 3, ȳ = 4
 
 **Problem 2 — R² for the above.**
 
-*Solution.*
+_Solution._
 
 ```
 ŷ = [2.8, 3.4, 4.0, 4.6, 5.2]
@@ -2703,7 +2703,7 @@ R² = 1 − 2.4/6 = 0.6
 `SE = 300`, `n − p − 1 = 200`. Is the coefficient significant
 at `α = 0.05`?
 
-*Solution.*
+_Solution._
 
 ```
 t = 1500 / 300 = 5.0
@@ -2716,7 +2716,7 @@ p < 0.001. Yes, highly significant.
 area + β₂ × central + β₃ × (area × central)`. What does `β₃`
 represent?
 
-*Solution.* `β₃` is the *additional* increase in price per
+_Solution._ `β₃` is the _additional_ increase in price per
 square metre for flats in central locations, beyond the
 baseline increase `β₁`. In other words, the effect of area is
 `β₁` for non-central flats and `β₁ + β₃` for central flats.
@@ -2727,7 +2727,7 @@ locations (as you'd expect).
 3-room as base. `β̂_4room = 50_000`, `β̂_5room = 90_000`.
 Interpret.
 
-*Solution.* Holding all else equal, a 4-room flat costs SGD
+_Solution._ Holding all else equal, a 4-room flat costs SGD
 50K more than a 3-room, and a 5-room flat costs SGD 90K more
 than a 3-room. The 5-room premium over 4-room is `90K − 50K =
 40K`. If the standard errors and t-stats support it, every
@@ -2763,7 +2763,7 @@ next to it, even if the model itself is something fancier.
 
 Linear regression is for continuous outcomes. Half the problems
 you'll face are binary: clicks or no clicks, churn or stay,
-default or pay, positive or negative. You *could* try to fit a
+default or pay, positive or negative. You _could_ try to fit a
 linear model to `y ∈ {0, 1}`, but the predictions quickly slip
 out of `[0, 1]` and the coefficients become nonsensical. The
 right tool is **logistic regression**.
@@ -2885,7 +2885,7 @@ Take the derivative with respect to `β`:
 Beautiful. The residual in the probability space is `yᵢ − pᵢ`; the
 gradient is the sum of residuals weighted by the feature vector.
 
-Unfortunately, setting this to zero does *not* yield a closed
+Unfortunately, setting this to zero does _not_ yield a closed
 form because `pᵢ` depends non-linearly on `β`. We solve it by
 iterative methods — typically **iteratively reweighted least
 squares** (IRLS) or Newton-Raphson. In practice, sklearn and
@@ -3001,8 +3001,8 @@ informative.
 
 Three groups: 3-room, 4-room, 5-room. Summary:
 
-| Group  | n   | x̄      | s    |
-|--------|-----|---------|------|
+| Group  | n   | x̄       | s      |
+| ------ | --- | ------- | ------ |
 | 3-room | 100 | 400_000 | 60_000 |
 | 4-room | 100 | 540_000 | 80_000 |
 | 5-room | 100 | 680_000 | 90_000 |
@@ -3034,7 +3034,7 @@ differs (which — surprise — is all of them).
 ### Post-hoc tests
 
 ANOVA only tells you "somewhere, means differ." To find
-*which* pairs differ, run post-hoc tests with corrections:
+_which_ pairs differ, run post-hoc tests with corrections:
 
 - **Tukey's Honestly Significant Difference (HSD).** Tests all
   pairwise differences controlling the family-wise error rate.
@@ -3087,13 +3087,13 @@ predict `attrition ∈ {0, 1}` and interpret the top drivers.
 **Model.** Logistic regression on standardised predictors. After
 fitting:
 
-| Predictor                | β̂      | OR     | Interpretation                                   |
-|--------------------------|---------|--------|--------------------------------------------------|
-| years_since_last_promotion | +0.35 | 1.42   | Each additional year → 42% more churn odds      |
-| monthly_hours            | +0.20  | 1.22   | 10 extra hours/mo → 22% more churn odds          |
-| promoted_last_2y         | −0.60  | 0.55   | Promotion → 45% less churn odds                  |
-| compensation_pct_of_band | −0.45  | 0.64   | Well-paid employees → 36% less churn odds        |
-| dept_sales               | +0.30  | 1.35   | Sales dept has 35% more churn odds than baseline |
+| Predictor                  | β̂     | OR   | Interpretation                                   |
+| -------------------------- | ----- | ---- | ------------------------------------------------ |
+| years_since_last_promotion | +0.35 | 1.42 | Each additional year → 42% more churn odds       |
+| monthly_hours              | +0.20 | 1.22 | 10 extra hours/mo → 22% more churn odds          |
+| promoted_last_2y           | −0.60 | 0.55 | Promotion → 45% less churn odds                  |
+| compensation_pct_of_band   | −0.45 | 0.64 | Well-paid employees → 36% less churn odds        |
+| dept_sales                 | +0.30 | 1.35 | Sales dept has 35% more churn odds than baseline |
 
 **Interpretation for the CEO:**
 
@@ -3109,13 +3109,13 @@ fitting:
 **Problem 1 — Odds interpretation.** A logistic regression
 reports `β̂_age = 0.02` with p < 0.001. Interpret the odds ratio.
 
-*Solution.* `e^0.02 ≈ 1.0202`. Each additional year of age
+_Solution._ `e^0.02 ≈ 1.0202`. Each additional year of age
 increases the odds of the positive class by about 2%, holding
 others fixed. Small but significant at large `n`.
 
 **Problem 2 — Sigmoid.** Compute `σ(0)`, `σ(2)`, `σ(−2)`.
 
-*Solution.*
+_Solution._
 
 ```
 σ(0) = 1 / (1 + e^0) = 1/2 = 0.5
@@ -3130,7 +3130,7 @@ multiclass scheme should you use if:
 (a) you need calibrated probabilities;
 (b) you're using a tree-based model?
 
-*Solution.* (a) Multinomial (softmax) logistic regression —
+_Solution._ (a) Multinomial (softmax) logistic regression —
 gives proper probabilities that sum to 1. (b) OvR is usually
 fine for trees, since tree-based calibration is already
 suspect.
@@ -3138,7 +3138,7 @@ suspect.
 **Problem 4 — ANOVA.** You run a 4-variant homepage test. Is
 the right tool ANOVA or pairwise t-tests?
 
-*Solution.* ANOVA first to test "any difference." If
+_Solution._ ANOVA first to test "any difference." If
 significant, follow with Tukey HSD to find which pairs
 differ. Pairwise t-tests without correction inflate the
 false positive rate.
@@ -3146,7 +3146,7 @@ false positive rate.
 **Problem 5 — ANOVA F.** `MS_between = 800`, `MS_within = 40`.
 Compute F and describe the result.
 
-*Solution.* `F = 20`. Enormously large — the effect is much
+_Solution._ `F = 20`. Enormously large — the effect is much
 bigger than noise. Depending on df, p is essentially 0.
 
 ## Cross-References
@@ -3211,14 +3211,14 @@ to `Y_control`. The variance of the estimated difference is
 **Key observation.** Most of the variability in `Y` is not
 caused by the treatment — it's caused by the user's pre-existing
 behaviour. Some users spend a lot no matter what; some spend
-little no matter what. If we can *subtract out* the predictable
+little no matter what. If we can _subtract out_ the predictable
 part of `Y` using pre-experiment behaviour, we reduce the
 noise without touching the treatment effect.
 
 ### The adjustment
 
 Let `X_pre` be a pre-experiment covariate (e.g. the user's
-spend in the 14 days *before* the experiment started). Define
+spend in the 14 days _before_ the experiment started). Define
 the CUPED-adjusted outcome:
 
 ```
@@ -3242,7 +3242,7 @@ Differentiate with respect to θ and set to zero:
 θ* = Cov(Y, X_pre) / Var(X_pre)
 ```
 
-This is *exactly* the OLS regression slope of `Y` on `X_pre`.
+This is _exactly_ the OLS regression slope of `Y` on `X_pre`.
 CUPED is regression-adjusted estimation in disguise.
 
 ### Deriving the variance reduction
@@ -3288,14 +3288,14 @@ Required sample size scales with variance. So:
 n_CUPED / n_raw = 1 − ρ²
 ```
 
-| ρ   | Variance reduction | Sample size multiplier |
-|-----|--------------------|------------------------|
-| 0.3 | 9%                 | 1.10                   |
-| 0.5 | 25%                | 1.33                   |
-| 0.7 | 49%                | 1.96                   |
-| 0.8 | 64%                | 2.78                   |
-| 0.9 | 81%                | 5.26                   |
-| 0.95| 90%                | 10.0                   |
+| ρ    | Variance reduction | Sample size multiplier |
+| ---- | ------------------ | ---------------------- |
+| 0.3  | 9%                 | 1.10                   |
+| 0.5  | 25%                | 1.33                   |
+| 0.7  | 49%                | 1.96                   |
+| 0.8  | 64%                | 2.78                   |
+| 0.9  | 81%                | 5.26                   |
+| 0.95 | 90%                | 10.0                   |
 
 With `ρ = 0.8`, your 50K-user experiment becomes an 18K-user
 experiment at the same power. Run it three times as fast.
@@ -3330,7 +3330,7 @@ The **individual treatment effect** is:
 
 **The Fundamental Problem of Causal Inference:** you observe at
 most one of `Yᵢ(1)` and `Yᵢ(0)`. The other is the
-**counterfactual** — what *would have* happened. You can never
+**counterfactual** — what _would have_ happened. You can never
 directly observe an individual treatment effect.
 
 The way out is to estimate averages:
@@ -3352,7 +3352,7 @@ select into treatment.
 
 You have two groups (treated, control) observed at two time
 points (pre, post). The treatment happens between pre and post,
-but *only for the treated group*. You want the causal effect
+but _only for the treated group_. You want the causal effect
 of the treatment.
 
 Naive approaches fail:
@@ -3372,13 +3372,13 @@ ATT = (Y_treat_post − Y_treat_pre) − (Y_control_post − Y_control_pre)
 In words: take the change in the treated group and subtract the
 change in the control group. The difference is the causal effect
 — assuming the control's change is a valid proxy for what the
-treated group *would have* experienced without treatment.
+treated group _would have_ experienced without treatment.
 
 ### The parallel trends assumption
 
 DiD identifies the ATT only if, in the counterfactual world
 without treatment, the treated and control groups would have
-experienced the *same change* over time. Formally:
+experienced the _same change_ over time. Formally:
 
 ```
 E[Y(0)_post − Y(0)_pre | treated] = E[Y(0)_post − Y(0)_pre | control]
@@ -3386,7 +3386,7 @@ E[Y(0)_post − Y(0)_pre | treated] = E[Y(0)_post − Y(0)_pre | control]
 
 This is untestable (we never observe the counterfactual) but
 we can check it empirically with **pre-trends**: if the two
-groups were evolving in parallel for several periods *before*
+groups were evolving in parallel for several periods _before_
 treatment, the assumption is more credible.
 
 ### Regression form
@@ -3401,7 +3401,7 @@ Yᵢₜ = β₀ + β₁ × Dᵢ + β₂ × Tₜ + δ × (Dᵢ × Tₜ) + εᵢ�
 - `Tₜ = 1` if period `t` is post-treatment.
 - `Dᵢ × Tₜ = 1` only for treated units in the post period.
 
-The coefficient `δ` on the interaction *is* the DiD estimate.
+The coefficient `δ` on the interaction _is_ the DiD estimate.
 The standard error comes from the usual OLS formula (with
 clustered standard errors if you have many observations per
 unit).
@@ -3425,7 +3425,7 @@ assumption. You can stress-test it:
 In December 2021, Singapore raised the Additional Buyer's Stamp
 Duty (ABSD) for investment properties. To estimate the policy's
 causal effect on HDB resale prices, we need a control group that
-was *not* affected.
+was _not_ affected.
 
 - **Treated:** non-owner-occupier (investment) purchases.
 - **Control:** first-time buyers (exempt from ABSD hike).
@@ -3434,10 +3434,10 @@ Pre-period: Jan–Nov 2021. Post-period: Jan–Nov 2022.
 
 Hypothetical means (SGD, simplified):
 
-|                     | Pre     | Post    | Change  |
-|---------------------|---------|---------|---------|
-| Treated (investment)| 560_000 | 585_000 | +25_000 |
-| Control (first-time)| 520_000 | 560_000 | +40_000 |
+|                      | Pre     | Post    | Change  |
+| -------------------- | ------- | ------- | ------- |
+| Treated (investment) | 560_000 | 585_000 | +25_000 |
+| Control (first-time) | 520_000 | 560_000 | +40_000 |
 
 ```
 DiD = (585_000 − 560_000) − (560_000 − 520_000)
@@ -3445,7 +3445,7 @@ DiD = (585_000 − 560_000) − (560_000 − 520_000)
     = −15_000
 ```
 
-Investment-segment prices grew SGD 15K *less* than they would
+Investment-segment prices grew SGD 15K _less_ than they would
 have under the counterfactual (proxied by first-time buyers).
 That's the causal effect of the ABSD hike. Statistically
 significant if the standard error supports it.
@@ -3523,21 +3523,21 @@ the experiment nearly 3x faster.
 **Problem 1 — CUPED math.** `ρ = 0.6`. What is the variance
 reduction and sample size multiplier?
 
-*Solution.* `1 − 0.36 = 0.64` variance remaining. So sample
+_Solution._ `1 − 0.36 = 0.64` variance remaining. So sample
 size multiplier is `1/0.64 = 1.5625`. Variance reduction is
 36%. Sample size needed is 64% of raw.
 
 **Problem 2 — θ estimation.** `Cov(Y, X_pre) = 30`, `Var(X_pre) = 25`.
 Compute `θ*`.
 
-*Solution.* `θ* = 30 / 25 = 1.2`.
+_Solution._ `θ* = 30 / 25 = 1.2`.
 
 **Problem 3 — Parallel trends.** You look at monthly averages
 2018–2020 for treated and control groups. Treated is growing
 at 2% per quarter, control at 1.5% per quarter. Does parallel
 trends hold?
 
-*Solution.* Not cleanly — there's a 0.5% gap in growth rates.
+_Solution._ Not cleanly — there's a 0.5% gap in growth rates.
 You'd do a formal pre-trend regression and check if the
 difference is statistically significant. If yes, DiD is biased;
 consider Synthetic Control or an event-study model instead.
@@ -3546,7 +3546,7 @@ consider Synthetic Control or an event-study model instead.
 `Y_treat_post = 130`, `Y_control_pre = 90`, `Y_control_post = 110`.
 Compute the DiD.
 
-*Solution.*
+_Solution._
 
 ```
 DiD = (130 − 100) − (110 − 90) = 30 − 20 = 10
@@ -3558,7 +3558,7 @@ Treatment added 10 units beyond the underlying time trend.
 simultaneously with a city-wide subway-closure crisis. What
 happens to your DiD estimate?
 
-*Solution.* If the crisis affects only the treated city (or
+_Solution._ If the crisis affects only the treated city (or
 asymmetrically), the control is no longer a valid proxy and
 parallel trends fails. DiD confounds the subway effect with
 the campaign effect. Fix: find a better control (another city
@@ -3594,7 +3594,7 @@ messy data, a deadline, and an audience that doesn't care
 about p-values. You have to pull together every tool from
 Module 2 — probability, estimation, testing, regression,
 logistic regression, and causal inference — and produce a
-*useful* answer.
+_useful_ answer.
 
 This final lesson walks through a complete end-to-end project
 on Singapore HDB data. The narrative is: **"What drives HDB
@@ -3642,12 +3642,12 @@ hdb_feat = engineer.add_distance_to_point(
 
 Write three hypotheses, each testable:
 
-1. *"Floor area is the single strongest predictor of price,
-   controlling for lease and location."*
-2. *"The 2021 cooling measures reduced investment-segment
-   growth by at least SGD 10K."*
-3. *"Remaining lease affects price non-linearly: the last 30
-   years of lease lose value faster than the middle 30."*
+1. _"Floor area is the single strongest predictor of price,
+   controlling for lease and location."_
+2. _"The 2021 cooling measures reduced investment-segment
+   growth by at least SGD 10K."_
+3. _"Remaining lease affects price non-linearly: the last 30
+   years of lease lose value faster than the middle 30."_
 
 ### Step 4 — Tests
 
@@ -3776,7 +3776,7 @@ audit? Specifically:
 
 If any answer is "no," you now know what to do about it. That's
 the goal of Module 2: graduate from "running stats functions"
-to *statistical thinking*.
+to _statistical thinking_.
 
 ---
 
@@ -3787,7 +3787,7 @@ to *statistical thinking*.
 - Probability is the language of uncertainty. Bayes' theorem
   updates beliefs when new evidence arrives.
 - Population parameters (Greek) vs sample statistics (Latin).
-- Confidence intervals are properties of the *procedure*, not
+- Confidence intervals are properties of the _procedure_, not
   of individual intervals.
 - A/B tests need hypotheses, randomisation, power analysis,
   and SRM checks.
@@ -3997,7 +3997,7 @@ probabilities.
 and evidence. Derived from the symmetry of the multiplication rule.
 
 **Bayesian.** An approach that treats parameters as random variables
-with probability distributions. Contrast with *frequentist*.
+with probability distributions. Contrast with _frequentist_.
 
 **Bessel's correction.** Dividing by `n − 1` instead of `n` when
 estimating sample variance, to get an unbiased estimator.
@@ -4023,7 +4023,7 @@ random variables with finite variance is approximately Normally
 distributed regardless of the original distribution.
 
 **Confidence interval (CI).** A random interval that contains the true
-parameter with a specified probability *under repeated sampling*. Not
+parameter with a specified probability _under repeated sampling_. Not
 a Bayesian credible interval.
 
 **Conjugate prior.** A prior distribution that, combined with a given
@@ -4200,7 +4200,7 @@ tools. Skim this before submitting any analysis.
    parameter."** It doesn't; that's the Bayesian interpretation. Use
    a credible interval if you want that statement.
 4. **Treating a p-value as `P(H₀ | data)`.** p is `P(data ≥ observed
-   | H₀)`. Never the reverse.
+| H₀)`. Never the reverse.
 5. **Running an underpowered experiment and concluding "no effect."**
    A non-significant p-value with low power is uninformative. Always
    compute power up front.
@@ -4212,7 +4212,7 @@ tools. Skim this before submitting any analysis.
 8. **Interpreting `R²` without checking assumptions.** High `R²` on a
    misspecified model is worthless. Plot residuals.
 9. **Omitting the dummy-variable base.** Either drop one dummy or
-   fit without an intercept — never both all `k` dummies *and* an
+   fit without an intercept — never both all `k` dummies _and_ an
    intercept, which produces a singular `XᵀX`.
 10. **Confusing ANOVA with post-hoc tests.** ANOVA says "somewhere
     there's a difference." Use Tukey HSD to find which pairs differ.
@@ -4239,7 +4239,7 @@ tools. Skim this before submitting any analysis.
     prevalence is 0.1%" — in whom? Hospitalised patients have a very
     different base rate from the general public.
 19. **Not logging the experiment design.** If you didn't log the
-    hypothesis, power analysis, and SRM threshold *before* looking
+    hypothesis, power analysis, and SRM threshold _before_ looking
     at results, you can't defend against post-hoc rationalisation.
 20. **Assuming correlation implies causation.** It doesn't. Ever.
     Causal claims require either randomisation or explicit causal
@@ -4252,26 +4252,26 @@ tools. Skim this before submitting any analysis.
 Use this table to decide which tool from Module 2 fits a given
 question.
 
-| Question                                                        | Tool                                      |
-|-----------------------------------------------------------------|-------------------------------------------|
-| "Given a positive signal, what's the probability of X?"         | Bayes' theorem (Lesson 2.1)               |
-| "What's my best guess at the parameter?"                        | MLE (Lesson 2.2)                          |
-| "What's my best guess with prior knowledge?"                    | MAP (Lesson 2.2)                          |
-| "Is the sample mean reliably different from zero?"              | One-sample t-test (Lesson 2.3)            |
-| "Are two groups different on average?"                          | Two-sample t-test or permutation test     |
-| "What's a distribution-free CI for a weird statistic?"          | Bootstrap percentile or BCa               |
-| "Is my randomisation working?"                                  | SRM chi-squared check (Lesson 2.4)        |
-| "Do I have enough sample size?"                                 | Power analysis (Lesson 2.3/2.4)           |
-| "How much does X drive Y, controlling for Z?"                   | Linear regression with covariates (2.5)   |
-| "Is this coefficient statistically significant?"                | t-statistic on `β̂` (Lesson 2.5)           |
-| "Does my model do better than random?"                          | F-test (Lesson 2.5)                       |
-| "How much variance am I explaining?"                            | R² / adjusted R² (Lesson 2.5)             |
-| "Will the customer click?"                                      | Logistic regression (Lesson 2.6)          |
-| "How much more likely is Y given a 1-unit change in X?"         | Exponentiated logistic coefficient (2.6)  |
-| "Do three or more groups have different means?"                 | ANOVA + Tukey HSD (Lesson 2.6)            |
-| "How do I detect smaller effects with the same sample?"         | CUPED (Lesson 2.7)                        |
-| "What's the effect of a policy I can't randomise?"              | DiD with parallel-trends check (2.7)      |
-| "How do I tell a story with all of the above?"                  | Capstone pipeline (Lesson 2.8)            |
+| Question                                                | Tool                                     |
+| ------------------------------------------------------- | ---------------------------------------- |
+| "Given a positive signal, what's the probability of X?" | Bayes' theorem (Lesson 2.1)              |
+| "What's my best guess at the parameter?"                | MLE (Lesson 2.2)                         |
+| "What's my best guess with prior knowledge?"            | MAP (Lesson 2.2)                         |
+| "Is the sample mean reliably different from zero?"      | One-sample t-test (Lesson 2.3)           |
+| "Are two groups different on average?"                  | Two-sample t-test or permutation test    |
+| "What's a distribution-free CI for a weird statistic?"  | Bootstrap percentile or BCa              |
+| "Is my randomisation working?"                          | SRM chi-squared check (Lesson 2.4)       |
+| "Do I have enough sample size?"                         | Power analysis (Lesson 2.3/2.4)          |
+| "How much does X drive Y, controlling for Z?"           | Linear regression with covariates (2.5)  |
+| "Is this coefficient statistically significant?"        | t-statistic on `β̂` (Lesson 2.5)          |
+| "Does my model do better than random?"                  | F-test (Lesson 2.5)                      |
+| "How much variance am I explaining?"                    | R² / adjusted R² (Lesson 2.5)            |
+| "Will the customer click?"                              | Logistic regression (Lesson 2.6)         |
+| "How much more likely is Y given a 1-unit change in X?" | Exponentiated logistic coefficient (2.6) |
+| "Do three or more groups have different means?"         | ANOVA + Tukey HSD (Lesson 2.6)           |
+| "How do I detect smaller effects with the same sample?" | CUPED (Lesson 2.7)                       |
+| "What's the effect of a policy I can't randomise?"      | DiD with parallel-trends check (2.7)     |
+| "How do I tell a story with all of the above?"          | Capstone pipeline (Lesson 2.8)           |
 
 ---
 
@@ -4331,10 +4331,10 @@ answer all 20 without looking, you're ready.
 5. Derive the two equivalent forms of variance.
 6. Why does sample variance divide by `n − 1` rather than `n`?
 7. State the Central Limit Theorem in one sentence.
-8. What is the *correct* interpretation of a 95% confidence
-   interval? What is the *incorrect* one that most people use?
+8. What is the _correct_ interpretation of a 95% confidence
+   interval? What is the _incorrect_ one that most people use?
 9. Derive the MLE for the Normal mean and variance.
-10. Explain the p-value in plain language. What is it *not*?
+10. Explain the p-value in plain language. What is it _not_?
 11. What is power, and what four things determine it?
 12. Describe how a permutation test works, step by step.
 13. What is an SRM, and how do you detect it?
@@ -4354,5 +4354,5 @@ Solutions are throughout Lessons 2.1–2.7. No cheat sheet.
 
 ---
 
-*End of Module 2 textbook chapter. Continue to Module 3 — Supervised
-Machine Learning: Theory to Production.*
+_End of Module 2 textbook chapter. Continue to Module 3 — Supervised
+Machine Learning: Theory to Production._

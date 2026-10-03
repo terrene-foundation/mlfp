@@ -4571,7 +4571,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Walk through both perspectives. The practical training trick (maximise log D(G(z)) instead of minimise log(1-D(G(z)))) is important &mdash; the original objective has vanishing gradients when G is poor.
+    Time: ~3 min. Walk through both perspectives. The practical training trick (maximise log D(G(z)) instead of minimise log(1-D(G(z)))) is important &mdash; the original minimax G loss saturates when G is poor: D confidently rejects the fakes, D(G(z)) is near 0, and log(1-D(G(z))) is flat there. The non-saturating version keeps a strong gradient in exactly that regime. This is what Exercise 5 uses: BCE with &ldquo;real&rdquo; labels on the fakes, i.e. minimise -log D(G(z)). It does not make GANs stable &mdash; when real and fake supports don't overlap, JS divergence is stuck at log 2 and gives no useful direction. That motivates WGAN.
   </aside>
 </section>
 
@@ -4611,7 +4611,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. DCGAN established the standard architecture for convolutional GANs. The guidelines are empirical but effective. No pooling (use stride), batch norm everywhere, specific activation choices. This is what students implement in the exercise.
+    Time: ~3 min. DCGAN established the standard architecture for convolutional GANs. The guidelines are empirical but effective. No pooling (use stride), batch norm everywhere, specific activation choices. Be precise with students: Exercise 5's generator and discriminator are MLPs (fully connected), not DCGANs &mdash; the adversarial training loop is identical, only the networks differ. Swapping in this convolutional generator plus a strided-conv discriminator is the natural extension.
   </aside>
 </section>
 
@@ -4635,10 +4635,10 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <div class="col">
       <h3>Why WGAN Is Better</h3>
       <div class="callout callout-theory">
-        <strong>Mode collapse prevention:</strong> Standard GANs can collapse to generating one image. Wasserstein distance provides gradients that push toward covering the full data distribution.
+        <strong>Mode collapse reduction:</strong> Standard GANs can collapse to generating one image. Wasserstein distance provides gradients that push toward covering the full data distribution.
       </div>
       <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Training stability:</strong> The Wasserstein loss correlates with generation quality. You can actually track convergence &mdash; unlike standard GAN loss which oscillates meaninglessly.
+        <strong>Training stability:</strong> The Wasserstein estimate tracks generation quality. The critic loss is <span class="katex-inline">\approx -W</span>, so it <em>rises toward 0</em> as quality improves &mdash; unlike standard GAN loss, which oscillates meaninglessly.
       </div>
     </div>
   </div>
@@ -4646,7 +4646,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. WGAN is a major improvement over the standard GAN. The key insight: Wasserstein distance (Earth Mover's Distance) provides gradients everywhere, unlike JS divergence which is zero when distributions don't overlap. The gradient penalty replaces weight clipping from the original WGAN paper.
+    Time: ~3 min. WGAN is a major improvement over the standard GAN. The key insight: Wasserstein distance (Earth Mover's Distance) varies smoothly with how far apart the distributions are, so G always gets a useful gradient. JS divergence does not: when the supports don't overlap it saturates at the constant log 2, so G receives no gradient. The gradient penalty replaces weight clipping from the original WGAN paper. Reading the curve: the critic loss (without the GP term) is about minus the Wasserstein distance, so as G improves it RISES toward 0. A more negative critic loss means the distributions are further apart.
   </aside>
 </section>
 
@@ -4676,7 +4676,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Survey only. FID is the standard evaluation metric for generative models. Students compute FID in the exercise. StyleGAN is mentioned for awareness &mdash; it produces the famous "this person does not exist" images.
+    Time: ~2 min. Survey only. FID is the standard evaluation metric for generative models: a distribution-level score (fidelity + diversity), not a per-image quality score. Students compute FID in the exercise with a small 64-d LeNet feature extractor trained on MNIST, not Inception, so their numbers are comparable only with each other &mdash; not with published Inception-FID thresholds. The exercise does not compute Inception Score. StyleGAN is mentioned for awareness &mdash; it produces the famous "this person does not exist" images.
   </aside>
 </section>
 
@@ -4870,18 +4870,18 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement DCGAN for MNIST image generation</li>
-        <li>Implement WGAN-GP &mdash; compare training stability</li>
-        <li>Compute FID score for both models</li>
+        <li>MLP GAN on full MNIST (60K) &mdash; non-saturating loss; read the D vs G balance</li>
+        <li>WGAN-GP critic &mdash; compare training stability</li>
+        <li>Evaluate: FID (LeNet features), mode coverage, entropy, nearest-neighbour novelty; register generators</li>
         <li>Document: when to use GANs vs VAE vs diffusion</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>DCGAN generates recognisable digits</li>
-        <li>WGAN is demonstrably more stable (loss curves)</li>
-        <li>FID computed and compared</li>
+        <li>The GAN generates recognisable digits</li>
+        <li>WGAN-GP demonstrably more stable (loss curves)</li>
+        <li>FID computed and compared (same extractor)</li>
         <li>Generation model selection guide understood</li>
       </ul>
     </div>
@@ -4890,7 +4890,7 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The key comparison is DCGAN vs WGAN-GP. Students should see that WGAN loss actually correlates with quality (smooth decrease) while DCGAN loss oscillates. FID provides an objective quality metric.
+    Time: ~1 min. Exercise 5.5 is three files on MNIST: a vanilla GAN (MLP networks, non-saturating BCE loss), WGAN-GP, and an evaluation file. The key comparison is vanilla GAN vs WGAN-GP. Students should see that the WGAN critic loss tracks quality &mdash; it rises smoothly toward 0 as the generator improves &mdash; while the vanilla GAN losses oscillate. FID gives an objective distribution-level comparison. The convolutional DCGAN is taught on the slides; building it is an extension.
   </aside>
 </section>
 
@@ -4927,38 +4927,38 @@ z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
   <h2>Lesson 5.5: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    DCGAN, WGAN-GP, and diffusion &mdash; the three generators you built in Exercise 5 &mdash; solve a class of problems where the business constraint is "we need more data, but we cannot collect it". Synthetic generation converts a hard collection problem into an ML problem.
+    The GAN and WGAN-GP you built in Exercise 5 &mdash; and the diffusion models from this lesson &mdash; target problems where the business constraint is "we need more data, but we cannot collect it". Synthetic generation converts a hard collection problem into an ML problem.
   </div>
   <div class="columns" style="margin-top: 12px;">
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Healthcare &mdash; Privacy-Preserving Training Data</strong>
-        <p class="small">SGH cannot share patient CT scans with a research lab overseas, but it <em>can</em> share a diffusion model trained on them. The collaborator samples synthetic scans indistinguishable at the pixel level from real ones but containing no actual patient. This is how rare-disease classifiers get enough training data without violating PDPA or HIPAA.</p>
+        <strong>Healthcare &mdash; Synthetic Training Data (with care)</strong>
+        <p class="small">A hospital that cannot share CT scans may consider sharing a generative model or its samples instead. That is <em>not</em> private by default: GANs and diffusion models can memorise and regenerate training images (extraction attacks are documented). It needs formal guarantees (e.g. DP-SGD training), memorisation / membership-inference tests, and governance sign-off.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Retail &mdash; Virtual Try-On &amp; Product Visualisation</strong>
-        <p class="small">Shopee and Lazada use CycleGAN-style networks (the same adversarial loss family, just with two generators) to paste products onto user photos. A single SKU photo on white background becomes dozens of lifestyle shots &mdash; no photo studio, no models, no rental.</p>
+        <p class="small">An e-commerce marketplace can use image-to-image GANs (CycleGAN-style: the same adversarial loss family, with two generators) to place products into lifestyle scenes. A single SKU photo on white background becomes dozens of lifestyle shots &mdash; no photo studio, no models, no rental.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
         <strong>Finance &mdash; Synthetic Tabular Data for Fraud Models</strong>
-        <p class="small">Banks train fraud models on transaction history, but real fraud examples are rare and sharing them across teams or institutions is blocked by privacy law. Tabular GANs (like CT-GAN, same training dynamics as your WGAN-GP) generate synthetic transaction tables that preserve the joint distribution of fields without containing any real customer. Models trained on the synthetic data generalise to real data at 95%+ of the supervised ceiling.</p>
+        <p class="small">Banks train fraud models on transaction history, but real fraud examples are rare and sharing them across teams or institutions is blocked by privacy law. Tabular GANs (like CTGAN, same training dynamics as your WGAN-GP) generate synthetic transaction tables that approximate the joint distribution of fields. Whether they leak real customers must be <em>tested</em>, and how well models trained on them transfer to real data must be measured, not assumed.</p>
       </div>
       <div class="callout callout-applications" style="margin-top: 10px;">
         <strong>Creative &mdash; Marketing Asset Generation</strong>
-        <p class="small">Agencies use Stable Diffusion for hero images, variant ads, and mood boards. The unit economics are brutal: a hero image that would cost $5,000 in a studio is generated in 30 seconds and iterated 200 times before the art director picks one. Business value is not the pixel quality &mdash; it is the <em>iteration rate</em>.</p>
+        <p class="small">Agencies use Stable Diffusion for hero images, variant ads, and mood boards. The unit economics are brutal (illustrative): a hero image that would cost thousands in a studio is generated in seconds and iterated hundreds of times before the art director picks one. Business value is not the pixel quality &mdash; it is the <em>iteration rate</em>.</p>
       </div>
     </div>
   </div>
   <div class="callout callout-foundations" style="margin-top: 8px; font-size: 0.78em;">
-    <strong>Why this matters for YOU:</strong> synthetic data is the practical wedge for regulated industries &mdash; train models on distributions you cannot legally share. FID (Exercise 5) is the audit evidence: synthetic is close enough to real for the downstream model, without being real.
+    <strong>Why this matters for YOU:</strong> synthetic data can widen access to scarce data &mdash; but FID (Exercise 5) measures fidelity and diversity, <em>not</em> privacy: a model that copies its training images scores an excellent FID. Privacy evidence comes from DP guarantees and memorisation tests.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. The privacy framing is what makes this lesson matter to decision-makers &mdash; pixel-pretty GAN outputs alone do not close a business case. Emphasise the tabular-GAN example because it is the one finance and healthcare audiences immediately grasp: "You cannot share the real fraud data, so you share a generator that produces fake fraud data that trains real models." Note the FID &harr; regulator connection &mdash; that is the answer to "how do we know the synthetic data is good enough?".
+    Time: ~3 min. Decision-makers in regulated industries need the honest version: synthetic data is NOT private by default. Generative models can memorise; extraction attacks on diffusion models are documented (Carlini et al., 2023). Sharing a model trained on patient or customer data, or its samples, needs formal privacy guarantees (DP-SGD), memorisation and membership-inference testing, and legal review. FID answers &ldquo;is the synthetic data realistic and diverse?&rdquo;, never &ldquo;is it private?&rdquo; &mdash; a copying model gets a great FID. Exercise 5's nearest-neighbour novelty check is a first memorisation test, not a privacy guarantee. The organisations here are generic illustrations.
   </aside>
 </section>
 

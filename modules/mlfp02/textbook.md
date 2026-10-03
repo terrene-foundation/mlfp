@@ -2471,8 +2471,8 @@ transformers is a soft version of linear projection.
 More importantly, regression is how you _explain_ a prediction.
 A coefficient has a direction, a magnitude, and a significance.
 You can say "holding all else equal, a one-unit increase in X
-is associated with a `β̂` change in Y, and we are 95% sure
-that effect is between `a` and `b`." No tree, no deep network,
+is associated with a `β̂` change in Y, and the 95% confidence
+interval for that effect is `[a, b]`." No tree, no deep network,
 and no AutoML pipeline gives you that.
 
 This lesson derives OLS, the t-statistic on a coefficient,
@@ -2618,9 +2618,10 @@ holding all else equal.
 > ⚠ **Pitfall — Dummy variable trap.** If you include _all_ `k`
 > dummies plus an intercept, `XᵀX` is singular (the dummies sum
 > to 1, which equals the intercept column). `β̂` cannot be
-> computed. Drop one dummy; `pd.get_dummies(..., drop_first=True)`
-> handles this automatically in pandas, and Polars' `to_dummies`
-> combined with dropping a column does the same.
+> computed. Drop one dummy: Polars' `df.to_dummies(columns=["town"],
+drop_first=True)` does it for you, or create all dummies and drop
+> the base column yourself (the worked example below does this so it
+> can choose Ang Mo Kio as the base).
 
 ## Mathematical Foundations — Inference
 
@@ -2663,9 +2664,13 @@ t_j = β̂ⱼ / SE(β̂ⱼ)
 Under `H₀` and Normal errors, `t_j ~ t(n − p − 1)`. For `n` large,
 cutoffs:
 
-- |t| > 1.64 → p < 0.10 (90% confidence)
-- |t| > 1.96 → p < 0.05 (95% confidence)
-- |t| > 2.58 → p < 0.01 (99% confidence)
+- |t| > 1.645 → p < 0.10 (90% confidence) \*
+- |t| > 1.960 → p < 0.05 (95% confidence) \*\*
+- |t| > 2.576 → p < 0.01 (99% confidence) \*\*\*
+
+These are two-sided cutoffs from the standard Normal. With few
+residual degrees of freedom use the t-distribution instead
+(e.g. 2.228 rather than 1.960 at 10 df).
 
 This is the _same_ t-statistic from Lesson 2.3, applied to a
 regression coefficient instead of a sample mean. The conceptual
@@ -2740,69 +2745,71 @@ X = [[1, 60, 10],
 y = [420, 490, 510, 540, 580]
 ```
 
-Compute `β̂ = (XᵀX)⁻¹ Xᵀ y` (you would do this in NumPy, but the
-point is that a closed-form solution exists). Numerical answer
-(rounded): `β̂ ≈ [318, 3.0, −2.5]`. Interpretation:
+Compute `β̂ = (XᵀX)⁻¹ Xᵀ y` — in NumPy,
+`np.linalg.solve(X.T @ X, X.T @ y)` — the point is that a closed-form
+solution exists. Numerical answer: `β̂ ≈ [139.05, 5.263, −3.474]`.
+Interpretation:
 
-- Baseline (area=0, age=0): SGD 318K — meaningless extrapolation,
+- Baseline (area=0, age=0): SGD 139K — meaningless extrapolation,
   but a necessary intercept.
-- Each additional square metre: +SGD 3,000.
-- Each additional year of age: −SGD 2,500.
+- Each additional square metre: +SGD 5,263, holding age fixed.
+- Each additional year of age: −SGD 3,474, holding area fixed.
 
 Fit:
 
 ```
-ŷ = [318 + 3×60 − 2.5×10, 318 + 3×70 − 2.5×5, …]
-  = [473, 515.5, 520.5, 538, 555.5]
-Residuals e = y − ŷ = [−53, −25.5, −10.5, 2, 24.5]
-SS_res ≈ 2809 + 650 + 110 + 4 + 600 ≈ 4173
+ŷ = [139.05 + 5.263×60 − 3.474×10, 139.05 + 5.263×70 − 3.474×5, …]
+  = [420.11, 490.11, 508.00, 543.26, 578.53]
+Residuals e = y − ŷ = [−0.11, −0.11, 2.00, −3.26, 1.47]
+SS_res ≈ 0.011 + 0.011 + 4.0 + 10.65 + 2.17 ≈ 16.84
 ȳ = 508, SS_tot = (420−508)² + … + (580−508)² = 7744 + 324 + 4 + 1024 + 5184 = 14_280
-R² = 1 − 4173/14_280 ≈ 0.708
+R² = 1 − 16.84/14_280 ≈ 0.9988
 ```
 
-So ~71% of variance explained. Not great for HDB prices (there
-are many more confounders — location, lease, storey), but
-consistent with a deliberately tiny example.
+Two checks you can always make: the residuals of an OLS fit with an
+intercept sum to zero (here −0.11 − 0.11 + 2.00 − 3.26 + 1.47 ≈ 0, up
+to rounding),
+and no other `β` gives a smaller `SS_res`. The toy data were built to
+lie almost exactly on a plane, hence `R² ≈ 0.999`; real HDB prices
+are far noisier, as the worked example below shows.
 
 ## The Kailash Engine — TrainingPipeline + ModelVisualizer
 
-kailash-ml's `TrainingPipeline` wraps OLS fitting with
-experiment-tracking and visualisation. Conceptually:
+In Module 2 you build the regression table **by hand** — the
+normal equations, standard errors, t, p, R² and F you just derived —
+in NumPy, and use `ModelVisualizer().residuals(y, y_hat)` to inspect
+the residuals. `TrainingPipeline` is kailash-ml's engine for training
+_predictive_ models from a feature store
+(`TrainingPipeline(feature_store, registry).train(data, schema,
+model_spec, eval_spec, experiment_name)`); it reports predictive
+metrics, not an inferential coefficient table, and it becomes the
+workhorse in Module 3. There is no engine call that prints `β̂`, `SE`,
+`t` and `p` for you: that is the point of this lesson.
 
-```python
-from kailash_ml import TrainingPipeline, ModelVisualizer, ExperimentTracker
-import polars as pl
+### Checking fit honestly: hold-out and k-fold cross-validation
 
-from shared import MLFPDataLoader
+`R²` computed on the rows used for fitting is optimistic: every extra
+predictor can only raise it. To measure how well the model predicts
+_new_ flats, fit on some rows and score on rows the fit never saw.
 
-loader = MLFPDataLoader()
-hdb = loader.load("mlfp01", "hdb_resale.parquet")
+- **Train/test split.** Hold out, say, 20% of rows; fit on the other
+  80%; report `R²` on the hold-out.
+- **k-fold cross-validation.** Split the rows into `k` folds (often
+  5). Fit `k` times, each time scoring on the one fold left out, and
+  average the `k` scores. Every row is used for testing exactly once,
+  so the estimate is less noisy than a single split.
 
-features = hdb.select([
-    "floor_area_sqm",
-    "remaining_lease_years",
-    "storey_mid",
-    "town",
-    "flat_type",
-]).to_pandas()  # for the estimator boundary; kailash-ml exposes polars internally
-target = hdb["resale_price"].to_numpy()
-
-pipeline = TrainingPipeline(task="regression", estimator="ols")
-pipeline.fit(features, target)
-
-print(pipeline.summary())     # coefficients, SE, t, p, R², F
-ModelVisualizer().coefficient_plot(pipeline)
-```
-
-The `summary()` method produces a regression table with every
-inferential statistic we derived by hand: `β̂`, `SE`, `t`,
-`p-value`, `95% CI`, `R²`, adjusted `R²`, F statistic and its
-p-value, and residual diagnostics.
+Module 3 (Lesson 3.2) treats cross-validation in depth. Here it is a
+sanity check: if cross-validated `R²` is close to in-sample `R²`, the
+model is not over-fitted.
 
 ## Worked Example — Predicting HDB Prices
 
-Target: 4-room resale price. Predictors: floor area, storey,
-remaining lease, distance to CBD, town (one-hot).
+Target: resale price, all flat types. Predictors: floor area, storey
+(midpoint of `storey_range`), remaining lease (99 years minus the
+flat's age at sale), and town (one-hot, Ang Mo Kio as base). The
+course file has no coordinates, so distance-to-CBD features would need
+geocoding first (a Module 3 feature-engineering topic).
 
 Expected coefficient signs (your _prior_):
 
@@ -2811,28 +2818,101 @@ Expected coefficient signs (your _prior_):
   views.
 - `remaining_lease_years`: positive. Longer leases are worth
   more.
-- `distance_to_cbd_km`: negative. Closer to Raffles costs more.
-- `town` dummies: vary. Central towns positive, outer towns
-  negative, with "Ang Mo Kio" as base.
+- `town` dummies: vary. Mature central towns positive relative to
+  Ang Mo Kio, newer outlying towns near zero or negative.
 
-After fitting (n ≈ 50_000), a plausible table:
+The full analysis — cleaning, design matrix, the inferential table,
+fit statistics and a 5-fold cross-validated `R²`:
+
+```python
+import numpy as np
+import polars as pl
+from scipy import stats
+from kailash_ml import ModelVisualizer
+
+from shared import MLFPDataLoader
+
+hdb = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+sale_year = pl.col("month").str.slice(0, 4).cast(pl.Int64)
+df = (
+    hdb.with_columns(
+        # "07 TO 09" -> 8.0; the file has typos such as "O7 TO 09" (letter O)
+        storey_mid=pl.col("storey_range").str.split(" TO ")
+        .list.eval(pl.element().str.replace_all("O", "0").cast(pl.Float64)).list.mean(),
+        remaining_lease_years=(99 - (sale_year - pl.col("lease_commence_date"))).cast(pl.Float64),
+    )
+    # Drop the file's impossible rows: sentinel prices, leases starting after the sale
+    .filter(pl.col("resale_price").is_between(100_000, 2_000_000),
+            pl.col("remaining_lease_years").is_between(1, 99))
+    .to_dummies(columns=["town"], drop_first=False)
+)
+towns = sorted(c for c in df.columns if c.startswith("town_") and c != "town_ANG MO KIO")
+cols = ["floor_area_sqm", "storey_mid", "remaining_lease_years", *towns]  # base: Ang Mo Kio
+
+X = np.column_stack([np.ones(df.height), df.select(cols).to_numpy().astype(float)])
+y = df["resale_price"].to_numpy().astype(float)
+n, k = X.shape
+
+XtX_inv = np.linalg.inv(X.T @ X)
+beta = XtX_inv @ X.T @ y                       # normal equations
+resid = y - X @ beta
+sigma2 = resid @ resid / (n - k)               # n - p - 1 degrees of freedom
+se = np.sqrt(sigma2 * np.diag(XtX_inv))
+t = beta / se
+p = 2 * stats.t.sf(np.abs(t), df=n - k)
+r2 = 1 - resid @ resid / np.sum((y - y.mean()) ** 2)
+adj_r2 = 1 - (1 - r2) * (n - 1) / (n - k)
+F = (r2 / (k - 1)) / ((1 - r2) / (n - k))
+
+table = pl.DataFrame({"term": ["intercept", *cols], "beta": beta, "se": se, "t": t, "p": p})
+print(table.filter(~pl.col("term").str.starts_with("town_")
+                   | pl.col("term").is_in(["town_BISHAN", "town_PUNGGOL", "town_WOODLANDS"])))
+print(f"n={n:,}  R2={r2:.3f}  adj R2={adj_r2:.3f}  F={F:,.0f} on ({k - 1}, {n - k}) df")
+
+# 5-fold cross-validation: R2 on rows the fit never saw
+folds = np.random.default_rng(42).permutation(n) % 5
+cv_r2 = []
+for f in range(5):
+    tr, te = folds != f, folds == f
+    b = np.linalg.lstsq(X[tr], y[tr], rcond=None)[0]
+    e = y[te] - X[te] @ b
+    cv_r2.append(1 - e @ e / np.sum((y[te] - y[te].mean()) ** 2))
+print(f"5-fold CV R2 = {np.mean(cv_r2):.3f} (+/- {np.std(cv_r2):.3f})")
+
+fig = ModelVisualizer().residuals(y, X @ beta)  # residuals vs fitted
+```
+
+Results on the course file (`n = 46,614` after removing the 3,536
+impossible rows):
 
 | Predictor             | β̂       | SE    | t     | p       |
 | --------------------- | ------- | ----- | ----- | ------- |
-| intercept             | 280_000 | 5_000 | 56.0  | < 0.001 |
-| floor_area_sqm        | 3_200   | 60    | 53.3  | < 0.001 |
-| storey_mid            | 2_500   | 150   | 16.7  | < 0.001 |
-| remaining_lease_years | 900     | 80    | 11.25 | < 0.001 |
-| distance_to_cbd_km    | −15_000 | 300   | −50.0 | < 0.001 |
-| town[BISHAN]          | 55_000  | 2_500 | 22.0  | < 0.001 |
-| town[TOA PAYOH]       | 40_000  | 2_300 | 17.4  | < 0.001 |
+| intercept             | −45,593 | 3,668 | −12.4 | < 0.001 |
+| floor_area_sqm        | 9,090   | 17    | 524.7 | < 0.001 |
+| storey_mid            | −49     | 36    | −1.37 | 0.17    |
+| remaining_lease_years | 26      | 32    | 0.82  | 0.41    |
+| town_BISHAN           | 127,522 | 3,383 | 37.7  | < 0.001 |
+| town_QUEENSTOWN       | 131,464 | 3,388 | 38.8  | < 0.001 |
+| town_TOA PAYOH        | 135,466 | 3,426 | 39.5  | < 0.001 |
+| town_PUNGGOL          | 2,917   | 2,952 | 0.99  | 0.32    |
+| town_WOODLANDS        | 1,484   | 2,941 | 0.50  | 0.61    |
 | … (other towns)       | …       | …     | …     | …       |
 
-R² = 0.84, adjusted R² = 0.839, F = 3200 (p < 0.001). Every
-coefficient is significant. Signs match priors. The model is
-well-specified enough that we can start using it for valuations
-— _with the caveat_ that R² on training data isn't generalisation
-error; we'll need Module 3's cross-validation to verify.
+`R² = 0.860`, adjusted `R² = 0.860`, `F ≈ 9,877` on (29, 46,584) df
+(p < 0.001), and 5-fold cross-validated `R² = 0.860` — no sign of
+over-fitting. Read the table the way the lesson taught:
+
+- **Floor area** dominates: each extra square metre is associated with
+  about SGD 9,090 more, holding storey, lease and town fixed.
+- **Town** matters: a Bishan, Queenstown or Toa Payoh flat sells for
+  roughly SGD 130K more than a comparable Ang Mo Kio flat; Punggol and
+  Woodlands are not distinguishable from Ang Mo Kio (|t| < 1).
+- **Storey and remaining lease are not significant** (|t| < 1.96).
+  Your priors said they should matter — and in the real market they
+  do — but this teaching file carries no storey or lease signal. That
+  is the honest reading: a coefficient whose CI straddles zero is
+  "no detectable effect in _this_ data", not "confirmed". Never keep a
+  sign story the t-statistic does not support.
 
 ## Try It Yourself
 
@@ -2910,8 +2990,8 @@ pair is significantly different from every other.
   and for DiD identification.
 - **Module 3** adds regularisation (ridge, lasso) and cross-
   validated model selection.
-- **Module 5** uses linear regression as a probing tool for LLM
-  hidden states.
+- **Module 4 (Lesson 4.8)** shows that a neural network's output
+  layer is a linear (or logistic) regression on learned features.
 
 ## Reflection
 

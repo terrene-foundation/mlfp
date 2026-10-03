@@ -328,6 +328,27 @@ A positive test now means an 83% chance of being sick — a very different
 story. Same test, same sensitivity, same specificity; only the prior has
 changed.
 
+### The same answer from a truth table
+
+Bayes' theorem is easier to trust once you have seen it as counting.
+Imagine 10,000 people at 0.5% prevalence and cross-tabulate the two
+yes/no facts — infected or not, positive or not:
+
+|                   | Test positive (T+) | Test negative (T−) | Total  |
+| ----------------- | ------------------ | ------------------ | ------ |
+| Infected (C+)     | 45                 | 5                  | 50     |
+| Not infected (C−) | 199                | 9,751              | 9,950  |
+| Total             | 244                | 9,756              | 10,000 |
+
+Fill it from the definitions: 0.5% of 10,000 are infected (50); 90% of
+them test positive (45); 2% of the 9,950 healthy people test positive
+(199). Then read the answer straight off the T+ column:
+`P(C+ | T+) = 45 / 244 ≈ 0.184` — the same 18% as before. Every cell is
+a joint probability (`P(C+ ∩ T+) = 45 / 10,000`), each row and column
+total is a marginal, and every conditional probability is a cell
+divided by its row or column total. Building this table is the most
+reliable way to set up a Bayes problem.
+
 > ⚠ **Pitfall — Base rate fallacy.** Never interpret a conditional
 > probability without thinking about the base rate. In ML, the base rate
 > is usually the class prior `P(y = 1)` — the rate of fraud, churn,
@@ -464,7 +485,9 @@ Var(X) = E[(X − μ)²]
 
 Done. Both forms are correct, but the second is numerically stable only
 when `E[X²]` and `μ²` are not dangerously close in magnitude. In practice,
-Polars and NumPy use a two-pass algorithm that's both exact and stable.
+NumPy computes the mean first and then the squared deviations (a
+two-pass algorithm). Use the library's variance function rather than
+coding the `E[X²] − μ²` shortcut yourself.
 
 **Standard deviation** is `σ = √Var(X)`. It has the same units as `X`,
 which makes it easier to interpret than variance.
@@ -999,6 +1022,41 @@ If you drew 100 samples of `n = 100` and built a 95% CI for each, you
 would expect about 95 of them to contain the true `μ`. This one
 interval either does or doesn't; we don't know which.
 
+> ⚠ **Pitfall — CI of the mean vs prediction interval.** A CI describes
+> uncertainty about the _average_. It says nothing about where a
+> _single_ new observation will fall. For the 2024 4-room sales in the
+> course file (`n = 2,054`, `x̄ = 849,626`, `s = 102,826`) the 95% CI
+> for the mean price is about `[845,181, 854,072]` — only ±4,500 wide
+> — while a 95% **prediction interval** for one flat,
+> `x̄ ± t₀.₉₇₅ × s × √(1 + 1/n)`, is about `[647,924, 1,051,329]`
+> (±201,700); 95.2% of the actual sales fall inside it. If a client
+> asks "what is my flat worth?", the honest range is the prediction
+> interval, not the CI.
+
+### PDF and CDF
+
+A continuous random variable is described by its **probability density
+function** (PDF) `f(x)`. Density is not probability: probability is
+_area_ under `f`, so `P(a ≤ X ≤ b) = ∫ₐᵇ f(x) dx` and the total area
+is 1. A histogram drawn on the density scale (bar height = proportion ÷
+bin width) is the empirical version: its bars also have total area 1.
+
+The **cumulative distribution function** (CDF) accumulates that area:
+
+```
+F(x) = P(X ≤ x) = ∫ f(t) dt   from −∞ to x
+P(a < X ≤ b) = F(b) − F(a)
+```
+
+The CDF rises from 0 to 1 and never decreases. The Normal critical
+values used throughout this module are CDF statements:
+`Φ(1.96) − Φ(−1.96) ≈ 0.95`. On the course data, the share of 2024
+4-room sales at or below SGD 900,000 — the **empirical CDF** at 900K —
+is 0.689; a Normal with the sample's mean and SD gives
+`Φ((900,000 − 849,626) / 102,826) = Φ(0.49) ≈ 0.688`. When the two
+agree, a Normal model is adequate for that question; when they
+disagree (in the tails, typically), trust the data.
+
 ### Bessel's correction — why `n − 1`
 
 The population variance is:
@@ -1048,7 +1106,7 @@ Take expectations:
 
 ```
 E[Σᵢ (xᵢ − x̄)²] = Σᵢ E[(xᵢ − μ)²] − n × E[(x̄ − μ)²]
-                = nσ² − n × (σ²/n)     (the last term is Var(x̄) = σ²/n by CLT logic)
+                = nσ² − n × (σ²/n)     (Var(x̄) = σ²/n exactly, for independent draws)
                 = nσ² − σ² = (n − 1) σ²
 ```
 
@@ -1209,9 +1267,10 @@ I_n(μ) = n / σ²
 
 The **Cramér-Rao bound** says no unbiased estimator can have variance
 smaller than `1 / I_n(θ)`. For the Normal mean, this bound is `σ²/n`
-— and the sample mean achieves it exactly. The sample mean is
-**asymptotically efficient**; you cannot do better with an unbiased
-estimator.
+— and the sample mean achieves it exactly, at every `n`. The sample
+mean is **efficient**: you cannot do better with an unbiased estimator.
+(For most other models the MLE reaches the bound only as `n → ∞`, which
+is what "asymptotically efficient" means.)
 
 ### MAP — adding a prior (THEORY)
 

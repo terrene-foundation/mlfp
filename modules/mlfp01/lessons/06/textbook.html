@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -134,7 +134,7 @@
     Design choices that violate these principles force the reader to work harder than necessary.
   </text>
 </svg>
-<figcaption>Four of the core Gestalt principles. A chart that exploits them communicates instantly; one that fights them creates confusion.</figcaption>
+<figcaption>Four of the six Gestalt principles used in chart design (closure and connection are described below). A chart that exploits them communicates instantly; one that fights them creates confusion.</figcaption>
 </figure>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -197,6 +197,19 @@
   <li><strong>Connection</strong> — elements joined by a line read as related. Strongest grouping signal of all.</li>
 </ul>
 
+<h3>Visual order: the Z-pattern</h3>
+
+<p>
+  Readers of left-to-right languages scan a page or dashboard in a rough
+  "Z": across the top from left to right, diagonally down, then across the
+  bottom. Put the most important element — the headline number or the
+  chart that answers the main question — at the top left, and supporting
+  detail lower and to the right. On a single chart the same logic applies:
+  the title (top left) should state the takeaway, and the legend or
+  annotation the eye needs next belongs along that path, not tucked into a
+  far corner.
+</p>
+
 <h3>The attributes of a good chart</h3>
 
 <div class="compare-grid">
@@ -252,8 +265,12 @@
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>ModelVisualizer</code> wraps Plotly Express behind a consistent
-    API for the chart types you use most often in EDA and model evaluation.
+    <code>ModelVisualizer</code> builds Plotly figures behind a consistent
+    API for the chart types you use most often in EDA and model evaluation:
+    <code>histogram</code>, <code>scatter</code>, <code>box_plot</code>,
+    <code>metric_comparison</code>, <code>training_history</code>, and
+    model-evaluation charts such as <code>confusion_matrix</code> and
+    <code>roc_curve</code>.
     It accepts Polars DataFrames directly, returns Plotly Figure objects
     you can show inline (<code>fig.show()</code>), save as interactive HTML
     (<code>fig.write_html(...)</code>), or customise further with standard
@@ -276,10 +293,13 @@ fig.write_html("price_histogram.html")
 </code></pre>
 
 <p>
-  Every chart method on the visualiser follows the same shape: pass a
-  DataFrame, pass the columns, pass a title, get back a Figure. No manual
-  axis configuration, no legend wrangling, no colour palette decisions for
-  the default case — the engine has opinionated defaults that work.
+  The data-exploration methods follow the same shape: pass a DataFrame,
+  pass the columns, pass a title, get back a Figure. For
+  <code>histogram</code> and <code>scatter</code> the defaults work as-is.
+  Methods built for model evaluation can be repurposed for EDA, but then you
+  must set the axis titles yourself — the worked example shows how. For
+  chart types the engine does not offer (heatmaps, stacked bars), use
+  Plotly Express directly; it accepts Polars DataFrames.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -288,15 +308,18 @@ fig.write_html("price_histogram.html")
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Produce six charts that together tell the story of Singapore HDB
-    prices: distribution, price vs area, price by town, correlation
-    heatmap, price trend over time, and flat-type composition by town.
+    Produce six charts that together describe the course's HDB prices:
+    distribution, price vs area, price by town, price trend over time,
+    correlation heatmap, and flat-type composition by town — plus a 100%
+    stacked variant of the last one. Remember the data is synthetic: the
+    charts show you how it was generated, not the real market.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1.</span>
     <p>Set up the visualiser and prepare the data.</p>
     <pre><code class="language-python">import polars as pl
+import plotly.express as px
 from kailash_ml import ModelVisualizer
 from shared import MLFPDataLoader
 
@@ -304,9 +327,19 @@ loader = MLFPDataLoader()
 hdb = loader.load("mlfp01", "hdb_resale.parquet").with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
     pl.col("month").str.to_date("%Y-%m").alias("transaction_date"),
+    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
 )
 
+# Set aside the planted impossible prices (S$10 and S$9,000,000) before charting
+hdb_clean = hdb.filter(pl.col("resale_price").is_between(50_000, 5_000_000))
+print(f"{hdb.height - hdb_clean.height} rows set aside")   # 251 rows set aside
+
 viz = ModelVisualizer()</code></pre>
+    <p>
+      Lesson 1.2 found the 107 sales at <span class="nomath">S$10</span> and 144 at <span class="nomath">S$9,000,000.</span> They
+      are not prices any real flat sold for, so every chart below uses
+      <code>hdb_clean</code>. Step 2 shows why that matters.
+    </p>
   </div>
 
   <div class="step">
@@ -314,24 +347,28 @@ viz = ModelVisualizer()</code></pre>
     <p>Answering "how are prices distributed?". Bins = 40 gives enough
        resolution to see shape without over-fragmenting.</p>
     <pre><code class="language-python">fig = viz.histogram(
-    data=hdb,
+    data=hdb_clean,
     column="resale_price",
     bins=40,
     title="HDB Resale Price Distribution",
 )
 fig.write_html("ex6_price_histogram.html")</code></pre>
     <p>
-      Expect right skew: most transactions in the 350k–600k range, a long
-      tail of million-dollar flats. Mean will be higher than median as a
-      result.
+      Try it on the raw <code>hdb</code> first: the 144 records at
+      <span class="nomath">S$9,000,000</span> stretch the x-axis to nine million and squash every real
+      sale into the first few bars, and they pull the mean up to about
+      <span class="nomath">S$881,800.</span> A histogram is the fastest way to spot such defects. On
+      <code>hdb_clean</code> the shape is visible: 80% of sales fall between
+      about <span class="nomath">S$539,000</span> and <span class="nomath">S$1,221,000</span> around a median of <span class="nomath">S$848,916,</span> with
+      only a mild right skew (about 0.39).
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3 — Scatter.</span>
     <p>Answering "how does price relate to area?". Sample to 5,000 points
-       — a scatter of 500,000 points is unreadable ink.</p>
-    <pre><code class="language-python">hdb_sample = hdb.sample(n=5_000, seed=42)
+       — a scatter of 50,000 points is unreadable ink.</p>
+    <pre><code class="language-python">hdb_sample = hdb_clean.sample(n=5_000, seed=42)
 fig = viz.scatter(
     data=hdb_sample,
     x="floor_area_sqm",
@@ -339,14 +376,24 @@ fig = viz.scatter(
     title="HDB Resale Price vs Floor Area",
 )
 fig.write_html("ex6_price_vs_area.html")</code></pre>
+    <p>
+      A tight, rising band: larger flats cost more. On the cleaned data the
+      correlation between floor area and price is r = 0.91, so area alone
+      accounts for about 83% of the price variance ($r^2 \approx 0.83$). Run
+      the same correlation on the raw <code>hdb</code> and r falls to 0.47
+      ($r^2 \approx 0.22$). The relationship did not change; 251 bad rows
+      (0.5% of the data) hid it.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — Horizontal bar.</span>
+    <span class="step-label">Step 4 — Bar.</span>
     <p>Answering "which towns have the highest median price?". Aggregate
-       first, then feed the named dict to <code>metric_comparison</code>.</p>
+       first, then feed the named dict to <code>metric_comparison</code>.
+       That method was built to compare model scores, so its default axis
+       titles are "Model" and "Score" — set the real ones.</p>
     <pre><code class="language-python">district_prices = (
-    hdb.group_by("town")
+    hdb_clean.group_by("town")
     .agg(pl.col("resale_price").median().alias("median_price"))
     .sort("median_price", descending=True)
 )
@@ -360,7 +407,16 @@ price_by_town = {
 }
 
 fig = viz.metric_comparison(price_by_town)
-fig.write_html("ex6_median_by_town.html")</code></pre>
+fig.update_layout(xaxis_title="Town", yaxis_title="Median resale price (S$)")
+fig.write_html("ex6_median_by_town.html")
+
+# With 27 long town names, a horizontal bar reads better still
+fig = px.bar(
+    district_prices, x="median_price", y="town", orientation="h",
+    title="Seven central towns lead on median price",
+)
+fig.update_layout(yaxis={"categoryorder": "total ascending"})
+fig.write_html("ex6_median_by_town_h.html")</code></pre>
   </div>
 
   <div class="step">
@@ -368,54 +424,99 @@ fig.write_html("ex6_median_by_town.html")</code></pre>
     <p>Answering "how has price per sqm changed over time?". Aggregate to
        monthly first.</p>
     <pre><code class="language-python">monthly = (
-    hdb.group_by("transaction_date")
+    hdb_clean.group_by("transaction_date")
     .agg(pl.col("price_per_sqm").median().alias("median_psm"))
     .sort("transaction_date")
 )
 
 fig = viz.training_history(
-    {"median_price_sqm": monthly["median_psm"].to_list()}
+    {"median_price_sqm": monthly["median_psm"].to_list()},
+    x_label="Month", y_label="Median price per sqm (S$)",
 )
+# training_history plots against 1..N — put the real dates on the x-axis
+fig.update_traces(x=monthly["transaction_date"].to_list())
 fig.write_html("ex6_price_trend.html")</code></pre>
     <p>
-      <code>training_history</code> was designed for ML training curves
-      but works perfectly for any single-series line chart — that's the
-      beauty of consistent engine APIs.
+      <code>training_history</code> was designed for ML training curves, so
+      it assumes the x-axis is epochs 1, 2, 3, … and labels it "Epoch"
+      unless told otherwise. Repurposing it is fine, but only if you fix the
+      axis: the two extra lines give the chart real dates and real labels
+      ("no misleading axes"). The line itself is flat — the monthly median
+      stays between about <span class="nomath">S$8,640</span> and <span class="nomath">S$8,970</span> per sqm for ten years. No
+      trend is a legitimate answer.
     </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6 — Heatmap.</span>
-    <p>Answering "how do numeric features correlate?".</p>
-    <pre><code class="language-python">numeric = hdb.select(
-    "resale_price", "floor_area_sqm", "price_per_sqm"
-).drop_nulls()
+    <p>Answering "how do numeric features correlate?". Compute the matrix
+       with Polars, draw it with <code>px.imshow</code>.</p>
+    <pre><code class="language-python">numeric_cols = ["resale_price", "floor_area_sqm", "price_per_sqm", "year"]
+corr = hdb_clean.select(numeric_cols).corr()   # Polars correlation matrix
 
-corr = numeric.corr()
-fig = viz.confusion_matrix(
-    matrix=corr.to_numpy(),
-    labels=numeric.columns,
-    title="HDB Numeric Feature Correlations",
+fig = px.imshow(
+    corr.to_numpy(), x=corr.columns, y=corr.columns,
+    text_auto=".2f", color_continuous_scale="RdBu_r",
+    zmin=-1, zmax=1, title="HDB Feature Correlations",
 )
 fig.write_html("ex6_correlation.html")</code></pre>
+    <p>
+      With <code>RdBu_r</code> pinned to −1…+1, <strong>red means
+      positive</strong>, blue means negative and white is zero. Price and
+      area are the darkest red off the diagonal (0.91); price and price per
+      sqm are moderately red (0.45); area and price per sqm are near white
+      (0.05) — a bigger flat costs more in total but not more per square
+      metre. And <code>year</code> is white against everything (about
+      0.00): no time trend, the same finding as Lesson 1.5. Do not use
+      <code>ModelVisualizer.confusion_matrix</code> for this: it takes true
+      and predicted <em>labels</em> and computes a confusion matrix from
+      them; it cannot draw an arbitrary grid.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 7 — Stacked bar.</span>
     <p>Answering "how does flat-type composition vary across towns?".</p>
     <pre><code class="language-python">composition = (
-    hdb.group_by("town", "flat_type")
+    hdb_clean.group_by("town", "flat_type")
     .agg(pl.len().alias("count"))
     .sort("town", "flat_type")
 )
-# Plotly Express handles the stacking when given long-format data
-import plotly.express as px
+# Plotly Express takes the Polars DataFrame directly — no pandas needed
 fig = px.bar(
-    composition.to_pandas(),
+    composition,
     x="town", y="count", color="flat_type",
     title="HDB Flat Type Composition by Town",
 )
 fig.write_html("ex6_composition.html")</code></pre>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 8 — 100% stacked bar.</span>
+    <p>Answering "what <em>share</em> of each town's sales is each flat
+       type?". Raw counts make big towns look different just because they
+       are big; converting to shares puts every town on the same 0–100%
+       scale. This is the standard chart for survey and Likert data
+       ("strongly disagree … strongly agree"), where each bar is one
+       question and the segments are the answer shares.</p>
+    <pre><code class="language-python">shares = composition.with_columns(
+    (pl.col("count") / pl.col("count").sum().over("town") * 100)
+    .alias("share_pct")
+)
+
+fig = px.bar(
+    shares,
+    x="share_pct", y="town", color="flat_type", orientation="h",
+    title="Every town's sales are about 40% 4-room flats",
+)
+fig.update_layout(xaxis_title="Share of town's sales (%)")
+fig.write_html("ex6_composition_pct.html")</code></pre>
+    <p>
+      Each bar now sums to exactly 100%. The 4-room share ranges only from
+      about 37% to 44% across the 27 towns — the composition is nearly
+      identical everywhere, which the raw-count chart hid behind different
+      bar heights.
+    </p>
   </div>
 </div>
 
@@ -480,7 +581,7 @@ fig.write_html("ex6_composition.html")</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 1: Too many points on a scatter</span>
   <p>
-    500,000 points on a scatter is a grey blob — you cannot see individual
+    50,000 points on a scatter is a grey blob — you cannot see individual
     observations or the relationship. Sample down to 2,000–10,000 points
     for scatter, or switch to a 2D histogram / hexbin for density.
   </p>
@@ -509,8 +610,9 @@ fig.write_html("ex6_composition.html")</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 4: Title as header instead of takeaway</span>
   <p>
-    "HDB resale prices" is a <em>label</em>, not a takeaway. "Central
-    districts command a 60% premium over peripheral towns" is a takeaway.
+    "HDB resale prices" is a <em>label</em>, not a takeaway. "Seven central
+    towns sell for roughly 15% more than the rest" is a takeaway (and on
+    the course data, a true one).
     Use chart titles to state the conclusion, not the topic.
   </p>
 </div>
@@ -552,6 +654,32 @@ fig.write_html("ex6_composition.html")</code></pre>
   </p>
 </div>
 
+<div class="try-it">
+  <h3>🎯 Exercise E — 100% stacked</h3>
+  <p>
+    Build a 100% stacked horizontal bar showing, for each flat type, the
+    share of its sales in each <code>storey_range</code>. Title it with the
+    takeaway.
+  </p>
+</div>
+
+<div class="callout foundations">
+  <span class="label">🟢 Check your answers</span>
+  <p>
+    A: floor area is roughly symmetric (skew about 0.14), from 36 to 185
+    sqm with a median of about 98 sqm — no long tail, unlike price.
+    B: <code>viz.scatter(..., color="price_per_sqm")</code>; points with the
+    same area but very different colours are the planted price defects.
+    C: on <code>hdb_clean</code> the top ten by median price per sqm start
+    with Toa Payoh (about <span class="nomath">S$9,976</span>) and six other central towns near
+    <span class="nomath">S$9,800</span>–<span class="nomath">S$9,960,</span> then drop to about <span class="nomath">S$8,680</span> (Jurong East, Choa Chu
+    Kang, Bukit Panjang) — the title should say so. D: noisy month-to-month lines around a flat
+    rolling mean; there is no trend in this synthetic data. E: divide each
+    (flat type, storey range) count by
+    <code>pl.col("count").sum().over("flat_type")</code>.
+  </p>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2>Cross-References</h2>
 
@@ -561,8 +689,7 @@ fig.write_html("ex6_composition.html")</code></pre>
   patterns you are building manually. Module 2's exploratory data analysis
   relies on these six chart types. Module 5's model evaluation reuses
   <code>ModelVisualizer</code> for confusion matrices, ROC curves, and
-  feature importance. The Cleveland–McGill ranking drives every default
-  in the engine's chart choices.
+  feature importance — the purpose those methods were built for.
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->

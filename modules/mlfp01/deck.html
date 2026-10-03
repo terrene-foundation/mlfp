@@ -1459,8 +1459,10 @@ one_year_ago = today - timedelta(days=365)
 print(f"One year ago: {one_year_ago:%Y-%m-%d}")
 
 config_path = Path("config.json")
+config_path.write_text(json.dumps({"town": "BISHAN"}))
 with open(config_path) as f:
-    config = json.load(f)</code></pre>
+    config = json.load(f)
+print(config["town"])  # BISHAN</code></pre>
     </div>
     <div class="col">
       <h3>Packages You Will Use in MLFP</h3>
@@ -1547,16 +1549,17 @@ Transition: "Now let us learn about joins."
         <tbody>
           <tr><td><strong>Inner</strong></td><td>Only matching rows</td><td>Need complete data only</td></tr>
           <tr><td><strong>Left</strong></td><td>All left + matching right</td><td>Keep all primary records</td></tr>
-          <tr><td><strong>Outer</strong></td><td>All rows from both</td><td>Want everything, fill nulls</td></tr>
+          <tr><td><strong>Outer</strong> (<code>how="full"</code>)</td><td>All rows from both</td><td>Want everything, fill nulls</td></tr>
         </tbody>
       </table>
     </div>
     <div class="col">
-      <pre><code class="language-python"># HDB data has: town, price, area
-# MRT data has: town, nearest_mrt, distance_km
+      <pre><code class="language-text"># HDB: one row per SALE   - town "BISHAN" (UPPER)
+# MRT: one row per STATION - town "Bishan" (Title)
+#      150 stations over 32 towns
 
 # Inner: only towns in BOTH datasets
-# Left:  all HDB towns, nulls if no MRT
+# Left:  all HDB sales, nulls if no MRT
 # Outer: all towns from both sources</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         <strong>Key Decision:</strong> Do you want to <em>drop</em> rows without a match (inner) or <em>keep</em> them with nulls (left/outer)?
@@ -1568,7 +1571,8 @@ Transition: "Now let us learn about joins."
 Time: ~3 min
 Talking points:
 - Joins combine two tables on a shared key column. The key here is "town".
-- Inner join is the safest. Left join is the most common.
+- Left join is the safe default for enrichment; inner join silently drops unmatched rows.
+- Before any join, check two things about the key: does it match (HDB is UPPERCASE, MRT is Title Case) and is it unique on the right (MRT has several stations per town).
 - If beginners confused: draw the Venn diagram. Inner = overlap. Left = left circle. Outer = both.
 - If experts bored: mention anti-join and cross-join which Polars also supports.
 Transition: "Let us see joins in action with Polars."
@@ -1578,29 +1582,32 @@ Transition: "Let us see joins in action with Polars."
 <section>
   <h2>Polars Joins in Practice</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
-  <pre><code class="language-python">hdb = pl.read_csv("data/hdb_resale.csv")
-mrt = pl.read_csv("data/mrt_stations.csv")
-schools = pl.read_csv("data/primary_schools.csv")
+  <pre><code class="language-python">loader = MLFPDataLoader()
+hdb = loader.load("mlfp01", "hdb_resale.parquet")
+mrt = loader.load("mlfp_assessment", "mrt_stations.parquet")
+schools = loader.load("mlfp_assessment", "schools.parquet")
 
-# Left join: keep all HDB records
-hdb_mrt = hdb.join(mrt, on="town", how="left")
-print(f"After MRT join: {hdb_mrt.shape}")
+# Naive: hdb.join(mrt, on="town") matches NOTHING ("BISHAN" != "Bishan")
+# Fix 1: normalise the key.  Fix 2: one row per town on the right.
+mrt_town = (mrt.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("station_count")))
+school_town = (schools.with_columns(pl.col("town").str.to_uppercase())
+    .group_by("town").agg(pl.len().alias("school_count")))
 
-# Chain a second join: add school proximity
-hdb_enriched = (
-    hdb
-    .join(mrt, on="town", how="left")
-    .join(schools, on="town", how="left")
-)
-print(f"Enriched: {hdb_enriched.shape}")</code></pre>
+hdb_enriched = (hdb
+    .join(mrt_town, on="town", how="left")
+    .join(school_town, on="town", how="left"))
+print(hdb_enriched.shape)  # (50150, 13): every sale kept, no fan-out</code></pre>
   <div class="callout callout-foundations">
-    <strong>Pattern:</strong> <code>left_df.join(right_df, on="key_column", how="left")</code> &mdash; always specify <code>how=</code> explicitly.
+    <strong>Pattern:</strong> normalise the key, make the right side unique, then <code>left_df.join(right_df, on="key", how="left")</code> &mdash; always specify <code>how=</code>.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - The on= parameter specifies the join key. Both DataFrames must have a column with this name.
+- Trap 1 (case): HDB towns are UPPERCASE, MRT and school towns are Title Case. Joined raw, all 50,150 rows get nulls and the row count still looks "correct".
+- Trap 2 (fan-out): MRT has 150 stations over 32 towns. Joined after fixing case but without aggregating, the result explodes to 186,997 rows. Aggregate to one row per town first.
 - how= specifies the join type. Always be explicit; do not rely on defaults.
 - If beginners confused: after the join, print the shape to verify row counts match expectations.
 - If experts bored: mention left_on/right_on for different column names.
@@ -1617,9 +1624,9 @@ Transition: "What about rows that do not match?"
 print(null_counts)
 
 no_mrt = hdb_enriched.filter(
-    pl.col("nearest_mrt").is_null()
+    pl.col("station_count").is_null()
 )
-print(f"Missing MRT: {no_mrt.shape[0]:,}")
+print(f"Missing MRT: {no_mrt.shape[0]:,}")  # 11,032
 
 region_map = {
     "QUEENSTOWN": "Central",
@@ -1640,7 +1647,7 @@ hdb_enriched = hdb_enriched.with_columns(
         <strong>Left join:</strong> Keep all primary records. Missing data appears as <code>null</code>. Always check null counts.
       </div>
       <div class="callout callout-theory" style="margin-top:8px;">
-        <strong>Row count check:</strong> After a left join, result rows should equal left table rows (unless duplicates on the join key).
+        <strong>Row count check:</strong> After a left join, result rows equal left table rows <em>only if</em> the right key is unique. An equal count can also mean nothing matched &mdash; check nulls too.
       </div>
     </div>
   </div>
@@ -1648,7 +1655,8 @@ hdb_enriched = hdb_enriched.with_columns(
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- After any join, always check null_count() to see what did not match.
+- After any join, always check null_count() to see what did not match. Here 6 HDB towns (11,032 sales) have no station in the MRT table: BOON LAY, CENTRAL AREA, HOUGANG, KALLANG/WHAMPOA, PUNGGOL, SENGKANG.
+- Read the unmatched names: some are genuinely absent, others are naming mismatches (KALLANG/WHAMPOA vs KALLANG). fill_null cannot fix a naming mismatch.
 - The replace() method with a dictionary is a quick way to map values.
 - If beginners confused: null means "no data". Left join keeps the row, puts null where no match.
 - If experts bored: discuss join key cardinality issues (one-to-many duplications).
@@ -1663,8 +1671,8 @@ Transition: "Here is your exercise for this lesson."
     <div class="col">
       <ol>
         <li>Load HDB resale, MRT station, and school data</li>
-        <li>Join all three on the appropriate key</li>
-        <li>Compute distance-to-amenity features</li>
+        <li>Normalise the town key; aggregate MRT and schools to one row per town</li>
+        <li>Join all three; add town-level features: station count, station spacing, distance to the CBD</li>
         <li>Handle missing joins appropriately</li>
         <li>Verify the combined dataset row count</li>
       </ol>
@@ -1679,7 +1687,8 @@ Transition: "Here is your exercise for this lesson."
   <aside class="notes">
 Time: ~2 min
 Talking points:
-- The expected answer: left join on "town" to keep all HDB records, check nulls, compute distance features.
+- The expected answer: upper-case the town keys, aggregate the right tables per town, left join on "town" to keep all 50,150 HDB records, check nulls.
+- The MRT table's distance_to_mrt_km is the gap between neighbouring STATIONS, not a flat's distance to the MRT (the HDB data has no flat coordinates). The exercise builds honest town-level features instead: station count (MRT access), typical station spacing, and haversine distance from the town's station centroid to the CBD, which tracks price (r about -0.55).
 - If beginners confused: start with inner join, check row count, then switch to left join and compare.
 - If experts bored: challenge them to detect duplicate join keys.
 Transition: "Lesson 1.5 takes us into time-series territory with window functions."
@@ -1702,7 +1711,7 @@ Transition: "Lesson 1.5 takes us into time-series territory with window function
         <li><code>df.join(other, on="key", how="left")</code></li>
         <li><strong>Inner:</strong> only matching rows</li>
         <li><strong>Left:</strong> all left + matching right</li>
-        <li><strong>Outer:</strong> all from both sides</li>
+        <li><strong>Outer</strong> (<code>how="full"</code>): all from both sides</li>
         <li>Always check <code>null_count()</code> after joins</li>
       </ul>
     </div>

@@ -10,8 +10,9 @@
 <section><h2>PACT D/T/R addressing</h2><pre><code class="language-python" data-trim>from pact import Address
 from shared.mlfp06.ex_7 import compile_governance
 
-# load_org_yaml() + GovernanceEngine(loaded.org_definition), then APPLY the
-# YAML clearances and envelopes — the engine alone compiles only structure
+# load_org_yaml() + GovernanceEngine(loaded.org_definition) compiles only the
+# structure; compile_governance() then calls apply_governance_specs() so the
+# YAML clearances and envelopes are actually enforced
 engine, org = compile_governance()
 
 # Department 1 → its head Role → Team 1 → its head Role (the Data Analyst)
@@ -178,7 +179,7 @@ from pact import (ConstraintEnvelopeConfig, MonotonicTighteningError,
                   OperationalConstraintConfig, RoleEnvelope)
 from shared.mlfp06.ex_7 import compile_governance
 
-engine, _ = compile_governance()          # YAML envelopes ATTACHED
+engine, _ = compile_governance()   # runs apply_governance_specs: envelopes ATTACHED
 
 def test_denied_access_stays_denied():
     # data_analyst's envelope allows read / summarise / report only

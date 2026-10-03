@@ -326,17 +326,17 @@
       </div>
       <div class="kailash-bridge" style="margin-top: 12px;">
         <h3>InferenceServer</h3>
-        <p><code>predict</code>, <code>predict_batch</code>, <code>warm_cache</code> &mdash; serve production predictions. Used in Lesson 5.7.</p>
+        <p><code>from_registry</code> &rarr; <code>start</code> &rarr; <code>predict</code> &mdash; serve a registered ONNX model. Used in Lessons 5.2 and 5.7.</p>
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>ModelVisualizer</h3>
-        <p>Visualise training curves, latent spaces, attention maps, and generated outputs across all lessons.</p>
+        <p>Plot training curves (<code>training_history</code>) and latent / embedding scatter plots (<code>scatter</code>) across the lessons.</p>
       </div>
       <div class="kailash-bridge" style="margin-top: 12px;">
         <h3>RLTrainer</h3>
-        <p>Train RL agents with DQN, PPO, SAC. Custom Gymnasium environments. Used in Lesson 5.8.</p>
+        <p><code>kailash_ml.rl.RLTrainer</code> / <code>km.rl_train</code> &mdash; DQN, PPO, A2C, SAC, DDPG on custom Gymnasium envs. Lesson 5.8.</p>
       </div>
     </div>
   </div>
@@ -344,7 +344,7 @@
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Four engines for this module. OnnxBridge and InferenceServer are about deployment. ModelVisualizer is used throughout. RLTrainer is new to this module. Pattern: learn the theory first, build manually, then see how the engine automates and extends it.
+    Time: ~2 min. Four engines for this module. OnnxBridge and InferenceServer are about deployment: export to ONNX, register the artifact in ModelRegistry, then InferenceServer.from_registry loads it and predict() serves it (both are async). ModelVisualizer draws training curves and latent/embedding scatter plots. RLTrainer lives in kailash_ml.rl (not top-level kailash_ml); km.rl_train is the one-call entry point. Its backend is Stable-Baselines3, an optional extra (kailash-ml[rl]) that is not installed by default &mdash; so the exercises hand-write DQN and PPO and show the library call as the production path. Pattern: learn the theory first, build manually, then see how the engine automates it.
   </aside>
 </section>
 

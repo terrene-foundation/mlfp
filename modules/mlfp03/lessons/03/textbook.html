@@ -46,9 +46,8 @@
 <h2>Why This Matters</h2>
 
 <p>
-  Boosting and deep learning dominate competition leaderboards — but 60% of
-  production ML in Singapore enterprises still runs on the five families
-  below. They are fast, debuggable, interpretable, and most of them work
+  Boosting and deep learning dominate competition leaderboards — but a large
+  share of production ML still runs on the five families below. They are fast, debuggable, interpretable, and most of them work
   with almost no hyperparameter tuning. Knowing their geometry is the
   difference between picking the right tool in 30 seconds and wasting a day
   on a model that was wrong for the data shape.
@@ -167,8 +166,11 @@ $$\max_{\boldsymbol{\alpha}} \sum_i \alpha_i - \tfrac{1}{2}\sum_{i,j} \alpha_i\a
   <p>
     Not every function is a valid kernel. Mercer's theorem says $K$ is a
     kernel iff the Gram matrix $K_{ij} = K(x_i, x_j)$ is symmetric and
-    positive semi-definite for every finite sample. All the kernels in the
-    table above satisfy this; custom kernels need verification.
+    positive semi-definite for every finite sample. The linear, polynomial
+    (with $c \ge 0$) and RBF kernels satisfy this. The sigmoid kernel does
+    <em>not</em> in general — it is PSD only for some values of $\kappa$ and
+    $c$ — which is one reason it is rarely used. Custom kernels need
+    verification.
   </p>
 </div>
 
@@ -300,15 +302,15 @@ $$\hat{y} \;=\; \arg\max_y P(y) \prod_{j=1}^{d} P(x_j \mid y)$$
   <g font-family="Inter" font-size="12">
     <!-- tree -->
     <rect x="320" y="10"  width="160" height="42" rx="6" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
-    <text x="400" y="30" text-anchor="middle" font-weight="600">age &lt; 35 ?</text>
-    <text x="400" y="46" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.48</text>
+    <text x="400" y="30" text-anchor="middle" font-weight="600">tenure &lt; 600 d ?</text>
+    <text x="400" y="46" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.38</text>
 
     <rect x="140" y="100" width="160" height="42" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-    <text x="220" y="120" text-anchor="middle" font-weight="600">total_orders &lt; 5 ?</text>
+    <text x="220" y="120" text-anchor="middle" font-weight="600">order_count &lt; 5 ?</text>
     <text x="220" y="136" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.35</text>
 
     <rect x="500" y="100" width="160" height="42" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
-    <text x="580" y="120" text-anchor="middle" font-weight="600">days_since &lt; 30 ?</text>
+    <text x="580" y="120" text-anchor="middle" font-weight="600">satisfaction &lt; 3 ?</text>
     <text x="580" y="136" text-anchor="middle" font-size="11" fill="#64748B">Gini=0.42</text>
 
     <rect x="50"  y="195" width="140" height="42" rx="6" fill="#FECACA" stroke="#DC2626"/>
@@ -338,7 +340,7 @@ $$\hat{y} \;=\; \arg\max_y P(y) \prod_{j=1}^{d} P(x_j \mid y)$$
     <line x1="620" y1="142" x2="640" y2="195" stroke="#475569"/>
   </g>
 </svg>
-<figcaption>A depth-2 decision tree for e-commerce churn. Each split halves the Gini impurity of its node.</figcaption>
+<figcaption>An illustrative depth-2 decision tree for e-commerce churn (thresholds and leaf probabilities are for illustration). The root Gini of 0.38 is the impurity of the real churn rate, about 74%; each split is chosen because it lowers the weighted impurity of its children.</figcaption>
 </figure>
 
 <h3>Splitting criteria: Gini and Entropy</h3>
@@ -368,11 +370,12 @@ $$H \;=\; -\sum_{k=1}^{K} p_k \log_2 p_k$$
   because it avoids the logarithm.
 </p>
 
-<h3>Information gain</h3>
+<h3>Information gain and Gini decrease</h3>
 
 <p>
   A tree picks the split that maximises the drop in impurity from the
-  parent to the weighted children:
+  parent to the weighted children. With entropy as the impurity this drop
+  is called <strong>information gain</strong>:
 </p>
 
 $$\text{IG} \;=\; H(\text{parent}) - \sum_{j=\text{child}} \frac{n_j}{n_{\text{parent}}} \, H(\text{child}_j)$$
@@ -381,7 +384,9 @@ $$\text{IG} \;=\; H(\text{parent}) - \sum_{j=\text{child}} \frac{n_j}{n_{\text{p
   where $n_j$ is the number of samples in child $j$. The weights are the
   child sample sizes as a fraction of the parent. The algorithm evaluates
   every feature and every candidate threshold, picks the split with the
-  largest $\text{IG}$, and recurses.
+  largest $\text{IG}$, and recurses. Replace $H$ with Gini $G$ and the same
+  recipe gives the <strong>Gini decrease</strong> — what scikit-learn's
+  default <code>criterion="gini"</code> maximises.
 </p>
 
 <div class="worked-example">
@@ -395,9 +400,9 @@ Gini      = 1 - (0.625² + 0.375²)
   <p>A candidate split produces two children: {8 churn, 1 retain} and {2 churn, 5 retain}. Compute their Gini values and the weighted average.</p>
   <pre><code class="language-text">G(left)   = 1 - (8/9)² - (1/9)²     = 0.198
 G(right)  = 1 - (2/7)² - (5/7)²     = 0.408
-Gweighted = (9/16)(0.198) + (7/16)(0.408) = 0.290
-IG        = 0.469 - 0.290 = 0.179</code></pre>
-  <p>The split reduces impurity by 0.179. The algorithm will try every other candidate split and keep whichever has the largest IG.</p>
+Gweighted     = (9/16)(0.198) + (7/16)(0.408) = 0.290
+Gini decrease = 0.469 - 0.290 = 0.179</code></pre>
+  <p>The split reduces Gini impurity by 0.179. (This is a Gini decrease, not information gain — information gain is the same recipe with entropy in place of Gini.) The algorithm will try every other candidate split and keep whichever has the largest decrease.</p>
 </div>
 
 <h3>Pruning and overfitting</h3>
@@ -469,81 +474,100 @@ $$\lim_{n\to\infty} \left(1 - \frac{1}{n}\right)^n \;=\; \frac{1}{e} \;\approx\;
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Load the e-commerce customer dataset (~5000 customers, binary churn
-    target, mixed behavioural and demographic features). Train all five
-    model families with identical preprocessing and identical CV splits,
-    compare accuracy, F1, and training time, and discuss which model to
-    recommend.
+    Load the synthetic Singapore e-commerce customer dataset (50,000
+    customers; Exercise 3.3 samples 5,000 so the SVM stays tractable, and
+    holds out 1,000 of them as a test set). The target <code>churned</code> is
+    1 for about 74% of customers — churners are the <em>majority</em>. Train
+    all five model families with identical preprocessing and identical CV
+    folds, compare them against the "always predict churn" baseline, and
+    discuss which model to recommend.
   </p>
 
   <div class="step">
-    <span class="step-label">Step 1 — Unified preprocessing.</span>
-    <pre><code class="language-python">import polars as pl
-from sklearn.model_selection import cross_validate, StratifiedKFold
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-from kailash_ml.interop import to_sklearn_input
+    <span class="step-label">Step 1 — Unified preprocessing, no leaky columns.</span>
+    <pre><code class="language-python">from shared.mlfp03.ex_3 import build_train_test_split, cv_scores
 
-from shared import MLFPDataLoader
-df = MLFPDataLoader().load("mlfp03", "ecommerce_customers.parquet")
-X, y = to_sklearn_input(df, target="churned", standardise=True)
-cv = StratifiedKFold(5, shuffle=True, random_state=0)</code></pre>
+data = build_train_test_split()
+X, y, cv = data["X_train"], data["y_train"], data["cv"]
+print(X.shape, data["feature_names"])
+# (4000, 11) ['total_revenue', 'order_count', 'avg_order_value',
+#  'customer_tenure_days', 'ltv_tier', 'satisfaction_score', 'region', ...]</code></pre>
+    <p>
+      The helper drops <code>customer_id</code>, the free-text columns and —
+      crucially — <code>days_since_last_order</code>. The dataset marks a
+      customer as churned exactly when that column exceeds 180 days, so
+      keeping it lets a one-split tree score 100%. That is the Lesson 3.1
+      leakage rule in action: a column that <em>defines</em> the label can
+      never be a feature. It then z-scores the numeric columns and
+      ordinal-encodes the categoricals.
+    </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Train all five.</span>
+    <span class="step-label">Step 2 — Train all five with 5-fold CV.</span>
     <pre><code class="language-python">from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-import time
 
 models = {
-    "SVM (RBF)":     SVC(kernel="rbf", C=1.0, probability=True),
+    "SVM (RBF)":     SVC(kernel="rbf", C=1.0),   # AUC uses decision_function
     "KNN (k=25)":    KNeighborsClassifier(n_neighbors=25),
     "GaussianNB":    GaussianNB(),
-    "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=0),
-    "Random Forest": RandomForestClassifier(n_estimators=200,
-                                            oob_score=True, random_state=0),
+    "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=42),
+    "Random Forest": RandomForestClassifier(n_estimators=200, random_state=42),
 }
 
-results = {}
-for name, model in models.items():
-    t0 = time.time()
-    cv_res = cross_validate(model, X, y, cv=cv,
-        scoring=["accuracy", "f1", "roc_auc"], n_jobs=-1)
-    results[name] = {
-        "acc":      cv_res["test_accuracy"].mean(),
-        "f1":       cv_res["test_f1"].mean(),
-        "auc":      cv_res["test_roc_auc"].mean(),
-        "train_s":  time.time() - t0,
-    }</code></pre>
+results = {name: cv_scores(model, X, y, cv) for name, model in models.items()}</code></pre>
+    <p>
+      <code>cv_scores</code> wraps <code>cross_validate</code> with accuracy,
+      churn-class F1 and ROC AUC. SVC does not need
+      <code>probability=True</code> for AUC: the scorer ranks by the margin
+      from <code>decision_function</code>. Set it only when you need
+      calibrated-looking probabilities, and pay the internal 5-fold refit it
+      costs.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 3 — Build the comparison table.</span>
-    <pre><code class="language-python">print(f"{'Model':<16}{'Acc':>8}{'F1':>8}{'AUC':>8}{'Time(s)':>10}")
+    <pre><code class="language-python">base_acc = y.mean()                    # always predict "churn"
+base_f1 = 2 * base_acc / (1 + base_acc)
+print(f"{'Model':<16}{'Acc':>7}{'F1':>7}{'AUC':>7}")
+print(f"{'Always churn':<16}{base_acc:>7.3f}{base_f1:>7.3f}{0.5:>7.3f}")
 for name, r in results.items():
-    print(f"{name:<16}{r['acc']:>8.3f}{r['f1']:>8.3f}{r['auc']:>8.3f}{r['train_s']:>10.2f}")</code></pre>
-    <p>Typical output on this dataset:</p>
-    <pre><code class="language-text">Model              Acc     F1     AUC   Time(s)
-SVM (RBF)        0.812  0.708  0.874      8.4
-KNN (k=25)       0.776  0.648  0.831      0.6
-GaussianNB       0.731  0.604  0.796      0.1
-Decision Tree    0.788  0.688  0.811      0.3
-Random Forest    0.834  0.744  0.894      2.1</code></pre>
+    print(f"{name:<16}{r['accuracy']:>7.3f}{r['f1']:>7.3f}{r['auc_roc']:>7.3f}")</code></pre>
+    <p>Output (5-fold CV on the 4,000 training rows):</p>
+    <pre><code class="language-text">Model               Acc     F1    AUC
+Always churn      0.741  0.851  0.500
+SVM (RBF)         0.790  0.871  0.747
+KNN (k=25)        0.764  0.859  0.739
+GaussianNB        0.787  0.863  0.791
+Decision Tree     0.780  0.863  0.769
+Random Forest     0.784  0.866  0.779</code></pre>
   </div>
 
   <p>
-    Random forest wins on AUC by a small margin over SVM and is 4× faster.
-    Naive Bayes is eight times slower (on a small model, "slow" means
-    "tenth of a second"), but its accuracy is weak because the
-    independence assumption is violated by these correlated behavioural
-    features. KNN lags because the dataset has 30+ features and distance
-    concentration starts biting. For production, the recommendation is
-    random forest — best metric, cheap inference, interpretable via
-    feature importance.
+    Read the baseline row first. Because churners are the majority,
+    predicting "churn" for everyone already scores 0.741 accuracy and 0.851
+    F1 — so F1 barely separates the models, and accuracy gains of 2–5 points
+    are the real improvement. AUC, which measures ranking and cannot be
+    gamed by the majority class, is the fairest single comparison. On that
+    metric the humble Gaussian Naive Bayes edges out the random forest
+    (0.791 vs 0.779), even though its independence assumption is plainly
+    false — ranking customers correctly is easier than estimating their
+    probabilities correctly. KNN trails because its vote treats all eleven
+    scaled features as equally important. Every model trains in under a
+    second at this size, Naive Bayes and KNN fastest, the forest slowest.
+  </p>
+  <p>
+    The lesson is not "Naive Bayes is best". It is that <em>no family wins
+    everywhere</em>, the spread between families (about 0.05 AUC) is small
+    compared with what better features could buy, and you only know which
+    one wins on <em>your</em> data by running the same CV for all of them.
+    For production you would still weigh calibration, explainability and
+    maintenance alongside the AUC gap.
   </p>
 </div>
 
@@ -614,9 +638,11 @@ Random Forest    0.834  0.744  0.894      2.1</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 3 — Reporting accuracy on imbalanced data</span>
   <p>
-    If 90% of customers churn, a model that predicts "churn" for
-    everybody scores 90% accuracy. That is meaningless. Use F1, AUC, and
-    precision/recall — Lesson 3.5 explains this trap in full detail.
+    In the churn data 74% of customers churn, so a model that predicts
+    "churn" for everybody scores 74% accuracy and a churn-class F1 of 0.85
+    without learning anything. Always print the do-nothing baseline next
+    to your models, and compare on AUC and precision/recall — Lesson 3.5
+    explains this trap in full detail.
   </p>
 </div>
 
@@ -624,12 +650,27 @@ Random Forest    0.834  0.744  0.894      2.1</code></pre>
 <h2>Try It Yourself</h2>
 
 <div class="try-it">
-  <h3>🎯 Exercise A — Compute Gini and IG by hand</h3>
+  <h3>🎯 Exercise A — Compute Gini decrease and IG by hand</h3>
   <p>
     For a parent node with 20 positives and 30 negatives, consider a split
     into {15 pos, 5 neg} and {5 pos, 25 neg}. Compute parent Gini, both
-    child Gini values, the weighted child Gini, and the information gain.
+    child Gini values, the weighted child Gini and the Gini decrease. Then
+    repeat with entropy to get the information gain.
   </p>
+  <details>
+    <summary>Solution</summary>
+    <pre><code class="language-text">Gini(parent) = 1 - 0.4² - 0.6²             = 0.480
+Gini(left)   = 1 - 0.75² - 0.25²           = 0.375
+Gini(right)  = 1 - (5/30)² - (25/30)²      = 0.278
+weighted     = (20/50)(0.375) + (30/50)(0.278) = 0.317
+Gini decrease = 0.480 - 0.317              = 0.163
+
+H(parent) = H(0.4)  = 0.971 bits
+H(left)   = H(0.75) = 0.811
+H(right)  = H(1/6)  = 0.650
+weighted  = 0.4(0.811) + 0.6(0.650) = 0.715
+IG        = 0.971 - 0.715 = 0.256 bits</code></pre>
+  </details>
 </div>
 
 <div class="try-it">

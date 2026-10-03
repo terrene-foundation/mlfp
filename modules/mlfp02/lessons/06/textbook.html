@@ -147,9 +147,13 @@ $$\ell(\beta) \;=\; \sum_{i=1}^{n} \big[y_i \log p_i + (1 - y_i) \log(1 - p_i)\b
     to zero gives a linear system. For logistic regression, the gradient
     is $X^\top (p - y)$ where $p$ itself depends non-linearly on $\beta$
     through the sigmoid. Solving $X^\top (p(\beta) - y) = 0$ requires an
-    iterative method like Newton-Raphson (also called Iteratively Reweighted
-    Least Squares, IRLS). Scipy's <code>minimize</code> with BFGS does this
-    under the hood.
+    iterative method. The classic one is Newton-Raphson, which for logistic
+    regression is the same as Iteratively Reweighted Least Squares (IRLS) and
+    uses the exact second derivatives. SciPy's <code>minimize</code> with
+    <code>method="BFGS"</code> is a <em>quasi</em>-Newton method: it builds an
+    approximation of the curvature from successive gradients instead of
+    computing it — slower to converge per step, but it reaches the same
+    maximum.
   </p>
 </div>
 
@@ -318,52 +322,69 @@ $$\text{HSD} \;=\; q_{\alpha, k, n - k} \cdot \sqrt{\frac{\text{MS}_{\text{withi
 </p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>The Kailash Engine: TrainingPipeline</h2>
+<h2>The Kailash Engine: ModelVisualizer</h2>
 
 <div class="callout kailash">
   <span class="label">⚙ Kailash Engine</span>
   <p>
-    <code>TrainingPipeline</code> handles logistic regression the same way it
-    handles OLS — you pass features and labels, it picks the right
-    objective, runs the optimiser, logs the run, and stores the model.
-    In the exercise you will hand-roll logistic MLE with scipy first, then
-    repeat it through <code>TrainingPipeline</code> to see the engine
-    wrapping.
+    In this lesson and in Exercise 6 you fit logistic regression yourself —
+    the Bernoulli negative log-likelihood minimised with
+    <code>scipy.optimize.minimize</code> — so that every coefficient and odds
+    ratio is something you derived. Kailash's <code>ModelVisualizer</code>
+    then draws the diagnostics from your predictions:
+    <code>viz.confusion_matrix(y_true, y_pred)</code> and
+    <code>viz.roc_curve(y_true, y_scores)</code> each return a plotly figure.
+    (<code>TrainingPipeline</code>, introduced in Module 3, trains and
+    registers predictive models; it does not report coefficient odds ratios
+    or standard errors.)
   </p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2>Worked Example: ICU mortality prediction</h2>
+<h2>Worked Example: Will this HDB flat sell above the median price?</h2>
 
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Predict ICU 30-day mortality from age, APACHE score, and admission
-    type using logistic regression. Interpret the coefficients as odds
-    ratios and evaluate with a confusion matrix and AUC.
+    Using HDB resales from 2020 onwards, predict whether a flat sells
+    <em>above the median price</em> from its floor area and its age at sale —
+    the same binary target Exercise 6 uses. Interpret the coefficients as
+    odds ratios and evaluate with a confusion matrix and AUC.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — Load and prepare.</span>
+    <p>
+      Both predictors are standardised (mean 0, SD 1), so every odds ratio
+      below is "per one standard deviation" — about 27 m² of floor area or
+      16 years of age — not per square metre or per year.
+    </p>
     <pre><code class="language-python">import polars as pl
 import numpy as np
 from scipy.optimize import minimize
 from shared import MLFPDataLoader
 
-df = MLFPDataLoader().load("mlfp02", "icu_patients.parquet")
-df = df.with_columns(died=pl.col("outcome_30d").eq("died").cast(pl.Int8))
-
-X_cols = ["age", "apache_score", "emergency_admission"]
-X = df.select(X_cols).to_numpy()
-X = np.column_stack([np.ones(len(X)), X])
-y = df["died"].to_numpy()</code></pre>
+df = (
+    MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+    .filter(pl.col("month") &gt;= "2020-01")
+    .with_columns(
+        age=pl.col("month").str.slice(0, 4).cast(pl.Int64)
+        - pl.col("lease_commence_date")
+    )
+)
+y = (df["resale_price"] &gt; df["resale_price"].median()).cast(pl.Int8).to_numpy()
+raw = df.select(["floor_area_sqm", "age"]).to_numpy().astype(float)
+X = np.column_stack([np.ones(len(y)), (raw - raw.mean(0)) / raw.std(0)])
+names = ["intercept", "area (per SD)", "age (per SD)"]
+print(len(y), raw.std(0).round(1))</code></pre>
+    <pre><code class="language-text">24904 [26.8 15.6]</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2 — Define the sigmoid and the loss.</span>
     <pre><code class="language-python">def sigmoid(z):
     # Numerically stable form
-    return np.where(z >= 0, 1 / (1 + np.exp(-z)), np.exp(z) / (1 + np.exp(z)))
+    return np.where(z &gt;= 0, 1 / (1 + np.exp(-z)), np.exp(z) / (1 + np.exp(z)))
 
 def neg_log_lik(beta, X, y):
     z = X @ beta
@@ -374,35 +395,59 @@ def neg_log_lik(beta, X, y):
 
   <div class="step">
     <span class="step-label">Step 3 — Optimise.</span>
-    <pre><code class="language-python">beta0 = np.zeros(X.shape[1])
-result = minimize(neg_log_lik, beta0, args=(X, y), method="BFGS")
+    <pre><code class="language-python">result = minimize(neg_log_lik, np.zeros(X.shape[1]), args=(X, y), method="BFGS")
 beta_hat = result.x
-names = ["intercept"] + X_cols
 for name, b in zip(names, beta_hat):
-    print(f"{name:>20s}: {b:+.4f}  (OR = {np.exp(b):.2f})")</code></pre>
+    print(f"{name:&gt;14s}: beta = {b:+.4f}  OR = {np.exp(b):.2f}")</code></pre>
+    <pre><code class="language-text">     intercept: beta = -0.0637  OR = 0.94
+ area (per SD): beta = +3.9962  OR = 54.39
+  age (per SD): beta = +0.0250  OR = 1.03</code></pre>
+    <p>
+      BFGS may report <code>result.success = False</code> with "precision
+      loss" on a problem this large; that is the line search giving up on the
+      last decimal places, not a failed fit. Check that the coefficients are
+      stable (e.g. restart from <code>result.x</code>) rather than ignoring
+      the flag.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 4 — Predict, confusion matrix, AUC.</span>
-    <pre><code class="language-python">from sklearn.metrics import confusion_matrix, roc_auc_score
+    <pre><code class="language-python">from sklearn.metrics import roc_auc_score   # a stateless metric function
+from kailash_ml import ModelVisualizer
 
 p_hat = sigmoid(X @ beta_hat)
-y_hat = (p_hat >= 0.5).astype(int)
-cm = confusion_matrix(y, y_hat)
-auc = roc_auc_score(y, p_hat)
-print("Confusion matrix:\n", cm)
+y_hat = (p_hat &gt;= 0.5).astype(int)
+tn = int(((y == 0) &amp; (y_hat == 0)).sum()); fp = int(((y == 0) &amp; (y_hat == 1)).sum())
+fn = int(((y == 1) &amp; (y_hat == 0)).sum()); tp = int(((y == 1) &amp; (y_hat == 1)).sum())
+print(f"TN={tn}  FP={fp}  FN={fn}  TP={tp}")
 print(f"Accuracy: {(y == y_hat).mean():.3f}")
-print(f"AUC:      {auc:.3f}")</code></pre>
+print(f"AUC:      {roc_auc_score(y, p_hat):.3f}")
+
+viz = ModelVisualizer()
+fig_cm = viz.confusion_matrix(y, y_hat)
+fig_roc = viz.roc_curve(y, p_hat)</code></pre>
+    <pre><code class="language-text">TN=10037  FP=2415  FN=2200  TP=10252
+Accuracy: 0.815
+AUC:      0.924</code></pre>
+    <p>
+      The classes are balanced by construction (the median splits them
+      50/50), so accuracy is a fair summary here — unlike the imbalanced
+      case above.
+    </p>
   </div>
 
   <div class="step">
     <span class="step-label">Step 5 — Interpret.</span>
     <p>
-      Suppose the coefficient on APACHE score is $\hat\beta = 0.08$, so
-      $e^{0.08} \approx 1.08$. Each one-point increase in APACHE multiplies
-      the mortality odds by about 1.08 — an 8% increase in odds per APACHE
-      point, holding age and admission type constant. For a 20-point
-      APACHE increase, odds multiply by $e^{1.6} \approx 4.95$.
+      The area coefficient is $\hat\beta = 4.00$, so $e^{4.00} \approx 54$:
+      each additional standard deviation of floor area (about 27 m²)
+      multiplies the odds of selling above the median by about 54, holding
+      age fixed. Age has essentially no effect (OR $\approx 1.03$ per 16
+      years) — consistent with the linear model in Lesson 2.5. To translate
+      to probabilities: a flat at average area and age has
+      $p = \sigma(-0.064) \approx 0.48$; one SD larger gives
+      $\sigma(-0.064 + 4.00) \approx 0.98$.
     </p>
   </div>
 </div>
@@ -414,36 +459,47 @@ print(f"AUC:      {auc:.3f}")</code></pre>
   <h3>📝 Goal</h3>
   <p>
     Do 3-room, 4-room, 5-room, and executive flats have different average
-    resale prices? Use one-way ANOVA and Tukey's HSD.
+    resale prices? Use one-way ANOVA and Tukey's HSD on the same 2020+ HDB
+    frame.
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — ANOVA.</span>
     <pre><code class="language-python">from scipy import stats
 
-groups = {
-    "3-room": df.filter(pl.col("flat_type") == "3 ROOM")["resale_price"].to_numpy(),
-    "4-room": df.filter(pl.col("flat_type") == "4 ROOM")["resale_price"].to_numpy(),
-    "5-room": df.filter(pl.col("flat_type") == "5 ROOM")["resale_price"].to_numpy(),
-    "exec":   df.filter(pl.col("flat_type") == "EXECUTIVE")["resale_price"].to_numpy(),
-}
-F, p = stats.f_oneway(*groups.values())
+types = ["3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
+groups = [df.filter(pl.col("flat_type") == t)["resale_price"].to_numpy() for t in types]
+F, p = stats.f_oneway(*groups)
 print(f"ANOVA: F = {F:.1f}, p = {p:.3g}")</code></pre>
+    <pre><code class="language-text">ANOVA: F = 2031.5, p = 0</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 2 — Tukey's HSD.</span>
-    <pre><code class="language-python">from statsmodels.stats.multicomp import pairwise_tukeyhsd
-
-prices = np.concatenate(list(groups.values()))
-labels = np.concatenate([[k] * len(v) for k, v in groups.items()])
-result = pairwise_tukeyhsd(prices, labels, alpha=0.05)
-print(result)</code></pre>
     <p>
-      Tukey tells you which pairs of flat types differ significantly. In
-      practice all six pairs will be flagged because the sample is huge and
-      the differences are real. With smaller samples or smaller effects,
-      Tukey lets you say <em>which</em> groups carry the ANOVA result.
+      <code>scipy.stats.tukey_hsd</code> uses the studentised range
+      distribution — the real Tukey procedure. (Running Bonferroni-corrected
+      pairwise $t$-tests and calling it "Tukey" is a common mistake: it is a
+      different, more conservative test.)
+    </p>
+    <pre><code class="language-python">res = stats.tukey_hsd(*groups)
+for i in range(len(types)):
+    for j in range(i + 1, len(types)):
+        lo, hi = res.confidence_interval().low[i, j], res.confidence_interval().high[i, j]
+        print(f"{types[i]:&gt;9s} - {types[j]:&lt;9s} diff = {res.statistic[i, j]:&gt;11,.0f}"
+              f"  95% CI [{lo:,.0f}, {hi:,.0f}]  p = {res.pvalue[i, j]:.3g}")</code></pre>
+    <pre><code class="language-text">   3 ROOM - 4 ROOM    diff =    -254,894  95% CI [-272,787, -237,001]  p = 0
+   3 ROOM - 5 ROOM    diff =    -495,262  95% CI [-516,007, -474,517]  p = 0
+   3 ROOM - EXECUTIVE diff =    -731,512  95% CI [-760,336, -702,687]  p = 0
+   4 ROOM - 5 ROOM    diff =    -240,368  95% CI [-259,248, -221,488]  p = 0
+   4 ROOM - EXECUTIVE diff =    -476,618  95% CI [-504,131, -449,105]  p = 0
+   5 ROOM - EXECUTIVE diff =    -236,250  95% CI [-265,697, -206,802]  p = 0</code></pre>
+    <p>
+      All six pairs differ: each step up in flat type adds roughly
+      236K–255K to the mean price, and every simultaneous 95% interval
+      excludes zero. With a sample this large that is expected; with smaller
+      samples or smaller effects, Tukey lets you say <em>which</em> groups
+      carry the ANOVA result while keeping the family-wise error at 5%.
     </p>
   </div>
 </div>
@@ -472,9 +528,13 @@ print(result)</code></pre>
 <div class="callout warning">
   <span class="label">⚠ Mistake 3: Running many $t$-tests instead of ANOVA</span>
   <p>
-    With 4 groups you have 6 pairs. Running 6 $t$-tests at $\alpha = 0.05$
-    inflates family-wise error to about 26%. Use ANOVA first; if
-    significant, use Tukey for post-hoc.
+    With 4 groups you have 6 pairs. Running 6 uncorrected $t$-tests at
+    $\alpha = 0.05$ when all nulls are true gives at least one false positive
+    about 20% of the time (simulation with 4 groups of 30). The textbook
+    bound $1 - 0.95^6 \approx 26\%$ assumes the six tests are independent;
+    they are not (they share groups), so the real rate is somewhat lower —
+    but still four times $\alpha$. Use ANOVA first; if significant, use Tukey
+    for post-hoc.
   </p>
 </div>
 
@@ -507,7 +567,8 @@ print(result)</code></pre>
     distribution — all the nulls are true. Run ANOVA and all 6 pairwise
     $t$-tests with no correction. Repeat 1,000 times. Count how often
     ANOVA rejects (should be ~5%) vs how often at least one pairwise
-    $t$-test rejects (should be ~26%).
+    $t$-test rejects (expect about 20–21% — below the 26% independence
+    bound, because the pairwise tests share groups).
   </p>
 </div>
 
@@ -535,8 +596,9 @@ print(result)</code></pre>
 </p>
 <p>
   Lesson 2.7 returns to A/B testing with two big ideas that sharpen the
-  tools from 2.4: CUPED to cut variance nearly in half using
-  pre-experiment data, and difference-in-differences to measure causal
+  tools from 2.4: CUPED to cut variance using pre-experiment data (by half
+  when the pre-period metric is strongly correlated with the outcome), and
+  difference-in-differences to measure causal
   effects when randomisation is impossible.
 </p>
 </div>

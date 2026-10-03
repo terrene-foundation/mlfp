@@ -1150,11 +1150,11 @@ You should now be able to:
 
 ## Why This Matters
 
-So far every question you have asked has been a one-off: filter for this town, compute that mean, print the result. Real data analysis is not one-off. You ask the same question twenty-six times — once for each HDB town — and compare the answers. You want to know the median price of every district, not just Ang Mo Kio. You want the standard deviation too, and the 75th percentile, and the transaction count, all at once. Writing twenty-six separate filter-and-compute blocks would be six hundred lines of code and the inevitable bug from copy-pasting.
+So far every question you have asked has been a one-off: filter for this town, compute that mean, print the result. Real data analysis is not one-off. You ask the same question twenty-seven times — once for each HDB town in the dataset — and compare the answers. You want to know the median price of every district, not just Ang Mo Kio. You want the standard deviation too, and the 75th percentile, and the transaction count, all at once. Writing twenty-seven separate filter-and-compute blocks would be six hundred lines of code and the inevitable bug from copy-pasting.
 
 The antidote is two-fold. First, *functions* let you package a calculation under a name so it can be reused. Write the calculation once, give it a name, call it as many times as you want. Second, *group-by aggregation* lets you tell Polars "for each distinct value in this column, compute these statistics" in a single call. You do not loop over the groups yourself; Polars does it for you, and does it fast.
 
-By the end of this lesson you will have written your first Python functions, used them to classify and format values, and aggregated a 500,000-row dataset into a twenty-six-row district summary table. The district table is the kind of output that ends up on slide three of a property-market briefing — except you will have built it yourself, which means you will know exactly how every number was computed and will not be caught out when someone asks.
+By the end of this lesson you will have written your first Python functions, used them to classify and format values, and aggregated a 50,000-row dataset into a twenty-seven-row district summary table. The district table is the kind of output that ends up on slide three of a property-market briefing — except you will have built it yourself, which means you will know exactly how every number was computed and will not be caught out when someone asks.
 
 ## Core Concepts
 
@@ -1271,7 +1271,7 @@ for town in towns:
 
 This runs the indented block once for each item in the list, with the variable `town` bound to that item each time. For loops work on any *iterable* — lists, strings, dictionaries, Polars Series, even the rows of a DataFrame.
 
-**Dictionaries** are unordered collections of key-value pairs. You create a dictionary with curly braces:
+**Dictionaries** are collections of key-value pairs. Since Python 3.7 they remember insertion order — iterating gives the keys in the order you added them. You create a dictionary with curly braces:
 
 ```python
 prices = {"BISHAN": 580_000, "QUEENSTOWN": 620_000, "YISHUN": 420_000}
@@ -1334,7 +1334,7 @@ district_stats = (
 )
 ```
 
-This single call processes 500,000 rows and produces a 26-row summary table (one row per Singapore HDB town). It does count, mean, median, standard deviation, min, max, and two quantiles — eight statistics per town — in a single pass. On modern hardware this completes in well under a second. Trying to do the same thing with a manual for loop over the towns would take minutes and dozens of lines of code.
+This single call processes 50,150 rows and produces a 27-row summary table (one row per HDB town in the dataset). It does count, mean, median, standard deviation, min, max, and two quantiles — eight statistics per town — in a single pass. On modern hardware this completes in well under a second. Trying to do the same thing with a manual for loop over the towns would take minutes and dozens of lines of code.
 
 `pl.len()` is a special aggregation that returns the number of rows in each group — the "count" column. It is different from `pl.col("something").count()`, which counts non-null values in a specific column. When you want "how many transactions in this group", use `pl.len()`.
 
@@ -1350,7 +1350,7 @@ town_flat_stats = (
 )
 ```
 
-This produces one row per unique `(town, flat_type)` pair. With 26 towns and 7 flat types, the result could have up to 182 rows (though in practice some combinations do not exist — there are no jumbo flats in every town).
+This produces one row per unique `(town, flat_type)` pair. With 27 towns and 6 flat types, the result could have up to 162 rows. In the course dataset every combination occurs, so you get all 162; in real data some combinations would be missing (not every town has multi-generation flats), and a multi-key group_by only returns the pairs that actually occur.
 
 ### THEORY: What group_by does under the hood
 
@@ -1426,7 +1426,7 @@ test_prices = pl.Series("prices", [300_000, 400_000, 500_000, 600_000, 700_000])
 print(f"IQR of test prices: {format_sgd(compute_iqr(test_prices))}")  # S$200,000
 ```
 
-Always test helpers on a small example before plugging them into a 500,000-row pipeline. If the IQR helper returns nonsense for five values, it will return nonsense for five hundred thousand.
+Always test helpers on a small example before plugging them into a 50,000-row pipeline. If the IQR helper returns nonsense for five values, it will return nonsense for fifty thousand.
 
 ### Step 2: The district statistics group_by
 
@@ -1466,7 +1466,7 @@ print(f"Districts: {district_stats.height}")
 print(district_stats.head(5))
 ```
 
-The output is a tidy table of 26 rows sorted from most expensive to least, with ten columns of statistics per row. The first row should be something like Bukit Timah or Central Area; the last row is typically Sembawang or Choa Chu Kang — the cheaper peripheral new towns.
+The output is a tidy table of 27 rows sorted from most expensive to least, with ten columns of statistics per row (plus the town). In the course dataset the top three are TOA PAYOH (median S$973,887), KALLANG/WHAMPOA and BUKIT TIMAH, and the last is BOON LAY (S$819,981). Look at the gap: seven central towns have medians around S$945k–975k, and the other twenty sit tightly between S$820k and S$843k. The synthetic data was generated with a central-town premium and very little else.
 
 ### Step 3: Add derived columns to the aggregated table
 
@@ -1484,7 +1484,7 @@ Three new columns:
 
 - `iqr_price` — the interquartile range. A wide IQR means prices vary a lot within the town (diverse housing stock).
 - `cv_price_pct` — the *coefficient of variation* as a percentage. CV is standard deviation divided by mean, expressed as a percentage. Unlike the raw std, CV is scale-invariant: a CV of 25% means "the spread is a quarter of the average", regardless of whether the average is $400k or $4,000. This makes CV the right tool for comparing spread across groups with different means.
-- `premium_ratio` — the median divided by the max. A premium_ratio near 1 means the median is close to the maximum, i.e. the whole town is expensive; a premium_ratio near 0.5 means the median is half the max, i.e. there's a wide range with many cheap units.
+- `premium_ratio` — the median divided by the max. In principle, a ratio near 1 means the median is close to the maximum (the whole town is expensive) and a ratio near 0.5 means a wide range. In practice, look at what you get: about 0.09–0.11 for 26 of the 27 towns, because almost every town contains one of the planted S$9,000,000 sales, so the "max" is that bad record. Only JURONG EAST, whose maximum is a plausible S$1.76M, shows 0.48. A statistic built on the max is a statistic built on the single most extreme — and most likely erroneous — row. The same planted records inflate `cv_price_pct` (37%–78% across towns), because the standard deviation is as sensitive to outliers as the max. The IQR (about S$340k–465k per town) is the robust spread measure here.
 
 Print the core columns:
 
@@ -1516,18 +1516,23 @@ Expected:
 
 ```
 shape: (6, 5)
-┌────────────┬─────────────┬───────┬──────────────┬──────────────────┐
-│ town       ┆ flat_type   ┆ count ┆ median_price ┆ median_price_sqm │
-│ ANG MO KIO ┆ 2 ROOM      ┆ 112   ┆ 230000.0     ┆ 5227.0           │
-│ ANG MO KIO ┆ 3 ROOM      ┆ 6234  ┆ 285000.0     ┆ 4275.0           │
-│ ANG MO KIO ┆ 4 ROOM      ┆ 12897 ┆ 475000.0     ┆ 4950.0           │
-│ ANG MO KIO ┆ 5 ROOM      ┆ 6188  ┆ 680000.0     ┆ 5540.0           │
-│ ANG MO KIO ┆ EXECUTIVE   ┆ 3104  ┆ 820000.0     ┆ 5930.0           │
-│ ANG MO KIO ┆ MULTI-GEN'L ┆ 312   ┆ 985000.0     ┆ 6200.0           │
-└────────────┴─────────────┴───────┴──────────────┴──────────────────┘
+┌────────────┬──────────────────┬───────┬──────────────┬──────────────────┐
+│ town       ┆ flat_type        ┆ count ┆ median_price ┆ median_price_sqm │
+│ ---        ┆ ---              ┆ ---   ┆ ---          ┆ ---              │
+│ str        ┆ str              ┆ u32   ┆ f64          ┆ f64              │
+╞════════════╪══════════════════╪═══════╪══════════════╪══════════════════╡
+│ ANG MO KIO ┆ 2 ROOM           ┆ 102   ┆ 338943.0     ┆ 8366.161398      │
+│ ANG MO KIO ┆ 3 ROOM           ┆ 613   ┆ 575598.0     ┆ 8477.134588      │
+│ ANG MO KIO ┆ 4 ROOM           ┆ 1015  ┆ 826574.0     ┆ 8482.880658      │
+│ ANG MO KIO ┆ 5 ROOM           ┆ 521   ┆ 1.061327e6   ┆ 8905.741351      │
+│ ANG MO KIO ┆ EXECUTIVE        ┆ 213   ┆ 1.289661e6   ┆ 8825.950069      │
+│ ANG MO KIO ┆ MULTI-GENERATION ┆ 22    ┆ 1526430.5    ┆ 8818.088804      │
+└────────────┴──────────────────┴───────┴──────────────┴──────────────────┘
 ```
 
-Now you can see the structure: within a single town, five-room flats go for more than three-room, and executives go for more than five-room. The median_price_sqm tells you something interesting too — it rises with flat size even within the same town, because bigger flats often come with desirable amenities (corner units, higher floors, larger rooms).
+(Polars switches to scientific notation such as `1.061327e6` for some large floats — that is 1,061,327.)
+
+Now you can see the structure: within a single town, the median price climbs steadily with flat size, from about S$339k for a 2-room to about S$1.53M for a multi-generation flat. The `median_price_sqm` column tells the opposite story: it barely moves (S$8,366 to S$8,906). Bigger flats cost more *because they are bigger*, not because each square metre is dearer. That is exactly why you normalise by area before comparing towns with different flat mixes.
 
 ### Step 5: Iterate over the district report and format each line
 
@@ -1557,7 +1562,7 @@ for row in top_15.iter_rows(named=True):
 print(f"{'=' * 70}")
 ```
 
-Expected output (values will vary by dataset vintage):
+Expected output (first five of the fifteen lines):
 
 ```
 ======================================================================
@@ -1565,16 +1570,16 @@ Expected output (values will vary by dataset vintage):
 ======================================================================
   Town                 Median Price      Txns    Spread       Per sqm
   ------------------------------------------------------------------
-  BUKIT TIMAH              S$780,000     1,453  CV= 32.1%     S$7,450/sqm
-  CENTRAL AREA             S$720,000     3,287  CV= 38.5%     S$9,120/sqm
-  QUEENSTOWN               S$680,000    10,234  CV= 29.4%     S$7,890/sqm
-  BISHAN                   S$650,000    12,478  CV= 24.8%     S$6,940/sqm
-  BUKIT MERAH              S$610,000    15,632  CV= 27.2%     S$7,210/sqm
+  TOA PAYOH               S$973,887     1,463  CV= 37.1%       S$9,972/sqm
+  KALLANG/WHAMPOA         S$964,675     1,514  CV= 47.3%       S$9,960/sqm
+  BUKIT TIMAH             S$961,182       485  CV= 47.6%       S$9,809/sqm
+  QUEENSTOWN              S$960,422     1,523  CV= 46.5%       S$9,947/sqm
+  CENTRAL AREA            S$955,722       504  CV= 68.1%       S$9,938/sqm
   ...
 ======================================================================
 ```
 
-The ten most expensive towns by median price. CV varies noticeably — some towns (like Bishan) have tight spreads around their median, while others (like Central Area) have wide spreads because they mix tiny studio apartments with large penthouses. The Central Area's high price per square metre (~$9,000) is unmatched anywhere else — that is the pure "location premium" for being in the heart of the city.
+The most expensive towns by median price, all central, all near S$9,800–10,000 per square metre against about S$8,600 for the rest. The CV column varies a lot (37% to 68% here) — but remember from Step 3 that it is inflated by the planted S$9M sales, so a high CV here mostly says "this town contains a bad record", not "this town has diverse housing". Before you interpret spread, clean the data (Lesson 1.7) or use the IQR.
 
 ### Step 6: Cross-district summary
 
@@ -1589,7 +1594,7 @@ print(f"  Average district median:   {format_sgd(all_medians.mean())}")
 print(f"  Price spread (max - min):  {format_sgd(all_medians.max() - all_medians.min())}")
 ```
 
-The "price spread" tells you how unequal Singapore's public housing is — the difference between the most and least expensive district. A spread of $300,000+ indicates that location still matters significantly despite the government's efforts to provide comparable public housing across the island.
+You should see S$973,887 (most expensive), S$819,980 (least), S$865,923 (average district median) and a spread of S$153,906. The spread is the difference between the most and least expensive town medians. Here it is about 18% of the typical price — location matters, but in this synthetic dataset the town effect is a simple central-versus-other step rather than a smooth gradient.
 
 Notice we wrote `format_sgd` five times. Because it is a function, changing the formatting in one place (say, to add a decimal point) updates every output line. That is the payoff for writing helper functions.
 
@@ -1601,7 +1606,7 @@ Notice we wrote `format_sgd` five times. Because it is a function, changing the 
 
 **Drill 3.** Write a function `growth_category(yoy_pct: float) -> str` that returns `"declining"` if the value is below -1, `"flat"` if between -1 and 1, `"growing"` if between 1 and 5, and `"booming"` if above 5.
 
-**Drill 4.** Compute a two-level group_by: for each (year, flat_type) combination, the median price. Filter the result to 4-room flats only and print it sorted by year. Is there a clear upward trend?
+**Drill 4.** Compute a two-level group_by: for each (year, flat_type) combination, the median price. Filter the result to 4-room flats only and print it sorted by year. Is there a clear upward trend? (You need the `year` column created in Step 2.)
 
 **Drill 5.** Using `iter_rows(named=True)`, write a for loop that prints the town names of the five districts with the *widest* spread (highest `iqr_price`). Use a helper function that formats each line.
 
@@ -1642,8 +1647,8 @@ You should now be able to:
        .sort("median_price")
    )
    print(flat_stats)
-   # Usually 4 ROOM is most common with ~199,000 transactions.
    ```
+   There are 6 flat types: 2 ROOM, 3 ROOM, 4 ROOM, 5 ROOM, EXECUTIVE and MULTI-GENERATION. 4 ROOM is the most common with 20,299 transactions. Sorted by median price, the order runs from 2 ROOM (about S$343k) to MULTI-GENERATION (about S$1.49M).
 3. ```python
    def growth_category(yoy_pct: float) -> str:
        if yoy_pct < -1:
@@ -1663,8 +1668,8 @@ You should now be able to:
        .sort("year")
    )
    print(yf)
-   # Clear upward trend in almost every year — 4-room median typically rises ~3-5% annually.
    ```
+   No. The 4-room median stays between about S$843k and S$852k in every year from 2015 to 2024 — a flat line. The real resale market rose over this decade, but this synthetic dataset was generated without a time trend. Check the data before you repeat a story you already believe about it.
 5. ```python
    widest = district_stats.sort("iqr_price", descending=True).head(5)
    for row in widest.iter_rows(named=True):

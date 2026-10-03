@@ -301,9 +301,10 @@ print("\n--- Checkpoint 4 passed --- visualisations complete\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Apply: Small Singapore Startup with Limited Data
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You're the ML engineer at a Singapore startup (like Carro
-# or ShopBack) trying to build an image classifier for product photos.
-# You only have 5,000 labelled images — 10% of CIFAR-10.
+# SCENARIO (illustrative): You're the ML engineer at a small Singapore
+# e-commerce startup building an image classifier for product photos.
+# You only have 5,000 labelled images — we use 10% of CIFAR-10 as the
+# stand-in for that small labelled set.
 #
 # Question: What happens to from-scratch accuracy with limited data?
 
@@ -339,12 +340,18 @@ print(f"  Startup (5K):       {best_startup:.1%} accuracy")
 print(f"  Accuracy drop:      {best_scratch - best_startup:+.1%}")
 print()
 print(f"  BUSINESS IMPACT:")
-print(f"  With only 5,000 labelled images, from-scratch training loses")
-print(f"  significant accuracy. For a product classifier at a Singapore")
-print(f"  startup, this means:")
+print(
+    f"  With only 5,000 labelled images, from-scratch training lost "
+    f"{best_scratch - best_startup:.1%} accuracy in this run."
+)
+print(f"  For a product classifier at a small startup, every lost point means:")
 print(f"    - More misclassified products shown to customers")
 print(f"    - Higher rate of manual review needed")
-print(f"    - Labelling 50K images costs ~S$25,000-50,000 (S$0.50-1.00/label)")
+print(
+    f"    - Closing the gap by labelling 45,000 more images costs "
+    f"~S${45_000 * 0.50:,.0f}-{45_000 * 1.00:,.0f} "
+    f"(illustrative rate of S$0.50-1.00 per label)"
+)
 print(f"  This is exactly the problem transfer learning solves (Part 2).")
 
 # ── Checkpoint 5 ─────────────────────────────────────────────────────

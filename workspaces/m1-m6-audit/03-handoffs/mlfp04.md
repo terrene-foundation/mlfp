@@ -34,3 +34,11 @@
 - Deck "Looking Ahead" previews real Module 5 topics.
 - Owner question: specs/module-4.md exercise wording (4.4 "financial transactions", 4.6 "Singapore news", 4.8 from-scratch HDB network) and "Quiz + project" describe PLANNED content — reconcile after S5/S6.
 - Integration: regenerate deck.pdf + readings/deck.pdf; refresh parity baseline (M4 not in parity set). speaker-notes.md regenerate (D4).
+
+---
+# Additions from the lesson-slides shard (S2b, merged be9a6273)
+- Lesson notes.html are now further out of step: lessons 01, 03, 04, 06, 08 gained slides with their own notes → S4 regenerate notes from slides. Open notes.html audit errors: stale APIs (03/04/06), "variational inference" (02), Gibbs-vs-VI (06), contamination (04), single-file exercise paths (01/04/05).
+- lessons/04 + 07 textbook.html must follow: AnomalyDetectionEngine framing; content-based filtering does not solve new USERS.
+- 4.1: ClusteringEngine on real customers K=3, silhouette 0.182. 4.3: 5 components → 90% variance, 6 → 95% (7 features). 4.4: LOF masking (ring AUC 0.22 at k=20 vs 0.89 at k=50); DriftMonitor is PSI/KS (M3.8), not an anomaly detector. 4.6: BERTopic visualize_heatmap; UMAP ~5 dims; embed model from TOPIC_EMBED_MODEL. 4.8: runnable numpy network on HDB (MSE 107 → 26.4).
+- ModelVisualizer has NO scree helper — plot cumulative_variance with plotly.
+- Note: 4.5 slide + ex_5 call mlxtend via `.to_pandas()` at the call boundary (no `import pandas`) — owner may want to rule on this vs the polars-only mandate.

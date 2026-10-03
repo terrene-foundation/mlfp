@@ -43,6 +43,7 @@ from shared.mlfp05.ex_4 import (
     scaled_dot_product_attention,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -309,19 +310,23 @@ print_prescription_pad(findings, "Transformer Encoder")
 # more epochs would help.
 # ══════════════════════════════════════════════════════════════════
 
+# train_model kept the epoch with the best VALIDATION accuracy (a holdout
+# carved from the training split); the test split is measured once, here.
+transformer_test_acc = evaluate_accuracy(transformer_model, test_t, test_y)
+
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert (
     len(transformer_losses) == EPOCHS_SCRATCH
 ), "Transformer should train for all epochs"
 assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should reach >60% accuracy, got {max(transformer_accs):.3f}"
+    transformer_test_acc > 0.60
+), f"Transformer should reach >60% test accuracy, got {transformer_test_acc:.3f}"
 # INTERPRETATION: The Transformer processes all tokens in parallel and uses
 # self-attention to capture long-range dependencies. On AG News headlines,
 # it can directly connect "tech" at position 1 with "stocks" at position 8
 # without propagating through every intermediate token. This architectural
 # advantage becomes more pronounced on longer documents.
-print(f"\n  Transformer best acc: {max(transformer_accs):.3f}")
+print(f"\n  Transformer: best validation acc {max(transformer_accs):.3f} -> test acc {transformer_test_acc:.3f}")
 print("\n--- Checkpoint 3 passed --- Transformer trained on AG News\n")
 
 
@@ -487,7 +492,7 @@ print(
   [x] Explained how different heads capture different relationship types
   [x] Implemented sinusoidal positional encoding (word order for transformers)
   [x] Built a full TransformerClassifier with nn.TransformerEncoder
-  [x] Trained on full AG News (120K headlines), best acc: {max(transformer_accs):.1%}
+  [x] Trained on full AG News (120K headlines), test acc: {transformer_test_acc:.1%}
   [x] Visualised per-head attention patterns
   [x] Checked a regulatory-routing use case against the model's label space
 

@@ -36,6 +36,7 @@ from shared.mlfp05.ex_4 import (
     prepare_dataloaders,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -189,17 +190,21 @@ print_prescription_pad(findings, "LSTM baseline")
 # accuracy and speed comparisons below.
 # ══════════════════════════════════════════════════════════════════
 
+# train_model kept the epoch with the best VALIDATION accuracy (a holdout
+# carved from the training split); the test split is measured once, here.
+lstm_test_acc = evaluate_accuracy(lstm_model, test_t, test_y)
+
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(lstm_losses) == EPOCHS_SCRATCH, "LSTM should train for all epochs"
 assert (
-    max(lstm_accs) > 0.60
-), f"LSTM should reach >60% accuracy, got {max(lstm_accs):.3f}"
+    lstm_test_acc > 0.60
+), f"LSTM should reach >60% test accuracy, got {lstm_test_acc:.3f}"
 # INTERPRETATION: The LSTM provides a strong baseline. On short headlines
 # (avg ~10 words), the LSTM's sequential bottleneck isn't as severe as it
 # would be on longer documents. The real gap between LSTM and Transformer
 # widens as sequence length increases -- on 512-token documents, the
 # Transformer's direct attention outperforms LSTM by a wider margin.
-print(f"\n  LSTM best accuracy: {max(lstm_accs):.3f}")
+print(f"\n  LSTM: best validation acc {max(lstm_accs):.3f} -> test acc {lstm_test_acc:.3f}")
 print(f"  LSTM final loss: {lstm_losses[-1]:.4f}")
 print("\n--- Checkpoint 2 passed --- LSTM baseline trained\n")
 
@@ -317,7 +322,7 @@ print(
   [x] Understood why baselines are essential for fair evaluation
   [x] Built a bidirectional LSTM text classifier
   [x] Contrasted sequential (LSTM) vs parallel (Transformer) processing
-  [x] Trained on full AG News (120K headlines), best acc: {max(lstm_accs):.1%}
+  [x] Trained on full AG News (120K headlines), test acc: {lstm_test_acc:.1%}
   [x] Measured inference throughput for production sizing
   [x] Checked a routing use case against the model's label space
 

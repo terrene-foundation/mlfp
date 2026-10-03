@@ -172,7 +172,7 @@ bert_train_loader = DataLoader(
     batch_size=BERT_BATCH_SIZE,
     shuffle=True,
 )
-bert_val_loader = DataLoader(
+bert_test_loader = DataLoader(
     TensorDataset(
         bert_test_ids.to(DEVICE), bert_test_mask.to(DEVICE), bert_test_y.to(DEVICE)
     ),
@@ -192,7 +192,7 @@ print("\n--- Checkpoint 2 passed --- BERT tokenisation complete\n")
 async def train_bert_async(
     model: BertForSequenceClassification,
     train_loader: DataLoader,
-    val_loader: DataLoader,
+    test_loader: DataLoader,
     epochs: int = BERT_EPOCHS,
     lr: float = BERT_LR,
 ) -> tuple[list[float], list[float]]:
@@ -204,8 +204,7 @@ async def train_bert_async(
         optimizer, start_factor=1.0, end_factor=0.1, total_iters=epochs
     )
     train_losses: list[float] = []
-    val_accs: list[float] = []
-    best_acc = 0.0
+    test_accs: list[float] = []
 
     async with tracker.track(experiment=exp_name, run_name="bert_finetune") as run:
         await run.log_params(
@@ -244,7 +243,7 @@ async def train_bert_async(
 
             # TODO: Evaluate on validation set
             # Hint: model.eval()
-            # Hint: with torch.no_grad(): loop over val_loader
+            # Hint: with torch.no_grad(): loop over test_loader
             #   logits = model(input_ids=ids, attention_mask=mask).logits
             #   preds = logits.argmax(dim=-1)
             #   correct += (preds == labels).sum().item()
@@ -252,34 +251,32 @@ async def train_bert_async(
             with torch.no_grad():
                 correct = 0
                 total_count = 0
-                for ids, mask, labels in val_loader:
+                for ids, mask, labels in test_loader:
                     ...  # YOUR CODE HERE — get logits, preds, accumulate correct/total
                 acc = correct / total_count
-                val_accs.append(acc)
+                test_accs.append(acc)
 
             await run.log_metrics(
-                {"train_loss": epoch_loss, "val_accuracy": acc}, step=epoch + 1
+                {"train_loss": epoch_loss, "test_accuracy": acc}, step=epoch + 1
             )
-            if acc > best_acc:
-                best_acc = acc
             print(
                 f"  [BERT] epoch {epoch+1}/{epochs}  "
-                f"loss={epoch_loss:.4f}  val_acc={acc:.3f}"
+                f"loss={epoch_loss:.4f}  test_acc={acc:.3f}"
             )
 
         await run.log_metrics(
             {
-                "best_val_accuracy": best_acc,
+                "final_test_accuracy": test_accs[-1],
                 "final_train_loss": train_losses[-1],
             }
         )
 
-    return train_losses, val_accs
+    return train_losses, test_accs
 
 
 print(f"\n== Fine-tuning {BERT_MODEL_NAME} on AG News ==")
 bert_losses, bert_accs = asyncio.run(
-    train_bert_async(bert_model, bert_train_loader, bert_val_loader, epochs=BERT_EPOCHS)
+    train_bert_async(bert_model, bert_train_loader, bert_test_loader, epochs=BERT_EPOCHS)
 )
 
 # ══════════════════════════════════════════════════════════════════
@@ -322,17 +319,22 @@ print_prescription_pad(findings, "BERT fine-tuned (AG News)")
 # blocks use GELU, so the dead-ReLU check has little to say here.
 # ══════════════════════════════════════════════════════════════════
 
+# BERT is evaluated on the TEST split after every epoch only to watch
+# progress — no epoch is selected on it, so the honest number to report
+# is the FINAL model's test accuracy.
+bert_test_acc = bert_accs[-1]
+
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert len(bert_losses) == BERT_EPOCHS, "BERT should train for all epochs"
 assert (
-    max(bert_accs) > 0.85
-), f"BERT should reach >85% accuracy with fine-tuning, got {max(bert_accs):.3f}"
+    bert_test_acc > 0.85
+), f"BERT should reach >85% test accuracy with fine-tuning, got {bert_test_acc:.3f}"
 # INTERPRETATION: BERT's pre-trained language understanding gives it a
 # massive head start. While our from-scratch models need to learn word
 # meanings, syntax, and semantics from 120K headlines, BERT already
 # "knows" English from billions of words of pre-training. Fine-tuning
 # just teaches it the specific mapping from language to news categories.
-print(f"\n  BERT best accuracy: {max(bert_accs):.3f}")
+print(f"\n  BERT test accuracy (final epoch): {bert_test_acc:.3f}")
 print("\n--- Checkpoint 3 passed --- BERT fine-tuned\n")
 
 
@@ -345,14 +347,14 @@ class_correct: Counter[int] = Counter()
 class_total: Counter[int] = Counter()
 
 # TODO: Compute per-class accuracy on the validation set
-# Hint: with torch.no_grad(): loop over bert_val_loader
+# Hint: with torch.no_grad(): loop over bert_test_loader
 #   logits = bert_model(input_ids=ids, attention_mask=mask).logits
 #   preds = logits.argmax(dim=-1)
 #   for pred, label in zip(preds.cpu().tolist(), labels.cpu().tolist()):
 #       class_total[label] += 1
 #       if pred == label: class_correct[label] += 1
 with torch.no_grad():
-    for ids, mask, labels in bert_val_loader:
+    for ids, mask, labels in bert_test_loader:
         ...  # YOUR CODE HERE
 
 for i, cls_name in enumerate(CLASS_NAMES):
@@ -407,7 +409,7 @@ with torch.no_grad():
     before_total = 0
     before_class_correct: Counter[int] = Counter()
     before_class_total: Counter[int] = Counter()
-    for ids, mask, labels in bert_val_loader:
+    for ids, mask, labels in bert_test_loader:
         logits = bert_before(input_ids=ids, attention_mask=mask).logits
         preds = logits.argmax(dim=-1)
         before_correct += int((preds == labels).sum().item())
@@ -424,7 +426,7 @@ before_per_class = [
 ]
 after_per_class = per_class_accs
 before_overall = before_correct / max(before_total, 1)
-after_overall = max(bert_accs)
+after_overall = bert_test_acc
 
 fig_compare = go.Figure()
 fig_compare.add_trace(
@@ -538,7 +540,7 @@ for text, pred, probs in zip(bank_messages, msg_preds, msg_probs.cpu().tolist())
 # Confidence on OOD messages vs on the test headlines the head was built for
 with torch.no_grad():
     in_dist = []
-    for b, (ids, mask, _labels) in enumerate(bert_val_loader):
+    for b, (ids, mask, _labels) in enumerate(bert_test_loader):
         logits = bert_model(input_ids=ids, attention_mask=mask).logits
         in_dist.append(F.softmax(logits, dim=-1).max(dim=-1).values.cpu())
         if b == 4:
@@ -568,7 +570,7 @@ print(
   [x] Explained pre-training vs fine-tuning (language knowledge -> task)
   [x] Loaded pre-trained BERT and configured layer-wise freezing
   [x] Used BERT's WordPiece tokeniser (subword, not word-level)
-  [x] Fine-tuned BERT on AG News, best acc: {max(bert_accs):.1%}
+  [x] Fine-tuned BERT on AG News, test acc (final epoch): {bert_test_acc:.1%}
   [x] Analysed per-class accuracy for production deployment decisions
   [x] Showed why a topic head cannot do sentiment, and why OOD
       confidence is not evidence

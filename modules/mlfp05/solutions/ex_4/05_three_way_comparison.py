@@ -51,6 +51,7 @@ from shared.mlfp05.ex_4 import (
     scaled_dot_product_attention,
     setup_engines,
     text_to_indices,
+    evaluate_accuracy,
     train_model,
 )
 
@@ -301,7 +302,7 @@ bert_train_loader = DataLoader(
     batch_size=BERT_BATCH_SIZE,
     shuffle=True,
 )
-bert_val_loader = DataLoader(
+bert_test_loader = DataLoader(
     TensorDataset(
         bert_test_ids.to(DEVICE), bert_test_mask.to(DEVICE), bert_test_y.to(DEVICE)
     ),
@@ -309,7 +310,7 @@ bert_val_loader = DataLoader(
 )
 
 
-async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
+async def train_bert_async(model, train_loader, test_loader, epochs=3, lr=2e-5):
     optimizer = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=lr,
@@ -321,8 +322,7 @@ async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
         end_factor=0.1,
         total_iters=epochs,
     )
-    train_losses, val_accs = [], []
-    best_acc = 0.0
+    train_losses, test_accs = [], []
 
     async with tracker.track(experiment=exp_name, run_name="bert_finetune") as run:
         await run.log_params(
@@ -357,32 +357,30 @@ async def train_bert_async(model, train_loader, val_loader, epochs=3, lr=2e-5):
             model.eval()
             with torch.no_grad():
                 correct = total_count = 0
-                for ids, mask, labels in val_loader:
+                for ids, mask, labels in test_loader:
                     preds = model(input_ids=ids, attention_mask=mask).logits.argmax(
                         dim=-1
                     )
                     correct += int((preds == labels).sum().item())
                     total_count += int(labels.size(0))
                 acc = correct / total_count
-                val_accs.append(acc)
+                test_accs.append(acc)
 
             await run.log_metrics(
-                {"train_loss": epoch_loss, "val_accuracy": acc}, step=epoch + 1
+                {"train_loss": epoch_loss, "test_accuracy": acc}, step=epoch + 1
             )
-            if acc > best_acc:
-                best_acc = acc
             print(
-                f"  [BERT] epoch {epoch+1}/{epochs}  loss={epoch_loss:.4f}  val_acc={acc:.3f}"
+                f"  [BERT] epoch {epoch+1}/{epochs}  loss={epoch_loss:.4f}  test_acc={acc:.3f}"
             )
 
         await run.log_metrics(
-            {"best_val_accuracy": best_acc, "final_train_loss": train_losses[-1]}
+            {"final_test_accuracy": test_accs[-1], "final_train_loss": train_losses[-1]}
         )
-    return train_losses, val_accs
+    return train_losses, test_accs
 
 
 bert_losses, bert_accs = asyncio.run(
-    train_bert_async(bert_model, bert_train_loader, bert_val_loader, epochs=3)
+    train_bert_async(bert_model, bert_train_loader, bert_test_loader, epochs=3)
 )
 
 # ══════════════════════════════════════════════════════════════════
@@ -436,12 +434,19 @@ for _title, _model, _loader, _loss, _hist, _adapter, _n in [
 # writing down; differences you cannot explain are worth re-running.
 # ══════════════════════════════════════════════════════════════════
 
+# From-scratch models: the validation-selected checkpoint, measured once
+# on the test split. BERT: its per-epoch test numbers were only monitored
+# (no selection), so report the final epoch.
+lstm_test_acc = evaluate_accuracy(lstm_model, test_t, test_y)
+transformer_test_acc = evaluate_accuracy(transformer_model, test_t, test_y)
+bert_test_acc = bert_accs[-1]
+
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
-assert max(lstm_accs) > 0.60, f"LSTM should exceed 60%, got {max(lstm_accs):.3f}"
+assert lstm_test_acc > 0.60, f"LSTM should exceed 60%, got {lstm_test_acc:.3f}"
 assert (
-    max(transformer_accs) > 0.60
-), f"Transformer should exceed 60%, got {max(transformer_accs):.3f}"
-assert max(bert_accs) > 0.85, f"BERT should exceed 85%, got {max(bert_accs):.3f}"
+    transformer_test_acc > 0.60
+), f"Transformer should exceed 60%, got {transformer_test_acc:.3f}"
+assert bert_test_acc > 0.85, f"BERT should exceed 85%, got {bert_test_acc:.3f}"
 print("\n--- Checkpoint 1 passed --- all three models trained\n")
 
 
@@ -450,17 +455,17 @@ print("\n--- Checkpoint 1 passed --- all three models trained\n")
 # ════════════════════════════════════════════════════════════════════════
 results = {
     "LSTM": {
-        "best_acc": max(lstm_accs),
+        "test_acc": lstm_test_acc,
         "final_loss": lstm_losses[-1],
         "params": sum(p.numel() for p in lstm_model.parameters()),
     },
     "Transformer": {
-        "best_acc": max(transformer_accs),
+        "test_acc": transformer_test_acc,
         "final_loss": transformer_losses[-1],
         "params": sum(p.numel() for p in transformer_model.parameters()),
     },
     "BERT (fine-tuned)": {
-        "best_acc": max(bert_accs),
+        "test_acc": bert_test_acc,
         "final_loss": bert_losses[-1],
         "params": total_params,
     },
@@ -471,7 +476,7 @@ print(f"{'Model':<20} {'Best Acc':>10} {'Final Loss':>12} {'Params':>12}")
 print("-" * 56)
 for name, r in results.items():
     print(
-        f"{name:<20} {r['best_acc']:>10.3f} {r['final_loss']:>12.4f} {r['params']:>12,}"
+        f"{name:<20} {r['test_acc']:>10.3f} {r['final_loss']:>12.4f} {r['params']:>12,}"
     )
 
 # Training curves comparison: all 3 models on one chart
@@ -528,7 +533,7 @@ for i, text in enumerate(sample_texts):
     print(f"{text[:48]:<50} {t:<10} {l:<10} {tr:<10} {b:<10}")
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
-best_model_name = max(results, key=lambda k: results[k]["best_acc"])
+best_model_name = max(results, key=lambda k: results[k]["test_acc"])
 assert best_model_name == "BERT (fine-tuned)", (
     f"Expected BERT to be the best model, but {best_model_name} won. "
     "Pre-trained models should dominate on standard NLP benchmarks."
@@ -556,29 +561,29 @@ async def register_all_models():
 
     model_versions = {}
     models_to_register = [
-        ("m5_bert_agnews", bert_model.state_dict(), max(bert_accs), "bert_finetune"),
+        ("m5_bert_agnews", bert_model.state_dict(), bert_test_acc, "bert_finetune"),
         (
             "m5_transformer_agnews",
             transformer_model.state_dict(),
-            max(transformer_accs),
+            transformer_test_acc,
             "transformer",
         ),
-        ("m5_lstm_agnews", lstm_model.state_dict(), max(lstm_accs), "lstm_baseline"),
+        ("m5_lstm_agnews", lstm_model.state_dict(), lstm_test_acc, "lstm_baseline"),
     ]
 
-    for name, state_dict, best_acc, model_type in models_to_register:
+    for name, state_dict, test_acc, model_type in models_to_register:
         model_bytes = pickle.dumps(state_dict)
         version = await registry.register_model(
             name=name,
             artifact=model_bytes,
             metrics=[
-                MetricSpec(name="best_val_accuracy", value=best_acc),
+                MetricSpec(name="test_accuracy", value=test_acc),
                 MetricSpec(name="dataset", value=0.0),
                 MetricSpec(name="model_type", value=0.0),
             ],
         )
         model_versions[model_type] = version
-        print(f"  Registered {name}: version={version.version}, acc={best_acc:.3f}")
+        print(f"  Registered {name}: version={version.version}, acc={test_acc:.3f}")
 
     return model_versions
 
@@ -747,16 +752,16 @@ print(
   [x] Built a TransformerClassifier with nn.TransformerEncoder
   [x] Built an LSTM baseline for fair comparison
   [x] Trained all 3 models on FULL AG News (120K headlines)
-  [x] Fine-tuned BERT ({BERT_MODEL_NAME}) -- best acc: {max(bert_accs):.1%}
+  [x] Fine-tuned BERT ({BERT_MODEL_NAME}) -- test acc: {bert_test_acc:.1%}
   [x] Visualised attention heatmaps (what the model "looks at")
   [x] Tracked every run with ExperimentTracker (params, per-epoch metrics)
   [x] Registered models in ModelRegistry with versioned metrics
   [x] Exported the fine-tuned model to ONNX for portable deployment
 
   KEY INSIGHT — The Attention Hierarchy:
-    LSTM best acc:        {max(lstm_accs):.1%}  (sequential, no pre-training)
-    Transformer best acc: {max(transformer_accs):.1%}  (parallel attention, no pre-training)
-    BERT best acc:        {max(bert_accs):.1%}  (parallel attention + pre-training)
+    LSTM test acc:        {lstm_test_acc:.1%}  (sequential, no pre-training)
+    Transformer test acc: {transformer_test_acc:.1%}  (parallel attention, no pre-training)
+    BERT test acc:        {bert_test_acc:.1%}  (parallel attention + pre-training)
 
   Pre-training is the single biggest lever in NLP. The Transformer
   architecture enables it, but the pre-trained weights are what make

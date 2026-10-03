@@ -2,7 +2,7 @@
 
 > *"Can you trust a number you didn't explore yourself?"*
 
-This chapter is your entry point into the MLFP programme. It starts at zero — no assumed Python, no assumed statistics, no assumed data experience — and takes you to the point where you can run a complete exploratory data analysis pipeline on a real Singapore dataset using Kailash's data engines.
+This chapter is your entry point into the MLFP programme. It starts at zero — no assumed Python, no assumed statistics, no assumed data experience — and takes you to the point where you can run a complete exploratory data analysis pipeline on a messy Singapore dataset using Kailash's data engines. (The course datasets are modelled on public Singapore data but are synthetic or illustrative, with problems planted for you to find; each lesson says which.)
 
 Everything you learn here will be used again. The Polars patterns in Lesson 1.2 will still be on your fingertips in Module 6 when you reshape transformer training logs. The `group_by` / `agg` muscle you build in Lesson 1.3 is the same muscle you'll use to compute per-cohort calibration in Module 5. The visualisation literacy from Lesson 1.6 is what will let you tell the difference between a broken model and a broken chart three modules from now. So do not rush. The chapter is long because the foundations matter.
 
@@ -20,7 +20,7 @@ By the end of this chapter you will be able to:
 - Compute rolling averages, year-over-year changes, and rank within group using Polars window functions with `.over()` partitioning.
 - Create appropriate, honest, interactive visualisations (histogram, scatter, bar, heatmap, line, stacked bar) using the ModelVisualizer engine and Plotly, and critique charts against Gestalt and Z-pattern reading principles.
 - Use the DataExplorer engine to profile a messy dataset automatically, configure AlertConfig thresholds to fit your domain, and interpret each of the eight alert types as a concrete cleaning action.
-- Use PreprocessingPipeline to impute missing values, scale numeric columns, and encode categoricals, producing a train/test split that downstream modules can consume without further preparation.
+- Use PreprocessingPipeline to impute missing values, scale numeric columns, and encode categoricals — holding out test rows before fitting, so the prepared train and test data that downstream modules consume carry no leakage.
 - Assemble the above into a complete end-to-end pipeline that turns a raw, dirty dataset into a model-ready, auditable report.
 
 Those are the concrete skills. Underneath them sits a more important outcome: you will have learned to *distrust* aggregated numbers you did not inspect yourself, and you will have the hand-tools to inspect them.
@@ -55,7 +55,7 @@ This chapter has eight lessons that map one-to-one with the eight exercises in `
 2. **Core Concepts** — plain-language explanations first, then formal definitions, then code examples, then a "common mistakes" sidebar.
 3. **Mathematical Foundations** (where applicable) — the underlying mathematics with derivations. Marked THEORY.
 4. **The Kailash Engine** — the engine that implements the lesson's concepts. DataExplorer, PreprocessingPipeline, or ModelVisualizer.
-5. **Worked Example** — a complete, step-by-step walkthrough using a real Singapore dataset. Every line of code, every output, every interpretation.
+5. **Worked Example** — a complete, step-by-step walkthrough on a course dataset. Every line of code, every output (produced by running the code on the course files), every interpretation.
 6. **Try It Yourself** — three to five small drills. Attempt them before reading the answers at the end of each lesson.
 7. **Cross-References** — how this lesson connects forward and backward.
 8. **Reflection** — what you should now be able to do, and how to verify that.
@@ -550,7 +550,7 @@ Two details worth noting. `"═" * 58` is Python string multiplication — it pr
 
 The `:>8.2f` format specifier is what aligns the numbers. `>8` means "right-align in a field eight characters wide", and `.2f` means "two decimal places, float". Right-alignment with a fixed width is what makes numeric columns line up cleanly. Without it, `26.50` and `171.8` would start at different horizontal positions and the report would look messy.
 
-And that is Lesson 1.1 worked end to end. You loaded a real dataset, inspected its shape and schema, computed summary statistics both through `.describe()` and through individual column aggregations, filtered to find extreme values, and built a formatted report. Every pattern you just learned will be used again in every subsequent lesson in this chapter.
+And that is Lesson 1.1 worked end to end. You loaded a dataset, inspected its shape and schema, computed summary statistics both through `.describe()` and through individual column aggregations, filtered to find extreme values, and built a formatted report. Every pattern you just learned will be used again in every subsequent lesson in this chapter.
 
 ## Try It Yourself
 
@@ -4284,7 +4284,7 @@ You should now be able to:
 
 # Chapter Summary
 
-You started this chapter not knowing what a variable was. You are ending it having run a full end-to-end data pipeline on a real messy Singapore dataset. That is a non-trivial jump. Before moving to Module 2, take five minutes to consolidate the picture.
+You started this chapter not knowing what a variable was. You are ending it having run a full end-to-end data pipeline on a messy Singapore-style dataset — and having found, in every course dataset, problems nobody told you were there. That is a non-trivial jump. Before moving to Module 2, take five minutes to consolidate the picture.
 
 ## The shape of what you learned
 
@@ -4310,20 +4310,20 @@ Every complex pipeline you build will combine these four patterns. You do not ne
 
 **DataExplorer.** Profile a DataFrame, surface quality issues as alerts, compare two DataFrames for drift, generate HTML reports. Input: a DataFrame. Output: a profile object. Use at the beginning and end of every pipeline.
 
-**PreprocessingPipeline.** Impute, scale, encode, and split a DataFrame into train/test sets ready for model training. Input: a DataFrame with a designated target column. Output: a result object with train_data and test_data. Use at the end of cleaning, just before training.
+**PreprocessingPipeline.** Impute, scale and encode a DataFrame for model training, and re-apply the same learned rules to new rows. Input: a DataFrame with a designated target column. Output: a result object with train_data and test_data, plus `transform()` for new rows. `setup()` fits on every row it is given before it splits — so hold out your test rows first, call `setup()` on the training rows, and `transform()` the rest. Use at the end of cleaning, just before training.
 
-**ModelVisualizer.** Build interactive charts (histogram, scatter, bar, heatmap, line) from Polars DataFrames. Input: a DataFrame and chart configuration. Output: a Plotly Figure. Use throughout the pipeline for exploration and reporting.
+**ModelVisualizer.** Build interactive charts (histogram, scatter, box plot, bar via `metric_comparison`, line via `training_history`) from Polars DataFrames, dropping to Plotly for heatmaps and stacked bars. Input: a DataFrame and chart configuration. Output: a Plotly Figure — check its axis labels when you repurpose a method. Use throughout the pipeline for exploration and reporting.
 
 These three engines cover 90% of your data-pipeline needs in Modules 1 and 2. The other 10% you will handle in pure Polars, which is fine — Polars and the engines are designed to play together.
 
 ## What Module 2 builds on
 
-Module 2 is "Feature Engineering and Experiment Design". It assumes:
+Module 2 is "Statistical Mastery for Machine Learning and Artificial Intelligence (AI) Success". It assumes:
 
 - You can write Polars filters, aggregations, and window functions without looking things up.
 - You understand the difference between mean, median, variance, and standard deviation, and can explain when each is appropriate.
 - You can profile a DataFrame and interpret the alerts.
-- You can create train/test splits with PreprocessingPipeline.
+- You can hold out test rows and prepare features with PreprocessingPipeline without leaking test information.
 - You can make an interactive chart of anything and export it as HTML.
 
 If any of these feels uncertain, spend an hour on the corresponding lesson's "Try It Yourself" drills before moving on. Module 2 will not slow down to re-teach.
@@ -4342,8 +4342,8 @@ You will meet MLE, Fisher information, Bayesian priors, and hypothesis testing f
 Three things:
 
 1. **Re-run the worked examples** from at least Lessons 1.3, 1.5, and 1.8. Type them out, do not copy-paste. The muscle memory matters.
-2. **Run the end-to-end pipeline on a dataset of your own choice.** Any Singapore dataset from `data.gov.sg` will do. Load it, profile it, clean it, visualise it, generate a report. Fifteen minutes, and you will solidify the pattern.
-3. **Tell someone what you learned.** Teaching is the best test of understanding. Pick a non-technical friend and explain the HDB flash crash story, why the median is preferable to the mean for property prices, and what a histogram reveals that a summary statistic cannot. If you can explain it, you know it.
+2. **Run the end-to-end pipeline on a dataset of your own choice.** Any real Singapore dataset from `data.gov.sg` will do — and on real data, check whether the trends and seasonality that the synthetic course files lacked are actually there. Load it, profile it, clean it, visualise it, generate a report. Fifteen minutes, and you will solidify the pattern.
+3. **Tell someone what you learned.** Teaching is the best test of understanding. Pick a non-technical friend and explain the "dashboard that said everything was fine" scenario, why the median is preferable to the mean for property prices, and what a histogram reveals that a summary statistic cannot. If you can explain it, you know it.
 
 Then take a day off. Come back to Module 2 rested. You will need it — Module 2 is longer and more formal than Module 1, and the payoff is cumulative.
 
@@ -4355,15 +4355,17 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Aggregation.** The process of collapsing many rows into a single summary value, usually within groups. Mean, median, count, sum, and standard deviation are aggregations. See `group_by` and `agg`.
 
-**Alert.** A structured warning from DataExplorer indicating that a column or dataset crosses a configurable quality threshold. Each alert has a type (like `high_skewness`), a severity, a column, and a value.
+**Alert.** A structured warning from DataExplorer indicating that a column or dataset crosses a configurable quality threshold. Each alert is a dict with a `type` (one of eight, like `high_skewness`), a `severity` (`info` or `warning`), a `column` (or `columns` for a correlated pair), and a `value`.
 
 **AlertConfig.** The configuration object for DataExplorer that controls which thresholds trigger alerts. Tuning AlertConfig is domain-specific work: defaults are not appropriate for every dataset.
 
 **Async / await.** Python keywords for asynchronous functions. An `async def` function returns a coroutine; `await` pauses execution until the coroutine completes. DataExplorer's `profile`, `compare`, and `to_html` methods are async.
 
+**Calendar spine.** A complete table of every period (for example, every town × every month) that observed data is left-joined onto, so gaps become explicit nulls before window functions run.
+
 **Bar chart.** A chart showing one bar per category, with bar height proportional to a value. Best for comparing a metric across categories.
 
-**Bimodal distribution.** A distribution with two distinct peaks. Indicates two sub-populations mixed together. The HDB flash-crash distribution was bimodal.
+**Bimodal distribution.** A distribution with two distinct peaks. Indicates two sub-populations mixed together — for example, genuine records mixed with a batch of mis-recorded ones.
 
 **Boolean.** A value that is either `True` or `False`. The result of a comparison like `price > 500_000`. Python's `bool` type.
 
@@ -4399,7 +4401,7 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Function.** A named, reusable block of code that takes parameters and returns a value. Defined with `def`.
 
-**Gestalt principles.** Rules about how the human visual system groups visual elements. Proximity, similarity, closure, continuity, connection.
+**Gestalt principles.** Rules about how the human visual system groups visual elements. Proximity, similarity, closure, continuity, connection, enclosure.
 
 **Group-by.** Splitting a DataFrame into groups based on one or more key columns, then aggregating each group separately. The SQL `GROUP BY`.
 
@@ -4413,7 +4415,9 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Inner join.** A join that keeps only rows where the key exists in both tables. Non-matching rows are dropped from both sides.
 
-**Join.** An operation that combines two tables by matching rows on a shared key. Inner, left, right, and outer are the four types.
+**Join.** An operation that combines two tables by matching rows on a shared key. Inner, left, right, and outer (Polars: `full`) are the four types. A join multiplies rows when the key is not unique on the right side.
+
+**JSON.** JavaScript Object Notation — the text format most web APIs return: nested objects and lists that map onto Python dicts and lists.
 
 **Lazy frame.** A Polars query plan that is not executed until `.collect()` is called. Enables query optimisation (predicate pushdown, projection pushdown).
 
@@ -4429,7 +4433,7 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Mode.** The most frequently occurring value. Appropriate for categorical data, less useful for continuous data.
 
-**ModelVisualizer.** The Kailash ML engine for producing interactive charts (histograms, scatter plots, bar charts, heatmaps, line charts) from Polars DataFrames.
+**ModelVisualizer.** The Kailash ML engine for producing interactive Plotly charts (histograms, scatter plots, box plots, bar charts, line charts) from Polars DataFrames. Heatmaps and stacked bars are built with Plotly directly.
 
 **Null.** A typed marker for "missing value". Different from zero, empty string, or NaN. Polars has first-class null support.
 
@@ -4439,9 +4443,11 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Polars.** The DataFrame library used throughout this course. Fast, memory-efficient, polars-native (no pandas bridge), written in Rust.
 
-**PreprocessingPipeline.** The Kailash ML engine that imputes, scales, encodes, and splits a DataFrame into train/test sets ready for model training.
+**PreprocessingPipeline.** The Kailash ML engine that imputes, scales, encodes, and splits a DataFrame for model training. Its `setup()` fits on all rows passed in, so hold out test rows first and apply `transform()` to them.
 
 **Quantile.** A percentile of a distribution. The 25th quantile (Q1) is the value below which 25% of the data falls. The median is the 50th quantile.
+
+**REST API.** A web service you query with HTTP requests — GET to retrieve data (with query parameters), POST to send it — usually returning JSON.
 
 **Rank.** A column that assigns each row a position within its partition. `rank(method="ordinal", descending=True)` gives 1 to the highest value, 2 to the next, and so on.
 
@@ -4479,7 +4485,7 @@ Every technical term introduced in this chapter, defined plainly.
 
 **Window function.** A computation that produces a value for each row based on a set of related rows, without collapsing the DataFrame. Rolling means, YoY changes, and ranks are window functions. See `.over()`.
 
-**YoY (year-over-year).** The percentage change between a value and the same value from exactly one year earlier. A common smoothing technique for seasonal time series.
+**YoY (year-over-year).** The percentage change between a value and the same value from exactly one year earlier. Comparing like months cancels out a seasonal pattern. Needs a gap-free calendar spine if computed with `shift(12)`.
 
 ---
 
@@ -4491,19 +4497,19 @@ The following are standard references that expand on material covered in this ch
 
 - Wickham, Hadley, and Garrett Grolemund. *R for Data Science.* O'Reilly, 2017 (second edition 2023). The canonical beginner-to-intermediate reference for tidy data work. Uses R and the tidyverse, not Python and Polars, but the concepts translate directly. The chapters on "Explore" and "Wrangle" are the complement to what you just learned. Free online at `r4ds.hadley.nz`.
 
-- McKinney, Wes. *Python for Data Analysis.* O'Reilly, 2012 (third edition 2022). The pandas reference, written by pandas' author. We do not use pandas in this course, but the conceptual material on aggregation, joins, and reshaping is the same. Chapter 9 ("Data Aggregation and Group Operations") is particularly relevant to Lessons 1.3 and 1.5.
+- McKinney, Wes. *Python for Data Analysis.* O'Reilly, 2012 (third edition 2022). The pandas reference, written by pandas' author. We do not use pandas in this course, but the conceptual material on aggregation, joins, and reshaping is the same. The chapter on data aggregation and group operations is particularly relevant to Lessons 1.3 and 1.5.
 
 **On Polars specifically**
 
 - Polars documentation, `pola.rs`. The official reference, well-maintained and increasingly comprehensive. The "User Guide" sections on expressions, lazy evaluation, and window functions are excellent.
 
-- Vink, Ritchie. *Polars: The Definitive Guide.* O'Reilly, 2024. The first book dedicated to Polars, co-authored by Polars' creator. Covers performance, the query engine, and advanced patterns beyond what this textbook touches.
+- Janssens, Jeroen, and Thijs Nieuwdorp. *Python Polars: The Definitive Guide.* O'Reilly, 2025. A book-length treatment of Polars: expressions, lazy evaluation, performance, and advanced patterns beyond what this textbook touches.
 
 **On visualisation**
 
 - Tufte, Edward. *The Visual Display of Quantitative Information.* Graphics Press, 1983 (second edition 2001). The foundational book on chart design, and the source of most of the principles in Lesson 1.6. The chapter on "chartjunk" and the "lie factor" are essential reading for anyone producing charts for others.
 
-- Cleveland, William. *The Elements of Graphing Data.* Hobart Press, 1985. The empirical complement to Tufte: experiments on what the human visual system can and cannot parse accurately. The chapter on the "cycle plot" for seasonal data is particularly useful for time-series analysts.
+- Cleveland, William. *The Elements of Graphing Data.* Hobart Press, 1985. The empirical complement to Tufte: what the human visual system can and cannot judge accurately (position along a common scale beats length, angle and area — the reason Lesson 1.6 prefers bars to pies).
 
 - Wilke, Claus. *Fundamentals of Data Visualization.* O'Reilly, 2019. Modern, well-illustrated, and free online at `clauswilke.com/dataviz/`. The chapters on "Common pitfalls of color use" and "Handling overlapping points" are directly applicable to Lesson 1.6's scatter-plot work.
 
@@ -4513,23 +4519,21 @@ The following are standard references that expand on material covered in this ch
 
 - Wasserman, Larry. *All of Statistics.* Springer, 2004. A compact, technically rigorous introduction to modern statistics for people with a mathematics background. Covers probability, estimation, hypothesis testing, Bayesian inference, and bootstrap — all in about 400 pages. Will be useful in Module 2.
 
-- Efron, Bradley, and Trevor Hastie. *Computer Age Statistical Inference.* Cambridge, 2016. A history of statistics from classical methods to modern machine learning, with working code examples. The chapter on the bootstrap is particularly elegant. Free online at `web.stanford.edu/~hastie/CASI/`.
+- Efron, Bradley, and Trevor Hastie. *Computer Age Statistical Inference.* Cambridge, 2016. A history of statistics from classical methods to modern machine learning, with working code examples. The chapter on the bootstrap is particularly elegant. Free online from the authors' website.
 
 - Anscombe, Francis. "Graphs in Statistical Analysis." *The American Statistician*, 1973. The original Anscombe's quartet paper. Four pages, and worth reading in full.
 
 **On data quality and profiling**
 
-- Redman, Thomas. *Data Driven: Profiting from Your Most Important Business Asset.* Harvard Business Review Press, 2008. The business case for data quality, written for managers but with technical depth. Chapter 5 ("The data quality problem is bigger than you think") is especially relevant to the motivation for Lesson 1.7.
-
-- Sadowski, Caitlin, and Yarden Katz. *Data Quality for the Numerate.* O'Reilly (forthcoming). The practical manual — how to build data quality into a pipeline instead of bolting it on afterward. Uses concepts that map directly to DataExplorer's alert categories.
+- Redman, Thomas. *Data Driven: Profiting from Your Most Important Business Asset.* Harvard Business Review Press, 2008. The business case for data quality, written for managers — useful background for the motivation of Lesson 1.7.
 
 **On Singapore-specific data sources**
 
-- `data.gov.sg` — the Singapore government's open data portal. The HDB resale dataset, economic indicators, weather, taxi trips, and many more Singapore datasets are published here for free download. All the course datasets in Module 1 originate here (or are synthetic extensions of real data).
+- `data.gov.sg` — the Singapore government's open data portal. HDB resale prices, economic indicators, weather and many more Singapore datasets are published here for free download. The Module 1 course datasets are synthetic: they are modelled on the structure of public datasets like these, but their values are generated for teaching (with data-quality problems planted on purpose), so do not quote numbers from them as facts about Singapore. For real figures, go to the source.
 
-- `onemap.gov.sg/apidocs` — the OneMap API documentation, referenced briefly in the deck as an example of REST data extraction. Provides geocoding, routing, and map tile services for Singapore. If you do Drill 5 of Lesson 1.8 with a new dataset, OneMap is often the fastest way to enrich addresses.
+- OneMap API documentation (linked from `onemap.gov.sg`) — the service used for the REST extraction examples in Lesson 1.8. Provides search/geocoding, routing, and map services for Singapore; some endpoints require a free account token. When you do Drill 5 of Lesson 1.8, OneMap is often the fastest way to enrich addresses with coordinates.
 
-- Monetary Authority of Singapore (MAS) statistics portal. Daily exchange rates, monetary aggregates, and financial stability indicators — the source of the FX data in Lesson 1.7.
+- Monetary Authority of Singapore (MAS) statistics portal. Official exchange rates, monetary aggregates, and financial stability indicators — where you would get real FX data to replace the synthetic series used in Lesson 1.7.
 
 **Papers on the specific topics this chapter skimmed**
 

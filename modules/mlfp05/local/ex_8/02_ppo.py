@@ -55,6 +55,7 @@ from shared.mlfp05.ex_8 import (
     make_cartpole,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from gymnasium import spaces
@@ -390,6 +391,36 @@ assert ppo_returns[-1] > 50.0, "PPO should achieve avg return > 50 by final iter
 # In M6, RLHF uses PPO to update an LLM's policy (word probabilities)
 # using human preference as the reward signal.
 print("--- Checkpoint 1 passed --- PPO trained on CartPole\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# kailash-ml's RL instrument is RLDiagnostics (what
+# `km.diagnose("ppo", kind="rl")` returns). The helper feeds it the
+# per-iteration history recorded above — each iteration's mean episode
+# return, actor loss, critic loss and policy entropy — and prints
+# report(). Here one "reward" entry = one PPO iteration, not one episode.
+ppo_rl_report = rl_diagnostic_checkpoint(
+    "PPO on CartPole-v1",
+    "ppo",
+    ppo_returns,
+    policy_losses=ppo_actor_losses,
+    value_losses=ppo_critic_losses,
+    entropies=ppo_entropies,
+    window=10,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 10 iterations) vs peak — close together means the
+#     policy kept what it learned; far apart means late instability.
+#   [CRIT] episode_reward_collapse — the last iteration's return fell
+#     below 10% of the peak after a >=50% drop. For PPO the usual causes
+#     are a learning rate or clip range that is too large; lower lr or
+#     clip_eps and retrain.
+#   findings: none — no collapse. Entropy is recorded too: plot it in
+#     Task 4 — a slow decline is healthy; a crash toward 0 within a few
+#     iterations means the policy stopped exploring (raise the 0.01
+#     entropy coefficient).
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -794,66 +825,3 @@ print(
   environments that model real Singapore decision problems.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # PPO clipped objective + value loss
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (PPO — Proximal Policy Optimization) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        actor_critic,
-        rollout_loader,
-        _diag_loss,
-        title="PPO — Proximal Policy Optimization",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS 2.1e-03 across actor and critic heads.
-#     PPO clipping keeps update ratio in [0.8, 1.2] — stable by design.
-# [!] Policy entropy collapsing at epoch 8 — early sign of premature convergence.
-# [✓] Reward curve: steady climb, no collapse events.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — PPO-SPECIFIC] The clipped objective is what keeps
-#     PPO stable. update_ratio > 1.2 or < 0.8 would mean the policy
-#     is moving too fast — but the clip prevents it. That's WHY
-#     PPO dominates in 2024+ (slide 5.8).
-#
-#  [X-RAY — POLICY ENTROPY] Entropy collapse means the policy is
-#     becoming deterministic — no exploration, no learning new
-#     strategies. Slide 5.8 Prescription Pad: add entropy bonus
-#     (coef ~0.01), or use SAC which has entropy regularisation
-#     baked in.
-#     >> Prescription: raise entropy coefficient from 0.01 → 0.05
-#        to encourage exploration.

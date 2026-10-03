@@ -66,6 +66,7 @@ from shared.mlfp05.ex_8 import (
     make_cartpole,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
@@ -294,6 +295,36 @@ assert (
 # avg reward is climbing, the Q-network is learning to predict which
 # action leads to more pole-balancing time.
 print("--- Checkpoint 1 passed --- DQN trained on CartPole\n")
+
+
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# The DL Prescription Pad (gradient flow, dead neurons, loss trend) reads
+# supervised batches. An RL agent is judged on its training HISTORY, so
+# kailash-ml has a separate instrument: RLDiagnostics (the object that
+# `km.diagnose("dqn", kind="rl")` returns). It installs no hooks — the
+# helper feeds it the rewards, episode lengths and Bellman losses we
+# recorded above and prints its report().
+dqn_rl_report = rl_diagnostic_checkpoint(
+    "DQN on CartPole-v1",
+    "dqn",
+    dqn_rewards,
+    lengths=dqn_lengths,
+    q_losses=dqn_losses,
+    window=20,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 20) vs peak — a late mean far below the peak means
+#     the policy found a good behaviour and then lost it.
+#   [CRIT] episode_reward_collapse — the LAST episode fell below 10% of
+#     the peak after a >=50% drop. Epsilon is still about
+#     0.995^200 = 0.37 at episode 200, so a single unlucky exploratory
+#     episode can trip it: confirm against the moving average in Task 4
+#     before acting. A real DQN collapse usually means the learning rate
+#     is too high or the target network is synced too often.
+#   findings: none — the agent did not collapse. That does NOT prove it
+#     converged; read the reward curve and the Bellman-loss curve below.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -674,67 +705,3 @@ print(
   POLICY directly (what to do) rather than indirectly through values.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # TD-error loss on Q-values
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (DQN — Deep Q-Network) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        q_network,
-        replay_loader,
-        _diag_loss,
-        title="DQN — Deep Q-Network",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [!] Gradient flow (WARNING): Q-network RMS spikes during epsilon-greedy
-#     exploration — expected but monitor for >1e-1 explosions.
-# [✓] Dead neurons  (HEALTHY): 12% inactive.
-# [?] Loss trend    (MIXED): reward climbing but TD-error oscillating —
-#     the hallmark of off-policy TD learning.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [BLOOD TEST — RL-SPECIFIC] RL gradients are inherently noisier
-#     than supervised. The spikes correspond to epsilon-greedy
-#     exploration hitting high-variance rewards.
-#     >> Prescription: use target network (decoupled Q) + replay
-#        buffer (deferred updates) + Huber loss (robust to outlier
-#        TD errors). DQN already has all three.
-#
-#  [STETHOSCOPE] Oscillating TD-error WHILE reward climbs = policy
-#     is improving despite noisy value estimates. This is healthy
-#     DQN behaviour. A monotonic loss would suggest the Q-network
-#     isn't learning from diverse experience.
-
-

@@ -55,6 +55,7 @@ from shared.mlfp05.ex_8 import (
     evaluate_policy,
     make_cartpole,
     moving_average,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
@@ -286,6 +287,25 @@ assert len(ppo_returns) == N_PPO_ITERS
 print("--- Checkpoint 1 passed --- both algorithms trained with timing\n")
 
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# One RLDiagnostics report per algorithm, from the reward history each
+# training run recorded (DQN: one entry per episode; PPO: one entry per
+# iteration = that iteration's mean episode return).
+dqn_rl_report = rl_diagnostic_checkpoint(
+    "DQN (comparison run)", "dqn", dqn_rewards, window=20
+)
+ppo_rl_report = rl_diagnostic_checkpoint(
+    "PPO (comparison run)", "ppo", ppo_returns, window=10
+)
+# HOW TO READ THEM (the numbers come from YOUR run; nothing is predicted):
+#   Compare each algorithm's late mean with its own peak — the gap is how
+#   much it gave back. A [CRIT] episode_reward_collapse on DQN can be one
+#   exploratory episode (epsilon is still ~0.37 at episode 200); check
+#   the training curves in Task 3 before calling it a collapse.
+
+
 # ════════════════════════════════════════════════════════════════════════
 # TASK 2 — Evaluate Random vs DQN vs PPO side-by-side
 # ════════════════════════════════════════════════════════════════════════
@@ -495,31 +515,25 @@ asyncio.run(conn.close())
 
 
 # ════════════════════════════════════════════════════════════════════════
-# DESTINATION-FIRST CLOSE — km.diagnose
+# DESTINATION-FIRST CLOSE — the library path: km.rl_train
 # ════════════════════════════════════════════════════════════════════════
-# This lesson walked the journey of reinforcement learning algorithms —
-# Random baseline, DQN with replay buffers, PPO with GAE — each with its
-# own training loop, environment-step accounting, and decision framework.
-# The kailash-ml SDK ships a single-call diagnostic primitive that
-# closes the production loop: km.diagnose inspects a trained model and
-# emits an auto-dashboard (loss curves, gradient flow, dead neurons,
-# activation stats, weight distributions). One cell. Every diagnostic
-# students would otherwise hand-roll, ready to surface in a Plotly
-# dashboard.
+# You hand-wrote DQN and PPO so every moving part is visible. In
+# production the same comparison is one call per algorithm:
+#   km.rl_train("CartPole-v1", algo="dqn", total_timesteps=...)
+#   km.rl_train("CartPole-v1", algo="ppo", total_timesteps=...)
+# rl_train also accepts "a2c", "sac", "td3" and "ddpg" (SAC/TD3/DDPG need
+# a continuous action space), and RLDiagnostics.as_sb3_callback() plugs
+# the same diagnostics you used above into that training loop. Its
+# backend is Stable-Baselines3, an optional extra
+# (`pip install kailash-ml[rl]`); we report whether it is installed
+# rather than assume it.
+import importlib.util
 
-from kailash_ml import diagnose
-
-# RL networks are torch.nn.Module — `kind='auto'` correctly dispatches
-# them to DLDiagnostics (verified empirically; no rl-specific kind needed
-# for the policy network's gradient/activation surface). We feed a small
-# iterable of observation-shaped tensors as the diagnostic batch.
-obs_iter = [torch.randn(64, obs_dim, device=device) for _ in range(4)]
-report = diagnose(dqn_model, kind="auto", data=obs_iter, show=False)
-report.plot_training_dashboard()
-print()
-print("km.diagnose: 1 line of code -> the same observability the lesson")
-print("body hand-rolled in 200+ lines. This is what 'destination-first'")
-print("means — when the journey is internalised, the SDK is one call.")
+sb3_installed = importlib.util.find_spec("stable_baselines3") is not None
+print("Library path: km.rl_train(env, algo='dqn' | 'ppo' | 'a2c' | ...)")
+print(f"  Stable-Baselines3 backend installed here: {sb3_installed}")
+if not sb3_installed:
+    print("  (install kailash-ml[rl] to run km.rl_train; this file did not use it)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -569,65 +583,3 @@ print(
   language models — the only difference is the environment.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Best-of-3 algorithm
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (RL Algorithm Comparison (DQN / PPO / SAC)) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        best_agent,
-        rollout_loader,
-        _diag_loss,
-        title="RL Algorithm Comparison (DQN / PPO / SAC)",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# Comparative report across 3 algorithms:
-#  DQN:  reward 287 ± 42, sample-efficient on discrete actions
-#  PPO:  reward 312 ± 28, most stable (clipped objective)
-#  SAC:  reward 298 ± 35, best for continuous actions
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [STETHOSCOPE] PPO wins on stability (lowest variance) —
-#     that's why it dominates in production RL (ChatGPT RLHF,
-#     robotics at OpenAI/Anthropic).
-#     DQN wins on sample efficiency for discrete actions.
-#     SAC wins on continuous-action exploration via max-entropy.
-#
-#  [PRESCRIPTION — CHOOSING]
-#     Discrete actions + offline RL → DQN
-#     Discrete or continuous + online + stability priority → PPO
-#     Continuous + hard exploration → SAC
-#     Slide 5.8 Prescription Pad for RL.

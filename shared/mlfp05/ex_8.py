@@ -195,6 +195,82 @@ def plot_reward_curve(
 
 
 # ════════════════════════════════════════════════════════════════════════
+# RL DIAGNOSTIC CHECKPOINT — kailash_ml.diagnostics.RLDiagnostics
+# ════════════════════════════════════════════════════════════════════════
+# The DL Prescription Pad (gradient flow / dead neurons / loss trend) is
+# built for supervised batches. RL has its own instrument in kailash-ml:
+# RLDiagnostics (also what `km.diagnose(algo, kind="rl")` returns). It
+# installs no hooks — you feed it the training history you recorded and
+# `report()` summarises it. Its automated finding is REWARD COLLAPSE: a
+# CRIT alert when the latest reward falls to <10% of the peak after a
+# >=50% drop over the rolling window.
+
+
+def rl_diagnostic_checkpoint(
+    title: str,
+    algo: str,
+    rewards: list[float],
+    *,
+    lengths: list[int] | None = None,
+    q_losses: list[float] | None = None,
+    policy_losses: list[float] | None = None,
+    value_losses: list[float] | None = None,
+    entropies: list[float] | None = None,
+    window: int = 20,
+) -> dict:
+    """Feed a recorded RL training history to RLDiagnostics and print it.
+
+    ``rewards`` holds one entry per episode (DQN) or per PPO iteration
+    (the iteration's mean episode return). ``policy_losses`` /
+    ``value_losses`` / ``entropies`` are per PPO iteration; ``q_losses``
+    per DQN episode (entries of 0.0 = no gradient step yet are skipped).
+    Returns the ``report()`` dict.
+    """
+    from kailash_ml.diagnostics import RLDiagnostics
+
+    diag = RLDiagnostics(algo=algo, window=window)
+    for i, reward in enumerate(rewards):
+        length = int(lengths[i]) if lengths is not None else 0
+        diag.record_episode(reward=float(reward), length=length)
+    if policy_losses is not None:
+        for i, loss in enumerate(policy_losses):
+            entropy = float(entropies[i]) if entropies is not None else None
+            diag.record_policy_update(float(loss), entropy=entropy)
+            if value_losses is not None:
+                diag.record_value_update(float(value_losses[i]))
+    n_q = 0
+    for loss in q_losses or []:
+        if loss > 0.0:
+            diag.record_q_update(float(loss))
+            n_q += 1
+    report = diag.report()
+
+    metrics = report["metrics"]
+    unit = "episodes" if algo == "dqn" else "iterations"
+    print("=" * 66)
+    print(f"  RL Diagnostics — {title}")
+    print("=" * 66)
+    print(f"  {unit} recorded:            {metrics['episode_count']}")
+    print(
+        f"  mean reward (last {min(window, len(rewards))} {unit}): "
+        f"{metrics['episode_reward_mean']:.2f}"
+    )
+    print(f"  peak reward:                {metrics['episode_reward_peak']:.2f}")
+    if policy_losses is not None:
+        print(f"  policy updates recorded:    {metrics['update_count']}")
+    if q_losses is not None:
+        print(f"  Q-loss entries recorded:    {n_q}")
+    if report["findings"]:
+        for finding in report["findings"]:
+            print(f"  [{finding['severity']}] {finding['category']}: {finding['message']}")
+            print(f"        suggestion: {finding['suggestion']}")
+    else:
+        print("  findings: none — no reward collapse over the rolling window")
+    print("=" * 66)
+    return report
+
+
+# ════════════════════════════════════════════════════════════════════════
 # MODEL REGISTRATION HELPER
 # ════════════════════════════════════════════════════════════════════════
 

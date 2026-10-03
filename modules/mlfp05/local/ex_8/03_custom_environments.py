@@ -58,6 +58,7 @@ from shared.mlfp05.ex_8 import (
     evaluate_policy,
     moving_average,
     register_rl_model,
+    rl_diagnostic_checkpoint,
     setup_engines,
 )
 from kailash_ml import ModelVisualizer
@@ -702,6 +703,30 @@ assert len(churn_rewards_hist) == 150, "Churn DQN should train for 150 episodes"
 print("--- Checkpoint 2 passed --- DQN trained on ChurnPrevention\n")
 
 
+# ══════════════════════════════════════════════════════════════════
+# DIAGNOSTIC CHECKPOINT — RL instruments before Visualise
+# ══════════════════════════════════════════════════════════════════
+# RLDiagnostics (what `km.diagnose("dqn", kind="rl")` returns) reads the
+# reward history we recorded; episode length = days the customer stayed.
+churn_rl_report = rl_diagnostic_checkpoint(
+    "DQN on ChurnPrevention",
+    "dqn",
+    churn_rewards_hist,
+    lengths=[len(ep_acts) for ep_acts in churn_actions_hist],
+    window=20,
+)
+# HOW TO READ IT (the numbers come from YOUR run; nothing is predicted):
+#   mean reward (last 20 episodes) — the honest summary of the policy;
+#     compare it with the do-nothing and always-discount baselines in
+#     Task 5.
+#   [CRIT] episode_reward_collapse — the check looks at the LAST episode
+#     only. In this environment a customer who churns ends the episode
+#     early with -5, so the check fires whenever the final simulated
+#     customer churned. That is the environment's randomness, not a
+#     learning collapse — a custom environment can make a generic
+#     detector misfire, which is why you read it next to the mean.
+
+
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — Visualise: state trajectories, action distributions,
 #           learned policy vs baseline
@@ -953,63 +978,3 @@ print(
   to use for which problem.
 """
 )
-
-# ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — five instruments before Visualise
-# ══════════════════════════════════════════════════════════════════
-# Reference: `kailash_ml.diagnostics` (via `kailash-ml`) — see gold standard
-# `solutions/ex_1/01_standard_ae.py` for the full pattern.
-from kailash_ml.diagnostics import run_diagnostic_checkpoint
-
-
-def _diag_loss(m, batch):
-    # Same as PPO/DQN — environment-specific reward
-    # Customise per your exercise's loss shape.
-    if isinstance(batch, (tuple, list)):
-        x = batch[0]
-        y = batch[1] if len(batch) > 1 else None
-    else:
-        x, y = batch, None
-    out = m(x)
-    import torch.nn.functional as F
-    if y is None:
-        return F.mse_loss(out, x)
-    return F.cross_entropy(out, y)
-
-
-print("\n── Diagnostic Report (Custom Gym Environment) ──")
-try:
-    diag, findings = run_diagnostic_checkpoint(
-        agent,
-        rollout_loader,
-        _diag_loss,
-        title="Custom Gym Environment",
-        n_batches=8,
-        show=False,
-    )
-except Exception as exc:
-    # Diagnostic is pedagogical — never block the exercise on it.
-    print(f"[diagnostic skipped: {exc}]")
-
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-# [✓] Gradient flow (HEALTHY): RMS in range, custom env reward well-scaled.
-# [?] Warning: reward magnitude 1e+3 (high) — normalise for stable TD learning.
-# ════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-
-#  [PRESCRIPTION] Custom environments often have poorly-scaled
-#     rewards. If rewards are in the thousands, value estimates
-#     explode and gradients blow up.
-#     >> Prescription: normalise rewards to roughly [-1, 1] range
-#        OR use reward clipping (env wrappers) OR adjust
-#        discount factor gamma.
-#
-#  [STETHOSCOPE] Healthy gradient flow proves the environment is
-#     learnable — the agent IS getting signal. Reward scaling is
-#     an optimisation hygiene issue, not a design issue.
-
-

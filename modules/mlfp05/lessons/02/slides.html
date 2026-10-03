@@ -43,7 +43,7 @@
   <p>Images have two properties we need to exploit:</p>
   <ul>
     <li><strong>Local structure</strong> — adjacent pixels are correlated</li>
-    <li><strong>Translation equivariance</strong> — a cat is a cat regardless of position</li>
+    <li><strong>Translation equivariance</strong> — shift the cat and its feature map shifts with it (pooling adds some invariance)</li>
   </ul>
   <p>A convolution uses the <em>same</em> small filter at <em>every</em> position.</p>
 </section>
@@ -224,12 +224,12 @@
 <!-- 6 -->
 <section>
   <h2>The ResNet idea</h2>
-  <p>Before ResNet: adding more layers <em>hurt</em> accuracy after ~20 layers. Not overfitting — gradient vanishing.</p>
+  <p>Before ResNet: adding more layers <em>hurt</em> accuracy after ~20 layers. Not overfitting (training error rose too), and not vanishing gradients (BatchNorm was in place) — deep plain nets are simply <em>hard to optimise</em>.</p>
   <p>ResNet learns the residual and adds the input back:</p>
   <div style="text-align: center; margin: 1.5em 0; padding: 24px; background: #F8FAFC; border-radius: 8px;">
     \[ H(x) = F(x) + x \]
   </div>
-  <p style="font-size: 0.85em;">The skip gives gradients a clear path back. In the worst case, <em>F</em> can learn zero and the block becomes the identity — so adding layers can never hurt.</p>
+  <p style="font-size: 0.85em;">The skip gives gradients a clear path back. If <em>F</em> learns zero the block is the identity — so an extra block is easy to make harmless, and deep nets train.</p>
 </section>
 
 <!-- 7 -->
@@ -290,7 +290,7 @@ class BasicBlock(nn.Module):
   <div style="text-align: center; background: #F8FAFC; padding: 12px; border-radius: 6px;">
     \( w = \sigma(W_2 \, \text{ReLU}(W_1 \, \text{GAP}(x))) \)
   </div>
-  <p style="font-size: 0.85em;">Adds ~3% parameters, buys ~1–2% accuracy on ImageNet.</p>
+  <p style="font-size: 0.85em;">SE-ResNet-50 (reduction 16): ~10% more parameters, ~1.5 points lower top-1 error on ImageNet (Hu et al.).</p>
 </section>
 
 <!-- 10 -->
@@ -353,11 +353,11 @@ for epoch in range(15):
 <section>
   <h2>Modern training recipes</h2>
   <table style="font-size: 0.7em;">
-    <thead><tr><th>Trick</th><th>What</th><th>Gain</th></tr></thead>
+    <thead><tr><th>Trick</th><th>What</th><th>Typical gain</th></tr></thead>
     <tbody>
-      <tr><td>Kaiming init</td><td>Variance 2/n_in, for ReLU</td><td>Fast convergence</td></tr>
-      <tr><td>Mixed precision</td><td>FP16 forward, FP32 master</td><td>2× speed, ½ mem</td></tr>
-      <tr><td>Mixup</td><td>Blend pairs of inputs/labels</td><td>+1% acc</td></tr>
+      <tr><td>Kaiming init</td><td>Weight variance 2/n_in, for ReLU</td><td>Fast convergence</td></tr>
+      <tr><td>Mixed precision</td><td>FP16 forward, FP32 master</td><td>Up to 2× speed, less mem (GPU-dependent)</td></tr>
+      <tr><td>Mixup</td><td>Blend pairs of inputs/labels</td><td>Regularisation, ~+1% acc</td></tr>
       <tr><td>Label smoothing</td><td>Soft targets</td><td>Calibration</td></tr>
       <tr><td>Cosine LR schedule</td><td>Anneal LR along cosine</td><td>+0.5–1% acc</td></tr>
     </tbody>
@@ -368,15 +368,22 @@ for epoch in range(15):
 <section>
   <h2>Exporting with OnnxBridge</h2>
   <pre><code class="language-python" data-trim>
+from pathlib import Path
 from kailash_ml import OnnxBridge
+from shared.mlfp05.ex_2 import FlatImageAdapter
+
 bridge = OnnxBridge()
-bridge.export(
-    model=model.cpu().eval(),
-    sample_input=torch.randn(1, 1, 28, 28),
-    output_path="tiny_resnet_se.onnx",
-)
+serving = FlatImageAdapter(resnet_se).eval()  # flat pixel rows in
+path = Path("resnet_se_cifar10.onnx")
+x = torch.randn(2, 3 * 32 * 32)  # 2 rows: a batch of 1 can freeze the batch size
+
+res = bridge.export(serving, "torch", output_path=path, sample_input=x)
+assert res.success, res.error_message   # failure returns success=False
+
+v = bridge.validate(serving, path, x.numpy(), tolerance=1e-3)
+print(v.valid, v.max_diff)              # PyTorch vs ONNX Runtime parity
   </code></pre>
-  <p>Traces the model, writes ONNX, validates PyTorch↔ONNX parity automatically. If an op is unsupported, it raises before you ship.</p>
+  <p style="font-size: 0.85em;">Export and parity are two explicit steps: <code>export</code> does not validate, and on failure it returns <code>success=False</code> rather than raising — so assert it. Exercise 5.2 file 03 runs exactly this on the CIFAR-10 ResNetSE.</p>
 </section>
 
 <!-- 15 -->

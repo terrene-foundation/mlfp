@@ -11,8 +11,9 @@
 #   - Build and train an MLP-based GAN on full MNIST (60K images)
 #   - Diagnose training dynamics: when is D "winning" vs healthy balance
 #   - Visualise generated digits, training progression, and loss dynamics
-#   - Apply synthetic data generation for a Singapore insurance company
-#     facing data scarcity under PDPA privacy regulations
+#   - Apply synthetic data generation to a Singapore insurer's data
+#     scarcity problem — and learn why synthetic data is NOT private
+#     by default
 #
 # PREREQUISITES: M5/ex_1 (autoencoders — generative model foundations)
 # ESTIMATED TIME: ~45 min
@@ -139,6 +140,13 @@ print("\n--- Checkpoint 1 passed --- G and D architectures verified\n")
 # ════════════════════════════════════════════════════════════════════════
 # L_D = -E[log D(x)] - E[log(1 - D(G(z)))]    (discriminator loss)
 # L_G = -E[log D(G(z))]                         (generator loss — non-saturating)
+#
+# Why not the textbook minimax G loss, min E[log(1 - D(G(z)))]? Early in
+# training D rejects fakes confidently (D(G(z)) ≈ 0), and log(1 - D) is
+# flat there — its gradient SATURATES and G learns almost nothing. The
+# non-saturating version maximises log D(G(z)) instead: same fixed point,
+# but its gradient is LARGEST exactly when D rejects the fakes. In BCE
+# terms it is simply "score the fakes against the REAL label".
 print("\n" + "=" * 70)
 print("  PHASE 3 — TRAIN: Vanilla GAN (BCEWithLogitsLoss)")
 print("=" * 70)
@@ -154,7 +162,8 @@ async def train_vanilla_gan(epochs: int = EPOCHS, lr: float = LR):
     opt_g = torch.optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
     opt_d = torch.optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
     # TODO: Define BCE loss for adversarial training
-    # Hint: bce = nn.BCEWithLogitsLoss()
+    # Hint: D returns a raw logit (no sigmoid) — pick the torch.nn BCE
+    #       loss that applies the sigmoid internally (numerically stable).
     bce = ____
     g_losses, d_losses = [], []
     epoch_snapshots = {}
@@ -185,8 +194,8 @@ async def train_vanilla_gan(epochs: int = EPOCHS, lr: float = LR):
                 z = torch.randn(bs, LATENT_DIM, device=device)
                 fake = G(z).detach()
                 # TODO: D loss = BCE on real (target=1) + BCE on fake (target=0)
-                # Hint: loss_d = bce(D(real_batch), torch.ones(bs, 1, device=device))
-                #              + bce(D(fake), torch.zeros(bs, 1, device=device))
+                # Hint: sum two bce terms, one per image source. Targets
+                #       must match D's (bs, 1) output and live on `device`.
                 loss_d = ____
                 opt_d.zero_grad()
                 loss_d.backward()
@@ -196,7 +205,9 @@ async def train_vanilla_gan(epochs: int = EPOCHS, lr: float = LR):
                 # G wants D to classify its fakes as real (target=1)
                 z = torch.randn(bs, LATENT_DIM, device=device)
                 # TODO: G loss = BCE on D(G(z)) with target=1 (fool the discriminator)
-                # Hint: loss_g = bce(D(G(z)), torch.ones(bs, 1, device=device))
+                # Hint: this is the non-saturating loss from the Phase 3 note —
+                #       fresh fakes (NOT detached: G needs the gradient), scored
+                #       against the label D gives a real image.
                 loss_g = ____
                 opt_g.zero_grad()
                 loss_g.backward()
@@ -222,11 +233,13 @@ async def train_vanilla_gan(epochs: int = EPOCHS, lr: float = LR):
             {"final_g_loss": g_losses[-1], "final_d_loss": d_losses[-1]}
         )
 
-    return G, g_losses, d_losses, epoch_snapshots
+    return G, D, g_losses, d_losses, epoch_snapshots
 
 
 print("\n  Training vanilla GAN on full MNIST (60K images)...")
-G_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(train_vanilla_gan())
+G_gan, D_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(
+    train_vanilla_gan()
+)
 
 # ══════════════════════════════════════════════════════════════════
 # DIAGNOSTIC CHECKPOINT — Vanilla GAN (track G + D separately)
@@ -234,34 +247,33 @@ G_gan, gan_g_losses, gan_d_losses, gan_snapshots = asyncio.run(train_vanilla_gan
 # GANs have TWO networks training in an adversarial loop. We run the
 # Prescription Pad on BOTH the Generator and the Discriminator so we
 # can see which side is "winning" and which side is starving for
-# signal. The `train_losses` we replay into each diag are the per-
-# epoch losses already captured above.
+# signal. Each loss closure re-runs the REAL objective from training
+# (no weights are updated), and `train_losses` replays the per-epoch
+# losses captured above.
 from kailash_ml.diagnostics import run_diagnostic_checkpoint
-import torch.nn.functional as _F
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+diag_bce = nn.BCEWithLogitsLoss()
 
 
 def _g_loss(m, batch):
-    # Re-run the G objective: BCE against "real" label.
+    # Generator objective used in training: non-saturating BCE, with the
+    # trained discriminator D_gan scoring fresh fakes against "real".
     bs = batch[0].size(0)
     z = torch.randn(bs, LATENT_DIM, device=device)
-    fake = m(z)
-    # Need a D to score fakes — use G_gan's paired D is unavailable here,
-    # so we build a tiny surrogate scoring head for the checkpoint pass.
-    return _F.mse_loss(fake, batch[0])  # proxy reconstruction signal
+    return diag_bce(D_gan(m(z)), torch.ones(bs, 1, device=device))
 
 
 def _d_loss(m, batch):
-    # Re-run the D objective on real + fake for a readable gradient view.
+    # Discriminator objective used in training: real -> 1, fake -> 0.
     bs = batch[0].size(0)
-    real_score = m(batch[0])
-    z = torch.randn(bs, LATENT_DIM, device=device)
-    fake_score = m(G_gan(z).detach())
-    return _F.binary_cross_entropy_with_logits(
-        real_score, torch.ones_like(real_score)
-    ) + _F.binary_cross_entropy_with_logits(fake_score, torch.zeros_like(fake_score))
+    with torch.no_grad():
+        fake = G_gan(torch.randn(bs, LATENT_DIM, device=device))
+    return diag_bce(m(batch[0]), torch.ones(bs, 1, device=device)) + diag_bce(
+        m(fake), torch.zeros(bs, 1, device=device)
+    )
 
 
-print("\n── Diagnostic Report (Generator) ──")
 g_diag, g_findings = run_diagnostic_checkpoint(
     G_gan,
     real_loader,
@@ -271,77 +283,53 @@ g_diag, g_findings = run_diagnostic_checkpoint(
     train_losses=gan_g_losses,
     show=False,
 )
+print_prescription_pad(g_findings, "Vanilla GAN — Generator")
 
-# ══════ EXPECTED OUTPUT (reference pattern — vanilla GAN on MNIST) ═
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad (Generator)
-# ════════════════════════════════════════════════════════════════
-#   [!] Gradient flow (WARNING): Generator gradients become SMALL
-#       when D wins (D_loss approaches 0). RMS on early G layers
-#       drops below 1e-5 — the BCE objective saturates and the
-#       Generator stops learning. Classic "D dominance" failure.
-#   [!] Activations    (WARNING): Generator tanh outputs may
-#       cluster near a single mode (e.g., all 1s) — this is the
-#       visible signature of MODE COLLAPSE on MNIST. Check the
-#       gallery: if 50+ of 64 tiles are the same digit, confirmed.
-#   [~] Loss trend     (MIXED): G loss and D loss oscillate —
-#       typical adversarial dynamics. D loss near ln(4)≈1.386 is
-#       healthy; D loss near 0 means D won and G is starving.
-# ════════════════════════════════════════════════════════════════
+d_diag, d_findings = run_diagnostic_checkpoint(
+    D_gan,
+    real_loader,
+    _d_loss,
+    title="Vanilla GAN — Discriminator",
+    n_batches=6,
+    train_losses=gan_d_losses,
+    show=False,
+)
+print_prescription_pad(d_findings, "Vanilla GAN — Discriminator")
+
+# HOW TO READ YOUR TWO PRESCRIPTION PADS (your readings depend on your run):
 #
-# STUDENT INTERPRETATION GUIDE — reading the GAN Prescription Pad:
+#  GRADIENT FLOW — compare G's pad with D's. If D's gradients are healthy
+#     but G's are tiny (vanishing), D is dominating: G is being told
+#     "everything you make is fake" without being told how to improve.
+#     >> Try: reduce D's learning rate relative to G's, add label
+#        smoothing (real target 0.9 instead of 1.0), or switch to
+#        WGAN-GP (ex_5/02).
 #
-#  [BLOOD TEST] Generator gradient RMS tracks the adversarial
-#     balance. When D "wins" (D_loss -> 0), the saturating BCE
-#     gradient in G collapses to ~0 and G stops updating. This
-#     is THE reason slide 5.5 (GANs) motivates WGAN-GP — the
-#     Wasserstein loss provides a gradient EVERYWHERE, even when
-#     D perfectly separates the distributions.
-#     >> Prescription Pad: if G's Blood Test is WARNING and D's
-#        loss is near 0, switch to WGAN-GP (ex_5/02) OR add label
-#        smoothing (real_labels = 0.9 instead of 1.0) OR reduce
-#        D's learning rate relative to G's.
+#  DEAD NEURONS / SATURATION — the generator ends in Tanh. A high
+#     saturated fraction there means many pixels are pinned at pure
+#     black/white. Combined with a gallery full of near-identical digits,
+#     that is the signature of MODE COLLAPSE (count the distinct digits
+#     in the 4A gallery — a healthy run shows all ten).
 #
-#  [X-RAY] Mode collapse — reference the Prescription Pad row:
-#     "mode collapse → diversify noise, add minibatch
-#     discrimination, use WGAN-GP". The X-Ray detects this as
-#     collapsed activation diversity in the Generator's final
-#     conv/linear layer. Slide 5.5 illustrates this with the
-#     "only 1s" failure mode. Count distinct digits in your
-#     gallery — healthy GAN produces all 10 classes, collapsed
-#     GAN produces 1-3.
-#     >> Prescription Pad: minibatch discrimination OR feature
-#        matching OR WGAN-GP (Wasserstein doesn't suffer from
-#        this as severely as BCE).
+#  LOSS TREND — GAN losses are NOT supposed to fall monotonically. G and
+#     D trade wins, so the curves oscillate, and G's loss often RISES as
+#     D gets stronger. A WARNING here is not automatically a failure.
+#     The failure signature is D's loss flat-lining near 0 (D has won
+#     permanently); D's loss hovering near ln(4) ≈ 1.386 means D cannot
+#     tell real from fake — the equilibrium you want.
 #
-#  [STETHOSCOPE] GAN loss curves are NOT the usual "monotonically
-#     down" shape. Healthy GAN shows OSCILLATING losses — G and D
-#     trade wins as they co-evolve. Flat-lining D loss near 0 is
-#     the failure signature (D has won permanently). Flat-lining
-#     D loss near ln(4)≈1.386 is the Nash equilibrium (ideal).
-#     >> Prescription Pad: if D loss flat-lines at 0, halt training
-#        and either reduce D capacity OR increase G capacity OR
-#        switch to WGAN-GP.
-#
-#  FIVE-INSTRUMENT TAKEAWAY: GANs are the one architecture where
-#  HEALTHY loss curves look UNHEALTHY by supervised-learning
-#  standards. The Prescription Pad's value is translation — it
-#  reads the oscillations as signal, not noise. Slide 5.5 uses
-#  these reports to motivate WGAN-GP in the next file: every
-#  WARNING above becomes HEALTHY there.
-#
-#  CONNECT TO SLIDE 5.5 (GANs): slide claims "vanilla GAN is
-#  unstable; WGAN-GP fixes the gradient-signal problem". The
-#  G-side WARNING above + ex_5/02's all-HEALTHY report is the
-#  empirical proof of that claim.
+#  CONNECT TO ex_5/02: run WGAN-GP and compare its pads with these. The
+#  claim to test is "the Wasserstein critic gives G a more informative
+#  gradient" — check whether your readings actually support it.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert len(gan_g_losses) == EPOCHS, f"Expected {EPOCHS} epochs, got {len(gan_g_losses)}"
 # INTERPRETATION: In a healthy GAN, D loss hovers around ln(4) ~ 1.386,
 # meaning D is about 50% accurate (can't tell real from fake). If D loss
-# drops to 0, D has "won" — it perfectly classifies everything — and G
-# gets no useful gradient signal (training collapses).
+# drops toward 0, D has "won" — it separates real from fake perfectly —
+# and the feedback G receives stops being informative ("everything you
+# make is fake"), so training stalls or collapses.
 print("\n--- Checkpoint 2 passed --- vanilla GAN trained\n")
 
 
@@ -431,39 +419,44 @@ print("  Interactive training curves saved to ex_5_01_vanilla_training.html")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PHASE 5 — APPLY: Synthetic Data for Singapore Insurance Under PDPA
+# PHASE 5 — APPLY: Synthetic Data for a Singapore Insurer
 # ════════════════════════════════════════════════════════════════════════
 print("\n" + "=" * 70)
-print("  PHASE 5 — APPLY: Synthetic Data for Insurance (PDPA Compliance)")
+print("  PHASE 5 — APPLY: Synthetic Data for Insurance (Data Scarcity)")
 print("=" * 70)
 print(
     """
-  BUSINESS SCENARIO:
-  You are a data scientist at a Singapore life insurance company.
-  Your team needs to build a fraud detection model, but the Personal
-  Data Protection Act (PDPA) restricts how you can use real policyholder
-  records for model training. You have only 2,000 real claim records
-  (too few for robust ML), and PDPA compliance review takes 6 months
-  for new data access requests.
+  BUSINESS SCENARIO (illustrative):
+  You are a data scientist at a Singapore life insurer. Your team wants
+  a fraud-detection model but has only 2,000 labelled claim records —
+  too few for robust ML — and every new data-access request goes
+  through a lengthy Personal Data Protection Act (PDPA) review.
 
-  SOLUTION: Train a GAN on the limited real data to generate synthetic
-  policyholder profiles that preserve statistical properties without
-  containing any real person's data. The synthetic data supplements
-  real data for model training — no PDPA issues because no real
-  personal data is used.
+  IDEA: Train a generative model on the real records and sample
+  synthetic records with the same statistical properties, to
+  supplement the real data while you develop the model.
 
-  BUSINESS IMPACT:
-  - Model training data increased from 2,000 to 20,000+ records
-  - No PDPA compliance delay (synthetic data is not personal data)
-  - Fraud detection recall improves from 62% to 78%
-  - Estimated annual fraud savings: S$4.2M additional recovered claims
+  WHAT SYNTHETIC DATA DOES NOT GIVE YOU FOR FREE:
+  - Privacy. A GAN is trained on real records and can memorise and
+    regenerate them. Synthetic data is NOT automatically non-personal
+    data: it needs formal guarantees (e.g. differentially-private
+    training) plus memorisation / membership-inference testing, and
+    the PDPA call belongs to your data-protection officer.
+  - New information. Samples from a model fitted on 2,000 records
+    cannot carry more signal than those records. Whether they improve
+    the fraud model is an empirical question you answer on a held-out
+    set of REAL claims.
+
+  WHAT WE CAN CHECK HERE: whether synthetic records match real ones
+  statistically.
 """
 )
 
-# Simulate the insurance scenario using MNIST as a proxy:
+# Proxy for the insurance scenario, using MNIST:
 # Real policyholder "profiles" = real MNIST digits (limited sample)
 # Synthetic profiles = GAN-generated digits
-# We compare the statistical distributions to validate quality.
+# Caveat: G_gan was trained on all 60K digits, not on the 2,000-record
+# sample, so this comparison is more favourable than the real scenario.
 
 print("\n  Simulating the insurance data scenario with MNIST as proxy...")
 
@@ -477,20 +470,19 @@ print(f"  'Real' policyholder records: {len(X_small_real)}")
 
 # Step 2: Generate synthetic data to supplement
 # TODO: Generate 18,000 synthetic records using the trained generator
-# Hint: Set G_gan to eval mode, generate z from N(0,1) with shape (18000, LATENT_DIM),
-#       pass through G_gan with torch.no_grad()
+# Hint: sample latent vectors from the generator's prior, then decode them.
 G_gan.eval()
 with torch.no_grad():
-    z_synthetic = ____  # TODO: torch.randn(18000, LATENT_DIM, device=device)
-    X_synthetic = ____  # TODO: G_gan(z_synthetic)
+    z_synthetic = ____  # TODO: 18,000 latent vectors (Checkpoint 4 checks the count)
+    X_synthetic = ____  # TODO: decode them with the trained generator
 
 print(f"  Synthetic records generated: {len(X_synthetic)}")
 print(f"  Combined dataset: {len(X_small_real) + len(X_synthetic)} records")
 
 # Step 3: Compare real vs synthetic pixel distributions
 # TODO: Flatten both tensors for distribution comparison
-# Hint: X_real_flat = X_small_real.view(-1).cpu().numpy()
-#       X_synth_flat = X_synthetic.view(-1).cpu().numpy()
+# Hint: every pixel of every record in ONE 1-D NumPy array (tensors live
+#       on `device`, so move them to the CPU first).
 X_real_flat = ____
 X_synth_flat = ____
 
@@ -503,8 +495,9 @@ fig.suptitle(
 )
 
 # TODO: Plot overlapping histograms for feature distribution
-# Hint: axes[0].hist(X_real_flat, bins=50, alpha=0.6, label="Real (2K records)", density=True)
-#       axes[0].hist(X_synth_flat, bins=50, alpha=0.6, label="Synthetic (18K)", density=True)
+# Hint: one Axes.hist call per source on axes[0]. The sources differ in
+#       size (2K vs 18K), so normalise to a density; keep them
+#       semi-transparent, and label them for the legend below.
 ____
 ____
 axes[0].set_xlabel("Feature Value", fontsize=12)
@@ -513,8 +506,8 @@ axes[0].set_title("Feature Distribution Overlap", fontsize=13)
 axes[0].legend(fontsize=11)
 
 # TODO: Plot mean feature values per sample
-# Hint: real_means = X_small_real.view(len(X_small_real), -1).mean(dim=1).cpu().numpy()
-#       synth_means = X_synthetic.view(len(X_synthetic), -1).mean(dim=1).cpu().numpy()
+# Hint: reshape each tensor to (n_records, 784), average over the pixel
+#       axis, and convert to NumPy — one number per record.
 real_means = ____
 synth_means = ____
 axes[1].hist(real_means, bins=30, alpha=0.6, label="Real", density=True)
@@ -525,8 +518,7 @@ axes[1].set_title("Record-Level Distribution", fontsize=13)
 axes[1].legend(fontsize=11)
 
 # TODO: Plot variance per sample
-# Hint: real_vars = X_small_real.view(len(X_small_real), -1).var(dim=1).cpu().numpy()
-#       synth_vars = X_synthetic.view(len(X_synthetic), -1).var(dim=1).cpu().numpy()
+# Hint: same reshape as the means, but measure the spread over pixels.
 real_vars = ____
 synth_vars = ____
 axes[2].hist(real_vars, bins=30, alpha=0.6, label="Real", density=True)
@@ -562,8 +554,11 @@ real_mean_val = float(np.mean(real_means))
 synth_mean_val = float(np.mean(synth_means))
 mean_diff_pct = abs(real_mean_val - synth_mean_val) / (abs(real_mean_val) + 1e-8) * 100
 print(f"  │  Mean feature difference:      {mean_diff_pct:>7.1f}%                  │")
-print("  │  PDPA compliance:              No personal data used      │")
-print("  │  Status:                       READY FOR MODEL TRAINING   │")
+print("  │  Privacy / PDPA:               NOT ASSESSED (needs a      │")
+print("  │                                memorisation test + DPO)   │")
+stats_status = "STATISTICALLY CLOSE" if mean_diff_pct < 5.0 else "DISTRIBUTION GAP"
+print(f"  │  Statistical match (<5% diff): {stats_status:<27} │")
+print("  │  Next step: does it help a model scored on REAL hold-out?  │")
 print("  └────────────────────────────────────────────────────────────┘")
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────
@@ -601,14 +596,19 @@ print(
   [x] Latent interpolation — smooth transitions prove learned manifold
 
   REAL-WORLD APPLICATION:
-  [x] Synthetic data generation for PDPA-compliant model training
+  [x] Synthetic data to supplement scarce training records
   [x] Statistical validation: real vs synthetic distribution comparison
-  [x] Business impact quantification: S$4.2M in additional fraud recovery
+  [x] Why synthetic data is not private by default, and what must be
+      tested before anyone treats it as non-personal data
 
   KEY INSIGHT:
-  Vanilla GANs work but are UNSTABLE. The BCE loss gives zero gradient
-  when D perfectly separates real from fake (JS divergence saturates).
-  This means training can suddenly collapse with no warning.
+  Vanilla GANs work but are UNSTABLE. The original minimax G loss,
+  log(1 - D(G(z))), saturates when D confidently rejects fakes; that is
+  why we trained G with the non-saturating loss -log D(G(z)). But the
+  game still minimises the JS divergence, and when the real and
+  generated distributions barely overlap JS is stuck at its maximum
+  (log 2) — it says "different" without saying "how far". D can win,
+  G chases a moving target, and modes collapse.
 
   Next: Exercise 5.2 — WGAN-GP solves this instability with
   Wasserstein distance (smooth gradients even when distributions

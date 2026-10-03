@@ -221,82 +221,43 @@ lstm_results = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — LSTM fixes vanilla RNN's vanishing gradients
+# DIAGNOSTIC CHECKPOINT — LSTM vs the vanilla RNN
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# The LSTM's additive cell-state path is designed to carry gradient
+# across many timesteps. Compare this pad with 01's — and, more
+# directly, the LSTM-vs-RNN gradient-decay ratios computed below.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
 
 print("\n── Diagnostic Report (LSTM) ──")
-report = diagnose(lstm_model, kind="dl", data=val_loader, show=False)
+diag, findings = run_diagnostic_checkpoint(
+    lstm_model,
+    train_loader,
+    _mse_loss,
+    title="LSTM",
+    train_losses=lstm_results["train_losses"],
+    val_losses=lstm_results["val_losses"],
+    show=False,
+)
+print_prescription_pad(findings, "LSTM")
 
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 2.4e-04 at
-#       'lstm.weight_hh_l0'. LSTM gating keeps gradients
-#       alive through time. Contrast 01_vanilla_rnn.py
-#       which typically shows RMS < 1e-6 at the same layer
-#       — three orders of magnitude worse.
-#   [✓] Saturation   (HEALTHY): max |tanh| = 0.82 on cell
-#       state. Input/forget gate activations in [0.25, 0.75]
-#       range — healthy gating, no stuck-open/stuck-closed.
-#   [✓] Loss trend    (HEALTHY): train slope -2.8e-03/epoch,
-#       val slope -2.1e-03/epoch. Train-val gap < 10% at
-#       final epoch — no overfitting on PM2.5 sequence.
-# ════════════════════════════════════════════════════════════════
-# Final val loss: ~1.4 after 15 epochs, sequence_length=60.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — LSTM vs VANILLA RNN] RMS 2.4e-04 at
-#     weight_hh_l0 is the key comparative metric. Vanilla RNN
-#     (01) routinely shows <1e-6 at this same layer — that's
-#     the VANISHING GRADIENT THROUGH TIME that Hochreiter
-#     identified in 1991 (Slide 5N). LSTM's ADDITIVE cell
-#     update (c_t = f_t * c_{t-1} + i_t * g_t) creates a
-#     gradient HIGHWAY that bypasses the multiplicative
-#     tanh chain. This is the single most important
-#     architectural idea in sequence modelling for 30 years.
-#     >> Prescription: No fix needed. If RMS DROPS below
-#        1e-5 even with LSTM, the sequence is catastrophically
-#        long (>500 steps) — switch to transformer or add
-#        gradient clipping at max_norm=1.0.
-#
-#  [X-RAY — LSTM-SPECIFIC] weight_hh_l0 contains FOUR gate
-#     matrices concatenated (input, forget, output, cell)
-#     with shape [4*hidden, hidden]. The 82% max tanh is
-#     the CELL-STATE saturation check — healthy when <0.95.
-#     Sigmoid gates at [0.25, 0.75] means every gate is
-#     actively modulating (not stuck). If ANY gate sticks
-#     at 0 or 1, that gate's function is effectively
-#     removed — e.g. forget gate stuck at 1.0 means the
-#     cell never forgets, and the memory overflows.
-#     >> Prescription: If gate activations cluster at
-#        extremes, reduce LR by half or add gate-specific
-#        initialisation (positive forget-gate bias = 1.0
-#        is the classic Jozefowicz 2015 trick).
-#
-#  [STETHOSCOPE — TRAIN/VAL GAP] Train-val gap <10% is the
-#     LSTM PM2.5 success signature. Vanilla RNN on this
-#     task (01) often shows LOW train loss but HIGH val
-#     loss — pattern memorisation without temporal
-#     generalisation. LSTM's gating acts as regularisation
-#     by forcing the model to DECIDE what to remember,
-#     which naturally smooths over-fitted temporal
-#     patterns.
-#     >> Prescription: If val loss diverges from train
-#        past epoch 10, add dropout between LSTM layers
-#        (recurrent dropout preserves temporal structure
-#        better than standard dropout).
-#
-#  FIVE-INSTRUMENT TAKEAWAY: LSTM demonstrates the
-#  SOLUTION to 01's pathology. Same Blood Test metric,
-#  three orders of magnitude healthier, because
-#  architectural innovation beats hyperparameter tweaking.
-#  This forward-references GRU (03, simpler gating, often
-#  similar result) and attention (04, fundamentally
-#  different mechanism for very long sequences).
-# ════════════════════════════════════════════════════════════════════
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# Gate weights live in four stacked blocks inside weight_ih/weight_hh,
+# so a dead or saturated gate does not show up as "dead neurons" (that
+# check covers ReLU-style activations). Use the gate-activation plots
+# below to see saturated gates; use the pad for overall optimisation
+# health and the train-vs-val loss trend.
+# ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
 assert len(lstm_results["train_losses"]) == EPOCHS

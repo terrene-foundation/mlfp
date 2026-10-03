@@ -170,42 +170,44 @@ rnn_results = train_model(
 )
 
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — the vanishing-gradient TEXTBOOK case
+# DIAGNOSTIC CHECKPOINT — the vanishing-gradient textbook case
 # ══════════════════════════════════════════════════════════════════
-# VanillaRNN is the vanishing-gradient poster child. This diagnostic
-# run is EXPECTED to fire a CRITICAL Blood Test finding — that is
-# the pedagogical point. LSTM (02) and GRU (03) fix it.
-from kailash_ml import diagnose
+# VanillaRNN is the classic vanishing-gradient architecture. Note what
+# the pad can and cannot see: its gradient-flow reading is per
+# PARAMETER TENSOR (weight_ih, weight_hh, head), aggregated over the
+# whole sequence, so a recurrent layer can read HEALTHY even while the
+# signal from early timesteps decays. The per-timestep decay is what
+# the gradient_decay_rnn() measurement below shows directly.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
 
 print("\n── Diagnostic Report (VanillaRNN) ──")
-report = diagnose(rnn_model, kind="dl", data=val_loader, show=False)
+diag, findings = run_diagnostic_checkpoint(
+    rnn_model,
+    train_loader,
+    _mse_loss,
+    title="VanillaRNN",
+    train_losses=rnn_results["train_losses"],
+    val_losses=rnn_results["val_losses"],
+    show=False,
+)
+print_prescription_pad(findings, "VanillaRNN")
 
-# ══════ EXPECTED OUTPUT (reference shape — BAD but INSTRUCTIVE) ══════
-# ══════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ══════════════════════════════════════════════════════════════════
-#   [X] Gradient flow (CRITICAL): Vanishing gradients at
-#       'rnn.weight_hh_l0' — min RMS ~1e-6. Fix: switch to LSTM/GRU,
-#       shorten sequence, or use gradient clipping.
-#   [!] Dead neurons  (depends on Tanh saturation): 'rnn' (tanh)
-#       showing saturation (|x|>0.99) — the classic recurrent
-#       vanishing-gradient fingerprint.
-#   [?] Loss trend    (HEALTHY or plateaued early): loss stops
-#       dropping because gradients through time are ~0.
-# ══════════════════════════════════════════════════════════════════
-#
-# STUDENT INTERPRETATION GUIDE:
-#   - The `rnn.weight_hh_l0` parameter is the hidden-to-hidden
-#     matrix. Gradients propagating backward through time repeatedly
-#     multiply by it; if its spectral radius < 1, gradients shrink
-#     exponentially with sequence length. Bengio et al. 1994.
-#   - Tanh saturation (|x|>0.99) is a second diagnostic — once
-#     the recurrence saturates, derivatives collapse toward zero
-#     and no learning can propagate backward through that step.
-#   - THIS is the failure LSTM's gating mechanism solves — cells
-#     can selectively preserve gradient flow across time.
-#   - Do NOT "fix" this RNN; its pathology IS the lesson. Move to
-#     02_lstm.py to see a healthier Prescription Pad on the same task.
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# With train AND validation losses passed in, the loss-trend reading
+# can flag over- or underfitting. If the pad is HEALTHY but the
+# gradient-decay ratio below is large, you have learned the pad's
+# blind spot: it measures layers, not time steps.
 # ══════════════════════════════════════════════════════════════════
 
 # ── Checkpoint 4 ─────────────────────────────────────────────────────

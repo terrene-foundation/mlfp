@@ -205,87 +205,43 @@ attn_results = train_model(
     attn=True,
 )
 # ══════════════════════════════════════════════════════════════════
-# DIAGNOSTIC CHECKPOINT — LSTM+Attention (forward returns tuple)
+# DIAGNOSTIC CHECKPOINT — LSTM + temporal attention
 # ══════════════════════════════════════════════════════════════════
-from kailash_ml import diagnose
+# The attention model's forward returns (prediction, weights), so the
+# loss function keeps only the prediction. The attention layers (W, v)
+# add a second gradient path into the LSTM outputs.
+from kailash_ml.diagnostics import run_diagnostic_checkpoint
+from shared.mlfp05.diagnostics import print_prescription_pad
+
+
+def _mse_loss(m, batch):
+    """Forecast MSE on one (window, target) batch; attention models return
+    (prediction, weights), so keep only the prediction."""
+    xb, yb = batch
+    pred = m(xb)
+    pred = pred[0] if isinstance(pred, tuple) else pred
+    return nn.functional.mse_loss(pred, yb)
+
+
 print("\n── Diagnostic Report (LSTM+Attention) ──")
-report = diagnose(
+diag, findings = run_diagnostic_checkpoint(
     attn_model,
-    kind="dl",
-    data=val_loader,
+    train_loader,
+    _mse_loss,
+    title="LSTM+Attention",
+    train_losses=attn_results["train_losses"],
+    val_losses=attn_results["val_losses"],
+    show=False,
 )
-# ══════ EXPECTED OUTPUT (synthesized reference — full run produces similar pattern) ══════
-# ════════════════════════════════════════════════════════════════
-#   DL Diagnostics Report — Prescription Pad
-# ════════════════════════════════════════════════════════════════
-#   [✓] Gradient flow (HEALTHY): min RMS = 4.1e-04 across
-#       LSTM + attention stack. Attention head's
-#       'attn.weight' RMS = 8.6e-04 (higher than LSTM
-#       body — attention is actively learning).
-#   [!] Attention    (WARNING): attention entropy = 1.9
-#       bits (max for 60 timesteps = log2(60) ≈ 5.9).
-#       Attention is CONCENTRATED on 3-5 timesteps — fine
-#       for this task, but watch for entropy → 0 (single-
-#       timestep fixation = attention collapse).
-#   [✓] Loss trend    (HEALTHY): train slope -3.6e-03/epoch,
-#       val slope -3.2e-03/epoch. Final val ~0.95 — LOWER
-#       than LSTM (02: ~1.4) and GRU (03: ~1.3).
-# ════════════════════════════════════════════════════════════════
-# Final val loss: ~0.95 after 15 epochs, sequence_length=60.
-#
-# STUDENT INTERPRETATION GUIDE — reading the Prescription Pad:
-#
-#  [BLOOD TEST — ATTENTION HEAD HEALTH] RMS 8.6e-04 on
-#     attn.weight is the critical signal. If this drops to
-#     <1e-5, the attention layer is DEAD — producing
-#     uniform weights (equivalent to averaging, no
-#     attention). Slide 5S covers this: "a dead attention
-#     head is worse than no attention, because it adds
-#     parameters that do nothing and fools you into
-#     thinking the architecture is working."
-#     >> Prescription: Plot attention weights on a held-
-#        out sample. Healthy attention is PEAKY (high
-#        weight on a few timesteps, low on others).
-#        Uniform attention → lower attention LR, or reduce
-#        temperature (scale logits by >1 before softmax).
-#
-#  [X-RAY — ATTENTION ENTROPY] 1.9 bits entropy on 60
-#     timesteps means attention is concentrated. Compute
-#     as -sum(alpha * log2(alpha)). Healthy ranges:
-#     - <0.5 bits: attention collapse (single timestep
-#       fixation — model ignores context)
-#     - 0.5 - 3.0 bits: healthy task-relevant focus
-#     - >4.5 bits: nearly uniform (attention not helping)
-#     >> Prescription: If entropy <0.5, add attention
-#        dropout (zero out random weights during training)
-#        to force diversification. If entropy >4.5, the
-#        task doesn't need attention — LSTM/GRU suffices.
-#
-#  [STETHOSCOPE — ATTENTION ADVANTAGE] Final val 0.95 vs
-#     LSTM's 1.4 = 32% improvement. Attention lets the
-#     decoder query ANY timestep, not just the final
-#     hidden state. For PM2.5 prediction, this lets the
-#     model attend to weather-pattern-onset timesteps
-#     (hours ago) while decoding current-hour concentration.
-#     The improvement scales with sequence length: longer
-#     sequences → larger attention advantage (until
-#     sequences become too long for attention memory,
-#     where transformers take over — ex_4).
-#     >> Prescription: Val improvement <10% vs LSTM means
-#        attention is overkill — simpler architecture is
-#        cheaper. Improvement >30% means attention is
-#        essential, consider scaling to multi-head or
-#        transformer (ex_4).
-#
-#  FIVE-INSTRUMENT TAKEAWAY: attention introduces a NEW
-#  diagnostic instrument (entropy of weights). Attention
-#  entropy is to attention health what gradient RMS is to
-#  weight health — a scalar summary of a layer's behaviour.
-#  You'll see this same entropy reading again in ex_4
-#  transformer multi-head attention (where per-head
-#  entropy reveals which heads are redundant — "attention
-#  head collapse" is the transformer-scale version).
-# ════════════════════════════════════════════════════════════════════
+print_prescription_pad(findings, "LSTM+Attention")
+
+# ══════ READING THE PRESCRIPTION PAD (key: see ex_1/01_standard_ae.py) ══════
+# The pad reads the W/v attention layers like any other layer. Whether
+# attention HELPS is a separate question — answered by the plain-LSTM
+# comparison below — and what it attends to is answered by the
+# attention heatmaps, not by the pad.
+# ══════════════════════════════════════════════════════════════════
+
 print(f"\n== Training plain LSTM (comparison) on {PRIMARY} ==")
 lstm_results = train_model(
     lstm_model,

@@ -1005,7 +1005,7 @@ diag.report()   # auto-diagnoses vanishing / exploding
         <li><strong>Integrated gradients</strong> (any model, any input)</li>
       </ul>
       <div class="callout callout-advanced" style="margin-top: 6px; font-size: 0.76em;">
-        <strong>Healthcare &mdash; Zech et al., 2018 (<em>Nature Medicine</em>):</strong> a chest-X-ray classifier achieved 95%+ accuracy. Grad-CAM revealed it was looking at the hospital's <em>image watermark</em>, not the lung. Accuracy held on the same hospital, <em>collapsed</em> on transfer. Attribution caught a model that every other metric passed.
+        <strong>Healthcare &mdash; Zech et al., 2018 (<em>PLOS Medicine</em>):</strong> a pneumonia classifier trained on chest X-rays from several hospitals learned <em>which hospital</em> an image came from. Activation heatmaps showed it attending to hospital-specific markers (e.g. a metal token in the corner), not only the lung, and performance dropped on an external hospital. Attribution exposed what the internal test score hid.
       </div>
       <div class="callout callout-applications" style="margin-top: 6px; font-size: 0.76em;">
         <strong>Finance &mdash; the postcode proxy:</strong> a credit-risk model hits 89% AUC. SHAP/attribution reveals it uses <em>postcode</em> (a proxy for race/income) instead of the income feature you put in the brief. Legal says no, model says yes. Attribution is what forced the conversation.
@@ -1041,7 +1041,7 @@ diag.report()   # auto-diagnoses vanishing / exploding
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;A model can be right for the wrong reason. Attribution is how you find out.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;If a chest-X-ray classifier looks at the image watermark instead of the lung, what metric would catch it?&rdquo; &rarr; expected wrong answer: &ldquo;accuracy on the test set&rdquo; &rarr; right answer: &ldquo;none &mdash; accuracy stays high on the same hospital. Only <em>transfer</em> testing or attribution would catch it. Zech 2018 is the canonical example.&rdquo;<br/>
+    <strong>Key question for the room</strong>: &ldquo;If a chest-X-ray classifier looks at a hospital marker instead of the lung, what metric would catch it?&rdquo; &rarr; expected wrong answer: &ldquo;accuracy on the test set&rdquo; &rarr; right answer: &ldquo;none &mdash; accuracy stays high on the same hospital. Only <em>transfer</em> testing or attribution would catch it. Zech 2018 is the canonical example.&rdquo;<br/>
     <strong>If behind schedule</strong>: keep the Zech story, cut the three-method list &mdash; students will meet Grad-CAM and attention rollout in exercises anyway.<br/>
     <strong>Transition</strong>: &ldquo;Stats tell you the layer is alive. Attribution tells you it is looking at the right thing. Now we put it all on one screen: the dashboard.&rdquo;
   </aside>
@@ -1478,7 +1478,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>Hyperparameter transfer</strong></td>
         <td>Tune LR / init / etc. separately at every scale</td>
         <td>&mu;P (Maximal Update Parametrization)</td>
-        <td>Tune at 100M, transfer zero-shot to 7B+ (Yang &amp; Hu, 2021)</td>
+        <td>Tune small, transfer hyperparameters zero-shot to large (&mu;Transfer, Yang et al., 2022)</td>
       </tr>
       <tr>
         <td><strong>Precision</strong></td>
@@ -1606,7 +1606,7 @@ result["figure"].show()     # the curve below
     <span>MLFP Module 5 &mdash; Terrene Open Academy &bull; DL Diagnostics Toolkit</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. This slide prevents a common student error: training for 5 epochs, seeing loss still decreasing, and concluding "autoencoders/transformers/RL don't work for my data." The Chinchilla rule says you need ~20 tokens per parameter MINIMUM; production models like Llama 3 train at 1,875 tokens per parameter because inference is where the real cost lives. For this course, the takeaway is: give your model enough data AND enough steps before declaring the architecture a failure.
+    Time: ~3 min. This slide prevents a common student error: training for 5 epochs, seeing loss still decreasing, and concluding "autoencoders/transformers/RL don't work for my data." The Chinchilla rule says ~20 tokens per parameter is the COMPUTE-OPTIMAL ratio (the cheapest way to reach a given quality), not a minimum; production models like Llama 3 train at 1,875 tokens per parameter because inference is where the real cost lives. For this course, the takeaway is: give your model enough data AND enough steps before declaring the architecture a failure.
   </aside>
 </section>
 

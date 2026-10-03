@@ -6,7 +6,7 @@
 # ════════════════════════════════════════════════════════════════════════
 #
 # WHAT YOU'LL LEARN:
-#   - Build a contractive AE with Jacobian penalty on encoder weights
+#   - Build a contractive AE with a Jacobian penalty on the encoder
 #   - Understand WHY smoothness in latent space matters
 #   - Visualise latent interpolation proving smooth transitions
 #   - Apply to medical image anomaly detection at SGH
@@ -83,7 +83,7 @@ conn, tracker, exp_name, registry, has_registry = setup_engines()
 
 
 class ContractiveAE(nn.Module):
-    """Autoencoder with explicit encoder weight access for Jacobian penalty."""
+    """Autoencoder whose encoder() is exposed so the penalty can differentiate it."""
 
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
@@ -109,18 +109,29 @@ class ContractiveAE(nn.Module):
         return self.decoder(z), z
 
 
-CONTRACTIVE_WEIGHT = 1e-4
+CONTRACTIVE_WEIGHT = 1e-3
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian dz/dx (Rifai et al., 2011).
+
+    torch.func.jacrev differentiates encode_fn for ONE sample — a
+    (input_dim,) vector in, a (latent_dim,) code out — giving the
+    (latent_dim, input_dim) Jacobian. vmap does this for every sample in
+    the batch. The result is differentiable, so the penalty trains the
+    encoder. Unlike a squared-weight sum (plain L2 weight decay), it depends
+    on the input: it measures how much THIS image's code moves when its
+    pixels move.
+    """
+    jac = torch.func.vmap(torch.func.jacrev(encode_fn))(xb)  # (B, latent, input)
+    return jac.pow(2).sum(dim=(1, 2)).mean()
 
 
 def contractive_ae_loss(model, xb):
-    """MSE + Frobenius norm of encoder weights (Jacobian approximation)."""
+    """MSE + lambda * ||dz/dx||_F^2 — the contractive penalty."""
     x_hat, z = model(xb)
     recon_loss = F.mse_loss(x_hat, xb)
-    jacobian_penalty = sum(
-        torch.sum(p**2)
-        for p in [model.enc1.weight, model.enc2.weight, model.enc3.weight]
-    )
-    return recon_loss + CONTRACTIVE_WEIGHT * jacobian_penalty, {}
+    return recon_loss + CONTRACTIVE_WEIGHT * jacobian_penalty(model.encoder, xb), {}
 
 
 print("\n" + "=" * 70)
@@ -487,7 +498,7 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built a contractive AE with Jacobian (weight norm) penalty
+  [x] Built a contractive AE with a per-sample Jacobian penalty ||dz/dx||_F^2
   [x] Visualised smooth latent interpolation — gradual morphing
   [x] Applied to medical image anomaly detection at SGH
   [x] Generated pixel-level error heatmaps showing WHERE anomalies are

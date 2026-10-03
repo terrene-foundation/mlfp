@@ -241,20 +241,27 @@ class ContractiveVAE(nn.Module):
 
 NOISE_SIGMA = 0.3
 SPARSITY_WEIGHT = 1e-4
-CONTRACTIVE_WEIGHT = 1e-4
+CONTRACTIVE_WEIGHT = 1e-3  # on a pixel-mean MSE (see 05_contractive_ae.py)
 KL_WEIGHT = 0.1
-CVAE_CONTRACTIVE_WEIGHT = 1e-4
+CVAE_CONTRACTIVE_WEIGHT = 1.0  # on a pixel-summed ELBO (see 10_contractive_vae.py)
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian (Rifai et al., 2011)."""
+    # TODO: the penalty from 05_contractive_ae.py (jacrev + vmap)
+    jac = ____
+    return ____
 
 
 # TODO: Define loss functions for each variant
 # std_loss: MSE only
 # dae_loss: add noise, MSE against clean
 # sparse_loss: MSE + L1 penalty
-# cae_loss: MSE + Frobenius norm of encoder weights
+# cae_loss: MSE + CONTRACTIVE_WEIGHT * jacobian_penalty(encoder)
 # conv_loss: MSE only
 # rec_loss: MSE only
 # vae_loss: MSE + KL divergence
-# cvae_loss: MSE + KL + Jacobian
+# cvae_loss: summed MSE + KL + Jacobian penalty of the mean code mu(x)
 def std_loss(m, xb):
     ____
 

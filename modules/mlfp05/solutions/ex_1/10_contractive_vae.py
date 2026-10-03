@@ -16,7 +16,7 @@
 # ESTIMATED TIME: ~20 min
 #
 # TASKS:
-#   1. Build Contractive VAE (VAE + Jacobian weight penalty)
+#   1. Build Contractive VAE (VAE + Jacobian penalty on the mean code)
 #   2. Train and compare interpolation smoothness vs vanilla VAE
 #   3. Visualise side-by-side interpolation comparison
 #   4. Apply: molecular feature similarity search
@@ -180,17 +180,33 @@ class ContractiveVAE(nn.Module):
         return self.decoder(z)
 
 
-CVAE_CONTRACTIVE_WEIGHT = 1e-4
+# The ELBO here is SUMMED over pixels (~784x a pixel-mean MSE), so the
+# contractive weight is on that scale too.
+CVAE_CONTRACTIVE_WEIGHT = 1.0
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian (Rifai et al., 2011).
+
+    torch.func.jacrev differentiates encode_fn for ONE sample — a
+    (input_dim,) vector in, a (latent_dim,) code out — giving the
+    (latent_dim, input_dim) Jacobian. vmap does this for every sample in
+    the batch. The result is differentiable, so the penalty trains the
+    encoder. Unlike a squared-weight sum (plain L2 weight decay), it depends
+    on the input: it measures how much THIS image's code moves when its
+    pixels move.
+    """
+    jac = torch.func.vmap(torch.func.jacrev(encode_fn))(xb)  # (B, latent, input)
+    return jac.pow(2).sum(dim=(1, 2)).mean()
 
 
 def cvae_loss_fn(model, xb):
     x_hat, mu, logvar = model(xb)
     recon = F.mse_loss(x_hat, xb, reduction="sum") / xb.size(0)
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / xb.size(0)
-    jacobian_penalty = sum(
-        torch.sum(p**2) for p in [model.enc1.weight, model.enc2.weight]
-    )
-    return recon + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * jacobian_penalty, {}
+    # Penalise how fast the MEAN code mu(x) moves with the input.
+    contractive = jacobian_penalty(lambda x: model.fc_mu(model.encoder(x)), xb)
+    return recon + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * contractive, {}
 
 
 print("\n" + "=" * 70)
@@ -550,7 +566,7 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built a Contractive VAE (VAE + Jacobian weight penalty)
+  [x] Built a Contractive VAE (VAE + Jacobian penalty on the mean code mu(x))
   [x] Compared interpolation smoothness: vanilla VAE vs CVAE
   [x] Observed smoother transitions in CVAE's latent space
   [x] Applied to molecular similarity search in drug discovery

@@ -16,7 +16,7 @@
 # ESTIMATED TIME: ~20 min
 #
 # TASKS:
-#   1. Build Contractive VAE (VAE + Jacobian weight penalty)
+#   1. Build Contractive VAE (VAE + Jacobian penalty on the mean code)
 #   2. Train and compare interpolation smoothness vs vanilla VAE
 #   3. Visualise side-by-side interpolation comparison
 #   4. Apply: molecular feature similarity search
@@ -179,12 +179,33 @@ class ContractiveVAE(nn.Module):
         ____
 
 
-CVAE_CONTRACTIVE_WEIGHT = 1e-4
+# The ELBO here is SUMMED over pixels (~784x a pixel-mean MSE), so the
+# contractive weight is on that scale too.
+CVAE_CONTRACTIVE_WEIGHT = 1.0
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian (Rifai et al., 2011).
+
+    torch.func.jacrev differentiates encode_fn for ONE sample — a
+    (input_dim,) vector in, a (latent_dim,) code out — giving the
+    (latent_dim, input_dim) Jacobian. vmap does this for every sample in
+    the batch. The result is differentiable, so the penalty trains the
+    encoder. Unlike a squared-weight sum (plain L2 weight decay), it depends
+    on the input: it measures how much THIS image's code moves when its
+    pixels move.
+    """
+    # TODO: Same penalty you built in 05_contractive_ae.py: per-sample
+    #   Jacobians (jacrev) batched with vmap, squared, summed per sample,
+    #   averaged over the batch.
+    jac = ____
+    return ____
 
 
 def cvae_loss_fn(model, xb):
-    # TODO: ELBO loss + Jacobian penalty on enc1.weight and enc2.weight
-    # recon + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * jacobian_penalty
+    # TODO: ELBO (summed recon + KL_WEIGHT * KL, both averaged per sample)
+    #   plus CVAE_CONTRACTIVE_WEIGHT * jacobian_penalty of the MEAN code
+    #   mu(x) = fc_mu(encoder(x)) with respect to x. Return (loss, {}).
     ____
 
 
@@ -471,7 +492,7 @@ print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
     """
-  [x] Built a Contractive VAE (VAE + Jacobian weight penalty)
+  [x] Built a Contractive VAE (VAE + Jacobian penalty on the mean code mu(x))
   [x] Compared interpolation smoothness: vanilla VAE vs CVAE
   [x] Observed smoother transitions in CVAE's latent space
   [x] Applied to molecular similarity search in drug discovery

@@ -345,9 +345,15 @@ class ContractiveVAE(nn.Module):
 
 NOISE_SIGMA = 0.3
 SPARSITY_WEIGHT = 1e-4
-CONTRACTIVE_WEIGHT = 1e-4
+CONTRACTIVE_WEIGHT = 1e-3  # on a pixel-mean MSE (see 05_contractive_ae.py)
 KL_WEIGHT = 0.1
-CVAE_CONTRACTIVE_WEIGHT = 1e-4
+CVAE_CONTRACTIVE_WEIGHT = 1.0  # on a pixel-summed ELBO (see 10_contractive_vae.py)
+
+
+def jacobian_penalty(encode_fn, xb):
+    """Mean squared Frobenius norm of the encoder Jacobian (Rifai et al., 2011)."""
+    jac = torch.func.vmap(torch.func.jacrev(encode_fn))(xb)  # (B, latent, input)
+    return jac.pow(2).sum(dim=(1, 2)).mean()
 
 
 def std_loss(m, xb):
@@ -368,12 +374,7 @@ def sparse_loss(m, xb):
 
 def cae_loss(m, xb):
     x_hat, z = m(xb)
-    return (
-        F.mse_loss(x_hat, xb)
-        + CONTRACTIVE_WEIGHT
-        * sum(torch.sum(p**2) for p in [m.enc1.weight, m.enc2.weight, m.enc3.weight]),
-        {},
-    )
+    return F.mse_loss(x_hat, xb) + CONTRACTIVE_WEIGHT * jacobian_penalty(m.encoder, xb), {}
 
 
 def conv_loss(m, xb):
@@ -397,7 +398,7 @@ def cvae_loss(m, xb):
     x_hat, mu, lv = m(xb)
     r = F.mse_loss(x_hat, xb, reduction="sum") / xb.size(0)
     kl = -0.5 * torch.sum(1 + lv - mu.pow(2) - lv.exp()) / xb.size(0)
-    j = sum(torch.sum(p**2) for p in [m.enc1.weight, m.enc2.weight])
+    j = jacobian_penalty(lambda x: m.fc_mu(m.encoder(x)), xb)
     return r + KL_WEIGHT * kl + CVAE_CONTRACTIVE_WEIGHT * j, {}
 
 

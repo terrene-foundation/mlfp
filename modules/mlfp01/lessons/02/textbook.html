@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+          onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}], ignoredClasses: ['nomath']});"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
@@ -63,8 +63,8 @@
     flat type, block, storey range, floor area, lease, price), but the
     prices are generated: there is no real market trend in it, and it
     contains deliberately planted defects for you to find — 107 sales
-    recorded at S$10 and 144 at S$9,000,000. The median price is
-    S$849,126. Use it to practise technique, not to draw conclusions about
+    recorded at <span class="nomath">S$10</span> and 144 at <span class="nomath">S$9,000,000.</span> The median price is
+    <span class="nomath">S$849,126.</span> Use it to practise technique, not to draw conclusions about
     the real property market.
   </p>
 </div>
@@ -413,7 +413,7 @@ df.filter(pl.col("town").is_in(central))
   <h3>📝 Goal</h3>
   <p>
     Load the HDB resale dataset (50,150 rows) and answer: <em>how many
-    4-room flats in Bishan sold for more than S$800,000 in 2023, and what
+    4-room flats in Bishan sold for more than <span class="nomath">S$800,000</span> in 2023, and what
     was their median price per square metre?</em>
   </p>
 
@@ -442,7 +442,7 @@ Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range',
       <code>"2016-03"</code> (not a date yet), <code>resale_price</code> is an
       integer, and <code>remaining_lease</code> is text such as
       <code>"71 years 11 months"</code>. The third row already shows a
-      Jurong West 4-room flat "sold" for S$10 — one of the planted defects.
+      Jurong West 4-room flat "sold" for <span class="nomath">S$10</span> — one of the planted defects.
       We will ignore most columns today.
     </p>
   </div>
@@ -479,7 +479,7 @@ Columns: ['month', 'town', 'flat_type', 'block', 'street_name', 'storey_range',
 print(f"Matching transactions: {million_dollar.height}")</code></pre>
     <p>
       Output: <code>Matching transactions: 53</code>. Bishan had 62 4-room
-      sales in 2023, so 53 of them cleared S$800,000 — in this synthetic
+      sales in 2023, so 53 of them cleared <span class="nomath">S$800,000</span> — in this synthetic
       dataset, high prices are the norm rather than the exception.
     </p>
   </div>
@@ -529,8 +529,8 @@ print(summary)</code></pre>
       That is the canonical shape of a Polars analysis: enrich, filter,
       select, sort. From here you could pipe the result into a chart, a CSV
       export, or an aggregation — without ever having to re-read the original
-      50,150 rows. The printout starts with a 2023-04 sale at S$1,156,035
-      (101.1 sqm) and ends 53 rows later with a 2023-03 sale at S$804,800.
+      50,150 rows. The printout starts with a 2023-04 sale at <span class="nomath">S$1,156,035</span>
+      (101.1 sqm) and ends 53 rows later with a 2023-03 sale at <span class="nomath">S$804,800.</span>
     </p>
   </div>
 </div>
@@ -658,7 +658,7 @@ print(summary)</code></pre>
   <p>
     Find all 5-room flats in any of the four central towns
     (<code>"BISHAN"</code>, <code>"TOA PAYOH"</code>, <code>"QUEENSTOWN"</code>,
-    <code>"BUKIT MERAH"</code>) priced under S$900,000. Use
+    <code>"BUKIT MERAH"</code>) priced under <span class="nomath">S$900,000.</span> Use
     <code>.is_in(...)</code> for the town condition.
   </p>
 </div>
@@ -689,8 +689,8 @@ print(summary)</code></pre>
   <p>
     A: 3,539 Jurong West rows. B: 35 rows. C: 22,133 flats are
     <code>large_flat == True</code>. D: 6,148 rows; the top of the list shows
-    4-room flats at roughly S$95,000–S$99,000 per sqm. No HDB flat is worth
-    that — those rows are the planted S$9,000,000 prices. Sorting is one of
+    4-room flats at roughly <span class="nomath">S$95,000</span>–<span class="nomath">S$99,000</span> per sqm. No HDB flat is worth
+    that — those rows are the planted <span class="nomath">S$9,000,000</span> prices. Sorting is one of
     the fastest ways to surface bad data, and Lesson 1.7 automates the hunt.
   </p>
 </div>

@@ -37,7 +37,7 @@
   <ul>
     <li>LSTMs are <em>sequential</em> — to compute h<sub>5</sub> you need h<sub>1</sub>…h<sub>4</sub>. Cannot parallelise across time.</li>
     <li>Self-attention lets every token look at every other token <em>in parallel</em>.</li>
-    <li>Same asymptotic work, fundamentally different parallelism.</li>
+    <li>More total work (every pair of tokens: O(L²)), but fully parallel across positions.</li>
   </ul>
   <p>2017: Vaswani et al., "Attention is all you need". NLP has never been the same.</p>
 </section>
@@ -283,12 +283,12 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
 <section>
   <h2>Positional encoding</h2>
-  <p>Self-attention is permutation invariant. But "dog bites man" ≠ "man bites dog".</p>
+  <p>Self-attention is permutation-equivariant (order-blind): shuffle the tokens and the outputs just shuffle the same way. But "dog bites man" ≠ "man bites dog".</p>
   <div style="text-align: center; padding: 16px; background: #F8FAFC; border-radius: 8px; font-size: 0.85em;">
     \[ \text{PE}(\text{pos}, 2i) = \sin\!\left(\frac{\text{pos}}{10000^{2i/d}}\right) \]
     \[ \text{PE}(\text{pos}, 2i+1) = \cos\!\left(\frac{\text{pos}}{10000^{2i/d}}\right) \]
   </div>
-  <p>Unique per-position fingerprint, deterministic, extrapolates beyond training lengths.</p>
+  <p>Frequency \(10000^{-2i/d}\): <strong>low dimensions (small i) oscillate fastest</strong> → fine, local position; high dimensions oscillate slowest → coarse, global position. Deterministic, no parameters.</p>
 </section>
 
 <section>
@@ -383,7 +383,7 @@ class PositionalEncoding(nn.Module):
       <text x="90" y="252" font-family="Inter" font-size="9" fill="#F59E0B" transform="rotate(-90,90,252)">residual (skip)</text>
     </svg>
   </figure>
-  <p style="font-size: 0.85em;">Stack N identical blocks. Input and output shapes are identical: (seq_len, d_model). PyTorch has <code>nn.TransformerEncoderLayer</code> built in.</p>
+  <p style="font-size: 0.85em;">Stack N identical blocks. Input and output shapes are identical: (seq_len, d_model). PyTorch has <code>nn.TransformerEncoderLayer</code> built in. (Diagram: original post-norm; the code below uses pre-norm, <code>norm_first=True</code>.)</p>
 </section>
 
 <section>
@@ -423,30 +423,31 @@ class TinyTransformer(nn.Module):
       <tr><td><strong>GPT</strong></td><td>Decoder</td><td>Next token</td><td>Generation</td></tr>
       <tr><td><strong>T5</strong></td><td>Encoder-decoder</td><td>Span corruption</td><td>Translation</td></tr>
       <tr><td><strong>ViT</strong></td><td>Encoder</td><td>Classification</td><td>Vision</td></tr>
-      <tr><td><strong>Whisper</strong></td><td>Encoder-decoder</td><td>CTC / seq2seq</td><td>Speech</td></tr>
+      <tr><td><strong>Whisper</strong></td><td>Encoder-decoder</td><td>seq2seq (next token)</td><td>Speech</td></tr>
     </tbody>
   </table>
 </section>
 
 <section>
-  <h2>Majority-bit task worked example</h2>
+  <h2>Order-dependent bit task: worked example</h2>
   <pre><code class="language-python" data-trim>
 def make_dataset(n=3000, L=20):
     X = torch.randint(0, 2, (n, L))
-    y = (X.sum(dim=1) > (L // 2)).long()
+    # 1 if the FIRST half holds more ones than the second half
+    y = (X[:, :L // 2].sum(1) > X[:, L // 2:].sum(1)).long()
     return X, y
 
 model = TinyTransformer(n_tokens=2, d_model=32, n_heads=4,
                         n_layers=2).to(device)
 # train with Adam + cross-entropy + gradient clipping
   </code></pre>
-  <p>Simple task, non-trivial because the model must count across positions.</p>
+  <p>The label depends on <em>where</em> the ones are, not just how many — so the model must use positional encoding.</p>
 </section>
 
 <section>
   <h2>Four traps</h2>
   <ul style="font-size: 0.85em;">
-    <li><strong>Forgetting positional encoding</strong> — model becomes a set classifier, stuck at 50%</li>
+    <li><strong>Forgetting positional encoding</strong> — model becomes a set classifier; on the task above it cannot beat ~59% (the majority-class rate)</li>
     <li><strong>Missing √d_k</strong> — softmax saturates, gradients vanish</li>
     <li><strong>Wrong mask type</strong> — attn_mask vs key_padding_mask are different</li>
     <li><strong>O(L²) memory</strong> — doubling L quadruples RAM; use FlashAttention or Longformer for very long contexts</li>

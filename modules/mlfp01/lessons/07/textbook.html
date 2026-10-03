@@ -99,9 +99,9 @@
     <text x="360" y="121" fill="#F59E0B">⚠ high_correlation: cpi_all_items &harr; cpi_housing (0.998)</text>
     <text x="360" y="139" fill="#F59E0B">⚠ high_correlation: cpi_all_items &harr; median_income (0.989)</text>
     <text x="360" y="157" fill="#0D9488">ℹ high_cardinality: date (1.00)</text>
-    <text x="360" y="175" fill="#0D9488">ℹ high_cardinality: cpi_food (0.94)</text>
-    <text x="360" y="193" fill="#0D9488">ℹ n_rows: 300 · n_columns: 13</text>
-    <text x="360" y="211" fill="#0D9488">ℹ 21 alerts with the tuned AlertConfig</text>
+    <text x="360" y="175" fill="#0D9488">ℹ high_cardinality: month_date (1.00)</text>
+    <text x="360" y="193" fill="#0D9488">ℹ n_rows: 300 · n_columns: 15</text>
+    <text x="360" y="211" fill="#0D9488">ℹ 18 alerts with the tuned AlertConfig</text>
     <text x="360" y="229" fill="#F43F5E">✗ no alert for the 3 date formats</text>
     <text x="360" y="253" fill="#64748B" font-style="italic">One call, every column, eight alert types.</text>
   </g>
@@ -458,44 +458,60 @@ print(cpi["date"].min(), cpi["date"].max(), cpi["date"].null_count())
 
   <div class="step">
     <span class="step-label">Step 3.</span>
-    <p>Turn each quarter into its first month, then merge everything onto a
+    <p>Turn each quarter into its first month, then align everything to a
        monthly spine: forward-fill the quarterly employment series and
        average the daily FX rates per month.</p>
-    <pre><code class="language-python"># "2000 Q1" → 2000-01-01, "2000 Q2" → 2000-04-01, ...
+    <pre><code class="language-python">def quarter_to_date(q_str: str) -&gt; str:
+    """Convert '2000 Q1' to '2000-01-01'."""
+    year, q = q_str.split()
+    month = {"Q1": "01", "Q2": "04", "Q3": "07", "Q4": "10"}[q]
+    return f"{year}-{month}-01"
+
 employment = employment.with_columns(
-    pl.date(
-        pl.col("quarter").str.slice(0, 4).cast(pl.Int32),
-        (pl.col("quarter").str.slice(6, 1).cast(pl.Int32) - 1) * 3 + 1,
-        1,
-    ).alias("date")
-).drop("quarter")
+    pl.col("quarter").map_elements(quarter_to_date, return_dtype=pl.String)
+    .str.to_date("%Y-%m-%d").alias("date")
+)
+
+# A canonical month key on every table
+cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
+employment = employment.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
 
 monthly_spine = pl.DataFrame({
-    "date": pl.date_range(cpi["date"].min(), cpi["date"].max(),
-                          interval="1mo", eager=True)
+    "month_date": pl.date_range(cpi["month_date"].min(), cpi["month_date"].max(),
+                                interval="1mo", eager=True)
 })
 
 # Forward-fill quarterly employment onto the monthly spine
 employment_monthly = (
-    monthly_spine.join(employment, on="date", how="left")
-    .sort("date")
+    monthly_spine.join(employment.drop("date"), on="month_date", how="left")
+    .sort("month_date")
     .with_columns([
-        pl.col(c).forward_fill() for c in employment.columns if c != "date"
+        pl.col(c).forward_fill()
+        for c in employment.columns if c not in ("date", "month_date")
     ])
 )
 
 # Aggregate daily FX to monthly mean
 fx_monthly = (
-    fx_rates.group_by(pl.col("date").dt.truncate("1mo"))
+    fx_rates.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
+    .group_by("month_date")
     .agg([pl.col(c).mean() for c in fx_rates.columns if c != "date"])
+    .sort("month_date")
 )
 
 economic = (
-    cpi.join(employment_monthly, on="date", how="left")
-    .join(fx_monthly, on="date", how="left")
-    .sort("date")
+    cpi.join(employment_monthly, on="month_date", how="left", suffix="_emp")
+    .join(fx_monthly, on="month_date", how="left", suffix="_fx")
+    .sort("month_date")
 )
-print(economic.shape)   # (300, 13)</code></pre>
+print(economic.shape)   # (300, 15)</code></pre>
+    <p>
+      <code>map_elements</code> runs a plain Python function on every value
+      — slower than a native expression, but the escape hatch for custom
+      parsing like <code>"2000 Q1"</code>. <code>dt.truncate("1mo")</code>
+      gives every record a canonical first-of-month key, and the spine
+      guarantees every month is present even if a source has gaps.
+    </p>
   </div>
 
   <div class="step">
@@ -503,16 +519,14 @@ print(economic.shape)   # (300, 13)</code></pre>
     <p>Configure alerts for the specifics of economic data. Structural
        correlation is expected, so only near-collinearity should fire.</p>
     <pre><code class="language-python">alert_config = AlertConfig(
-    # Macro indicators move together — raise from the 0.90 default
-    high_correlation_threshold=0.95,
-    # Relax from the 0.05 default: a few missing months are tolerable here
-    high_null_pct_threshold=0.10,
-    # A column with &lt;= 1 distinct value is a pipeline failure (default 1)
-    constant_threshold=1,
-    # Raise from the 2.0 default: only flag severe tails
-    skewness_threshold=3.0,
-    # Stricter than the 0.5 default: flag columns from 30% zeros
-    zero_pct_threshold=0.30,
+    high_correlation_threshold=0.95,  # raise from 0.90: macro series move together
+    high_null_pct_threshold=0.10,     # relax from 0.05: tolerate a few missing months
+    constant_threshold=1,             # default: a column with &lt;= 1 distinct value
+    high_cardinality_ratio=0.95,      # raise from 0.9: continuous indices are near-unique
+    skewness_threshold=3.0,           # raise from 2.0: only flag severe tails
+    zero_pct_threshold=0.30,          # lower from 0.5: flag columns from 30% zeros
+    imbalance_ratio_threshold=0.05,   # lower from 0.1: only very rare categories
+    duplicate_pct_threshold=0.05,     # raise from 0.0: tolerate up to 5% duplicates
 )</code></pre>
     <p>
       Watch the direction of each change. Raising a threshold makes an
@@ -534,15 +548,12 @@ print(f"\n--- {len(profile.alerts)} Alerts ---")
 for alert in profile.alerts:
     where = alert.get("column", alert.get("columns"))  # pairs use "columns"
     print(f"[{alert['severity']}] {alert['type']}: {where} = {alert['value']:.3f}")</code></pre>
-    <pre><code class="language-text">Rows: 300  Columns: 13
+    <pre><code class="language-text">Rows: 300  Columns: 15
 Duplicates: 0 (0.0%)
 
---- 21 Alerts ---
+--- 18 Alerts ---
 [info] high_cardinality: date = 1.000
-[info] high_cardinality: cpi_all_items = 0.943
-[info] high_cardinality: cpi_food = 0.940
-[info] high_cardinality: cpi_transport = 0.937
-[info] high_cardinality: cpi_housing = 0.943
+[info] high_cardinality: month_date = 1.000
 [warning] high_nulls: usd_sgd = 0.800
 [warning] high_nulls: eur_sgd = 0.800
 [warning] high_nulls: gbp_sgd = 0.800
@@ -552,43 +563,46 @@ Duplicates: 0 (0.0%)
 [warning] high_correlation: ['cpi_all_items', 'cpi_housing'] = 0.998
 [warning] high_correlation: ['cpi_all_items', 'median_income'] = 0.989
 [warning] high_correlation: ['cpi_all_items', 'gbp_sgd'] = 0.957
-... and 7 more high_correlation pairs</code></pre>
+... and 7 more high_correlation pairs (12 in all, |r| 0.956 to 0.998)</code></pre>
   </div>
 
   <div class="step">
     <span class="step-label">Step 6.</span>
     <p>Translate each alert into a decision.</p>
     <ul>
+      <li><strong>high_cardinality on <code>date</code> and
+        <code>month_date</code> (info).</strong> Every row has a unique
+        date — that is what a time index is. Expected; accept.</li>
       <li><strong>high_nulls on the four FX columns (80%).</strong> Not a
-        quality defect — a <em>coverage</em> gap. FX data starts in 2020,
-        CPI in 2000, so 240 of 300 months have no FX value. Decision:
-        restrict FX analysis to 2020 onwards, or drop FX from the
-        25-year analysis. Imputing 20 years of exchange rates would be
-        fabrication.</li>
+        quality defect in the source — a <em>coverage</em> gap created by
+        the merge. FX data starts in 2020, the spine in 2000, so 240 of 300
+        months have no FX value. Decision: restrict FX analysis to 2020
+        onwards, or accept the nulls knowingly. Imputing 20 years of
+        exchange rates would be fabrication.</li>
       <li><strong>No high_nulls on the CPI columns.</strong> They are
-        exactly 5% null, and the rule is "null share <em>greater than</em>
-        the threshold" — so they stay silent even at the 0.05 default. A
-        silent profiler is not proof of clean data.</li>
-      <li><strong>high_correlation among CPI components and
-        median_income.</strong> Prices and incomes trend upwards together
-        over 25 years — a domain fact, not a defect. Keep the columns; flag
-        them for a multicollinearity (VIF) check before any regression.</li>
-      <li><strong>high_correlation between CPI and gbp_sgd (0.957).</strong>
-        Computed on only the 60 months where both exist. Two trending
-        series over a short window correlate easily; treat this one as
-        spurious until shown otherwise.</li>
-      <li><strong>high_cardinality (info).</strong> Every date is unique and
-        continuous measurements are nearly unique. Expected; accept.</li>
+        exactly 5% null (15 of 300), and the rule is "null share
+        <em>greater than</em> the threshold" — so they stay silent even at
+        the 0.05 default. You only find those nulls in the column profiles
+        (<code>col.null_pct</code>). A silent profiler is not proof of clean
+        data.</li>
+      <li><strong>12 high_correlation pairs among the CPI series and
+        <code>median_income</code>.</strong> Prices and incomes trend
+        upwards together over 25 years — a domain fact, not a defect. For
+        modelling, keep one CPI series and flag the rest for a
+        multicollinearity (VIF) check.</li>
+      <li><strong>The two pairs with <code>gbp_sgd</code> (0.956–0.957).</strong>
+        Computed on only the 60 months where FX exists. Two trending series
+        over a short window correlate easily; treat these as spurious until
+        shown otherwise.</li>
     </ul>
     <p>
       Notice what is <em>not</em> on the list. With the default
-      <code>AlertConfig</code> the same data produces 28 alerts, including
+      <code>AlertConfig</code> the same table produces 29 alerts, including
       <code>high_skewness</code> on <code>employment_rate</code> (−2.25) and
-      <code>labour_force</code> (−2.13); our 3.0 threshold deliberately
-      silences those. And outliers never appear as an alert: each column
-      profile reports <code>outlier_count</code> and
-      <code>outlier_pct</code> instead (for example
-      <code>profile.columns[1].outlier_count</code>).
+      <code>labour_force</code> (−2.13) and <code>high_cardinality</code> on
+      the four CPI columns; our thresholds deliberately silence those. And
+      outliers never appear as an alert: each column profile reports
+      <code>outlier_count</code> and <code>outlier_pct</code> instead.
     </p>
   </div>
 

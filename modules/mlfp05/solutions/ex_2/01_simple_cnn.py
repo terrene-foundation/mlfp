@@ -441,8 +441,8 @@ for i in range(8):
     axes[1, i].axis("off")
 axes[1, 8].axis("off")
 
-# Row 2: 8 conv2 ReLU feature maps (16x16 after MaxPool)
-conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 8, 8)
+# Row 2: 8 conv2 ReLU feature maps (16x16, captured before the second MaxPool)
+conv2_maps = feature_maps["conv2_relu"].squeeze(0)  # (64, 16, 16)
 for i in range(8):
     axes[2, i].imshow(conv2_maps[i].numpy(), cmap="magma")
     axes[2, i].set_title(f"L2 F{i}", fontsize=8)
@@ -650,7 +650,7 @@ print("\n" + "=" * 70)
 print("  WHAT YOU'VE MASTERED")
 print("=" * 70)
 print(
-    """
+    f"""
   THEORY:
   [x] Convolutions scan local patches with shared weights -- 3x3 filters
       detect edges at every position with only 9 parameters

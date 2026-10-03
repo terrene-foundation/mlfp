@@ -88,22 +88,27 @@ conn, tracker, exp_name, registry, has_registry = init_engines()
 
 def build_transfer_resnet(n_classes: int = N_CLASSES) -> nn.Module:
     """Frozen ResNet-18 backbone + fresh classification head."""
-    # TODO: Load pre-trained ResNet-18, freeze backbone, replace fc head
-    # Steps:
-    #   1. Load weights: torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-    #   2. Create model with those weights (try/except for offline fallback)
-    #   3. Freeze all params: for p in model.parameters(): p.requires_grad = False
-    #   4. Replace model.fc with nn.Linear(model.fc.in_features, n_classes)
-    # Hint: Same pattern as Part 2's build_transfer_resnet
-    ____
+    # No fallback to random weights: if the ImageNet download fails this
+    # raises — a random frozen backbone would make the "transfer" curve
+    # meaningless.
+    # TODO: Same builder as Part 2 — ImageNet ResNet-18, every parameter
+    #   frozen, then a fresh n_classes head
+    weights = ____
+    model = ____
+
+    for p in model.parameters():
+        ____  # TODO: freeze
+
+    in_features = model.fc.in_features
+    model.fc = ____
+    return model
 
 
 def build_scratch_cnn(n_classes: int = N_CLASSES) -> nn.Module:
     """From-scratch CNN baseline."""
-    # TODO: Build a 3-layer CNN identical to Part 1
-    # Hint: nn.Sequential with Conv2d->BN->ReLU->Pool blocks
-    #       then AdaptiveAvgPool2d(1)->Flatten->Dropout(0.3)->Linear(128, n_classes)
-    ____
+    # TODO: Return the same small CNN as Part 1 (three conv-BN-ReLU
+    #   blocks 32 -> 64 -> 128, global average pool, dropout 0.3, linear)
+    return ____
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -129,22 +134,50 @@ async def _run_efficiency_trial(
     model_name: str,
 ) -> tuple[float, int, nn.Module]:
     """Train one model on a fraction of data, return (accuracy, n_samples, model)."""
-    # TODO: Implement the efficiency trial
-    # Steps:
-    #   1. Draw n_samples distinct random indices with the shared `rng`
-    #      (no replacement) and wrap train_set in a Subset + DataLoader
-    #   2. Build the model with model_builder, move it to device, and give
-    #      Adam (lr=1e-3) only the parameters that require gradients
-    #   3. Open an ExperimentTracker run named "<model_name>_<pct>pct",
-    #      log the trial's parameters
-    #   4. Train for EFF_EPOCHS with cross-entropy
-    #   5. Evaluate accuracy on the full val_loader and log it as "val_acc"
-    # Hint: the tracker run is an async context manager; logging calls
-    #   are awaited
     n_samples = int(len(train_set) * frac)
-    ____
+    # TODO: Draw n_samples distinct random indices with the shared `rng`,
+    #   wrap train_set in a Subset, and build a shuffled DataLoader
+    indices = ____
+    subset = ____
+    sub_loader = ____
 
-    return ____, n_samples, ____  # TODO: accuracy, n_samples, trained model
+    model = model_builder()
+    model.to(device)
+    # TODO: Optimise ONLY the parameters that require gradients (Adam, lr=1e-3)
+    params = ____
+    opt = ____
+
+    run_name = f"{model_name}_{int(frac * 100)}pct"
+    async with tracker.track(experiment=exp_name, run_name=run_name) as run:
+        await run.log_params(
+            {
+                "model_type": model_name,
+                "data_fraction": str(frac),
+                "n_samples": str(n_samples),
+                "epochs": str(EFF_EPOCHS),
+            }
+        )
+
+        for epoch in range(EFF_EPOCHS):
+            model.train()
+            for xb, yb in sub_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                # TODO: one optimisation step on the cross-entropy loss
+                ____
+
+        # Evaluate on full validation set
+        model.eval()
+        correct = total = 0
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                # TODO: predicted classes, then update correct and total
+                ____
+        acc = correct / total
+
+        await run.log_metric("val_acc", acc)
+
+    return acc, n_samples, model
 
 
 print("\n" + "=" * 70)
@@ -248,15 +281,45 @@ transfer_accs_by_frac = [transfer_results[f] for f in fracs]
 scratch_accs_by_frac = [scratch_results[f] for f in fracs]
 pct_labels = [f * 100 for f in fracs]
 
-# TODO: Create a Plotly figure with two traces:
-#   1. Transfer learning curve (lines+markers, color="#2196F3")
-#   2. From-scratch curve (lines+markers, dash="dash", color="#FF5722")
-# Add annotations for the 10% data points on both curves
-# Hint: fig = go.Figure()
-# Hint: fig.add_trace(go.Scatter(x=pct_labels, y=transfer_accs_by_frac, ...))
-# Hint: fig.add_annotation(x=10, y=transfer_results[0.10], text=..., showarrow=True)
 fig = go.Figure()
+
+# TODO: Transfer learning curve — a lines+markers Scatter of accuracy
+#   against % of data (style it like the from-scratch curve below)
 ____
+
+# From-scratch curve
+fig.add_trace(
+    go.Scatter(
+        x=pct_labels,
+        y=scratch_accs_by_frac,
+        mode="lines+markers",
+        name="From Scratch (CNN)",
+        marker=dict(size=12, symbol="diamond"),
+        line=dict(width=3, color="#FF5722", dash="dash"),
+    )
+)
+
+# Annotations for key data points
+fig.add_annotation(
+    x=10,
+    y=transfer_results[0.10],
+    text=f"10% data: {transfer_results[0.10]:.1%}",
+    showarrow=True,
+    arrowhead=2,
+    ax=40,
+    ay=-40,
+    font=dict(size=11),
+)
+fig.add_annotation(
+    x=10,
+    y=scratch_results[0.10],
+    text=f"10% data: {scratch_results[0.10]:.1%}",
+    showarrow=True,
+    arrowhead=2,
+    ax=40,
+    ay=40,
+    font=dict(size=11),
+)
 
 fig.update_layout(
     title="Data Efficiency: Transfer Learning vs From-Scratch",
@@ -280,94 +343,110 @@ print("--- Checkpoint 2 passed --- efficiency curves plotted\n")
 # ════════════════════════════════════════════════════════════════════════
 # TASK 5 — Visualise: Accuracy gap and diminishing returns
 # ════════════════════════════════════════════════════════════════════════
-# The gap between transfer and scratch narrows as data increases.
-# This shows that transfer learning's biggest value is with LIMITED data.
+# If transfer learning's biggest value is with LIMITED data, the gap
+# between transfer and scratch should narrow as data increases. The bar
+# chart shows whether it did in your run.
 
-# TODO: Compute gaps and create a bar chart
-# Steps:
-#   1. gaps = [t - s for t, s in zip(transfer_accs_by_frac, scratch_accs_by_frac)]
-#   2. Create go.Figure() with go.Bar trace
-#   3. x = [f"{p:.0f}%" for p in pct_labels], y = [g * 100 for g in gaps]
-#   4. Color bars green if gap > 0, red otherwise
-#   5. Save to OUTPUT_DIR / "03_accuracy_gap.html"
-# Hint: marker_color=["#4CAF50" if g > 0 else "#F44336" for g in gaps]
-gaps = [t - s for t, s in zip(transfer_accs_by_frac, scratch_accs_by_frac)]
-____
+# TODO: transfer-minus-scratch accuracy at each fraction
+gaps = ____
 
+fig_gap = go.Figure()
+fig_gap.add_trace(
+    go.Bar(
+        x=[f"{p:.0f}%" for p in pct_labels],
+        y=[g * 100 for g in gaps],
+        marker_color=["#4CAF50" if g > 0 else "#F44336" for g in gaps],
+        text=[f"{g:+.1%}" for g in gaps],
+        textposition="outside",
+    )
+)
+fig_gap.update_layout(
+    title="Transfer Learning Advantage by Data Size (percentage points)",
+    xaxis_title="Training Data Size",
+    yaxis_title="Accuracy Advantage (pp)",
+    template="plotly_white",
+    width=600,
+    height=400,
+)
 gap_path = OUTPUT_DIR / "03_accuracy_gap.html"
 fig_gap.write_html(str(gap_path))
 print(f"  Saved: {gap_path}")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 6 — Apply: The VP of Engineering at Grab Asks "How Many Images?"
+# TASK 6 — Apply: The VP of Engineering Asks "How Many Images?"
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: You're the ML lead at Grab Singapore. The VP of Engineering
-# asks: "We want to build an image classifier for food delivery photos.
-# How many images do we need to label? What will it cost?"
+# SCENARIO (illustrative): You're the ML lead at a regional food-delivery
+# platform. The VP of Engineering asks: "We want to build an image
+# classifier for food delivery photos. How many images do we need to
+# label? What will it cost?" CIFAR-10 stands in for the photo pool and
+# the label price is an illustrative planning figure.
 #
 # You use this data efficiency experiment to answer concretely.
 
 print("\n" + "=" * 70)
-print("  APPLY: Grab Singapore — 'How many images do we need to label?'")
+print("  APPLY: Food-delivery platform — 'How many images do we need to label?'")
 print("=" * 70)
 
-COST_PER_LABEL = 0.80  # S$ per image label (food photo classification)
+COST_PER_LABEL = 0.80  # S$ per image label (illustrative)
 TOTAL_AVAILABLE = 50000  # Total unlabelled images available
 
-# TODO: Print the cost-accuracy trade-off table
-# Steps:
-#   1. Loop through fracs, compute n_images and label_cost for each
-#   2. Print a formatted table with columns: Data%, Images, Transfer acc,
-#      Scratch acc, Label Cost, Transfer Saves
-# Hint: n_images = int(TOTAL_AVAILABLE * frac)
-# Hint: label_cost = n_images * COST_PER_LABEL
 print(f"\n  === Cost-Accuracy Trade-off Analysis ===")
 print(f"  Labelling cost: S${COST_PER_LABEL:.2f} per image")
 print(f"  Unlabelled pool: {TOTAL_AVAILABLE:,} food delivery photos")
-____
+print()
+print(
+    f"  {'Data %':>8} {'Images':>10} {'Transfer':>12} {'Scratch':>12} "
+    f"{'Label Cost':>12} {'Saves vs 100%':>16}"
+)
+print("  " + "-" * 75)
 
-# TODO: Find the sweet spot where transfer reaches 90% of max accuracy
-# Steps:
-#   1. max_transfer_acc = transfer_results[1.0]
-#   2. sweet_spot_threshold = 0.90 * max_transfer_acc
-#   3. Loop through fracs to find first frac where accuracy >= threshold
-#   4. Calculate savings vs labelling the full dataset
-# Hint: sweet_spot_frac = None; iterate and break when found
+for frac in fracs:
+    n_images = int(TOTAL_AVAILABLE * frac)
+    label_cost = n_images * COST_PER_LABEL
+    saved = ____  # TODO: saving vs labelling the whole pool
+    t_acc = transfer_results[frac]
+    s_acc = scratch_results[frac]
+
+    print(
+        f"  {frac * 100:>7.0f}% "
+        f"{n_images:>10,} "
+        f"{t_acc:>12.1%} "
+        f"{s_acc:>12.1%} "
+        f"{'S$' + f'{label_cost:,.0f}':>12} "
+        f"{'S$' + f'{saved:,.0f}' if frac < 1.0 else '—':>16}"
+    )
+
+# Find the sweet spot: the smallest fraction where transfer reaches 90% of
+# its full-data accuracy (100% always qualifies, so one is always found)
 max_transfer_acc = transfer_results[1.0]
 sweet_spot_threshold = 0.90 * max_transfer_acc
-sweet_spot_frac = None
-____
+# TODO: the first (smallest) fraction whose transfer accuracy reaches the threshold
+sweet_spot_frac = ____
 
-if sweet_spot_frac is not None:
-    sweet_n = int(TOTAL_AVAILABLE * sweet_spot_frac)
-    sweet_cost = sweet_n * COST_PER_LABEL
-    full_cost = TOTAL_AVAILABLE * COST_PER_LABEL
-    savings = full_cost - sweet_cost
-    print(f"\n  SWEET SPOT: {sweet_spot_frac * 100:.0f}% of data ({sweet_n:,} images)")
-    print(
-        f"  Reaches {transfer_results[sweet_spot_frac]:.1%} accuracy "
-        f"(90% of maximum {max_transfer_acc:.1%})"
-    )
-    print(f"  Label cost: S${sweet_cost:,.0f} vs S${full_cost:,.0f} for full dataset")
-    print(f"  SAVINGS: S${savings:,.0f}")
-else:
-    print(f"\n  All fractions tested achieve >=90% of maximum accuracy.")
+sweet_n = int(TOTAL_AVAILABLE * sweet_spot_frac)
+sweet_cost = sweet_n * COST_PER_LABEL
+full_cost = TOTAL_AVAILABLE * COST_PER_LABEL
+savings = full_cost - sweet_cost
+print(f"\n  SWEET SPOT: {sweet_spot_frac * 100:.0f}% of data ({sweet_n:,} images)")
+print(
+    f"  Reaches {transfer_results[sweet_spot_frac]:.1%} accuracy "
+    f"(>= 90% of the full-data {max_transfer_acc:.1%})"
+)
+print(f"  Label cost: S${sweet_cost:,.0f} vs S${full_cost:,.0f} for full dataset")
+print(f"  SAVINGS: S${savings:,.0f}")
 
 print()
 print(f"  RECOMMENDATION TO VP:")
-print(
-    f"  'Start with {int(TOTAL_AVAILABLE * 0.25):,} labelled images "
-    f"(S${int(TOTAL_AVAILABLE * 0.25 * COST_PER_LABEL):,})."
-)
+print(f"  'Start with {sweet_n:,} labelled images (S${sweet_cost:,.0f}).")
 print(f"   Use transfer learning with ResNet-18. If accuracy is insufficient,")
-print(f"   label more images in batches of 5,000 until you reach the target.")
-print(f"   Transfer learning means we never need to label all 50,000 images.'")
+print(f"   label more images in batches of 5,000 until you reach the target.'")
 
 # ── Checkpoint 3 ─────────────────────────────────────────────────────
+assert sweet_spot_frac in fracs, "Sweet spot should be one of the tested fractions"
 assert (
-    sweet_spot_frac is not None or len(fracs) > 0
-), "Should identify a sweet spot or have results"
+    transfer_results[sweet_spot_frac] >= sweet_spot_threshold
+), "Sweet spot should reach 90% of full-data transfer accuracy"
 # INTERPRETATION: The data efficiency curve directly answers the VP's
 # question with concrete numbers: how many images to label, how much
 # it costs, and where the diminishing returns kick in. This is how ML
@@ -395,18 +474,20 @@ print(
   [x] Scratch with 10% data: {scratch_results[0.10]:.1%} accuracy
   [x] Plotted data efficiency curves (transfer vs scratch)
   [x] Identified the sweet spot: {sweet_spot_frac * 100:.0f}% of data for 90% of max accuracy
-  [x] Calculated labelling cost savings for Grab Singapore scenario
+  [x] Calculated labelling cost savings for a food-delivery platform scenario
 
   KEY INSIGHT: Transfer learning's biggest value is with LIMITED data.
-  The gap between transfer and scratch is largest at 10-25% data, then
-  narrows as data increases. This means:
+  The gap between transfer and scratch is typically largest at small
+  data fractions and narrows as data increases (check your gap chart).
+  This means:
     - With abundant data: transfer helps but isn't critical
     - With scarce data: transfer is transformative
 
   THE LABELLING BOTTLENECK EQUATION:
     Cost = (images needed) x (cost per label)
-    Transfer learning reduces the first term by 4-10x.
-    This is often the difference between a viable project and a shelved one.
+    Transfer learning shrinks the first term — your sweet-spot analysis
+    measured by how much. This is often the difference between a viable
+    project and a shelved one.
 
   NEXT: Part 4 introduces adapter modules — a parameter-efficient
   alternative to full fine-tuning that bridges to M6's LoRA technique.

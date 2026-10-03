@@ -30,8 +30,9 @@
 #   10. Momentum analysis — accelerating vs decelerating markets
 #
 # DATASET: Singapore HDB resale flat transactions (time-series focus)
-#   Source: Housing & Development Board (data.gov.sg)
-#   Rows: ~500,000 transactions spanning multiple years
+#   Source: synthetic course dataset (hdb_resale.parquet) modelled on the
+#   public HDB resale records — the numbers are not real market data
+#   Rows: ~50,000 transactions, January 2015 to December 2024
 #   Key columns: month, town, resale_price, floor_area_sqm
 #
 # ════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,43 @@ monthly_prices = (
     .sort("town", "transaction_date")
 )
 
-print(f"=== Monthly Price Series ===")
+# --- 1b: Make the calendar complete ---
+# Window functions such as shift(12) count ROWS, not months. shift(12)
+# means "same month last year" only if every town has a row for every
+# month. If a town had no sale in some month, that month is simply absent,
+# and shift(12) silently compares against the wrong month.
+# Fix: build every (town, month) combination and left-join the data onto
+# it, so a missing month becomes an explicit row with null prices.
+all_months = pl.DataFrame(
+    {
+        "transaction_date": pl.date_range(
+            monthly_prices["transaction_date"].min(),
+            monthly_prices["transaction_date"].max(),
+            interval="1mo",
+            eager=True,
+        )
+    }
+)
+all_towns = monthly_prices.select("town").unique()
+full_grid = all_towns.join(all_months, how="cross")
+missing_cells = full_grid.height - monthly_prices.height
+
+print(f"=== Calendar Completeness ===")
+print(f"  Towns x months expected: {all_towns.height} x {all_months.height} = {full_grid.height:,}")
+print(f"  (town, month) rows present: {monthly_prices.height:,}")
+print(f"  Missing (town, month) cells: {missing_cells}")
+if missing_cells > 0:
+    gaps = full_grid.join(monthly_prices, on=["town", "transaction_date"], how="anti")
+    print(gaps.sort("town", "transaction_date"))
+
+monthly_prices = (
+    full_grid.join(monthly_prices, on=["town", "transaction_date"], how="left")
+    # A month with no sale had zero transactions — that one we know exactly
+    .with_columns(pl.col("transaction_count").fill_null(0))
+    .sort("town", "transaction_date")
+)
+
+print(f"\n=== Monthly Price Series ===")
 print(f"Shape: {monthly_prices.shape}  (one row per town per month)")
 print(f"Towns: {monthly_prices['town'].n_unique()}")
 print(
@@ -103,6 +140,7 @@ print(monthly_prices.filter(pl.col("town") == "BISHAN").head(6))
 assert monthly_prices.height > 0, "monthly_prices should have rows"
 n_unique = monthly_prices.select(["town", "transaction_date"]).unique().height
 assert monthly_prices.height == n_unique, "One row per (town, date) pair"
+assert monthly_prices.height == full_grid.height, "Every town has every month"
 bishan = monthly_prices.filter(pl.col("town") == "BISHAN")
 assert (
     bishan["transaction_date"][0] <= bishan["transaction_date"][-1]
@@ -116,7 +154,9 @@ print("\n✓ Checkpoint 1 passed — monthly price series built correctly\n")
 # A window function computes a value for each row using a sliding window
 # of surrounding rows — without collapsing the DataFrame like group_by.
 #
-# rolling_mean(window_size=12) computes a 12-row moving average.
+# rolling_mean(window_size=12) computes a 12-row moving average — on our
+# complete calendar, 12 rows = 12 months. A window that contains a missing
+# month returns null rather than averaging over fewer months.
 # .over("town") partitions by town so the window never crosses boundaries.
 
 monthly_prices = monthly_prices.with_columns(
@@ -259,6 +299,8 @@ print("\n✓ Checkpoint 3 passed — multiple rolling windows and signals comput
 # shift(n) moves every value n positions forward, filling first n with null.
 # Combined with .over("town"), each town shifts independently.
 # YoY = (current - 12_months_ago) / 12_months_ago * 100
+# Because Task 1 made the calendar complete, 12 rows back is exactly the
+# same month last year; a missing month gives a null YoY, not a wrong one.
 
 monthly_prices = monthly_prices.with_columns(
     pl.col("median_price_sqm").shift(12).over("town").alias("price_sqm_12m_ago"),
@@ -536,7 +578,7 @@ lazy_result = (
 )
 print(f"\n=== Lazy Evaluation Result ===")
 print(lazy_result)
-# INTERPRETATION: For this dataset (500k rows), lazy evaluation saves
+# INTERPRETATION: For this dataset (~50k rows), lazy evaluation saves
 # marginal time. For datasets with millions of rows, the savings are
 # significant because Polars avoids materialising intermediate results.
 
@@ -785,9 +827,12 @@ print(
   ✓ .over("town"): partitioning window functions by group
   ✓ Multiple rolling functions: std, min, max for volatility and range
   ✓ Market signals: golden/death cross from short vs long averages
+  ✓ Complete calendars: filling in missing (town, month) rows so
+    row-based windows line up with real months
   ✓ shift(12): comparing each month to the same month a year ago
   ✓ YoY and MoM calculation: annual and monthly price changes
-  ✓ Cumulative functions: cum_sum, cum_mean, cum_max, cum_min
+  ✓ Cumulative functions: cum_sum, cum_count (expanding mean), cum_max,
+    cum_min
   ✓ Distance from ATH: tracking how far markets have fallen from peaks
   ✓ .lazy() / .collect(): deferring execution for query optimization
   ✓ rank(): adding ranking columns without reordering

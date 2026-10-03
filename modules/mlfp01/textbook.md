@@ -294,7 +294,7 @@ Robust statistics is a full subfield (see Huber, *Robust Statistics*, 1981). For
 
 ## The Kailash Engine: DataExplorer (first look)
 
-This is the engine you will meet formally in Lesson 1.7. In Lesson 1.1 we use it only in its very simplest form — the `describe` method, which is really just a bridge to help you recognise that the per-column computations you just learned (mean, std, min, max) are all available in a single call.
+This is the engine you will meet formally in Lesson 1.7. In Lesson 1.1 we do not call it yet. Instead we use Polars' own `df.describe()` — a bridge to help you recognise that the per-column computations you just learned (mean, std, min, max) are all available in a single call, which is the first thing DataExplorer automates.
 
 DataExplorer is the Kailash ML engine for automated dataset profiling. It wraps a battery of column-level statistics and quality checks behind a single API. Its full capabilities include:
 
@@ -307,7 +307,7 @@ DataExplorer is the Kailash ML engine for automated dataset profiling. It wraps 
 - Comparison of two datasets for distribution drift.
 - HTML report generation.
 
-You will use all of these in Lesson 1.7. For now, just know that the `describe` method you are about to see is the same thing DataExplorer does internally for its numeric columns. Learning the manual form first is deliberate — when DataExplorer flags something as "high skewness" in Lesson 1.7, you should be able to say "right, that's the mean being different from the median because there's a long tail, I remember that from Lesson 1.1" instead of being confused by a stranger.
+You will use all of these in Lesson 1.7. For now, just know that the summary statistics `df.describe()` prints are the starting point of what DataExplorer computes for every numeric column (it adds skewness, outlier counts, correlations and alerts on top). Learning the manual form first is deliberate — when DataExplorer flags something as "high skewness" in Lesson 1.7, you should be able to say "right, that's the mean being different from the median because there's a long tail, I remember that from Lesson 1.1" instead of being confused by a stranger.
 
 ## Worked Example: Singapore Monthly Weather
 
@@ -833,7 +833,7 @@ Method chains are read in the order they appear, and each line is applied to the
 
 ## The Kailash Context
 
-Lesson 1.2 is pure Polars — no Kailash engine is involved yet. But the patterns you are learning here will show up again inside the engines. DataExplorer (Lesson 1.7) uses `pl.col()` expressions internally to compute per-column statistics. PreprocessingPipeline (Lesson 1.8) uses `pl.when().then()` conditional logic internally when it encodes categorical columns. ModelVisualizer (Lesson 1.6) accepts Polars DataFrames directly as input — you will hand it the output of your `.filter().sort()` chains. Everything you learn about Polars is reusable inside every Kailash engine you will meet.
+Lesson 1.2 is pure Polars — no Kailash engine is involved yet. But the patterns you are learning here will show up again inside the engines. DataExplorer (Lesson 1.7) uses `pl.col()` expressions internally to compute per-column statistics. PreprocessingPipeline (Lesson 1.8) turns categorical columns into numeric ones — the same kind of column-by-column transformation you are writing by hand with `pl.when().then()`. ModelVisualizer (Lesson 1.6) accepts Polars DataFrames directly as input — you will hand it the output of your `.filter().sort()` chains. Everything you learn about Polars is reusable inside every Kailash engine you will meet.
 
 ## Worked Example: HDB Resale Flats
 

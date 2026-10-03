@@ -3,14 +3,14 @@
 """
 Shared infrastructure for MLFP02 Exercise 8 — FeatureStore + Feature Engineering.
 
-Contains: HDB resale data loading, FeatureStore / ExperimentTracker setup
-through kailash-ml, and OLS-from-scratch helpers reused across the four
-R10 technique files:
+Contains: HDB resale data loading, feature validation, FeatureStore and
+ExperimentTracker wiring for the installed kailash-ml 2.x, and
+OLS-from-scratch helpers reused across the four R10 technique files:
 
-    01_feature_schema.py        — FeatureSchema v1 + validation
-    02_point_in_time.py         — Leakage prevention + temporal correctness
-    03_rolling_features.py      — FeatureSchema v2 + group_by_dynamic
-    04_modeling_with_features.py — Regression + hypothesis tests + Bayes
+    01_feature_schema.py    — FeatureSchema v1 + validation + materialisation
+    02_point_in_time.py     — Point-in-time retrieval + leakage demonstration
+    03_rolling_features.py  — FeatureSchema v2 + trailing rolling windows
+    04_modeling_lineage.py  — Regression + hypothesis tests + Bayes + lineage
 
 Technique-specific logic (schema construction, rolling window design,
 coefficient interpretation) belongs in the per-technique files. This
@@ -38,8 +38,12 @@ OUTPUT_DIR = Path("outputs") / "mlfp02_ex8"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 FEATURE_STORE_URL = "sqlite:///mlfp02_ex8_features.db"
-FEATURE_TABLE_PREFIX = "kml_feat_"
+EXPERIMENT_STORE_URL = "sqlite:///mlfp02_experiments.db"
 EXPERIMENT_NAME = "mlfp02_ex8_hdb_features"
+
+# Single-tenant course store: kailash-ml's FeatureStore requires a tenant
+# scope on every call; "_single" is its documented single-tenant sentinel.
+FEATURE_TENANT = "_single"
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -67,39 +71,81 @@ def load_hdb_resale() -> pl.DataFrame:
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def setup_feature_store() -> tuple[Any, Any, Any, bool]:
-    """Create (conn, FeatureStore, ExperimentTracker, has_backend) for kailash-ml 1.1.1.
+def create_feature_store(url: str = FEATURE_STORE_URL) -> Any:
+    """Build a kailash-ml FeatureStore backed by a DataFlow database.
 
-    Returns ``has_backend=False`` if the infrastructure is unavailable.
-    Callers handle the degraded path by running the Polars-only versions
-    of each operation.
-
-    Note: the first tuple element is now a ``ConnectionManager`` rather than
-    the old ``StoreFactory`` — kailash-ml's ExperimentTracker no longer
-    accepts a positional store object; it constructs its own through the
-    ``store_url`` factory. We still return a ConnectionManager so FeatureStore
-    has the connection it needs.
+    FeatureStore(dataflow) persists feature tables through DataFlow (no raw
+    SQL). Any construction error propagates — there is no silent fallback.
     """
-    try:
-        from kailash.db import ConnectionManager
-        from kailash_ml import ExperimentTracker, FeatureStore
+    from dataflow import DataFlow
+    from kailash_ml.features import FeatureStore
 
-        conn = ConnectionManager(FEATURE_STORE_URL)
-        await conn.initialize()
-        fs = FeatureStore(conn, table_prefix=FEATURE_TABLE_PREFIX)
-        tracker = await ExperimentTracker.create(store_url=FEATURE_STORE_URL)
-        return conn, fs, tracker, True
-    except Exception as exc:  # noqa: BLE001 — degrade gracefully
-        print(
-            f"  [warn] FeatureStore backend unavailable "
-            f"({type(exc).__name__}: {exc})"
-        )
-        return None, None, None, False
+    return FeatureStore(DataFlow(url), default_tenant_id=FEATURE_TENANT)
+
+
+async def create_tracker(url: str = EXPERIMENT_STORE_URL) -> Any:
+    """Create an ExperimentTracker, independently of the feature store."""
+    from kailash_ml import ExperimentTracker
+
+    return await ExperimentTracker.create(store_url=url)
+
+
+def to_store_frame(df: pl.DataFrame, schema: Any) -> pl.DataFrame:
+    """Project ``df`` to the schema's entity, timestamp and field columns.
+
+    The store keys rows by an integer entity id and a datetime event time,
+    so ``transaction_id`` is cast to Int64 and ``transaction_date`` (a Date)
+    to Datetime.
+    """
+    casts = {"int64": pl.Int64, "float64": pl.Float64}
+    cols = [
+        pl.col(schema.entity_id_column).cast(pl.Int64),
+        pl.col(schema.timestamp_column).cast(pl.Datetime("us")),
+        *[pl.col(f.name).cast(casts.get(f.dtype, pl.Float64)) for f in schema.fields],
+    ]
+    return df.select(cols)
+
+
+async def materialize_features(fs: Any, schema: Any, df: pl.DataFrame) -> Any:
+    """Write ``df``'s schema columns into the FeatureStore (idempotent upsert).
+
+    Returns kailash-ml's MaterializeResult (row_count, lineage_hash, version...).
+    """
+    from kailash_ml.features import FeatureGroup
+
+    group = FeatureGroup(schema, dataflow=fs.dataflow)
+    return await fs.materialize(group, to_store_frame(df, schema))
 
 
 # ════════════════════════════════════════════════════════════════════════
 # FEATURE COMPUTATION — v1 (basic property) and v2 (rolling market)
 # ════════════════════════════════════════════════════════════════════════
+
+
+# Plausibility bounds used by validate_v1_features. Prices outside this range
+# are sentinel/typo values in the raw file (e.g. $10, $9,000,000).
+PRICE_BOUNDS = (100_000, 2_000_000)
+MAX_LEASE_YEARS = 99
+
+
+def validate_v1_features(df: pl.DataFrame) -> tuple[pl.DataFrame, dict[str, int]]:
+    """Apply value-level contract checks the dtype schema cannot express.
+
+    Rules: remaining lease within (0, 99] years (an HDB lease is 99 years);
+    lease cannot commence after the sale; resale price within PRICE_BOUNDS;
+    positive floor area. Returns (valid_rows, {rule: violation_count}).
+    """
+    rules = {
+        "remaining_lease_years > 99": pl.col("remaining_lease_years") > MAX_LEASE_YEARS,
+        "remaining_lease_years <= 0": pl.col("remaining_lease_years") <= 0,
+        "lease commences after sale": pl.col("lease_commence_date")
+        > pl.col("transaction_date").dt.year(),
+        "resale_price outside bounds": ~pl.col("resale_price").is_between(*PRICE_BOUNDS),
+        "floor_area_sqm <= 0": pl.col("floor_area_sqm") <= 0,
+    }
+    report = {name: int(df.filter(expr).height) for name, expr in rules.items()}
+    any_violation = pl.any_horizontal(list(rules.values()))
+    return df.filter(~any_violation), report
 
 
 def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
@@ -124,14 +170,23 @@ def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
-    """Compute v2 features = v1 + rolling town-level market context.
+    """Compute v2 features = v1 + TRAILING town-level market context.
 
     Uses polars ``group_by_dynamic`` on ``transaction_date`` bucketed by
-    month, then a 6-month rolling window per town. The first six months
-    per town have nulls (warm-up period) — callers must ``drop_nulls``
-    before modelling.
+    month, then shifts each town's monthly series by one month BEFORE the
+    6-month rolling window. A transaction in month m therefore sees only
+    months m-6 .. m-1 — never its own month, which contains its own price
+    (that would be target leakage). The windows run over the town's months
+    that have transactions.
+
+    Only rows that pass ``validate_v1_features`` are kept, so sentinel
+    prices never enter the town statistics.
+
+    Warm-up: the first 6 months per town have null median/volume and the
+    first 7 have a null trend — callers must ``drop_nulls`` before modelling.
     """
-    result = compute_v1_features(df).sort("transaction_date")
+    result, _ = validate_v1_features(compute_v1_features(df))
+    result = result.sort("transaction_date")
 
     town_stats = (
         result.group_by_dynamic("transaction_date", every="1mo", group_by="town")
@@ -142,18 +197,20 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
         .sort("town", "transaction_date")
     )
 
+    prior_median = pl.col("monthly_median").shift(1).over("town")
+    prior_volume = pl.col("monthly_volume").shift(1).over("town")
     town_stats = town_stats.with_columns(
-        pl.col("monthly_median")
-        .rolling_mean(window_size=6)
+        prior_median.rolling_mean(window_size=6).over("town").alias("town_median_price"),
+        prior_volume.rolling_sum(window_size=6)
         .over("town")
-        .alias("town_median_price"),
-        pl.col("monthly_volume")
-        .rolling_sum(window_size=6)
-        .over("town")
+        .cast(pl.Int64)
         .alias("town_transaction_volume"),
         (
-            (pl.col("monthly_median") - pl.col("monthly_median").shift(6).over("town"))
-            / pl.col("monthly_median").shift(6).over("town")
+            (
+                pl.col("monthly_median").shift(1).over("town")
+                - pl.col("monthly_median").shift(7).over("town")
+            )
+            / pl.col("monthly_median").shift(7).over("town")
             * 100
         ).alias("town_price_trend"),
     )
@@ -180,10 +237,10 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
 def as_of(
     df: pl.DataFrame, cutoff: datetime, date_col: str = "transaction_date"
 ) -> pl.DataFrame:
-    """Return rows strictly before ``cutoff`` — the Polars-only PIT path.
+    """Return rows strictly before ``cutoff`` (Polars point-in-time filter).
 
-    When FeatureStore is unavailable, every technique falls back to this
-    helper so the leakage-prevention lesson still runs end-to-end.
+    Used to build training sets for a cutoff and to cross-check the
+    FeatureStore's ``get_features(schema, timestamp=...)`` result.
     """
     return df.filter(pl.col(date_col) < pl.lit(cutoff.date()))
 
@@ -283,72 +340,53 @@ def normal_normal_posterior(
 
 
 def build_schema_v1() -> Any:
-    """Return the FeatureSchema v1 definition (basic property features)."""
-    from kailash_ml.types import FeatureField, FeatureSchema
+    """Return the FeatureSchema v1 definition (basic property features).
+
+    Uses ``kailash_ml.features.FeatureSchema`` — the class FeatureStore
+    accepts (the top-level ``kailash_ml.FeatureSchema`` is a different,
+    incompatible type in kailash-ml 2.2.x).
+    """
+    from kailash_ml.features import FeatureField, FeatureSchema
 
     return FeatureSchema(
         name="hdb_property_features",
-        features=[
-            FeatureField(
-                name="floor_area_sqm",
-                dtype="float64",
-                nullable=False,
-                description="Floor area in square metres",
-            ),
-            FeatureField(
-                name="remaining_lease_years",
-                dtype="float64",
-                nullable=False,
-                description="Remaining lease in years",
-            ),
-            FeatureField(
-                name="storey_midpoint",
-                dtype="float64",
-                nullable=False,
-                description="Midpoint of storey range",
-            ),
-            FeatureField(
-                name="price_per_sqm",
-                dtype="float64",
-                nullable=False,
-                description="Transaction price per square metre",
-            ),
-        ],
+        version=1,
+        fields=(
+            FeatureField("floor_area_sqm", "float64", False, "Floor area in square metres"),
+            FeatureField("remaining_lease_years", "float64", False, "Remaining lease in years"),
+            FeatureField("storey_midpoint", "float64", False, "Midpoint of storey range"),
+            FeatureField("price_per_sqm", "float64", False, "Transaction price per square metre"),
+        ),
         entity_id_column="transaction_id",
         timestamp_column="transaction_date",
-        version=1,
     )
 
 
 def build_schema_v2() -> Any:
-    """Return FeatureSchema v2 = v1 + three rolling market-context fields."""
-    from kailash_ml.types import FeatureField, FeatureSchema
+    """Return FeatureSchema v2 = v1 + three trailing market-context fields.
+
+    In kailash-ml 2.2.x the store's backing table is keyed by schema NAME,
+    so a version that adds columns needs its own name (re-using the v1 name
+    fails with "table ... has no column named town_median_price").
+    """
+    from kailash_ml.features import FeatureField, FeatureSchema
 
     v1 = build_schema_v1()
     return FeatureSchema(
-        name="hdb_property_features",
-        features=[
-            *v1.features,
+        name="hdb_property_features_v2",
+        version=2,
+        fields=(
+            *v1.fields,
             FeatureField(
-                name="town_median_price",
-                dtype="float64",
-                nullable=True,
-                description="Median price in town (trailing 6 months)",
+                "town_median_price", "float64", True, "Town median price, previous 6 months"
             ),
             FeatureField(
-                name="town_transaction_volume",
-                dtype="int64",
-                nullable=True,
-                description="Transaction count in town (trailing 6 months)",
+                "town_transaction_volume", "int64", True, "Town transactions, previous 6 months"
             ),
             FeatureField(
-                name="town_price_trend",
-                dtype="float64",
-                nullable=True,
-                description="6-month price change % in town",
+                "town_price_trend", "float64", True, "Town median change % (m-7 to m-1)"
             ),
-        ],
+        ),
         entity_id_column="transaction_id",
         timestamp_column="transaction_date",
-        version=2,
     )

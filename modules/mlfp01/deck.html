@@ -2864,7 +2864,7 @@ params = {
     "returnGeom": "Y",
     "getAddrDetails": "Y",
 }
-response = requests.get(url, params=params)
+response = requests.get(url, params=params, timeout=10)
 data = response.json()</code></pre>
     </div>
     <div class="col">
@@ -2878,7 +2878,7 @@ print(f"{first['ADDRESS']}: ({lat}, {lng})")
 df_locations = pl.DataFrame(results)</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         <pre style="font-size: 0.55em;"><code class="language-python">try:
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=10)
     response.raise_for_status()
 except requests.RequestException as e:
     print(f"API error: {e}")</code></pre>
@@ -2889,7 +2889,9 @@ except requests.RequestException as e:
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- REST APIs are how you get data from external services. OneMap is Singapore's mapping API.
+- REST APIs are how you get data from external services. OneMap is Singapore's public mapping API; its search endpoint needs no key.
+- GET asks for data (query parameters go in params=); POST sends data in the request body (requests.post(url, json={...})). Both usually answer in JSON.
+- Always set a timeout so a slow server cannot hang the pipeline.
 - Always wrap API calls in try/except. Networks fail, servers go down.
 - If beginners confused: an API is like ordering food. Send a request, get a response.
 - If experts bored: discuss pagination, rate limiting, async.
@@ -2906,24 +2908,29 @@ Transition: "Now let us automate cleaning with PreprocessingPipeline."
       <div class="col">
         <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
 
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df)
+pipeline = PreprocessingPipeline()  # no arguments
+result = pipeline.setup(
+    data=train_rows,                # features + target
+    target="fare_sgd",
+    imputation_strategy="median",
+    categorical_encoding="onehot",
+    normalize=True,
+)
+print(result.task_type)             # 'regression'
+print(result.train_data.shape,
+      result.test_data.shape)
 
-print(pipeline.steps_applied)
-# ['type_inference',
-#  'missing_imputation',
-#  'categorical_encoding',
-#  'numeric_scaling',
-#  'outlier_handling']</code></pre>
+test_ready = pipeline.transform(test_rows)</code></pre>
       </div>
       <div class="col">
-        <h3>What It Automates</h3>
+        <h3>What setup() Automates</h3>
         <ul>
-          <li><strong>Type inference</strong></li>
-          <li><strong>Missing imputation</strong> (median/mode)</li>
-          <li><strong>Categorical encoding</strong></li>
-          <li><strong>Numeric scaling</strong></li>
-          <li><strong>Outlier handling</strong></li>
+          <li><strong>Type detection</strong> (numeric vs categorical)</li>
+          <li><strong>Missing imputation</strong> (mean/median/...)</li>
+          <li><strong>Categorical encoding</strong> (one-hot)</li>
+          <li><strong>Numeric scaling</strong> (z-score)</li>
+          <li><strong>Train/test split</strong> (<code>train_size=0.8</code>)</li>
+          <li>Optional: outlier removal, PCA</li>
         </ul>
       </div>
     </div>
@@ -2935,10 +2942,12 @@ print(pipeline.steps_applied)
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- fit_transform learns cleaning rules (fit) and applies them (transform).
-- steps_applied tells you exactly what it did.
+- setup() learns the preparation rules (medians, categories, scaling) and returns a SetupResult with train_data / test_data; transform() applies the same rules to new rows.
+- setup() needs a target column: it prepares data for a model, it does not repair bad rows. Cleaning (negative fares, duplicates) happens before it.
+- setup() learns from every row it is given and splits afterwards, so hold out your test rows first and pass only training rows to setup().
+- result.summary prints what it did (encoding, normalisation, imputation, shapes).
 - If beginners confused: dishwasher analogy. Same cycle every time.
-- If experts bored: pipeline can be serialised for train/test consistency.
+- If experts bored: pipeline.get_config() returns the full configuration, so the same preparation can be reproduced.
 Transition: "The ETL pattern."
   </aside>
 </section>
@@ -2948,20 +2957,24 @@ Transition: "The ETL pattern."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python"># EXTRACT
-df_hdb = pl.read_csv("data/hdb_resale.csv")
-df_mrt = pl.read_csv("data/mrt_stations.csv")
+      <pre><code class="language-python">from pathlib import Path
+
+# EXTRACT
+taxi = loader.load("mlfp01", "sg_taxi_trips.parquet")
 
 # TRANSFORM
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df_hdb)
-df_enriched = df_clean.join(
-    df_mrt, on="town", how="left"
+taxi_clean = (
+    taxi
+    .with_columns(pl.col("pickup_datetime", "dropoff_datetime")
+                  .str.to_datetime("%Y-%m-%d %H:%M:%S"))
+    .filter(pl.col("fare_sgd") &gt; 0, pl.col("passengers") &gt;= 1)
+    .with_columns(pl.col("tip_sgd").fill_null(0.0))
 )
 
 # LOAD
-df_enriched.write_csv("output/hdb_clean.csv")
-df_enriched.write_parquet("output/hdb_clean.parquet")</code></pre>
+Path("output").mkdir(exist_ok=True)
+taxi_clean.write_csv("output/taxi_clean.csv")
+taxi_clean.write_parquet("output/taxi_clean.parquet")</code></pre>
     </div>
     <div class="col">
       <h3>Full Pipeline Steps</h3>
@@ -2982,7 +2995,7 @@ df_enriched.write_parquet("output/hdb_clean.parquet")</code></pre>
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- ETL is the standard data engineering pattern.
+- ETL is the standard data engineering pattern. Path comes from pathlib (Lesson 1.4); mkdir creates the output folder if it is missing.
 - Parquet is the professional format. CSV for humans, Parquet for computers.
 - If beginners confused: factory assembly line: raw materials in, finished product out.
 - If experts bored: discuss orchestration frameworks (Airflow, Dagster).
@@ -2995,7 +3008,7 @@ Transition: "Project structure."
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <div class="columns">
     <div class="col">
-      <pre><code class="language-python">project/
+      <pre><code class="language-text">project/
   data/
     raw/           # Never modify originals
     processed/     # Cleaned data
@@ -3040,11 +3053,12 @@ Transition: "Capstone exercise."
   <div class="columns">
     <div class="col">
       <ol>
-        <li><strong>Extract:</strong> Load messy taxi trip data</li>
-        <li><strong>Profile:</strong> DataExplorer, document all issues</li>
-        <li><strong>Clean:</strong> PreprocessingPipeline</li>
-        <li><strong>Visualise:</strong> At least 3 charts with insights</li>
-        <li><strong>Report:</strong> Generate HTML report</li>
+        <li><strong>Extract:</strong> load 50,000 messy taxi trips</li>
+        <li><strong>Profile:</strong> describe() + DataExplorer; turn alerts into a cleaning plan</li>
+        <li><strong>Clean:</strong> GPS swaps, bad fares/passengers, future dates, payment labels, duplicate IDs</li>
+        <li><strong>Engineer + prepare:</strong> hour, weekday, duration; PreprocessingPipeline</li>
+        <li><strong>Visualise:</strong> at least 3 charts with insights</li>
+        <li><strong>Report:</strong> compare original vs cleaned; HTML report</li>
       </ol>
     </div>
     <div class="col">
@@ -3058,7 +3072,9 @@ Transition: "Capstone exercise."
 Time: ~2 min
 Talking points:
 - Module 1 capstone. Uses every skill from all 8 lessons.
-- The taxi trip dataset is deliberately messy.
+- The taxi trip dataset is synthetic and deliberately messy: 250 swapped coordinates, 1,000 non-positive fares, 500 passenger counts below 1, 500 trips dated 2025-2027, 15 spellings of 4 payment methods, 500 rows sharing trip_ids.
+- Polars dt.weekday() is ISO: Monday = 1 ... Sunday = 7, so the weekend is weekday >= 6.
+- The exercise loads from a file; pulling extra context from an API (as on the REST slide) is an extension.
 - If beginners confused: follow ETL steps in order.
 - If experts bored: add API enrichment and lazy evaluation.
 Transition: "Reference implementation."
@@ -3069,39 +3085,47 @@ Transition: "Reference implementation."
   <h2>Capstone Pipeline Code</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">import polars as pl
-from kailash_ml import DataExplorer, PreprocessingPipeline, ModelVisualizer
-from shared import MLFPDataLoader, run_profile
-from dotenv import load_dotenv
-
-load_dotenv()
+from kailash_ml import ModelVisualizer, PreprocessingPipeline
+from shared import MLFPDataLoader, run_compare, run_profile, run_report
 
 # 1. EXTRACT
-loader = MLFPDataLoader()
-df = loader.load("mlfp01", "taxi_trips.csv")
+taxi_raw = MLFPDataLoader().load("mlfp01", "sg_taxi_trips.parquet")
 
 # 2. PROFILE
-explorer = DataExplorer()
-profile_before = run_profile(explorer, df)
+profile_raw = run_profile(taxi_raw)            # 12 alerts
 
-# 3. CLEAN
-pipeline = PreprocessingPipeline()
-df_clean = pipeline.fit_transform(df)
-profile_after = run_profile(explorer, df_clean)
-comparison = explorer.compare(profile_before, profile_after)
+# 3. CLEAN (one auditable step per problem found)
+taxi_clean = (
+    taxi_raw
+    .filter(pl.col("fare_sgd") &gt; 0, pl.col("passengers") &gt;= 1)
+    .filter(~pl.col("trip_id").is_duplicated())
+    .with_columns(pl.col("tip_sgd").fill_null(0.0),
+                  pl.col("pickup_zone").fill_null("Unknown"))
+)
+comparison = run_compare(taxi_raw, taxi_clean)  # original vs cleaned
 
-# 4. VISUALISE
+# 4. PREPARE for a model (hold out test rows before setup in real work)
+result = PreprocessingPipeline().setup(
+    data=taxi_clean.select("distance_km", "passengers", "pickup_zone", "fare_sgd"),
+    target="fare_sgd", imputation_strategy="median")
+
+# 5. VISUALISE
 viz = ModelVisualizer()
-viz.plot_distribution(df_clean, column="trip_distance", title="Trip Distance Distribution")
-viz.plot_correlation(df_clean, title="Feature Correlations")
+viz.histogram(taxi_clean, "fare_sgd", bins=50, title="Fare Distribution").write_html("fare.html")
+viz.scatter(taxi_clean, "distance_km", "fare_sgd", title="Distance vs Fare").write_html("dist_fare.html")
 
-# 5. REPORT
-print(comparison.summary)</code></pre>
+# 6. REPORT
+print(comparison["shape_comparison"])
+with open("taxi_report.html", "w") as f:
+    f.write(run_report(taxi_clean, title="Taxi Trips - Cleaned"))</code></pre>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
 Time: ~3 min
 Talking points:
 - Reference implementation. Students adapt for their own pipeline.
-- Pattern: load, profile, clean, profile again, compare, visualise.
+- Pattern: load, profile, clean, compare original vs cleaned, prepare, visualise, report.
+- run_profile / run_compare / run_report are the shared sync wrappers around DataExplorer's async profile / compare / to_html; they work in scripts and Colab.
+- This is the short version; ex_8 adds GPS repair, date parsing and filtering, payment-label normalisation and feature engineering.
 - If beginners confused: copy this structure and modify.
 - If experts bored: parameterise into a reusable pipeline class.
 Transition: "Lesson 1.8 recap."
@@ -3116,7 +3140,7 @@ Transition: "Lesson 1.8 recap."
       <h3>Data Cleaning</h3>
       <ul>
         <li><code>df.null_count()</code>, <code>drop_nulls()</code>, <code>fill_null()</code></li>
-        <li><code>PreprocessingPipeline</code> for automation</li>
+        <li><code>PreprocessingPipeline().setup()</code> + <code>transform()</code></li>
       </ul>
     </div>
     <div class="col">

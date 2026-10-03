@@ -707,7 +707,8 @@ print(price != 550000)  # False
 print(price &gt;= 550000)  # True
 print(price &lt; 400000)   # False</code></pre>
       <h3 style="margin-top:12px;">Combining Conditions</h3>
-      <pre><code class="language-python"># &amp; means AND, | means OR
+      <pre><code class="language-python"># &amp; means AND, | means OR (shown on bools here)
+area = 92
 is_expensive = price &gt; 500000
 is_large = area &gt; 100
 
@@ -750,23 +751,24 @@ Transition: "Now let us apply these comparisons to filter entire DataFrames."
   <h2>Filtering Rows with filter()</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <pre><code class="language-python">import polars as pl
+from shared import MLFPDataLoader
 
-df = pl.read_csv("data/hdb_resale.csv")
+df = MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
 
 # Filter: only Queenstown flats
 queenstown = df.filter(pl.col("town") == "QUEENSTOWN")
-print(f"Queenstown transactions: {queenstown.shape[0]:,}")
+print(f"Queenstown transactions: {queenstown.shape[0]:,}")   # 1,523
 
 # Filter: expensive flats (over $700K)
 expensive = df.filter(pl.col("resale_price") &gt; 700_000)
-print(f"Over $700K: {expensive.shape[0]:,}")
+print(f"Over $700K: {expensive.shape[0]:,}")                 # 35,157
 
 # Combine conditions: Queenstown AND over $700K
 qt_expensive = df.filter(
     (pl.col("town") == "QUEENSTOWN") &amp;
     (pl.col("resale_price") &gt; 700_000)
 )
-print(f"Queenstown over $700K: {qt_expensive.shape[0]:,}")</code></pre>
+print(f"Queenstown over $700K: {qt_expensive.shape[0]:,}")   # 1,223</code></pre>
   <div class="callout callout-foundations">
     <strong>Key Pattern:</strong> <code>df.filter(pl.col("column") operator value)</code> &mdash; this is the syntax you will use hundreds of times.
   </div>
@@ -840,9 +842,10 @@ df = df.with_columns(
     (pl.col("resale_price") / pl.col("floor_area_sqm"))
     .alias("price_per_sqm"),
 
-    # Remaining lease in years (from months)
-    (pl.col("remaining_lease_months") / 12)
-    .round(1)
+    # Remaining lease in whole years, parsed from text
+    # ("71 years 11 months" or "92" -> 71 / 92)
+    pl.col("remaining_lease").str.extract(r"^(\d+)", 1)
+    .cast(pl.Int64)
     .alias("remaining_lease_years"),
 
     # High-value flag
@@ -852,7 +855,7 @@ df = df.with_columns(
 
 print(df.select("town", "price_per_sqm", "remaining_lease_years", "is_high_value").head())</code></pre>
   <div class="callout callout-theory">
-    <strong>Why expressions, not loops?</strong> Polars expressions run on the entire column at once (vectorised). Processing 15 million rows takes milliseconds, not minutes. This is why Polars beats pandas for large datasets.
+    <strong>Why expressions, not loops?</strong> Polars expressions run on the entire column at once (vectorised). Processing all ~50,000 HDB rows takes milliseconds, and the same code scales to tens of millions. This is why Polars beats pandas for large datasets.
   </div>
   <div class="slide-footer"><span>MLFP Module 1 &mdash; Terrene Open Academy</span></div>
   <aside class="notes">
@@ -860,7 +863,7 @@ Time: ~3 min
 Talking points:
 - with_columns is the most important transformation method. It creates new columns from expressions.
 - .alias() names the result. Without it, Polars auto-names the column from the expression.
-- .round(1) chains onto the expression, rounding to 1 decimal place.
+- remaining_lease is text in two formats ("71 years 11 months" and plain "92"); str.extract pulls the leading number, then cast makes it an integer. About 1,474 rows have no remaining_lease and stay null.
 - If beginners confused: think of it as adding a formula column in a spreadsheet.
 - If experts bored: explain that Polars compiles these expressions into a single pass over the data.
 Transition: "Let us chain multiple operations together."
@@ -930,7 +933,7 @@ Transition: "Time to practice. Here is your exercise."
 from shared import MLFPDataLoader
 
 loader = MLFPDataLoader()
-df = loader.load("mlfp01", "hdb_resale.csv")
+df = loader.load("mlfp01", "hdb_resale.parquet")
 
 # 1. Filter by town = "BISHAN"
 # 2. Filter by price 400K-800K

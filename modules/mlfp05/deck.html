@@ -6419,7 +6419,7 @@ logits = asyncio.run(serve(images))</code></pre>
         <li><strong>Scalable:</strong> easy to parallelise</li>
       </ul>
       <div class="callout callout-warning" style="margin-top: 8px;">
-        <strong>RLHF connection:</strong> PPO is the algorithm used to align LLMs with human preferences (ChatGPT, Claude). The reward model provides the signal, PPO optimises the policy. More in M6.
+        <strong>RLHF connection:</strong> PPO is the classic RLHF optimiser for LLMs: a reward model scores outputs, PPO updates the policy, and a <em>separate</em> KL penalty keeps it near the reference model. More in M6.
       </div>
     </div>
   </div>
@@ -6460,7 +6460,7 @@ logits = asyncio.run(serve(images))</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min. PPO is the most important RL algorithm to know. The clipped objective is the key innovation: it achieves the trust-region constraint of TRPO (don't change the policy too much) with a simple clipping operation. The RLHF connection is critical for M6 &mdash; PPO is how LLMs are fine-tuned from human feedback.
+    Time: ~4 min. PPO is the most important RL algorithm to know. The clipped objective is the key innovation: it achieves the trust-region constraint of TRPO (don't change the policy too much) with a simple clipping operation. The RLHF connection is critical for M6 &mdash; PPO is the classic optimiser in RLHF. Keep two mechanisms apart: PPO's clip bounds each update relative to the previous policy (pi_old); staying close to the original supervised model is enforced by a separate KL penalty to the reference model in the reward. The LLM's action is a discrete token from the vocabulary.
   </aside>
 </section>
 
@@ -6512,7 +6512,7 @@ class ChurnEnv(gym.Env):
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Custom environments are where RL becomes practical for business. The Gymnasium API is the standard. The reward function is the most important design decision &mdash; it defines what "success" means. Students create environments for customer churn and supply chain in the exercise.
+    Time: ~3 min. Custom environments are where RL becomes practical for business. The Gymnasium API is the standard. The reward function is the most important design decision &mdash; it defines what "success" means. Students build seven environments in the exercise (inventory, ride-hailing pricing, churn, portfolio, queue, energy, traffic). The helpers on this slide (_get_customer, _compute_reward, ...) are a sketch &mdash; the exercise's ChurnPreventionEnv implements them in full. Remember: Gymnasium's step returns (obs, reward, terminated, truncated, info); end the loop on terminated OR truncated.
   </aside>
 </section>
 
@@ -6524,29 +6524,27 @@ class ChurnEnv(gym.Env):
     <h3>RL Training with Kailash</h3>
     <div class="columns">
       <div class="col">
-        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">from kailash_ml import RLTrainer
+        <pre style="font-size: 0.42em; line-height: 1.3"><code class="language-python">import kailash_ml as km
 
-trainer = RLTrainer(
-    algorithm="ppo",
-    env=ChurnEnv(),
-    policy="MlpPolicy",
-    learning_rate=3e-4,
-    n_steps=2048,
-    batch_size=64,
-    n_epochs=10,
-    gamma=0.99,
-    clip_range=0.2
+# env: a Gymnasium id, a zero-arg factory, or an env
+result = km.rl_train(
+    ChurnEnv,                 # factory: ChurnEnv()
+    algo="ppo",
+    total_timesteps=100_000,
+    hyperparameters={
+        "learning_rate": 3e-4,
+        "n_steps": 2048,
+        "batch_size": 64,
+        "gamma": 0.99,
+        "clip_range": 0.2,
+    },
 )
+print(result.mean_reward, result.std_reward)
 
-# Train the agent
-trainer.train(total_timesteps=100_000)
-
-# Evaluate
-metrics = trainer.evaluate(
-    n_episodes=100
-)
-print(f"Mean reward: {metrics.mean_reward}")
-print(f"Success rate: {metrics.success_rate}")</code></pre>
+# Class form for registries + lineage:
+from kailash_ml.rl import RLTrainer, RLTrainingConfig
+cfg = RLTrainingConfig(algorithm="PPO",
+                       total_timesteps=100_000)</code></pre>
       </div>
       <div class="col">
         <h3>Supported Algorithms</h3>
@@ -6558,10 +6556,11 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
             <tr><td>Soft Actor-Critic</td><td><code>"sac"</code></td></tr>
             <tr><td>Advantage Actor-Critic</td><td><code>"a2c"</code></td></tr>
             <tr><td>Proximal Policy Opt.</td><td><code>"ppo"</code></td></tr>
+            <tr><td>TD3</td><td><code>"td3"</code></td></tr>
           </tbody>
         </table>
         <div class="callout callout-kailash" style="margin-top: 12px;">
-          <strong>Pattern:</strong> Define environment &rarr; Choose algorithm &rarr; Train &rarr; Evaluate &rarr; Deploy. Same pattern as TrainingPipeline from M4, but for RL.
+          <strong>Backend:</strong> Stable-Baselines3, an optional extra (<code>pip install kailash-ml[rl]</code>) &mdash; not in the course environment. Exercise 5.8 hand-writes DQN and PPO; <code>rl_train</code> is the production path.
         </div>
       </div>
     </div>
@@ -6570,7 +6569,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. RLTrainer wraps the RL training loop with Kailash's standard interface. All five algorithms are supported. The evaluate() method runs the trained policy and reports metrics. Students use this for the exercise instead of writing raw training loops.
+    Time: ~3 min. km.rl_train is the one-call entry point: pass a Gymnasium id, a zero-argument env factory or an env instance, an algorithm string, a timestep budget and SB3 hyperparameters; it returns an RLTrainingResult (mean_reward, std_reward, reward_curve, artifact path, lineage). The class form lives in kailash_ml.rl (RLTrainer + RLTrainingConfig, used with environment and policy registries) &mdash; there is no top-level kailash_ml.RLTrainer. DDPG, SAC and TD3 need a continuous (Box) action space. Be candid about status: the backend, Stable-Baselines3, is an optional extra that is not installed in the course environment, so rl_train raises ImportError there. Students therefore hand-write DQN and PPO in the exercise &mdash; every moving part visible &mdash; and Exercise 8.4 closes by showing this call as the production path. Same define &rarr; train &rarr; evaluate shape as M3's TrainingPipeline.
   </aside>
 </section>
 
@@ -6582,10 +6581,10 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Implement DQN for customer churn prevention (custom environment)</li>
-        <li>Implement PPO for supply chain optimisation (custom environment)</li>
-        <li>Create custom Gymnasium environments for both</li>
-        <li>Compare convergence curves (DQN vs PPO)</li>
+        <li>DQN from scratch on CartPole (replay, target net, &epsilon;-greedy) &rarr; retail inventory env</li>
+        <li>PPO from scratch (actor-critic, GAE, clipping) &rarr; ride-hailing pricing env</li>
+        <li>Five custom Gymnasium envs; DQN on ChurnPrevention, register the policy</li>
+        <li>Random vs DQN vs PPO: sample efficiency, wall-clock</li>
         <li>Explain how PPO connects to RLHF (bridge to M6)</li>
       </ol>
     </div>
@@ -6594,7 +6593,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
       <ul>
         <li>Both algorithms converge (reward increases)</li>
         <li>Custom environments implement correct reward functions</li>
-        <li>PPO is more stable than DQN (demonstrated)</li>
+        <li>DQN vs PPO compared on the same environment</li>
         <li>PPO &rarr; RLHF connection articulated clearly</li>
       </ul>
       <div class="callout callout-theory" style="margin-top: 12px;">
@@ -6606,7 +6605,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The RLHF bridge to M6 is critical. Students who understand PPO here will have a head start on understanding LLM alignment. The custom environments are the creative part &mdash; designing reward functions that capture the business objective.
+    Time: ~1 min. Exercise 5.8 is four files: DQN and PPO written from scratch and trained on CartPole-v1, then applied to custom environments (retail inventory, ride-hailing pricing, and five more in file 03 &mdash; churn, portfolio, queue, energy, traffic). All exercise environments use discrete actions; PPO on a continuous action space, and DDPG/SAC/A2C, are covered on the slides and via km.rl_train, not in the files. The RLHF bridge to M6 is critical. Students who understand PPO here will have a head start on understanding LLM alignment. The custom environments are the creative part &mdash; designing reward functions that capture the business objective.
   </aside>
 </section>
 
@@ -6659,7 +6658,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
         <li>Bellman equations: recursive value definition</li>
         <li>DQN: neural network approximates Q-values</li>
         <li>PPO: clipped objective prevents catastrophic updates</li>
-        <li>RLTrainer: train any algorithm with Kailash</li>
+        <li><code>km.rl_train</code>: production RL in one call (SB3 backend)</li>
       </ul>
     </div>
     <div class="col">
@@ -6680,35 +6679,35 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
   <h2>Lesson 5.8: Real-World Applications</h2>
   <span class="marker marker-applications">Applications</span>
   <div class="highlight-box">
-    Unlike every other lesson, here the exercise environments <em>are</em> the applications &mdash; you are coding the same decision problems real operations teams face, with the same reward structure.
+    Unlike every other lesson, most exercise environments <em>are</em> the applications &mdash; simplified versions of decision problems operations teams face, with the same state / action / reward shape.
   </div>
   <div class="columns" style="margin-top: 6px;">
     <div class="col">
       <div class="callout callout-applications">
         <strong>Telecom &mdash; ChurnPrevention (DQN)</strong>
-        <p class="small">Singtel-style retention picks a discount tier per customer per month. Reward = retained revenue &minus; discount cost. DQN learns to save big discounts for customers about to churn, not those who would stay anyway.</p>
+        <p class="small">A telco retention team picks an intervention per customer per day (none / discount / call / upgrade). Reward = retention bonus &minus; churn penalty &minus; action cost. DQN learns to spend on customers about to churn, not those who would stay anyway.</p>
       </div>
       <div class="callout callout-applications">
-        <strong>Retail &mdash; DynamicPricing (SAC)</strong>
-        <p class="small">Lazada / Shopee price 100M SKUs in real time. SAC handles the continuous action (price in a range) and noisy demand &mdash; same continuous-action problem as your custom env, at warehouse scale.</p>
+        <strong>Ride-hailing &mdash; Dynamic Pricing (PPO &rarr; SAC)</strong>
+        <p class="small">A platform sets a surge multiplier each hour. Your env picks from 5 price levels (PPO); a continuous price range is where SAC or a Gaussian-policy PPO takes over.</p>
       </div>
       <div class="callout callout-applications">
-        <strong>Asset Mgmt &mdash; PortfolioRebalancing (PPO)</strong>
-        <p class="small">A quant fund rebalances weights under transaction cost and risk. PPO's clipped objective prevents wild reweighting &mdash; exactly the clipped-surrogate trick you coded.</p>
+        <strong>Asset Mgmt &mdash; PortfolioRebalancing</strong>
+        <p class="small">A fund rebalances weights under transaction cost and risk. Your env discretises the moves (27 actions); with continuous weights, PPO's clip prevents wild reweighting.</p>
       </div>
     </div>
     <div class="col">
       <div class="callout callout-applications">
-        <strong>Logistics &mdash; SupplyChainInventory (PPO)</strong>
-        <p class="small">An FMCG distributor sets daily replenishment for 3,000 SKUs across 40 partners. Reward = service level &minus; holding cost &minus; stockout. RL beats rolling safety-stock by learning real co-movement.</p>
+        <strong>Logistics &mdash; RetailInventory (DQN)</strong>
+        <p class="small">A supermarket sets daily reorder quantities for a perishable category. Reward = sales &minus; holding &minus; stockout &minus; order cost. At thousands of SKUs, PPO is the usual choice.</p>
       </div>
       <div class="callout callout-applications">
         <strong>Cloud Ops &mdash; ResourceAllocation (A2C)</strong>
-        <p class="small">A platform allocates CPU / memory / I/O across tenants under SLA. A2C's advantage baseline cuts policy-gradient variance &mdash; critical when reward is noisy and decisions are high-stakes.</p>
+        <p class="small">A platform allocates CPU / memory / I/O across tenants under SLA (not one of your envs). A2C's advantage baseline cuts policy-gradient variance when reward is noisy.</p>
       </div>
       <div class="callout callout-applications">
         <strong>Bridge to M6 &mdash; RLHF for LLMs</strong>
-        <p class="small">The PPO you wrote for CartPole is the same algorithm that aligns ChatGPT, Claude, Gemini. Reward = human preference score; action = next token. Exercise 8 is literally the modern LLM alignment loop.</p>
+        <p class="small">The PPO you wrote for CartPole is the classic RLHF optimiser. Reward = a learned preference score; action = next token (discrete). A separate KL penalty keeps the LLM near its reference model.</p>
       </div>
     </div>
   </div>
@@ -6719,7 +6718,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
     <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~4 min (this slide is the module finale for applications &mdash; give it an extra minute). Every bullet on this slide maps to a Gymnasium env the student has already coded &mdash; that is a rare thing and worth calling out explicitly: "You built ChurnPrevention. You built DynamicPricing. These are not toy problems &mdash; they are the real state/action/reward structure of the production systems at the companies listed." The bridge to M6 is the most important takeaway: PPO is not a CartPole trick, it is the training loop of the LLMs they use every day. This is the hook into Module 6.
+    Time: ~4 min (this slide is the module finale for applications &mdash; give it an extra minute). Five of the six cards map to a Gymnasium env the student has already coded (ChurnPrevention and PortfolioRebalancing in file 03, RetailInventory in file 01, RideHailingPricing in file 02); ResourceAllocation is conceptual. Call it out: "You built these. They are simplified, but they have the same state / action / reward shape a production system would." The bridge to M6 is the most important takeaway: PPO is not a CartPole trick, it is the classic optimiser in RLHF for LLMs &mdash; with two separate controls: the clip bounds each update, the KL-to-reference penalty keeps the model close to where it started. This is the hook into Module 6.
   </aside>
 </section>
 
@@ -6772,7 +6771,7 @@ print(f"Success rate: {metrics.success_rate}")</code></pre>
           <tr><td>Images</td><td>CNN &rarr; ViT</td><td>5.2</td></tr>
           <tr><td>Sequences</td><td>LSTM &rarr; Transformer</td><td>5.3, 5.4</td></tr>
           <tr><td>Graphs</td><td>GCN / GAT</td><td>5.6</td></tr>
-          <tr><td>Tabular</td><td>Gradient boosting (not DL)</td><td>M4</td></tr>
+          <tr><td>Tabular</td><td>Gradient boosting (not DL)</td><td>M3</td></tr>
         </tbody>
       </table>
     </div>

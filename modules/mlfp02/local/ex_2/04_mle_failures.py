@@ -148,7 +148,10 @@ print("\n--- Checkpoint 2 passed --- multimodal failure demonstrated\n")
 print(f"\n=== MLE Failure Case 3: Misspecified Likelihood ===")
 
 rng_t = np.random.default_rng(seed=77)
-shock_data = rng_t.standard_t(df=3, size=100) * 2.0 + 2.5
+# df=4 Student-t with scale=1.2 produces Singapore-realistic quarterly GDP
+# growth (centred at 2.5%, heavy tails without pathological outliers that
+# would inflate the sample std and contaminate the Normal fit).
+shock_data = rng_t.standard_t(df=4, size=500) * 1.2 + 2.5
 
 # Fit Normal MLE
 normal_mle_mu = shock_data.mean()

@@ -1280,7 +1280,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>5.2</strong></td>
         <td>CNNs &amp; Vision</td>
         <td>All five</td>
-        <td>LR range test, Grad-CAM attribution, dead ReLUs in early conv blocks</td>
+        <td>Grad-CAM attribution, dead ReLUs in early conv blocks, train/val gap</td>
       </tr>
       <tr>
         <td><strong>5.3</strong></td>
@@ -1292,7 +1292,7 @@ m.register_forward_hook(hook)   # for every ReLU
         <td><strong>5.4</strong></td>
         <td>Transformers</td>
         <td>All five + attention maps</td>
-        <td>Warmup length, attention rollout, RMSNorm vs LayerNorm ablation</td>
+        <td>Attention heatmaps from the trained layer; gradient flow through the stack</td>
       </tr>
       <tr>
         <td><strong>5.5</strong></td>

@@ -187,28 +187,29 @@ Transition: "Everything is set up. Let us begin Lesson 1.1."
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     THE STORY: HDB FLASH CRASH (motivating case)
+     THE STORY: THE DASHBOARD THAT SAID EVERYTHING WAS FINE (motivating case)
      ═══════════════════════════════════════════════════════════════ -->
 <section>
   <h2>The Story That Starts Everything</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
-  <h3>Singapore HDB Resale Flash Crash &mdash; Q4 2023</h3>
+  <h3>A Scenario: The Dashboard That Said Everything Was Fine</h3>
   <div class="columns">
     <div class="col">
       <ul>
-        <li>October 2023: HDB resale prices had risen 10 consecutive quarters</li>
-        <li>Then a <strong>sudden anomaly</strong> &mdash; median prices in three mature estates dropped 8-12% in a single month</li>
-        <li>Property portals and dashboards showed <em>nothing unusual</em></li>
-        <li>The anomaly was only caught by a data analyst who ran exploratory analysis on raw transaction data</li>
+        <li>Imagine an analytics team publishing a <strong>monthly median</strong> resale-price dashboard</li>
+        <li>Hidden in the raw transactions: a batch of records with <strong>impossible prices</strong> &mdash; data-entry errors, mis-keyed figures</li>
+        <li>The median barely moves, so the dashboard shows <em>nothing unusual</em></li>
+        <li>Every model trained on that data quietly learns from the errors</li>
       </ul>
+      <p style="font-size:0.6em;"><em>An illustrative scenario, not a reported incident.</em></p>
     </div>
     <div class="col">
       <div class="callout callout-warning">
         <strong>The Dashboard Said Everything Was Fine.</strong><br>
-        Aggregated dashboards masked the signal. Monthly medians smoothed out the crash. Only row-level EDA revealed the pattern.
+        A median is <em>designed</em> to ignore extremes. Only looking at the full distribution reveals them.
       </div>
       <div class="callout callout-kailash" style="margin-top:12px;">
-        <strong>By the end of today</strong>, you will be able to load this exact dataset, filter for those estates, and identify the anomaly yourself.
+        <strong>By the end of today</strong>, you will load the course's HDB resale dataset (~50,000 transactions) and find the planted bad prices yourself.
       </div>
     </div>
   </div>
@@ -216,11 +217,12 @@ Transition: "Everything is set up. Let us begin Lesson 1.1."
   <aside class="notes">
 Time: ~3 min
 Talking points:
-- This is a real Singapore case. HDB resale data is publicly available from data.gov.sg.
-- Dashboards aggregate data. Aggregation hides outliers. Only hands-on EDA catches anomalies.
+- This is an illustrative scenario, not a real incident. Say so explicitly.
+- The course HDB file is a synthetic dataset modelled on the public HDB resale data, with data-quality problems planted on purpose so you can practise finding them.
+- Dashboards aggregate data. A median is robust to extremes by design, which is exactly why it hides them.
 - If beginners confused: the point is that looking at data yourself matters more than trusting a summary.
-- If experts bored: the root cause was subsidised transfers entering the public dataset without classification.
-Transition: "What went wrong? Let us dig deeper."
+- If experts bored: ask what a mean-based dashboard would have shown instead (the bad prices pull the mean, not the median).
+Transition: "What does a summary hide? Let us look."
   </aside>
 </section>
 
@@ -231,24 +233,21 @@ Transition: "What went wrong? Let us dig deeper."
     <div class="col">
       <h3>Dashboard Blindness</h3>
       <ul>
-        <li><strong>Aggregation hides outliers</strong> &mdash; a mean over 50,000 transactions masks 200 anomalous ones</li>
+        <li><strong>Aggregation hides outliers</strong> &mdash; a median over 50,000 transactions does not move for 251 bad ones</li>
         <li><strong>Pre-built charts answer yesterday's questions</strong> &mdash; they cannot ask new ones</li>
         <li><strong>No distribution view</strong> &mdash; the dashboard showed a single number, not a histogram</li>
       </ul>
     </div>
     <div class="col">
-      <h3>What EDA Would Have Caught</h3>
-      <ul>
-        <li>A <strong>bimodal distribution</strong> in the price column</li>
-        <li><strong>Temporal clustering</strong> &mdash; low prices all in a 2-week window</li>
-        <li><strong>Flat type correlation</strong> &mdash; only 3-room and 4-room affected</li>
-      </ul>
+      <h3>What EDA Catches in the Course Data</h3>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>The Fix:</strong>
-        <pre><code class="language-python">df.filter(pl.col("town") == "QUEENSTOWN")
-  .group_by("month")
-  .agg(pl.col("resale_price").median())</code></pre>
-        3 lines of Polars. That is all it took.
+        <pre><code class="language-python">df.select(
+    pl.col("resale_price").min(),     # 10
+    pl.col("resale_price").median(),  # 849,126
+    pl.col("resale_price").max(),     # 9,000,000
+)</code></pre>
+        A S$10 flat (107 rows) and a S$9,000,000 flat (144 rows). The median never noticed.
       </div>
     </div>
   </div>
@@ -257,10 +256,10 @@ Transition: "What went wrong? Let us dig deeper."
 Time: ~3 min
 Talking points:
 - Three failures: aggregation hiding outliers, static charts, no distribution view.
-- Three things EDA catches: bimodality, temporal clustering, flat-type correlation.
-- The 3-line code preview shows what students will learn by the end of today.
+- On the course HDB file, min and max expose the problem instantly: 107 sales at S$10 and 144 at S$9,000,000, while the median stays at about S$849k.
+- The code preview shows what students will be able to write by the end of today.
 - If beginners confused: the takeaway is "always look at the raw data yourself."
-- If experts bored: discuss how automated profiling (Lesson 1.7) would have flagged this.
+- If experts bored: automated profiling in Lesson 1.7 (DataExplorer) reports skewness and per-column outlier counts for exactly this.
 Transition: "This is why you learn exploratory data analysis. Let us start."
   </aside>
 </section>
@@ -2128,7 +2127,7 @@ Transition: "Why bother with charts when you have describe()?"
     </div>
     <div class="col">
       <div class="callout callout-warning">
-        <strong>Remember the flash crash?</strong> The dashboard showed a single median number. A histogram would have revealed the bimodal distribution instantly.
+        <strong>Remember the dashboard scenario?</strong> It showed a single median number. A histogram of the course HDB prices shows the stray bars at S$10 and S$9M instantly.
       </div>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Rule:</strong> Always plot your data before computing statistics.

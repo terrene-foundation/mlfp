@@ -8,7 +8,7 @@
 # WHAT YOU'LL LEARN:
 #   - Define a typed Kaizen Signature with InputField and OutputField
 #   - Drive an LLM with a type-safe schema instead of free-form text
-#   - Access results via attribute access (result.sentiment), not dict keys
+#   - Access validated results by Signature field name (result["sentiment"])
 #   - Understand why Signatures are the production standard
 #
 # PREREQUISITES: 01_zero_shot.py .. 05_self_consistency.py
@@ -19,7 +19,7 @@
 #   2. Build — the ReviewExtraction Signature
 #   3. Train — run the signature-backed agent across SST-2 eval docs
 #   4. Visualise — typed field access
-#   5. Apply — Grab driver-incident report extraction
+#   5. Apply — driver incident-report extraction at a ride-hailing platform
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -31,7 +31,8 @@ from dotenv import load_dotenv
 from kaizen import InputField, OutputField, Signature
 from kaizen.core.base_agent import BaseAgent
 
-from shared.mlfp06.ex_1 import MODEL, get_eval_docs, plot_extraction_accuracy
+from shared.mlfp06._ollama_bootstrap import DEFAULT_CHAT_MODEL, OLLAMA_BASE_URL
+from shared.mlfp06.ex_1 import ensure_ollama, get_eval_docs, plot_extraction_accuracy
 
 load_dotenv()
 
@@ -57,8 +58,9 @@ load_dotenv()
 #   - You declare the schema in Python (input fields, output fields, types)
 #   - Kaizen renders the schema into a prompt the LLM can follow
 #   - Kaizen validates the response against the schema at runtime
-#   - If validation fails, Kaizen retries or raises a typed error
-#   - The caller accesses result.sentiment, not result["sentiment"]
+#   - If the response cannot be parsed into the schema, the agent reports
+#     an error instead of returning the fields — and we raise on it
+#   - The caller reads each field by its declared name: result["sentiment"]
 #
 # This is the production standard. Every other technique in this
 # exercise is a stepping stone toward Signatures.
@@ -92,46 +94,50 @@ class ReviewExtraction(Signature):
 # ════════════════════════════════════════════════════════════════════════
 
 
-async def run_signature_extraction() -> list:
-    # kaizen 0.9: BaseAgent + Signature is the canonical "type-safe
-    # structured output" pattern. The agent renders the Signature schema
-    # into a prompt the LLM follows, validates the response at runtime,
-    # and returns a dict keyed by OutputField names. Budget enforcement
-    # lives on BaseAgentConfig.budget_limit_usd (set via the config dict).
-    class ReviewExtractor(BaseAgent):
-        def __init__(self) -> None:
-            super().__init__(
-                config={"model": MODEL, "budget_limit_usd": 1.0},
-                signature=ReviewExtraction(),
-            )
+# BaseAgent wiring for a local Ollama model (kaizen 2.28):
+#   - llm_provider/model/base_url route the call to the Ollama daemon; the
+#     model comes from OLLAMA_CHAT_MODEL via the course bootstrap
+#   - use_async_llm=True is required for `await agent.run_async(...)`
+#   - response_format + structured_output_mode="explicit" make the agent
+#     request JSON that it can unpack into the Signature's output fields
+# No dollar budget: a local model is free, so a USD cap would be meaningless.
+OLLAMA_AGENT_CONFIG = {
+    "llm_provider": "ollama",
+    "model": DEFAULT_CHAT_MODEL,
+    "base_url": OLLAMA_BASE_URL,
+    "use_async_llm": True,
+    "response_format": {"type": "json_object"},
+    "structured_output_mode": "explicit",
+}
+OUTPUT_FIELDS = ["sentiment", "confidence", "key_phrases", "targets", "tone"]
 
-    agent = ReviewExtractor()
+
+async def run_signature_extraction() -> list[dict]:
+    # BaseAgent + Signature is the canonical "type-safe structured output"
+    # pattern: the agent renders the Signature schema into the prompt,
+    # parses the reply, and returns a dict keyed by OutputField names.
+    ensure_ollama()  # fails loudly with "ollama serve" if the daemon is down
+    agent = BaseAgent(config=OLLAMA_AGENT_CONFIG, signature=ReviewExtraction())
+
     docs = get_eval_docs().head(10)
-    results = []
+    results: list[dict] = []
     for i, text in enumerate(docs["text"].to_list()):
-        try:
-            result = await agent.run_async(review_text=text[:800])
-        except Exception as exc:
-            # Offline / missing-key graceful fallback
-            print(f"  [offline] run_async fallback: {type(exc).__name__}: {exc}")
-            result = {
-                "sentiment": "unknown",
-                "confidence": 0.0,
-                "key_phrases": [],
-                "targets": [],
-                "tone": "unknown",
-            }
+        result = await agent.run_async(review_text=text[:800])
+        missing = [f for f in OUTPUT_FIELDS if f not in result]
+        if missing:
+            # No silent placeholder — a failed extraction is a real failure.
+            raise RuntimeError(
+                f"Review {i + 1}: the agent returned no {missing} "
+                f"(agent output: {str(result)[:300]})"
+            )
         results.append(result)
         if i < 3:
             print(f"\n  Review {i+1}:")
-            # run_async returns a dict keyed by OutputField names —
-            # result["sentiment"] rather than result.sentiment. This is
-            # the 0.9 contract: dict access, not attribute access.
             print(f"    Sentiment:    {result['sentiment']}")
-            print(f"    Confidence:   {float(result.get('confidence', 0)):.2f}")
-            print(f"    Key phrases:  {result.get('key_phrases', [])[:3]}")
-            print(f"    Targets:      {result.get('targets', [])[:3]}")
-            print(f"    Tone:         {result.get('tone', 'unknown')}")
+            print(f"    Confidence:   {float(result['confidence']):.2f}")
+            print(f"    Key phrases:  {result['key_phrases'][:3]}")
+            print(f"    Targets:      {result['targets'][:3]}")
+            print(f"    Tone:         {result['tone']}")
     return results
 
 
@@ -159,13 +165,12 @@ print(
 # ════════════════════════════════════════════════════════════════════════
 # TASK 4 — VISUALISE — dict field access + extraction accuracy chart
 # ════════════════════════════════════════════════════════════════════════
-# kaizen 0.9 returns dicts: `result["sentiment"]` — validated by the
-# Signature schema at LLM response time. No string matching, no JSON
-# parsing, no normalise_label() helper.
-avg_conf = sum(float(r.get("confidence", 0)) for r in signature_results) / len(
+# run_async returns a dict keyed by the Signature's OutputField names —
+# no string matching, no hand-written JSON parsing, no normalise_label().
+avg_conf = sum(float(r["confidence"]) for r in signature_results) / len(
     signature_results
 )
-tones = [r.get("tone", "unknown") for r in signature_results]
+tones = [r["tone"] for r in signature_results]
 print(f"\n  Avg confidence across {len(signature_results)} reviews: {avg_conf:.2f}")
 print(f"  Tone distribution: {tones}")
 
@@ -178,22 +183,22 @@ plot_extraction_accuracy(
 )
 
 # INTERPRETATION: The Signature output is directly usable by downstream
-# code. No parsing layer, no format drift, no silent data loss. When
-# the LLM misbehaves, Kaizen raises a typed error — the failure is LOUD
-# and FIXABLE, not silent and corrupting.
-# The bar chart shows which field types the LLM handles reliably (single
-# strings like sentiment/tone) vs which it struggles with (lists like
-# key_phrases/targets). Fields below 90% extraction rate need tighter
-# OutputField descriptions or Kaizen retry configuration.
+# code. No parsing layer, no format drift. When the LLM's reply cannot be
+# unpacked into the schema, this script raises instead of inventing a
+# value — the failure is LOUD and FIXABLE, not silent and corrupting.
+# The bar chart counts non-empty values per field. Every field is present
+# (we raise otherwise), so a bar below 100% means the model returned an
+# EMPTY value — typically for list fields like key_phrases/targets.
+# Fields below ~90% need tighter OutputField descriptions.
 
 
 # ════════════════════════════════════════════════════════════════════════
-# TASK 5 — APPLY: Grab Driver Incident Report Extraction
+# TASK 5 — APPLY: Driver Incident-Report Extraction at a Ride-Hailing Platform
 # ════════════════════════════════════════════════════════════════════════
-# SCENARIO: Grab receives ~1,200 driver-submitted incident reports per
-# day across Singapore and Southeast Asia. Each free-text report needs
-# to be decomposed into a structured record for the risk + insurance
-# pipeline:
+# SCENARIO (illustrative): a Southeast Asian ride-hailing platform
+# receives over a thousand driver-submitted incident reports per day.
+# Each free-text report must be decomposed into a structured record for
+# the risk + insurance pipeline:
 #   - incident_type (collision, theft, passenger_dispute, mechanical)
 #   - severity (minor, moderate, severe)
 #   - parties_involved (list of strings: "driver", "passenger", "other_vehicle")
@@ -201,30 +206,28 @@ plot_extraction_accuracy(
 #   - claim_required (bool)
 #   - urgency (immediate, 24h, 72h)
 #
-# Why Kaizen Signatures are mandatory here:
+# Why Kaizen Signatures fit here:
 #   - The downstream pipeline is STRONGLY TYPED — DataFlow models expect
 #     specific fields and types. A missing field means a row insert fails.
-#   - The insurance partner API requires strict JSON schema compliance.
+#   - An insurance partner's API requires strict JSON schema compliance.
 #   - Silent misclassification is unrecoverable downstream — once a
 #     "severe" report is tagged "minor", the claim is routed to the wrong
-#     queue and may miss the 24-hour regulatory notification deadline.
+#     queue and may miss a notification deadline.
 #
-# Free-form JSON prompting (Task 7 in the original monolithic exercise)
-# fails this use case: when the LLM returns "sevrity" instead of
-# "severity", the parser silently drops the field and the record is
-# incomplete. Kaizen detects the mismatch and retries.
+# Free-form JSON prompting fails this use case: when the LLM returns
+# "sevrity" instead of "severity", a hand-written parser silently drops
+# the field. With a Signature the missing field is detected and the
+# record is rejected loudly, exactly as Task 3 does above.
 #
-# BUSINESS IMPACT: The Singapore General Insurance Association reports
-# that incident-report pipeline errors cost insurers ~S$180/incident in
-# rework + customer-contact + claims re-routing. At 1,200 reports/day
-# with a baseline 8% parse-error rate using free-form JSON, that's
-# S$17K/day in rework cost. Kaizen Signatures reduce parse errors to
-# <0.5%, saving ~S$16K/day = S$5.8M/year, against ~S$45K/year in
-# LLM inference cost. 129x ROI.
+# BUSINESS IMPACT (illustrative figures): suppose each pipeline error
+# costs ~S$180 in rework, customer contact and claim re-routing. At
+# 1,200 reports/day, cutting the parse-error rate from 8% to 0.5% avoids
+# ~90 errors/day ≈ S$16K/day. Your extraction-rate chart above is the
+# measured starting point for that estimate on your own model.
 #
-# DEPLOYMENT NOTE: The Signature is co-located with the Grab DataFlow
-# model definition, so schema changes happen in one place and both
-# the LLM output and the database column stay in sync.
+# DEPLOYMENT NOTE: Keep the Signature next to the DataFlow model
+# definition, so a schema change updates both the LLM output and the
+# database column in one place.
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -239,7 +242,7 @@ print(
   [x] Built a BaseAgent subclass backed by the Signature schema
   [x] Accessed results via dict keys validated by the Signature
   [x] Understood why Signatures solve free-form JSON's failure modes
-  [x] Sized the approach against a production Grab incident pipeline
+  [x] Sized the approach against a ride-hailing incident pipeline
 
   KEY INSIGHT: Every other technique in this exercise treats LLM output
   as strings to parse. Signatures treat it as typed data to validate.
@@ -250,7 +253,7 @@ print(
     - Exercise 2: fine-tune the base model with LoRA adapters
     - Exercise 3: DPO (Direct Preference Optimisation) — skip the
       reward model from RLHF entirely
-    - Exercise 6: wire all of this into PACT governance and Nexus
+    - Exercises 7-8: wire all of this into PACT governance and Nexus
       multi-channel deployment
 """
 )

@@ -317,7 +317,7 @@ print(df_locations.head(3))</code></pre>
 
 <pre><code class="language-python">from kailash_ml import PreprocessingPipeline
 
-# train_rows / test_rows: rows you split off yourself (Step 4 below)
+# train_rows / test_rows: rows you split off yourself (Step 5 below)
 pipeline = PreprocessingPipeline()        # no constructor arguments
 result = pipeline.setup(
     data=train_rows,                      # features + target column
@@ -344,7 +344,7 @@ test_ready = pipeline.transform(test_rows)  # same learned rules, new rows</code
   <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
     <text x="35" y="102">text categories,</text>
     <text x="35" y="118">unscaled numbers</text>
-    <text x="35" y="134">(38,038 × 7)</text>
+    <text x="35" y="134">(35,148 × 12)</text>
   </g>
   <line x1="185" y1="100" x2="260" y2="100" stroke="#0D9488" stroke-width="2.5" marker-end="url(#arr18c)"/>
   <rect x="265" y="40" width="200" height="120" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
@@ -362,10 +362,10 @@ test_ready = pipeline.transform(test_rows)  # same learned rules, new rows</code
   <g font-family="JetBrains Mono" font-size="10" fill="#64748B">
     <text x="555" y="102">all numeric,</text>
     <text x="555" y="118">scaled, encoded</text>
-    <text x="555" y="134">(38,038 × 44)</text>
+    <text x="555" y="134">(35,148 × 53)</text>
   </g>
 </svg>
-<figcaption>PreprocessingPipeline: raw rows in, model-ready rows out. Column count grows because one-hot encoding turns each category into its own column (7 → 44 in the worked example).</figcaption>
+<figcaption>PreprocessingPipeline: raw rows in, model-ready rows out. Column count grows because one-hot encoding turns each category into its own column (12 → 53 in the worked example).</figcaption>
 </figure>
 
 <div class="callout theory">
@@ -392,199 +392,294 @@ test_ready = pipeline.transform(test_rows)  # same learned rules, new rows</code
 <div class="worked-example">
   <h3>📝 Goal</h3>
   <p>
-    Build a complete pipeline for a Singapore taxi trip log: extract from
-    file, profile, clean, engineer features, prepare model-ready data
-    without leakage, visualise demand, re-profile, and save the result.
-    The question: <em>what drives a fare, and when do people ride?</em>
+    Build a complete pipeline for a Singapore taxi trip log — the same
+    pipeline as Exercise 8: extract from file, profile, clean, engineer
+    features, prepare model-ready data without leakage, visualise, then
+    re-profile and compare original vs cleaned. The question: <em>what
+    drives a fare, and when do people ride?</em>
   </p>
 
   <div class="step">
     <span class="step-label">Step 1 — Extract.</span>
-    <pre><code class="language-python">from datetime import datetime
+    <pre><code class="language-python">import math
+from datetime import datetime
 
-import plotly.express as px
 import polars as pl
-from kailash_ml import ModelVisualizer, PreprocessingPipeline
-from shared import MLFPDataLoader, run_compare, run_profile
+from kailash_ml import AlertConfig, ModelVisualizer, PreprocessingPipeline
+from shared import MLFPDataLoader, run_compare, run_profile, run_report
 
 loader = MLFPDataLoader()
-df_raw = loader.load("mlfp01", "sg_taxi_trips.parquet")
-print(f"Raw: {df_raw.shape}")   # → Raw: (50000, 12)</code></pre>
+taxi_raw = loader.load("mlfp01", "sg_taxi_trips.parquet")
+print(f"Shape: {taxi_raw.shape}")   # → Shape: (50000, 12)
+
+# The timestamps are stored as strings — parse them before any date arithmetic
+taxi_raw = taxi_raw.with_columns(
+    pl.col("pickup_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+    pl.col("dropoff_datetime").str.to_datetime("%Y-%m-%d %H:%M:%S"),
+)</code></pre>
     <pre><code class="language-text">Columns: trip_id, pickup_datetime, dropoff_datetime, pickup_zone,
          dropoff_zone, distance_km, fare_sgd, tip_sgd, payment_type,
          passengers, pickup_latitude, pickup_longitude</code></pre>
     <p>
       This is a synthetic trip log with realistic places and deliberately
-      planted problems: 250 rows with latitude and longitude swapped, 1,000
-      fares of zero or less, 500 trips with fewer than one passenger, 500
-      trips dated 2025–2027, 15 spellings of four payment methods, 500 rows
-      sharing a <code>trip_id</code>, and nulls in the zone and tip
-      columns. Both datetime columns arrive as text.
+      planted problems. <code>describe()</code> shows the first clues:
+      <code>pickup_latitude</code> has a maximum near 104 and
+      <code>pickup_longitude</code> a minimum near 1.3 (Singapore sits at
+      about 1.3° N, 103.8° E, so some rows are swapped), and
+      <code>fare_sgd</code> has a negative minimum (−49.97).
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 2 — Profile.</span>
-    <pre><code class="language-python">profile = run_profile(df_raw)
-print(f"Alerts: {len(profile.alerts)}")
-for alert in profile.alerts:
-    where = alert.get("column", alert.get("columns"))
-    print(f"  [{alert['severity']}] {alert['type']}: {where} = {alert['value']:.2f}")</code></pre>
-    <pre><code class="language-text">Alerts: 12
-  [info] high_cardinality: trip_id = 0.99
-  [info] high_cardinality: pickup_datetime = 0.99
-  [info] high_cardinality: dropoff_datetime = 1.00
-  [info] high_skewness: distance_km = 7.42
-  [warning] high_nulls: tip_sgd = 0.78
-  [info] high_skewness: pickup_latitude = 14.03
-  [info] high_skewness: pickup_longitude = -14.03
-  [info] high_cardinality: pickup_longitude = 0.93
-  [warning] high_correlation: ['pickup_latitude', 'pickup_longitude'] = -1.00
-  [info] imbalanced: pickup_zone = 0.08
-  [info] imbalanced: dropoff_zone = 0.09
-  [info] imbalanced: payment_type = 0.07</code></pre>
-    <p>
-      The extreme coordinate skew and the r = −1.00 between latitude and
-      longitude are the 250 swapped rows: a latitude near 103.8 is
-      impossible. The 78% null tips are not a defect — most passengers do
-      not tip. And notice what raises <em>no</em> alert at all: negative
-      fares, zero passengers, future dates, payment spellings and repeated
-      trip IDs. <code>describe()</code> min/max, <code>n_unique()</code> and
-      <code>is_duplicated()</code> find those; the profiler complements
-      domain checks, it does not replace them.
-    </p>
-  </div>
+    <span class="step-label">Step 2 — Count the problems, then profile.</span>
+    <p>Domain rules first — the profiler cannot know that a fare must be
+       positive:</p>
+    <pre><code class="language-python">SG_LAT_MIN, SG_LAT_MAX = 1.15, 1.47
+SG_LNG_MIN, SG_LNG_MAX = 103.60, 104.05
+DATA_EXTRACT_DATE = datetime(2025, 1, 1)   # the log was extracted at the end of 2024
 
-  <div class="step">
-    <span class="step-label">Step 3 — Transform: clean and engineer features.</span>
-    <pre><code class="language-python">swapped = pl.col("pickup_latitude") &gt; 100          # lat/lng the wrong way round
-pay = pl.col("payment_type").str.to_lowercase()
+swapped_gps = taxi_raw.filter(
+    pl.col("pickup_latitude").is_between(SG_LNG_MIN, SG_LNG_MAX)
+    & pl.col("pickup_longitude").is_between(SG_LAT_MIN, SG_LAT_MAX)
+).height
+print(f"Swapped GPS:        {swapped_gps:,}")
+print(f"Fares &lt;= 0:         {taxi_raw.filter(pl.col('fare_sgd') &lt;= 0).height:,}")
+print(f"Passengers &lt; 1:     {taxi_raw.filter(pl.col('passengers') &lt; 1).height:,}")
+print(f"Future pickups:     {taxi_raw.filter(pl.col('pickup_datetime') &gt;= DATA_EXTRACT_DATE).height:,}")
+print(f"Payment spellings:  {taxi_raw['payment_type'].n_unique()}")
+print(f"Colliding trip_ids: {taxi_raw.filter(pl.col('trip_id').is_duplicated()).height:,}")
+print(f"Exact duplicates:   {taxi_raw.height - taxi_raw.unique().height:,}")
 
-df = (
-    df_raw
-    .with_columns(
-        pl.col("pickup_datetime", "dropoff_datetime")
-          .str.to_datetime("%Y-%m-%d %H:%M:%S"),
-        pl.when(swapped).then(pl.col("pickup_longitude"))
-          .otherwise(pl.col("pickup_latitude")).alias("pickup_latitude"),
-        pl.when(swapped).then(pl.col("pickup_latitude"))
-          .otherwise(pl.col("pickup_longitude")).alias("pickup_longitude"),
-        pl.when(pay.str.contains("grab")).then(pl.lit("Grab"))
-          .when(pay.str.contains("nets")).then(pl.lit("NETS"))
-          .when(pay.str.contains("cash")).then(pl.lit("Cash"))
-          .otherwise(pl.lit("Card")).alias("payment_type"),
-    )
-    .filter(
-        pl.col("fare_sgd") &gt; 0,
-        pl.col("passengers") &gt;= 1,
-        pl.col("pickup_datetime") &lt; datetime(2025, 1, 1),
-        ~pl.col("trip_id").is_duplicated(),
-    )
-    .with_columns(
-        pl.col("tip_sgd").fill_null(0.0),                        # no tip = 0
-        pl.col("pickup_zone", "dropoff_zone").fill_null("Unknown"),
-    )
-    .with_columns(
-        hour=pl.col("pickup_datetime").dt.hour(),
-        day_of_week=pl.col("pickup_datetime").dt.weekday(),      # 1 = Mon ... 7 = Sun
-        trip_duration_min=(pl.col("dropoff_datetime")
-                           - pl.col("pickup_datetime")).dt.total_seconds() / 60,
-    )
-    .with_columns(
-        is_weekend=pl.col("day_of_week") &gt;= 6,                   # Sat = 6, Sun = 7
-    )
+alert_config = AlertConfig(
+    high_null_pct_threshold=0.02,
+    skewness_threshold=2.0,
+    high_cardinality_ratio=0.80,
+    zero_pct_threshold=0.10,
+    high_correlation_threshold=0.90,
 )
-print(f"Clean: {df.shape}")   # → Clean: (47547, 16)</code></pre>
+profile_raw = run_profile(taxi_raw, alert_config)
+print(f"Alerts: {len(profile_raw.alerts)}")</code></pre>
+    <pre><code class="language-text">Swapped GPS:        250
+Fares &lt;= 0:         1,000
+Passengers &lt; 1:     500
+Future pickups:     500
+Payment spellings:  15
+Colliding trip_ids: 500
+Exact duplicates:   0
+Alerts: 15</code></pre>
     <p>
-      One problem, one step. The swapped coordinates are repaired rather
-      than dropped, because the fix is unambiguous. Impossible fares,
-      passenger counts and dates are removed. Fifteen payment spellings
-      collapse to four labels (Card 18,918, Cash 16,833, Grab 8,416, NETS
-      3,380). Both copies of every repeated <code>trip_id</code> are dropped,
-      since we cannot tell which one is genuine. Note the weekday encoding:
-      Polars <code>dt.weekday()</code> is ISO numbering, Monday = 1 to
-      Sunday = 7, so the weekend is <code>&gt;= 6</code> — not
-      <code>&gt;= 5</code>, which would wrongly include Friday. Trip
-      durations come out between 5 and 60 minutes (median 32.5).
+      The two views find different things. The domain rules find the
+      swapped coordinates, impossible fares and passengers, trips dated
+      2025–2027 and colliding IDs. The profiler finds the nulls
+      (<code>high_nulls</code> on both zones and on <code>tip_sgd</code>,
+      78% null because most trips have no tip), the near-unique IDs and
+      timestamps, and the symptoms of the swapped rows — skewed coordinates
+      and a latitude–longitude <code>high_correlation</code>. Note the last
+      two counts: no exact duplicate rows, yet 500 rows share a
+      <code>trip_id</code>. <code>df.unique()</code> would never find them;
+      only a key check does.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 4 — Transform: PreprocessingPipeline, without leakage.</span>
-    <pre><code class="language-python">features = df.select("distance_km", "trip_duration_min", "hour",
-                     "day_of_week", "payment_type", "pickup_zone", "fare_sgd")
+    <span class="step-label">Step 3 — Clean: one step per problem.</span>
+    <pre><code class="language-python">taxi_clean = taxi_raw.clone()
 
-# Hold out the test rows BEFORE the pipeline sees anything
-shuffled = features.sample(fraction=1.0, shuffle=True, seed=42)
+# Repair swapped GPS — the fix is unambiguous, so repair rather than drop
+is_swapped = (pl.col("pickup_latitude").is_between(SG_LNG_MIN, SG_LNG_MAX)
+              & pl.col("pickup_longitude").is_between(SG_LAT_MIN, SG_LAT_MAX))
+taxi_clean = taxi_clean.with_columns(
+    pl.when(is_swapped).then(pl.col("pickup_longitude"))
+      .otherwise(pl.col("pickup_latitude")).alias("pickup_latitude"),
+    pl.when(is_swapped).then(pl.col("pickup_latitude"))
+      .otherwise(pl.col("pickup_longitude")).alias("pickup_longitude"),
+)
+
+# Drop what cannot be repaired
+taxi_clean = taxi_clean.filter(
+    pl.col("pickup_latitude").is_between(SG_LAT_MIN, SG_LAT_MAX)
+    & pl.col("pickup_longitude").is_between(SG_LNG_MIN, SG_LNG_MAX)
+    & (pl.col("fare_sgd") &gt; 0)
+    & (pl.col("passengers") &gt;= 1)
+    & (pl.col("pickup_datetime") &lt; DATA_EXTRACT_DATE)
+)
+
+# Normalise payment_type to four canonical labels
+payment_lower = pl.col("payment_type").str.to_lowercase()
+taxi_clean = taxi_clean.with_columns(
+    pl.when(payment_lower.str.contains("grab")).then(pl.lit("Grab"))
+    .when(payment_lower.str.contains("nets")).then(pl.lit("NETS"))
+    .when(payment_lower.str.contains("cash")).then(pl.lit("Cash"))
+    .when(payment_lower.str.contains("card|visa|mastercard|credit")).then(pl.lit("Card"))
+    .otherwise(pl.lit("Other"))
+    .alias("payment_type")
+)
+
+# trip_id collisions: we cannot tell which trip owns the ID, so drop them all
+taxi_clean = taxi_clean.filter(~pl.col("trip_id").is_duplicated())
+
+# Fill nulls whose meaning is known
+taxi_clean = taxi_clean.with_columns(
+    pl.col("tip_sgd").fill_null(0.0),              # no tip recorded = no tip
+    pl.col("pickup_zone").fill_null("Unknown"),
+    pl.col("dropoff_zone").fill_null("Unknown"),
+)
+print(f"Rows: {taxi_raw.height:,} -&gt; {taxi_clean.height:,}")   # → 50,000 -&gt; 47,569</code></pre>
+    <p>
+      Two design choices are worth naming. <em>Repair when the fix is
+      unambiguous, drop when it is not</em>: a latitude of 103.8 paired with
+      a longitude of 1.35 is obviously a swapped Singapore point, so we swap
+      it back and keep the trip; a negative fare has no single correct
+      value, so the row goes. And the payment labels collapse from 15
+      spellings to <code>Card</code>, <code>Cash</code>, <code>Grab</code>
+      and <code>NETS</code>.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 4 — Engineer features.</span>
+    <pre><code class="language-python">CBD_LAT, CBD_LNG = 1.2840, 103.8514   # Raffles Place
+_RAD = math.pi / 180
+
+taxi_clean = taxi_clean.with_columns(
+    # Temporal — Polars weekdays are ISO: Monday = 1 ... Sunday = 7
+    pl.col("pickup_datetime").dt.hour().alias("hour_of_day"),
+    pl.col("pickup_datetime").dt.weekday().alias("day_of_week"),
+    (pl.col("pickup_datetime").dt.weekday() &gt;= 6).alias("is_weekend"),
+    # Duration: subtracting two Datetime columns gives a Duration
+    ((pl.col("dropoff_datetime") - pl.col("pickup_datetime"))
+     .dt.total_seconds() / 60).alias("trip_duration_min"),
+    # Spatial: haversine distance from the pickup point to the CBD
+    (
+        2 * 6371
+        * (
+            ((pl.col("pickup_latitude") - CBD_LAT) * _RAD / 2).sin().pow(2)
+            + math.cos(CBD_LAT * _RAD)
+            * (pl.col("pickup_latitude") * _RAD).cos()
+            * ((pl.col("pickup_longitude") - CBD_LNG) * _RAD / 2).sin().pow(2)
+        ).sqrt().arcsin()
+    ).alias("km_from_cbd"),
+)
+
+taxi_clean = taxi_clean.with_columns(
+    pl.when(pl.col("hour_of_day").is_between(7, 9)).then(pl.lit("morning_peak"))
+    .when(pl.col("hour_of_day").is_between(17, 20)).then(pl.lit("evening_peak"))
+    .when((pl.col("hour_of_day") &gt;= 22) | (pl.col("hour_of_day") &lt;= 5)).then(pl.lit("late_night"))
+    .otherwise(pl.lit("off_peak"))
+    .alias("time_period"),
+    (pl.col("distance_km") / (pl.col("trip_duration_min") / 60)).alias("avg_speed_kmh"),
+)
+
+# Derived-feature sanity check: a whole-trip average outside 2-120 km/h is impossible
+taxi_clean = taxi_clean.filter(pl.col("avg_speed_kmh").is_between(2, 120))
+print(f"After speed check: {taxi_clean.height:,} rows")   # → 43,934</code></pre>
+    <p>
+      Seven new features. Note the weekday encoding: Polars
+      <code>dt.weekday()</code> is ISO numbering, Monday = 1 to Sunday = 7,
+      so the weekend is <code>&gt;= 6</code> — <code>&gt;= 5</code> would
+      wrongly include Friday. The speed filter is a consistency check
+      between two columns: a trip that "covers" 20 km in one minute has a
+      wrong distance or a wrong time, even though each value looked
+      plausible on its own.
+    </p>
+  </div>
+
+  <div class="step">
+    <span class="step-label">Step 5 — PreprocessingPipeline, without leakage.</span>
+    <pre><code class="language-python">feature_cols = [
+    "distance_km", "trip_duration_min", "avg_speed_kmh", "km_from_cbd", "passengers",
+    "hour_of_day", "day_of_week", "is_weekend", "time_period", "payment_type",
+    "pickup_zone",
+]
+model_df = taxi_clean.select(feature_cols + ["fare_sgd"])
+
+# Hold out 20% of rows BEFORE the pipeline sees anything
+shuffled = model_df.sample(fraction=1.0, shuffle=True, seed=42)
 n_test = shuffled.height // 5
 test_rows, train_rows = shuffled.head(n_test), shuffled.slice(n_test)
 
 pipeline = PreprocessingPipeline()
-result = pipeline.setup(data=train_rows, target="fare_sgd",
-                        imputation_strategy="median",
-                        categorical_encoding="onehot", normalize=True)
-print(result.task_type, result.original_shape, "-&gt;", result.transformed_shape)
-# → regression (38038, 7) -&gt; (38038, 44)
+result = pipeline.setup(data=train_rows, target="fare_sgd", normalize=True,
+                        categorical_encoding="onehot", imputation_strategy="median")
+test_ready = pipeline.transform(test_rows)   # same learned rules, never refit
 
-test_ready = pipeline.transform(test_rows)
-print(test_ready.shape)   # → (9509, 44)</code></pre>
+print(result.task_type, result.original_shape, "-&gt;", result.transformed_shape)
+print(test_ready.shape)</code></pre>
+    <pre><code class="language-text">regression (35148, 12) -&gt; (35148, 53)
+(8786, 53)</code></pre>
     <p>
-      Seven columns become 44 because one-hot encoding turns every
-      <code>payment_type</code> and <code>pickup_zone</code> value into its
-      own 0/1 column. <code>setup()</code> also splits the 38,038 training
-      rows it was given into <code>result.train_data</code> (30,430) and
-      <code>result.test_data</code> (7,608) for model selection; the 9,509
-      rows we held out stay untouched until the very end.
+      One-hot encoding expands the four categorical columns
+      (<code>is_weekend</code>, <code>time_period</code>,
+      <code>payment_type</code>, <code>pickup_zone</code>) into one 0/1
+      column per category. Inside <code>result</code>, <code>setup()</code>
+      has still split the 35,148 training rows 80/20 — treat that inner
+      split as a <em>validation</em> set; your untouched
+      <code>test_rows</code> are the real test. The excluded columns are
+      deliberate: <code>trip_id</code> is an identifier, and
+      <code>tip_sgd</code> is only known after the fare is paid, so using it
+      to predict the fare would be <em>target leakage</em>.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 5 — Visualise.</span>
+    <span class="step-label">Step 6 — Visualise.</span>
     <pre><code class="language-python">viz = ModelVisualizer()
 
-hourly = df.group_by("hour").agg(pl.len().alias("trips")).sort("hour")
-fig = px.bar(hourly, x="hour", y="trips",
-             title="Taxi demand is flat across the day in this data")
-fig.write_html("ex8_hourly_demand.html")
+fig_fare = viz.histogram(taxi_clean, "fare_sgd", bins=60,
+                         title="Taxi Fare Distribution (After Cleaning)")
+fig_fare.write_html("taxi_fare_distribution.html")
 
-fig = viz.histogram(data=df, column="fare_sgd", bins=40,
-                    title="Fares are right-skewed: many short trips, few long ones")
-fig.write_html("ex8_fare_distribution.html")
+hourly = (taxi_clean.group_by("hour_of_day")
+          .agg(pl.len().alias("trip_count")).sort("hour_of_day"))
+fig_hourly = viz.training_history(
+    metrics={"Trip Volume": hourly["trip_count"].to_list()},
+    x_label="Hour of Day", y_label="Number of Trips",
+)
+fig_hourly.update_traces(x=hourly["hour_of_day"].to_list())   # real hours 0..23, not 1..24
+fig_hourly.update_layout(title="Taxi Trip Volume by Hour of Day")
+fig_hourly.write_html("taxi_hourly_volume.html")
 
-fig = viz.scatter(data=df.sample(n=5_000, seed=42),
-                  x="distance_km", y="fare_sgd", color="payment_type",
-                  title="Distance drives the fare (r = 0.97)")
-fig.write_html("ex8_fare_vs_distance.html")</code></pre>
+fig_dist = viz.histogram(taxi_clean, "distance_km", bins=50, title="Trip Distance (km)")
+fig_dist.write_html("taxi_distance_distribution.html")</code></pre>
     <p>
-      Report what the data shows. Hourly demand is roughly flat — about
-      2,000 trips in every hour, with no morning or evening rush — and the
-      seven days of the week are just as even. A real dispatch log would
-      show peaks; this synthetic one does not, and a chart titled
-      "rush-hour demand" would be fiction. The fare question has a clear
-      answer: distance and fare correlate at 0.97.
+      Report what the data shows. The cleaned fares run from <span class="nomath">S$3.90</span> to
+      <span class="nomath">S$50.72</span> with a median of <span class="nomath">S$9.64</span> — no more negative values. The hourly
+      chart is the surprise: it is roughly flat — a little under 2,000 trips
+      in every hour, with no rush-hour peak. Real taxi demand has a strong daily rhythm;
+      this synthetic log was generated without one, so the honest reading
+      is "no hourly pattern in this data", and a chart titled "rush-hour
+      demand" would be fiction.
     </p>
   </div>
 
   <div class="step">
-    <span class="step-label">Step 6 — Re-profile, compare and load.</span>
-    <pre><code class="language-python">df_out = df.select(df_raw.columns)          # same columns as the raw data
-profile_clean = run_profile(df_out)
-comparison = run_compare(df_raw, df_out)
+    <span class="step-label">Step 7 — Re-profile, compare original vs cleaned, and load.</span>
+    <pre><code class="language-python">taxi_clean_original_cols = taxi_clean.select(taxi_raw.columns)
+profile_clean = run_profile(taxi_clean_original_cols, alert_config)
+print(f"Alerts before cleaning: {len(profile_raw.alerts)}")   # 15
+print(f"Alerts after cleaning:  {len(profile_clean.alerts)}")  # 11
 
-print(f"Alerts before: {len(profile.alerts)}")        # 12 (2 warnings)
-print(f"Alerts after:  {len(profile_clean.alerts)}")  # 12 (1 warning)
-print(comparison["shape_comparison"])
-# → {'rows_a': 50000, 'rows_b': 47547, 'cols_a': 12, 'cols_b': 12}
+comparison = run_compare(taxi_raw, taxi_clean_original_cols)
+shape = comparison["shape_comparison"]
+print(f"Rows: {shape['rows_a']:,} -&gt; {shape['rows_b']:,}")      # 50,000 -&gt; 43,934
 
-df.write_parquet("taxi_clean.parquet")      # Load: the pipeline's output</code></pre>
+with open("taxi_clean_profile.html", "w", encoding="utf-8") as f:
+    f.write(run_report(taxi_clean_original_cols, title="Taxi Trips — Cleaned",
+                       alert_config=alert_config))
+taxi_clean.write_parquet("taxi_clean.parquet")   # Load: the pipeline's output</code></pre>
     <p>
-      Same alert count, different alerts — read them, not just the count.
-      The coordinate skew and the r = −1.00 are gone; the tip column now
-      shows as <code>high_zeros</code> (78%) instead of
-      <code>high_nulls</code>, which is the honest description; and the real
-      <code>distance_km</code> ↔ <code>fare_sgd</code> relationship
-      (r = 0.97) surfaces as the one remaining warning. Cleaning removed
-      2,453 rows (4.9%).
+      We profile only the original columns, with the same thresholds, so
+      the two alert counts are comparable. Read the 11 survivors rather than
+      just counting them: <code>high_cardinality</code> on the ID and
+      timestamps is correct for identifiers; <code>tip_sgd</code> now shows
+      as <code>high_zeros</code> (78% of tips are zero) — a true fact about
+      tipping; the coordinate skew and the latitude–longitude correlation
+      are gone (only plain <code>high_cardinality</code> remains on the
+      coordinates); and one alert is
+      <em>new</em> — <code>high_correlation</code> between
+      <code>distance_km</code> and <code>fare_sgd</code> (r = 0.91), the real
+      link between distance and fare, previously hidden by the negative
+      fares. The goal is not zero alerts; it is alerts you can explain.
     </p>
   </div>
 </div>
@@ -721,7 +816,7 @@ generate_html_report(df_clean, charts, output="report.html")</code></pre>
     B: each response has <code>found</code> and a <code>results</code>
     list; take the first result per address, and cast
     <code>LATITUDE</code> / <code>LONGITUDE</code> from text to float.
-    C: follow the worked example; your cleaned table should have 47,547
+    C: follow the worked example; your cleaned table should have 43,934
     rows, and your hourly chart should show no rush-hour peak.
   </p>
 </div>

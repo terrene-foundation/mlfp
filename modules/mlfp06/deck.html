@@ -3729,21 +3729,28 @@ assert governed.audit.verify_chain()</code></pre>
   <span class="marker marker-foundations">Foundations</span>
   <div class="kailash-bridge">
     <h3>Nexus Multi-Channel Deployment</h3>
-    <pre><code class="language-python">from nexus import Nexus
-from kailash.workflow.builder import WorkflowBuilder
+    <pre style="font-size: 0.48em; line-height: 1.3"><code class="language-python">import os
+from kailash.trust.auth.jwt import JWTConfig
+from kailash.trust.rate_limit.config import RateLimitConfig
+from nexus import Nexus, NexusAuthPlugin
+from starlette.requests import Request
 
-# Describe the analysis workload as a built workflow
-analysis_wf = WorkflowBuilder()
-analysis_wf.add_node(
-    "PythonCodeNode",
-    "analyse",
-    {"code": "result = governed_agent.run_sync(parameters['query'])"},
-)
+jwt_config = JWTConfig(secret=os.environ["MLFP_JWT_SECRET"], algorithm="HS256")
+app = Nexus(api_port=8000,
+            cors_origins=["https://intranet.example.sg"])  # CORS allow-list
+app.add_plugin(NexusAuthPlugin(                  # plugins extend Nexus
+    jwt=jwt_config,
+    rate_limit=RateLimitConfig(requests_per_minute=10, burst_size=5)))
 
-# Nexus exposes it as API + CLI + MCP simultaneously
-app = Nexus()   # JWT middleware + rate limiting configured in project settings
-app.register("analysis", analysis_wf.build())
-# app.start()   # serve on the configured port</code></pre>
+async def serve_qa(question: str, request: Request) -> dict:
+    """Governed QA; the caller's role comes from the VERIFIED token."""
+    role = request.state.user.roles[0]
+    return await handle_qa(question, role=role,
+                           agents_by_role=agents_by_role, engine=engine)
+
+# ONE handler -> REST API + CLI + MCP tool
+app.handler_extract("serve_qa", serve_qa, description="Governed QA")
+# app.start()   # serve on port 8000</code></pre>
   </div>
   <div class="flow-arrow" style="margin-top:12px;">
     <div class="box">One Codebase</div>
@@ -3758,7 +3765,7 @@ app.register("analysis", analysis_wf.build())
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Nexus is the deployment layer. You write your service once, and Nexus exposes it as an API (for web apps), a CLI (for developers), and an MCP server (for AI agents). No code duplication. If beginners confused: "Think of it as one restaurant kitchen that serves dine-in, takeaway, and delivery from the same menu."
+    Time: ~3 min. Nexus is the deployment layer. You write your service once, and Nexus exposes it as an API (for web apps), a CLI (for developers), and an MCP server (for AI agents). No code duplication. Walk the middleware: the CORS allow-list is a constructor argument; JWT auth and rate limiting arrive as a plugin (<code>NexusAuthPlugin</code>) &mdash; plugins are how you extend Nexus. The signing secret comes from the environment, never source code. This is the exact shape of Exercise 6.8 (ex_8/03). If beginners confused: "Think of it as one restaurant kitchen that serves dine-in, takeaway, and delivery from the same menu."
   </aside>
 </section>
 
@@ -3776,43 +3783,41 @@ app.register("analysis", analysis_wf.build())
         <li>Permissions map to Nexus endpoints</li>
         <li>PACT D/T/R addresses map to RBAC roles</li>
       </ul>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Nexus owns authentication (JWT); PACT
-# owns authorisation (verify_action).
-from nexus import Nexus
-
-app = Nexus()   # JWT middleware applied
-app.register("analyse", analyse_wf.build())
-app.register("deploy",  deploy_wf.build())
-
-# Inside each node (pseudo-code):
-#   caller_role = parameters["auth"]["role_address"]
-#   verdict = engine.verify_action(
-#       role_address=caller_role,
-#       action="deploy",
-#       context={"data_classification":
-#                "restricted"})
-#   if not verdict.allowed:
-#       raise PermissionError(verdict.reason)</code></pre>
+      <pre style="font-size: 0.5em;"><code class="language-python"># Nexus authenticates (JWT); PACT
+# authorises (verify_action) — inside
+# the handler, per request.
+async def serve_qa(question: str,
+                   request: Request) -> dict:
+    role = request.state.user.roles[0]
+    verdict = engine.verify_action(
+        TIER_ADDRESS[role], "answer_question",
+        {"cost": 0.0})
+    if not verdict.allowed:
+        return {"blocked": True,
+                "reason": verdict.reason}
+    governed = agents_by_role[role]
+    result = await governed.run(
+        objective=question,
+        execute_node=executor)
+    return {"success": result.success}</code></pre>
     </div>
     <div class="col">
       <h3>JWT Authentication</h3>
-      <pre style="font-size: 0.55em;"><code class="language-python"># Client-side
-import requests
+      <pre style="font-size: 0.5em;"><code class="language-python">import httpx
+from kailash.trust.auth.jwt import JWTValidator
 
-token = requests.post(
-    "http://localhost:8000/auth/token",
-    json={"username": "analyst1",
-          "password": "****"}
-).json()["token"]
+# Your identity provider issues tokens;
+# in the exercise we play that role
+token = JWTValidator(jwt_config).create_access_token(
+    "analyst1", roles=["qa"])
 
 # Authenticated request
-response = requests.post(
-    "http://localhost:8000/api/analyse",
-    headers={
-        "Authorization": f"Bearer {token}"
-    },
-    json={"query": "Analyse Q4 data"}
-)</code></pre>
+response = httpx.post(
+    "http://localhost:8000/workflows/serve_qa/execute",
+    headers={"Authorization": f"Bearer {token}"},
+    json={"inputs": {"question": "Analyse Q4 data"}},
+)
+# No / forged token -> 401 before the handler runs</code></pre>
       <div class="callout callout-warning" style="margin-top:8px;">
         Unauthenticated requests must be rejected with 401. No exceptions.
       </div>
@@ -3822,7 +3827,7 @@ response = requests.post(
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~3 min. Auth is the production gate. RBAC controls what each user can do. JWT provides the authentication mechanism. PACT D/T/R addresses map naturally to RBAC roles: the same governance that controls agents controls human access.
+    Time: ~3 min. Auth is the production gate. JWT proves WHO is calling (Nexus rejects missing or forged tokens with 401); the role claim in the verified token picks a PACT tier, and <code>verify_action</code> on that tier's D/T/R address decides WHAT they may do. Remember the PACT default: an address with no envelope is auto-approved, so every tier the handler can route to must have an envelope attached (the capstone's <code>build_capstone_stack</code> does this). An unknown role should be refused by your handler before PACT is even asked.
   </aside>
 </section>
 
@@ -3897,29 +3902,33 @@ response = requests.post(
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">from kailash_ml import DriftMonitor
+      <pre style="font-size: 0.5em;"><code class="language-python">from kailash.db.connection import ConnectionManager
+from kailash_ml import DriftMonitor
 
-monitor = DriftMonitor(
-    reference_data=training_data,
-    model_id="sentiment-v1",
-    alert_threshold=0.05,
-)
+conn = ConnectionManager("sqlite:///drift.db")
+await conn.initialize()
+monitor = DriftMonitor(conn, tenant_id="mlfp_demo",
+                       psi_threshold=0.2)
+await monitor.set_reference_data(
+    "capstone_qa_model", reference_df,
+    ["question_length"])
 
 # In production: check each batch
 for batch in production_batches:
-    report = monitor.check(batch)
-    if report.drift_detected:
-        print(f"DRIFT: {report.feature} "
-              f"(p={report.p_value:.4f})")
-        # Trigger retraining pipeline
-        retrain(model_id="sentiment-v1")</code></pre>
+    report = await monitor.check_drift(
+        "capstone_qa_model", batch)
+    if report.overall_drift_detected:
+        psi = report.feature_results[0].psi
+        print(f"DRIFT {report.overall_severity}: "
+              f"PSI={psi:.3f}")
+        # trigger the retraining pipeline</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. DriftMonitor was introduced in M3. Here it is deployed in production. The key: monitoring is not optional. A deployed model without monitoring is a ticking time bomb. If beginners confused: "Think of it as a regular health check for your AI system."
+    Time: ~2 min. DriftMonitor was introduced in earlier modules; here it guards a deployed system. API facts: it persists reports through a <code>ConnectionManager</code>, is scoped by <code>tenant_id</code>, and both <code>set_reference_data</code> and <code>check_drift</code> are async. Read PSI as: &lt; 0.1 no drift, 0.1&ndash;0.2 investigate, &gt; 0.2 alert. In Exercise 6.8 (ex_8/04) the monitored feature is question length on the capstone QA traffic, and a deliberately shifted batch must trigger the alert. The key: monitoring is not optional. A deployed model without monitoring is a ticking time bomb. If beginners confused: "Think of it as a regular health check for your AI system."
   </aside>
 </section>
 
@@ -3931,20 +3940,24 @@ for batch in production_batches:
   <div class="columns">
     <div class="col">
       <h3>The Trace</h3>
-      <pre><code class="language-python">result = agent.run(
-    "Analyse HDB resale data",
-    trace=True
-)
+      <pre style="font-size: 0.5em;"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
-for step in result.trace:
-    print(f"[{step.type}] {step.content}")
-    if step.type == "action":
-        print(f"  Tool: {step.tool}")
-        print(f"  Args: {step.args}")
-        print(f"  Cost: ${step.cost:.4f}")
-    if step.type == "governance":
-        print(f"  Decision: {step.decision}")
-        print(f"  Reason: {step.reason}")</code></pre>
+obs = LLMObservatory()
+trace = await obs.agent.capture_run(
+    agent, "Analyse HDB resale data",
+    run_id="debug_1")
+
+for ev in trace.events:   # token / tool_* / error
+    print(ev.kind, ev.tool or "",
+          (ev.content or ev.error or "")[:60])
+
+print(obs.agent.tool_usage("debug_1"))
+print(obs.agent.detect_loops("debug_1"))
+
+# Governance decisions live in the
+# supervisor's hash-chained audit trail:
+for rec in governed.audit.to_list()[-5:]:
+    print(rec["record_type"], rec["action"])</code></pre>
     </div>
     <div class="col">
       <h3>Common Debugging Patterns</h3>
@@ -3964,7 +3977,7 @@ for step in result.trace:
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Debugging agents is different from debugging code. You read the reasoning trace, not a stack trace. The most common issue: the agent loops because it does not have the right tool. Fix the tools, not the prompts.
+    Time: ~2 min. Debugging agents is different from debugging code. You read the reasoning trace, not a stack trace. The trace comes from the observatory's <code>capture_run</code> (there is no <code>trace=True</code> flag on the agent); governance decisions are read from the supervisor's audit chain. The most common issue: the agent loops because it does not have the right tool. Fix the tools, not the prompts.
   </aside>
 </section>
 
@@ -3980,36 +3993,40 @@ for step in result.trace:
         <li><strong>Tool correctness:</strong> Each tool produces expected output for known input</li>
         <li><strong>Reasoning quality:</strong> Agent selects correct tools for a given task</li>
         <li><strong>Governance:</strong> Blocked actions stay blocked</li>
-        <li><strong>Budget:</strong> Agent stops at budget limit</li>
+        <li><strong>Bounds:</strong> Agent stops at its turn ceiling / budget</li>
         <li><strong>End-to-end:</strong> Full task produces correct final result</li>
       </ul>
     </div>
     <div class="col">
-      <pre><code class="language-python">def test_tool_selection():
-    """Agent selects explore tool for
-    data analysis tasks."""
-    result = agent.run(
-        "What is the average price?",
-        trace=True)
-    tools_used = [s.tool
-        for s in result.trace
-        if s.type == "action"]
-    assert "explore_data" in tools_used
+      <pre style="font-size: 0.5em;"><code class="language-python">import pytest
 
-def test_end_to_end():
-    """Full analysis produces a report."""
-    result = agent.run(
-        "Analyse and report on Q4 data")
-    assert result.success
-    assert "average" in result.output
-    assert result.cost < 1.00</code></pre>
+@pytest.mark.asyncio
+async def test_tool_selection():
+    """Agent picks the grouping tool for
+    a 'most expensive' question."""
+    agent = make_delegate(tools=tools,
+                          max_turns=8)
+    await obs.agent.capture_run(
+        agent, "Which flat type is most "
+        "expensive?", run_id="t1")
+    used = obs.agent.tool_usage("t1")
+    assert "mean_price_by" in used["tool"]
+
+def test_no_tool_loops():
+    assert obs.agent.detect_loops(
+        "t1").height == 0
+
+def test_blocked_stays_blocked(engine):
+    v = engine.verify_action(
+        "D1-R1-T1-R1", "delete_customer_data")
+    assert not v.allowed</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~2 min. Agent testing is non-deterministic. You cannot test exact outputs, but you can test tool selection, governance enforcement, and budget compliance. The end-to-end test checks that the agent produces a reasonable result within budget.
+    Time: ~2 min. Agent testing is non-deterministic. You cannot test exact outputs, but you can test tool selection (from the captured trace), absence of loops, governance enforcement (on an engine whose roles have envelopes) and that the turn ceiling holds. Every test must be able to FAIL &mdash; Exercise 6.8 (ex_8/04) runs a five-test harness that includes two deny cases.
   </aside>
 </section>
 
@@ -4100,19 +4117,19 @@ python -m vllm.entrypoints.openai.api_server \
     <div class="col">
       <h3>Tasks</h3>
       <ol>
-        <li>Deploy the M6 multi-agent system via Nexus</li>
-        <li>Add JWT authentication with RBAC</li>
-        <li>Integrate DriftMonitor for production monitoring</li>
-        <li>Test end-to-end: query via API, CLI, and MCP</li>
-        <li>Verify governance enforces access controls at deployment level</li>
+        <li>Load a trained adapter from the AdapterRegistry; score it on MMLU (<code>ex_8/01</code>)</li>
+        <li>Compile the PACT org, attach envelopes, three governed tiers (<code>02</code>)</li>
+        <li>Serve ONE governed handler via Nexus with JWT, CORS and rate limit; call the API incl. 401s (<code>03</code>)</li>
+        <li>DriftMonitor on shifted traffic, debug a call, 5-test harness (<code>04</code>)</li>
+        <li>Compliance report generated from the live audit chain (<code>05</code>)</li>
       </ol>
     </div>
     <div class="col">
       <h3>Assessment Criteria</h3>
       <ul>
-        <li>System deployed and accessible via all 3 channels</li>
-        <li>Auth works (unauthenticated requests rejected with 401)</li>
-        <li>Drift monitoring active and alerting</li>
+        <li>Handler registered on API + CLI + MCP; API channel exercised end-to-end</li>
+        <li>Auth works (missing or forged tokens rejected with 401)</li>
+        <li>Drift monitoring alerts on the shifted batch only</li>
         <li>Governance enforced in production</li>
         <li>Complete audit trail generated</li>
       </ul>
@@ -4122,7 +4139,7 @@ python -m vllm.entrypoints.openai.api_server \
     <span>MLFP Module 6 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Time: ~1 min. The capstone. Students connect everything they built in 6.1-6.7 into a single deployed system. The emphasis is on integration, not new concepts. If it deploys, authenticates, monitors, and governs correctly, they have passed.
+    Time: ~1 min. The capstone. Students connect everything they built in 6.1-6.7 into a single deployed system. Be precise about channels: the exercise calls the API channel in-process (with real tokens); the CLI and MCP channels are registered by the same call, and exercising them is the stretch goal. The emphasis is on integration, not new concepts. If it deploys, authenticates, monitors, and governs correctly, they have passed.
   </aside>
 </section>
 

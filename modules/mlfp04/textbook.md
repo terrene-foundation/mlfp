@@ -1494,7 +1494,7 @@ You should now be able to:
 
 ## Why This Matters
 
-Walk into any FairPrice outlet in Singapore and look at the shelf layout. Beer is near snacks. Nappies are near baby wipes. Fresh fruit is near yoghurt. These placements are not accidental — they are driven by co-purchase patterns discovered in transaction data. When customers who buy nappies also frequently buy beer (a classic and much-debated finding from retail analytics), the store places them in proximity to increase basket size.
+Walk into almost any supermarket and look at the shelf layout. Beer is near snacks. Nappies are near baby wipes. Fresh fruit is near yoghurt. Many such placements are informed by co-purchase patterns in transaction data. (The famous "nappies and beer" story is a retail-analytics anecdote whose original source is disputed — treat it as folklore that illustrates the idea, not as a documented finding.)
 
 Association rule mining is the algorithm behind these discoveries. It takes a database of transactions (each transaction is a set of items) and finds rules of the form "if a customer buys X, they are likely to also buy Y". The rules are scored by support (how often X and Y appear together), confidence (how often Y appears when X is present), and lift (how much more likely Y is given X, compared to its baseline rate).
 
@@ -1540,7 +1540,7 @@ The key insight is the **Apriori principle**: if an itemset is infrequent, all i
 
 ### FOUNDATIONS: FP-Growth
 
-FP-Growth (Frequent Pattern Growth) avoids candidate generation entirely. It compresses the transaction database into a compact data structure called an FP-tree, then extracts frequent patterns directly from the tree. FP-Growth is typically 1–2 orders of magnitude faster than Apriori on large datasets because it does not generate or count candidate itemsets.
+FP-Growth (Frequent Pattern Growth) avoids candidate generation entirely. It compresses the transaction database into a compact data structure called an FP-tree, then extracts frequent patterns directly from the tree. Because it never generates or counts candidate itemsets, FP-Growth is typically much faster than Apriori on large, dense transaction databases with many products and low support thresholds. On small problems the difference disappears and can even reverse (Drill 1).
 
 ## Mathematical Foundations
 
@@ -1554,143 +1554,184 @@ Under independence this ratio is exactly 1. A lift of 2 means the joint occurren
 
 Lift is symmetric: $\text{lift}(X \to Y) = \text{lift}(Y \to X)$. Confidence is not symmetric: $\text{conf}(X \to Y) \neq \text{conf}(Y \to X)$ in general. This is an important distinction when interpreting rules.
 
-## The Kailash Engine: AutoMLEngine (association mode)
+## The Kailash Engine: none — and why that is fine
+
+kailash-ml has no association-rule engine, and you should not go looking for one. The mining itself is a few lines of Python (the Apriori principle above), and for larger problems the open-source `mlxtend` library provides Apriori and FP-Growth. The Kailash value enters *after* mining: discovered rules become features for the supervised pipeline you built in Module 3 (Drill 5), and Exercise 5 logs every mining run to the `ExperimentTracker` so you can compare thresholds and algorithms.
+
+## Worked Example: Singapore Mini-Mart Basket Analysis
+
+The baskets in this example are **synthetic**. Exercise 5's generator (`shared.mlfp04.ex_5.generate_transactions`) simulates 2,500 transactions at a neighbourhood mini-mart with 25 products. Twelve "bundles" — kaya-toast breakfast (bread, butter, eggs), kopi (coffee, condensed milk, sugar), beer and chips, toiletries, household cleaning and so on — fire with known probabilities, each item in a firing bundle is dropped 15% of the time, and a few random impulse items are added. Because we know the bundles that generated the data, we can check whether the mining recovers them.
+
+### Step 1: Pair rules from first principles
 
 ```python
-from kailash_ml import AutoMLEngine
+import numpy as np
+import polars as pl
+from shared.mlfp04.ex_5 import generate_transactions, transactions_to_onehot
 
-engine = AutoMLEngine(task="association")
-rules = engine.mine_rules(transactions_df, min_support=0.01, min_confidence=0.3)
+transactions = generate_transactions(n=2500, seed=42)   # list of sets of product names
+basket = transactions_to_onehot(transactions)           # polars: one boolean column per product
+print(basket.shape, f"avg basket = {np.mean([len(t) for t in transactions]):.2f} items")
+
+B = basket.to_numpy().astype(np.float64)                # 2,500 x 25 indicator matrix
+items = basket.columns
+n = B.shape[0]
+support_1 = B.mean(axis=0)                              # supp(X) for every single item
+support_2 = (B.T @ B) / n                               # supp(X and Y) for every pair
+
+pair_rules = pl.DataFrame(
+    [
+        (items[i], items[j], support_2[i, j],
+         support_2[i, j] / support_1[i],                          # confidence
+         support_2[i, j] / (support_1[i] * support_1[j]))         # lift
+        for i in range(len(items)) for j in range(len(items))
+        if i != j and support_2[i, j] >= 0.02
+    ],
+    schema=["antecedent", "consequent", "support", "confidence", "lift"],
+    orient="row",
+).sort("lift", descending=True)
+print(pair_rules.head(6))
 ```
 
-## Worked Example: Singapore Retail Basket Analysis
+The product of the indicator matrix with itself counts every pair's co-occurrence in one line; support, confidence and lift follow directly from their definitions. The top pairs are shampoo ↔ toothpaste (lift 3.02), cooking oil ↔ fish (2.93), coffee ↔ condensed milk (2.92) and detergent ↔ tissue (2.91) — all pairs from bundles in the generator. Note the two directions of each pair: the lift is identical, the confidence is not (coffee → condensed milk 0.52, condensed milk → coffee 0.54).
+
+### Step 2: All itemset sizes with FP-Growth
+
+For itemsets larger than pairs we use `mlxtend`. It accepts only a pandas DataFrame, so we convert **at the call boundary only** and bring the result straight back into polars — all filtering and sorting stays in polars.
 
 ```python
-from mlxtend.frequent_patterns import apriori, fpgrowth, association_rules
+from mlxtend.frequent_patterns import association_rules, fpgrowth
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_retail_baskets.csv")
+freq_items = fpgrowth(basket.to_pandas(), min_support=0.02, use_colnames=True)
+rules_raw = association_rules(freq_items, metric="lift", min_threshold=1.2)
 
-# Convert to one-hot encoded basket format
-basket = df.pivot(index="transaction_id", columns="product", values="quantity")
-basket = (basket.fill_null(0) > 0).cast(pl.Int8)
+def rules_to_polars(raw):
+    return pl.DataFrame({
+        "antecedent": [", ".join(sorted(a)) for a in raw["antecedents"]],
+        "consequent": [", ".join(sorted(c)) for c in raw["consequents"]],
+        "support": raw["support"].to_numpy(),
+        "confidence": raw["confidence"].to_numpy(),
+        "lift": raw["lift"].to_numpy(),
+    }).sort("lift", descending=True)
 
-basket_pd = basket.to_pandas().set_index("transaction_id")
-
-# FP-Growth (faster than Apriori)
-freq_items = fpgrowth(basket_pd, min_support=0.01, use_colnames=True)
-print(f"Frequent itemsets found: {len(freq_items)}")
-
-# Generate rules
-rules = association_rules(freq_items, metric="lift", min_threshold=1.2)
-rules = rules.sort_values("lift", ascending=False)
-print(rules[["antecedents", "consequents", "support", "confidence", "lift"]].head(10))
+rules = rules_to_polars(rules_raw)
+print(f"Frequent itemsets: {len(freq_items)}   rules with lift >= 1.2: {rules.height}")
+print(rules.head(6))
 ```
+
+At a minimum support of 2%, FP-Growth finds 336 frequent itemsets (25 single items, 226 pairs, 77 triples, 8 four-item sets) and 494 rules with lift of at least 1.2. The strongest are three-item bundles: {soap, tissue} → {detergent} with confidence 0.76 and lift 6.0, {soap, toothpaste} → {shampoo} (0.75, 5.6), {cooking oil, rice} → {fish} (0.69, 5.1).
 
 ### Interpreting the top rules
 
-A rule like `{instant noodles, eggs} -> {vegetables}` with lift 2.3 and confidence 0.45 means: customers who buy instant noodles and eggs are 2.3 times more likely to also buy vegetables than a random customer. The confidence of 0.45 means 45% of baskets containing noodles and eggs also contain vegetables. For a Singapore convenience store, this suggests placing vegetables near the noodle aisle.
-
-### Using rules as supervised features
-
-```python
-# Create binary features from top association rules
-df_features = df.with_columns([
-    (pl.col("noodles") & pl.col("eggs")).alias("rule_noodles_eggs"),
-    (pl.col("rice") & pl.col("cooking_oil")).alias("rule_rice_oil"),
-])
-# Feed these into a supervised model as interaction features
-```
+Read {soap, tissue} → {detergent} as: 3.8% of all baskets contain all three items (support); 76% of baskets with soap and tissue also contain detergent (confidence); and that is 6.0 times the rate at which detergent appears in baskets in general (lift). For a mini-mart this suggests shelving household cleaning together or bundling a "household restock" promotion. The reverse rule {detergent} → {soap, tissue} has the same lift but a confidence of only 0.30 — most detergent buyers do not buy the other two — so the promotion should be triggered by soap and tissue, not by detergent. And because these baskets are synthetic, we can confirm the method works: every top rule is a fragment of one of the generator's bundles.
 
 ## Try It Yourself
 
-**Drill 1.** Run both Apriori and FP-Growth on the retail basket data with min_support = 0.02. Compare execution time. How much faster is FP-Growth?
+**Drill 1.** Run both Apriori and FP-Growth on the basket data with min_support = 0.02 and with 0.005. Compare execution time. Which is faster, and does that match the textbook claim that FP-Growth is faster?
 
 **Solution:**
 
 ```python
 import time
+from mlxtend.frequent_patterns import apriori
 
-start = time.time()
-freq_apriori = apriori(basket_pd, min_support=0.02, use_colnames=True)
-t_apriori = time.time() - start
-
-start = time.time()
-freq_fp = fpgrowth(basket_pd, min_support=0.02, use_colnames=True)
-t_fp = time.time() - start
-
-print(f"Apriori: {t_apriori:.2f}s, FP-Growth: {t_fp:.2f}s")
-print(f"FP-Growth is {t_apriori/t_fp:.1f}x faster")
+basket_pd = basket.to_pandas()   # boundary conversion, once
+for min_sup in [0.02, 0.005]:
+    timings = {}
+    for name, algo in [("Apriori", apriori), ("FP-Growth", fpgrowth)]:
+        start = time.perf_counter()
+        found = algo(basket_pd, min_support=min_sup, use_colnames=True)
+        timings[name] = time.perf_counter() - start
+    print(f"min_support={min_sup}: {len(found)} itemsets  " +
+          "  ".join(f"{k}={v * 1000:.1f} ms" for k, v in timings.items()))
 ```
+
+Both find identical itemsets, in milliseconds, and on this small problem (25 products, 2,500 baskets) Apriori is often the *faster* one — the exact timings vary from run to run and machine to machine. FP-Growth's advantage comes from never generating candidate itemsets, which pays off when there are thousands of products, millions of baskets and low support thresholds, where Apriori's candidate sets explode. Benchmarks on toy data do not transfer to scale; measure on data shaped like yours.
 
 **Drill 2.** Find all rules with lift > 2 and confidence > 0.3. How many rules satisfy both conditions? What is the highest-lift rule, and does it make business sense?
 
 **Solution:**
 
 ```python
-strong_rules = rules[(rules["lift"] > 2) & (rules["confidence"] > 0.3)]
-print(f"Strong rules: {len(strong_rules)}")
-top_rule = strong_rules.iloc[0]
-print(f"Top rule: {top_rule['antecedents']} -> {top_rule['consequents']}")
-print(f"  Lift: {top_rule['lift']:.2f}, Confidence: {top_rule['confidence']:.2f}")
+strong_rules = rules.filter((pl.col("lift") > 2) & (pl.col("confidence") > 0.3))
+print(f"Strong rules: {strong_rules.height}")
+top = strong_rules.row(0, named=True)
+print(f"Top rule: {{{top['antecedent']}}} -> {{{top['consequent']}}}  "
+      f"lift={top['lift']:.2f}, confidence={top['confidence']:.2f}")
 ```
 
-**Drill 3.** Demonstrate that lift is symmetric but confidence is not. Pick a rule $X \to Y$ and compute both $\text{conf}(X \to Y)$ and $\text{conf}(Y \to X)$. Then compute $\text{lift}(X \to Y)$ and $\text{lift}(Y \to X)$.
+240 of the 494 rules pass both filters. The top one is {soap, tissue} → {detergent} (lift 6.02, confidence 0.76): a household-restocking trip, which is a sensible, actionable pattern. Many of the 240 are re-arrangements of the same few bundles — when presenting rules to a business audience, group them by the underlying itemset rather than listing every direction.
+
+**Drill 3.** Demonstrate that lift is symmetric but confidence is not. Pick a rule $X \to Y$, find the reverse rule $Y \to X$, and compare both measures.
 
 **Solution:**
 
 ```python
-# Pick a specific rule
-rule = rules.iloc[0]
-X, Y = rule["antecedents"], rule["consequents"]
+rule = rules.row(0, named=True)
+reverse = rules.filter(
+    (pl.col("antecedent") == rule["consequent"]) & (pl.col("consequent") == rule["antecedent"])
+).row(0, named=True)
 
-# Confidence is not symmetric
-conf_xy = rule["confidence"]
-reverse = rules[(rules["antecedents"] == Y) & (rules["consequents"] == X)]
-if len(reverse) > 0:
-    conf_yx = reverse.iloc[0]["confidence"]
-    print(f"conf(X->Y)={conf_xy:.3f}, conf(Y->X)={conf_yx:.3f}")
-    print(f"Symmetric? {abs(conf_xy - conf_yx) < 0.001}")
-
-# Lift is symmetric
-lift_xy = rule["lift"]
-if len(reverse) > 0:
-    lift_yx = reverse.iloc[0]["lift"]
-    print(f"lift(X->Y)={lift_xy:.3f}, lift(Y->X)={lift_yx:.3f}")
-    print(f"Symmetric? {abs(lift_xy - lift_yx) < 0.001}")
+print(f"conf(X->Y)={rule['confidence']:.3f}   conf(Y->X)={reverse['confidence']:.3f}")
+print(f"lift(X->Y)={rule['lift']:.3f}   lift(Y->X)={reverse['lift']:.3f}")
 ```
 
-**Drill 4.** Lower the minimum support threshold from 0.02 to 0.005. How many additional frequent itemsets are found? Plot the distribution of itemset sizes (1-item, 2-item, 3-item, etc.).
+For {soap, tissue} ↔ {detergent} the confidences are 0.758 and 0.298 while both lifts are 6.016. Lift divides the joint support by the product of the two marginal supports, which does not depend on direction; confidence divides by the antecedent's support only.
+
+**Drill 4.** Lower the minimum support threshold from 0.02 to 0.005. How many frequent itemsets are found now, and how are they distributed by size?
 
 **Solution:**
 
 ```python
 freq_low = fpgrowth(basket_pd, min_support=0.005, use_colnames=True)
-freq_low["size"] = freq_low["itemsets"].apply(len)
-print(freq_low["size"].value_counts().sort_index())
+sizes = pl.Series("size", [len(s) for s in freq_low["itemsets"]])
+print(sizes.value_counts().sort("size"))
 print(f"Total at 0.005: {len(freq_low)}, at 0.02: {len(freq_items)}")
 ```
 
-**Drill 5.** Take the top 10 association rules and create 10 binary interaction features. Train a logistic regression model (from Module 3) predicting whether a customer will make a repeat purchase within 30 days. Compare the model's performance with and without the association-rule features.
+The count jumps from 336 to 1,851 itemsets: 25 singles, 300 pairs (every possible pair of the 25 products), 1,007 triples, 448 four-item, 68 five-item and 3 six-item sets. Lowering support by a factor of four multiplied the output by more than five, and most of the new itemsets are combinations of random impulse purchases that occur in 13–50 baskets out of 2,500 — rules built on them are noise. Low support needs a stricter lift or confidence filter, or a statistical test, to stay useful.
+
+**Drill 5.** Use association rules as features for a supervised model. Each shopper has two consecutive trips (`generate_shopper_trips`). Build features from the *first* trip — product presence alone (baseline), and product presence plus rule features — and predict whether the *next* trip contains at least two of bread, butter and eggs. Compare the test AUC of a logistic regression with and without the rule features. Why must the target come from a different trip?
 
 **Solution:**
 
 ```python
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+from shared.mlfp04.ex_5 import generate_shopper_trips
 
-# Create rule-based features
-for i, rule in rules.head(10).iterrows():
-    items = list(rule["antecedents"]) + list(rule["consequents"])
-    col_name = f"rule_{i}"
-    # Add binary feature based on co-occurrence
-    # (implementation depends on data structure)
+this_trip, next_trip = generate_shopper_trips(n_shoppers=2500, seed=42)
+breakfast = {"bread", "butter", "eggs"}
+y = np.array([int(len(nxt & breakfast) >= 2) for nxt in next_trip])
 
-# Compare models
-scores_base = cross_val_score(LogisticRegression(), X_base, y, cv=5, scoring="roc_auc")
-scores_rules = cross_val_score(LogisticRegression(), X_with_rules, y, cv=5, scoring="roc_auc")
-print(f"Base AUC: {scores_base.mean():.3f}, With rules: {scores_rules.mean():.3f}")
+onehot = transactions_to_onehot(this_trip)
+trip_rules = rules_to_polars(association_rules(
+    fpgrowth(onehot.to_pandas(), min_support=0.03, use_colnames=True),
+    metric="lift", min_threshold=1.5,
+)).filter(pl.col("confidence") >= 0.4).head(20)
+
+def has_all(itemset_text):
+    return pl.all_horizontal([pl.col(item) for item in itemset_text.split(", ")])
+
+rule_features = onehot.select(
+    [has_all(r["antecedent"]).cast(pl.Int8).alias(f"rule{i}_antecedent")
+     for i, r in enumerate(trip_rules.iter_rows(named=True))]
+    + [(has_all(r["antecedent"]) & has_all(r["consequent"])).cast(pl.Int8).alias(f"rule{i}_full")
+       for i, r in enumerate(trip_rules.iter_rows(named=True))]
+)
+X_base = onehot.to_numpy().astype(np.float64)
+X_rules = np.hstack([X_base, rule_features.to_numpy().astype(np.float64)])
+
+for name, X_feat in [("products only", X_base), ("products + rules", X_rules)]:
+    X_tr, X_te, y_tr, y_te = train_test_split(X_feat, y, test_size=0.3,
+                                              random_state=42, stratify=y)
+    model = LogisticRegression(max_iter=1000).fit(X_tr, y_tr)
+    print(f"{name:<17} test AUC = {roc_auc_score(y_te, model.predict_proba(X_te)[:, 1]):.3f}")
+print(f"positive rate: {y.mean():.1%}, rule features: {rule_features.width}")
 ```
+
+The target must come from the next trip because a target computed from this trip's items — "the basket is big", "the basket contains the breakfast bundle" — is a function of the very columns the model sees, so a linear model recovers it almost perfectly and no feature can add anything (target leakage). With the honest next-trip target, the product-presence baseline has a test AUC of about 0.68 (Exercise 5.4 reports about 0.69 with its own rule miner) and adding the 40 rule features leaves it essentially unchanged (0.679 here). That is the realistic finding: rules mined from the same columns are mostly re-combinations of information a model already has; their value is interpretability and compact interaction terms for linear models, not a large accuracy gain. The same rules are not mined from the test rows' labels, but they are mined from all first trips — for a strict evaluation, mine them on the training rows only.
 
 ## Cross-References
 
@@ -1705,7 +1746,8 @@ You should now be able to:
 - Explain the Apriori principle and why it enables efficient pruning.
 - Compute support, confidence, and lift from a transaction database.
 - Distinguish between symmetric (lift) and asymmetric (confidence) measures.
-- Use discovered rules as features for supervised models.
+- Use discovered rules as features for supervised models, with a target that is not a function of those features.
+- Keep the mining pipeline in polars and convert to pandas only at a library boundary that requires it.
 - Evaluate whether a discovered rule is actionable in a business context.
 
 ---

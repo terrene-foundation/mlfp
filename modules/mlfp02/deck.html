@@ -2189,7 +2189,7 @@ asyncio.run(log_cuped())</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 1 min. This is the integration lesson. Students apply everything from M2 in a single project. Emphasise: this is the assessment. Quality matters. If beginners confused: "This lesson ties everything together. You choose a project and apply all the tools from the module." If experts bored: "The capstone includes FeatureStore integration with point-in-time correctness, which is a production-grade concern."
+    Timing: 1 min. This is the integration lesson. Students apply everything from M2 in a single project. Quality matters: the project is where you practise the end-to-end workflow the module assessment then tests task by task. If beginners confused: "This lesson ties everything together. You choose a project and apply all the tools from the module." If experts bored: "The capstone includes FeatureStore integration with point-in-time correctness, which is a production-grade concern."
   </aside>
 </section>
 
@@ -2213,13 +2213,13 @@ asyncio.run(log_cuped())</code></pre>
     <div class="col">
       <h3>Project Options</h3>
       <div class="callout callout-foundations">
-        <strong>Option A:</strong> Wine Quality Analysis &mdash; predict quality from chemical properties. Regression + feature engineering.
+        <strong>Option A:</strong> HDB Resale Valuation &mdash; typed features, point-in-time retrieval, regression with lineage (<code>hdb_resale.parquet</code>; the guided path in Exercise 8).
       </div>
       <div class="callout callout-theory" style="margin-top: 8px;">
-        <strong>Option B:</strong> Singapore Economic Indicators &mdash; model GDP growth from trade, employment, and inflation data.
+        <strong>Option B:</strong> Singapore Economic Indicators &mdash; model GDP growth from trade balance, unemployment and inflation (<code>economic_indicators.csv</code>).
       </div>
       <div class="callout callout-advanced" style="margin-top: 8px;">
-        <strong>Option C:</strong> Experiment Design &amp; Analysis &mdash; design, run, and analyse a complete A/B experiment with CUPED.
+        <strong>Option C:</strong> Experiment Design &amp; Analysis &mdash; SRM against the designed split, CUPED and a ship decision (<code>experiment_data.parquet</code>).
       </div>
     </div>
   </div>
@@ -2227,7 +2227,7 @@ asyncio.run(log_cuped())</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Present the three project options. Let students choose based on interest and confidence. Option A is the most structured. Option C is the most advanced. All three require the full pipeline. If beginners confused: "Option A has the most guidance. Start there if you feel uncertain." If experts bored: "Option C requires you to design the experiment, not just analyse given data. It is the closest to industry practice."
+    Timing: 3 min. Present the three project options; every one uses a dataset already in the course data folder. Option A follows Exercise 8 step by step, so it is the most structured. Option C is the most advanced. All three require the full pipeline. If beginners confused: "Option A has the most guidance: Exercise 8 walks you through it. Start there if you feel uncertain." If experts bored: "Option C asks you to defend a ship or no-ship decision from a four-arm experiment with a broken arm. It is the closest to industry practice."
   </aside>
 </section>
 
@@ -2250,28 +2250,39 @@ asyncio.run(log_cuped())</code></pre>
         <li><strong>Polynomial:</strong> $x^2$, $x^3$ for non-linear relationships</li>
         <li><strong>Aggregation:</strong> Rolling means, counts, ratios</li>
       </ul>
+      <div class="callout callout-foundations" style="margin-top: 8px;">
+        <strong>Domain knowledge drives feature engineering.</strong> Knowing that HDB prices depend on remaining lease, location and floor area beats any algorithm.
+      </div>
     </div>
     <div class="col">
-      <div class="callout callout-foundations">
-        <strong>Domain knowledge drives feature engineering.</strong> Knowing that HDB prices depend on remaining lease, proximity to MRT, and school zones is more valuable than any algorithm.
-      </div>
-      <pre style="margin-top: 12px;"><code class="language-python">from kailash_ml import FeatureEngineer
+      <pre style="font-size: 0.45em;"><code class="language-python">import polars as pl
+from kailash_ml import (FeatureEngineer,
+                        FeatureField, FeatureSchema)
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-fe = FeatureEngineer()
-df = fe.add_temporal(df, date_col="transaction_date")
-# Creates: day_of_week, month, quarter,
-# year, is_weekend, days_since_epoch
-df = fe.add_interaction(
-    df, col_a="floor_area", col_b="storey"
-)
-# Creates: floor_area_x_storey</code></pre>
+df = (load_hdb_resale().with_row_index("id")
+      .with_columns(pl.col("transaction_date")
+                    .cast(pl.Datetime)))
+schema = FeatureSchema(
+    name="hdb", entity_id_column="id",
+    features=[
+        FeatureField("floor_area_sqm", "float64"),
+        FeatureField("lease_commence_date", "int64"),
+        FeatureField("transaction_date", "datetime")])
+fe = FeatureEngineer(max_features=10)
+gen = fe.generate(df, schema,
+          strategies=["temporal", "interactions"])
+# + transaction_date_month / _dow / _hour,
+#   floor_area_sqm_x_lease_commence_date
+best = fe.select(gen.data, gen,
+                 target="resale_price", top_k=3)</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Feature engineering is the bridge to M3. Emphasise: this is a preview. M3.1 goes deep into FeatureEngineer. For now, show the concept and the Kailash engine. If beginners confused: "Feature engineering is adding columns that help the model make better predictions. We create new information from existing data." If experts bored: "FeatureEngineer also supports automated feature selection using mutual information and variance thresholds."
+    Timing: 3 min. Feature engineering is the bridge to M3. Emphasise: this is a preview; M3.1 goes deep. FeatureEngineer has two calls: generate() builds candidate columns from the fields declared in a FeatureSchema (strategies: interactions, polynomial, binning, temporal), and select() ranks the candidates against the target and keeps the top_k. Note that the schema here is the top-level kailash_ml.FeatureSchema; the FeatureStore uses its own schema class from kailash_ml.features (next slide). If beginners confused: "Feature engineering is adding columns that help the model make better predictions. We create new information from existing data." If experts bored: "select() uses tree-based importance by default, so it can favour features a linear model cannot use. Always sanity-check the ranking with domain knowledge."
   </aside>
 </section>
 
@@ -2294,37 +2305,45 @@ df = fe.add_interaction(
     <div class="col">
       <h3>FeatureStore Lifecycle</h3>
       <ul>
-        <li><strong>Register:</strong> Define features with their computation logic and timestamp</li>
-        <li><strong>Store:</strong> Versioned, timestamped feature values</li>
-        <li><strong>Retrieve:</strong> Get features as-of a specific point in time</li>
-        <li><strong>Lineage:</strong> Track where each feature came from</li>
+        <li><strong>Define:</strong> a typed <code>FeatureSchema</code> with entity id and timestamp</li>
+        <li><strong>Materialise:</strong> write timestamped values (returns a lineage hash)</li>
+        <li><strong>Retrieve:</strong> <code>get_features(schema, timestamp=T)</code></li>
       </ul>
-      <pre style="margin-top: 8px;"><code class="language-python">from kailash_ml import FeatureStore
+      <pre style="margin-top: 8px; font-size: 0.48em;"><code class="language-python">import asyncio
+from datetime import datetime
+from dataflow import DataFlow
+from kailash_ml.features import (FeatureField,
+    FeatureGroup, FeatureSchema, FeatureStore)
 
-store = FeatureStore()
-store.register_feature(
-    name="avg_monthly_revenue",
-    entity="user_id",
-    timestamp_col="as_of_date"
-)
-# Retrieve point-in-time correct features
-features = store.get_features(
-    entity_ids=user_ids,
-    as_of="2024-01-01"
-)</code></pre>
+schema = FeatureSchema(name="hdb_features",
+    fields=(FeatureField("floor_area_sqm", "float64"),),
+    entity_id_column="transaction_id",
+    timestamp_column="transaction_date")
+
+async def as_of(features, when):
+    store = FeatureStore(DataFlow("sqlite:///hdb.db"),
+                         default_tenant_id="_single")
+    await store.materialize(
+        FeatureGroup(schema, dataflow=store.dataflow),
+        features)
+    return await store.get_features(schema,
+                                    timestamp=when)
+
+# rows stamped after 1 Jan 2023 never come back
+snap = asyncio.run(as_of(features, datetime(2023, 1, 1)))</code></pre>
     </div>
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Point-in-time correctness is a production concern that students must understand early. Walk through the leakage example. If beginners confused: "When predicting the future, you cannot use future data. FeatureStore enforces this by only giving you data that existed at the time you are predicting." If experts bored: "FeatureStore supports offline and online serving, entity-based retrieval, and automatic feature drift detection."
+    Timing: 3 min. Point-in-time correctness is a production concern that students must understand early. Walk through the leakage example. The store persists features through DataFlow; materialize() writes them (an idempotent upsert keyed by entity id and timestamp) and get_features(schema, timestamp=T) returns only values stamped at or before T. The features frame needs an integer transaction_id, a Datetime transaction_date and the schema's fields; Exercise 8 builds it for you. Use the schema class from kailash_ml.features: the top-level kailash_ml.FeatureSchema is a different class that the store rejects. If beginners confused: "When predicting the future, you cannot use future data. FeatureStore enforces this by only giving you data that existed at the time you are predicting." If experts bored: "The timestamp filter only protects you if the timestamps are honest: a feature computed later but stamped earlier still leaks."
   </aside>
 </section>
 
 <!-- SLIDE 66: 2.8 FOUNDATIONS - Assessment Criteria -->
 <section>
-  <h2>Capstone Assessment Criteria</h2>
+  <h2>Capstone Project Rubric</h2>
   <span class="marker marker-foundations">FOUNDATIONS</span>
   <table>
     <thead>
@@ -2346,7 +2365,7 @@ features = store.get_features(
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Walk through each criterion. Emphasise: communication is 15% of the grade. A technically perfect analysis that cannot be explained to a non-technical audience is incomplete. If beginners confused: "Focus on the pipeline and interpretation. Get the basics right. The FeatureStore portion is a stretch goal." If experts bored: "The assessment is deliberately weighted toward interpretation and communication, not just code."
+    Timing: 2 min. This rubric is for the capstone project. The graded end-of-module assessment is separate: auto-graded coding tasks in the module's assessment folder (see the last slide). Walk through each criterion. Emphasise: communication is 15% of the project mark. A technically perfect analysis that cannot be explained to a non-technical audience is incomplete. If beginners confused: "Focus on the pipeline and interpretation. Get the basics right. The FeatureStore portion is a stretch goal." If experts bored: "The assessment is deliberately weighted toward interpretation and communication, not just code."
   </aside>
 </section>
 
@@ -2354,44 +2373,48 @@ features = store.get_features(
 <section class="code-fit">
   <h2>Capstone Workflow: Putting It All Together</h2>
   <span class="marker marker-theory">THEORY</span>
-  <pre style="font-size: 0.38em; line-height: 1.3"><code class="language-python">from kailash_ml import (
-    DataExplorer, FeatureEngineer, FeatureStore,
-    TrainingPipeline, ModelVisualizer, ExperimentTracker
-)
+  <pre style="font-size: 0.45em; line-height: 1.25"><code class="language-python">import asyncio
+import numpy as np
 import polars as pl
+from scipy import stats
+from kailash_ml import ExperimentTracker, ModelVisualizer
+from shared import run_profile
+from shared.mlfp02.ex_8 import load_hdb_resale
 
-# Step 1: Load
-df = pl.read_csv("data/wine_quality.csv")
+# 1 Load: HDB resales (Option A), sentinel prices dropped
+df = load_hdb_resale().filter(
+    pl.col("resale_price").is_between(100_000, 2_000_000))
+# 2 Describe
+profile = run_profile(df)
+# 3 Hypothesise: H0 "floor area has no effect on price"
+# 4-5 Test and model: OLS by the normal equations (Lesson 2.5)
+X = np.column_stack([np.ones(df.height), df["floor_area_sqm"].to_numpy()])
+y = df["resale_price"].to_numpy().astype(float)
+XtX_inv = np.linalg.inv(X.T @ X)
+beta = XtX_inv @ X.T @ y
+e = y - X @ beta
+se = np.sqrt(e @ e / (len(y) - 2) * np.diag(XtX_inv))
+t_area = beta[1] / se[1]
+p_area = 2 * stats.t.sf(abs(t_area), df=len(y) - 2)
+# 6 Interpret: check the residuals
+fig = ModelVisualizer().residuals(y, X @ beta)
 
-# Step 2: Describe
-explorer = DataExplorer()
-profile = explorer.profile(df)
+# 7 Report: log the run so every number is auditable
+async def log_run():
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_capstone",
+                             run_name="hdb_ols_area") as run:
+        await run.log_metrics({"beta_area": float(beta[1]),
+                               "t_area": float(t_area)})
+    await tracker.close()
 
-# Step 3-4: Hypothesise and Test
-tracker = ExperimentTracker()
-tracker.create_experiment(name="wine_quality_analysis",
-    hypothesis="Alcohol content positively affects quality")
-
-# Step 5: Engineer and Store Features
-fe = FeatureEngineer()
-df = fe.add_interaction(df, col_a="alcohol", col_b="volatile_acidity")
-store = FeatureStore()
-store.store_features(df, entity="wine_id", timestamp="analysis_date")
-
-# Step 6: Model
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="quality", model="linear_regression")
-
-# Step 7: Interpret and Report
-print(pipeline.summary())
-viz = ModelVisualizer()
-viz.residual_plot(pipeline)
-viz.coefficient_plot(pipeline)</code></pre>
+asyncio.run(log_run())</code></pre>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Walk through the complete workflow using the wine quality example. Each step maps to a Kailash engine. This is what the capstone submission looks like in code. If beginners confused: "This is the recipe. Follow it step by step with your chosen dataset." If experts bored: "The real challenge is the interpretation and business recommendation, not the code. Anyone can fit a model; explaining it is the hard part."
+    Timing: 3 min. Walk through the complete workflow using Option A (HDB resale valuation). On the cleaned data the slope is about 9,091 dollars per square metre with t of about 490: overwhelming evidence against H0, which is why the report must lead with the effect size, not the p-value. The feature engineering and FeatureStore steps from the previous two slides slot in between steps 2 and 4; Exercise 8 does the full version with point-in-time features and lineage. If beginners confused: "This is the recipe. Follow it step by step with your chosen dataset." If experts bored: "The real challenge is the interpretation and business recommendation, not the code. Anyone can fit a model; explaining it is the hard part."
   </aside>
 </section>
 
@@ -2405,14 +2428,14 @@ viz.coefficient_plot(pipeline)</code></pre>
         <table>
           <thead><tr><th>Lesson</th><th>Kailash Engine</th></tr></thead>
           <tbody>
-            <tr><td>2.1 Probability</td><td>ExperimentTracker (Bayesian)</td></tr>
-            <tr><td>2.2 Estimation</td><td>TrainingPipeline (MLE)</td></tr>
-            <tr><td>2.3 Bootstrap</td><td>ExperimentTracker (resampling)</td></tr>
-            <tr><td>2.4 A/B Testing</td><td>ExperimentTracker (lifecycle)</td></tr>
-            <tr><td>2.5 Linear Regression</td><td>TrainingPipeline + ModelVisualizer</td></tr>
-            <tr><td>2.6 Logistic Regression</td><td>TrainingPipeline + ModelVisualizer</td></tr>
-            <tr><td>2.7 CUPED / DiD</td><td>ExperimentTracker (CUPED)</td></tr>
-            <tr><td>2.8 Capstone</td><td>FeatureEngineer + FeatureStore</td></tr>
+            <tr><td>2.1 Probability</td><td>ExperimentTracker (log the posterior)</td></tr>
+            <tr><td>2.2 Estimation</td><td>ModelVisualizer (check the fit)</td></tr>
+            <tr><td>2.3 Bootstrap</td><td>ModelVisualizer (bootstrap histogram)</td></tr>
+            <tr><td>2.4 A/B Testing</td><td>ExperimentTracker (design, SRM, decision)</td></tr>
+            <tr><td>2.5 Linear Regression</td><td>FeatureEngineer + ModelVisualizer</td></tr>
+            <tr><td>2.6 Logistic Regression</td><td>ModelVisualizer (ROC, confusion matrix)</td></tr>
+            <tr><td>2.7 CUPED / DiD</td><td>ExperimentTracker (log the adjustment)</td></tr>
+            <tr><td>2.8 Capstone</td><td>FeatureEngineer + FeatureStore + ExperimentTracker</td></tr>
           </tbody>
         </table>
       </div>
@@ -2424,7 +2447,7 @@ viz.coefficient_plot(pipeline)</code></pre>
       <div class="callout callout-theory" style="margin-top: 12px;">
         <strong>Key engines in M3:</strong>
         <ul style="font-size: 0.85em; margin-top: 4px;">
-          <li>TrainingPipeline (expanded)</li>
+          <li>TrainingPipeline</li>
           <li>HyperparameterSearch</li>
           <li>ModelRegistry</li>
           <li>PreprocessingPipeline</li>
@@ -2436,7 +2459,7 @@ viz.coefficient_plot(pipeline)</code></pre>
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Recap the full lesson-to-engine mapping. Show students that every lesson connects to a Kailash engine. Preview M3 to build anticipation. If beginners confused: "This table is your cheat sheet. Each lesson taught you a concept; each engine automates it." If experts bored: "M3 introduces the ML pipeline pattern: preprocessing, feature engineering, model selection, hyperparameter tuning, evaluation, and deployment."
+    Timing: 2 min. Recap the full lesson-to-engine mapping. Show students that every lesson connects to a Kailash engine, and be precise about the division of labour: in M2 you compute the statistics; the engines log runs, build and store features, and draw plots. TrainingPipeline, which trains and registers ML models, takes centre stage in M3. Preview M3 to build anticipation. If beginners confused: "This table is your cheat sheet. Each lesson taught you a concept; each engine is the tool you pair it with." If experts bored: "M3 introduces the ML pipeline pattern: preprocessing, feature engineering, model selection, hyperparameter tuning, evaluation, and deployment."
   </aside>
 </section>
 
@@ -2867,7 +2890,7 @@ viz.coefficient_plot(pipeline)</code></pre>
         <strong>Heteroscedasticity:</strong> If the residual spread increases with the predicted value (funnel shape), your standard errors are wrong and t-statistics are unreliable. Fix: use robust standard errors or transform the target ($\log y$).
       </div>
       <div class="callout callout-theory" style="margin-top: 12px;">
-        <strong>ModelVisualizer automates this:</strong> <code>viz.residual_plot(pipeline)</code> creates residuals vs fitted, Q-Q, and scale-location plots in one call.
+        <strong>ModelVisualizer helps:</strong> <code>viz.residuals(y_true, y_pred)</code> draws predicted-vs-actual and the residual histogram. The residuals-vs-fitted and Q-Q plots you build yourself in Exercise 5.2.
       </div>
     </div>
   </div>

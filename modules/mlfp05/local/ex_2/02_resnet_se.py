@@ -164,19 +164,19 @@ class ResBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        # TODO: Build residual block — two Conv2d(channels, channels, 3, padding=1)
-        #   with BatchNorm2d after each conv
+        # TODO: Build residual block — two 3x3 convs that keep the channel
+        #   count AND the spatial size ("same" padding), each with its own
+        #   batch norm, so the output can be added back to the input
         self.conv1 = ____
         self.bn1 = ____
         self.conv2 = ____
         self.bn2 = ____
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement residual forward pass
-        #   1. Save identity = x
-        #   2. out = ReLU(bn1(conv1(x)))
-        #   3. out = bn2(conv2(out))
-        #   4. return ReLU(out + identity)  <-- the skip connection
+        # TODO: Implement residual forward pass (identity already saved below)
+        #   1. First conv -> its batch norm -> ReLU
+        #   2. Second conv -> its batch norm (NO activation yet)
+        #   3. Add the saved identity, THEN apply ReLU  <-- the skip connection
         identity = x
         out = ____
         out = ____
@@ -194,8 +194,9 @@ class SEBlock(nn.Module):
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
         hidden = max(channels // reduction, 4)
-        # TODO: Build the SE MLP — nn.Sequential with:
-        #   Linear(channels, hidden), ReLU(), Linear(hidden, channels), Sigmoid()
+        # TODO: Build the SE MLP — a bottleneck: channels -> hidden (ReLU)
+        #   -> back to channels, ending in a sigmoid so each channel gets a
+        #   weight in (0, 1)
         self.fc = nn.Sequential(
             ____,
         )
@@ -203,9 +204,11 @@ class SEBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, _, _ = x.shape
         # TODO: Implement squeeze-excite-scale
-        #   1. Squeeze: adaptive_avg_pool2d(x, 1).view(b, c)  -> one number per channel
-        #   2. Excite: self.fc(s).view(b, c, 1, 1)  -> per-channel weights
-        #   3. Scale: x * w  -> re-weight each feature map
+        #   1. Squeeze s: global average pool over H and W -> shape (b, c),
+        #      one number per channel
+        #   2. Excite w: run s through self.fc, reshape to (b, c, 1, 1) so it
+        #      broadcasts over the spatial dims -> per-channel weights
+        #   3. Scale: re-weight each feature map of x by its channel weight
         s = ____
         w = ____
         return ____
@@ -222,12 +225,14 @@ class ResNetSE(nn.Module):
 
     def __init__(self, n_classes: int = N_CLASSES):
         super().__init__()
-        # TODO: Build the stem — nn.Sequential with Conv2d(3, 32, 3, padding=1),
-        #   BatchNorm2d(32), ReLU(), MaxPool2d(2)
+        # TODO: Build the stem — 3x3 conv 3 -> 32 channels ("same" padding)
+        #   -> batch norm -> ReLU -> 2x2 max-pool [spatial: 32 -> 16]
         self.stem = nn.Sequential(
             ____,
         )
         # TODO: Wire up ResBlock -> SEBlock -> ResBlock -> pool -> classifier
+        #   All blocks work on the stem's 32 channels; pool = global average
+        #   pool to 1x1; classifier maps 32 features to n_classes logits
         self.block1 = ____
         self.se1 = ____
         self.block2 = ____
@@ -235,7 +240,7 @@ class ResNetSE(nn.Module):
         self.fc = ____
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Forward pass through stem -> block1 -> se1 -> block2 -> pool -> fc
+        # TODO: Forward pass — apply block1, se1 and block2 in that order
         x = self.stem(x)
         x = ____
         x = ____
@@ -282,8 +287,9 @@ X_train, y_train, X_val, y_val, train_loader, val_loader = load_cifar10()
 conn, tracker, exp_name, registry, has_registry = init_engines()
 
 # TODO: Train ResNetSE
-#   1. Instantiate ResNetSE()
-#   2. Call train_model(model, "ResNetSE", tracker, exp_name, train_loader, val_loader, epochs=EPOCHS)
+#   1. resnet_se: a fresh ResNetSE
+#   2. Train it with train_model (run name "ResNetSE", same tracker,
+#      experiment, loaders and EPOCHS as SimpleCNN in 01)
 print(f"\nTraining ResNetSE for {EPOCHS} epochs on {X_train.shape[0]:,} images...")
 resnet_se = ____
 resnet_losses, resnet_accs = ____
@@ -336,7 +342,7 @@ class SimpleCNN(nn.Module):
 
     def __init__(self, n_classes: int = N_CLASSES):
         super().__init__()
-        # TODO: Same SimpleCNN as 01 — Conv(3->32)->BN->ReLU->MaxPool, Conv(32->64)->BN->ReLU->MaxPool
+        # Same SimpleCNN as 01 — Conv(3->32)->BN->ReLU->MaxPool, Conv(32->64)->BN->ReLU->MaxPool
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
@@ -407,14 +413,17 @@ print("\n--- Checkpoint 2 passed --- ResNetSE trained and compared\n")
 
 # Register in ModelRegistry
 if has_registry:
-    # TODO: Register the trained ResNetSE model
-    #   register_model(registry, "resnet_se_cifar10", resnet_se, resnet_losses[-1], resnet_accs[-1])
+    # TODO: Register the trained ResNetSE model with register_model under the
+    #   name "resnet_se_cifar10", with its final-epoch loss and val accuracy
     resnet_version = ____
 
 # Save comparison plots
 viz = create_visualizer()
-# TODO: Save loss and accuracy comparison plots
-#   save_training_plots(viz, {"SimpleCNN loss": ..., "ResNetSE loss": ...}, filename, y_label=...)
+# TODO: Save loss and accuracy comparison plots with save_training_plots
+#   One call per metric, each overlaying BOTH models' curves in one dict
+#   (e.g. keys "SimpleCNN loss" / "ResNetSE loss").
+#   Files: "ex_2_02_arch_comparison_loss.html" (Training Loss) and
+#          "ex_2_02_arch_comparison_acc.html" (Validation Accuracy)
 ____
 ____
 
@@ -477,10 +486,10 @@ def compute_gradcam(
     model.eval()
     model.zero_grad()
 
-    # TODO: Forward + backward pass for Grad-CAM
-    #   1. output = model(input_tensor)
-    #   2. target_score = output[0, target_class]
-    #   3. target_score.backward()
+    # TODO: Forward pass for Grad-CAM, then pick the target class's logit
+    #   1. output: the model's logits for input_tensor (batch of 1)
+    #   2. target_score: the scalar logit for target_class (the backward
+    #      pass below differentiates this score, not the loss)
     output = ____
     target_score = ____
     target_score.backward()
@@ -489,13 +498,13 @@ def compute_gradcam(
     fh.remove()
 
     # TODO: Compute the Grad-CAM heatmap
-    #   1. grads = gradients[0].squeeze(0)  — shape (C, H, W)
-    #   2. acts = activations[0].squeeze(0)  — shape (C, H, W)
-    #   3. weights = grads.mean(dim=(1, 2))  — average gradient per channel
-    #   4. cam = (weights.unsqueeze(1).unsqueeze(2) * acts).sum(dim=0)  — weighted sum
-    #   5. cam = F.relu(cam)  — only positive contributions
-    #   6. Normalise to [0, 1]: if cam.max() > 0: cam = cam / cam.max()
-    #   7. Upsample: F.interpolate(cam[None, None], size=(H, W), mode="bilinear", align_corners=False).squeeze()
+    #   1. grads, acts: the hooked gradient and activation for the target
+    #      layer, with the batch dim dropped — each shape (C, H, W)
+    #   2. weights: one importance number per channel = the spatial mean of
+    #      that channel's gradient — shape (C,)
+    #   3. cam: sum over channels of (channel weight x activation map) —
+    #      shape (H, W); reshape weights so they broadcast over H and W
+    #   (ReLU, normalisation to [0, 1] and upsampling are done for you below)
     grads = ____
     acts = ____
     weights = ____
@@ -539,8 +548,8 @@ for col, idx in enumerate(sample_indices):
         pred_name = CLASS_NAMES[pred_label]
         conf = F.softmax(logits, dim=-1)[0, pred_label].item()
 
-    # TODO: Compute Grad-CAM for predicted class
-    #   heatmap = compute_gradcam(resnet_se, img, pred_label, target_layer)
+    # TODO: Compute the Grad-CAM heatmap for the PREDICTED class using
+    #   compute_gradcam on resnet_se at target_layer
     heatmap = ____
 
     # Row 0: Original image

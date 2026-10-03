@@ -151,14 +151,15 @@ class ResBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        # TODO: Two Conv2d(channels, channels, 3, padding=1) with BatchNorm2d
+        # TODO: Same residual block as 02 — two shape-preserving 3x3 convs,
+        #   each followed by its own batch norm
         self.conv1 = ____
         self.bn1 = ____
         self.conv2 = ____
         self.bn2 = ____
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: identity = x, apply conv->bn->relu->conv->bn, return relu(out + identity)
+        # TODO: conv->bn->relu, conv->bn, then add the identity BEFORE the final ReLU
         identity = x
         out = ____
         out = ____
@@ -171,14 +172,16 @@ class SEBlock(nn.Module):
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
         hidden = max(channels // reduction, 4)
-        # TODO: SE MLP — Linear(channels, hidden), ReLU, Linear(hidden, channels), Sigmoid
+        # TODO: SE MLP — bottleneck channels -> hidden -> channels, ReLU in the
+        #   middle, sigmoid at the end (same as 02)
         self.fc = nn.Sequential(
             ____,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, _, _ = x.shape
-        # TODO: squeeze -> excite -> scale
+        # TODO: squeeze (global avg pool -> (b, c)) -> excite (self.fc, reshape
+        #   to (b, c, 1, 1)) -> scale x channel-wise
         s = ____
         w = ____
         return ____
@@ -189,7 +192,9 @@ class ResNetSE(nn.Module):
 
     def __init__(self, n_classes: int = N_CLASSES):
         super().__init__()
-        # TODO: stem (Conv->BN->ReLU->MaxPool), block1, se1, block2, pool, fc
+        # TODO: Same layers as ResNetSE in 02 — stem (3x3 conv 3->32, BN, ReLU,
+        #   2x2 max-pool), block1, se1, block2 on 32 channels, global average
+        #   pool, linear classifier 32 -> n_classes
         self.stem = nn.Sequential(
             ____,
         )
@@ -209,9 +214,8 @@ X_train, y_train, X_val, y_val, train_loader, val_loader = load_cifar10()
 conn, tracker, exp_name, registry, has_registry = init_engines()
 
 # TODO: Train ResNetSE
-#   resnet_se = ResNetSE()
-#   resnet_losses, resnet_accs = train_model(resnet_se, "ResNetSE_for_export",
-#       tracker, exp_name, train_loader, val_loader, epochs=EPOCHS)
+#   resnet_se: a fresh ResNetSE; resnet_losses, resnet_accs from train_model
+#   with the run name "ResNetSE_for_export" (same arguments as in 02)
 print(f"\nTraining ResNetSE for ONNX export ({EPOCHS} epochs)...")
 resnet_se = ____
 resnet_losses, resnet_accs = ____
@@ -455,11 +459,9 @@ N_BENCHMARK = 100
 single_image = X_val[:1]
 batch_16 = X_val[:16]
 
-# TODO: Benchmark PyTorch latency
-#   1. Warmup: 10 forward passes on single_image
-#   2. Time N_BENCHMARK single-image passes -> pt_latencies_single (ms)
-#   3. Time N_BENCHMARK batch-16 passes -> pt_latencies_batch (ms)
-#   Use time.perf_counter() for timing; multiply by 1000 for ms
+# TODO: Benchmark PyTorch latency — the warmup and timing scaffold is
+#   given; inside each timed loop, run ONE forward pass of resnet_se on the
+#   matching input (single_image, then batch_16)
 resnet_se.eval()
 pt_latencies_single = []
 pt_latencies_batch = []
@@ -479,7 +481,8 @@ with torch.no_grad():
         ____
         pt_latencies_batch.append((time.perf_counter() - t0) * 1000)
 
-# TODO: Benchmark ONNX Runtime latency (same pattern with ort_session.run)
+# TODO: Benchmark ONNX Runtime latency — same pattern; each timed step is
+#   one ort_session.run on the matching numpy input (see the warmup loop)
 ort_latencies_single = []
 ort_latencies_batch = []
 
@@ -626,12 +629,10 @@ LATENCY_SLA_MS = 100
 MODEL_LATENCY_BUDGET_MS = 30
 
 # TODO: Calculate deployment sizing from your benchmark data
-#   1. avg_per_second = DAILY_LISTINGS / (24 * 3600)
-#   2. peak_per_second = avg_per_second * PEAK_MULTIPLIER
-#   3. Pick the runtime (ONNX if available, else PyTorch)
-#   4. Calculate images_per_sec_per_replica from your latency data
-#   5. With batching: batched_per_sec = 1000 / (batch_mean_ms / 16)
-#   6. replicas_for_peak = ceil(peak_per_second / batched_per_sec), min 2
+#   1. avg_per_second: DAILY_LISTINGS spread evenly over a day, per second
+#   2. peak_per_second: the average scaled by PEAK_MULTIPLIER
+#   (runtime choice, per-replica throughput and replicas_for_peak — at
+#    least 2 for redundancy — are computed for you below)
 avg_per_second = ____
 peak_per_second = ____
 
@@ -652,14 +653,13 @@ else:
 replicas_for_peak = int(np.ceil(peak_per_second / batched_per_sec))
 replicas_for_peak = max(replicas_for_peak, 2)
 
-# TODO: Calculate costs (Singapore cloud pricing)
-#   CPU_COST_PER_HOUR = 0.05  (illustrative rate, 2 vCPU instance)
-#   GPU_COST_PER_HOUR = 0.90  (illustrative rate, T4-class GPU instance)
-#   cpu_replicas = max(replicas_for_peak * 2, 4)
-#   cpu_monthly = cpu_replicas * CPU_COST_PER_HOUR * 24 * 30
-#   gpu_monthly = replicas_for_peak * GPU_COST_PER_HOUR * 24 * 30
-#   cost_per_inference_cpu = cpu_monthly / (DAILY_LISTINGS * 30)
-#   cost_per_inference_gpu = gpu_monthly / (DAILY_LISTINGS * 30)
+# TODO: Calculate costs (Singapore cloud pricing; rates below are
+#   illustrative: 2 vCPU instance for CPU, T4-class instance for GPU)
+#   cpu_replicas: CPU is slower, so plan twice the GPU replica count,
+#     with a floor of 4
+#   cpu_monthly / gpu_monthly: replicas x hourly rate, running 24 hours a
+#     day for a 30-day month (GPU uses replicas_for_peak)
+#   cost_per_inference_cpu / _gpu: monthly cost / listings served per month
 CPU_COST_PER_HOUR = 0.05
 GPU_COST_PER_HOUR = 0.90
 

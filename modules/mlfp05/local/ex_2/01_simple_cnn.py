@@ -156,22 +156,22 @@ class SimpleCNN(nn.Module):
 
     def __init__(self, n_classes: int = N_CLASSES):
         super().__init__()
-        # TODO: Build the feature extraction backbone — nn.Sequential with:
-        #   Block 1: Conv2d(3, 32, kernel_size=3, padding=1), BatchNorm2d(32),
-        #            ReLU(), MaxPool2d(2)   [spatial: 32 -> 16]
-        #   Block 2: Conv2d(32, 64, kernel_size=3, padding=1), BatchNorm2d(64),
-        #            ReLU(), MaxPool2d(2)   [spatial: 16 -> 8]
+        # TODO: Build the feature extraction backbone — two conv blocks, each:
+        #   3x3 conv with "same" padding -> batch norm -> ReLU -> 2x2 max-pool
+        #   Block 1: 3 (RGB) -> 32 channels   [spatial: 32 -> 16]
+        #   Block 2: 32 -> 64 channels        [spatial: 16 -> 8]
         self.features = nn.Sequential(
             ____,
         )
-        # TODO: Build the classification head — nn.Sequential with:
-        #   Flatten(), Linear(64 * 8 * 8, 128), ReLU(), Linear(128, n_classes)
+        # TODO: Build the classification head — flatten the (64, 8, 8) feature
+        #   maps, then a fully-connected layer to 128 units, ReLU, and a final
+        #   fully-connected layer to n_classes logits
         self.head = nn.Sequential(
             ____,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Pass through features then head
+        # TODO: Run x through the backbone, then the head; return the logits
         return ____
 
 
@@ -222,9 +222,10 @@ print("--- Checkpoint 2 passed --- CIFAR-10 loaded (50K train, 10K val)\n")
 conn, tracker, exp_name, registry, has_registry = init_engines()
 
 # TODO: Train SimpleCNN
-#   1. Instantiate SimpleCNN()
-#   2. Call train_model(model, name, tracker, exp_name, train_loader, val_loader, epochs=EPOCHS)
-#   3. train_model returns (losses_list, accs_list)
+#   1. simple_cnn: a fresh SimpleCNN
+#   2. Train it with the train_model helper (run name "SimpleCNN", the tracker
+#      and experiment from init_engines, both loaders, EPOCHS epochs)
+#   3. train_model returns (per-epoch losses, per-epoch val accuracies)
 print(f"\nTraining SimpleCNN for {EPOCHS} epochs on {X_train.shape[0]:,} images...")
 simple_cnn = ____
 simple_losses, simple_accs = ____
@@ -306,16 +307,18 @@ print("--- Checkpoint 3 passed --- SimpleCNN trained successfully\n")
 if has_registry:
     from shared.mlfp05.ex_2 import register_model
 
-    # TODO: Register the trained model
-    #   register_model(registry, "simple_cnn_cifar10", simple_cnn,
-    #                  simple_losses[-1], simple_accs[-1])
+    # TODO: Register the trained model with the register_model helper under
+    #   the name "simple_cnn_cifar10", passing the FINAL epoch's loss and
+    #   val accuracy as its metrics
     simple_version = ____
 
 # Save training curves
 viz = create_visualizer()
-# TODO: Save loss and accuracy plots using save_training_plots
+# TODO: Save loss and accuracy plots using save_training_plots (two calls)
 #   Args: (viz, metrics_dict, output_filename, y_label=...)
 #   metrics_dict format: {"label": list_of_values}
+#   Files: "ex_2_01_simple_cnn_loss.html" (Training Loss) and
+#          "ex_2_01_simple_cnn_acc.html" (Validation Accuracy)
 ____
 ____
 
@@ -336,7 +339,7 @@ print("  PHASE 4 — VISUALISE: What Did the CNN Learn?")
 print("=" * 70)
 
 # 4a. Visualise Layer 1 learned filters (3x3 RGB filters)
-# TODO: Extract layer 1 weights — simple_cnn.features[0].weight.data.cpu()
+# TODO: Extract the first conv layer's weight tensor (detached, on CPU)
 #   Shape will be (32, 3, 3, 3) — 32 filters, each 3x3 RGB
 layer1_weights = ____
 
@@ -346,9 +349,9 @@ fig_filters.suptitle(
 )
 for i, ax in enumerate(axes.flat):
     if i < layer1_weights.shape[0]:
-        # TODO: Normalise filter to [0, 1] for display
-        #   Get filter i from layer1_weights, normalise: (f - f.min()) / (f.max() - f.min() + 1e-8)
-        #   Then ax.imshow(filt.permute(1, 2, 0).numpy())
+        # TODO: Take filter i from layer1_weights, then min-max scale it to
+        #   [0, 1] for display (add a tiny epsilon to the range to avoid
+        #   dividing by zero on a flat filter)
         filt = ____
         filt = ____
         ax.imshow(filt.permute(1, 2, 0).numpy())
@@ -384,9 +387,9 @@ def hook_fn(name):
 
 
 handles = []
-# TODO: Register hooks on the 4 layers listed above
-#   handles.append(simple_cnn.features[0].register_forward_hook(hook_fn("conv1_raw")))
-#   ... (repeat for indices 2, 4, 6 with names conv1_relu, conv2_raw, conv2_relu)
+# TODO: Register hooks on the 4 layers listed above — one
+#   register_forward_hook per layer, using hook_fn(<name>) as the hook, and
+#   append every returned handle to handles so it can be removed later
 ____
 ____
 ____
@@ -416,7 +419,8 @@ axes[0, 0].set_title("Original", fontsize=9)
 axes[0, 0].axis("off")
 conv1_maps = feature_maps["conv1_relu"].squeeze(0)  # (32, 32, 32)
 for i in range(8):
-    # TODO: imshow conv1_maps[i] with cmap="viridis"
+    # TODO: Show feature map i of conv1_maps in the next column of row 0
+    #   (same style as Row 1 below, cmap="viridis")
     ____
     axes[0, i + 1].set_title(f"L1 F{i}", fontsize=8)
     axes[0, i + 1].axis("off")
@@ -535,13 +539,13 @@ LOW_CONFIDENCE_THRESHOLD = 0.50
 
 ECOMMERCE_MAPPING = {____}
 
-# TODO: Run inference on all validation images
-#   with torch.no_grad():
-#     val_logits = simple_cnn(X_val)
-#     val_probs = F.softmax(val_logits, dim=-1)
-#     val_preds = val_logits.argmax(dim=-1)
-#     val_confidences = val_probs.gather(1, val_preds.unsqueeze(1)).squeeze()
-#     val_correct = (val_preds == y_val).float()
+# TODO: Run inference on all validation images (no gradients)
+#   val_logits: model outputs for X_val, shape (N, 10)
+#   val_probs: class probabilities (softmax over the class dimension)
+#   val_preds: index of the highest-scoring class per image
+#   val_confidences: the probability of each image's PREDICTED class, shape (N,)
+#     (torch.gather picks one column per row)
+#   val_correct: 1.0 where the prediction matches y_val, else 0.0
 with torch.no_grad():
     val_logits = ____
     val_probs = ____
@@ -551,7 +555,7 @@ with torch.no_grad():
 
 # TODO: Create triage masks based on confidence thresholds
 #   auto_approve_mask: confidences >= HIGH threshold
-#   review_mask: confidences >= LOW threshold AND < HIGH threshold
+#   review_mask: confidences >= LOW threshold AND not auto-approved
 #   reject_mask: confidences < LOW threshold
 auto_approve_mask = ____
 review_mask = ____

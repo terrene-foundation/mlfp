@@ -140,7 +140,8 @@ class ResBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        # TODO: Two Conv2d(channels, channels, 3, padding=1) with BatchNorm2d
+        # TODO: Same residual block as 02 — two shape-preserving 3x3 convs,
+        #   each followed by its own batch norm
         self.conv1 = ____
         self.bn1 = ____
         self.conv2 = ____
@@ -160,7 +161,7 @@ class SEBlock(nn.Module):
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
         hidden = max(channels // reduction, 4)
-        # TODO: SE MLP — Linear->ReLU->Linear->Sigmoid
+        # TODO: SE MLP — bottleneck channels -> hidden -> channels (same as 02)
         self.fc = nn.Sequential(
             ____,
         )
@@ -253,9 +254,10 @@ async def train_lr_sweep_async(lr: float) -> tuple[list[float], list[float]]:
             }
         )
 
-        # TODO: Fit the trainer then log all epoch metrics
-        #   trainer.fit(lit, train_loader, val_loader)
-        #   Loop through lit.train_losses and lit.val_accs to log each epoch
+        # TODO: Fit the Lightning trainer on the module with the train and val
+        #   loaders, then log every epoch's value from lit.train_losses and
+        #   lit.val_accs with run.log_metric (async), as "train_loss" and
+        #   "val_accuracy", using 1-based epoch numbers as the step
         ____
 
         for epoch_idx, loss in enumerate(lit.train_losses):
@@ -332,9 +334,11 @@ print("  " + "-" * 60)
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# TODO: Create augmented and non-augmented transforms
-#   augmented_transform: T.Compose([T.RandomHorizontalFlip(0.5), T.RandomCrop(32, padding=4), T.ToTensor()])
-#   no_aug_transform: T.Compose([T.ToTensor()])
+# TODO: Create augmented and non-augmented transforms (torchvision T.*)
+#   augmented_transform: random horizontal flip (probability 0.5), then a
+#     random 32x32 crop after padding 4 pixels on each side, then conversion
+#     to a tensor
+#   no_aug_transform: tensor conversion only
 augmented_transform = T.Compose(
     [
         ____,
@@ -405,8 +409,9 @@ def _ce_loss(m, batch):
 
 
 # TODO: Train with best LR from sweep, comparing augmented vs non-augmented
-#   Loop over [("no_augmentation", noaug_loader), ("flip_crop", aug_loader)]
-#   For each: model = ResNetSE(), train_model(model, name, tracker, ..., lr=best_lr, epochs=HP_EPOCHS)
+#   For each (aug_name, loader): a fresh ResNetSE, trained with train_model
+#   on that loader (validated on val_loader) at lr=best_lr for HP_EPOCHS;
+#   run name f"aug_{aug_name}"
 aug_results: dict[str, dict] = {}
 
 for aug_name, loader in [("no_augmentation", noaug_loader), ("flip_crop", aug_loader)]:
@@ -476,7 +481,10 @@ print("=" * 70)
 viz = create_visualizer()
 
 # TODO: Save training plots for LR sweep and augmentation comparison
-#   Use save_training_plots for: lr_sweep_loss, lr_sweep_acc, augmentation_loss, augmentation_acc
+#   Four save_training_plots calls; each metrics dict has one labelled curve
+#   per run (build it from lr_results / aug_results with a comprehension).
+#   Files: "ex_2_04_lr_sweep_loss.html", "ex_2_04_lr_sweep_acc.html",
+#          "ex_2_04_augmentation_loss.html", "ex_2_04_augmentation_acc.html"
 ____
 ____
 ____
@@ -614,9 +622,9 @@ print("=" * 70)
 
 # TODO: Calculate actual compute costs from your experiments
 #   GPU_COST_PER_HOUR = 4.20  (illustrative single-V100-class instance, Singapore)
-#   total_experiment_time = sum of all experiment times
-#   total_experiment_hours = total_experiment_time / 3600
-#   total_experiment_cost = total_experiment_hours * GPU_COST_PER_HOUR
+#   total_experiment_time: seconds summed over EVERY run — both the LR
+#     sweep (lr_results) and the augmentation runs (aug_results) store
+#     "time_sec"
 GPU_COST_PER_HOUR = 4.20
 
 total_experiment_time = ____
@@ -630,13 +638,12 @@ best_overall = max(all_accs, key=lambda x: x[1])
 worst_overall = min(all_accs, key=lambda x: x[1])
 
 # TODO: Project production costs
-#   RETRAIN_EPOCHS = 20, RETRAIN_PER_MONTH = 4 (weekly)
-#   avg_time_per_epoch = total_experiment_time / (total number of epochs across all runs)
-#   retrain_time_hours = (RETRAIN_EPOCHS * avg_time_per_epoch) / 3600
-#   retrain_cost_per_run = retrain_time_hours * GPU_COST_PER_HOUR
-#   monthly_retrain_cost = retrain_cost_per_run * RETRAIN_PER_MONTH
-#   hp_search_time_hours = (10 configs * HP_EPOCHS * avg_time_per_epoch) / 3600
-#   hp_search_cost = hp_search_time_hours * GPU_COST_PER_HOUR
+#   RETRAIN_EPOCHS = 20, RETRAIN_PER_MONTH = 4 (weekly); avg_time_per_epoch
+#   is computed for you from the experiments above.
+#   retrain_time_hours: wall-clock hours for one RETRAIN_EPOCHS retrain
+#   retrain_cost_per_run, monthly_retrain_cost: priced at GPU_COST_PER_HOUR
+#   hp_search_time_hours: a monthly search of 10 configurations x HP_EPOCHS
+#   hp_search_cost: that search priced at GPU_COST_PER_HOUR
 RETRAIN_EPOCHS = 20
 RETRAIN_PER_MONTH = 4
 avg_time_per_epoch = total_experiment_time / (

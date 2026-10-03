@@ -85,10 +85,17 @@ def make_synthetic_gmm(
 # REAL DATA — Singapore e-commerce customers
 # ════════════════════════════════════════════════════════════════════════
 #
-# We reuse the MLFP03 e-commerce customer dataset (~6K rows, Singapore)
-# for every real-data task in this exercise. Segmentation is the business
+# We reuse the MLFP03 e-commerce customer dataset (50,000 Singapore
+# customers, 7 numeric behavioural features) for every real-data task in
+# this exercise. ``churned`` is an outcome label, so it is kept in the
+# DataFrame for post-hoc segment profiling but excluded from the features. Segmentation is the business
 # frame: the GMM will propose soft customer segments that marketing can
 # score on expected value.
+
+
+# ``churned`` is the outcome we may later want to explain — never a
+# segmentation input.
+NON_FEATURE_COLS: tuple[str, ...] = ("customer_id", "churned")
 
 
 def load_customers_scaled() -> (
@@ -106,7 +113,7 @@ def load_customers_scaled() -> (
     feature_cols = [
         c
         for c, d in zip(customers.columns, customers.dtypes)
-        if d in numeric_types and c not in ("customer_id",)
+        if d in numeric_types and c not in NON_FEATURE_COLS
     ]
     customers = customers.drop_nulls(subset=feature_cols)
     X, _, _ = to_sklearn_input(customers, feature_columns=feature_cols)

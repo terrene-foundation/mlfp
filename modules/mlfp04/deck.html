@@ -323,6 +323,11 @@
         <li>Merge two closest clusters</li>
         <li>Repeat until one cluster remains</li>
       </ol>
+      <h3>Divisive (top-down)</h3>
+      <ol style="font-size: 0.85em;">
+        <li>All points = one cluster</li>
+        <li>Split it recursively (e.g., bisecting K-means)</li>
+      </ol>
     </div>
     <div class="col">
       <h3>Linkage Methods</h3>
@@ -342,7 +347,7 @@
     <span>MLFP Module 4 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 3 min. Explain each linkage method with a visual analogy. Ward's is usually the best default. Dendrograms are unique to hierarchical clustering &mdash; they let you see the full merge history and decide k after the fact.
+    Timing: 3 min. Two directions: agglomerative merges bottom-up (the common one, and what scipy's linkage computes); divisive starts with everything in one cluster and splits top-down. Exhaustive divisive splitting is exponential, so in practice each split is heuristic &mdash; bisecting K-means is the usual choice. Explain each linkage method with a visual analogy. Ward's is usually the best default. Dendrograms are unique to hierarchical clustering &mdash; they let you see the full merge history and decide k after the fact.
   </aside>
 </section>
 

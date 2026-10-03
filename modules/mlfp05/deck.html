@@ -3378,6 +3378,48 @@ print(v.valid, v.max_diff)</code></pre>
   </aside>
 </section>
 
+<!-- SLIDE 36b: Stacked/Residual LSTMs + Spatial Attention (spec 5.3) -->
+<section>
+  <h2>Going Deeper: Stacked LSTMs &amp; Spatial Attention</h2>
+  <span class="marker marker-advanced">Advanced</span>
+  <div class="columns">
+    <div class="col">
+      <h3>Multi-Layer with Residuals</h3>
+      <p class="small">Stack LSTMs so layer 2 reads layer 1&rsquo;s hidden states. Beyond 2&ndash;3 layers, add a residual + LayerNorm around each one &mdash; the same trick as ResNet (5.2).</p>
+      <pre style="font-size: 0.46em; line-height: 1.3"><code class="language-python">class ResidualLSTM(nn.Module):
+    def __init__(self, d, n_layers=3):
+        super().__init__()
+        self.lstms = nn.ModuleList(
+            nn.LSTM(d, d, batch_first=True)
+            for _ in range(n_layers))
+        self.norm = nn.LayerNorm(d)
+
+    def forward(self, x):            # (B, T, d)
+        for lstm in self.lstms:
+            out, _ = lstm(x)
+            x = self.norm(x + out)   # residual + norm
+        return x</code></pre>
+    </div>
+    <div class="col">
+      <h3>Spatial (Feature) Attention</h3>
+      <p class="small">Temporal attention asks <em>which time steps</em> matter. Spatial attention asks <em>which features relate</em>: treat each input feature as a token and let multi-head attention learn feature-to-feature links (e.g. volume &harr; price range).</p>
+      <pre style="font-size: 0.46em; line-height: 1.3"><code class="language-python"># x: (B, T, F) &mdash; F features over T steps
+embed = nn.Linear(T, d)              # embed each feature's history
+tokens = embed(x.transpose(1, 2))    # (B, F, d)
+mha = nn.MultiheadAttention(d, num_heads=4,
+                            batch_first=True)
+z, w = mha(tokens, tokens, tokens)   # w: (B, F, F)</code></pre>
+      <p class="small muted">Multi-head attention is derived properly in Lesson 5.4.</p>
+    </div>
+  </div>
+  <div class="slide-footer">
+    <span>MLFP Module 5 &mdash; Terrene Open Academy</span>
+  </div>
+  <aside class="notes">
+    Time: ~3 min. Two ways to get more out of a sequence model. Depth: stacking LSTMs (nn.LSTM(num_layers=...) does plain stacking) learns hierarchical temporal features, but deep stacks train badly for the same optimisation reason plain CNNs did &mdash; so wrap each layer in a residual connection plus LayerNorm. Spatial attention: temporal attention (previous slide) weights time steps; spatial attention weights relationships BETWEEN input features, using multi-head attention with each feature as a token. The (F, F) weight matrix is interpretable &mdash; which features each feature looks at. Both are previews: residual + LayerNorm + multi-head attention are exactly the ingredients of the transformer block in Lesson 5.4.
+  </aside>
+</section>
+
 <!-- SLIDE 37: Performance Metrics -->
 <section>
   <h2>Sequence Model Metrics</h2>

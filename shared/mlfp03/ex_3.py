@@ -55,8 +55,16 @@ TARGET_COL = "churned"
 SUBSAMPLE_N = 5000
 RANDOM_SEED = 42
 
-# Drop columns that are text/ID or leak the target
-DROP_COLS = ["customer_id", "review_text", "product_categories"]
+# Columns that are not model inputs:
+#   customer_id                       — row identifier
+#   review_text, product_categories   — free text / multi-valued strings
+#   days_since_last_order             — DEFINES the label: the dataset marks
+#       a customer churned exactly when days_since_last_order > 180, so
+#       keeping it lets a depth-1 tree score 100% (target leakage).
+# customer_tenure_days stays in: it is known at prediction time, but note it
+# is partly built from recency (tenure >= recency), which is why it ends up
+# being the strongest remaining signal.
+DROP_COLS = ["customer_id", "review_text", "product_categories", "days_since_last_order"]
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -67,7 +75,8 @@ DROP_COLS = ["customer_id", "review_text", "product_categories"]
 def load_ecommerce_churn() -> pl.DataFrame:
     """Load the Singapore e-commerce churn dataset (polars DataFrame).
 
-    Drops text/ID columns and subsamples for SVM tractability.
+    Drops ID/text columns and the label-defining recency column, then
+    subsamples for SVM tractability.
     """
     loader = MLFPDataLoader()
     df = loader.load(DATASET_MODULE, DATASET_FILE)
@@ -259,20 +268,22 @@ def decision_boundary_mesh(
 # ════════════════════════════════════════════════════════════════════════
 # SINGAPORE E-COMMERCE CHURN — business-impact constants
 # ════════════════════════════════════════════════════════════════════════
-# Public industry figures used for the "Apply" phases. Sources in reading
-# notes (SGX retail analyst reports, Shopee/Lazada 2024 ops reviews).
+# Illustrative round numbers for a mid-market regional e-commerce platform,
+# used by the "Apply" phases. They are teaching assumptions, not figures
+# taken from any company's reports — replace them with your own business's
+# numbers when you reuse this analysis.
 
 AVG_CUSTOMER_LIFETIME_VALUE_SGD = 420.0  # avg 12-month CLV per retained SG customer
 RETENTION_OFFER_COST_SGD = 18.0  # targeted promo cost per flagged customer
 MONTHLY_ACTIVE_CUSTOMERS = 250_000  # typical mid-market SG e-commerce platform
-ANNUAL_CHURN_BASELINE = 0.22  # industry baseline annual churn
+ANNUAL_CHURN_BASELINE = 0.22  # assumed annual churn without intervention
 
 
 def churn_saved_dollars(true_positives: int) -> float:
     """Dollar value of correctly identified churners (retention offer accepted).
 
     Assumes a 40% offer-acceptance rate and the retained lifetime value
-    net of offer cost. Public industry benchmarks — not proprietary data.
+    net of offer cost (illustrative assumptions — see constants above).
     """
     accept_rate = 0.40
     net_value_per_save = AVG_CUSTOMER_LIFETIME_VALUE_SGD - RETENTION_OFFER_COST_SGD

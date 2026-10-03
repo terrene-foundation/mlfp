@@ -36,6 +36,7 @@ import torchvision
 from shared.mlfp05.ex_7 import (
     BATCH_SIZE,
     EPOCHS,
+    INPUT_SIZE,
     N_CLASSES,
     OUTPUT_DIR,
     count_params,
@@ -66,7 +67,8 @@ from shared.mlfp05.ex_7 import (
 #
 # ADAPTER MODULES (this section):
 #   - Inject small trainable bottleneck layers INSIDE the frozen backbone
-#   - ~5-10% of params trainable — good balance
+#   - A small fraction of params trainable (about 1% in this exercise —
+#     Checkpoint 2 prints the exact share), far more than a frozen head
 #   - Skip connection: adapter starts as identity, so training begins
 #     from the pre-trained features
 #   - Storage: only save the adapter weights (~1-5 MB) per task
@@ -122,18 +124,17 @@ class BottleneckAdapter(nn.Module):
 
     def __init__(self, dim: int, bottleneck: int = 64):
         super().__init__()
-        # TODO: Create two linear layers and zero-init the up-projection
-        # Steps:
-        #   1. self.down = nn.Linear(dim, bottleneck)
-        #   2. self.up = nn.Linear(bottleneck, dim)
-        #   3. nn.init.zeros_(self.up.weight)
-        #   4. nn.init.zeros_(self.up.bias)
+        # TODO: Create the down- and up-projection layers (self.down,
+        #   self.up) and zero-initialise BOTH the weight and bias of the
+        #   up-projection
+        # Hint: nn.Linear for each projection; nn.init has an in-place
+        #   zeros initialiser
         # Why zero-init? So the adapter starts as identity (output = input)
         ____
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement skip connection: x + up(relu(down(x)))
-        # Hint: return x + self.up(F.relu(self.down(x)))
+        # TODO: Return the input plus the bottleneck path
+        #   (down-project -> ReLU -> up-project)
         ____
 
 
@@ -179,12 +180,13 @@ class AdaptedBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO: Run block, then apply adapter on channel-wise pooled features
         # Steps:
-        #   1. out = self.block(x)
-        #   2. b, c, h, w = out.shape
-        #   3. pooled = out.mean(dim=[2, 3])  -> (B, C)
-        #   4. adapted = self.adapter(pooled)  -> (B, C)
-        #   5. return out + adapted.unsqueeze(-1).unsqueeze(-1)
-        # Hint: unsqueeze broadcasts (B,C) back to (B,C,1,1) for addition
+        #   1. Run the wrapped block
+        #   2. Average its output over the spatial dims -> pooled (B, C)
+        #   3. Pass pooled through the adapter -> adapted (B, C)
+        #   4. Add ONLY the adapter's change to the block output. The
+        #      adapter already includes its skip connection, so adding
+        #      `adapted` itself would count the pooled features twice.
+        # Hint: reshape (B, C) to (B, C, 1, 1) so it broadcasts over H, W
         ____
 
 
@@ -195,14 +197,13 @@ def build_adapter_resnet(
     """ResNet-18 with bottleneck adapters after layer3 and layer4."""
     # TODO: Build adapter-augmented ResNet-18
     # Steps:
-    #   1. Load pre-trained ResNet-18 (same as Part 2)
+    #   1. Load the ImageNet ResNet-18 (same as Part 2, no fallback)
     #   2. Freeze all parameters
-    #   3. Replace model.fc with nn.Linear(in_features, n_classes)
-    #   4. Wrap model.layer3 with AdaptedBlock(original_layer3, BottleneckAdapter(256, bottleneck))
-    #   5. Wrap model.layer4 with AdaptedBlock(original_layer4, BottleneckAdapter(512, bottleneck))
-    # Hint: Save original layers before replacing:
-    #   original_layer3 = model.layer3
-    #   model.layer3 = AdaptedBlock(original_layer3, BottleneckAdapter(256, bottleneck))
+    #   3. Replace model.fc with a trainable n_classes head
+    #   4. Wrap layer3 (256 channels) and layer4 (512 channels) each in an
+    #      AdaptedBlock with a BottleneckAdapter of matching width
+    #   5. Return the model
+    # Hint: freeze BEFORE adding the head and adapters so only they train
     ____
 
 
@@ -220,9 +221,21 @@ print(
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert n_adapter_trainable > 5000, "Adapter should have more params than frozen head"
 assert n_adapter_trainable < n_adapter_total, "Should have fewer trainable than total"
-# INTERPRETATION: The adapter adds ~100K trainable parameters on top of
-# the ~5K frozen-head params. This is still far fewer than the ~11M
-# total, but gives the model more capacity to adapt to the task.
+# Identity at init for the WHOLE wrapped block, not just the bare adapter:
+# with zero-init adapters, AdaptedBlock must return exactly what the
+# wrapped ResNet stage returns, so training starts from ImageNet features.
+adapter_model.eval()
+with torch.no_grad():
+    stage_input = torch.randn(2, 128, INPUT_SIZE // 8, INPUT_SIZE // 8, device=device)
+    wrapped_out = adapter_model.layer3.block(stage_input)
+    adapted_out = adapter_model.layer3(stage_input)
+assert torch.allclose(
+    adapted_out, wrapped_out, atol=1e-6
+), "AdaptedBlock should leave the wrapped stage's output unchanged at init"
+# INTERPRETATION: The two adapters add 99,200 trainable parameters
+# (33,088 + 66,112) on top of the 5,130-param head — about 1% of the
+# ~11M total (the exact share is printed above). That is ~20x the
+# frozen head's capacity to adapt, at a tiny fraction of the model.
 print("--- Checkpoint 2 passed --- adapter ResNet built\n")
 
 

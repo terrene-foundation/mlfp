@@ -491,12 +491,12 @@
       <h3 style="margin-bottom: 4px;">Asks: is the generation coherent, factual, on-task?</h3>
       <ul style="font-size: 0.78em; margin: 4px 0;">
         <li><strong>Bounded tasks</strong>: perplexity, ROUGE, BLEU, BERTScore</li>
-        <li><strong>Open-ended</strong>: LLM-as-judge (bias-mitigated &mdash; swap positions, normalise length)</li>
+        <li><strong>Open-ended</strong>: LLM-as-judge (pairwise: swap positions, normalise length)</li>
         <li><strong>Hallucination</strong>: self-consistency (sample n, measure agreement) + retrieval grounding</li>
         <li><strong>Refusal calibration</strong>: refuse harmful prompts, do NOT over-refuse benign ones</li>
       </ul>
       <div class="callout callout-theory" style="font-size: 0.76em; margin-top: 6px;">
-        <strong>Why this lens first?</strong> 80% of production LLM failures surface here. If Output is clean, you rarely need to open the Attention lens.
+        <strong>Why this lens first?</strong> Most production LLM failures surface here first. If Output is clean, you rarely need to open the Attention lens.
       </div>
     </div>
     <div class="col">
@@ -546,44 +546,48 @@
 <section class="code-fit">
   <h2>Lens 1: Output &mdash; Code</h2>
   <span class="marker marker-theory">Theory</span>
-  <p class="small muted" style="margin-top: 0;">Routes through DeepEval + a Kaizen Delegate judge. No raw <code>openai.chat.completions.create</code>.</p>
-<pre style="font-size: 0.47em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
+  <p class="small muted" style="margin-top: 0;">The judge is a Kaizen Delegate on your local Ollama model. No raw <code>openai.chat.completions.create</code>.</p>
+<pre style="font-size: 0.47em; line-height: 1.35"><code class="language-python">from shared.mlfp06._ollama_bootstrap import make_delegate, run_delegate_text
+from shared.mlfp06.diagnostics import LLMObservatory
 
 obs = LLMObservatory()  # lazy init, no network call here
 
 # ── Faithfulness against retrieved context ───────────────────
 df = obs.output.faithfulness(
-    response="Refunds within 14 days, no exceptions.",
+    "Refunds within 14 days, no exceptions.",
     context=["Refund policy: 30-day window for unused items."])
-# df columns: claim, supported, support_source, grounding_score
+# one-row DataFrame: faithfulness (0-1), mode, judge_model, rationale
 
-# ── Bias-mitigated LLM-as-judge (positions swapped, lengths normalised)
+# ── LLM-as-judge on one response ─────────────────────────────
 verdict = obs.output.llm_as_judge(
-    prompt="Summarise the Q3 earnings call in 3 bullets.",
-    response=draft_answer, criteria="coherence, factual_accuracy, completeness")
+    "Summarise the Q3 earnings call in 3 bullets.", draft_answer,
+    criteria="coherence,factual_accuracy,completeness")
 # verdict.score in [0, 1], verdict.rationale is a short string
 
-# ── Hallucination via self-consistency ───────────────────────
-result = obs.output.self_consistency(
-    prompt="What is the SGX listing rule for board independence?", n=5)
-# result.agreement_rate, result.flagged_as_hallucination
+# ── Hallucination via self-consistency: YOU sample, it compares
+question = "Which listing rule governs board independence?"
+samples = [(await run_delegate_text(make_delegate(temperature=0.8),
+                                    question))[0] for _ in range(5)]
+sc = obs.output.self_consistency(samples, prompt=question)
+# columns: agreement (mean pairwise similarity), is_outlier
 
-# ── Refusal calibration ──────────────────────────────────────
-obs.output.refusal_rate(harmful_prompts)        # should be high
-obs.output.over_refusal(benign_prompts)         # should be near zero
+# ── Refusal calibration: score the MODEL'S RESPONSES ─────────
+obs.output.refusal_rate(harmful_responses)   # should be high
+obs.output.over_refusal(benign_responses)    # should be near zero
 
-obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
+obs.output.plot_output_dashboard().show()    # one figure, all metrics
 </code></pre>
   <div class="callout callout-theory" style="font-size: 0.78em; margin-top: 4px;">
-    <strong>Budget note:</strong> each judge call costs money. The observatory caps spend at <strong>~$2 per student per module run</strong> via small eval sets and result caching.
+    <strong>Budget note:</strong> every judge call is an LLM call. The observatory caps them (<code>max_judge_calls=50</code> by default); on local Ollama the cost is compute time, not dollars.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 6 &mdash; Terrene Open Academy &bull; LLM Observatory</span>
   </div>
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;One object, four method calls, one dashboard. You never hand-roll a judge.&rdquo;<br/>
-    <strong>Key question for the room</strong>: &ldquo;Why do we swap positions and normalise lengths inside the judge?&rdquo; &rarr; expected wrong answer: &ldquo;fairness&rdquo; &rarr; right answer: &ldquo;because unmitigated LLM judges preferring the LONGER answer by default; verbosity bias inflates apparent win rates by 15-25 points.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;One object, a handful of method calls, one dashboard. You never hand-roll a judge.&rdquo;<br/>
+    <strong>Point out</strong>: <code>self_consistency</code> does not call the model &mdash; you generate the five samples, it measures agreement. The refusal metrics likewise score the model's <em>responses</em>, not the prompts.<br/>
+    <strong>Key question for the room</strong>: &ldquo;When we compare TWO answers (Exercise 6.3), why swap their positions and normalise length?&rdquo; &rarr; expected wrong answer: &ldquo;fairness&rdquo; &rarr; right answer: &ldquo;because unmitigated LLM judges favour the first-shown and the LONGER answer; judging both orders and averaging cancels position bias, and length normalisation stops verbosity inflating the win rate.&rdquo;<br/>
     <strong>If behind schedule</strong>: skip self-consistency; faithfulness + judge is the core pair.<br/>
     <strong>Transition</strong>: &ldquo;Output tells you the surface. Lens 2 tells you what is happening inside the model.&rdquo;
   </aside>
@@ -600,12 +604,12 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
         <li><strong>Attention heatmaps</strong> &mdash; token-to-token weights per head</li>
         <li><strong>Logit lens</strong> &mdash; read the model's prediction at every layer (nostalgebraist / Neel Nanda)</li>
         <li><strong>Sparse autoencoders</strong> &mdash; load Gemma Scope features, read what each latent fires on</li>
-        <li><strong>Circuits</strong> &mdash; the minimal subgraph that produces a token (activation patching)</li>
+        <li><strong>Linear probes</strong> &mdash; is a concept (e.g. sentiment) linearly readable at layer <em>L</em>?</li>
       </ul>
       <div class="callout callout-advanced" style="font-size: 0.76em; margin-top: 6px;">
         <strong>Mech interp in 2026:</strong> we read <em>features</em>, not neurons. The course default for SAE work is <strong>Gemma-2-2B</strong> &mdash; Gemma Scope is the best-covered pre-trained SAE suite available.
       </div>
-      <p class="small muted" style="margin-top: 6px;">API-only models (GPT, Claude, Gemini) cannot be X-rayed. The lens reports "not applicable" and falls back to Output + Agent Trace.</p>
+      <p class="small muted" style="margin-top: 6px;">Hosted API-only models cannot be X-rayed. The lens reports "not applicable" and falls back to Output + Agent Trace.</p>
     </div>
     <div class="col">
       <div class="diagram-container" style="text-align: center;">
@@ -667,7 +671,7 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
     <strong>Time</strong>: 3 min.<br/>
     <strong>Hook</strong> (literal words to open): &ldquo;If Output says 'wrong', Attention says 'why'. It is the only lens that looks through the model's skull.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;Why Gemma-2-2B as the default, not Llama?&rdquo; &rarr; expected wrong answer: &ldquo;smaller&rdquo; &rarr; right answer: &ldquo;Gemma Scope ships pre-trained SAEs for every layer &mdash; students read features, they do not train them. No comparable suite exists for Llama-3 at course-friendly size.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip circuits &mdash; heatmap + logit lens is enough for the intuition.<br/>
+    <strong>If behind schedule</strong>: skip probes &mdash; heatmap + logit lens is enough for the intuition. (Circuit tracing / activation patching is a research topic beyond the course toolkit.)<br/>
     <strong>Transition</strong>: &ldquo;Here is the method surface in five lines.&rdquo;
   </aside>
 </section>
@@ -679,28 +683,29 @@ obs.output.plot_output_dashboard().show()        # single figure, all 4 metrics
   <p class="small muted" style="margin-top: 0;">Wraps <code>transformer_lens</code> + <code>sae_lens</code>. Open-weight models only; API models report <code>not_applicable</code>.</p>
 <pre style="font-size: 0.48em; line-height: 1.35"><code class="language-python">from shared.mlfp06.diagnostics import LLMObservatory
 
-obs = LLMObservatory()
+# The open-weight model is chosen ONCE, on the observatory
+obs = LLMObservatory(attention_model="google/gemma-2-2b")
 
 # ── Attention heatmap for one head ───────────────────────────
 fig = obs.attention.attention_heatmap(
-    prompt="The cat sat on the mat.", model="google/gemma-2-2b", layer=8, head=3)
+    "The cat sat on the mat.", layer=8, head=3)
 fig.show()
 
 # ── Logit lens: what does each layer predict? ────────────────
 df = obs.attention.logit_lens(
-    prompt="The Eiffel Tower is located in the city of", model="google/gemma-2-2b")
-# df columns: layer, top_token, top_prob  — crystallisation point surfaces
+    "The Eiffel Tower is located in the city of", top_k=5)
+# columns: layer, rank, token, prob  — crystallisation point surfaces
+obs.attention.plot_logit_lens(df).show()
 
 # ── Sparse autoencoder features (Gemma Scope) ────────────────
 features = obs.attention.sae_features(
-    prompt="I felt genuinely happy when the result came in.",
-    model="google/gemma-2-2b", layer=12, top_k=10)
-# features: [(feature_id, activation, human_readable_label), ...]
+    "I felt genuinely happy when the result came in.",
+    layer=12, top_k=10)
+# columns: feature_index, activation, mode
 
-# ── Circuit trace: minimal subgraph for a target token ───────
-circuit = obs.attention.circuit_trace(
-    prompt="Paris is the capital of", target_token=" France", model="google/gemma-2-2b")
-# circuit.nodes: {(layer, component): attribution_score}
+# ── Linear probe: is a concept linearly readable at layer 6? ─
+probe = obs.attention.probe(prompts, labels, layer=6)
+# dict: cv_accuracy, layer, n_prompts, n_classes, mode
 </code></pre>
   <div class="callout callout-advanced" style="font-size: 0.78em; margin-top: 4px;">
     <strong>Non-goal:</strong> we do NOT train SAEs in this course. We READ pre-trained ones. SAE training is a research topic; SAE reading is an M6 skill.
@@ -710,9 +715,9 @@ circuit = obs.attention.circuit_trace(
   </div>
   <aside class="notes">
     <strong>Time</strong>: 3 min.<br/>
-    <strong>Hook</strong> (literal words to open): &ldquo;Four method calls cover most mech-interp questions a practitioner asks this year.&rdquo;<br/>
+    <strong>Hook</strong> (literal words to open): &ldquo;Four method calls cover most mech-interp questions a practitioner asks. Note the model is chosen once, on the observatory &mdash; the methods take only the prompt.&rdquo;<br/>
     <strong>Key question for the room</strong>: &ldquo;In the logit lens output, what does it mean if 'Paris' appears strongly at layer 5 but the model outputs 'Lyon'?&rdquo; &rarr; expected wrong answer: &ldquo;bug&rdquo; &rarr; right answer: &ldquo;the knowledge is in the residual stream but a later layer overrode it &mdash; now you know exactly where to intervene.&rdquo;<br/>
-    <strong>If behind schedule</strong>: skip <code>circuit_trace</code>; it reappears in 6.2.<br/>
+    <strong>If behind schedule</strong>: skip <code>probe</code>; heatmap + logit lens carry the intuition.<br/>
     <strong>Transition</strong>: &ldquo;Lens 3 leaves the model and looks at what we fed it.&rdquo;
   </aside>
 </section>

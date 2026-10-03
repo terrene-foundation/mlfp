@@ -103,7 +103,7 @@ sample_size = 100  # Small sample to show variation
 # informative prior biased away from true_mu would deliberately undercover
 # — that effect is explored separately in Task 5 (flat-type regularisation).
 sim_prior_mu = true_mu
-sim_prior_sigma = 10 * true_sigma  # ~1.35M SGD — effectively flat
+sim_prior_sigma = 10 * true_sigma  # 10 × σ̂ (≈ $4.2M) — effectively flat
 
 freq_covers = 0
 bayes_covers = 0
@@ -388,6 +388,9 @@ print("\n✓ Checkpoint 3 passed — visualisations and flat-type posteriors val
 #   4. What's the portfolio rebalance recommendation?
 
 print("=== APPLICATION: Property Valuation Insights for Fund Manager ===")
+rarest_ft = min(results_by_type, key=lambda k: results_by_type[k]["n"])
+fourroom = results_by_type["4 ROOM"]
+rarest = results_by_type[rarest_ft]
 print(
     f"""
 1. MARKET POSITION: The average 4-room HDB resale price is {fmt_money(mle.mean)}
@@ -399,10 +402,11 @@ print(
    {fmt_money(posterior_full.mean)}. Prior assumptions barely matter with this
    volume of data. For the fund manager, this is reassuring.
 
-3. FLAT TYPE VARIATION: Prior influence varies dramatically by segment.
-   For abundant flat types (4-room), the prior contributes <0.01% —
-   pure data-driven. For rare types (2-room, Executive), the prior
-   contributes more, meaning market assumptions play a larger role.
+3. FLAT TYPE VARIATION: Prior influence varies by segment. For 4-room
+   (n={fourroom['n']:,}) the prior supplies {fourroom['prior_weight']:.3f}% of the
+   posterior precision — essentially data-driven. For the rarest type,
+   {rarest_ft} (n={rarest['n']:,}), it supplies {rarest['prior_weight']:.3f}%, so
+   market assumptions play a larger role there.
 
 4. INTERVAL AGREEMENT: All four interval methods (Normal, Bootstrap,
    BCa, Bayesian) agree closely with n={mle.n:,}. For smaller segments

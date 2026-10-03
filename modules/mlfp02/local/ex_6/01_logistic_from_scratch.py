@@ -141,6 +141,11 @@ print(f"\n  Derivative at z=2.5:")
 print(f"  Analytical s'(z) = s(z)(1-s(z)) = {deriv_analytical:.6f}")
 print(f"  Numerical:  {deriv_numerical:.6f}")
 
+# INTERPRETATION: The sigmoid maps any real number to (0, 1) — perfect
+# for modelling probabilities. At z=0, the probability is exactly 50%.
+# The derivative is maximal at z=0 (steepest change) and diminishes
+# toward the extremes — the model is most "uncertain" near the boundary.
+
 # ── Checkpoint 1 ─────────────────────────────────────────────────────
 assert abs(n_positive / n_total - 0.5) < 0.02, "Median split should give ~50/50"
 assert X.shape == (n_obs, n_params), "Design matrix shape incorrect"
@@ -208,6 +213,10 @@ for i, name in enumerate(feature_names):
 acc_sklearn = sklearn_model.score(X_scaled, y)
 print(f"\nAccuracy (scratch): {acc_scratch:.6f}")
 print(f"Accuracy (sklearn): {acc_sklearn:.6f}")
+
+# INTERPRETATION: The coefficients should agree closely. Small differences
+# arise from convergence tolerance and solver algorithms. This validates
+# that our from-scratch implementation is correct.
 
 # ── Checkpoint 2 ─────────────────────────────────────────────────────
 assert result.success, "Logistic regression must converge"
@@ -283,10 +292,14 @@ print("\n[ok] Checkpoint 3 passed — sigmoid + comparison visualised\n")
 # SCENARIO: A Singapore property valuation firm needs to quickly triage
 # incoming HDB resale transactions into "high-value" vs "standard"
 # categories for resource allocation.
+#
+# The logistic regression model replaces a manual process where senior
+# valuers review every transaction. The volumes and rates below are
+# ILLUSTRATIVE assumptions for a mid-sized firm, not published figures.
 
-n_weekly = 300
-time_per_manual_min = 15
-valuer_hourly_rate = 85
+n_weekly = 300  # illustrative: transactions per week
+time_per_manual_min = 15  # illustrative: minutes of senior valuer time each
+valuer_hourly_rate = 85  # illustrative: S$ per hour
 
 # TODO: Calculate weekly manual cost: n_weekly * time_per_manual / 60 * rate.
 weekly_manual_cost = ____
@@ -308,4 +321,45 @@ print(
     f"    Savings: S${weekly_manual_cost - weekly_model_cost:,.0f}/week "
     f"(S${(weekly_manual_cost - weekly_model_cost) * 52:,.0f}/year)"
 )
-print(f"  Model accuracy on clear cases: {acc_scratch:.1%}")
+# TODO: Accuracy on the cases the model handles alone (outside the
+# 0.35-0.65 band). Hint: accuracy_score on y and the 0.5-threshold
+# predictions, both filtered with ~uncertain_mask.
+acc_clear = ____
+print(f"  Model accuracy on clear cases (auto-triaged): {acc_clear:.1%}")
+print(f"  Model accuracy on all cases:                  {acc_scratch:.1%}")
+
+# BUSINESS IMPACT: The model auto-triages the transactions outside the
+# uncertain band (accuracy printed above for exactly those cases); only
+# the uncertain share goes to a senior valuer. The saving scales with
+# that share, so a model that pushes fewer cases into the 0.35-0.65
+# band saves more valuer time.
+#
+# LIMITATIONS:
+#   - Three features only (area, storey, lease). Adding town/location
+#     would require dummy encoding or a richer model.
+#   - The binary target (above/below median) is a simplification. Real
+#     valuations need dollar-level precision for mortgage lending.
+#   - Retraining needed quarterly as the median shifts with market.
+
+# ── Checkpoint 4 ─────────────────────────────────────────────────────
+assert 0 < pct_uncertain < 1, "Some but not all cases should be uncertain"
+assert acc_clear >= acc_scratch, "Confident cases should be classified at least as well as all cases"
+print("\n[ok] Checkpoint 4 passed — triage economics computed\n")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REFLECTION
+# ══════════════════════════════════════════════════════════════════════
+print(
+    """
+What you've mastered in this technique:
+  ✓ A numerically stable sigmoid, with its symmetry and derivative checked
+  ✓ Logistic regression as Bernoulli MLE, fitted with L-BFGS-B and an
+    analytical gradient
+  ✓ Validating a from-scratch model against sklearn's coefficients
+  ✓ Using predicted probabilities to route only uncertain cases to humans
+
+Next: In 02_interpretation.py you'll turn these coefficients into odds
+ratios and choose a decision threshold from a cost matrix.
+"""
+)

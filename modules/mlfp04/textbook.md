@@ -2083,17 +2083,17 @@ You should now be able to:
 
 ## Why This Matters
 
-Shopee, Lazada, and Grab all serve Singapore customers personalised recommendations. When you open Grab Food, the restaurants at the top are not random — they are selected by a recommender system that uses your past orders, the orders of similar users, and the attributes of restaurants to predict what you are most likely to order next. Netflix reported that 80% of the shows people watch are discovered through recommendations, not search. The recommendation algorithm is, for many platforms, the product.
+E-commerce marketplaces, food-delivery apps and streaming services all serve personalised recommendations. When you open a food-delivery app, the restaurants at the top are typically not a fixed list — a recommender system combines your past orders, the orders of similar users and the attributes of restaurants to predict what you are most likely to order next. The scale of the effect can be large: Netflix's own engineers reported that about 80% of the hours streamed on the service were influenced by recommendation (Gomez-Uribe and Hunt, 2015). For many platforms, the recommendation algorithm is the product.
 
 In this lesson you will build three types of recommender systems — content-based, collaborative filtering, and matrix factorisation — and discover the concept that is the intellectual centrepiece of the entire programme: **optimisation drives feature discovery**. Matrix factorisation learns user and item embeddings by minimising reconstruction error. Those embeddings are dense vector representations that capture latent preferences. They are features, but nobody designed them. They emerged from the loss function.
 
-This is THE PIVOT in the Feature Engineering Spectrum. Everything before this lesson discovered features without an error signal (clustering, PCA, topic models). Everything after this lesson discovers features with an error signal (neural networks, deep learning). Matrix factorisation sits at the transition point: it uses optimisation (like supervised learning) to discover latent structure (like unsupervised learning). Understanding this bridge is understanding the rest of the programme.
+This is THE PIVOT in the Feature Engineering Spectrum. Everything before this lesson summarised a fully observed data matrix — by distances, variance or co-occurrence — without being judged on predictions of values it had not seen. Everything after this lesson learns features by predicting a target (neural networks, deep learning). Matrix factorisation sits at the transition point: it uses optimisation against observed values, like supervised learning, to discover latent structure, like unsupervised learning. Understanding this bridge is understanding the rest of the programme.
 
 ## Core Concepts
 
 ### FOUNDATIONS: Three approaches to recommendation
 
-**Content-based filtering** recommends items similar to what the user has liked before. If you watched three action movies, it recommends more action movies. It uses item features (genre, director, cast) and user preferences (ratings, watch history). Strength: does not need other users' data. Weakness: limited to items similar to what the user has already seen — no surprise.
+**Content-based filtering** recommends items similar to what the user has liked before. If you watched three action movies, it recommends more action movies. It uses item features (genre, director, cast) and user preferences (ratings, watch history). Strength: does not need other users' data, and it can score a brand-new *item* as soon as the item has features (no item cold start). Weaknesses: limited to items similar to what the user has already seen — no surprise — and it still needs some history for a brand-new *user*, because without rated items there is no taste profile.
 
 **User-based collaborative filtering** finds users similar to you and recommends what they liked. If User A and User B both rated the same five movies highly, and User B liked a sixth movie that User A has not seen, recommend that movie to User A. Strength: can recommend surprising items. Weakness: cold start — new users have no history to compare.
 
@@ -2128,7 +2128,9 @@ The loss function is not jointly convex in $\mathbf{U}$ and $\mathbf{V}$ (it is 
 
 where $\mathbf{V}_u$ contains only the rows of $\mathbf{V}$ for items rated by user $u$, and $\mathbf{r}_u$ is the vector of user $u$'s observed ratings.
 
-Each step has a closed-form solution (matrix inversion), so ALS is simple to implement and parallelisable. Convergence is guaranteed because each step decreases (or maintains) the loss.
+Each step has a closed-form solution (a linear solve), so ALS is simple to implement and parallelisable — every user's update is independent of every other user's. Because each half-step solves its sub-problem exactly, the regularised loss never increases, so ALS converges; like K-means and EM, it converges to a local minimum that depends on the initialisation, not necessarily the global one.
+
+In practice the model also carries a global mean $\mu$ and bias terms: $\hat{R}_{ui} = \mu + b_u + b_i + \mathbf{u}_u^T \mathbf{v}_i$, where $b_u$ captures "this user rates generously" and $b_i$ "this item is simply good". The ALS update is the same ridge regression with a column of ones appended to the design matrix (the worked example does exactly this).
 
 ### FOUNDATIONS: Connection to PCA
 
@@ -2136,18 +2138,18 @@ Recall from Lesson 4.3 that PCA factorises $\mathbf{X} = \mathbf{U} \boldsymbol{
 
 ### FOUNDATIONS: THE PIVOT — optimisation drives feature discovery
 
-In Lessons 4.1–4.6, unsupervised methods discovered features from the data's geometry — no loss function guided the discovery. Clustering found groups by distance. PCA found directions by variance. LDA found topics by co-occurrence.
+In Lessons 4.1–4.6, unsupervised methods discovered features from the data's geometry. Several of them did minimise an objective — K-means minimises the within-cluster sum of squares, PCA the reconstruction error, NMF its factorisation error — but always over a *fully observed* matrix, as a summary of it. Clustering found groups by distance. PCA found directions by variance. LDA found topics by co-occurrence.
 
-In matrix factorisation, features (embeddings) are discovered by minimising a loss function. The user embedding $\mathbf{u}_u$ captures user $u$'s latent preferences. The item embedding $\mathbf{v}_i$ captures item $i$'s latent attributes. Nobody designed these features. They emerged from the optimisation process.
+Matrix factorisation is the first time a model is fitted iteratively to a *partially observed* target — the ratings we have — and judged by how well it predicts the ratings we do not have, with its learned factors reused as embeddings. The user embedding $\mathbf{u}_u$ captures user $u$'s latent preferences. The item embedding $\mathbf{v}_i$ captures item $i$'s latent attributes. Nobody designed these features. They emerged from the optimisation process.
 
 In Lesson 4.8, neural networks will generalise this. A hidden layer's activations are embeddings. They are discovered by minimising a loss function via backpropagation. The difference from matrix factorisation: neural networks can learn non-linear combinations through activation functions, not just linear ones.
 
 The spectrum:
 
-| Stage    | Method               | Features                  | Error signal?        |
+| Stage    | Method               | Features                  | Error signal from predicting a target? |
 | -------- | -------------------- | ------------------------- | -------------------- |
 | M3       | Manual               | Human-designed            | N/A                  |
-| M4.1–4.6 | USML                 | Data geometry             | No                   |
+| M4.1–4.6 | USML                 | Data geometry             | No (objectives summarise the observed data) |
 | M4.7     | Matrix factorisation | Optimisation              | Yes (reconstruction) |
 | M4.8     | Neural networks      | Backpropagation           | Yes (task loss)      |
 | M5       | Deep learning        | Specialised architectures | Yes (task loss)      |
@@ -2174,154 +2176,258 @@ $$\mathbf{u}_u = (\mathbf{V}_u^T \mathbf{V}_u + \lambda \mathbf{I})^{-1} \mathbf
 
 This is a regularised normal equation — the same structure as ridge regression from Module 2, but applied to learning embeddings instead of regression coefficients.
 
-## The Kailash Engine: AutoMLEngine (recommender mode)
+## The Kailash Engine: none — build it, then track it
 
-```python
-from kailash_ml import AutoMLEngine
+kailash-ml has no recommender engine, and neither `AutoMLEngine` nor `ModelVisualizer` has a recommendation mode. Every method in this lesson is a few dozen lines of NumPy, which is the point: you see exactly how the embeddings arise. In production you would log each method's holdout metrics to the `ExperimentTracker` (as Exercise 7 does) and, for very large catalogues, use a dedicated open-source ALS library. Lesson 4.8 shows how the same idea — learn embeddings by minimising a loss — is written as a neural network and exported with `OnnxBridge`.
 
-engine = AutoMLEngine(task="recommendation")
-result = engine.fit(interactions_df, method="als", factors=50, regularization=0.1)
-recommendations = result.recommend(user_id=42, n=10)
-```
+## Worked Example: An Electronics Marketplace Recommender
 
-## Worked Example: Singapore Retail Recommender
+The ratings in this example are **synthetic**, generated by Exercise 7's `build_rating_dataset()` for a fictional Singapore electronics marketplace: 300 users, 120 products (SKUs), explicit 1–5 star ratings, about 30% of user–item pairs observed. The generator follows a known model — global mean + user bias + item bias + (user taste · item traits), with 5 hidden taste dimensions, plus noise — so we can check whether the learned embeddings recover the truth. Thirty per cent of the observed ratings are held out for evaluation, and 10 brand-new SKUs have *all* their ratings in the holdout: they are cold-start items that no collaborative method has seen. Every item also has 8 content features (a noisy view of its hidden traits and quality, like a spec sheet and price tier).
+
+### Step 0: Data and baselines
 
 ```python
 import numpy as np
-from scipy.sparse import csr_matrix
-from sklearn.metrics.pairwise import cosine_similarity
+from shared.mlfp04.ex_7 import build_rating_dataset, print_baselines, print_method_scores
 
-loader = MLFPDataLoader()
-df = loader.load("mlfp04", "sg_retail_interactions.csv")
+data = build_rating_dataset()
+R_obs, R_train = data["R_observed"], data["R_train"]
+train_mask, holdout_mask = data["train_mask"], data["holdout_mask"]
+cold_items, item_features = data["cold_items"], data["item_features"]
+n_users, n_items = R_train.shape
+print(f"{n_users} users x {n_items} items; {int(train_mask.sum()):,} training and "
+      f"{int(holdout_mask.sum()):,} holdout ratings; {int(cold_items.sum())} cold-start SKUs")
 
-# Build user-item matrix
-users = df["user_id"].unique().sort().to_list()
-items = df["item_id"].unique().sort().to_list()
-user_idx = {u: i for i, u in enumerate(users)}
-item_idx = {it: i for i, it in enumerate(items)}
-
-rows = df["user_id"].map_elements(lambda u: user_idx[u], return_dtype=pl.Int64).to_numpy()
-cols = df["item_id"].map_elements(lambda i: item_idx[i], return_dtype=pl.Int64).to_numpy()
-vals = df["rating"].to_numpy().astype(float)
-
-R = csr_matrix((vals, (rows, cols)), shape=(len(users), len(items)))
-
-# Method 1: User-based CF
-user_sim = cosine_similarity(R)
-def recommend_user_cf(user_id, n=5):
-    u = user_idx[user_id]
-    sim_scores = user_sim[u]
-    weighted_ratings = sim_scores @ R.toarray() / (np.abs(sim_scores).sum() + 1e-8)
-    already_rated = R[u].toarray().flatten() > 0
-    weighted_ratings[already_rated] = -np.inf
-    top_items = np.argsort(weighted_ratings)[-n:][::-1]
-    return [items[i] for i in top_items]
-
-# Method 2: Item-based CF
-item_sim = cosine_similarity(R.T)
-
-# Method 3: ALS Matrix Factorisation
-k = 20  # latent factors
-lam = 0.1
-U = np.random.randn(len(users), k) * 0.01
-V = np.random.randn(len(items), k) * 0.01
-R_dense = R.toarray()
-mask = R_dense > 0
-
-for iteration in range(20):
-    # Update U
-    for u in range(len(users)):
-        rated = mask[u]
-        if rated.sum() == 0:
-            continue
-        V_u = V[rated]
-        r_u = R_dense[u, rated]
-        U[u] = np.linalg.solve(V_u.T @ V_u + lam * np.eye(k), V_u.T @ r_u)
-
-    # Update V
-    for i in range(len(items)):
-        raters = mask[:, i]
-        if raters.sum() == 0:
-            continue
-        U_i = U[raters]
-        r_i = R_dense[raters, i]
-        V[i] = np.linalg.solve(U_i.T @ U_i + lam * np.eye(k), U_i.T @ r_i)
-
-    # Compute loss
-    pred = U @ V.T
-    loss = np.sum((R_dense[mask] - pred[mask])**2) + lam * (np.sum(U**2) + np.sum(V**2))
-    if iteration % 5 == 0:
-        print(f"Iteration {iteration}: loss = {loss:.2f}")
-
-# Visualise embeddings (project to 2D with PCA)
-from sklearn.decomposition import PCA
-pca = PCA(n_components=2)
-V_2d = pca.fit_transform(V)
-# Items that are close in embedding space are similar
+baselines = print_baselines(R_train, train_mask, R_obs, holdout_mask)
 ```
+
+Every recommender must beat three no-skill baselines: the global mean rating, each item's mean rating ("popularity"), and random scores. The scorecard reports holdout RMSE, coverage (the share of holdout pairs a method can score at all), precision@5 and mean average precision (MAP) — the last two judge the *ranking* of each user's held-out items, which is what a recommender is for. Here the global mean scores RMSE 1.03, the item mean (popularity) 0.97 with MAP 0.68, and random scores RMSE 1.60.
+
+### Step 1: Content-based filtering
+
+```python
+def content_based(R, mask, features):
+    """Score items by cosine similarity between each item's features and a user taste profile."""
+    feats = features - features.mean(axis=0)
+    unit = feats / np.linalg.norm(feats, axis=1, keepdims=True)
+    preds = np.full(R.shape, np.nan)
+    for u in range(R.shape[0]):
+        rated = np.where(mask[u])[0]
+        if len(rated) < 2:
+            continue                                   # a brand-new USER has no profile
+        dev = R[u, rated] - R[u, rated].mean()         # liked items pull, disliked items push
+        profile = dev @ unit[rated]
+        if np.linalg.norm(profile) < 1e-10:
+            continue
+        cos = unit @ (profile / np.linalg.norm(profile))
+        preds[u] = R[u, rated].mean() + 2 * R[u, rated].std() * cos
+    return np.clip(preds, 1, 5)
+
+pred_cb = content_based(R_train, train_mask, item_features)
+m_cb = print_method_scores("Content-based", pred_cb, R_obs, holdout_mask)
+```
+
+The user's taste profile is the sum of the (centred) features of the items they rated, weighted by how far each rating is above or below their own average — so disliked items push the profile *away*. A new item is scored by how closely its features point in the profile's direction. Content-based filtering needs no other users and covers every item with features, including the 10 brand-new SKUs (coverage 100%); it scores RMSE 0.95 and MAP 0.73, a modest improvement on popularity. It does **not** solve the cold-start problem for a brand-new *user*: with no ratings there is no profile, and the function above returns nothing for them. Its weakness is that it can only recommend "more of the same features", and it is only as good as the features.
+
+### Step 2: User- and item-based collaborative filtering
+
+```python
+def mean_centred(R, mask):
+    user_mean = np.nanmean(np.where(mask, R, np.nan), axis=1)
+    return np.where(mask, R - user_mean[:, None], 0.0), user_mean
+
+def cosine_sim(M):
+    unit = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-10)
+    return unit @ unit.T
+
+R_c, user_mean = mean_centred(R_train, train_mask)
+
+def user_cf(k=30):
+    sim = cosine_sim(R_c)
+    np.fill_diagonal(sim, 0.0)
+    preds = np.full(R_c.shape, np.nan)
+    for u in range(n_users):
+        nbrs = np.argsort(sim[u])[::-1][:k]                     # k most similar users
+        w = sim[u, nbrs][:, None] * train_mask[nbrs]            # only neighbours who rated j count
+        denom = np.abs(w).sum(axis=0)
+        score = (w * R_c[nbrs]).sum(axis=0) / np.where(denom > 0, denom, np.nan)
+        preds[u] = user_mean[u] + score
+    return np.clip(preds, 1, 5)
+
+def item_cf(k=20):
+    sim = cosine_sim(R_c.T)                                     # item-item similarity
+    np.fill_diagonal(sim, 0.0)
+    preds = np.full(R_c.shape, np.nan)
+    for j in range(n_items):
+        nbrs = np.argsort(sim[j])[::-1][:k]                     # k most similar items
+        w = sim[j, nbrs][None, :] * train_mask[:, nbrs]         # the user must have rated them
+        denom = np.abs(w).sum(axis=1)
+        score = (w * R_c[:, nbrs]).sum(axis=1) / np.where(denom > 0, denom, np.nan)
+        preds[:, j] = user_mean + score
+    preds[:, train_mask.sum(axis=0) == 0] = np.nan              # unseen items cannot be scored
+    return np.clip(preds, 1, 5)
+
+pred_ucf, pred_icf = user_cf(), item_cf()
+m_ucf = print_method_scores("User-based CF", pred_ucf, R_obs, holdout_mask)
+m_icf = print_method_scores("Item-based CF", pred_icf, R_obs, holdout_mask)
+```
+
+Both CF methods centre each user's ratings on their own mean first: a generous rater's 4 stars and a harsh rater's 3 stars can mean the same thing. User-based CF reaches RMSE 0.77 and item-based CF 0.82 — much better than the baselines on the pairs they can score — but neither can score the 10 cold-start SKUs (nobody has rated them, so they have no similarity to anything): coverage is only about 77%. Because MAP counts an unscored relevant item as a miss, their full-holdout MAP (0.61 and 0.58) is *below* the popularity baseline. Always read coverage next to accuracy.
+
+### Step 3: Matrix factorisation with ALS
+
+```python
+def als(R, mask, k=5, lam=5.0, n_iter=30, seed=42):
+    """Biased ALS: R[u, j] ~ mu + b_u + b_j + U[u] . V[j], each half-step a ridge regression."""
+    rng = np.random.default_rng(seed)
+    mu = float(R[mask].mean())
+    U, V = rng.normal(0, 0.1, (R.shape[0], k)), rng.normal(0, 0.1, (R.shape[1], k))
+    b_u, b_i = np.zeros(R.shape[0]), np.zeros(R.shape[1])
+    R0, penalty, losses = np.nan_to_num(R), lam * np.eye(k + 1), []
+    for _ in range(n_iter):
+        for u in range(R.shape[0]):                    # fix items, solve each user
+            js = np.where(mask[u])[0]
+            X = np.hstack([V[js], np.ones((len(js), 1))])
+            sol = np.linalg.solve(X.T @ X + penalty, X.T @ (R0[u, js] - mu - b_i[js]))
+            U[u], b_u[u] = sol[:k], sol[k]
+        for j in range(R.shape[1]):                    # fix users, solve each item
+            us = np.where(mask[:, j])[0]
+            if len(us) == 0:
+                continue                               # cold item: nothing to learn from
+            X = np.hstack([U[us], np.ones((len(us), 1))])
+            sol = np.linalg.solve(X.T @ X + penalty, X.T @ (R0[us, j] - mu - b_u[us]))
+            V[j], b_i[j] = sol[:k], sol[k]
+        fit = mu + b_u[:, None] + b_i[None, :] + U @ V.T
+        losses.append(float(((R0 - fit)[mask] ** 2).sum()
+                            + lam * ((U**2).sum() + (V**2).sum() + (b_u**2).sum() + (b_i**2).sum())))
+    preds = np.clip(mu + b_u[:, None] + b_i[None, :] + U @ V.T, 1, 5)
+    preds[:, mask.sum(axis=0) == 0] = np.nan
+    return preds, U, V, losses
+
+pred_als, U, V, losses = als(R_train, train_mask)
+print(f"regularised loss: {losses[0]:,.0f} -> {losses[-1]:,.0f} "
+      f"(never increased: {all(b <= a + 1e-6 for a, b in zip(losses, losses[1:]))})")
+m_als = print_method_scores("ALS (k=5)", pred_als, R_obs, holdout_mask)
+
+# Do the learned item embeddings recover the hidden traits?  (R^2 of a linear map)
+warm = ~cold_items
+coef, *_ = np.linalg.lstsq(np.c_[V[warm], np.ones(warm.sum())], data["V_true"][warm], rcond=None)
+resid = data["V_true"][warm] - np.c_[V[warm], np.ones(warm.sum())] @ coef
+print(f"R^2 of true item traits explained by learned embeddings: "
+      f"{1 - resid.var() / data['V_true'][warm].var():.2f}")
+```
+
+This is the biased form of the factorisation in the theory section: the global mean and the user and item biases absorb "this user rates generously" and "this product is simply good", leaving the factors to capture *taste*. Each half-step is an exact ridge-regression solve, so the regularised loss never increases. The regularised loss falls from about 4,190 to 3,360 without ever increasing. ALS reaches a holdout RMSE of 0.56 — far better than every baseline and both neighbourhood methods — with precision@5 of 0.66, but its coverage, like CF's, stops at 77% because of the cold SKUs. The last lines check the embeddings against the generator's hidden traits: a linear map from the 5 learned dimensions explains 96% of the variance of the 5 true trait dimensions. Nobody told ALS what the traits were — they emerged from minimising the reconstruction loss. That is the pivot of this lesson.
+
+### Step 4: The cold-start split
+
+```python
+from shared.mlfp04.ex_7 import mean_average_precision
+
+cold_pairs = holdout_mask & cold_items[None, :]
+for name, preds in [("Content-based", pred_cb), ("Item-based CF", pred_icf), ("ALS", pred_als)]:
+    covered = cold_pairs & ~np.isnan(preds)
+    print(f"{name:<14} can score {int(covered.sum())} of {int(cold_pairs.sum())} cold-SKU ratings")
+```
+
+Only content-based filtering can say anything about the brand-new products. This is the motivation for **hybrid** recommenders (below): use collaborative signals where history exists and content where it does not.
+
+## Further Concepts: SVD++, Implicit Feedback and Hybrids
+
+**SVD++** (Koren, 2008) extends the biased factorisation with *implicit feedback*: the fact that a user rated (or viewed, or clicked) an item at all says something about their taste, regardless of the score. The user's vector becomes their explicit factor plus a normalised sum of factors of every item they interacted with:
+
+$$\hat{R}_{ui} = \mu + b_u + b_i + \mathbf{v}_i^T \left( \mathbf{u}_u + |N(u)|^{-1/2} \sum_{j \in N(u)} \mathbf{y}_j \right)$$
+
+where $N(u)$ is the set of items user $u$ interacted with and $\mathbf{y}_j$ is a second, learned embedding per item. A user with few ratings but many views is still placed sensibly. For purely implicit data (clicks, purchases, no stars), the standard method is weighted ALS on a binary preference matrix with confidence weights (Hu, Koren and Volinsky, 2008).
+
+**Hybrid systems** combine content-based and collaborative scores. Common patterns: a *weighted* hybrid (a blend $\alpha \cdot \text{CF} + (1 - \alpha) \cdot \text{content}$, with $\alpha$ tuned on a validation split — never on the test set); a *switching* hybrid (content-based for cold items and new users with a few interactions, CF otherwise); and *feature-augmented* factorisation, where item features enter the model so that new items get an embedding from their features. Exercise 7.5 builds a validation-tuned weighted hybrid and measures its lift over each component.
 
 ## Try It Yourself
 
-**Drill 1.** Implement user-based collaborative filtering with cosine similarity. Recommend 5 items for 3 different users. For each recommendation, explain which similar user's preferences drove the recommendation.
+**Drill 1.** Using user-based CF, recommend the top 5 *unrated* items for three users (`sg_user_000`, `sg_user_010`, `sg_user_050`). For each, name the most similar user and how many items the two have both rated.
 
 **Solution:**
 
 ```python
-for uid in [users[0], users[10], users[50]]:
-    recs = recommend_user_cf(uid, n=5)
-    u = user_idx[uid]
-    most_similar = np.argsort(user_sim[u])[-2]  # -1 is self
-    print(f"User {uid}: recommended {recs}")
-    print(f"  Most similar user: {users[most_similar]}")
+sim_users = cosine_sim(R_c)
+np.fill_diagonal(sim_users, 0.0)
+user_ids, item_ids = data["user_ids"], data["item_ids"]
+
+for u in [0, 10, 50]:
+    scores = np.where(train_mask[u], -np.inf, np.nan_to_num(pred_ucf[u], nan=-np.inf))
+    top5 = np.argsort(scores)[::-1][:5]
+    nb = int(np.argmax(sim_users[u]))
+    overlap = int((train_mask[u] & train_mask[nb]).sum())
+    print(f"{user_ids[u]}: recommend {[item_ids[j] for j in top5]}")
+    print(f"   most similar: {user_ids[nb]} (cosine {sim_users[u, nb]:.2f}, {overlap} items in common)")
 ```
 
-**Drill 2.** Implement item-based collaborative filtering. For a given user who rated item A highly, find the 5 most similar items to A and recommend them. Compare with user-based CF recommendations.
+Notice how few items two users have in common when only 30% of pairs are observed — 4 to 6 for these pairs. Similarities computed on so few co-rated items are noisy, which is why neighbourhood methods use several neighbours and why matrix factorisation, which pools information across all users, usually does better on sparse data.
+
+**Drill 2.** Compare user-based and item-based CF on warm items only (exclude the cold SKUs). Which ranks better (MAP), and why might item-based CF be preferred in production even when it does not win?
 
 **Solution:**
 
 ```python
-def recommend_item_cf(user_id, n=5):
-    u = user_idx[user_id]
-    user_ratings = R[u].toarray().flatten()
-    rated_items = np.where(user_ratings > 0)[0]
-    scores = np.zeros(len(items))
-    for i in rated_items:
-        scores += user_ratings[i] * item_sim[i]
-    scores[rated_items] = -np.inf
-    top_items = np.argsort(scores)[-n:][::-1]
-    return [items[i] for i in top_items]
+warm_holdout = holdout_mask & ~cold_items[None, :]
+for name, preds in [("User-based CF", pred_ucf), ("Item-based CF", pred_icf),
+                    ("ALS", pred_als), ("Content-based", pred_cb)]:
+    print(f"{name:<14} warm-item MAP = {mean_average_precision(preds, R_obs, warm_holdout):.4f}")
 ```
 
-**Drill 3.** Vary the number of latent factors $k$ in ALS from 5 to 100 (5, 10, 20, 50, 100). Plot the reconstruction error versus $k$. What is the optimal $k$ based on a validation set?
+On warm items ALS ranks best (MAP 0.92), then user-based CF (0.80), item-based CF (0.76) and content-based (0.74). Restricting to warm items separates ranking skill from coverage (MAP counts an unscored relevant item as a miss). In production item-based CF is often preferred regardless: item–item similarities change slowly and can be precomputed, a user's recommendations update instantly when they rate something new, and "because you bought X" is easy to explain.
+
+**Drill 3.** Choose the number of latent factors $k$ for ALS with a validation split. Fit on `fit_mask`, measure RMSE on `val_mask` for $k \in \{1, 2, 3, 5, 10, 20\}$, pick the best $k$, then report its holdout RMSE once.
 
 **Solution:**
 
 ```python
-for k in [5, 10, 20, 50, 100]:
-    # Run ALS with k factors
-    # Split observed ratings into 80% train, 20% validation
-    # Report train and validation RMSE
-    print(f"k={k}: train_rmse=..., val_rmse=...")
+from shared.mlfp04.ex_7 import holdout_rmse
+
+fit_mask, val_mask = data["fit_mask"], data["val_mask"]
+R_fit = np.where(fit_mask, R_obs, np.nan)
+val_scores = {}
+for k in [1, 2, 3, 5, 10, 20]:
+    preds_k, *_ = als(R_fit, fit_mask, k=k, lam=5.0, n_iter=20)
+    train_rmse = float(np.sqrt(np.nanmean((preds_k - R_obs)[fit_mask] ** 2)))
+    val_rmse, _ = holdout_rmse(preds_k, R_obs, val_mask)
+    val_scores[k] = val_rmse
+    print(f"k={k:>2}: train RMSE={train_rmse:.4f}  validation RMSE={val_rmse:.4f}")
+
+best_k = min(val_scores, key=val_scores.get)
+final, *_ = als(R_train, train_mask, k=best_k, lam=5.0)
+print(f"best k={best_k}; holdout RMSE = {holdout_rmse(final, R_obs, holdout_mask)[0]:.4f}")
 ```
 
-**Drill 4.** Visualise the item embeddings from the ALS model in 2D (using PCA or UMAP). Colour the items by category. Do items in the same category cluster together in embedding space?
+Training and validation RMSE both fall steeply up to $k = 5$ (validation 0.84 at $k = 1$, 0.63 at $k = 5$) and then flatten: with $\lambda = 5$, the penalty shrinks factors that have no real signal to fit towards zero, so $k = 10$ and $k = 20$ give almost the same model. With a weaker penalty the extra factors would fit noise and the validation error would rise. The validation curve, not the training curve, picks $k$; the holdout set is touched once, at the end, so its RMSE remains an honest estimate. The best $k$ is 5 — the number of true factors in the generator — and its holdout RMSE is 0.557.
+
+**Drill 4.** Visualise the learned item embeddings in 2D with PCA, coloured by each item's mean training rating. Do items cluster by quality, by taste, or both?
 
 **Solution:**
 
 ```python
-import umap
-reducer = umap.UMAP(n_components=2, random_state=42)
-V_2d = reducer.fit_transform(V)
-# Plot with category colours
+import plotly.express as px
+from sklearn.decomposition import PCA
+
+V_warm = V[~cold_items]
+V_2d = PCA(n_components=2).fit_transform(V_warm)
+mean_rating = np.nanmean(np.where(train_mask, R_obs, np.nan), axis=0)[~cold_items]
+fig = px.scatter(x=V_2d[:, 0], y=V_2d[:, 1], color=mean_rating,
+                 labels={"x": "embedding PC1", "y": "embedding PC2", "color": "mean rating"},
+                 title="ALS item embeddings")
+fig.write_html("als_item_embeddings.html")
+print(f"|corr(PC1, mean rating)| = {abs(np.corrcoef(V_2d[:, 0], mean_rating)[0, 1]):.2f}")
 ```
 
-**Drill 5.** Write a paragraph explaining the pivot concept: how does matrix factorisation bridge unsupervised feature discovery (Lessons 4.1–4.6) and supervised feature learning (Lesson 4.8 and Module 5)? Use the terms "embedding", "loss function", and "optimisation" in your explanation.
+Because the biased model gives quality its own parameter ($b_i$), the factor embeddings mostly encode *taste* — which kind of user likes the item — and are only weakly correlated with the mean rating. Items close together in the plot are liked by the same users. Fit an unbiased model (drop the bias terms) and quality leaks into the first embedding dimension instead. Embeddings learned this way can be reused as item features in any downstream model.
 
-**Solution:** Matrix factorisation learns embeddings — dense vector representations of users and items — by minimising a reconstruction loss function through optimisation (ALS). Unlike unsupervised methods like PCA or clustering, which discover structure from data geometry alone, matrix factorisation uses an error signal (the gap between predicted and observed ratings) to guide feature discovery. This is exactly what neural networks do: their hidden layer activations are embeddings, discovered by minimising a task loss via backpropagation. The difference is that matrix factorisation learns linear combinations, while neural networks learn non-linear combinations through activation functions.
+**Drill 5.** Write a paragraph explaining the pivot concept: how does matrix factorisation bridge unsupervised feature discovery (Lessons 4.1–4.6) and supervised feature learning (Lesson 4.8 and Module 5)? Use the terms "embedding", "loss function", and "optimisation".
+
+**Solution:** K-means, PCA and NMF already minimised objectives, but over a fully observed data matrix, and their outputs were mostly used as summaries of that matrix. Matrix factorisation fits user and item **embeddings** iteratively, by **optimisation**, to a *partially observed* target — the ratings we have — and is judged by how well it predicts the ratings we do not have. The **loss function** (squared error on observed ratings plus a penalty) is the only guidance; nobody specifies what the latent dimensions mean, yet they recover the hidden taste structure, and they can be reused as features elsewhere. Neural networks do the same thing with a task loss: their hidden-layer activations are embeddings discovered by backpropagation. The difference is that matrix factorisation combines its factors linearly (a dot product), while neural networks build non-linear combinations through activation functions.
 
 ## Cross-References
 
-- **Lesson 4.3** derived PCA via SVD. Matrix factorisation is SVD applied to a sparse matrix — the same mathematical operation on different data.
+- **Lesson 4.3** derived PCA via SVD. With a fully observed matrix and no penalty, the best rank-$k$ factorisation *is* the truncated SVD (Eckart–Young). With most entries missing there is no closed form — SVD needs every entry — which is why collaborative filtering minimises the loss over observed entries only, iteratively.
 - **Lesson 4.6** used NMF for topic modelling. NMF on a document-term matrix and NMF on a user-item matrix are the same algorithm.
 - **Lesson 4.8** will generalise the idea: neural network hidden layers are embeddings learned by minimising a loss function, with the addition of non-linearity.
 - **Module 5, Lesson 5.1** introduces autoencoders, which learn embeddings by reconstructing their input — the same objective as matrix factorisation, but with a neural network.

@@ -104,25 +104,25 @@
     <div class="col">
       <div class="kailash-bridge">
         <h3>ExperimentTracker</h3>
-        <p>Design A/B tests, track experiment metadata, analyse results with statistical rigour.</p>
+        <p>Your lab notebook: logs the parameters, metrics and decision of every analysis run. You compute the statistics; it records them.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureEngineer</h3>
-        <p>Generate interaction terms, polynomial features, temporal features automatically.</p>
+        <p>Generates candidate interaction, polynomial, binned and temporal features from a schema, then selects the strongest.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>FeatureStore</h3>
-        <p>Store and retrieve features with point-in-time correctness and data lineage.</p>
+        <p>Stores typed features and returns them as of a point in time, with a lineage hash.</p>
       </div>
     </div>
     <div class="col">
       <div class="kailash-bridge">
         <h3>TrainingPipeline</h3>
-        <p>Fit regression and classification models with built-in cross-validation.</p>
+        <p>Trains and registers ML models from a feature schema (used in depth in M3). It reports metrics, not coefficient p-values.</p>
       </div>
       <div class="kailash-bridge" style="margin-top:12px;">
         <h3>ModelVisualizer</h3>
-        <p>Residual plots, coefficient charts, ROC curves &mdash; Polars-native.</p>
+        <p>Histograms, residual, ROC, calibration and confusion-matrix plots (Plotly).</p>
       </div>
       <div class="callout callout-foundations" style="margin-top:12px;">
         <strong>Pattern:</strong> Learn the statistics manually first, then see how the engines automate it. Understanding both means you can debug when results surprise you.
@@ -133,7 +133,7 @@
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Emphasise that Kailash engines appear at the end of each lesson in a "Kailash Bridge" slide. The manual statistics come first so students understand what the engines compute under the hood. If beginners confused: "The engines are your power tools. We teach you the hand tools first." If experts bored: "FeatureStore implements point-in-time correctness, which prevents a very common data leakage bug."
+    Timing: 2 min. Emphasise that Kailash engines appear at the end of each lesson in a "Kailash Bridge" slide. In M2 the statistics are computed by hand (numpy, scipy, polars); the engines record runs, build and store features, and plot results. None of them runs a t-test or CUPED for you. If beginners confused: "The engines are your power tools. We teach you the hand tools first." If experts bored: "FeatureStore implements point-in-time retrieval, which prevents a very common data leakage bug."
   </aside>
 </section>
 
@@ -452,35 +452,40 @@
 </section>
 
 <!-- SLIDE 14: 2.1 Kailash Bridge -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: Probability in Practice</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; Bayesian A/B Testing</h3>
+    <h3>ExperimentTracker &mdash; Record Every Bayesian Run</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Compute Bayes' theorem, build truth tables, choose priors</div>
+      <div><strong>Manual:</strong> Choose the prior, compute the Normal-Normal posterior and its credible interval (numpy)</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker computes posterior probabilities for experiment variants automatically</div>
+      <div><strong>Engine:</strong> ExperimentTracker logs the prior, posterior and interval so the run is reproducible. It records; it does not compute posteriors.</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.5em;"><code class="language-python">import asyncio
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-tracker.create_experiment(
-    name="hdb_price_bayesian",
-    hypothesis="Bayesian estimation gives tighter CI than frequentist",
-    metrics=["posterior_mean", "credible_interval_width"]
-)
-# Log prior, likelihood, and posterior for each iteration
-tracker.log_metric("posterior_mean", posterior.mean())
-tracker.log_metric("ci_width", ci_upper - ci_lower)</code></pre>
+async def log_posterior(post_mean, ci_lo, ci_hi):
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_hdb_bayes",
+                             run_name="normal_normal") as run:
+        await run.log_params({"prior_mu": 500_000,
+                              "prior_sigma": 25_000})
+        await run.log_metrics({"posterior_mean": post_mean,
+                               "ci_width": ci_hi - ci_lo})
+    await tracker.close()
+
+# post_mean, ci_lo, ci_hi come from your own update
+asyncio.run(log_posterior(post_mean, ci_lo, ci_hi))</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Bayesian estimation on HDB prices &mdash; compute posterior distribution of mean price given prior beliefs and observed data. Visualise prior, likelihood, and posterior.
+    <strong>Exercise 1 preview:</strong> Bayes' theorem on test results, Normal-Normal and Beta-Binomial updates on HDB prices (with prior sensitivity), credible vs confidence intervals.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show how ExperimentTracker logs the Bayesian workflow. Emphasise: the engine does not replace understanding. You must choose the prior and interpret the posterior. The engine tracks the experiment metadata. If beginners confused: "The engine is your lab notebook. It records what you tried and what happened." If experts bored: "ExperimentTracker supports both frequentist and Bayesian experiment analysis."
+    Timing: 2 min. Every tracker call is async: create the tracker with await, open a run with "async with tracker.track(...)", await each log call, then close it. The posterior itself is computed in your own numpy code; the tracker only stores what you computed, so the run can be compared and reproduced later. Emphasise: the engine does not replace understanding. You must choose the prior and interpret the posterior. If beginners confused: "The engine is your lab notebook. It records what you tried and what happened." If experts bored: "Because each run stores its parameters, you can compare prior choices side by side: a cheap sensitivity analysis."
   </aside>
 </section>
 
@@ -722,33 +727,41 @@ tracker.log_metric("ci_width", ci_upper - ci_lower)</code></pre>
 </section>
 
 <!-- SLIDE 22: 2.2 Kailash Bridge -->
-<section>
+<section class="code-fit">
   <h2>Kailash Bridge: Parameter Estimation</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline &mdash; Automated Model Fitting</h3>
+    <h3>ModelVisualizer &mdash; See the Distribution You Fitted</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Write log-likelihood, optimise, compute CIs</div>
+      <div><strong>Manual:</strong> Write the log-likelihood and maximise it with scipy</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits distributions and models with built-in parameter estimation</div>
+      <div><strong>Engine:</strong> ModelVisualizer plots the data so you can judge whether the fitted Normal is plausible</div>
     </div>
   </div>
-  <pre><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
+  <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+from scipy import optimize, stats
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-pipeline = TrainingPipeline()
-# Fit a model with automatic parameter estimation
-pipeline.fit(df, target="resale_price", features=["floor_area_sqm", "remaining_lease"])
+econ = MLFPDataLoader().load("mlfp01", "economic_indicators.csv")
+g = econ["gdp_growth_pct"].drop_nulls().to_numpy()
 
-# Inspect fitted parameters and their confidence intervals
-params = pipeline.get_coefficients()
-print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper</code></pre>
+def nll(p):  # p = (mu, log_sigma): sigma stays positive
+    return -stats.norm.logpdf(g, p[0], np.exp(p[1])).sum()
+
+res = optimize.minimize(nll, x0=[0.0, 0.0], method="BFGS")
+mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])  # 3.90, 4.07
+
+fig = ModelVisualizer().histogram(
+    econ, "gdp_growth_pct", bins=30,
+    title=f"GDP growth (MLE mu={mu_hat:.2f}, sigma={sigma_hat:.2f})")</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Fit Normal and Exponential distributions to Singapore economic data. Implement MLE from scratch. Compare MLE vs MAP estimates.
+    <strong>Exercise 2 preview:</strong> Singapore economic indicators &mdash; CLT and Bessel's correction, MLE with Fisher-information and profile-likelihood CIs, MAP shrinkage, MLE failure modes, AIC/BIC across distribution families.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash Bridge. Emphasise: the engine does MLE under the hood. You must understand what it is doing so you can interpret the output (t-stats, p-values, CIs). If beginners confused: "The engine automates the math, but you need to understand the output." If experts bored: "TrainingPipeline supports custom loss functions for non-standard estimation."
+    Timing: 2 min. The estimation is yours: the log-likelihood and the optimiser are plain scipy. On the 101 quarterly GDP growth values the MLE gives mu = 3.90 (the sample mean) and sigma = 4.07 (the divide-by-n standard deviation), exactly as the derivation predicts. ModelVisualizer's job is to show the data so you can see whether a Normal is a sensible model. If beginners confused: "The code finds the bell curve that fits best; the chart lets you check it actually looks like the data." If experts bored: "The log-sigma reparameterisation removes the positivity constraint; Exercise 2 shows the profile-likelihood CI is invariant to it while the Wald CI is not."
   </aside>
 </section>
 
@@ -1000,35 +1013,40 @@ print(params)  # Shows estimate, std_error, t_stat, p_value, ci_lower, ci_upper<
 <section class="code-fit">
   <h2>Kailash Bridge: Bootstrap and Testing</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; Automated Hypothesis Testing</h3>
+    <h3>ModelVisualizer &mdash; Show the Bootstrap Distribution</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Write bootstrap loop, compute CI, run permutation test</div>
+      <div><strong>Manual:</strong> Write the resampling loop and read the CI off its percentiles</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker runs bootstrap, permutation, and power analysis in one call</div>
+      <div><strong>Engine:</strong> ModelVisualizer plots the bootstrap distribution so stakeholders see the uncertainty, not just a number</div>
     </div>
   </div>
-  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.5em;"><code class="language-python">import numpy as np
+import polars as pl
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment(
-    name="conversion_ab_test",
-    hypothesis="New checkout flow increases conversion rate",
-    metrics=["conversion_rate", "revenue_per_user"]
-)
-# Built-in bootstrap CI and permutation test
-results = tracker.analyze(
-    control=control_data, treatment=treatment_data,
-    method="permutation", n_bootstrap=10000, alpha=0.05
-)
-print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
+df = MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+rev = {g: df.filter(pl.col("experiment_group") == g)["revenue"].to_numpy()
+       for g in ["control", "treatment_a"]}
+
+rng = np.random.default_rng(42)
+reps = np.array([
+    rng.choice(rev["treatment_a"], len(rev["treatment_a"])).mean()
+    - rng.choice(rev["control"], len(rev["control"])).mean()
+    for _ in range(1_000)])
+lo, hi = np.percentile(reps, [2.5, 97.5])  # about [2.84, 3.50]
+
+fig = ModelVisualizer().histogram(
+    pl.DataFrame({"lift": reps}), "lift",
+    title=f"Bootstrap revenue lift, 95% CI [{lo:.2f}, {hi:.2f}]")</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> A/B test analysis with multiple corrections. Bootstrap CI for conversion rate difference. Permutation test for significance.
+    <strong>Exercise 3 preview:</strong> Percentile and BCa bootstrap CIs, power and MDE, z / Welch / Mann-Whitney tests with effect sizes, Bonferroni vs BH-FDR, a permutation test.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show how ExperimentTracker automates the bootstrap and permutation test workflow. The engine handles resampling, CI computation, and p-value calculation. You must understand the methods to interpret the output. If beginners confused: "The engine runs 10,000 resamples in seconds. You interpret the result." If experts bored: "ExperimentTracker supports sequential testing and always-valid p-values for peeking-safe experiments."
+    Timing: 2 min. The course experiment has four arms designed 40/35/15/10; we compare control with treatment_a, a pair that passes its own SRM check against the designed 40:35 ratio (p about 0.62). The bootstrap loop is yours; on this data the revenue lift is about 3.16 per user with a 95% percentile CI of roughly [2.84, 3.50]. ModelVisualizer turns the 1,000 replicates into a histogram you can show a stakeholder. If beginners confused: "Each bar is how often a resampled experiment gave that lift. The middle 95% is the CI." If experts bored: "Exercise 3 adds BCa, which corrects the percentile interval for bias and skew."
   </aside>
 </section>
 
@@ -1216,35 +1234,42 @@ print(results.p_value, results.bootstrap_ci, results.power)</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Experiment Design</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; End-to-End Experiment Management</h3>
+    <h3>ExperimentTracker &mdash; Log the Design, the SRM Check and the Decision</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Randomise, collect, check SRM, analyse, report</div>
+      <div><strong>Manual:</strong> Size the test, check SRM against the designed split, decide</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker manages the full experiment lifecycle with built-in SRM detection</div>
+      <div><strong>Engine:</strong> ExperimentTracker stores the plan, the check and the decision as one auditable run</div>
     </div>
   </div>
-  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.48em;"><code class="language-python">import asyncio
+from scipy import stats
+from kailash_ml import ExperimentTracker
 
-tracker = ExperimentTracker()
-experiment = tracker.create_experiment(
-    name="hawker_price_test",
-    hypothesis="$0.50 increase does not reduce daily revenue",
-    variants=["control_price", "new_price"],
-    allocation=[0.5, 0.5],
-    primary_metric="daily_revenue",
-    power=0.80, alpha=0.05, mde=0.05
-)
-# SRM check runs automatically at analysis time
-results = tracker.analyze(experiment_id=experiment.id)
-print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
+n_c, n_t = 188_732, 165_413      # control, treatment_a
+w_c = 0.40 / (0.40 + 0.35)       # DESIGNED share, not 50/50
+exp = [w_c * (n_c + n_t), (1 - w_c) * (n_c + n_t)]
+p_srm = stats.chisquare([n_c, n_t], f_exp=exp).pvalue  # about 0.62
+decision = "STOP: investigate SRM" if p_srm < 0.01 else "analyse"
+
+async def log_design():
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_ab",
+                             run_name="design_and_srm") as run:
+        await run.log_params({"alpha": 0.05, "power": 0.80,
+                              "decision": decision})
+        await run.log_metrics({"srm_p": float(p_srm)})
+    await tracker.close()
+
+asyncio.run(log_design())</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Design and analyse a complete A/B experiment. Create data collection plan. Detect SRM. Report results with business recommendation.
+    <strong>Exercise 4 preview:</strong> Pre-registered design and power curve, SRM (overall and per segment), Welch's t-test with CIs, validity checks, a report logged to ExperimentTracker.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. ExperimentTracker automates the experiment lifecycle: design, allocation, SRM detection, analysis, reporting. Emphasise: the engine enforces best practices (power analysis before launch, SRM check before analysis). If beginners confused: "The engine is your experiment checklist. It will not let you skip important steps." If experts bored: "ExperimentTracker supports multi-armed bandits, sequential testing, and interaction detection."
+    Timing: 2 min. The course experiment was designed 40/35/15/10 across four arms, so SRM must be tested against that design, never against 50/50. Across all four arms SRM fires (variant_c is over-allocated); the control vs treatment_a pair matches its designed 40:35 ratio (p about 0.62), so that pair is safe to analyse. A failed SRM check means "do not ship, investigate", whatever the effect estimate says. The tracker does not run these checks; it stores your plan, your check and your decision so the run is auditable. If beginners confused: "The engine is your experiment logbook. You do the checks; it keeps the receipt." If experts bored: "Log the pre-registration parameters before you look at outcomes, so the record proves they were not chosen after the fact."
   </aside>
 </section>
 
@@ -1533,38 +1558,45 @@ print(results.srm_check)  # Pass/Fail with chi-squared p-value</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Linear Regression</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline + ModelVisualizer &mdash; Regression Modelling</h3>
+    <h3>FeatureEngineer + ModelVisualizer &mdash; Regression Modelling</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> OLS formula, t-stats, R-squared, residual plots</div>
+      <div><strong>Manual:</strong> Solve the normal equations; compute t-stats, R-squared, F</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits models; ModelVisualizer creates diagnostic plots</div>
+      <div><strong>Engine:</strong> FeatureEngineer generates polynomial and interaction terms; ModelVisualizer plots the residuals</div>
     </div>
   </div>
-  <pre style="font-size: 0.50em;"><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer, FeatureEngineer
+  <pre style="font-size: 0.48em;"><code class="language-python">import numpy as np
+import polars as pl
+from kailash_ml import (FeatureEngineer, FeatureField, FeatureSchema,
+                        ModelVisualizer)
+from shared import MLFPDataLoader
 
-# Engineer features: lat/lon, interaction terms
-fe = FeatureEngineer()
-df = fe.add_polynomial(df, columns=["floor_area_sqm"], degree=2)
-df = fe.add_interaction(df, col_a="floor_area_sqm", col_b="is_central")
+df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+      .filter(pl.col("resale_price").is_between(100_000, 2_000_000))
+      .with_row_index("txn_id")
+      .with_columns(age=pl.col("month").str.slice(0, 4).cast(pl.Float64)
+                        - pl.col("lease_commence_date")))
+schema = FeatureSchema(name="hdb", entity_id_column="txn_id",
+    features=[FeatureField("floor_area_sqm", "float64"),
+              FeatureField("age", "float64")])
+gen = FeatureEngineer().generate(
+    df, schema, strategies=["interactions", "polynomial"])
 
-# Fit regression
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="resale_price", model="linear_regression")
-
-# Evaluate: coefficients, t-stats, R-squared, F-statistic
-print(pipeline.summary())
-
-# Visualise residuals
-viz = ModelVisualizer()
-viz.residual_plot(pipeline)</code></pre>
+cols = ["floor_area_sqm", "age", "floor_area_sqm_squared",
+        "floor_area_sqm_x_age"]
+X = np.column_stack([np.ones(gen.data.height),
+                     gen.data.select(cols).to_numpy()])
+y = gen.data["resale_price"].to_numpy().astype(float)
+beta = np.linalg.solve(X.T @ X, X.T @ y)  # OLS normal equations
+fig = ModelVisualizer().residuals(y, X @ beta)</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Build HDB price prediction model. Engineer lat/lon features. Interpret coefficients. Test significance. Add interaction terms and compare.
+    <strong>Exercise 5 preview:</strong> OLS from scratch (t, R&sup2;, F), diagnostics (VIF, Breusch-Pagan), weighted least squares, then polynomial, interaction and dummy terms judged on a held-out test set.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow: FeatureEngineer creates polynomial and interaction terms, TrainingPipeline fits the model, ModelVisualizer creates residual plots. The summary() output shows the same numbers you learned to compute manually. If beginners confused: "The engine does the math. You interpret the results using what you learned today." If experts bored: "FeatureEngineer can also geocode addresses to lat/lon, enabling spatial features."
+    Timing: 2 min. FeatureEngineer.generate takes a FeatureSchema and returns candidate columns (here area squared, age squared and area times age); the regression itself is the normal-equations solve you derived, so the coefficients, standard errors and t-statistics are yours to compute. ModelVisualizer.residuals draws predicted-vs-actual and the residual histogram. The filter drops sentinel prices in the raw file (a 10-dollar sale, a 9-million-dollar sale); without it the fit is meaningless. On this data the model explains about 83% of price variance. If beginners confused: "The engine builds the extra columns. You fit the line and interpret it." If experts bored: "FeatureEngineer.select ranks the candidates against the target, a first taste of the feature selection you do properly in M3."
   </aside>
 </section>
 
@@ -1843,35 +1875,44 @@ viz.residual_plot(pipeline)</code></pre>
 <section class="code-fit">
   <h2>Kailash Bridge: Classification and ANOVA</h2>
   <div class="kailash-bridge">
-    <h3>TrainingPipeline + ModelVisualizer &mdash; Classification Modelling</h3>
+    <h3>ModelVisualizer &mdash; ROC Curve and Confusion Matrix</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Sigmoid, log-odds, MLE, ANOVA F-test</div>
+      <div><strong>Manual:</strong> Sigmoid, Bernoulli log-likelihood, MLE with scipy, odds ratios</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> TrainingPipeline fits logistic models; ModelVisualizer plots ROC curves and confusion matrices</div>
+      <div><strong>Engine:</strong> ModelVisualizer plots the ROC curve and confusion matrix from your predictions</div>
     </div>
   </div>
-  <pre style="font-size: 0.55em;"><code class="language-python">from kailash_ml import TrainingPipeline, ModelVisualizer
+  <pre style="font-size: 0.48em;"><code class="language-python">import numpy as np
+import polars as pl
+from scipy.optimize import minimize
+from scipy.special import expit
+from kailash_ml import ModelVisualizer
+from shared import MLFPDataLoader
 
-pipeline = TrainingPipeline()
-pipeline.fit(df, target="attrition", model="logistic_regression")
+df = (MLFPDataLoader().load("mlfp01", "hdb_resale.parquet")
+      .filter(pl.col("month") >= "2020-01"))
+y = (df["resale_price"] > df["resale_price"].median()).cast(pl.Int8).to_numpy()
+area = df["floor_area_sqm"].to_numpy()
+X = np.column_stack([np.ones(len(y)), (area - area.mean()) / area.std()])
 
-# Odds ratios for each feature
-coeffs = pipeline.get_coefficients()
-coeffs["odds_ratio"] = coeffs["estimate"].apply(lambda b: math.exp(b))
-print(coeffs[["feature", "estimate", "odds_ratio", "p_value"]])
+def nll(b):  # Bernoulli negative log-likelihood
+    p = np.clip(expit(X @ b), 1e-12, 1 - 1e-12)
+    return -np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
 
-# Confusion matrix and ROC curve
+beta = minimize(nll, np.zeros(2), method="BFGS").x
+odds_ratio = np.exp(beta[1])  # per 1 SD of floor area
+p_hat = expit(X @ beta)
 viz = ModelVisualizer()
-viz.confusion_matrix(pipeline)
-viz.roc_curve(pipeline)</code></pre>
+fig_roc = viz.roc_curve(y, p_hat)
+fig_cm = viz.confusion_matrix(y, (p_hat >= 0.5).astype(int))</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Build logistic regression for employee attrition. Interpret odds ratios. Perform ANOVA on HDB prices across flat types. Apply Tukey's HSD.
+    <strong>Exercise 6 preview:</strong> Logistic regression from scratch on HDB "above-median price", odds ratios and cost-based thresholds, ROC/PR curves, calibration, one-way ANOVA with Tukey's HSD.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow for logistic regression. Emphasise odds ratio interpretation. ModelVisualizer creates publication-quality confusion matrices and ROC curves. If beginners confused: "The engine fits the model. You interpret the odds ratios to explain which features drive attrition." If experts bored: "TrainingPipeline supports regularised logistic regression (L1/L2), which connects to MAP estimation from Lesson 2.2."
+    Timing: 2 min. The lesson's case is employee attrition; the exercise applies the same model to a target the course data supports: is an HDB resale (2020 onwards) priced above the median? The fit is your own MLE; ModelVisualizer only draws the ROC curve and confusion matrix from your y and predicted probabilities. Because floor area is standardised, exp(beta) is the odds ratio per one standard deviation (about 27 sqm), not per square metre. If beginners confused: "You fit the model; the engine draws the pictures that show how well it separates the two classes." If experts bored: "Exercise 6 re-optimises the threshold for each cost matrix: the cost-optimal threshold depends on what a false positive and a false negative cost."
   </aside>
 </section>
 
@@ -2081,44 +2122,48 @@ viz.roc_curve(pipeline)</code></pre>
 </section>
 
 <!-- SLIDE 61: 2.7 Kailash Bridge -->
-<section class="code-dense">
+<section class="code-fit">
   <h2>Kailash Bridge: CUPED and Causal Inference</h2>
   <div class="kailash-bridge">
-    <h3>ExperimentTracker &mdash; CUPED and DiD Analysis</h3>
+    <h3>ExperimentTracker &mdash; Record the Adjustment You Computed</h3>
     <div class="theory-to-engine">
-      <div><strong>Manual:</strong> Compute theta, adjust metrics, test parallel trends</div>
+      <div><strong>Manual:</strong> Compute theta from a PRE-experiment covariate, adjust the metric, measure the variance reduction</div>
       <div class="arrow">&rarr;</div>
-      <div><strong>Engine:</strong> ExperimentTracker applies CUPED adjustment and runs DiD analysis automatically</div>
+      <div><strong>Engine:</strong> ExperimentTracker logs theta and the reduction so the analysis can be audited and repeated</div>
     </div>
   </div>
-  <pre style="font-size: 0.45em; line-height: 1.3"><code class="language-python">from kailash_ml import ExperimentTracker
+  <pre style="font-size: 0.48em;"><code class="language-python">import asyncio
+import numpy as np
+import polars as pl
+from kailash_ml import ExperimentTracker
+from shared import MLFPDataLoader
 
-tracker = ExperimentTracker()
+df = (MLFPDataLoader().load("mlfp02", "experiment_data.parquet")
+      .filter(pl.col("experiment_group").is_in(["control", "treatment_a"])))
+y = df["revenue"].to_numpy()
+x = df["pre_metric_value"].to_numpy()  # measured BEFORE the experiment
+theta = np.cov(y, x)[0, 1] / np.var(x, ddof=1)
+y_adj = y - theta * (x - x.mean())
+reduction = 1 - np.var(y_adj, ddof=1) / np.var(y, ddof=1)  # = rho^2
 
-# CUPED analysis
-results = tracker.analyze(
-    control=control_data, treatment=treatment_data,
-    pre_experiment_covariate="revenue_last_month",
-    method="cuped"
-)
-print(f"Variance reduction: {results.variance_reduction_pct:.1f}%")
-print(f"Adjusted p-value: {results.p_value:.4f}")
+async def log_cuped():
+    tracker = await ExperimentTracker.create(
+        store_url="sqlite:///mlfp02_experiments.db")
+    async with tracker.track(experiment="mlfp02_cuped",
+                             run_name="control_vs_treatment_a") as run:
+        await run.log_metrics({"theta": float(theta),
+                               "variance_reduction": float(reduction)})
+    await tracker.close()
 
-# DiD analysis
-did_results = tracker.did_analysis(
-    treatment=hdb_treated, control=hdb_control,
-    pre_period="2019-01-01:2020-06-30",
-    post_period="2020-07-01:2021-12-31"
-)
-print(f"ATT: {did_results.att:.2f}, p-value: {did_results.p_value:.4f}")</code></pre>
+asyncio.run(log_cuped())</code></pre>
   <div class="callout callout-foundations" style="margin-top: 8px;">
-    <strong>Exercise preview:</strong> Implement CUPED on experiment data. Compare variance with and without CUPED. DiD analysis on Singapore cooling measures policy.
+    <strong>Exercise 7 preview:</strong> CUPED with pre-experiment covariates only, Bayesian A/B (expected loss), sequential testing (mSPRT), DiD on a simulated cooling-measure panel with a pre-trend test.
   </div>
   <div class="slide-footer">
     <span>MLFP Module 2 &mdash; Terrene Open Academy</span>
   </div>
   <aside class="notes">
-    Timing: 2 min. Show the Kailash workflow for CUPED and DiD. ExperimentTracker handles the covariate adjustment, variance computation, and parallel trends testing. If beginners confused: "The engine does the adjustment math. You interpret the results: how much did variance decrease? Is the treatment effect significant now?" If experts bored: "ExperimentTracker's CUPED implementation supports multiple covariates and automatic theta optimisation."
+    Timing: 2 min. There is no CUPED or DiD button: theta, the adjusted metric and the DiD estimate are computed in your code, and the tracker records them. Be honest about this dataset: pre_metric_value correlates only weakly with revenue (rho about 0.21), so CUPED removes about 4% of the variance. That is the formula working as stated: reduction = rho squared. CUPED only pays off when the pre-period covariate predicts the outcome strongly. Never add a covariate measured after randomisation: it can absorb the treatment effect itself. If beginners confused: "CUPED subtracts the part of each user's spend that their past behaviour already predicts." If experts bored: "With several pre-period covariates, theta becomes a regression coefficient vector, which Exercise 7 implements."
   </aside>
 </section>
 

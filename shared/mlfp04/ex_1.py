@@ -212,10 +212,18 @@ async def _track_run_async(
     scalar_metrics: dict[str, float],
     series_metrics: dict[str, list[float]] | None = None,
 ) -> None:
-    """Log one lesson's run: scalar metrics + optional per-step series."""
+    """Log one lesson's run: scalar metrics + optional per-step series.
+
+    The tracker rejects NaN/inf metric values, and an undefined metric (e.g.
+    the silhouette of a 1-cluster DBSCAN result) is a legitimate outcome, so
+    non-finite scalars are skipped with an explicit message, not hidden.
+    """
     async with tracker.track(experiment=exp_name, run_name=run_name) as run:
         await run.log_params({k: str(v) for k, v in params.items()})
         for name, value in scalar_metrics.items():
+            if not np.isfinite(float(value)):
+                print(f"  [tracker] not logging {name}={value} (undefined metric)")
+                continue
             await run.log_metric(name, float(value))
         if series_metrics:
             for name, values in series_metrics.items():
